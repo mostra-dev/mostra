@@ -25,7 +25,7 @@ An agent writes ordinary React. Mostra turns it into a beautiful, stateful, inte
 |---|---|---|
 | **Agent author** | Writes artifacts, verifies them, publishes, waits for and reads results | CLI and Skill when it has a filesystem; MCP server (local in v1, remote in v1.x); SDK when embedded |
 | **Human viewer** | Views, interacts, drafts, comments, chooses, submits, presses action buttons | A normal browser on the same machine, a phone over the user's tunnel, inline in a chat host, or a static page |
-| **Host** | Embeds Mostra and owns what it needs: answer storage, identity, delivery to its agent, trusted controls | Host protocol and ports; the Rust host crate; the TypeScript SDK |
+| **Host** | Embeds Mostra and owns what it needs: the home's location, receipt and storage of delivered answers, identity, delivery to its agent, trusted controls (Mostra's ledger stays canonical, D58) | Host protocol and ports; the Rust host crate; the TypeScript SDK |
 | **Plugin author** | Adds components, templates, engines, adapters, exporters, checks, connectors and commands | Extension contracts, manifests and source packs |
 
 Known hosts and use cases (D11):
@@ -57,11 +57,19 @@ Use these words consistently in code, docs, errors and the Skill. One word per c
 | **Trusted controls** | Submit, approve, choose and similar buttons rendered by the shell or host, outside agent code (D06). |
 | **Capability URL** | The token-bearing link that grants use of an artifact. Holding it is the authorization (D06). |
 | **Host** | The program embedding Mostra. The standalone CLI is a host too, with built-in adapters. |
-| **Port** | One typed interface a host implements (storage, events, identity, addressing, trusted controls, capture, sandbox). |
+| **Port** | One optional, typed interface a host implements: identity, submissions, drafts, reviews, events, addressing, trusted controls, capture, secrets, PTY, and a sandbox in v1.x (D58). |
 | **Render mode** | How an artifact is built and served: `spa` in v1, `rsc` later (D19). |
 | **Pack** | A copy-source bundle of components, templates, themes or starters. |
 | **Plugin** | An npm package implementing one or more extension contracts. |
 | **Kit** | Mostra's default components, design system and helpers. |
+| **Field** | One persisted value with an explicit, stable ID (D52). Viewer-scoped fields make up a draft; artifact-scoped fields make up the artifact state. |
+| **Artifact state** | The artifact-scoped fields that every viewer sees and that agents and hosts also write (D63). |
+| **Live source** | A server-side producer or push target whose latest value pages read with `useLive` (D56). |
+| **Follow** | A viewer's per-artifact choice to load new versions automatically (D63). |
+| **Home** | The directory holding one Mostra installation's ledger, versions, sources, secrets and caches (D45). |
+| **Instance** | The supervisor and its child processes that own one home (D45). |
+| **Frame session** | How an artifact frame authenticates: cookie mode where shell and artifact are same-site, worker mode where they are cross-site (D38, D70). |
+| **Ledger** | The home's transactional store, written only by the supervisor (D58, D71). |
 
 ## Journeys
 
