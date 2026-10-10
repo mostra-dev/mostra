@@ -140,3 +140,29 @@ Consequences for the design:
 - The takeover mutex needs a staleness rule, so a starter that dies while holding it doesn't block the home forever.
 - Workers exit with their supervisor, but processes that artifact code starts (foreign dev servers, PTY children) don't. Workers run in their own process group. The supervisor records every child process group with its start time and reaps leftovers on the next start of the home.
 - A heartbeat watchdog can't tell a long synchronous computation from a hang, so the threshold is generous (10 s default), configurable per artifact, and the kill is reported with the reason.
+
+## Terminal fidelity fixtures (prototype evidence)
+
+Prototype: `$JCODE_SCRATCH_DIR/proto-term` (disposable). Nine byte-stream fixtures (box drawing and blocks, 256 colours, true colour with attributes, CJK and full-width, emoji including ZWJ, flags and VS16, combining marks, wrap with a wide character at the margin, cursor movement and erase, alternate screen) at 80×6, fed to avt 0.18.0 (Rust), `@xterm/headless` 6.0.0 with `@xterm/addon-unicode11` 0.9.0, and `@xterm/headless` with `@xterm/addon-unicode-graphemes` 0.4.0. Output compared cell by cell (grapheme, width, foreground, background, attributes) and by cursor position. `unicode-width` 0.2.2 (ratatui's width source) supplied a third opinion on widths.
+
+| Fixture | avt vs xterm + unicode11 | Notes |
+|---|---|---|
+| box, color256, truecolor, cjk, wrap, cursor, altscreen | 0 cell differences, same cursor | |
+| combining | 18 differences; avt cursor at column 20, xterm at 14 | avt stores one `char` per cell and gives each combining mark its own column, so text after accents shifts right. xterm attaches marks to the base cell, which is correct |
+| emoji | 29 differences; cursor 46 vs 38 | Both split the ZWJ family into four wide emoji (8 columns); avt also spends a column per ZWJ |
+
+Width opinions for the same strings:
+
+| String | `unicode-width` 0.2.2 (ratatui) | xterm + unicode11 | xterm + graphemes (experimental) |
+|---|---|---|---|
+| 👍 | 2 | 2 | **1** (wrong) |
+| 👨‍👩‍👧‍👦 (ZWJ family) | 2 | 8 (four wide emoji) | 2 |
+| 🏳️‍🌈 | 2 | split | split, wrong |
+| ⚠️ (VS16) | 2 | 1 | 2 |
+| é as `e` + U+0301 | 1 | 1 | 1 |
+
+Consequences for the design:
+- **Headless emulator (resolves ARCHITECTURE §14 open item):** `@xterm/headless` with the Unicode 11 width table, the same engine and table as live xterm.js, so recorded frames and live sessions agree by construction. avt is rejected because of the combining-mark cursor drift. The graphemes addon is rejected while experimental and wrong on simple emoji.
+- **Width table:** the frame model records `widthTable: "unicode11"`. The ratatui capture path takes widths from ratatui's own buffer, which is exact for that path.
+- **Terminal lint** flags ZWJ sequences, flags and VS16 emoji, where TUI libraries and terminals disagree. That is where misaligned borders come from.
+- `@xterm/headless` 6.0.0 imported cleanly as an ES module default import in Node 24.12; the broken `module` entry reported by a third party did not reproduce.
