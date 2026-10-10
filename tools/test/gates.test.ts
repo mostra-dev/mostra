@@ -75,6 +75,7 @@ describe("boundaries", () => {
 describe("size budget", () => {
   it("size-limit fails when the entry exceeds its budget", () => {
     const size = () => repo.run("node_modules/.bin/size-limit", [], { cwd: "packages/protocol" });
+    expect(repo.run("node_modules/.bin/tsdown", [], { cwd: "packages/protocol" }).code).toBe(0);
     expect(size().code).toBe(0);
     repo.edit("packages/protocol/package.json", (text) =>
       text.replace('"limit": "4 kB"', '"limit": "1 kB"'),
