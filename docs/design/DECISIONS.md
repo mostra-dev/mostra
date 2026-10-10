@@ -13,6 +13,7 @@
 | M3 | 2026-10-10T05:48:06.596Z | Approved the first positions. Added: one submit usually carries everything, while the client application decides what each event triggers; the use cases in D11; remote hosting and remote agents, possibly a revenue stream; leaning against hot reload ("an incomplete artifact is not really useful"); plugins and a public marketplace. Answered: hygiene stances approved; public repository; remote viewing important ("Tailscale ... but also remote hosting in a simple quick easy way", else tunnels for v1); any npm package on demand left to the designer ("I guess yeah?"). |
 | M4 | 2026-10-10T06:47:17.597Z | Answered the nine questions: positioning yes; viewing model yes; interaction model yes; runtime stack "sounds good" with RSC conditions (D19); remote scope "sounds good"; license delegated ("I trust your judgement"); interface priority "sounds excellent"; shadcn base settled in C03-A, "how about both"; name delegated. |
 | M5 | 2026-10-10T07:05:13.203Z | "Yes to everything." Approved the RSC plan, multi-base shadcn, the name Mostra, the v1 scope, the C03-A home and standards, and the license acknowledgment flow. Asked for thorough documents in which nothing discussed is missed. |
+| M6 | 2026-10-10T10:07:56.180Z | C03-A round 1. Confirmed agent evaluations with an ask-first rule, OAuth only, a mostly-GPT model mix and token-based cost reports. v1.0 explicitly excludes Windows. Approving a WP approves all of its publication. Postpone or cheapen the domain; created the GitHub org `mostra-dev`; npm org next. Delegated addressing (Q5) and secrets details. Approved Q6 to Q13, the round-1 defaults and the tooling stack, and asked that version-churn guidance cover every tool with a recent major. Added four working notes: ask him for anything, install any tool, use only the `fast-worker` sub-agent, and establish strong repository standards from the start. |
 
 ## Program-level decisions
 
@@ -153,7 +154,7 @@ In order: (1) the CLI, Skill and `verify`, built together with the host protocol
 - The trusted shell (review overlay, trusted controls, version banner) runs on a separate origin.
 - All of this sits behind the addressing port, so tunnel and hosted modes can map origins differently without changing artifacts.
 
-*Source:* research consensus (briefs 2, 2-second, 5, 5-second), M5.
+*Source:* research consensus (briefs 2, 2-second, 5, 5-second), M5. *Amended by D38:* v1 addresses artifact origins by port on the shell's host, not by `*.localhost` subdomain.
 
 ### D22. State model
 - **Drafts** are server-authoritative documents with monotonically increasing revisions and compare-and-set writes. Mutations carry stable IDs. Non-overlapping edits rebase automatically, and true overlaps surface as conflicts.
@@ -242,8 +243,92 @@ Installing a plugin that pulls in a non-OSI engine requires a one-time, scriptab
 ### D32. Interfaces evolve additively
 Tool schemas (CLI JSON output, MCP tools) and protocol messages change additively within a version: new optional fields and new tools, never changed meanings. ChatGPT freezes tool snapshots after approval, and hosts pin versions. Breaking changes need a new protocol revision with a deprecation window. *Source:* research briefs 6 and 7, M5.
 
-### D33. Agent evaluations for Mostra (confirm at C03-A start)
+### D33. Agent evaluations for Mostra (confirmed by D34)
 Mostra may keep an opt-in, budgeted agent-evaluation suite. It measures toolkit ergonomics (first-pass `verify` success, turns to pass, retention across turns), not prose quality. D27 and D19 depend on it. Skill and documentation prose is still accepted through Mirza's review, never through phrase tests. *Label:* approved by implication, because Mirza approved the decisions that rely on it. C03-A confirms it explicitly in its first decision round, because Mirza's Jcode program excludes behavioral benchmarks from that program, and Mostra is a separate project.
+
+## C03-A phase-design decisions
+
+Decisions taken with Mirza during the SP-58-C03-A phase design. Each one is an **approved decision**. Where Mirza delegated a choice, the entry says so and names the evidence.
+
+### D34. Agent evaluations: confirmed, ask first, OAuth, model mix
+D33 is confirmed. Rules for every run that makes real model requests:
+1. **Ask first.** Before every batch run, the agent tells Mirza what question the batch answers, which models it uses in what ratio, and the estimated cost **in tokens** (never dollars). A batch that uses any Anthropic model waits for his explicit approval. A batch that uses only GPT models doesn't need approval; the agent still announces it before starting. *(Interpretation recorded on 2026-10-10; Mirza to confirm in round 2.)*
+2. **OAuth, never API keys.** Runs authenticate through the vendors' OAuth logins (for example the Codex and Claude Code CLIs signed in to Mirza's accounts).
+3. **Model mix.** Mostly **GPT-6.1-Sol**, with some **Claude Sonnet 5.5** and **Claude Opus 5.5**, roughly 70/15/15. The ratio is a guide: the agent picks models and proportions per question, keeping variety so Mostra isn't tuned to one model.
+4. **No fixed caps.** Report token usage per run with provider, model and date (STANDARDS, Verification).
+
+*Source:* M6 Q1. *Supersedes* the "budget Mirza approves" wording in STANDARDS with the ask-first rule.
+
+### D35. Windows is out of v1.0
+v1.0 explicitly does not support Windows. Windows stays on the roadmap for a later release. The v1 design need not constrain itself for Windows. On an unsupported platform every Mostra entry point fails closed with a clear diagnostic. *Source:* M6 Q2. *Resolves* RT-07.
+
+### D36. Approving a work package approves its publication
+When Mirza accepts a work package, that acceptance authorizes every publication step for it: pushing to the public repository, publishing to npm and crates.io, creating releases and deploying the docs site. Agents ask only when something is uncertain or a real dilemma arises. *Source:* M6 Q3. *Changes* STANDARDS, Consequential actions.
+
+### D37. No domain yet; GitHub org created
+Mostra postpones buying a domain. The docs site is hosted for free on GitHub Pages under the `mostra-dev` GitHub organization, which Mirza created. Docs links in diagnostics and tools use one configurable base URL, so a later domain only changes that base (GitHub Pages redirects to a custom domain once one is configured). If a domain is bought later, `mostrakit.dev` and `mostradev.com` fit the budget. Mirza is creating the npm organization `@mostra`. *Source:* M6 Q4. *Amends* D15's action list.
+
+### D38. Addressing: port-per-artifact origins with cookie sessions (delegated)
+In v1, the shell and every artifact share one host and differ by port: the shell on the instance's gateway port, each artifact on its own leased port. The two are the same **site** and different **origins**, so D06's mechanism holds as written: the capability token is exchanged for an `HttpOnly; SameSite=Strict` session cookie. Ports are leased stably per instance and artifact, so capability URLs and per-origin browser storage survive restarts. The gateway strips Mostra session cookies before proxying to workers, foreign apps or terminals, and binds each session to the one origin it was issued for. Tunnel modes map onto ports of the tunnel hostname the same way. Hosted remote mode (v1.x) is cross-site by nature and gets its own frame-credential design behind the addressing port.
+
+*Evidence:* [VERIFIED_FACTS.md](VERIFIED_FACTS.md#browser-addressing-and-cookies-prototype-evidence). Artifact iframes on `*.localhost` subdomains are third-party contexts: Chromium and Firefox drop Strict and Lax cookies there, and Safari 26.2 drops every cookie. Same-host port origins carry Strict cookies in all four engines tested. Tailscale gives one hostname per device, and Funnel allows ports 443, 8443 and 10000. *Rejected:* capability-bearing subdomains (unusual, and tunnels still need ports) and path-prefix capabilities (absolute paths in agent code break). *Source:* M6 Q5 (delegated). *Amends* D21.
+
+### D39. Draft scope and the `once` scope
+A draft belongs to one artifact and one viewer identity, so a refresh, a second tab or a second device of the same identity continues it. The `once` policy takes a scope: `per-artifact` (default: exactly one submission per artifact, which Jcode uses) or `per-viewer` (one submission per viewer identity, for surveys). `epochs` is unchanged. *Source:* M6 Q6. *Refines* D10 additively.
+
+### D40. Submit channels
+In the standalone host, both the shell's trusted Submit and the artifact's own `submit()` create submissions. Every submission records its channel (`shell` or `artifact`) and the viewer identity. A host can restrict submission to the shell channel; Jcode does. *Source:* M6 Q7.
+
+### D41. Publish is gated by verify
+Publish reuses the verify verdict cached for the exact source and environment digest, and runs `verify` when none exists. Error-severity diagnostics block publish. Warnings don't. `--force` publishes anyway and records the failing codes in the version manifest, where hosts can read them. *Source:* M6 Q8.
+
+### D42. Fields that don't carry over
+When a newer version can't map some draft fields, the banner says how many answers won't carry over. After switching, a "Not carried over" panel shows those values read-only and copyable. The submission carries them in a labelled `orphaned` section. Nothing is dropped. *Source:* M6 Q9.
+
+### D43. Dependency policy
+Unknown imports auto-install into the shared store by default, and publish freezes the lockfile. A host policy `dependencies: "auto" | "explicit"` switches to explicit mode, where the agent gets the structured diagnostic `MOSTRA_DEP_MISSING` with the exact `mostra add` command. *Source:* M6 Q10.
+
+### D44. Secrets (details delegated)
+Secrets are named values held outside artifact source in the Mostra home, in an owner-only (0600) store. `mostra secret set NAME` reads the value from stdin. A secret is scoped to one artifact or shared within the home, and server code reads it by name. Secrets never enter source, versions, exports, logs, diagnostics, events or screenshots. A host may supply secrets through a port instead (Jcode can use its own credential store). A keychain-backed store can come later as a plugin. *Source:* M6 Q11 (implementation details delegated).
+
+### D45. Instance model: one instance per Mostra home
+A Mostra home is a directory holding one instance's registry, versions, interaction data and secrets. At most one supervisor runs per home, enforced by a lock. The CLI starts the home's daemon on demand, or attaches to it through an owner-only Unix socket in the home. A host either spawns its own instance over stdio with its own home or attaches to a running daemon. `MOSTRA_HOME` selects the home, so a CLI running inside a host's environment reaches that host's instance. Several homes can run side by side for unrelated hosts. *Source:* M6 Q12. *Resolves* the instance-model question in ARCHITECTURE §4.
+
+### D46. AI port is out of v1
+The optional AI port is not part of v1. The capability name is reserved in protocol negotiation so it can be added later without a breaking change. *Source:* M6 Q13.
+
+### D47. Round-1 defaults
+Adopted without objection:
+- **Retention.** Every published version is kept. `mostra gc` removes only unreferenced versions and only on request. Build caches are LRU-capped, 5 GB by default.
+- **Events.** Durable events are kept. Compaction is opt-in, writing a snapshot plus a cursor; resuming from a compacted cursor returns the snapshot. Ephemeral traffic is never stored.
+- **Action runs** live with their artifact. Per-run logs cap at 1 MB with a truncation marker.
+- **Viewer-visible states.** Drafts: Saving, Saved. Submissions: Submitted (durable in Mostra), Delivered (host acknowledged), Pending delivery (retrying), and Undeliverable when the host reports it.
+- **Comments.** Threads with replies, resolve and reopen. Each message records its author. Resolution state travels with the submission.
+- **Sharing.** `mostra share --tailnet` and `mostra share --public --ttl <d>` drive installed `tailscale` or `cloudflared` and explain how to install them when missing. The event stream falls back to long-polling on the same cursor wherever SSE is unavailable, such as behind a Cloudflare quick tunnel.
+- **Later plugins.** The AG-UI adapter, the A2UI guest renderer and the import-map/CDN dependency mode are v1.x.
+
+*Source:* M6.
+
+### D48. Tooling deviations and version-churn guidance
+The STANDARDS tooling baseline moves to pnpm 12 (npm's `latest` since the research), Vitest 5, the v2 MCP TypeScript SDK packages, Node 24 now and Node 26 after its LTS date of 2026-10-28, and TanStack Table 9. Whenever a tool Mostra ships or recommends has a recent major release or rename that models are likely to get wrong, Mostra ships "write this, not that" guidance and, where possible, a lint rule with an autofix. This applies beyond the kit libraries. *Evidence:* [VERIFIED_FACTS.md](VERIFIED_FACTS.md). *Source:* M6.
+
+### D49. Working agreements for Mostra agents
+1. Agents may ask Mirza for anything at any time, including new external research reports and subscriptions.
+2. Agents may install any tool without asking. Large installs may use the external disk named `Active` when the internal disk is tight.
+3. The only sub-agent Mostra agents use is `fast-worker`, for summarizing bulk reading. Jcode's other sub-agents aren't ready yet.
+4. Agents ask Mirza for a context compaction at natural points, such as after a self-contained stretch of work. Compaction summarizes named slices of earlier work, not the whole session, so the request names the slices that can be summarized and the material that must stay.
+
+*Source:* M6 notes 1 to 3. *Changes* STANDARDS, Working with Mirza.
+
+### D50. Repository standards from the first commit of code
+The repository starts with strong engineering standards, designed in this phase and set up by the first work package:
+- a modular CI that runs independent checks in parallel and caches aggressively;
+- a defined quality toolchain: formatting, linting, type checking, language servers, API reports, license and dependency audits, and more;
+- commit, pre-commit and pull-request standards;
+- structured documentation for agents and humans, so every worker reads what it needs, erring towards reading more;
+- a seamless publication pipeline.
+
+The aim is that agents don't repeat work, naturally produce modular, modern, high-quality code, and never wait on checks that don't depend on each other. *Source:* M6 note 4. *Detailed in* the dossier's repository-standards document.
 
 ## Research consensus adopted
 

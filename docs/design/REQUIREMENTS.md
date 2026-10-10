@@ -36,7 +36,7 @@
 | RT-04 | A crash, hang or memory blow-up in one artifact leaves the gateway and other artifacts working; the failure is reported with an actionable message | v1 | D18 | I |
 | RT-05 | Frozen client-only versions are served with no worker process | v1 | D18 | I |
 | RT-06 | Mostra runs both as a host-spawned process over stdio and as a standalone daemon the CLI attaches to | v1 | D18, §4 | I, C |
-| RT-07 | macOS and Linux are supported; Windows support is decided in C03-A design | v1 | PRODUCT | I |
+| RT-07 | macOS and Linux are supported; on any other platform every entry point fails closed with a clear diagnostic (Windows is out of v1.0) | v1 | PRODUCT, D35 | I |
 
 ## Versions and publishing (VR)
 

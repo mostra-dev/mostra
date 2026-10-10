@@ -124,16 +124,20 @@ Deliver the complete accepted outcome:
 
 ## Consequential actions
 
-These need Mirza's explicit approval each time, unless he grants a standing authorization:
+These need Mirza's explicit approval each time, unless a standing authorization below covers them:
 - Creating or renaming the public GitHub organization or repository; changing its visibility, settings or permissions.
-- The first push to a public remote. Whether later accepted work packages publish under a standing authorization is decided during C03-A design.
-- Publishing to npm or crates.io, creating npm organizations, and enabling trusted publishing.
+- Creating npm organizations and configuring trusted publishing for the first time.
 - Registering domains, trademark filings and any spending.
-- Live model calls beyond the budget approved for the agent-evaluation suite (D33).
+- Live model calls that use any Anthropic model (D34).
 - Any real external side effect in tests or demos: sending email, posting to services or calling paid APIs. Examples and tests use local fakes or explicitly approved sandbox accounts.
 - Deleting user data or anything outside the project's own build artifacts and caches.
 
-**Standing authorization carried over.** On 2026-09-18 at 21:12:17.500 UTC Mirza authorized program agents to install missing tools and dependencies needed for their assigned work, from trusted sources, without asking again. It applies to C03-A sessions. It doesn't waive the items above.
+**Standing authorizations.**
+- **Publication (D36).** Mirza's acceptance of a work package authorizes every publication step for it: pushing to the public repository, publishing to npm and crates.io, creating releases and deploying the docs site. Ask only when something is uncertain or a real dilemma arises.
+- **Tools (D49).** Agents may install any tool without asking. Large installs may use the external disk `Active` when the internal disk is tight. This extends the 2026-09-18T21:12:17.500Z authorization.
+- **GPT-only evaluation batches (D34)** start after the agent announces them; they don't wait for approval.
+
+None of these waive the other items above.
 
 ## Repository discipline
 
@@ -171,9 +175,9 @@ A requirement with plausible or unverified evidence is incomplete unless Mirza a
 
 **Agent evaluations and live models.**
 - **What they measure:** toolkit ergonomics (first-pass `verify` success, turns to pass, retention across turns), never prose wording.
-- **Before running:** state the question each run answers.
-- **Recording:** record the provider, model, date and cost.
-- **Budget:** stay inside the budget Mirza approves. They are not a routine CI gate.
+- **Before every batch run (D34):** tell Mirza the question the batch answers, the models and their ratio, and the estimated cost in tokens. Wait for his approval when any Anthropic model is involved.
+- **Models (D34):** mostly GPT-6.1-Sol with some Claude Sonnet 5.5 and Claude Opus 5.5, roughly 70/15/15, chosen per question to keep variety. Authenticate with OAuth logins, never API keys.
+- **Recording:** record the provider, model, date and token usage. They are not a routine CI gate.
 
 ## Prose
 
@@ -190,12 +194,12 @@ A requirement with plausible or unverified evidence is incomplete unless Mirza a
 
 | Concern | Choice |
 |---|---|
-| Package manager | pnpm 11 with catalogs (trial pnpm 12 in CI); never the `pnpr/` subsystem |
+| Package manager | pnpm 12 with catalogs (D48); never the `pnpr/` subsystem |
 | Task runner | Turborepo |
 | Versioning | Changesets |
 | Library builds | tsdown |
 | Type checking | TypeScript 7 `tsc` with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedDeclarations`; a pinned TypeScript 6 for tools that need the JS compiler API |
-| Tests | Vitest 4.1.8 or later (browser mode through Playwright); Playwright Test for end-to-end; visual and ARIA baselines committed |
+| Tests | Vitest 5 (browser mode through Playwright, D48); Playwright Test for end-to-end; visual and ARIA baselines committed |
 | Lint and format | Biome or Oxlint, plus ESLint for React hooks rules |
 | API surface | API Extractor reports gate pull requests; publint and are-the-types-wrong |
 | Accessibility | axe-core |
@@ -231,6 +235,7 @@ A requirement with plausible or unverified evidence is incomplete unless Mirza a
 
 - **Find facts yourself.** Ask Mirza about product choices, meaningful tradeoffs, permissions and consequential prose.
 - **Questions** state what is known, the open decision, the real alternatives with consequences, and a recommendation. Ask the full currently answerable set in dependency order. Questions that depend on unanswered ones wait.
-- **Sub-agents.** Don't delegate design analysis. Mirza's preference is to use a `fast-worker` sub-agent only to read and summarize bulk material that doesn't need to stay in full context, with an explicit file list and the summary returned in the response, not written to a file. Read files yourself whenever a summary isn't enough.
-- **Context compaction.** When context grows large, or after finishing a self-contained stretch of work, tell Mirza a compaction is appropriate and name roughly which completed slices can be summarized. Required reading that is still in use stays.
+- **Ask for anything (D49).** Agents may ask Mirza for anything at any time, including new external research reports and subscriptions.
+- **Sub-agents (D49).** `fast-worker` is the only sub-agent Mostra agents use, and only to read and summarize bulk material that doesn't need to stay in full context, with an explicit file list and the summary returned in the response, not written to a file. Don't delegate design analysis. Read files yourself whenever a summary isn't enough.
+- **Context compaction (D49).** At natural points, especially after finishing a self-contained stretch of work, ask Mirza for a compaction. Compaction summarizes named slices of earlier work, not the whole session, so name the slices that can be summarized and the required reading that must stay.
 - **Communication.** Keep progress updates short. Surface what changes a decision, exposes risk, needs approval or blocks work.

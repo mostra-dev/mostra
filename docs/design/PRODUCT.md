@@ -104,7 +104,7 @@ Release scope is decided in D16 and refined into requirements in [REQUIREMENTS.m
 - **v1.x:** remote mode, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
 - **Later:** the managed cloud service and the marketplace web interface.
 
-**Platforms.** macOS and Linux are required for v1. Recent Chrome, Firefox and Safari are supported viewers (Safari through port-based addressing). Mobile Safari and Chrome are supported viewers over the remote ladder. Windows support is open for C03-A. The recommendation is to keep the design Windows-capable (node-pty supports ConPTY) and decide at design time whether v1 includes it.
+**Platforms.** macOS and Linux are required for v1. Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder. v1.0 explicitly does not support Windows; it stays on the roadmap for a later release (D35).
 
 ## Non-goals
 
