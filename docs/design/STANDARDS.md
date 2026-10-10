@@ -113,7 +113,7 @@ Deliver the complete accepted outcome:
 
 ## Security, privacy and hygiene
 
-- **The product rules** are D05 (no guardrails) and D06 (only capability holders), implemented through the checklist in [ARCHITECTURE.md](ARCHITECTURE.md#11-hygiene-and-remote-viewing). Never add a capability restriction. Never skip a hygiene item.
+- **The product rules** are D05 (no guardrails) and D06 (only capability holders), implemented through the checklist in [ARCHITECTURE.md](ARCHITECTURE.md#10-hygiene-and-remote-viewing). Never add a capability restriction. Never skip a hygiene item.
 - **Secrets** stay out of logs, diagnostics, reports, fixtures, screenshots and exported bundles. Redact capability tokens everywhere.
 - **No telemetry.** The core does not phone home.
 - **Supply chain:**

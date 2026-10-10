@@ -350,5 +350,5 @@ The remote server itself (Streamable HTTP MCP for the 2025-11-25 and 2026-07-28 
 | §16 | Tool list; MCP Apps storage; per-host conformance; further interop | D61; D61; D65; D47 (v1.x) |
 | §17 | Contract list; manifest schema; pack format; first-party plugins; loading order | D65 |
 | §18 | v1 remote seams | §3 (portable bundle), D58 (ports), INTERFACES §7 (`WorkerLauncher` becomes `SandboxPort`), D61 (stateless MCP) |
-| §19 | Package map | D65 (P2), [REPO_STANDARDS.md](REPO_STANDARDS.md#packages) |
+| §19 | Package map | D65 (P2), [REPO_STANDARDS.md](REPO_STANDARDS.md#3-packages) |
 | extra | D33 confirmation; Windows; publication authorization; evaluation budget | D34; D35; D36, D67; D34, D64 |
