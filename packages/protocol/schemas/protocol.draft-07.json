@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mostra protocol types: IDs, revisions and diagnostics",
+  "x-mostra-revisions": {
+    "host-protocol": "2026-10-10"
+  },
+  "definitions": {
+    "ArtifactId": {
+      "type": "string",
+      "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
+    },
+    "CommentId": {
+      "type": "string",
+      "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Comment ID: \"cmt_\" followed by a 26-character ULID."
+    },
+    "Cursor": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,18})$",
+      "description": "Event cursor: the decimal string of a home-wide event position."
+    },
+    "Diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/DiagnosticCode"
+        },
+        "severity": {
+          "$ref": "#/definitions/DiagnosticSeverity"
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "fix": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/DiagnosticFix"
+            }
+          ]
+        },
+        "location": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/DiagnosticLocation"
+            }
+          ]
+        },
+        "phase": {
+          "$ref": "#/definitions/DiagnosticPhase"
+        },
+        "docs": {
+          "type": "string",
+          "format": "uri"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "phase",
+        "docs"
+      ],
+      "description": "One diagnostic: a stable code, severity, message, hint, fix and docs link."
+    },
+    "DiagnosticCode": {
+      "type": "string",
+      "pattern": "^MOSTRA_[A-Z0-9]+_[A-Z0-9_]+$",
+      "description": "Stable diagnostic code: MOSTRA_<AREA>_<NAME>."
+    },
+    "DiagnosticFix": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "insert",
+            "delete",
+            "command"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "range": {
+          "readOnly": true,
+          "type": "array",
+          "items": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          ],
+          "additionalItems": false,
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "text": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "description": "A machine-applicable fix; range is [startLine, startColumn, endLine, endColumn], 1-based, end exclusive."
+    },
+    "DiagnosticLocation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "column": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "file",
+            "line",
+            "column"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "viewport": {
+              "type": "string"
+            },
+            "selector": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "viewport"
+          ]
+        }
+      ],
+      "description": "A 1-based source position, or a place in a rendered viewport."
+    },
+    "DiagnosticPhase": {
+      "type": "string",
+      "enum": [
+        "manifest",
+        "compile",
+        "lint",
+        "runtime",
+        "console",
+        "network",
+        "a11y",
+        "visual",
+        "smoke",
+        "regression",
+        "contract",
+        "publish",
+        "host",
+        "hygiene",
+        "platform"
+      ],
+      "description": "The stage of work that produced the diagnostic."
+    },
+    "DiagnosticSeverity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "warning",
+        "hint"
+      ],
+      "description": "How bad it is: error only for definite failures."
+    },
+    "MutationId": {
+      "type": "string",
+      "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Mutation ID: \"mut_\" followed by a 26-character ULID."
+    },
+    "Revision": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+      "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
+    },
+    "RunId": {
+      "type": "string",
+      "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Action run ID: \"run_\" followed by a 26-character ULID."
+    },
+    "SubmissionId": {
+      "type": "string",
+      "pattern": "^sub_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Submission ID: \"sub_\" followed by a 26-character ULID."
+    },
+    "ThreadId": {
+      "type": "string",
+      "pattern": "^thr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Thread ID: \"thr_\" followed by a 26-character ULID."
+    },
+    "TokenId": {
+      "type": "string",
+      "pattern": "^tok_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Capability token ID: \"tok_\" followed by a 26-character ULID."
+    },
+    "VersionId": {
+      "type": "string",
+      "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
+    },
+    "ViewId": {
+      "type": "string",
+      "pattern": "^vw_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "View ID: \"vw_\" followed by a 26-character ULID."
+    },
+    "ViewerId": {
+      "type": "string",
+      "pattern": "^vwr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Viewer ID: \"vwr_\" followed by a 26-character ULID."
+    }
+  }
+}

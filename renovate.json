@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency updates (REPO_STANDARDS §10): a 7-day minimum release age, SHA-pinned actions, grouped updates, Conventional Commits with a DCO sign-off.",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":pinDevDependencies"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "rangeStrategy": "pin",
+  "semanticCommits": "enabled",
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "commitBody": "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": { "minimumReleaseAge": null, "labels": ["dependencies", "security"] },
+  "packageRules": [
+    {
+      "description": "Minor and patch npm updates travel together, one pull request a week.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor and patch"
+    },
+    {
+      "description": "Majors get their own pull request and the version-churn guidance check (D48).",
+      "matchUpdateTypes": ["major"],
+      "prBodyNotes": [
+        "A major update: update the \"write this, not that\" churn guidance and lint rules in the same pull request if the API changed (D48)."
+      ]
+    },
+    {
+      "description": "TypeScript 6 stays pinned for the tools that need the compiler API (REPO_STANDARDS §4).",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["typescript"],
+      "matchCurrentVersion": "6.x",
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Node stays on the LTS line D48 names; the move to 26 is a deliberate change.",
+      "matchDepNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "Rust crates"
+    }
+  ]
+}

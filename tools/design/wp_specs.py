@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/design/work-packages/WP-NN.md from WORK_PACKAGES.md, REQUIREMENTS.md, the evidence checks
-in evidence_matrix.py and the per-package detail below. Edit this file or the dossier, then regenerate."""
+in evidence_matrix.py and the per-package detail below. Edit this file or the dossier, then regenerate.
+With --check it writes nothing and fails when a committed specification is stale (CI docs job)."""
 import re, sys
 from evidence_matrix import D, load, CHECKS
 
@@ -21,7 +22,7 @@ DETAIL = {
     "Rust: a cargo workspace with `crates/` placeholders only if needed for fmt/clippy/deny wiring; the crates themselves come in WP-12 and WP-22.",
   ],
   out=["Product packages other than `@mostra/protocol` (WP-02 onward).", "The release workflow and publishing (WP-11); WP-01 only adds Changesets and the API gate.", "Final Skill and AGENTS.md prose (WP-14)."],
-  risks=["Tool majors moved recently (pnpm 12, Vitest 5, TypeScript 7, Changesets 3): re-verify and add churn notes (D48).", "TypeScript 7 lacks the JS compiler API: API Extractor runs on a pinned TypeScript 6 (REPO_STANDARDS §4).", "Branch protection that requires checks before the checks exist can block your own merge: add required checks after the first green run."],
+  risks=["Tool majors moved recently (pnpm 12, Vitest 5, TypeScript 7, Changesets 3): re-verify and add churn notes (D48).", "TypeScript 7 lacks the JS compiler API: typescript-eslint and dependency-cruiser run on a pinned TypeScript 6, and API Extractor brings its own (REPO_STANDARDS §4).", "Branch protection that requires checks before the checks exist can block your own merge: add required checks after the first green run."],
   handoff="A green `main` with every gate live, `@mostra/protocol` at 0.x with IDs, revisions and diagnostics, generators and playbooks, and CI timing recorded. WP-02 adds the supervisor on top without touching the machinery.",
   publication="D76 authorizes it all: the repository `mostra-dev/mostra` exists with `main` pushed by the design session. Push `wp/01-foundation` and open a pull request early, so CI runs on GitHub while you work and its timing becomes evidence. Configure the repository: private vulnerability reporting, secret scanning with push protection, branch protection on `main` with the CI checks required and DCO enforced, Actions permissions read-only by default with SHA pinning, CODEOWNERS, labels, and Pages for the docs site (WP-26 deploys it). The protected `release` environment is WP-11's. Merge to `main` after Mirza accepts (D36). Record every setting you change in the progress report.",
 ),
@@ -245,6 +246,7 @@ def main():
     out_dir = D / "work-packages"
     out_dir.mkdir(exist_ok=True)
     seen = []
+    stale = []
     for b in blocks:
         head, body = b.split("\n", 1)
         m = re.match(r"(WP-\d\d)\. (.+)", head)
@@ -281,11 +283,19 @@ def main():
         if det.get("publication"):
             L += ["", "## Publication", "", det["publication"]]
         L += ["", "## Handoff", "", det["handoff"], ""]
-        (out_dir / f"{wp}.md").write_text("\n".join(L))
+        text = "\n".join(L)
+        target = out_dir / f"{wp}.md"
+        if "--check" in sys.argv:
+            if not target.exists() or target.read_text() != text:
+                stale.append(wp)
+        else:
+            target.write_text(text)
     missing = set(DETAIL) ^ set(seen)
     if missing:
         sys.exit(f"detail and WORK_PACKAGES disagree: {sorted(missing)}")
-    print("wrote", len(seen), "specifications")
+    if stale:
+        sys.exit(f"stale WP specifications {stale}: run python3 tools/design/wp_specs.py")
+    print("checked" if "--check" in sys.argv else "wrote", len(seen), "specifications")
 
 
 if __name__ == "__main__":

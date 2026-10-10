@@ -1,0 +1,9 @@
+# Review routing (REPO_STANDARDS §7): the dossier, the protocol package and agent-facing prose.
+/docs/design/            @dev-mirzabicer
+/packages/protocol/      @dev-mirzabicer
+/AGENTS.md               @dev-mirzabicer
+/CLAUDE.md               @dev-mirzabicer
+**/AGENTS.md             @dev-mirzabicer
+/skills/                 @dev-mirzabicer
+/docs/agents/            @dev-mirzabicer
+/.github/                @dev-mirzabicer

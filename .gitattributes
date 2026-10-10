@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.png binary
+pnpm-lock.yaml linguist-generated=true -diff
+Cargo.lock linguist-generated=true
+docs/reference/** linguist-generated=true
+packages/*/etc/*.api.md linguist-generated=true
+packages/*/schemas/** linguist-generated=true

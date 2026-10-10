@@ -32,7 +32,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | DP-03 | WP-04 | I | Lockfile change changes envDigest; frozen version rebuilds offline from the store | unverified |
 | DP-04 | WP-04 | I | Offline missing package returns MOSTRA_DEP_OFFLINE within 1 s (timer assertion), no hang | unverified |
 | DP-05 | WP-04 | I | Lifecycle script records its PID, cwd and environment; they belong to the install child in the artifact context | unverified |
-| DP-06 | WP-01 | M (license audit) | License audit in CI fails on a seeded PolyForm or non-OSI dependency in the core and passes on the real tree | unverified |
+| DP-06 | WP-01 | M (license audit) | License audit in CI fails on a seeded PolyForm or non-OSI dependency in the core and passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | IN-01 | WP-06 | M, I | Property tests for CAS, monotonic revisions and mutation-ID replay (unit + integration) | unverified |
 | IN-02 | WP-07 | B | Close the tab mid-debounce in three browsers; reopen shows the value (pagehide and journal paths) | unverified |
 | IN-03 | WP-07 | B | Two tabs and two contexts converge on different fields; same-field edit surfaces a conflict with both choices | unverified |
@@ -70,17 +70,17 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | unverified |
 | HY-04 | WP-13 | X | External: real `tailscale serve` share from a phone; identity header maps to viewer; spoofed header from loopback-bypassing request impossible | unverified |
 | HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | unverified |
-| HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | unverified |
+| HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | validated ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance) | unverified |
 | HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | unverified |
 | HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | unverified |
 | HO-04 | WP-11 | M, C | SDK host registers ports, publishes, receives delivery, waits and reads results (integration) | unverified |
 | HO-05 | WP-12 | C | Conformance kit passes on standalone adapters and both reference hosts; broken host fails expected scenarios; baselines work | unverified |
 | HO-06 | WP-12 | C, R | Audit: no host-specific identifiers in core packages; every JCODE_HOST row maps to a conformance scenario; Mirza reviews | unverified |
-| HO-07 | WP-01 | M | Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas | unverified |
+| HO-07 | WP-01 | M | Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HO-08 | WP-12 | I, C | Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable | unverified |
 | KT-01 | WP-19 | M, B | Render test per D26 library wrapper in three engines; license and version re-verified in VERIFIED_FACTS | unverified |
-| KT-02 | WP-01 | M | License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree | unverified |
+| KT-02 | WP-01 | M | License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | KT-03 | WP-18 | B, E | Both base packs type-check and render every component; default base set from EVAL-01 evidence | unverified |
 | KT-04 | WP-18 | B, R | Token change restyles every kit visual (screenshot diff); dark mode; host brand theme; MCP Apps variable mapping test; Mirza reviews | unverified |
 | KT-05 | WP-18 | B, R | Questionnaire features each persist through fields and appear labelled in results; Mirza reviews | unverified |
@@ -98,7 +98,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | TM-08 | WP-24 | I, B | Vite and Next.js demos proxied with HTTP and WebSocket passthrough and HMR; framing headers stripped for that demo only; device frames and screenshots | unverified |
 | AX-01 | WP-10 | M | Contract test per command: --json schema, exit codes, no prompts without a TTY, logs on stderr | unverified |
 | AX-02 | WP-09 | I, B | Pipeline stage fixtures each produce their diagnostics; verdict validates; timings recorded | unverified |
-| AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | unverified |
+| AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | unverified |
 | AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | unverified |
 | AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | unverified |
@@ -115,12 +115,12 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | RS-01 | WP-08 | M | One test per D19 seam (mode field, use server contract and serializer, AsyncLocalStorage context, use client runtime, RenderMode) | unverified |
 | RS-02 | WP-26 | R | Mirza's review of SPA-mode completeness at WP-26; no SPA component marked temporary | unverified |
 | RM-01 | WP-24 | M, R | Bundle moves between homes keeping identity; ports and WorkerLauncher documented; MCP server stateless (handle-only test) | unverified |
-| EN-01 | WP-01 | M | LICENSE, NOTICE and DCO check present; CI rejects an unsigned commit | unverified |
-| EN-02 | WP-01 | M | Tooling baseline in place and pinned through catalogs; `pnpm check` equals CI | unverified |
+| EN-01 | WP-01 | M | LICENSE, NOTICE and DCO check present; CI rejects an unsigned commit | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
+| EN-02 | WP-01 | M | Tooling baseline in place and pinned through catalogs; `pnpm check` equals CI | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-03 | WP-26 | B | CI job verifies every example and template with committed visual and ARIA baselines | unverified |
-| EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | unverified |
+| EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
-| EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | unverified |
+| EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | plausible ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | unverified |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | unverified |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | unverified |
@@ -139,5 +139,5 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
 | AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests | unverified |
 | AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | unverified |
-| EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | unverified |
+| EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | RV-06 | WP-21 | B | Comments on a Timeline, a video and a deck slide anchor to time plus region or slide plus step and re-resolve after reload | unverified |

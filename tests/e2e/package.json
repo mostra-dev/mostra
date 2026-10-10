@@ -1,0 +1,18 @@
+{
+  "name": "@mostra/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-package end-to-end suites with Playwright Test in Chromium, Firefox and WebKit (REPO_STANDARDS \u00a72, \u00a76).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium firefox webkit",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

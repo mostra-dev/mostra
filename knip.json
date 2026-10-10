@@ -1,0 +1,36 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [],
+      "ignoreDependencies": ["@changesets/changelog-github", "@mostra/tools", "turbo"]
+    },
+    "packages/*": {
+      "entry": ["src/index.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+    },
+    "tools": {
+      "entry": [
+        "bin/*.ts",
+        "*/cli.ts",
+        "check/fix.ts",
+        "docs/*.ts",
+        "test/**/*.test.ts",
+        "github/*.ts"
+      ],
+      "project": ["**/*.ts", "!**/fixtures/**"],
+      "ignore": ["**/fixtures/**"],
+      "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "@mostra/tools-ts6"]
+    },
+    "tools/ts6": {
+      "entry": ["*.mjs"],
+      "project": ["*.mjs"]
+    },
+    "tests/*": {
+      "entry": ["*.config.ts", "**/*.spec.ts"],
+      "project": ["**/*.ts"]
+    }
+  },
+  "ignore": ["docs/design/evaluations/**"],
+  "ignoreExportsUsedInFile": true
+}

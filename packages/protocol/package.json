@@ -1,0 +1,78 @@
+{
+  "name": "@mostra/protocol",
+  "version": "0.0.0",
+  "description": "Mostra's shared protocol vocabulary: IDs, dated revisions and diagnostics, with Zod schemas and generated JSON Schema.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/protocol#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/protocol"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "keywords": [
+    "mostra",
+    "agent",
+    "artifact",
+    "protocol",
+    "json-schema"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api",
+    "size": "size-limit",
+    "schemas": "mostra-tools schemas check",
+    "gen:schemas": "mostra-tools schemas write"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@size-limit/preset-small-lib": "catalog:",
+    "@types/node": "catalog:",
+    "fast-check": "catalog:",
+    "size-limit": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "size-limit": [
+    {
+      "name": "@mostra/protocol (whole entry, zod excluded)",
+      "path": "dist/index.js",
+      "import": "*",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "4 kB"
+    }
+  ]
+}

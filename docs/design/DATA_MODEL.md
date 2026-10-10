@@ -26,7 +26,7 @@
 
 - **`sourceDigest`** is the SHA-256 of a canonical listing of the source tree: for every file, its path (relative, `/`-separated, NFC), its executable bit and the SHA-256 of its bytes, sorted by path. It excludes `node_modules/`, `.git/`, `.mostra/`, editor swap files and anything matched by `.mostraignore`. Content is hashed as bytes, never normalized.
 - **`envDigest`** is the SHA-256 of canonical JSON: `{ mostraVersion, kitVersion, kitBase, mode, lockDigest, buildConfigDigest, browserProtocolRevision }`. `lockDigest` hashes the frozen lockfile. `buildConfigDigest` covers Mostra's build settings for this mode and its target list.
-- **`versionId`** is `ver_` plus the first 26 characters of the base32 SHA-256 of `sourceDigest ‖ envDigest`. Publishing the same pair again returns the existing version (`reused: true`). The version number is a per-artifact sequence, for people.
+- **`versionId`** is `ver_` plus the first 26 characters of the SHA-256 of `sourceDigest ‖ envDigest` in Crockford base32 (`0-9A-HJKMNP-TV-Z`, uppercase, the ULID alphabet; D77), computed by `VersionId.fromSha256`. Publishing the same pair again returns the existing version (`reused: true`). The version number is a per-artifact sequence, for people.
 - **`outputDigest`** is the SHA-256 of the canonical listing of the build output, recorded and never used as identity (VR-01).
 - **Artifact identity.** An artifact's `id` comes from its manifest (D51) or from a binding of its canonical source path, created at first publish. `source_bindings` makes path → artifact unique, and a manifest `id` claimed by a second path is `MOSTRA_PUBLISH_ID_CONFLICT`.
 

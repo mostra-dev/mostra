@@ -1,0 +1,22 @@
+# Dependencies and build output
+node_modules/
+dist/
+.tsbuild/
+*.tsbuildinfo
+coverage/
+.turbo/
+target/
+
+# Tool output
+/temp/
+packages/*/temp/
+test-results/
+playwright-report/
+*.tgz
+
+# Local environment
+.DS_Store
+.env
+.env.*
+*.log
+__pycache__/

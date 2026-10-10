@@ -66,7 +66,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | Packages | pnpm 12 workspaces with catalogs; `pnpm-workspace.yaml` lists packages, plugins, apps, templates, examples |
 | Tasks | Turborepo with remote-compatible caching (local cache in CI through `actions/cache`) |
 | Builds | tsdown for libraries; Vite 8 for the shell and docs |
-| Types | TypeScript 7 `tsc -b` with project references; `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedDeclarations`; TypeScript 6 only for API Extractor |
+| Types | TypeScript 7 `tsc -b` with project references; `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedDeclarations`; a pinned TypeScript 6 (`tools/ts6`) for tools that need the JavaScript compiler API: typescript-eslint and dependency-cruiser, and the system typings of API Extractor, which analyzes with its own bundled TypeScript (VERIFIED_FACTS, WP-01) |
 | Format and lint | Biome (format and lint), ESLint only for `react-hooks`; `cargo fmt`, `clippy -D warnings` |
 | Tests | Vitest 5 (unit, and browser mode through Playwright); Playwright Test for end-to-end in Chromium, Firefox and WebKit; `cargo nextest` |
 | Boundaries and hygiene | dependency-cruiser (§3 rules), knip (unused files, exports, dependencies), size-limit (`@mostra/react` and `@mostra/kit` entry budgets) |
