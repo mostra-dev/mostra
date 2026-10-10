@@ -24,9 +24,13 @@ factual, imperative subject of at most 100 characters.
 
 ## Getting set up
 
-You need Node.js 24 (see `.node-version`) and pnpm, which `packageManager` pins; Corepack or a
-recent pnpm switches to it automatically. Rust (pinned by `rust-toolchain.toml`) is needed only for
-the crates. macOS and Linux are supported.
+You need, on macOS or Linux:
+
+- Node.js 24 (see `.node-version`) and pnpm, which `packageManager` pins; Corepack or a recent pnpm
+  switches to it automatically;
+- Rust through rustup (`rust-toolchain.toml` pins the version), with `cargo-nextest` and
+  `cargo-deny`;
+- Python 3 and rsync, which some repository checks use.
 
 ```sh
 pnpm install     # also installs the Git hooks (lefthook)
