@@ -1,6 +1,8 @@
 # C03-A decision tree
 
-**Status:** Working document for the SP-58-C03-A phase design. It lists every open question, what it depends on, and the round in which it goes to Mirza. Settled answers move to [DECISIONS.md](DECISIONS.md) and this file only points to them. It is retired when the design is accepted.
+**Status:** Frontier empty as of 2026-10-10. Rounds 1 to 4 were answered (M6 to M8) and recorded as D34 to D69; design-time findings added D70 and D71. The default shadcn base waits only on EVAL-01. Retire this file at design acceptance. Original text follows.
+
+Working document for the SP-58-C03-A phase design. It lists every open question, what it depends on, and the round in which it goes to Mirza. Settled answers move to [DECISIONS.md](DECISIONS.md) and this file only points to them. It is retired when the design is accepted.
 
 **Sources of the open items:** every "Open for C03-A" item in [ARCHITECTURE.md](ARCHITECTURE.md), the extra items in the C03-A assignment (D33 confirmation, Windows, publication authorization, evaluation budget), and findings from [VERIFIED_FACTS.md](VERIFIED_FACTS.md).
 

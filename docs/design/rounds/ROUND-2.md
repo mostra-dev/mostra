@@ -1,6 +1,6 @@
 # Round 2: caller-first interfaces
 
-**Status:** Design input for the second C03-A decision round. Nothing here is approved until Mirza answers the round; answers are recorded in [DECISIONS.md](../DECISIONS.md). Code is illustrative. Names follow the [vocabulary](../PRODUCT.md#vocabulary).
+**Status:** Answered by Mirza in M7 (2026-10-10T10:59:01.070Z) and recorded as D51 to D64 in [DECISIONS.md](../DECISIONS.md), which wins where they differ. Kept as the record of what was presented. Code is illustrative. Names follow the [vocabulary](../PRODUCT.md#vocabulary).
 
 The order follows the callers: what an agent writes, what a viewer sees, what a host integrates, what the CLI and MCP tools look like. Each open shape has at least two structurally different candidates and a recommendation, and is screened against shallow modules, information leakage, temporal decomposition and pass-through layers ([STANDARDS.md](../STANDARDS.md#design)).
 

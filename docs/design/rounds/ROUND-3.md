@@ -1,6 +1,6 @@
 # Round 3: kit, demos, extensions, packages and repository standards
 
-**Status:** Design input for the third C03-A decision round. Mirza delegated most shapes in rounds 1 and 2; this document records the shapes C03-A proposes, with the alternatives considered, so he can veto any of them. Items that need his decision are collected in [§12](#12-questions-for-mirza). Code is illustrative.
+**Status:** Approved by Mirza in M8 (2026-10-10T12:41:03.402Z) as D65 to D67. By D65, §1 to §11 are the authoritative detail for the kit, demos, extensions, render mode, shell bridge, verify and repository shapes, carried into the dossier ([INTERFACES.md](../INTERFACES.md), [REPO_STANDARDS.md](../REPO_STANDARDS.md)). Code is illustrative.
 
 ---
 
