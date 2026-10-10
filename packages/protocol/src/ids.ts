@@ -40,7 +40,7 @@ export interface IdKind<P extends IdPrefix> {
   readonly pattern: RegExp;
   /** The Zod schema for this ID, registered for JSON Schema output under the kind's type name. */
   readonly schema: z.ZodType<Id<P>, string>;
-  /** Whether `value` is an ID of this kind. */
+  /** Whether `value` is a string of this kind's exact form. */
   is(value: unknown): value is Id<P>;
   /**
    * Returns `value` as an ID of this kind.
