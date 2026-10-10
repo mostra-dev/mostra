@@ -104,8 +104,8 @@ Done when every item in your specification's Scope is built and `pnpm check` is 
   constraint blocks a check, record it as blocked with the reason and ask Mirza how to close it.
 - A valid failing test is a finding about the code: fix the code and keep the test as strict as it
   was.
-- Review your full diff, run `pnpm check` and the end-to-end suites your package touches, and
-  regenerate the evidence matrix. Its generator reads your evidence table and fails on any row your
+- Review your full diff, get the independent reviews of D80 and fix or answer every finding, run
+  `pnpm check` and the end-to-end suites your package touches, and regenerate the evidence matrix. Its generator reads your evidence table and fails on any row your
   package doesn't own.
 
 Done when every owned requirement is verified or validated, or carries a boundary Mirza has

@@ -60,8 +60,9 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
 - **Never weaken a test.** Don't delete, loosen or rewrite a valid failing test.
 - **Before asking for acceptance:**
   1. review your full diff;
-  2. run `pnpm check` and the relevant end-to-end suites;
-  3. regenerate the evidence matrix (`python3 tools/design/evidence_matrix.py`, or its CI successor from WP-01) with your rows updated.
+  2. get the independent reviews of D80 ([playbook](../../agents/review-a-pull-request.md)), and fix or answer every finding;
+  3. run `pnpm check` and the relevant end-to-end suites;
+  4. regenerate the evidence matrix (`python3 tools/design/evidence_matrix.py --check` verifies it) with your rows updated.
 
 ## 4. Acceptance, publication and handoff
 

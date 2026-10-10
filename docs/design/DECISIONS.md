@@ -19,6 +19,7 @@
 | M9 | 2026-10-10T14:55:06.757Z | Design approval. Q1: "Approved!" (the complete design, including D70 to D72 and the 27 work packages). Q2: WP-14 accepted as the planned C03-B threshold; "It's okay if this threshold moves to a later WP." Q3: approved a Claude check of EVAL-01 ("we can run it now"), asking first which harness it uses so he can sign in the right OAuth account. Q4: confirmed drafting the agent-facing prose in the WPs that build it. |
 | M10 | 2026-10-10T15:11:53.172Z | Signed in Claude Code for EVAL-01b ("you can run the sonnet prompts"). GitHub: "i approve everything needed that we planned for git/github related stuff. you can create & push the repo, and the wp-01 agent can work on it in any way needed." |
 | M11 | 2026-10-10T18:49:28.119Z | WP-01 questions. Approved the Crockford alphabet for version IDs ("I trust you to make the most robust decision"), the first host protocol revision `2026-10-10`, protected `main` with no bypass, installing Renovate himself, and the REPO_STANDARDS §4 correction. Contact address mmirzabicer@gmail.com; his surname is Biçer ("c" is fine for compatibility). Delegated the agent-facing prose and asked that branch protection, pull requests, CI and publishing all be done "in the **best** manner possible", acting where possible and instructing him otherwise. |
+| M12 | 2026-10-10T19:49:22.550Z / 20:07:46.058Z | Accepted WP-01. Left the pre-merge review to the agent's judgement: `codex review` with GPT-6.1-Sol, GitHub Copilot review (integrated into CI if GitHub allows), or neither, and asked that future WPs build reviews into CI or the documented workflow. Claude Opus 5.5 may review truly substantial packages, at most 20% of Mostra's WPs. Copilot review may need organization credits; not important. |
 
 ## Program-level decisions
 
@@ -482,6 +483,14 @@ Merging to `main` and publishing packages still follow acceptance (D36). Deletin
 
 ### D79. `main` is protected; everything lands through pull requests
 `main` takes changes only through pull requests that pass the `ci-ok` check and code scanning, merged with merge commits. Force pushes and deletion are blocked, and nobody bypasses the rules, including administrators. The progress report a WP finalizes after acceptance therefore reaches `main` through its own small pull request that merges when green. Release tags can't be moved or deleted. *Source:* M11 Q3. *Changes* the publication step of work-packages/README.md §4, which said "push".
+
+### D80. Independent reviews before acceptance
+Every work package gets an independent code review before it is presented to Mirza, and every finding is fixed or answered in the progress report:
+1. **GPT-6.1-Sol through `codex review`**, effort high, on the pull request's diff. A GPT-only live call, announced as D34 requires, with its tokens recorded.
+2. **GitHub Copilot code review** runs automatically on every push to a pull request (the `main` ruleset). Its comments are review threads, and the ruleset requires every thread resolved before merging.
+3. **Claude Opus 5.5** also reviews the truly substantial packages, at most one in five of Mostra's WPs. It waits for Mirza's approval like every Anthropic batch (D34).
+
+Reviews find defects; they never replace the evidence table. The WP-01 review (13 findings, all fixed with regression tests) showed the value: a green gate suite still had false negatives. *Source:* M12.
 
 ## Research consensus adopted
 
