@@ -276,7 +276,7 @@ def main():
         L += ["", "## Out of scope", ""] + [f"- {x}" for x in det["out"]]
         L += ["", "## Required reading", "", ALWAYS, ""] + [f"- {x}" for x in det["reading"]]
         L += ["", "## Acceptance evidence", "", rebase(evidence.replace("\n  ", "\n")), "",
-              "Also: `pnpm check` green (from WP-01 on), diff reviewed, evidence matrix rows updated, docs and AGENTS.md current, progress report written after acceptance (README §4)."]
+              "Also: `pnpm check` green, diff reviewed, the progress report's evidence table complete for every owned requirement (README §3), the evidence matrix regenerated, docs and AGENTS.md current, and the report finalized after acceptance (README §4)."]
         L += ["", "## Risks and notes", ""] + [f"- {x}" for x in det["risks"]]
         if det.get("publication"):
             L += ["", "## Publication", "", det["publication"]]

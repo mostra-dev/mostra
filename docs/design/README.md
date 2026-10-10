@@ -7,7 +7,7 @@
 | **Program identity** | SP-58-C03-A in Mirza's Jcode program. The Jcode integration is SP-58-C03-B (D02) and needs no change to Mostra (D01). |
 | **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
-| **Next unit** | WP-01 (work-package mode), after approval. |
+| **Next unit** | WP-01 (work-package mode). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
 
 ## Reading order
 

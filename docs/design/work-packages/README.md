@@ -4,12 +4,7 @@
 
 ## 1. Starting the session
 
-The assignment prompt opens with:
-
-```text
-PROGRAM MODE: work-package
-WORK PACKAGE: WP-NN
-```
+Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the same text for every package with only the `WORK PACKAGE: WP-NN` line changed. The prompt gives the order and the bar for each step; this protocol holds the detail.
 
 1. **Read** the files every WP needs:
    - [../README.md](../README.md);
@@ -20,8 +15,8 @@ WORK PACKAGE: WP-NN
    - then the files your specification lists under "Required reading".
 
    When in doubt, read more (D49). Bulk material you only need summarized (long research reports, large upstream docs) may go to a `fast-worker` sub-agent with an explicit file list, returning the summary in its reply. That is the only sub-agent use allowed (D49). Design and implementation decisions are never delegated.
-2. **Record the baseline** in your progress notes: branch, `HEAD`, `git status`, and the result of `pnpm check` (from WP-02 on) with any failures that were already there.
-3. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance). Push the branch and open a pull request early so CI runs on GitHub while you work (D76). Merge only after acceptance.
+2. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance). Push the branch and open a pull request early so CI runs on GitHub while you work (D76). Merge only after acceptance.
+3. **Start `docs/progress/PROGRESS-WP-NN.md` with the baseline** on the branch: branch, `HEAD`, `git status`, and the result of `pnpm check` (WP-01 creates it) with any failures already there. The report grows during the session and is finalized after acceptance (§4).
 4. **Re-verify facts.** Check every third-party version, license or behavior you depend on and that [../VERIFIED_FACTS.md](../VERIFIED_FACTS.md) doesn't already cover for the current date. Append what you verify, with source and date.
 
 ## 2. Working
@@ -52,13 +47,15 @@ WORK PACKAGE: WP-NN
 
 ## 3. Evidence
 
-- **Each owned requirement** in your specification lists a concrete check. Implement that check through the real public interface wherever one exists (STANDARDS closed loops). Record per requirement:
-  - the test or procedure;
-  - the command that runs it;
-  - the result;
-  - the evidence state: verified, validated, plausible, blocked or unverified.
+- **Each owned requirement** in your specification lists a concrete check. Implement that check through the real public interface wherever one exists (STANDARDS closed loops), and record it in the progress report's evidence table, one row per owned requirement:
 
-  Aggregate test counts are not evidence.
+  ```text
+  | ID | State | Check | Command | Result |
+  |---|---|---|---|---|
+  | EN-01 | verified | CI rejects an unsigned commit (seeded) | gh run view 123 | red on seed, green on fix |
+  ```
+
+  State is one of verified, validated, plausible, blocked or unverified (STANDARDS). The evidence-matrix generator reads these rows: it fills the matrix's Evidence column and fails on a row for a requirement your package doesn't own. Aggregate test counts are not evidence.
 - **External evidence** (real tunnels, real MCP hosts, real npm, real phones) is labelled as external. If an external constraint blocks it, record "blocked" with the reason and ask Mirza how to close it.
 - **Never weaken a test.** Don't delete, loosen or rewrite a valid failing test.
 - **Before asking for acceptance:**
@@ -70,10 +67,10 @@ WORK PACKAGE: WP-NN
 
 1. **Present the candidate to Mirza:** what was built, the evidence table, deviations and their reasons, what wasn't run and why, and any prose awaiting his review.
 2. **After he accepts, publish** under D36 and D67: merge to `main`, push, release (packages publish through the release pipeline once WP-11 exists) and deploy docs. Ask only where something is genuinely uncertain.
-3. **Write `docs/progress/PROGRESS-WP-NN.md`:**
+3. **Finalize `docs/progress/PROGRESS-WP-NN.md`:**
    - the decisions taken inside the package;
    - the exact commits (range and `HEAD`);
-   - evidence per owned requirement;
+   - the evidence table (§3), every owned requirement in it;
    - untested boundaries;
    - deviations;
    - publication references;
