@@ -3,8 +3,14 @@
  */
 import type { AreaCatalog } from "../spec.ts";
 
+/** The codes of the HOST area, in the order they were added. */
+export const hostDiagnosticCodes = [
+  "MOSTRA_HOST_REVISION_UNSUPPORTED",
+  // gen:codes
+] as const;
+
 /** The codes of the HOST area. */
-export type HostDiagnosticCode = "MOSTRA_HOST_REVISION_UNSUPPORTED";
+export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 /** The HOST area's catalog entries. */
 export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
@@ -19,4 +25,5 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       fix: "Restart the daemon so it runs the same release as the client: `mostra daemon restart`. Durable state survives the restart, and open views reconnect. A host that embeds Mostra updates its pinned Mostra runtime or its host library until both support a common revision.",
     },
   },
+  // gen:entries
 };

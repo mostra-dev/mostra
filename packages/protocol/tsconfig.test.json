@@ -5,8 +5,14 @@
     "outDir": ".tsbuild/test",
     "tsBuildInfoFile": ".tsbuild/test.tsbuildinfo",
     "types": ["node"],
-    "isolatedDeclarations": false
+    "isolatedDeclarations": false,
+    "rewriteRelativeImportExtensions": false,
+    "allowImportingTsExtensions": true
   },
   "include": ["test", "scripts", "*.config.ts"],
-  "references": [{ "path": "./tsconfig.src.json" }]
+  "references": [
+    {
+      "path": "./tsconfig.src.json"
+    }
+  ]
 }

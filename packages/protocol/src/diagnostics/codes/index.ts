@@ -8,7 +8,7 @@ import { buildDiagnostic, type DiagnosticDetails, type DiagnosticSpec } from "..
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
 
 // gen:area-exports
-export type { HostDiagnosticCode } from "./host.ts";
+export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
 
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =

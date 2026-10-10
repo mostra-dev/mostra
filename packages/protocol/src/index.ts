@@ -10,6 +10,7 @@ export {
   createDiagnostic,
   diagnosticCatalog,
   type HostDiagnosticCode,
+  hostDiagnosticCodes,
   type KnownDiagnosticCode,
 } from "./diagnostics/codes/index.ts";
 export {
@@ -48,6 +49,14 @@ export {
   ViewerId,
   ViewId,
 } from "./ids.ts";
+export {
+  type AnyMethod,
+  defineMethod,
+  type MethodDefinition,
+  type MethodDirection,
+} from "./method.ts";
+export { hostMethods } from "./methods/index.ts";
+// gen:method-exports
 export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,

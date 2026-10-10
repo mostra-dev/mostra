@@ -7,6 +7,9 @@
 import * as z from 'zod';
 
 // @public
+export type AnyMethod = MethodDefinition<unknown, unknown>;
+
+// @public
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
 
 // @public
@@ -45,6 +48,9 @@ export const Cursor: {
 
 // @public
 export const DEFAULT_DOCS_BASE: string;
+
+// @public
+export function defineMethod<Params, Result>(definition: MethodDefinition<Params, Result>): MethodDefinition<Params, Result>;
 
 // @public
 export interface Diagnostic {
@@ -145,7 +151,13 @@ export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 
 // @public
-export type HostDiagnosticCode = "MOSTRA_HOST_REVISION_UNSUPPORTED";
+export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
+
+// @public
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED"];
+
+// @public
+export const hostMethods: readonly AnyMethod[];
 
 // @public
 export type Id<P extends IdPrefix> = `${P}_${string}` & {
@@ -171,6 +183,18 @@ export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "run" | "thr" | "c
 
 // @public
 export type KnownDiagnosticCode = HostDiagnosticCode;
+
+// @public
+export interface MethodDefinition<Params, Result> {
+    readonly direction: MethodDirection;
+    readonly method: string;
+    readonly mutating: boolean;
+    readonly params: z.ZodType<Params>;
+    readonly result: z.ZodType<Result>;
+}
+
+// @public
+export type MethodDirection = "client-to-instance" | "instance-to-host";
 
 // @public
 export type MutationId = Id<"mut">;
