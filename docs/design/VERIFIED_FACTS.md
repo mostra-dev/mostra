@@ -119,3 +119,24 @@ Supporting observations:
 - WebKit refuses cookies with the `Secure` attribute over `http://localhost`, so `__Host-` prefixes, `SameSite=None` and `Partitioned` are unavailable there without HTTPS.
 
 **Consequence.** The ARCHITECTURE §11 item 4 mechanism (token exchanged for an `HttpOnly; SameSite=Strict` cookie scoped to the artifact origin) cannot authenticate an artifact iframe on a `*.localhost` subdomain in any engine, and no cookie can do it in Safari. It works only when the artifact origin is same-site with the shell (port per artifact). The decision record must change one of: the addressing default (D21) or the frame credential mechanism (D06 item 4). See the first decision round.
+
+## Process and instance model (prototype evidence)
+
+Prototype: `$JCODE_SCRATCH_DIR/proto-instance` (disposable). Node 24.12.0 on macOS 26.2. A supervisor acquires a home by binding a Unix socket in it; racing starters that find a live socket attach instead; a dead socket file is taken over only by the holder of an atomic `mkdir` mutex. Workers are `fork`ed children with an IPC heartbeat and `--max-old-space-size=64`.
+
+| Check | Result |
+|---|---|
+| 16 starters race on a fresh home, three rounds | Exactly one supervisor each round; the rest attached |
+| Racing `listen()` on the same socket path | Fails with `EEXIST` as well as `EADDRINUSE` on macOS. Acquisition must treat both as "socket exists" (the first run crashed one starter before this fix) |
+| Supervisor SIGKILLed, leaving a stale socket file; five new starters | One took over, four attached |
+| Socket path of 149 bytes | `listen EINVAL`. macOS limits `sun_path` to 104 bytes, so the socket can't always live inside an arbitrary home path |
+| Worker throws | Exit code 1 reported; siblings unaffected |
+| Worker allocates without bound | V8 heap limit abort (`SIGABRT`) reported; siblings unaffected |
+| Worker spins in a busy loop | Heartbeat watchdog (1.5 s in the prototype) SIGKILLs it; siblings unaffected |
+| Supervisor SIGKILLed with two workers | Both workers exited within 1 s through the IPC `disconnect` event |
+
+Consequences for the design:
+- The control socket lives in a short per-user runtime directory keyed by a hash of the home path (`$XDG_RUNTIME_DIR/mostra/` on Linux, `~/.mostra/run/` on macOS, mode 0700), with the home recording the path. Both directories survive the macOS three-day temp cleanup that would remove a socket under `/tmp` or `$TMPDIR`.
+- The takeover mutex needs a staleness rule, so a starter that dies while holding it doesn't block the home forever.
+- Workers exit with their supervisor, but processes that artifact code starts (foreign dev servers, PTY children) don't. Workers run in their own process group. The supervisor records every child process group with its start time and reaps leftovers on the next start of the home.
+- A heartbeat watchdog can't tell a long synchronous computation from a hang, so the threshold is generous (10 s default), configurable per artifact, and the kill is reported with the reason.
