@@ -1,0 +1,22 @@
+# Git hooks (REPO_STANDARDS §5). Installed by `pnpm install` (the root `prepare` script).
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      glob: "*.{js,mjs,cjs,ts,tsx,json,jsonc,css}"
+      run: node_modules/.bin/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
+      stage_fixed: true
+    - name: cargo fmt
+      glob: "*.rs"
+      run: cargo fmt --all
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: conventional commit with DCO sign-off
+      run: node tools/commits/cli.ts msg {1}
+
+pre-push:
+  jobs:
+    - name: pnpm check --fast
+      run: node tools/check/cli.ts --fast

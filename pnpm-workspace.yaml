@@ -1,0 +1,79 @@
+# Workspace layout and dependency policy (REPO_STANDARDS §4, §10).
+# Every dependency version lives in a catalog below; package.json files use `catalog:` or
+# `workspace:*` only, which `pnpm check` enforces (tools/repo-lint).
+packages:
+  - packages/*
+  - plugins/*
+  - apps/*
+  - templates/*
+  - examples/*
+  - tools
+  - tools/ts6
+
+# Supply chain: install nothing published less than 7 days ago (Renovate uses the same cooldown),
+# fail instead of falling back, refuse trust downgrades, and run no install scripts unless allowed.
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+minimumReleaseAgeExclude:
+  - '@mostra/*'
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 262800
+blockExoticSubdeps: true
+strictDepBuilds: true
+allowBuilds:
+  lefthook: true
+
+# dependency-cruiser loads TypeScript's compiler API but doesn't declare it, so pnpm would hand it
+# the hoisted TypeScript 7, which has no such API. Declaring the peer makes it resolve tools/ts6's.
+packageExtensions:
+  dependency-cruiser:
+    peerDependencies:
+      typescript: '>=5 <7'
+
+engineStrict: true
+savePrefix: ''
+catalogMode: strict
+linkWorkspacePackages: true
+saveWorkspaceProtocol: rolling
+
+catalog:
+  # Runtime dependencies of published packages
+  zod: 4.6.5
+
+  # Build, types and tests
+  typescript: 7.0.2
+  tsdown: 0.23.0
+  turbo: 2.11.7
+  vitest: 5.0.3
+  fast-check: 4.10.2
+  '@playwright/test': 1.63.0
+  '@types/node': 24.19.1
+
+  # Lint, format and boundaries
+  '@biomejs/biome': 2.5.15
+  eslint: 10.12.0
+  eslint-plugin-react-hooks: 7.1.1
+  typescript-eslint: 8.71.0
+  dependency-cruiser: 18.5.0
+  knip: 6.39.0
+
+  # API surface and packaging
+  '@microsoft/api-extractor': 7.59.3
+  publint: 0.3.25
+  '@arethetypeswrong/cli': 0.18.5
+  size-limit: 14.1.0
+  '@size-limit/preset-small-lib': 14.1.0
+
+  # Repository workflow
+  '@changesets/cli': 3.0.3
+  '@changesets/changelog-github': 1.0.1
+  lefthook: 2.1.16
+  yaml: 2.9.1
+  spdx-expression-parse: 5.0.0
+  '@types/spdx-expression-parse': 4.0.0
+
+catalogs:
+  # TypeScript 7 has no JavaScript compiler API. Tools that need it (API Extractor,
+  # typescript-eslint) resolve this pinned TypeScript 6 instead (REPO_STANDARDS §4).
+  ts6:
+    typescript: 6.0.3

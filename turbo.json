@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/turbo/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["tsconfig.base.json", "pnpm-workspace.yaml", ".node-version"],
+  "globalPassThroughEnv": ["GITHUB_BASE_REF", "GITHUB_ACTIONS", "CI"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!test/**", "!**/*.md"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": [".tsbuild/**"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+      "outputs": []
+    },
+    "size": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "api": {
+      "dependsOn": ["build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.changeset/*.md"],
+      "outputs": []
+    },
+    "schemas": {
+      "outputs": []
+    }
+  }
+}

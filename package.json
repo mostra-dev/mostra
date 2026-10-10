@@ -1,0 +1,27 @@
+{
+  "name": "@mostra/monorepo",
+  "private": true,
+  "description": "Mostra, the agent artifact runtime: monorepo root.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@12.9.0",
+  "engines": {
+    "node": ">=24.12.0 <25"
+  },
+  "scripts": {
+    "check": "node tools/check/cli.ts",
+    "fix": "node tools/check/fix.ts",
+    "gen": "node tools/gen/cli.ts",
+    "changeset": "changeset",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@changesets/changelog-github": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@mostra/tools": "workspace:*",
+    "lefthook": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}
