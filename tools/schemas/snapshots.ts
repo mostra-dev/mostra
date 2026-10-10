@@ -51,6 +51,15 @@ export function renderBundle(source: WireBundleSource, target: Target): string {
   return `${JSON.stringify(bundle, null, 2)}\n`;
 }
 
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 const fileFor = (name: string, target: Target): string =>
   `schemas/${name}.${target === "draft-07" ? "draft-07" : "schema"}.json`;
 
@@ -80,7 +89,7 @@ export async function checkSchemas(
       const file = fileFor(source.name, target);
       const path = join(dir, file);
       const rendered = renderBundle(source, target);
-      const committed = existsSync(path) ? readFileSync(path, "utf8") : undefined;
+      const committed = readIfPresent(path);
       if (committed !== rendered) {
         if (options.write) {
           mkdirSync(join(dir, "schemas"), { recursive: true });

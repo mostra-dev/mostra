@@ -34,9 +34,14 @@ const [generator, subject] = positionals;
 
 function write(path: string, text: string): void {
   const full = join(root, path);
-  if (existsSync(full)) throw new Error(`${path} already exists.`);
   mkdirSync(dirname(full), { recursive: true });
-  writeFileSync(full, text);
+  try {
+    writeFileSync(full, text, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      throw new Error(`${path} already exists.`);
+    throw error;
+  }
   console.log(`  created ${path}`);
 }
 

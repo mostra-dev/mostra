@@ -49,7 +49,9 @@ export const DEFAULT_DOCS_BASE: string = "https://mostra-dev.github.io/mostra";
 
 /** The docs page for `code` under `docsBase`: `${docsBase}/errors/${code}`. */
 export function docsUrl(code: string, docsBase: string = DEFAULT_DOCS_BASE): string {
-  return `${docsBase.replace(/\/+$/, "")}/errors/${code}`;
+  let end = docsBase.length;
+  while (end > 0 && docsBase.charCodeAt(end - 1) === 47 /* "/" */) end--;
+  return `${docsBase.slice(0, end)}/errors/${code}`;
 }
 
 /** The parts of a diagnostic that belong to one occurrence rather than to its code. */
