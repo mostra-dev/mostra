@@ -7,15 +7,18 @@
   "definitions": {
     "ArtifactId": {
       "type": "string",
-      "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
     },
     "CommentId": {
       "type": "string",
-      "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Comment ID: \"cmt_\" followed by a 26-character ULID."
     },
     "Cursor": {
       "type": "string",
-      "pattern": "^(0|[1-9][0-9]{0,18})$"
+      "pattern": "^(0|[1-9][0-9]{0,18})$",
+      "description": "Event cursor: the decimal string of a home-wide event position."
     },
     "Diagnostic": {
       "type": "object",
@@ -65,11 +68,13 @@
         "message",
         "phase",
         "docs"
-      ]
+      ],
+      "description": "One diagnostic: a stable code, severity, message, hint, fix and docs link."
     },
     "DiagnosticCode": {
       "type": "string",
-      "pattern": "^MOSTRA_[A-Z0-9]+_[A-Z0-9_]+$"
+      "pattern": "^MOSTRA_[A-Z0-9]+_[A-Z0-9_]+$",
+      "description": "Stable diagnostic code: MOSTRA_<AREA>_<NAME>."
     },
     "DiagnosticFix": {
       "type": "object",
@@ -124,7 +129,8 @@
       },
       "required": [
         "kind"
-      ]
+      ],
+      "description": "A machine-applicable fix; range is [startLine, startColumn, endLine, endColumn], 1-based, end exclusive."
     },
     "DiagnosticLocation": {
       "anyOf": [
@@ -165,7 +171,8 @@
             "viewport"
           ]
         }
-      ]
+      ],
+      "description": "A 1-based source position, or a place in a rendered viewport."
     },
     "DiagnosticPhase": {
       "type": "string",
@@ -185,7 +192,8 @@
         "host",
         "hygiene",
         "platform"
-      ]
+      ],
+      "description": "The stage of work that produced the diagnostic."
     },
     "DiagnosticSeverity": {
       "type": "string",
@@ -193,43 +201,53 @@
         "error",
         "warning",
         "hint"
-      ]
+      ],
+      "description": "How bad it is: error only for definite failures."
     },
     "MutationId": {
       "type": "string",
-      "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Mutation ID: \"mut_\" followed by a 26-character ULID."
     },
     "Revision": {
       "type": "string",
-      "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+      "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$",
+      "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
     },
     "RunId": {
       "type": "string",
-      "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Action run ID: \"run_\" followed by a 26-character ULID."
     },
     "SubmissionId": {
       "type": "string",
-      "pattern": "^sub_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^sub_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Submission ID: \"sub_\" followed by a 26-character ULID."
     },
     "ThreadId": {
       "type": "string",
-      "pattern": "^thr_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^thr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Thread ID: \"thr_\" followed by a 26-character ULID."
     },
     "TokenId": {
       "type": "string",
-      "pattern": "^tok_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^tok_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Capability token ID: \"tok_\" followed by a 26-character ULID."
     },
     "VersionId": {
       "type": "string",
-      "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
     },
     "ViewId": {
       "type": "string",
-      "pattern": "^vw_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^vw_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "View ID: \"vw_\" followed by a 26-character ULID."
     },
     "ViewerId": {
       "type": "string",
-      "pattern": "^vwr_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      "pattern": "^vwr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Viewer ID: \"vwr_\" followed by a 26-character ULID."
     }
   }
 }

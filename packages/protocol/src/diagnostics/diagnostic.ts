@@ -162,7 +162,10 @@ const codeSchema = z
 /** The Zod schema of the `DiagnosticSeverity` type. */
 export const DiagnosticSeverity: z.ZodType<DiagnosticSeverity, string> = z
   .enum(["error", "warning", "hint"])
-  .register(wireRegistry, { id: "DiagnosticSeverity" });
+  .register(wireRegistry, {
+    id: "DiagnosticSeverity",
+    description: "How bad it is: error only for definite failures.",
+  });
 
 /** The Zod schema of the `DiagnosticPhase` type. */
 export const DiagnosticPhase: z.ZodType<DiagnosticPhase, string> = z
@@ -183,7 +186,10 @@ export const DiagnosticPhase: z.ZodType<DiagnosticPhase, string> = z
     "hygiene",
     "platform",
   ])
-  .register(wireRegistry, { id: "DiagnosticPhase" });
+  .register(wireRegistry, {
+    id: "DiagnosticPhase",
+    description: "The stage of work that produced the diagnostic.",
+  });
 
 /** The Zod schema of the `DiagnosticFix` type. */
 export const DiagnosticFix: z.ZodType<DiagnosticFix> = z
@@ -194,7 +200,11 @@ export const DiagnosticFix: z.ZodType<DiagnosticFix> = z
     text: z.string().exactOptional(),
     command: z.string().exactOptional(),
   })
-  .register(wireRegistry, { id: "DiagnosticFix" });
+  .register(wireRegistry, {
+    id: "DiagnosticFix",
+    description:
+      "A machine-applicable fix; range is [startLine, startColumn, endLine, endColumn], 1-based, end exclusive.",
+  });
 
 /** The Zod schema of the `DiagnosticLocation` type. */
 export const DiagnosticLocation: z.ZodType<DiagnosticLocation> = z
@@ -202,7 +212,10 @@ export const DiagnosticLocation: z.ZodType<DiagnosticLocation> = z
     z.object({ file: z.string(), line: positiveInt, column: positiveInt }),
     z.object({ viewport: z.string(), selector: z.string().exactOptional() }),
   ])
-  .register(wireRegistry, { id: "DiagnosticLocation" });
+  .register(wireRegistry, {
+    id: "DiagnosticLocation",
+    description: "A 1-based source position, or a place in a rendered viewport.",
+  });
 
 /** The Zod schema of the `Diagnostic` type. */
 export const Diagnostic: z.ZodType<Diagnostic> = z

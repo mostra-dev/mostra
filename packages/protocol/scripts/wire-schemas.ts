@@ -17,9 +17,7 @@ export const bundles = [
     title: "Mostra protocol types: IDs, revisions and diagnostics",
     revisions: { "host-protocol": hostRevision },
     definitions: (target: "draft-2020-12" | "draft-07", uri: (id: string) => string) =>
-      z.toJSONSchema(wireRegistry, { target, io: "input", uri }).schemas as Record<
-        string,
-        Record<string, unknown>
-      >,
+      z.toJSONSchema(wireRegistry, { target, io: "input", uri, metadata: wireRegistry })
+        .schemas as Record<string, Record<string, unknown>>,
   },
 ];
