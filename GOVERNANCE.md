@@ -4,7 +4,7 @@ Mostra is a maintainer-led open-source project under the Apache-2.0 license.
 
 ## Roles
 
-- **Maintainer.** Mirza Bicer ([@dev-mirzabicer](https://github.com/dev-mirzabicer)) leads the
+- **Maintainer.** Mirza Biçer ([@dev-mirzabicer](https://github.com/dev-mirzabicer)) leads the
   project: sets direction, accepts designs and work, reviews and merges pull requests, publishes
   releases and enforces the [Code of Conduct](CODE_OF_CONDUCT.md). Further maintainers join by the
   maintainer's invitation, and this file lists them.
