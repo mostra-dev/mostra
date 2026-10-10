@@ -2,7 +2,7 @@
 
 These are the exact prompts Mirza ran on external deep-research agents between 2026-10-09 and 2026-10-10. Each run received the shared context followed by one brief. Briefs 7 and 8 also received the update line shown after the shared context. The reports they produced are indexed in [INDEX.md](INDEX.md).
 
-The prompts use the placeholder name "the toolkit". The project was named Mostra afterwards (decision D19 in [../DECISIONS.md](../DECISIONS.md)).
+The prompts use the placeholder name "the toolkit". The project was named Mostra afterwards (decision D15 in [../design/DECISIONS.md](../design/DECISIONS.md)).
 
 ## Shared context
 

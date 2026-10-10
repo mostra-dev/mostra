@@ -2,7 +2,7 @@
 
 **Status:** Approved direction, not a finished design. Each section states what Mirza approved (with decision IDs from [DECISIONS.md](DECISIONS.md)) and ends with **Open for C03-A**: questions the phase design settles with Mirza, each with a starting recommendation. C03-A turns this into the implementation-ready architecture, interfaces and work packages. It also compares at least two structurally different candidates wherever a section leaves the shape open ([STANDARDS.md](STANDARDS.md#design)).
 
-Facts about third-party projects come from the research reports ([research/INDEX.md](research/INDEX.md)) as of October 2026. Re-verify them before depending on them.
+Facts about third-party projects come from the research reports ([research/INDEX.md](../research/INDEX.md)) as of October 2026. Re-verify them before depending on them.
 
 ## 1. System overview
 

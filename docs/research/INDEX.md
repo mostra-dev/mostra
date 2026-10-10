@@ -1,6 +1,6 @@
 # Research index
 
-Eleven external deep-research reports informed the Mostra decisions. They are **design input and evidence, not authority**. [../DECISIONS.md](../DECISIONS.md) records what Mirza approved. Where a report disagrees with a decision, the decision wins.
+Eleven external deep-research reports informed the Mostra decisions. They are **design input and evidence, not authority**. [../design/DECISIONS.md](../design/DECISIONS.md) records what Mirza approved. Where a report disagrees with a decision, the decision wins.
 
 All reports are dated October 2026 and describe a fast-moving ecosystem. Re-verify any version, license, price, limit or platform behavior against a primary source before a design or implementation depends on it. The exact prompts are in [BRIEFS.md](BRIEFS.md).
 
@@ -23,6 +23,6 @@ All reports are dated October 2026 and describe a fast-moving ecosystem. Re-veri
 ## Reading notes
 
 - **Quality.** The primary reports (no suffix) separate verified facts, judgment and unverified claims, and their numbered sources can be followed. The `-second` reports reason more deeply about architecture and spotted several non-obvious traps, but their `cite…` tokens are opaque. No pair contradicted each other.
-- **Consensus.** Where two reports for the same brief agree, treat the shared conclusion as stronger evidence. The consensus table in [../DECISIONS.md](../DECISIONS.md) records what was adopted.
+- **Consensus.** Where two reports for the same brief agree, treat the shared conclusion as stronger evidence. The consensus table in [../design/DECISIONS.md](../design/DECISIONS.md) records what was adopted.
 - **Claims to re-verify first.** Vite, React, Node, Waku, React Router and TanStack Start versions and stability labels; `@vitejs/plugin-rsc` status; MCP spec revision and MCP Apps host support; ChatGPT plan gating and timeouts; the Remotion and GSAP terms; pnpm `pnpr` licensing; xterm.js 6.x and node-pty status; Ratzilla version; npm trusted-publishing and staged-publishing rules; E2B licensing.
 - **Not adopted as written.** Recommendations superseded by Mirza's decisions include live HMR in the human view (replaced by D10) and per-artifact "auto-publish of the snapshot seen during HMR" (unnecessary under D10). Specific numbers such as latency targets, milestone durations and price points are judgment, not requirements.

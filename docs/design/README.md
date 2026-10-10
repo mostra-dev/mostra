@@ -19,7 +19,7 @@ This folder is the **seed** for Mostra's phase design. It was prepared on 2026-1
 4. [REQUIREMENTS.md](REQUIREMENTS.md): numbered requirements with release, source and verification route.
 5. [JCODE_HOST.md](JCODE_HOST.md): what the first host needs, all of it through generic ports.
 6. [STANDARDS.md](STANDARDS.md): engineering, verification, process and prose rules for all Mostra work.
-7. [research/INDEX.md](research/INDEX.md): the research reports and how to use them. Read individual reports where a design question needs their detail. [research/BRIEFS.md](research/BRIEFS.md) has the exact prompts.
+7. [research/INDEX.md](../research/INDEX.md): the research reports and how to use them. Read individual reports where a design question needs their detail. [research/BRIEFS.md](../research/BRIEFS.md) has the exact prompts.
 
 ## What the phase design produces
 

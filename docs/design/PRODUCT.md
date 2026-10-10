@@ -6,7 +6,7 @@
 
 Coding agents increasingly need to show people things and get structured answers back: prototypes to choose between, plans to approve, dashboards to read, questionnaires to fill in, end-of-work presentations, demos of terminal programs. Today each agent rebuilds a throwaway web page, a form store, a server and some CSS for every task, or falls back to walls of chat text. Answers vanish when a tab closes. An agent cannot see what it built. Nothing it builds runs in another harness.
 
-Existing products each solve part of this (research [INDEX](research/INDEX.md)):
+Existing products each solve part of this (research [INDEX](../research/INDEX.md)):
 - **Claude Artifacts** gives persistence but is cloud-hosted and closed.
 - **MCP Apps** gives portable inline UI in chat hosts, but no storage, submissions or review model.
 - **Streamlit, marimo and Gradio** are Python-first.
