@@ -32,10 +32,10 @@
 |---|---|---|---|---|
 | RT-01 | Mostra ships a private, hash-pinned Node LTS runtime bundle per platform; no global Node install is needed | v1 | D18 | I, X |
 | RT-02 | One supervisor and gateway hosts many artifacts; it never loads artifact code in-process | v1 | D18 | I |
-| RT-03 | Artifact server code runs in one worker process per active artifact, started lazily and evicted when idle | v1 | D18 | I |
+| RT-03 | Artifact server code runs in a worker process per active artifact version (normally one per artifact), started lazily, evicted after idle, restarted with backoff and parked after repeated crashes | v1 | D18, D62 | I |
 | RT-04 | A crash, hang or memory blow-up in one artifact leaves the gateway and other artifacts working; the failure is reported with an actionable message | v1 | D18 | I |
 | RT-05 | Frozen client-only versions are served with no worker process | v1 | D18 | I |
-| RT-06 | Mostra runs both as a host-spawned process over stdio and as a standalone daemon the CLI attaches to | v1 | D18, §4 | I, C |
+| RT-06 | One instance per home: a host-spawned process over stdio or a standalone daemon the CLI attaches to over the home socket; racing starters converge on one supervisor and stale sockets are recovered | v1 | D18, D45 | I, C |
 | RT-07 | macOS and Linux are supported; on any other platform every entry point fails closed with a clear diagnostic (Windows is out of v1.0) | v1 | PRODUCT, D35 | I |
 
 ## Versions and publishing (VR)
@@ -46,7 +46,7 @@
 | VR-02 | Publish is atomic; a failed publish leaves no visible version | v1 | §3 | I |
 | VR-03 | **Invariant.** Viewers only open published versions; no human path uses hot reload | v1 | D09 | B |
 | VR-04 | A newer version shows a banner in open views; switching is the viewer's choice | v1 | D09 | B |
-| VR-05 | Drafts carry over between versions by stable field ID; unmatched inputs are kept and marked orphaned, never silently dropped | v1 | D09 | I, B |
+| VR-05 | Drafts carry over between versions by stable field ID; unmatched inputs are kept as orphans, shown in a read-only "Not carried over" panel and delivered in a labelled `orphaned` section | v1 | D09, D42 | I, B |
 | VR-06 | Versions referenced by submissions, views or review sets are never garbage-collected | v1 | §3 | I |
 | VR-07 | Export: client-only artifacts to static files or a single HTML file; server artifacts to a runnable bundle; any artifact to a snapshot archive with actions marked unavailable | v1 | D07, §3 | I, B |
 | VR-08 | `mostra dev` offers optional hot reload for developers, clearly separate from viewing | v1 | D09 | I |
@@ -56,7 +56,7 @@
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
 | DP-01 | The curated warm set resolves instantly for every artifact with one React copy | v1 | D20 | I |
-| DP-02 | Any npm package installs on demand into a shared content-addressed store with a per-artifact lockfile | v1 | D20 | I, X |
+| DP-02 | Any npm package installs on demand into a shared content-addressed store with a per-artifact lockfile; a host policy `dependencies: "explicit"` turns unknown imports into `MOSTRA_DEP_MISSING` with the exact `mostra add` command | v1 | D20, D43 | I, X |
 | DP-03 | The lockfile hash is part of version identity; a frozen version rebuilds offline from the store | v1 | D20 | I |
 | DP-04 | A missing package offline produces a structured error, never a hang | v1 | D20 | I |
 | DP-05 | Package lifecycle scripts run in the artifact's execution context, not the supervisor's | v1 | D20 | I |
@@ -72,7 +72,7 @@
 | IN-04 | Offline edits are journaled in IndexedDB and replay in order; edits against incompatible versions are mapped or reported | v1 | D22 | B |
 | IN-05 | **Invariant.** Submit creates an immutable submission from the canonical server draft, bound to the exact version and view, with a snapshot digest; duplicates return the original | v1 | D22 | M, I, B |
 | IN-06 | **Invariant.** Drafts are never delivered as submissions | v1 | D10 | M, C |
-| IN-07 | Submission policy is configurable per host: `once` or `epochs` (linked immutable submissions) | v1 | D10 | M, C |
+| IN-07 | Submission policy is configurable per host: `once` (scope `per-artifact` or `per-viewer`), `epochs` (linked immutable submissions) or `none` | v1 | D10, D39, D63 | M, C |
 | IN-08 | Every durable change emits an event with a stable ID and per-artifact sequence; hosts subscribe with filters and a durable cursor and resume without gaps | v1 | D10, D22 | M, C |
 | IN-09 | Signals: Submit is standard; artifact code and actions can raise named signals; Mostra never decides on its own what wakes an agent | v1 | D10 | M, C |
 | IN-10 | `wait` (CLI, MCP, SDK, protocol) blocks on a submission, signal or timeout; a timeout returns a resumable status and loses nothing | v1 | D11 | I, C |
@@ -89,7 +89,7 @@
 | AC-03 | A client-generated idempotency key de-duplicates invocations; a double click runs once | v1 | D24 | I, B |
 | AC-04 | Cancellation reaches the action through an AbortSignal | v1 | D24 | I |
 | AC-05 | Actions can emit host events and signals | v1 | D10, D24 | C |
-| AC-06 | Secrets used by actions are bound by name outside artifact source | v1 | §8 | I |
+| AC-06 | Secrets used by actions are named, scoped to an artifact or the home, stored owner-only or supplied by the host's secrets port, and never appear in source, versions, exports, logs, events, diagnostics or screenshots | v1 | D44 | I |
 | AC-07 | Live data: loaders with polling, streams and file watching; push from CLI/SDK; one `useLive` hook; data never rides HMR channels | v1 | D08 | I, B |
 | AC-08 | High-rate live data stays smooth (uPlot path; target rates set in C03-A design) | v1 | D26 | B |
 
@@ -108,8 +108,8 @@
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
 | SH-01 | **Invariant.** The shell runs on its own origin; trusted controls never render in an origin agent code controls | v1 | D06, D21 | B |
-| SH-02 | Artifacts can request trusted controls (with labels) but cannot render, click or spoof them; hosts choose whether artifact-rendered submit is allowed | v1 | D06 | B, C |
-| SH-03 | **Default.** Each artifact has its own origin under `*.localhost`, with a port-per-artifact fallback that Safari uses | v1 | D21 | B |
+| SH-02 | Artifacts can request trusted controls (with labels) but cannot render, click or spoof them; hosts choose whether the artifact submit channel is allowed; every submission records its channel and viewer | v1 | D06, D40 | B, C |
+| SH-03 | **Default.** The shell and each artifact have their own origins on one loopback hostname with stably leased ports and origin-bound Strict sessions (cookie mode); cross-site deliveries use worker-mode frame sessions | v1 | D21, D38, D70 | B |
 | SH-04 | Shell and artifact talk over a validated JSON-RPC `postMessage` bridge shaped like MCP Apps | v1 | D07, D21 | M, B |
 | SH-05 | The shell's visual design is beautiful and unobtrusive and passes Mirza's review | v1 | PRODUCT | R |
 | SH-06 | The shell and kit work on mobile browsers (responsive layout, touch review and submit) for remote viewing | v1 | D12, PRODUCT | B, R |
@@ -122,7 +122,7 @@
 | HY-02 | Loopback is the default bind; wider binds need an explicit flag | v1 | D06 | I |
 | HY-03 | Tokens are scoped (view, draft, submit, `action:<name>`, review), expire, rotate and revoke | v1 | D06 | M, I |
 | HY-04 | Tailscale Serve exposure with identity-header mapping | v1 | D12 | X |
-| HY-05 | Quick public share via Tailscale Funnel or a Cloudflare quick tunnel behind an explicit flag and short-lived tokens | v1 | D12 | X |
+| HY-05 | Quick public share via Tailscale Funnel (cookie mode) or a Cloudflare quick tunnel (worker mode) behind an explicit flag and short-lived tokens, with long-poll where SSE doesn't pass | v1 | D12, D47, D70 | X |
 | HY-06 | Security issues are handled under SECURITY.md with private reporting | v1 | STANDARDS | R |
 
 ## Host integration (HO)
@@ -144,12 +144,12 @@
 |---|---|---|---|---|
 | KT-01 | **Default.** The kit in D26 ships, after C03-A re-verifies versions and licenses | v1 | D26 | M, B |
 | KT-02 | **Invariant.** No non-OSI engine is bundled; the license audit runs in CI | v1 | D26 | M |
-| KT-03 | Design-system packs ship for Base UI and Radix bases; one base per artifact; the default chosen by evaluation | v1 | D27 | B, E |
+| KT-03 | Design-system packs ship for Base UI and Radix bases; one base per artifact; the default chosen by evaluation (EVAL-01) | v1 | D27, D34 | B, E |
 | KT-04 | One token system themes every kit library, supports dark mode and accepts host brand themes; names align with MCP Apps host variables | v1 | D26, §13 | B, R |
 | KT-05 | Questionnaire and form components (choices with recommended option, ranking, scales, text, per-item comments, required items, sections, progress) persist through drafts | v1 | D08 | B, R |
 | KT-06 | Mostra's own frame-based motion composition primitive with play, scrub and loop; deterministic for screenshots | v1 | D26 | M, B, R |
 | KT-07 | Mostra's own MDX deck runtime with layouts, click steps, presenter view and print to PDF | v1 | D26 | B, R |
-| KT-08 | Churned-API guidance and lint autofixes for the kit's libraries | v1 | §13 | M |
+| KT-08 | "Write this, not that" guidance and lint autofixes for every kit library and recently changed tool (Base UI `render`, Tailwind 4, Zod 4, `motion/react`, `@xyflow/react`, Mermaid 12, TanStack Table 9, the `cn` package), including the wrong-base diagnostic | v1 | §13, D48 | M |
 | KT-09 | "Beautiful by default": representative gallery artifacts pass Mirza's review | v1 | PRODUCT | R |
 
 ## Terminal and web demos (TM)
@@ -222,5 +222,32 @@
 | EN-02 | The tooling baseline, test strategy and release process in STANDARDS.md | v1 | STANDARDS | M |
 | EN-03 | Every example and template passes `verify` in CI, with committed visual and ARIA baselines | v1 | D29 | B |
 | EN-04 | Public API reports gate pull requests; packages pass publint and type-resolution checks | v1 | STANDARDS | M |
-| EN-05 | npm publishing only through trusted publishing with provenance, after Mirza authorizes publication | v1 | STANDARDS | X |
+| EN-05 | Releases publish from the Changesets release pull request through a protected environment: npm trusted publishing (direct, provenance, tokens disallowed) and crates.io trusted publishing; accepting a WP authorizes its publication | v1 | STANDARDS, D36, D67 | X |
 | EN-06 | Security policy, supply-chain controls (pinned actions, code scanning, dependency review, release-age cooldown) and an OpenSSF Scorecard | v1 | STANDARDS | M, X |
+
+## Added by the C03-A phase design
+
+These requirements come from decisions made during the design (D38 to D71). They have the same strength and routes as the seed rows.
+
+| ID | Requirement | Release | Source | Route |
+|---|---|---|---|---|
+| AU-07 | The manifest is a literal `defineArtifact` in the entry (frontmatter in MDX), read statically; artifact identity comes from the manifest `id` or a path binding at first publish, and a duplicate claim is a publish error | v1 | D51 | M, I |
+| AU-08 | The client runtime offers `useField`, `useSubmit`, `useSubmitControl`, `useSignal`, `useAction`, `useLive`, `useChoice`, `useViewer`, `useArtifact`, a react-hook-form adapter and a Claude-compatible `window.storage` (INTERFACES §2.3) | v1 | D52, D53 | M, B |
+| AU-09 | Multi-page artifacts use a `pages/` convention on React Router, with the history mode chosen per delivery target and the current page reported to the shell | v1 | D57 | B |
+| RT-08 | Daemon, worker and port lifecycles follow D62: idle exit after 30 minutes unless needed, `mostra daemon install` for a login service, 1 GiB heap and 10 s watchdog defaults, and port leases reused across restarts | v1 | D62 | I |
+| RT-09 | Every child process runs in its own process group, is recorded with PID and start time, and is reaped after a supervisor crash, including grandchildren such as demo servers and PTY programs | v1 | D45, FAILURE_MODEL §2 | I |
+| VR-09 | Publish reuses the cached verify verdict for the exact source and environment digests or runs verify; errors refuse publish; `--force` publishes and records the failing codes | v1 | D41 | I |
+| VR-10 | Published versions keep working on newer runtimes: the gateway serves every browser-protocol revision it has shipped, within the deprecation rule | v1 | D32, INTERFACES §4 | I, B |
+| VR-11 | Version source snapshots live in the home, so versions, results and regression baselines don't depend on the authoring directory | v1 | HO-08, DATA_MODEL §1 | I |
+| LL-01 | Artifact-scoped fields: viewers, agents (`mostra state`, `@mostra/server` `state`) and hosts write them with revisions, compare-and-set and mutation IDs; overlapping writes surface as conflicts on both sides; changes emit `state.changed` | v1 | D63 | M, I, B |
+| LL-02 | Submission policy `none`: no Submit control; agents and hosts work through state, actions, signals and events | v1 | D63 | B, C |
+| LL-03 | "Always follow this artifact": a per-viewer choice that loads new versions automatically unless unsaved edits or orphans would result | v1 | D63 | B |
+| LL-04 | Live updates are ephemeral notifications over a persisted latest value and optional ring buffer; producers run while viewed or subscribed, or always with `always: true` | v1 | D56, D63 | I |
+| LL-05 | Local capability URLs don't expire by default and stay revocable and rotatable; `mostra doctor` warns when long-lived artifacts exist without an always-on daemon | v1 | D63 | I |
+| LL-06 | Templates, the conformance kit, the gallery and the agent evaluations include long-lived scenarios (J11, J12) alongside one-off ones | v1 | D63 | C, E, R |
+| HY-07 | Worker-mode frame sessions: service-worker header authentication for cross-site frames, ticketed event streams and WebSockets, and a diagnostic when artifact code registers a conflicting root service worker | v1 | D70 | B |
+| KT-10 | Design freedom: nothing enforces kit usage; every kit visual reads the tokens, accepts `className` and can be copied and edited; the defaults give a beautiful result without design skill | v1 | D68 | B, R |
+| AX-09 | The CLI implements the D60 command set plus `mostra run` and `mostra state`, with the exit codes of INTERFACES §9 | v1 | D60 | I |
+| AX-10 | Harness plugins for Claude Code, Codex, Gemini CLI, Cursor and Copilot are generated as real copies from one `skills/` source and plugin definition | v1 | D65 | I, X |
+| EN-07 | Repository standards (REPO_STANDARDS.md): parallel, affected-only CI under 10 minutes for a typical pull request, `pnpm check` parity with CI, mechanical quality gates, lefthook, Conventional Commits with DCO, per-package AGENTS.md and agent playbooks | v1 | D50, D65 | M |
+

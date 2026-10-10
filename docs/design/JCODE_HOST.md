@@ -86,3 +86,26 @@ Each row is a generic Mostra capability that the Jcode integration relies on. C0
 - Where Jcode agents author artifact sources: the session's checkout, Mostra's home or a Jcode-managed directory.
 - Whether Jcode later wants non-terminal signals (for example "ping agent") as arrivals. That would extend C02's contract at its owner. The first integration maps Submit only.
 - The agent-facing tool names and their framework-stage descriptions, authored jointly with Mirza.
+
+## How Mostra meets each need
+
+Added by the C03-A design. Every row is a generic mechanism; none names Jcode in Mostra's code (HO-06).
+
+| ID | Generic mechanism in the settled design |
+|---|---|
+| H-01 | Mostra's ledger stays canonical (D58); the host's `submissions.deliver` port receives the complete submission as an opaque envelope, and the optional `drafts.mirror` port receives each draft revision |
+| H-02 | Policy `once` with scope `per-artifact`; a second submit returns `MOSTRA_SUBMIT_ALREADY` with the existing submission (FAILURE_MODEL §4) |
+| H-03 | Every mutating protocol method takes `requestId`; submissions carry stable `submissionId` and `deliveryId`; redelivery after a crash reuses them |
+| H-04 | Outbox: deliveries stay `pending` while the host is down, retry with backoff, and replay in order when the host re-registers the port; `HomeConfig.ports` tells Mostra a host is expected |
+| H-05 | `trustedControls.policy` returns `submitChannels: ["shell"]`; submissions record `channel` and `viewer` (from the `identity` port) |
+| H-06 | Manifest `family` and `links` (INTERFACES §2.2), returned in `artifact/get` and `results` |
+| H-07 | `artifact/publish` returns a durable `PublishReceipt` (artifact ID, version ID, number, URL, cursor) |
+| H-08 | `results/get` returns the complete Results structure (INTERFACES §8) as JSON or Markdown |
+| H-09 | `events/subscribe` with a type filter (for example `submission.created` only) and a durable acknowledged cursor; signals are events |
+| H-10 | Submissions carry `versionId`, `viewId` and `staleView` |
+| H-11 | The host chooses the home (`HomeConfig.home`); versions keep source snapshots in the home (DATA_MODEL §1) |
+| H-12 | `mostra host` over stdio, or attach to the home's daemon over its socket (D45) |
+| H-13 | Rust crate `mostra-host` with a tokio client, port traits and runtime-bundle download and cache by hash |
+| H-14 | `addressing.externalBase`, `share/start` and capability minting through `view/url` |
+| H-15 | `@mostra/conformance` runs against the host's adapter, with expected-failure baselines |
+| H-16 | No telemetry in any package; homes are created 0700 and secrets 0600 |
