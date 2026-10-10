@@ -174,7 +174,7 @@
 | AX-03 | Diagnostics use one schema with stable codes (part of semver), hints, optional fixes and docs links | v1 | D29 | M |
 | AX-04 | `verify` detects regressions against the last passing version | v1 | D29 | I |
 | AX-05 | Screenshots default to DPR 1, carry token estimates and are returned only on failure or request | v1 | D29 | M |
-| AX-06 | The Agent Skill, AGENTS.md, templates and gallery ship; their prose is accepted through Mirza's review | v1 | D29 | R |
+| AX-06 | The Agent Skill (trigger D69) and AGENTS.md in the repository and in every scaffolded artifact ship; their prose is accepted through Mirza's review. Templates are AU-06, the gallery is AX-07 | v1 | D29, D69 | R |
 | AX-07 | Docs site built with Mostra, with `llms.txt` and per-page Markdown | v1 | PRODUCT | B, R |
 | AX-08 | An opt-in, budgeted agent-evaluation suite measures first-pass verify success, turns to pass and retention across turns (subject to D33 confirmation) | v1 | D33 | E |
 
