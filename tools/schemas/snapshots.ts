@@ -7,12 +7,12 @@
  * {@link WireBundleSource}). The package renders definitions with its own Zod, so tools never mix
  * Zod instances. Files land in `schemas/<name>.schema.json` and `schemas/<name>.draft-07.json`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { mergeBase, readAtRevision } from "../lib/repo.ts";
+import { listAtRevision, mergeBase, readAtRevision } from "../lib/repo.ts";
 import type { WorkspacePackage } from "../lib/workspace.ts";
-import { type Bundle, compareBundles, newRevisions } from "./compat.ts";
+import { type Bundle, compareSnapshots } from "./compat.ts";
 
 /** What a package's `scripts/wire-schemas.ts` exports, one entry per published bundle. */
 export interface WireBundleSource {
@@ -70,57 +70,64 @@ async function loadSources(dir: string): Promise<WireBundleSource[]> {
   return module.bundles;
 }
 
-/** Writes the snapshots, refusing a non-additive change unless a revision moved forward. */
+/** The published 2020-12 bundles of `pkgDir` at a Git revision, by bundle name. */
+function bundlesAt(revision: string, pkgDir: string): Map<string, Bundle> {
+  const bundles = new Map<string, Bundle>();
+  for (const file of listAtRevision(revision, `${pkgDir}/schemas`)) {
+    const match = /^(.+)\.schema\.json$/.exec(file);
+    const text = match ? readAtRevision(revision, `${pkgDir}/schemas/${file}`) : undefined;
+    if (match?.[1] && text !== undefined) bundles.set(match[1], JSON.parse(text) as Bundle);
+  }
+  return bundles;
+}
+
+/** Writes the snapshots, refusing a change that breaks the evolution rules against the base. */
 export async function writeSchemas(pkg: WorkspacePackage, dir: string): Promise<string[]> {
   const problems = await checkSchemas(pkg, dir, { write: true });
   return problems.filter((problem) => !problem.includes("out of date"));
 }
 
-/** Checks the snapshots: current with the source, and additive against the base. */
+/**
+ * Checks the snapshots: current with the source, no stray files, and every change from the base
+ * allowed by the evolution rules ({@link compareSnapshots}).
+ */
 export async function checkSchemas(
   pkg: WorkspacePackage,
   dir: string,
-  options: { write?: boolean; base?: string | undefined } = {},
+  options: { write?: boolean; base?: string | undefined; today?: string } = {},
 ): Promise<string[]> {
   const problems: string[] = [];
   const base = "base" in options ? options.base : mergeBase();
+  const current = new Map<string, Bundle>();
+  const expected = new Set<string>();
   for (const source of await loadSources(dir)) {
     for (const target of ["draft-2020-12", "draft-07"] as const) {
       const file = fileFor(source.name, target);
+      expected.add(file);
       const path = join(dir, file);
       const rendered = renderBundle(source, target);
-      const committed = readIfPresent(path);
-      if (committed !== rendered) {
-        if (options.write) {
-          mkdirSync(join(dir, "schemas"), { recursive: true });
-          writeFileSync(path, rendered);
-        } else {
-          problems.push(
-            `${pkg.dir}/${file} is out of date. Run \`pnpm --filter ${pkg.name} gen:schemas\`.`,
-          );
-        }
-      }
-      if (target !== "draft-2020-12" || base === undefined) continue;
-      const before = readAtRevision(base, `${pkg.dir}/${file}`);
-      if (before === undefined) continue;
-      const oldBundle = JSON.parse(before) as Bundle;
-      const newBundle = JSON.parse(rendered) as Bundle;
-      const breaks = compareBundles(oldBundle, newBundle);
-      if (breaks.length === 0) continue;
-      const revisions = newRevisions(oldBundle, newBundle);
-      if (revisions.length > 0) {
-        console.log(
-          `! ${source.name}: breaking changes under new revision ${revisions.join(", ")}:`,
-        );
-        for (const item of breaks) console.log(`    ${item.path}: ${item.reason}`);
-        continue;
-      }
-      for (const item of breaks) {
+      if (target === "draft-2020-12") current.set(source.name, JSON.parse(rendered) as Bundle);
+      if (readIfPresent(path) === rendered) continue;
+      if (options.write) {
+        mkdirSync(join(dir, "schemas"), { recursive: true });
+        writeFileSync(path, rendered);
+      } else {
         problems.push(
-          `${source.name} ${item.path}: ${item.reason}. Within a revision, schemas change only additively (D32); a breaking change needs a new revision.`,
+          `${pkg.dir}/${file} is out of date. Run \`pnpm --filter ${pkg.name} gen:schemas\`.`,
         );
       }
     }
+  }
+  if (existsSync(join(dir, "schemas"))) {
+    for (const file of readdirSync(join(dir, "schemas"))) {
+      if (!expected.has(`schemas/${file}`)) {
+        problems.push(`${pkg.dir}/schemas/${file} has no bundle in scripts/wire-schemas.ts.`);
+      }
+    }
+  }
+  if (base !== undefined) {
+    const today = options.today ?? new Date().toISOString().slice(0, 10);
+    problems.push(...compareSnapshots(bundlesAt(base, pkg.dir), current, today));
   }
   return problems;
 }

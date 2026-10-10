@@ -87,3 +87,19 @@ describe("negotiateRevision", () => {
     );
   });
 });
+
+describe("the published Revision schema", () => {
+  it("rejects impossible dates, as Revision.parse does (review finding 7)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const bundle = JSON.parse(
+      await readFile(new URL("../schemas/protocol.schema.json", import.meta.url), "utf8"),
+    ) as {
+      $defs: { Revision: { pattern: string } };
+    };
+    const pattern = new RegExp(bundle.$defs.Revision.pattern);
+    for (const value of ["2026-10-10", "2024-02-29", "2000-02-29"])
+      expect(pattern.test(value)).toBe(true);
+    for (const value of ["2026-02-30", "2025-02-29", "1900-02-29", "2026-13-01"])
+      expect(pattern.test(value)).toBe(false);
+  });
+});

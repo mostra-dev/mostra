@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
 import { workflowProblems } from "../repo-lint/cli.ts";
-import { type Bundle, compareBundles, newRevisions, type Schema } from "../schemas/compat.ts";
+import { type Bundle, compareBundles, compareSnapshots, type Schema } from "../schemas/compat.ts";
 
 const bundle = (defs: Record<string, Schema>, revision = "2026-10-10"): Bundle => ({
   "x-mostra-revisions": { "host-protocol": revision },
@@ -102,7 +102,7 @@ describe("schema compatibility", () => {
       reasons(union, { U: { anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] } }),
     ).toEqual([]);
     expect(reasons(union, { U: { anyOf: [{ type: "string" }] } })).toEqual([
-      "U.anyOf[1]: alternative removed or narrowed",
+      "U.anyOf[1]: no alternative accepts what the old schema accepted",
     ]);
   });
 
@@ -112,11 +112,107 @@ describe("schema compatibility", () => {
     ).toEqual(['X: keyword "contentMediaType" changed, and the checker can\'t prove it additive']);
   });
 
-  it("reports surfaces whose revision moved forward", () => {
-    expect(newRevisions(bundle({}), bundle({}, "2027-01-01"))).toEqual([
-      "host-protocol 2027-01-01",
+  it("compares constraints beside a reference (review finding 4)", () => {
+    const defs = { S: { type: "string" } };
+    expect(
+      reasons(
+        { ...defs, W: obj({ v: { $ref: "#/$defs/S" } }) },
+        { ...defs, W: obj({ v: { $ref: "#/$defs/S", maxLength: 1 } }) },
+      ),
+    ).toEqual(["W.v: maxLength lowered"]);
+    expect(
+      reasons(
+        { ...defs, W: obj({ v: { $ref: "#/$defs/S", maxLength: 1 } }) },
+        { ...defs, W: obj({ v: { $ref: "#/$defs/S" } }) },
+      ),
+    ).toEqual([]);
+  });
+
+  it("compares constraints beside a union (review finding 4)", () => {
+    const union = { anyOf: [{ type: "string" }, { type: "number" }] };
+    expect(reasons({ U: union }, { U: { ...union, type: "string" } })).toEqual([
+      "U.anyOf[1]: type number no longer accepted",
     ]);
-    expect(newRevisions(bundle({}), bundle({}))).toEqual([]);
+  });
+
+  it("checks tuple positions the old schema left to items (review finding 5)", () => {
+    const before = { A: { type: "array", items: { type: "string" }, minItems: 1 } };
+    const after = {
+      A: { type: "array", prefixItems: [{ type: "number" }], items: { type: "string" } },
+    };
+    expect(reasons(before, after)).toEqual(["A[0]: type string no longer accepted"]);
+    const closed = { A: { type: "array", prefixItems: [{ type: "string" }], items: false } };
+    expect(reasons({ A: { type: "array", prefixItems: [{ type: "string" }] } }, closed)).toEqual([
+      "A[]: now accepts nothing",
+    ]);
+  });
+
+  it("fails closed on a changed oneOf (review finding 6)", () => {
+    const before = { O: { oneOf: [{ type: "string" }, { type: "number" }] } };
+    expect(reasons(before, before)).toEqual([]);
+    expect(
+      reasons(before, {
+        O: { oneOf: [{ type: "string" }, { type: "number" }, { type: "integer" }] },
+      })[0],
+    ).toContain("oneOf changed");
+    expect(
+      reasons({ O: { anyOf: [{ type: "string" }] } }, { O: { oneOf: [{ type: "string" }] } })[0],
+    ).toContain("oneOf changed");
+  });
+
+  it("terminates on recursive definitions", () => {
+    const tree = (name: string) => obj({ child: { $ref: `#/$defs/${name}` } });
+    expect(
+      reasons(
+        { A: tree("A"), W: obj({ t: { $ref: "#/$defs/A" } }) },
+        { A: tree("A"), B: tree("B"), W: obj({ t: { $ref: "#/$defs/B" } }) },
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("bundle evolution (review findings 2 and 3)", () => {
+  const v1 = bundle({ T: obj({ a: { type: "string" } }, ["a"]) }, "2026-10-10");
+  const v2 = bundle({ T: obj({ b: { type: "string" } }, ["b"]) }, "2026-11-01");
+  const map = (entries: Record<string, Bundle>) => new Map(Object.entries(entries));
+
+  it("rejects a removed or renamed bundle while its revision is supported", () => {
+    expect(compareSnapshots(map({ protocol: v1 }), map({}), "2026-10-20")[0]).toContain(
+      'bundle "protocol" was removed or renamed',
+    );
+    expect(compareSnapshots(map({ protocol: v1 }), map({ wire: v1 }), "2026-10-20")[0]).toContain(
+      "has no newer revision",
+    );
+  });
+
+  it("rejects a breaking change that bumps the revision but drops the old one", () => {
+    const problems = compareSnapshots(map({ protocol: v1 }), map({ protocol: v2 }), "2026-11-02");
+    expect(problems[0]).toContain("keep the previous revision published as its own bundle");
+  });
+
+  it("accepts a breaking change under a new revision that keeps the old bundle", () => {
+    expect(
+      compareSnapshots(
+        map({ protocol: v1 }),
+        map({ protocol: v2, "protocol-2026-10-10": v1 }),
+        "2026-11-02",
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a breaking change without a new revision, even with a copy kept", () => {
+    const broken = bundle({ T: obj({ b: { type: "string" } }, ["b"]) }, "2026-10-10");
+    expect(
+      compareSnapshots(map({ protocol: v1 }), map({ protocol: broken, copy: v1 }), "2026-11-02")[0],
+    ).toContain("within a revision, schemas change only additively");
+  });
+
+  it("lets a superseded bundle go 12 months after its successor", () => {
+    const base = map({ protocol: v2, "protocol-2026-10-10": v1 });
+    expect(compareSnapshots(base, map({ protocol: v2 }), "2027-10-31")[0]).toContain(
+      "supported until 2027-11-01",
+    );
+    expect(compareSnapshots(base, map({ protocol: v2 }), "2027-11-01")).toEqual([]);
   });
 });
 
@@ -153,6 +249,13 @@ describe("commit messages", () => {
       "the second line must be blank",
     );
     expect(checkMessage(commit(`feat: ${"x".repeat(120)}${signed}`))[0]).toContain("at most 100");
+  });
+
+  it("checks merge commits for a sign-off and accepts Git's merge subjects (review finding 12)", () => {
+    expect(checkMessage(commit(`Merge branch 'main' into wp/02-x${signed}`))).toEqual([]);
+    expect(checkMessage(commit("Merge branch 'main' into wp/02-x"))).toEqual([
+      "missing the DCO sign-off: commit with `git commit -s` (Signed-off-by: Name <email>)",
+    ]);
   });
 });
 

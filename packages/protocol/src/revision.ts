@@ -33,14 +33,12 @@ export const Revision: {
   compare(a: Revision, b: Revision): number;
 } = {
   pattern: PATTERN,
-  schema: z
-    .string()
-    .regex(PATTERN)
-    .refine(isRevision, "Expected a real calendar date")
-    .register(wireRegistry, {
-      id: "Revision",
-      description: "Protocol revision: a calendar date in YYYY-MM-DD form.",
-    }) as unknown as z.ZodType<Revision, string>,
+  // z.iso.date() checks calendar validity in its emitted pattern, so the published JSON Schema
+  // rejects 2026-02-30 just as `parse` does.
+  schema: z.iso.date().register(wireRegistry, {
+    id: "Revision",
+    description: "Protocol revision: a calendar date in YYYY-MM-DD form.",
+  }) as unknown as z.ZodType<Revision, string>,
   is: isRevision,
   parse(value: string): Revision {
     if (isRevision(value)) return value;
