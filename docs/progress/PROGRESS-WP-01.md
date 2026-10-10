@@ -1,6 +1,6 @@
 # WP-01 progress: repository foundation and protocol package
 
-**Status:** Candidate, awaiting Mirza's acceptance. Finalized after acceptance (work-packages/README.md §4).
+**Status:** Accepted by Mirza on 2026-10-10 (M12). Finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -62,10 +62,33 @@ Applied and verified by `node tools/github/settings.ts apply|verify`:
 | EN-06 | plausible | Pinned action SHAs (repository lint plus the repository's SHA-pinning requirement); CodeQL on three languages; dependency review; Renovate with a 7-day minimum release age; Scorecard | gates › repository lint › unpinned action; CodeQL and dependency review on PR #1; `renovate-config-validator renovate.json` | unpinned `actions/checkout@v4` red, pinned green; CodeQL and dependency review green on PR #1; Renovate config valid. Open: Renovate runs once Mirza installs the app (external); Scorecard first runs on the push to `main` after merge |
 | EN-07 | verified | CI under 10 minutes with parallel, affected-only jobs; seeded violations caught by each gate; lefthook hooks run | full run [38076222130](https://github.com/mostra-dev/mostra/actions/runs/38076222130); typical one-package PR [#2](https://github.com/mostra-dev/mostra/pull/2) run [38077999613](https://github.com/mostra-dev/mostra/actions/runs/38077999613); `pnpm --filter @mostra/tools test` | full run 3m03s; typical PR 1m57s (plan: `@mostra/protocol`; licenses, rust and docs skipped); every gate red on its seed and green on the fix; pre-commit (Biome), commit-msg and pre-push (`pnpm check --fast`) ran on real commits and pushes |
 | HY-06 | validated | SECURITY.md with private vulnerability reporting enabled (repository setting checked) | `gh api repos/mostra-dev/mostra/private-vulnerability-reporting`; `node tools/github/settings.ts verify` | `{"enabled":true}`; settings verify green. Mirza's review of SECURITY.md pending |
-| DP-06 | verified | License audit fails on a seeded PolyForm dependency in the core and on any `@pnpm/pnpr*` package, including PolyForm terms hidden under an MIT `license` field as in pnpm's `pnpr/`; passes on the real tree | `pnpm --filter @mostra/tools test` (license-audit); CI `licenses` job | red on each seed with the dependency path named; green on this repository |
+| DP-06 | verified | License audit fails on a seeded PolyForm dependency in the core, on any `@pnpm/pnpr*` package, on PolyForm terms hidden under an MIT `license` field as in pnpm's `pnpr/`, and on a non-OSI engine reached through an installed peer; passes on the real tree | `pnpm --filter @mostra/tools test` (license-audit); CI `licenses` job | red on each seed with the dependency path named; green on this repository |
 | KT-02 | verified | License audit fails on a seeded non-OSI engine ("SEE LICENSE IN" with PolyForm text) in a published package's production closure; passes on the real tree | `pnpm --filter @mostra/tools test` (license-audit › PolyForm-licensed engine); CI `licenses` job | red on the seed, green on the real tree |
-| HO-07 | verified | The schema snapshot check fails on a removed field, a removed enum value, a newly required field and a narrowed type, and accepts an additive change once regenerated; rules unit-tested, including references, alternatives and fail-closed unknown keywords | `pnpm --filter @mostra/tools test` (gates › wire schemas, rules › schema compatibility); CI `api` job | four seeds red with the path and reason named; additive change green. Boundary: the browser-protocol, CLI JSON and MCP tool surfaces don't exist yet; their packages register bundles in `scripts/wire-schemas.ts` and get the same check |
+| HO-07 | verified | The schema snapshot check fails on a removed field, a removed enum value, a newly required field, a narrowed type, a removed bundle and a custom refinement, and accepts an additive change once regenerated; a breaking change passes only under a new revision with the old bundle kept for 12 months; rules unit-tested, including constraints beside references and unions, tuples, `oneOf`, recursion and fail-closed unknown keywords | `pnpm --filter @mostra/tools test` (gates › wire schemas, rules › schema compatibility); CI `api` job | four seeds red with the path and reason named; additive change green. Boundary: the browser-protocol, CLI JSON and MCP tool surfaces don't exist yet; their packages register bundles in `scripts/wire-schemas.ts` and get the same check |
 | AX-03 | verified | Diagnostic schema validation; catalog JSON and one docs page per code generated; the docs check fails on a code without docs text and on a removed code; codes appear in the API report (`hostDiagnosticCodes`) | `pnpm --filter @mostra/protocol test`; gates › diagnostic catalog; `node tools/docs/diagnostics.ts check` | malformed diagnostics rejected; generated code without text red; removed code red; current catalog green |
+
+## Independent review (D80)
+
+- **GPT-6.1-Sol** through the Codex CLI (OpenAI, ChatGPT sign-in), effort high, 2026-10-10, read-only on `origin/main...HEAD` at `1d28de8`: 3,179,229 input tokens (3,022,080 cached), 18,268 output tokens (10,286 reasoning). Mirza approved the run (M12). It was run with `codex exec` and a WP-specific prompt, because codex-cli 0.162.1 refuses `codex review --base` together with custom instructions; the playbook now uses `codex review --base`.
+- **GitHub Copilot** review was requested (by API, and automatically by the `main` ruleset from now on) and answered "unable to review … the user who requested the review has reached their quota limit". Not pursued (M12).
+
+All 13 GPT findings held up and are fixed, each with a regression test (marked "review finding N" in `tools/test/` and `packages/protocol/test/`):
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `--base` didn't reach Turbo tasks, and cached `api`/`schemas` results ignored the base | `pnpm check` resolves the merge base once and exports `MOSTRA_BASE`; `turbo.json` hashes it into `api` and `schemas` |
+| 2 | Removing or renaming a schema bundle skipped compatibility | Bundles are compared as a set; a bundle may disappear only 12 months after its successor revision |
+| 3 | A revision bump excused every break, with no old revision kept | A break needs a newer revision **and** the base bundle kept unchanged under its old revision |
+| 4 | Constraints beside `$ref` or a union were ignored | Nodes split into conjuncts; each new conjunct is checked, old ones merged or distributed |
+| 5 | New tuple positions escaped checking | Every position either side constrains is compared, then the tail |
+| 6 | `oneOf` was treated as `anyOf` | A changed `oneOf` fails closed |
+| 7 | Custom refinements narrowed silently; `Revision`'s JSON Schema accepted `2026-02-30` | Wire-schema generation rejects custom refinements; `Revision` uses `z.iso.date()` |
+| 8 | The license audit skipped installed peer dependencies | Installed peers are walked |
+| 9 | A failed Turbo run could report a job as passed | Unexecuted tasks, failed prerequisites and an unexplained Turbo failure fail the job |
+| 10 | Changes to the check machinery skipped jobs it controls | `tools/check/`, `tools/lib/`, the CI workflow and setup action make the run a full one |
+| 11 | An unresolvable explicit base silently fell back | It is an error |
+| 12 | DCO checks skipped merge commits | Merges are checked for a sign-off; CI checks the PR head, not GitHub's synthetic merge |
+| 13 | Quoted keys or flow mappings hid unpinned actions | Workflows are parsed as YAML |
 
 ## Prose awaiting review (D74)
 
