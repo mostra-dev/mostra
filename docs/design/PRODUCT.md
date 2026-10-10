@@ -87,6 +87,10 @@ These are the caller-first scenarios that the design and acceptance must serve. 
 
 **J10. Remote authoring (v1.x).** A ChatGPT Business user's agent connects to a self-hosted Mostra remote server. It creates an artifact and pushes files and patches, each against a `base_rev`. It runs a server-side build and verify job and gets compact diagnostics and screenshots. It publishes and returns the URL.
 
+**J11. Personal dashboard, all week (D63).** A personal AI application publishes a dashboard with submission policy `none`, on a home whose daemon runs as a login service. Live sources refresh calendar, mail and finance data. The agent updates artifact state ("today's priorities") through `mostra state set` and publishes new versions as it learns what the user wants. The user follows the artifact, so new versions load automatically when nothing is unsaved. The user ticks off priorities and presses actions all day. The host wakes the agent only for the `state.changed` events it filters for. After a month the home is still bounded and fast.
+
+**J12. Team task manager (D63).** An AI task-manager application hosts Mostra for a small team over the tailnet. Tasks are artifact-scoped state: teammates and the agent create, edit and complete them, and each change is attributed to its viewer identity. Two people editing the same task get an explicit conflict, never a silent overwrite. The agent reacts to new tasks through the host's event filter and posts its own updates as state changes.
+
 ## Scope
 
 Release scope is decided in D16 and refined into requirements in [REQUIREMENTS.md](REQUIREMENTS.md). Summary:

@@ -14,6 +14,7 @@
 | M4 | 2026-10-10T06:47:17.597Z | Answered the nine questions: positioning yes; viewing model yes; interaction model yes; runtime stack "sounds good" with RSC conditions (D19); remote scope "sounds good"; license delegated ("I trust your judgement"); interface priority "sounds excellent"; shadcn base settled in C03-A, "how about both"; name delegated. |
 | M5 | 2026-10-10T07:05:13.203Z | "Yes to everything." Approved the RSC plan, multi-base shadcn, the name Mostra, the v1 scope, the C03-A home and standards, and the license acknowledgment flow. Asked for thorough documents in which nothing discussed is missed. |
 | M6 | 2026-10-10T10:07:56.180Z | C03-A round 1. Confirmed agent evaluations with an ask-first rule, OAuth only, a mostly-GPT model mix and token-based cost reports. v1.0 explicitly excludes Windows. Approving a WP approves all of its publication. Postpone or cheapen the domain; created the GitHub org `mostra-dev`; npm org next. Delegated addressing (Q5) and secrets details. Approved Q6 to Q13, the round-1 defaults and the tooling stack, and asked that version-churn guidance cover every tool with a recent major. Added four working notes: ask him for anything, install any tool, use only the `fast-worker` sub-agent, and establish strong repository standards from the start. |
+| M7 | 2026-10-10T10:59:01.070Z | C03-A round 2. Confirmed D34 as stated. Evaluations run in small batches, starting with a single call to find bottlenecks, then two or four at a time so a shared 5-hour usage limit isn't exhausted mid-batch; possibly two accounts; Claude runs to be discussed when ready; choose Codex or Jcode deliberately. Delegated Q2 to Q4 and approved Q5 to Q14, trusting C03-A's judgement throughout. Added a note: long-lived artifacts (a 24/7 personal dashboard, a company dashboard, an AI task manager) must be supported as fully as one-off artifacts, possibly with changes to submit and drafts. |
 
 ## Program-level decisions
 
@@ -187,7 +188,7 @@ In order: (1) the CLI, Skill and `verify`, built together with the host protocol
 - The host protocol is versioned and language-neutral, with capability negotiation.
 - A Rust host crate and a host conformance kit ship in v1.
 
-*Source:* D01, research consensus, M5.
+*Source:* D01, research consensus, M5. *Amended by D58:* the drafts, submissions and reviews ports deliver and mirror; Mostra's store stays canonical.
 
 ### D26. Kit defaults and the license boundary
 The default kit follows research brief 3:
@@ -252,7 +253,7 @@ Decisions taken with Mirza during the SP-58-C03-A phase design. Each one is an *
 
 ### D34. Agent evaluations: confirmed, ask first, OAuth, model mix
 D33 is confirmed. Rules for every run that makes real model requests:
-1. **Ask first.** Before every batch run, the agent tells Mirza what question the batch answers, which models it uses in what ratio, and the estimated cost **in tokens** (never dollars). A batch that uses any Anthropic model waits for his explicit approval. A batch that uses only GPT models doesn't need approval; the agent still announces it before starting. *(Interpretation recorded on 2026-10-10; Mirza to confirm in round 2.)*
+1. **Ask first.** Before every batch run, the agent tells Mirza what question the batch answers, which models it uses in what ratio, and the estimated cost **in tokens** (never dollars). A batch that uses any Anthropic model waits for his explicit approval. A batch that uses only GPT models doesn't need approval; the agent still announces it before starting. *(Confirmed in M7.)* How batches are paced is in D64.
 2. **OAuth, never API keys.** Runs authenticate through the vendors' OAuth logins (for example the Codex and Claude Code CLIs signed in to Mirza's accounts).
 3. **Model mix.** Mostly **GPT-6.1-Sol**, with some **Claude Sonnet 5.5** and **Claude Opus 5.5**, roughly 70/15/15. The ratio is a guide: the agent picks models and proportions per question, keeping variety so Mostra isn't tuned to one model.
 4. **No fixed caps.** Report token usage per run with provider, model and date (STANDARDS, Verification).
@@ -329,6 +330,76 @@ The repository starts with strong engineering standards, designed in this phase 
 - a seamless publication pipeline.
 
 The aim is that agents don't repeat work, naturally produce modular, modern, high-quality code, and never wait on checks that don't depend on each other. *Source:* M6 note 4. *Detailed in* the dossier's repository-standards document.
+
+### D51. Manifest in the entry file (delegated)
+Artifact metadata is a literal object in the entry file: `export const artifact = defineArtifact({...})` in `index.tsx`, or frontmatter in `index.mdx`. Mostra extracts it statically (the supervisor never runs artifact code), and a non-literal value is a compile diagnostic. A single file with no manifest is a complete artifact with defaults. The fields are `id`, `title`, `description`, `family`, `links`, `mode` (default `spa`), the requested `submission` policy (the host decides), `limits` and `verify`. `mostra new` writes a generated `id`. An artifact without one is bound to its canonical source path at first publish, and two paths claiming one `id` is a publish error. *Rejected:* `mostra.json` (a second file for any metadata) and `artifact.config.ts` (two forms, and it must be executed or restricted to literals anyway). *Source:* M7 Q2 (delegated). *Resolves* ARCHITECTURE §2 manifest form.
+
+### D52. Field hooks and field identity (delegated)
+The client runtime's persistence primitive is `useField(id, initial, options)`, which behaves like `useState` with a stable ID. Alongside it come `useSubmit`, `useSignal` and `useSubmitControl`. IDs are explicit strings, and dotted IDs nest in results. The options are `label`, `required`, `validate`, `sensitive` (redacted from logs and events, kept in the submission) and `scope` (D63). `verify` reports duplicate IDs and IDs that change between renders as errors, and unbound form controls as hints. `@mostra/react/form` adapts react-hook-form onto the same fields. *Rejected:* one schema-typed draft document (a store each artifact must design, path-level conflicts, schema migrations between versions). *Source:* M7 Q3, Q4 (delegated). *Resolves* ARCHITECTURE §2 field identity and §7 client runtime API.
+
+### D53. `window.storage` compatibility
+The client runtime installs a `window.storage` compatible with Claude artifacts. Personal keys are viewer-scoped fields under `storage.<key>`. `shared: true` keys are artifact-scoped fields (D63). `verify` hints towards `useField` for form inputs. *Source:* M7 Q5.
+
+### D54. Server functions and action runs
+Calling a `"use server"` function directly is a plain RPC with no durable record. `useAction(fn, { key })` turns each invocation into a durable `ActionRun` (D24). By default there is one in-flight run per hook instance, so a double click joins the running invocation. An explicit `key` makes the invocation at-most-once across reloads, tabs and devices. Server context comes from `@mostra/server` imports (`progress`, `secret`, `signal`, `dryRun`, `viewer`, `abortSignal`) backed by AsyncLocalStorage. Arguments and results use exactly React's documented Server Function type set plus `AsyncIterable` results, through one Mostra serializer with conformance tests against React's behavior. There is no `*.server.ts` convention. *Source:* M7 Q6. *Resolves* ARCHITECTURE §5 serialization and file convention.
+
+### D55. Dry-run opt-in for `verify`
+An action opts into `verify`'s smoke test by checking `dryRun()`, and the compiler records which `"use server"` exports reference it. `verify` never invokes an action that hasn't opted in. The click gets a synthetic "skipped in verify" result, and the verdict lists the skipped actions. *Source:* M7 Q7. *Resolves* ARCHITECTURE §8 dry-run semantics.
+
+### D56. Live sources
+Live data is its own concept. `live.ts` exports `defineLive({ load, refresh | watch | stream })` producers, which the artifact's worker runs. `mostra push`, the SDK and the host protocol push values into the same sources. The page reads them with `useLive(key)`, which returns `{ data, isLoading, error, refresh }`, and can request an append mode with a ring buffer for high-rate charts. Values carry server-assigned revisions, the latest value persists (D63), and a view records the revisions it saw. Types reach client code through a generated declaration file, never by importing server code. *Rejected:* client polling of server functions (per-tab load, no shared latest value, and React advises against server functions for data fetching). *Source:* M7 Q8.
+
+### D57. Multi-page routing
+Multi-page artifacts use a `pages/` convention on React Router. Mostra chooses the history mode per delivery target: browser history locally, hash routing for static export, memory routing inside MCP Apps. The runtime reports the current page to the shell so comments record it. *Source:* M7 Q9. *Resolves* ARCHITECTURE §2 routing.
+
+### D58. Mostra-owned ledger; ports deliver and mirror
+Mostra's own transactional store is always the canonical record of drafts, artifact state, submissions, reviews, action runs and events. It lives inside the home the host configures. Hosts integrate through small, idempotent, optional ports, each with a standalone default:
+- `identity`;
+- `submissions`: deliver, then accepted or rejected with a reason, with outbox and idempotent replay on failure;
+- `drafts` and `reviews`: optional opaque mirrors;
+- `events`: the host pulls with a filter and a durable cursor;
+- `addressing`, `trustedControls`, `capture`, `secrets` and `pty`.
+
+"Accepted by Mostra" and "accepted by the host" remain separate, reported facts. *Rejected:* host-supplied stores. Every host would have to reimplement compare-and-set, idempotency and unique submissions, and would still need a local store for the outbox. *Source:* M7 Q10. *Amends* D25 and the ARCHITECTURE §12 port table.
+
+### D59. One host protocol for every client
+The CLI, the local MCP server, the TypeScript SDK and the Rust crate all speak one versioned JSON-RPC 2.0 protocol to the supervisor. They use stdio when a host spawns Mostra and the home's Unix socket when attaching to its daemon. Port callbacks travel on the same connection and reach only the connection that registered them. Zod 4 is the schema source. Generated JSON Schema 2020-12 is published, and draft-07 feeds typify for the Rust wire types, which are committed with a snapshot test. The Rust client is hand-written. Revisions are dated, negotiated in `mostra/initialize` and change additively, with at least 12 months of deprecation. *Source:* M7 Q11. *Resolves* ARCHITECTURE §12 transports, schema source and versioning.
+
+### D60. CLI command set
+`new`, `dev`, `verify`, `publish`, `open`, `share`, `wait`, `results`, `review export`, `push`, `state` (D63), `term dump`, `add`, `export`, `secret`, `list`, `status`, `daemon`, `host`, `mcp`, `plugin`, `docs`, `doctor` and `gc`, as specified in [rounds/ROUND-2.md](rounds/ROUND-2.md#31-cli-command-set-cl1). Artifacts are addressed by source path or ID. Help text is drafted with Mirza. *Source:* M7 Q12.
+
+### D61. MCP tools and MCP Apps persistence
+The local MCP server has about twelve tools under an `artifact_` prefix (create, write, patch, verify, publish, open as the render tool, wait, results, list), plus `live_push`, `docs_search` and app-only tools for exported MCP Apps. In v1, inline MCP Apps persist drafts, submissions, actions and events through the local MCP server. Cloud chat hosts need remote mode (v1.x). Until then the exported page states that answers can't be saved there and offers the full-page URL. Tool descriptions are drafted with Mirza. *Source:* M7 Q13.
+
+### D62. Process details
+- **Home layout:** `registry/`, `versions/`, `store/` (SQLite), `deps/`, `secrets/` (0600), `cache/`. The control socket lives in a short per-user runtime directory.
+- **Daemon:** keeps running while it has open views, active shares, pending deliveries, running producers or attached clients, and otherwise exits after 30 idle minutes. `mostra daemon install` registers a launchd or systemd user service for always-on use (D63). A host-spawned instance lives as long as its stdio connection.
+- **Workers:** started on demand, evicted after 10 idle minutes, restarted after crashes with exponential backoff and a reported cause.
+- **Default limits** (stability, not security): 1 GiB heap per worker and a 10 s event-loop watchdog, configurable per artifact.
+- **Ports:** the gateway port and each artifact's port are leased per home and reused across restarts. A conflict at start-up gives a diagnostic and a re-lease.
+
+*Source:* M7 Q14. *Resolves* ARCHITECTURE §4 eviction, limits and home location.
+
+### D63. Long-lived artifacts are first-class
+One-off artifacts (approve a report, choose a prototype, answer questions) and long-lived ones (a personal dashboard open all week, a company dashboard, an AI task manager) carry equal weight in design, verification and evaluation. The model handles both with these additions:
+1. **Artifact-scoped state.** A field declares `scope: "viewer"` (the default: the viewer's draft) or `scope: "artifact"` (shared state that every viewer sees and edits). Agents and hosts read and write artifact state through `mostra state get|set|patch`, the SDK and the protocol. They use the same revisions, compare-and-set and mutation IDs as viewer edits, and overlapping writes surface as conflicts on both sides. Every change emits a durable `state.changed` event that hosts filter (D10: Mostra never decides what wakes an agent).
+2. **Submission policy `none`.** Besides `once` (D39) and `epochs`, an artifact can have no submission at all. It then talks to the agent through artifact state, actions and signals, and the shell shows no Submit control. When a policy does submit, the snapshot includes the viewer's draft and the artifact state at that revision.
+3. **Following new versions.** The version banner offers "Switch" and "Always follow this artifact". Following is a per-viewer, per-artifact choice the viewer makes once (D09 intact). While it's on, a new version loads automatically unless the viewer has unsaved edits or fields that wouldn't carry over.
+4. **Live updates are not durable events.** A live source persists its latest value and, optionally, a ring buffer. Updates travel on the stream as ephemeral notifications with revisions, so a 24/7 dashboard doesn't fill the event log. Producers run while someone is viewing or a host is subscribed. `defineLive({ always: true })` keeps one running regardless.
+5. **Capability lifetime.** Local capability URLs don't expire by default; they are revocable and rotatable. Public shares keep short default lifetimes (D47). Tailnet shares may be long-lived.
+6. **Always-on.** `mostra daemon install` (D62) is the documented path for artifacts that must answer at any hour. `mostra doctor` reports when artifacts with policy `none` exist without it.
+7. **Growth over months.** Versions share content-addressed assets. Event compaction (D47) and `mostra gc` keep a long-running home bounded, on request.
+8. **Coverage.** PRODUCT gains journeys J11 (personal dashboard) and J12 (team task manager). Templates, the conformance kit and agent evaluations include long-lived scenarios.
+
+*Source:* M7 note (direction approved by Mirza). The details are C03-A's design, to be confirmed in round 3.
+
+### D64. Running evaluations in small batches
+Evaluation runs never fire as one big batch. The first run of a new harness is a single call, to find bottlenecks and calibrate token use. Later runs go two or four at a time, so a shared five-hour usage limit is used steadily rather than exhausted part-way through. A second account may be used if available. Runs with Claude models are planned with Mirza first (D34). The v1 evaluations drive the **Codex CLI** (`codex exec --json`, ChatGPT OAuth). That choice is deliberate:
+- Codex is one of Mostra's target harnesses (D11).
+- It runs non-interactively with isolated working directories and reports token usage per turn.
+- Jcode's sub-agents aren't ready for this use (D49).
+
+*Source:* M7 Q1.
 
 ## Research consensus adopted
 
