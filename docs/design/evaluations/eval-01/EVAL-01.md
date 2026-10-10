@@ -66,8 +66,38 @@ The real failures were generic JSX and TypeScript slips, distributed evenly, and
 
 ## Limits
 
-- One model family (GPT-6.1-Sol), one repetition and 20 prompts. The design rules ask for variety (D34). Claude Sonnet 5.5 and Opus 5.5 runs would test whether the result holds for other models; they need Mirza's approval and are proposed in the design presentation.
+- One repetition and 20 prompts for GPT, 6 for Sonnet (EVAL-01b below). Opus 5.5 was not run.
 - Each page was built from scratch in a template with the components pre-installed, not inside Mostra's own runtime. Mostra's kit resolution and lint will differ, and WP-27 re-runs the comparison on the real toolchain.
 - The interaction sweep is a heuristic. Its known artifacts are documented above and in the harness.
+
+## EVAL-01b: Claude Sonnet check (D75)
+
+**Question.** Does D72's tie hold for a second model family?
+
+**Answer.** Yes. Claude Sonnet passed all 6 tasks on the first pass in both bases. No cross-base type errors, and the model used each base's idiom correctly (`render=` 7 times in Base UI, `asChild` 8 times in Radix). D72 stands.
+
+| | |
+|---|---|
+| Date | 2026-10-10, 15:12 to 15:33 UTC |
+| Provider and model | Anthropic `claude-sonnet-5-5`, through Claude Code 2.1.287 signed in with Mirza's claude.ai OAuth account; approved at M9 and M10 |
+| Isolation | print mode; tools limited to Read, Write, Edit, MultiEdit, Glob, Grep and LS; user settings, plugins and MCP servers off (`--setting-sources project --strict-mcp-config`); the same project note as the GPT runs (as `CLAUDE.md` and `AGENTS.md`) |
+| Prompts | 1, 3, 7, 10, 13 and 16 (tooltips, dropdown, popover calendar, context menu and dialog, drawer, combobox, menubar with submenu); 15 left out because of the missing form library |
+| Batches | a 1-call pilot (radix p01, no repair turn), then pairs |
+| Tokens | 1,178,065 in total: 1,138,176 input (944,796 cached) and 39,889 output, about 80k to 110k per task in about 25 s |
+| Data | [data/results.claude.ndjson](data/results.claude.ndjson), [data/rescore.claude.ndjson](data/rescore.claude.ndjson); harness [harness/run-task-claude.sh](harness/run-task-claude.sh), [harness/drive-claude.sh](harness/drive-claude.sh) |
+
+**Checker fixes found by this run.** Both are calibrated against the control pages, and neither changes any GPT verdict (rechecked: no GPT verdict involved either cause):
+1. **Too strict a "rendered" test.** The pilot's header-only page legitimately had 14 characters of text, below the old 20-character test. "Rendered" now means any visible text. Every GPT page had at least 503 characters.
+2. **A start-up race.** The checker navigated after a fixed 2.5 s wait. With Sonnet's fast turns, two checks overlapped and the preview server sometimes wasn't up yet (`ERR_CONNECTION_REFUSED`, nondeterministic on re-run). It now polls the server for up to 30 s.
+
+The first-pass results in the table come from re-scoring each run's turn-1 snapshot with the fixed checker, one at a time.
+
+| | Base UI | Radix |
+|---|---|---|
+| First pass (after checker fixes) | 6/6 | 6/6 |
+| First pass as scored live (two race failures, one in each base) | 5/6 | 5/6 |
+| Cross-base type errors | 0 | 0 |
+
+**For `verify` (WP-09).** Waiting on a readiness signal instead of a delay is already the design (ARCHITECTURE §12: "waiting for a Mostra readiness signal"). This run is one more reason it must never fall back to fixed sleeps.
 
 **Overturn condition for D72.** A later evaluation shows a first-pass gap of 10 points or more in Radix's favor on any model in the D34 mix.

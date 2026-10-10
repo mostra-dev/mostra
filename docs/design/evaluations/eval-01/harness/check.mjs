@@ -41,7 +41,12 @@ verdict.idioms = {
 if (b.ok) {
   const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], { cwd: dir, stdio: "ignore" });
   try {
-    await new Promise((r) => setTimeout(r, 2500));
+    // Wait until the preview server answers (up to 30 s) instead of a fixed delay.
+    for (let i = 0; i < 120; i++) {
+      const up = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
+      if (up) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const errors = [];
@@ -50,7 +55,7 @@ if (b.ok) {
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" }).catch((e) => errors.push({ phase: "nav", msg: String(e) }));
     await page.waitForTimeout(800);
     const bodyText = (await page.locator("body").innerText().catch(() => "")).trim();
-    verdict.render = { ok: errors.length === 0 && bodyText.length > 20, errors: [...errors], textLength: bodyText.length };
+    verdict.render = { ok: errors.length === 0 && bodyText.trim().length > 0, errors: [...errors], textLength: bodyText.length };
 
     // Interaction: click every visible trigger-like element, look for something opening or changing.
     const before = errors.length;

@@ -454,7 +454,7 @@ Base UI is the default base. EVAL-01 found no first-pass difference between Base
 1. **`verify` severity.** Smoke-test observations without a runtime error are warnings, and only definite failures are errors. False positives made agents break working code.
 2. **Warm set.** `@hookform/resolvers` joins the warm set (D65).
 
-*Evidence:* [evaluations/eval-01/EVAL-01.md](evaluations/eval-01/EVAL-01.md). *Overturn:* a first-pass gap of 10 points or more in Radix's favor on any model in the D34 mix. *Source:* D27, D34; Mirza may veto at design approval.
+*Evidence:* [evaluations/eval-01/EVAL-01.md](evaluations/eval-01/EVAL-01.md), including EVAL-01b (Claude Sonnet: 6/6 in both bases, D75). *Overturn:* a first-pass gap of 10 points or more in Radix's favor on any model in the D34 mix. *Source:* D27, D34; Mirza may veto at design approval.
 
 ### D73. Design approved; C03-B threshold
 Mirza approved the complete C03-A design at M9, recorded in [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md). C03-B can start once WP-14 is accepted. That threshold may move to a later package if implementation reorders work; the move is recorded here, and nothing in C03-B's needs (JCODE_HOST) may move out of the packages before it. *Source:* M9 Q1, Q2.

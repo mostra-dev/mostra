@@ -22,7 +22,7 @@
 
 | Item | Where it is handled |
 |---|---|
-| EVAL-01b (Claude Sonnet check of the default base, D75) | Runs after Mirza signs in Claude Code. A Radix-favoring gap of 10 points or more overturns D72 before WP-18 starts |
+| EVAL-01b (Claude Sonnet check of the default base, D75) | Done 2026-10-10: 6/6 first pass in both bases, so D72 stands ([EVAL-01](evaluations/eval-01/EVAL-01.md#eval-01b-claude-sonnet-check-d75)) |
 | Shell visual design is a direction, not final (D68) | Final pass in WP-20, with design-focused review |
 | Agent-facing prose (D74) | Drafted with Mirza in WP-14 (Skill, AGENTS.md), WP-15 (MCP descriptions) and the WP that adds each command or diagnostic |
 | C03-B threshold (D73) | After WP-14, or later if implementation reorders work |
