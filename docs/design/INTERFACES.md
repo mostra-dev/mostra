@@ -342,7 +342,10 @@ Exported MCP Apps:
 
 ```ts
 interface Diagnostic {
-  code: `MOSTRA_${Area}_${string}`;   // areas: ROUND-3 §9; codes are semver surface (AX-03)
+  code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
+  // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
+  //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM
+  // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";
   message: string;                     // what is wrong
   hint?: string;                       // what to do (one imperative sentence)
