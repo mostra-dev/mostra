@@ -430,6 +430,23 @@ Artifacts have no imposed look. An artifact's design is entirely the authoring a
 ### D69. Skill trigger
 The Agent Skill's description triggers on one branch: **the agent wants to communicate visually with the user**. That covers every case (asking, showing, deciding, reporting, demonstrating, keeping something up to date), since the uses are unbounded. The rest of [rounds/ROUND-4.md](rounds/ROUND-4.md) part B (purposes, boundaries, structures and leading words) is agreed, and full drafts are iterated with Mirza. *Source:* M8 Q5.
 
+### D70. Two frame-session modes behind the addressing port (delegated, extends D38)
+- **Cookie mode** (D38) applies wherever the shell and the artifact are same-site: loopback ports, Tailscale Serve and Funnel (one device hostname, different ports).
+- **Worker mode** applies wherever they are cross-site. In v1 that means Cloudflare quick tunnels, because `trycloudflare.com` is a public suffix and each tunnel is its own site. Hosted mode (v1.x) uses the same mechanism. The flow:
+  1. The shell loads the frame at `/_mostra/enter#t=<frame token>`.
+  2. The bootstrap page registers Mostra's service worker at scope `/`.
+  3. The worker attaches the frame session header to every same-origin request.
+  4. Event streams and WebSockets bypass the worker and authenticate with single-use tickets from an authenticated POST.
+
+  Origin and CSRF checks are unchanged in both modes.
+- **Constraint in worker mode:** the artifact can't register its own root-scope service worker. The client runtime turns such an attempt into a diagnostic rather than silently breaking the session.
+- The addressing port decides the mode per origin pair. Artifacts never see the difference.
+
+*Evidence:* VERIFIED_FACTS, cross-site frames (all engines and real Safari). *Source:* round-1 Q5 delegation (M6); found while designing HY-05 on 2026-10-10.
+
+### D71. Ledger engine: SQLite through better-sqlite3 (Default)
+The home's ledger is one SQLite database in WAL mode with `synchronous=FULL`, opened only by the supervisor, through `better-sqlite3` (MIT, prebuilt for the v1 platforms). `node:sqlite` replaces it when Node marks it stable; the store module hides the driver, so the switch is internal. *Evidence:* VERIFIED_FACTS. *Strength:* Default.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.

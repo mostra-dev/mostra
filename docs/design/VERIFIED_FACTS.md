@@ -167,6 +167,16 @@ Consequences for the design:
 - **Terminal lint** flags ZWJ sequences, flags and VS16 emoji, where TUI libraries and terminals disagree. That is where misaligned borders come from.
 - `@xterm/headless` 6.0.0 imported cleanly as an ES module default import in Node 24.12; the broken `module` entry reported by a third party did not reproduce.
 
+## Cross-site frames and the ledger engine
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| Public Suffix List entries | `trycloudflare.com` and `ts.net` are both PSL entries; `localhost` is not listed | publicsuffix.org list fetched 2026-10-10 | Each Cloudflare quick-tunnel hostname is its own site, so a shell tunnel embedding an artifact tunnel is **cross-site** and the D38 cookie session fails there. A tailnet device name (`host.<tailnet>.ts.net`) on different ports stays same-site, so Serve and Funnel keep the cookie session |
+| Cookie-free frame session (prototype `proto-frame`) | Shell on `http://localhost:P` embedding `http://127.0.0.1:P+1` (cross-site). The frame loads `/_mostra/enter#t=<token>` and registers a service worker at scope `/` (needs response header `Service-Worker-Allowed: /`), which attaches `x-mostra-frame` to every same-origin request. HTML navigation, scripts, images and POSTs all arrived authenticated, and no request reached the server without the header. Passed in Playwright Chromium, Firefox and WebKit (3 runs each, including shell reload) and in real Safari 26.2 (load and reload) | prototype runs 2026-10-10 | Cross-site frames work without cookies in every engine |
+| Streams through a service worker | Firefox stalls on infinite responses (EventSource or streamed `fetch`) passed through `respondWith`, deterministically after a reload. When the worker skips the stream path and the page opens it with a single-use ticket from an authenticated POST, EventSource and streamed `fetch` pass in all engines and real Safari, including reloads. One of four Firefox first loads timed out during worker installation (unexplained) | same | Event streams and WebSockets in worker mode use single-use tickets and bypass the worker. The worker install timeout is a WP test item |
+| `node:sqlite` | Node 24.12: works, but emits "ExperimentalWarning: SQLite is an experimental feature"; docs (v24.x and main) mark it "Stability 1.2, Release candidate" | local run; nodejs/node docs | Not yet a dependency for the durable ledger |
+| `better-sqlite3` 13.0.3 | MIT, `engines: node >=22`, prebuilt binary installed in about 6 s on macOS arm64, SQLite 3.53.4; WAL plus `synchronous=FULL`: 200 single-row commits in 105 ms, 1000 rows in one transaction in 4 ms | local run 2026-10-10 | The ledger engine for v1 (D71) |
+
 ## Publishing
 
 | Fact | Value | Source | Consequence |
