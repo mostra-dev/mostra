@@ -10,7 +10,14 @@
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "tools": {
-      "entry": ["bin/*.ts", "*/cli.ts", "check/fix.ts", "docs/*.ts", "test/**/*.test.ts"],
+      "entry": [
+        "bin/*.ts",
+        "*/cli.ts",
+        "check/fix.ts",
+        "docs/*.ts",
+        "test/**/*.test.ts",
+        "github/*.ts"
+      ],
       "project": ["**/*.ts", "!**/fixtures/**"],
       "ignore": ["**/fixtures/**"],
       "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "@mostra/tools-ts6"]
