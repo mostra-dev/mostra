@@ -235,6 +235,15 @@ describe("repository lint", () => {
     expect(result.output).toContain("actions/checkout@v4 must be pinned to a full commit SHA");
   });
 
+  it("rejects a LICENSE that isn't the canonical Apache-2.0 text, and a missing NOTICE", () => {
+    repo.edit("LICENSE", (t) => t.replace("Apache License", "Apache Licence"));
+    repo.run("rm", ["NOTICE"]);
+    const result = lint();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("LICENSE is not the canonical Apache-2.0 text");
+    expect(result.output).toContain("NOTICE is missing");
+  });
+
   it("rejects a dependency version outside the catalogs", () => {
     repo.edit("packages/protocol/package.json", (t) =>
       t.replace('"zod": "catalog:"', '"zod": "^4.6.5"'),

@@ -5,9 +5,11 @@
  * - dependencies use only `catalog:` or `workspace:` specifiers, so every version lives in a catalog;
  * - every package under `packages/` is in the package map, is Apache-2.0, has README.md and
  *   AGENTS.md, and, when published, names this repository exactly (npm trusted publishing);
+ * - `LICENSE` is the canonical Apache-2.0 text and `NOTICE` exists (D14);
  * - every GitHub Action is pinned to a full commit SHA with a version comment, and every workflow
  *   sets top-level permissions.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -16,6 +18,20 @@ import { listPackages, type WorkspacePackage } from "../lib/workspace.ts";
 import { PACKAGE_MAP } from "../package-map.ts";
 
 const REPOSITORY = "git+https://github.com/mostra-dev/mostra.git";
+/** SHA-256 of the canonical Apache License 2.0 text (apache.org/licenses/LICENSE-2.0.txt). */
+const APACHE_2_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30";
+
+/** Problems with the license files at the repository root. */
+export function licenseProblems(root: string): string[] {
+  const problems: string[] = [];
+  const license = join(root, "LICENSE");
+  if (!existsSync(license)) problems.push("LICENSE is missing (D14).");
+  else if (createHash("sha256").update(readFileSync(license)).digest("hex") !== APACHE_2_SHA256) {
+    problems.push("LICENSE is not the canonical Apache-2.0 text (D14).");
+  }
+  if (!existsSync(join(root, "NOTICE"))) problems.push("NOTICE is missing (D14).");
+  return problems;
+}
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",
@@ -130,6 +146,7 @@ function main(): void {
       manifest: rootPackage,
     },
   ];
+  problems.push(...licenseProblems(root));
   for (const pkg of packages)
     problems.push(...specifierProblems(pkg), ...packageProblems(pkg, root));
   for (const file of yamlFiles(join(root, ".github"))) {
