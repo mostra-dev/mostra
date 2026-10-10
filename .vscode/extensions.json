@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "dbaeumer.vscode-eslint",
+    "rust-lang.rust-analyzer",
+    "ms-playwright.playwright",
+    "vitest.explorer"
+  ]
+}

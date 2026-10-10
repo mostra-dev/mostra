@@ -1,0 +1,11 @@
+{
+  "editor.defaultFormatter": "biomejs.biome",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.biome": "explicit"
+  },
+  "[rust]": { "editor.defaultFormatter": "rust-lang.rust-analyzer" },
+  "eslint.options": { "overrideConfigFile": "tools/ts6/eslint.config.mjs" },
+  "eslint.workingDirectories": ["."],
+  "files.exclude": { "**/.tsbuild": true, "**/.turbo": true }
+}

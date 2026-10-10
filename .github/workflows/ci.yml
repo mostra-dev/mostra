@@ -1,0 +1,155 @@
+# The pull-request and main-branch gates (REPO_STANDARDS §6). Every job runs exactly one job of
+# `pnpm check` (tools/check/jobs.ts), so a job that passes here passes locally and the reverse.
+# Later work packages add their suites to these jobs, not new workflow files.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pull requests check what they affect; main checks everything.
+  SCOPE: ${{ github.event_name == 'pull_request' && '--affected' || '' }}
+  LEFTHOOK: "0"
+  TURBO_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+  FORCE_COLOR: "0"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: plan
+      - name: Compute the affected jobs
+        id: plan
+        run: |
+          plan=$(node tools/check/cli.ts --plan --json $SCOPE)
+          echo "$plan"
+          echo "jobs=$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).jobs))' "$plan")" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Plan"
+            echo
+            echo '```json'
+            echo "$plan"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  check:
+    name: ${{ matrix.job }}
+    needs: plan
+    if: needs.plan.outputs.jobs != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        job: [format-lint, types, unit, build, boundaries, api, licenses, docs, commits]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip when not affected
+        id: gate
+        env:
+          JOBS: ${{ needs.plan.outputs.jobs }}
+          JOB: ${{ matrix.job }}
+        run: |
+          if echo "$JOBS" | grep -q "\"$JOB\""; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not affected by this change." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        if: steps.gate.outputs.run
+        with:
+          job: ${{ matrix.job }}
+      - name: Rust toolchain cache
+        if: steps.gate.outputs.run && (matrix.job == 'format-lint' || matrix.job == 'unit')
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.job }}
+      - name: Install cargo-deny
+        if: steps.gate.outputs.run && matrix.job == 'unit'
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny@0.20.2
+      - name: pnpm check --job ${{ matrix.job }}
+        if: steps.gate.outputs.run
+        env:
+          JOB: ${{ matrix.job }}
+        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose
+
+  rust:
+    name: rust (${{ matrix.os }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"rust"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: rust
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-nextest@0.9.148,cargo-deny@0.20.2
+      - name: pnpm check --job rust
+        run: node tools/check/cli.ts --job rust $SCOPE --verbose
+
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          deny-licenses: AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, BUSL-1.1, SSPL-1.0, Elastic-2.0
+
+  # The one check branch protection requires: green only when every job above passed or was skipped.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [plan, check, rust, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All gates passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then exit 1; fi

@@ -1,0 +1,15 @@
+name: Feature request
+description: Something Mostra could do for agents, people or hosts.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: The need
+      description: Who needs it (agent author, viewer, host, plugin author) and what they're trying to do.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposal
