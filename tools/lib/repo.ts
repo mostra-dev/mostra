@@ -81,26 +81,36 @@ export function git(args: readonly string[], cwd: string = ROOT): string | undef
 }
 
 /**
- * The base the current work is compared against: `--base` when given, then `MOSTRA_BASE` (which
- * `pnpm check --base` sets for every step), then the pull request's base branch in CI, then
- * `origin/main`. Returns the merge base with `HEAD`, or `undefined` when
- * no base is reachable (a fresh clone without `origin`).
+ * The commit the current work is compared against: the merge base of `HEAD` with the explicit base
+ * (`base`, or `MOSTRA_BASE`, which `pnpm check` sets for every step), else with the pull
+ * request's base branch in CI, else with `origin/main`. An explicit base that doesn't resolve is
+ * an error, never a silent fallback. Returns `undefined` only when no default base exists (a
+ * fresh clone without `origin`).
  */
 export function mergeBase(base?: string): string | undefined {
+  const explicit = base ?? process.env["MOSTRA_BASE"];
+  if (explicit) {
+    const sha = git(["merge-base", "HEAD", explicit]);
+    if (!sha)
+      throw new Error(
+        `The base "${explicit}" doesn't resolve to a commit that shares history with HEAD.`,
+      );
+    return sha;
+  }
   const githubBase = process.env["GITHUB_BASE_REF"];
-  const candidates = [
-    base,
-    process.env["MOSTRA_BASE"],
-    githubBase ? `origin/${githubBase}` : undefined,
-    "origin/main",
-    "main",
-  ];
+  const candidates = [githubBase ? `origin/${githubBase}` : undefined, "origin/main", "main"];
   for (const candidate of candidates) {
     if (!candidate) continue;
     const sha = git(["merge-base", "HEAD", candidate]);
     if (sha) return sha;
   }
   return undefined;
+}
+
+/** The file names directly inside `dir` at a Git revision (empty when the directory is absent). */
+export function listAtRevision(revision: string, dir: string): string[] {
+  const result = runSync("git", ["ls-tree", "--name-only", `${revision}:${dir}`]);
+  return result.code === 0 ? result.stdout.split("\n").filter(Boolean) : [];
 }
 
 /** Reads a file's content at a Git revision, or `undefined` when it doesn't exist there. */

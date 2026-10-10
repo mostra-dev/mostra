@@ -85,32 +85,64 @@ export function packageProblems(pkg: WorkspacePackage, root: string = ROOT): str
   return problems;
 }
 
-/** Problems with one workflow or action file's text. */
+/** Every `uses:` value in a parsed workflow or action file, with where it sits. */
+function usesValues(document: unknown): { where: string; target: string }[] {
+  const found: { where: string; target: string }[] = [];
+  const doc = (document ?? {}) as {
+    jobs?: Record<string, { uses?: unknown; steps?: { uses?: unknown }[] }>;
+    runs?: { steps?: { uses?: unknown }[] };
+  };
+  const steps = (where: string, list: { uses?: unknown }[] | undefined): void => {
+    (Array.isArray(list) ? list : []).forEach((step, index) => {
+      if (typeof step?.uses === "string")
+        found.push({ where: `${where}.steps[${index}]`, target: step.uses });
+    });
+  };
+  for (const [name, job] of Object.entries(doc.jobs ?? {})) {
+    if (typeof job?.uses === "string") found.push({ where: `jobs.${name}`, target: job.uses });
+    steps(`jobs.${name}`, job?.steps);
+  }
+  steps("runs", doc.runs?.steps);
+  return found;
+}
+
+/**
+ * Problems with one workflow or action file: every action and reusable workflow pinned to a full
+ * commit SHA with a version comment, and top-level permissions on workflows. The file is parsed,
+ * so quoted keys and flow mappings can't hide a reference.
+ */
 export function workflowProblems(file: string, text: string): string[] {
   const problems: string[] = [];
+  let document: unknown;
+  try {
+    document = parseYaml(text);
+  } catch (error) {
+    return [`${file} is not valid YAML: ${(error as Error).message}`];
+  }
   const lines = text.split("\n");
-  lines.forEach((line, index) => {
-    const match = /^\s*-?\s*uses:\s*([^\s#]+)\s*(#.*)?$/.exec(line);
-    if (!match) return;
-    const target = match[1] ?? "";
-    if (target.startsWith("./")) return;
+  for (const { where, target } of usesValues(document)) {
+    if (target.startsWith("./")) continue;
+    const at = `${file} ${where}`;
     if (target.startsWith("docker://")) {
       if (!/@sha256:[0-9a-f]{64}$/.test(target))
-        problems.push(`${file}:${index + 1} docker action ${target} must be pinned by digest.`);
-      return;
+        problems.push(`${at}: docker action ${target} must be pinned by digest.`);
+      continue;
     }
     if (!/@[0-9a-f]{40}$/.test(target)) {
       problems.push(
-        `${file}:${index + 1} ${target} must be pinned to a full commit SHA (STANDARDS supply chain).`,
+        `${at}: ${target} must be pinned to a full commit SHA (STANDARDS supply chain).`,
       );
-    } else if (!/^#\s*v?\d/.test(match[2]?.trim() ?? "")) {
+      continue;
+    }
+    const line = lines.find((candidate) => candidate.includes(target)) ?? "";
+    if (!/#\s*v?\d/.test(line.slice(line.indexOf(target) + target.length))) {
       problems.push(
-        `${file}:${index + 1} ${target} needs a version comment, such as "# v4.2.2", for Renovate.`,
+        `${at}: ${target} needs a version comment on its line, such as "# v4.2.2", for Renovate.`,
       );
     }
-  });
+  }
   if (file.includes(".github/workflows/")) {
-    const parsed = parseYaml(text) as { permissions?: unknown } | null;
+    const parsed = document as { permissions?: unknown } | null;
     if (!parsed || parsed.permissions === undefined) {
       problems.push(`${file} must set top-level permissions (default contents: read).`);
     }

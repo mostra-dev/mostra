@@ -110,16 +110,18 @@ function locate(name: string, from: string): string | undefined {
   }
 }
 
-/** The production dependency closure of `rootDir`'s package, excluding itself. */
+/** The installed production closure of `rootDir`'s package (dependencies, optional and peer), excluding itself. */
 function closure(rootDir: string, rootName: string): Installed[] {
   const seen = new Map<string, Installed>();
   const queue: { dir: string; via: string }[] = [{ dir: realpathSync(rootDir), via: rootName }];
   while (queue.length > 0) {
     const { dir, via } = queue.shift() as { dir: string; via: string };
     const manifest = readManifest(dir) ?? {};
+    // Peers count when they are installed: a bridge package can pull an engine in that way.
     const deps = {
       ...((manifest["dependencies"] ?? {}) as Record<string, string>),
       ...((manifest["optionalDependencies"] ?? {}) as Record<string, string>),
+      ...((manifest["peerDependencies"] ?? {}) as Record<string, string>),
     };
     for (const name of Object.keys(deps)) {
       const found = locate(name, dir);

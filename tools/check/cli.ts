@@ -42,6 +42,10 @@ const plan = makePlan({
   affected: values.affected || values.fast,
   ...(values.base ? { base: values.base } : {}),
 });
+// Every gate compares against the same commit: Turbo hashes MOSTRA_BASE for the api and schemas
+// tasks (turbo.json `env`),
+// so a cached api or schemas result is never replayed against a different base.
+if (plan.base) process.env["MOSTRA_BASE"] = plan.base;
 const selected = JOBS.filter((job) => {
   if (values.job?.length) return values.job.includes(job.name);
   if (values.fast) return job.fast === true;
@@ -98,6 +102,8 @@ interface TurboTask {
   task: string;
   package: string;
   command: string;
+  dependencies?: string[];
+  cache?: { status?: string };
   execution?: { exitCode?: number };
 }
 
@@ -133,17 +139,35 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
     ? (JSON.parse(readFileSync(join(runsDir, summaryFile), "utf8")) as { tasks: TurboTask[] })
     : undefined;
   const ms = Date.now() - started;
+  const tasksById = new Map((summary?.tasks ?? []).map((task) => [task.taskId, task]));
+  const failedTask = (task: TurboTask): boolean =>
+    task.command !== "<NONEXISTENT>" &&
+    task.cache?.status !== "HIT" &&
+    (task.execution === undefined || task.execution.exitCode !== 0);
+  const anyFailed = (summary?.tasks ?? []).some(failedTask);
   return jobs.map((job) => {
     const own = (summary?.tasks ?? []).filter(
       (task) => job.tasks?.includes(task.task) && task.command !== "<NONEXISTENT>",
     );
-    const failed = own.filter((task) => (task.execution?.exitCode ?? 0) !== 0);
-    const ok = summary ? failed.length === 0 : code === 0;
+    // A job fails when one of its tasks failed or never ran, or when a task it depends on
+    // failed. If Turbo itself failed without a failing task to blame, every task job fails.
+    const blamed = own.filter(
+      (task) =>
+        failedTask(task) ||
+        (task.dependencies ?? []).some((id) => {
+          const dependency = tasksById.get(id);
+          return dependency !== undefined && failedTask(dependency);
+        }),
+    );
+    const ok = summary !== undefined && blamed.length === 0 && (code === 0 || anyFailed);
     const lines = [
       `tasks: ${own.map((task) => task.taskId).join(", ") || "none"}`,
       ...(ok
         ? []
-        : [`failed: ${failed.map((task) => task.taskId).join(", ") || "turbo"}`, ...output]),
+        : [
+            `failed: ${blamed.map((task) => task.taskId).join(", ") || `turbo exited ${code}`}`,
+            ...output,
+          ]),
     ];
     return { job: job.name, ok, ms, output: lines };
   });

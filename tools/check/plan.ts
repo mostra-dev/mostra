@@ -16,9 +16,18 @@ export interface Plan {
   readonly packages: readonly string[] | "all";
 }
 
-/** Files whose change can affect every package, so any of them makes the run a full one. */
+/**
+ * Files whose change can affect every job: shared configuration, the check machinery itself and
+ * the CI setup. Any of them makes the run a full one.
+ */
 const GLOBAL_INPUTS: readonly RegExp[] = [
   /^package\.json$/,
+  /^tools\/check\//,
+  /^tools\/lib\//,
+  /^tools\/package\.json$/,
+  /^\.github\/workflows\/ci\.yml$/,
+  /^\.github\/actions\//,
+  /^lefthook\.yml$/,
   /^pnpm-lock\.yaml$/,
   /^pnpm-workspace\.yaml$/,
   /^tsconfig\.base\.json$/,
@@ -35,7 +44,7 @@ export function makePlan(options: { affected: boolean; base?: string }): Plan {
   }
   const changed = changedFiles(base);
   if (changed.some((file) => GLOBAL_INPUTS.some((pattern) => pattern.test(file)))) {
-    return { base, changed, packages: "all" };
+    return { base, changed: "all", packages: "all" };
   }
   const packages = listPackages();
   const direct = new Set<string>();

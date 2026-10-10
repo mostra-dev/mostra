@@ -19,6 +19,8 @@ concurrency:
 env:
   # Pull requests check what they affect; main checks everything.
   SCOPE: ${{ github.event_name == 'pull_request' && '--affected' || '' }}
+  # The pull request's own head, so the commits job skips GitHub's synthetic merge commit.
+  MOSTRA_HEAD: ${{ github.event.pull_request.head.sha }}
   LEFTHOOK: "0"
   TURBO_TELEMETRY_DISABLED: "1"
   DO_NOT_TRACK: "1"

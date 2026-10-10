@@ -191,7 +191,13 @@ export const JOBS: readonly Job[] = [
       {
         label: "commit messages",
         command: "node",
-        args: ["tools/commits/cli.ts", "range", `${plan.base}..HEAD`],
+        // CI sets MOSTRA_HEAD to the pull request's head, so GitHub's synthetic merge commit
+        // stays out of the range while contributor merges stay in it.
+        args: [
+          "tools/commits/cli.ts",
+          "range",
+          `${plan.base}..${process.env["MOSTRA_HEAD"] || "HEAD"}`,
+        ],
       },
     ],
   },

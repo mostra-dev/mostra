@@ -24,10 +24,12 @@
     "api": {
       "dependsOn": ["build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.changeset/*.md"],
-      "outputs": []
+      "outputs": [],
+      "env": ["MOSTRA_BASE"]
     },
     "schemas": {
-      "outputs": []
+      "outputs": [],
+      "env": ["MOSTRA_BASE"]
     }
   }
 }

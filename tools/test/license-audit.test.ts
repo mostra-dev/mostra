@@ -20,6 +20,8 @@ interface Dep {
   readonly name: string;
   readonly license?: string;
   readonly files?: Record<string, string>;
+  /** Peer dependencies installed next to this one. */
+  readonly peers?: readonly Dep[];
 }
 
 /** A workspace with one published package depending on `deps` (installed as node_modules links). */
@@ -38,24 +40,28 @@ function workspace(deps: readonly Dep[]): string {
       dependencies: Object.fromEntries(deps.map((dep) => [dep.name, "1.0.0"])),
     }),
   );
-  for (const dep of deps) {
+  const install = (dep: Dep, into: string): void => {
     const dir = join(root, "vendor", dep.name);
     mkdirSync(dir, { recursive: true });
+    const peers = Object.fromEntries((dep.peers ?? []).map((peer) => [peer.name, "*"]));
     writeFileSync(
       join(dir, "package.json"),
       JSON.stringify({
         name: dep.name,
         version: "1.0.0",
         ...(dep.license ? { license: dep.license } : {}),
+        ...(dep.peers ? { peerDependencies: peers } : {}),
       }),
     );
     for (const [file, text] of Object.entries(dep.files ?? {})) {
       mkdirSync(join(dir, file, ".."), { recursive: true });
       writeFileSync(join(dir, file), text);
     }
-    mkdirSync(join(core, "node_modules", dep.name, ".."), { recursive: true });
-    symlinkSync(dir, join(core, "node_modules", dep.name));
-  }
+    mkdirSync(join(into, "node_modules", dep.name, ".."), { recursive: true });
+    symlinkSync(dir, join(into, "node_modules", dep.name));
+    for (const peer of dep.peers ?? []) install(peer, dir);
+  };
+  for (const dep of deps) install(dep, core);
   return root;
 }
 
@@ -120,6 +126,18 @@ describe("license audit", () => {
     expect(result.output).toContain('"BUSL-1.1", which is not on the OSI allowlist');
     expect(result.output).toContain(
       "unlicensed@1.0.0 (@mostra/core-fixture > unlicensed) declares no SPDX license",
+    );
+  });
+
+  it("follows installed peer dependencies (review finding 8)", () => {
+    const result = audit(
+      workspace([
+        { name: "bridge", license: "MIT", peers: [{ name: "engine", license: "BUSL-1.1" }] },
+      ]),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      'engine@1.0.0 (@mostra/core-fixture > bridge > engine) is licensed "BUSL-1.1"',
     );
   });
 

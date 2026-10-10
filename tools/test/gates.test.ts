@@ -171,6 +171,30 @@ describe("wire schemas (HO-07)", () => {
     expect(check.output).toContain(expected);
   });
 
+  it("fails when a published bundle is removed (review finding 2)", () => {
+    repo.edit("packages/protocol/scripts/wire-schemas.ts", (t) =>
+      t.replace(
+        "export const bundles = [",
+        "export const bundles = [] as const;\nexport const unused = [",
+      ),
+    );
+    const check = schemas("check");
+    expect(check.code).not.toBe(0);
+    expect(check.output).toContain('bundle "protocol" was removed or renamed');
+  });
+
+  it("refuses a custom refinement JSON Schema can't express (review finding 7)", () => {
+    repo.edit("packages/protocol/src/diagnostics/diagnostic.ts", (t) =>
+      t.replace(
+        "    message: z.string(),",
+        "    message: z.string().refine((value) => value.length > 0),",
+      ),
+    );
+    const write = schemas("write");
+    expect(write.code).not.toBe(0);
+    expect(write.output).toContain("uses a custom refinement");
+  });
+
   it("accepts an additive change once the snapshot is regenerated", () => {
     repo.edit("packages/protocol/src/diagnostics/diagnostic.ts", (t) =>
       t.replace(
@@ -308,6 +332,31 @@ describe("Rust", () => {
     const result = repo.run("cargo", ["deny", "--locked", "check", "licenses"]);
     expect(result.code).not.toBe(0);
     expect(result.output).toContain("BUSL-1.1");
+  });
+});
+
+describe("check runner", () => {
+  const check = (...args: string[]) => node("tools/check/cli.ts", ...args);
+
+  it("runs every job when the check machinery changes (review finding 10)", () => {
+    repo.edit("tools/check/jobs.ts", (t) => `${t}\n// seeded change\n`);
+    const plan = JSON.parse(check("--plan", "--json", "--affected").output) as { jobs: string[] };
+    expect(plan.jobs).toEqual(
+      expect.arrayContaining(["rust", "licenses", "docs", "api", "commits"]),
+    );
+  });
+
+  it("fails on a base that doesn't resolve instead of falling back (review finding 11)", () => {
+    const result = check("--plan", "--base", "no-such-ref");
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain('The base "no-such-ref" doesn\'t resolve');
+  });
+
+  it("fails a job whose prerequisite build failed (review finding 9)", () => {
+    repo.edit("packages/protocol/src/index.ts", (t) => `${t}\nexport const broken: number = ;\n`);
+    const result = check("--job", "api");
+    expect(result.code).not.toBe(0);
+    expect(result.output).toMatch(/✗ api/);
   });
 });
 
