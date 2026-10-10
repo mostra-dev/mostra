@@ -97,7 +97,7 @@
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
-| RV-01 | Comments can be pinned on any content (native DOM, canvas, kit charts, terminals, video and motion, served iframes, opaque iframes) | v1 | D23 | B |
+| RV-01 | Comments can be pinned on native DOM, canvas, kit charts, served iframes and opaque iframes (motion and video: RV-06; terminal cells: TM-07) | v1 | D23 | B |
 | RV-02 | Anchors store all applicable layers (semantic ID, W3C selectors, coordinates with viewport/DPR, screenshot crop); the crop is always stored | v1 | D23 | M, B |
 | RV-03 | Review sets support gallery, focus, synchronized compare (2 to 4) and choose-one; the choice and comments are part of the draft | v1 | D08, D23 | B |
 | RV-04 | The review overlay lives in the trusted shell; artifact code cannot hide or forge it | v1 | D23 | B |
@@ -250,4 +250,4 @@ These requirements come from decisions made during the design (D38 to D71). They
 | AX-09 | The CLI implements the D60 command set plus `mostra run` and `mostra state`, with the exit codes of INTERFACES §9 | v1 | D60 | I |
 | AX-10 | Harness plugins for Claude Code, Codex, Gemini CLI, Cursor and Copilot are generated as real copies from one `skills/` source and plugin definition | v1 | D65 | I, X |
 | EN-07 | Repository standards (REPO_STANDARDS.md): parallel, affected-only CI under 10 minutes for a typical pull request, `pnpm check` parity with CI, mechanical quality gates, lefthook, Conventional Commits with DCO, per-package AGENTS.md and agent playbooks | v1 | D50, D65 | M |
-
+| RV-06 | Comments on timelines, motion and video anchor to time plus region, and on slides to slide and step | v1 | D23 | B |
