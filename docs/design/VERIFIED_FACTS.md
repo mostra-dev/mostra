@@ -166,3 +166,19 @@ Consequences for the design:
 - **Width table:** the frame model records `widthTable: "unicode11"`. The ratatui capture path takes widths from ratatui's own buffer, which is exact for that path.
 - **Terminal lint** flags ZWJ sequences, flags and VS16 emoji, where TUI libraries and terminals disagree. That is where misaligned borders come from.
 - `@xterm/headless` 6.0.0 imported cleanly as an ES module default import in Node 24.12; the broken `module` entry reported by a third party did not reproduce.
+
+## Publishing
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| npm trusted publishing | OIDC from GitHub-hosted runners (also GitLab.com, CircleCI); needs npm CLI ≥ 11.5.1 and Node ≥ 22.14.0; configured **per package** on npmjs.com (up to 10 publishers); a new configuration must complete its first publish within **2 days** or it expires; configurations created after 2026-09-03 allow only `npm stage publish` (2FA approval per release) unless direct `npm publish` is also allowed; provenance is automatic from public GitHub repositories; `package.json` `repository.url` must match the repository exactly; recommended package setting "Require two-factor authentication and disallow tokens" | docs.npmjs.com/trusted-publishers | Per-package setup on npmjs.com is Mirza's account action. Stage-only would need his 2FA approval on every release, which conflicts with D36's seamless publication |
+| crates.io trusted publishing | Available for GitHub Actions through `rust-lang/crates-io-auth-action`, configured per crate on crates.io | forge.rust-lang.org/infra/docs/trusted-publishing.html; blog.rust-lang.org 2025-07-11 | **Hypothesis to verify in the release WP:** trusted publishing can only be configured for a crate that already exists, so each crate's first release needs a one-time API token created by Mirza |
+
+## Kit components (observed in shadcn templates)
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| `shadcn init -t vite -b <radix\|base> -p nova` | Scaffolds Vite 8, React 19.3, Tailwind 4, TypeScript ~6.0.2; `add --all` installs 61 components; the Radix variant also depends on `@base-ui/react`; components import `cn` from `cn` | `shadcn@4.21.4`, run on 2026-10-10 | The base-evaluation templates |
+| Base UI template defect | `scroll-area.tsx` in the Base UI variant fails `tsc -b` (unused `React` import, TS6133); the Radix variant is clean | same | Mostra's kit packs must type-check clean in CI for every base. The evaluation normalized this before any run |
+| shadcn Questionnaire | `questionnaire.tsx` wraps `@shadcn/react/questionnaire` (`@shadcn/react` 0.3.1, MIT): a step-by-step `<form>` with items, choices (`checked`, `onChange`), inputs (`value`), progress, previous, next, skip and submit | template source and `.d.ts` | Mostra's questionnaire binds these controlled props to fields and adds ranking, scales, per-item comments, a recommended option and sections |
+| Cross-base idiom (instrument check) | A Radix-style `asChild` in the Base UI variant, or a Base-UI-style `render` prop in the Radix variant, fails `tsc` with TS2322. `vite build`, rendering and clicking still succeed | evaluation control pages | `verify` must treat type errors as blocking and translate this TS2322 shape into a "wrong base" diagnostic with the right idiom as the fix |
