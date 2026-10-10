@@ -1,6 +1,6 @@
 # Mostra v1 work packages
 
-**Status:** Proposed sequence for Mirza's approval (C03-A). After approval, each package gets a full specification in `work-packages/WP-NN.md` (the assignment prompt, exact scope, required reading, acceptance checks and handoff), written from the summary here.
+**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
 
 ## How the sequence was built
 
