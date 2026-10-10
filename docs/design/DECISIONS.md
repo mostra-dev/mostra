@@ -16,6 +16,7 @@
 | M6 | 2026-10-10T10:07:56.180Z | C03-A round 1. Confirmed agent evaluations with an ask-first rule, OAuth only, a mostly-GPT model mix and token-based cost reports. v1.0 explicitly excludes Windows. Approving a WP approves all of its publication. Postpone or cheapen the domain; created the GitHub org `mostra-dev`; npm org next. Delegated addressing (Q5) and secrets details. Approved Q6 to Q13, the round-1 defaults and the tooling stack, and asked that version-churn guidance cover every tool with a recent major. Added four working notes: ask him for anything, install any tool, use only the `fast-worker` sub-agent, and establish strong repository standards from the start. |
 | M7 | 2026-10-10T10:59:01.070Z | C03-A round 2. Confirmed D34 as stated. Evaluations run in small batches, starting with a single call to find bottlenecks, then two or four at a time so a shared 5-hour usage limit isn't exhausted mid-batch; possibly two accounts; Claude runs to be discussed when ready; choose Codex or Jcode deliberately. Delegated Q2 to Q4 and approved Q5 to Q14, trusting C03-A's judgement throughout. Added a note: long-lived artifacts (a 24/7 personal dashboard, a company dashboard, an AI task manager) must be supported as fully as one-off artifacts, possibly with changes to submit and drafts. |
 | M8 | 2026-10-10T12:41:03.402Z | C03-A rounds 3 and 4. Confirmed the long-lived additions (D63) and direct npm publishing "in a robust and enterprise-grade way"; approved round 3 ("I trust your judgement"). Shell prototype accepted as a direction; artifact design must be unlimited and up to the authoring agent, with a baseline that makes even a weak agent's output beautiful and lets a frontier model customize everything. Skill trigger: "The agent wants to visually communicate to/with the user." |
+| M9 | 2026-10-10T14:55:06.757Z | Design approval. Q1: "Approved!" (the complete design, including D70 to D72 and the 27 work packages). Q2: WP-14 accepted as the planned C03-B threshold; "It's okay if this threshold moves to a later WP." Q3: approved a Claude check of EVAL-01 ("we can run it now"), asking first which harness it uses so he can sign in the right OAuth account. Q4: confirmed drafting the agent-facing prose in the WPs that build it. |
 
 ## Program-level decisions
 
@@ -453,6 +454,15 @@ Base UI is the default base. EVAL-01 found no first-pass difference between Base
 2. **Warm set.** `@hookform/resolvers` joins the warm set (D65).
 
 *Evidence:* [evaluations/eval-01/EVAL-01.md](evaluations/eval-01/EVAL-01.md). *Overturn:* a first-pass gap of 10 points or more in Radix's favor on any model in the D34 mix. *Source:* D27, D34; Mirza may veto at design approval.
+
+### D73. Design approved; C03-B threshold
+Mirza approved the complete C03-A design at M9, recorded in [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md). C03-B can start once WP-14 is accepted. That threshold may move to a later package if implementation reorders work; the move is recorded here, and nothing in C03-B's needs (JCODE_HOST) may move out of the packages before it. *Source:* M9 Q1, Q2.
+
+### D74. Agent-facing prose is drafted in the WPs that build it
+The Skill and AGENTS.md texts are drafted in WP-14, the MCP tool descriptions in WP-15, and CLI help and diagnostic hints in the package that adds each command or code. Each is iterated with Mirza until he accepts it (STANDARDS prose, D69). *Source:* M9 Q4.
+
+### D75. EVAL-01b: Claude check of the default base
+A Claude Sonnet run of EVAL-01 (6 prompts × 2 bases, in pairs, through Claude Code signed in with Mirza's OAuth account) checks D72 across model families, as D34 asks. Mirza approved the batch at M9. D72's overturn rule applies to its result. *Source:* M9 Q3.
 
 ## Research consensus adopted
 

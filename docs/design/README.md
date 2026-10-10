@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Program identity** | SP-58-C03-A in Mirza's Jcode program. The Jcode integration is SP-58-C03-B (D02) and needs no change to Mostra (D01). |
-| **Status** | Phase design complete, **awaiting Mirza's approval**. When he approves, `DESIGN_ACCEPTANCE.md` records it and the WP specifications are written in `work-packages/`. |
+| **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
 | **Next unit** | WP-01 (work-package mode), after approval. |
 
@@ -13,7 +13,7 @@
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D72, with source messages M1 to M8. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D75, with source messages M1 to M9. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J12, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, and the resolution of every seed open question (§15).
