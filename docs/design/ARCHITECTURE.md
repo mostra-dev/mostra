@@ -292,7 +292,7 @@ The **Rust crate** `mostra-host` has wire types generated from the schema, a han
 
 ## 12. Agent experience
 
-- **`verify`** (D29, D65): type-check and build; lint, including wrong-base idioms, churned APIs and field IDs; boot; render in the warm browser; collect errors, console, network and React boundaries; axe and an ARIA snapshot; screenshots at 1280×800 and 390×844, DPR 1, with token estimates; the smoke test (actions only through `dryRun()`, D55); regressions against the last passing version; one JSON verdict with stable `MOSTRA_<AREA>_<NAME>` codes.
+- **`verify`** (D29, D65): type-check and build; lint, including wrong-base idioms, churned APIs and field IDs; boot; render in the warm browser; collect errors, console, network and React boundaries; axe and an ARIA snapshot; screenshots at 1280×800 and 390×844, DPR 1, with token estimates; the smoke test (actions only through `dryRun()`, D55; observations without a runtime error are warnings, D72); regressions against the last passing version; one JSON verdict with stable `MOSTRA_<AREA>_<NAME>` codes.
 - **The CLI** (D60) is a thin protocol client with `--json` everywhere, documented exit codes and no prompts outside a TTY.
 - **The local MCP server** (D61) is a stateless protocol client with about twelve `artifact_`-prefixed tools.
 - **Documentation for agents:** the Skill (trigger D69), AGENTS.md in the repository and every scaffolded artifact, templates per family (including long-lived ones), a gallery with source and result, generated `llms.txt`, and harness plugins generated from one source (D65).
@@ -344,7 +344,7 @@ The remote server itself (Streamable HTTP MCP for the 2025-11-25 and 2026-07-28 
 | §10 | Shell visual design; bridge message set; replaceable shell | D68 (direction accepted; final pass in its WP); D65, INTERFACES §5; D65 |
 | §11 | Share commands and hostname registration; drive tools or print instructions | D60, §10; D47 (drive, explain when missing); D70 for cross-site tunnels |
 | §12 | Extra transports; schema source; versioning; mandatory ports; AI port | D59 (stdio and Unix socket); D59 (Zod 4); D59 (dated revisions); D58 (all optional); D46 (out of v1, name reserved) |
-| §13 | Default base; final kit list; questionnaire; maps and 3D; deck grammar; composition primitive | evaluation EVAL-01 (in progress); D65 and VERIFIED_FACTS; D65; D65 (on demand); D65; D65 |
+| §13 | Default base; final kit list; questionnaire; maps and 3D; deck grammar; composition primitive | D72 (Base UI, EVAL-01); D65, D72 and VERIFIED_FACTS; D65; D65 (on demand); D65; D65 |
 | §14 | PTY implementation; headless emulator; frame schema; ghostty-web | D65 (node-pty in a PTY host behind the `pty` port); D65 (`@xterm/headless`, Unicode 11); D65, INTERFACES §10; watch list behind the embed-engine contract |
 | §15 | Command set; diagnostics catalog; smoke scope; regression baseline; viewports; warm browser; Skill structure; harness plugins | D60; D65 (scheme), catalog grown per WP; D65; D65; D65; D65; D69 and ROUND-4; D65 |
 | §16 | Tool list; MCP Apps storage; per-host conformance; further interop | D61; D61; D65; D47 (v1.x) |

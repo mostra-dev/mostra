@@ -447,6 +447,13 @@ The Agent Skill's description triggers on one branch: **the agent wants to commu
 ### D71. Ledger engine: SQLite through better-sqlite3 (Default)
 The home's ledger is one SQLite database in WAL mode with `synchronous=FULL`, opened only by the supervisor, through `better-sqlite3` (MIT, prebuilt for the v1 platforms). `node:sqlite` replaces it when Node marks it stable; the store module hides the driver, so the switch is internal. *Evidence:* VERIFIED_FACTS. *Strength:* Default.
 
+### D72. Default shadcn base: Base UI (decided by evaluation, D27)
+Base UI is the default base. EVAL-01 found no first-pass difference between Base UI and Radix for GPT-6.1-Sol: 17 of 20 each, no cross-base type errors in 40 runs. The secondary factors decide: Base UI is shadcn's own default (along with its docs, Skills and `llms.txt`), most new shadcn projects choose it, and the model used its `render` prop correctly every time. Radix stays a fully supported base (D27). Two consequences of the same evaluation:
+1. **`verify` severity.** Smoke-test observations without a runtime error are warnings, and only definite failures are errors. False positives made agents break working code.
+2. **Warm set.** `@hookform/resolvers` joins the warm set (D65).
+
+*Evidence:* [evaluations/eval-01/EVAL-01.md](evaluations/eval-01/EVAL-01.md). *Overturn:* a first-pass gap of 10 points or more in Radix's favor on any model in the D34 mix. *Source:* D27, D34; Mirza may veto at design approval.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.

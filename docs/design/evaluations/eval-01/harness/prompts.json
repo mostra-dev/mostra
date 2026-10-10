@@ -1,0 +1,22 @@
+[
+ "A settings page with tabs for Profile, Notifications and Danger zone. Profile has name and email inputs and a timezone select. Notifications has several labelled switches. Danger zone has a Delete account button that opens a confirmation alert dialog. Saving shows a toast.",
+ "A project dashboard header: logo, a row of icon buttons that each have a tooltip, a notification badge count, and a user menu (dropdown) whose items are a Profile link (a real <a href=\"#profile\">), Settings, a separator and Log out.",
+ "A command palette: pressing Cmd/Ctrl+K or clicking a 'Search' button opens a command dialog with grouped items (Pages, Projects, Actions). Choosing an item closes the dialog and shows which item was chosen on the page.",
+ "A meeting-room booking form: a date picker (popover with a calendar), a select for the time slot, a radio group for the room, and a Book button that opens a dialog summarising the booking with Confirm and Cancel.",
+ "An invoices table with 12 sample rows: checkbox selection with a select-all header checkbox, sortable Amount and Date columns, a status badge, a per-row actions dropdown (View, Download, Delete), and pagination of 5 rows per page.",
+ "An app shell with navigation: on wide screens a navigation menu across the top; on narrow screens a menu button that opens a sheet with the same links. Every navigation link must be a real <a> element styled like a button.",
+ "An FAQ page: an accordion of 8 questions, a collapsible 'Show more questions' section, and author names that show a hover card with a short bio.",
+ "A file manager list of 10 files. Right-clicking a row opens a context menu with Rename, Duplicate and Delete. Rename opens a dialog with an input prefilled with the name; saving updates the list.",
+ "A pricing section with three plans, a toggle group to switch Monthly/Yearly prices, info icons with tooltips explaining features, and each plan's call-to-action as a real link (<a href=\"#signup\">) styled as a button.",
+ "A four-step questionnaire with a progress bar: step 1 radio group, step 2 checkboxes, step 3 a textarea, step 4 a review card summarising all answers, with Back/Next buttons and Submit on the last step.",
+ "A small kanban board with three columns of task cards. Each card shows a priority badge. Clicking a card opens a drawer where the title, a status select and a description textarea can be edited and saved.",
+ "A notification center: a bell button opens a popover with tabs (All, Unread), a scrollable list of 15 notifications, and a 'Mark all as read' button that updates the unread count on the bell.",
+ "An analytics dashboard with four stat cards, an area chart and a bar chart built with the chart component, and a select that switches the date range (7, 30, 90 days) and updates the charts.",
+ "A signup form with a searchable country picker (a combobox built from a popover and a command list), a name input with a label, and a Submit button; after submit, show the chosen values.",
+ "An image gallery grid of 9 cards using aspect-ratio boxes (use https://picsum.photos images). Clicking a card opens a dialog lightbox with a carousel to move between images.",
+ "An admin user editor form using react-hook-form with zod validation: email (valid email), role (select: Admin, Editor, Viewer), active (switch) and a bio (max 200 characters). Show field errors, and a toast with the values on successful submit.",
+ "A document editor shell: a breadcrumb at the top and a menubar with File and Edit menus. File has a submenu 'Export' with three formats; View has checkbox items for 'Show ruler' and 'Show grid' whose state is displayed on the page.",
+ "A team presence widget: a row of overlapping avatars, each with a tooltip showing the person's name, and a dropdown menu with a radio group to set your own status (Online, Away, Busy) shown as a badge.",
+ "A mortgage calculator: sliders for loan amount, interest rate and years, each paired with a number input that stays in sync, tooltips on help icons, a separator, and a result card with the monthly payment.",
+ "A mail client layout using resizable panels: a message list on the left with an 'Unread only' toggle, the selected message on the right, and a Compose button that opens a sheet with To, Subject and body fields and a Send button."
+]

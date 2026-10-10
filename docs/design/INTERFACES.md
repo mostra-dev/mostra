@@ -48,7 +48,7 @@ export const artifact = defineArtifact({
   links?: { rel: "round-of" | "follows" | "replaces" | (string & {}); artifact: string }[];
   mode?: "spa";                      // D19; "rsc" later
   submission?: { policy: "once"; scope?: "per-artifact" | "per-viewer" } | { policy: "epochs" } | { policy: "none" }; // requested; host decides (D39, D63)
-  kit?: { base?: "base" | "radix"; theme?: string };   // default base from EVAL-01
+  kit?: { base?: "base" | "radix"; theme?: string };   // default "base" (D72)
   terminals?: Record<string, { command: string[]; cwd?: string; env?: Record<string, string>; cols?: number; rows?: number; input?: boolean }>;
   demos?: Record<string, { command: string[]; cwd?: string; ready?: string; bridge?: boolean } | { attach: number; bridge?: boolean }>;
   limits?: { heapMb?: number; watchdogMs?: number; idleMinutes?: number };
@@ -346,7 +346,7 @@ interface Diagnostic {
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
   //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
-  severity: "error" | "warning" | "hint";
+  severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong
   hint?: string;                       // what to do (one imperative sentence)
   fix?: { kind: "replace" | "insert" | "delete" | "command"; file?: string; range?: [number, number, number, number]; text?: string; command?: string };
