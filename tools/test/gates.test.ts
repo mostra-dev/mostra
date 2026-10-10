@@ -117,6 +117,19 @@ describe("API reports", () => {
     repo.write(".changeset/seeded.md", '---\n"@mostra/protocol": minor\n---\n\nSeeded export.\n');
     expect(api().code).toBe(0);
   });
+
+  it("publint and are-the-types-wrong reject a package whose types don't resolve", () => {
+    expect(build().code).toBe(0);
+    expect(api().code).toBe(0);
+    repo.edit("packages/protocol/package.json", (text) =>
+      text.replace('"types": "./dist/index.d.ts"', '"types": "./dist/missing.d.ts"'),
+    );
+    const result = api();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("publint:");
+    expect(result.output).toContain("are-the-types-wrong:");
+    expect(result.output).toContain("missing.d.ts");
+  });
 });
 
 describe("wire schemas (HO-07)", () => {
