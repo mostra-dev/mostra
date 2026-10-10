@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "customConditions": [],
+    "rootDir": ".",
+    "outDir": ".tsbuild",
+    "types": ["node"],
+    "isolatedDeclarations": false,
+    "declarationMap": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", ".tsbuild", "**/fixtures/**", "ts6"]
+}

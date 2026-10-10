@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/design/work-packages/WP-NN.md from WORK_PACKAGES.md, REQUIREMENTS.md, the evidence checks
-in evidence_matrix.py and the per-package detail below. Edit this file or the dossier, then regenerate."""
+in evidence_matrix.py and the per-package detail below. Edit this file or the dossier, then regenerate.
+With --check it writes nothing and fails when a committed specification is stale (CI docs job)."""
 import re, sys
 from evidence_matrix import D, load, CHECKS
 
@@ -245,6 +246,7 @@ def main():
     out_dir = D / "work-packages"
     out_dir.mkdir(exist_ok=True)
     seen = []
+    stale = []
     for b in blocks:
         head, body = b.split("\n", 1)
         m = re.match(r"(WP-\d\d)\. (.+)", head)
@@ -281,11 +283,19 @@ def main():
         if det.get("publication"):
             L += ["", "## Publication", "", det["publication"]]
         L += ["", "## Handoff", "", det["handoff"], ""]
-        (out_dir / f"{wp}.md").write_text("\n".join(L))
+        text = "\n".join(L)
+        target = out_dir / f"{wp}.md"
+        if "--check" in sys.argv:
+            if not target.exists() or target.read_text() != text:
+                stale.append(wp)
+        else:
+            target.write_text(text)
     missing = set(DETAIL) ^ set(seen)
     if missing:
         sys.exit(f"detail and WORK_PACKAGES disagree: {sorted(missing)}")
-    print("wrote", len(seen), "specifications")
+    if stale:
+        sys.exit(f"stale WP specifications {stale}: run python3 tools/design/wp_specs.py")
+    print("checked" if "--check" in sys.argv else "wrote", len(seen), "specifications")
 
 
 if __name__ == "__main__":

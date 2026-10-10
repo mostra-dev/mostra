@@ -1,5 +1,15 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "files": [],
-  "references": [{ "path": "packages/protocol" }, { "path": "tools" }]
+  "references": [
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "tools"
+    },
+    {
+      "path": "tests/e2e"
+    }
+  ]
 }

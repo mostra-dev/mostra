@@ -1,0 +1,28 @@
+{
+  "name": "@mostra/tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repository tooling: the check runner, generators, license audit, schema compatibility and CI helpers.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "mostra-tools": "./bin/mostra-tools.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@mostra/tools-ts6": "workspace:*",
+    "publint": "catalog:",
+    "spdx-expression-parse": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/spdx-expression-parse": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

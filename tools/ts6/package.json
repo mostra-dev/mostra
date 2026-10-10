@@ -1,0 +1,16 @@
+{
+  "name": "@mostra/tools-ts6",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tools that need TypeScript's JavaScript compiler API, pinned to TypeScript 6 (REPO_STANDARDS §4).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@microsoft/api-extractor": "catalog:",
+    "dependency-cruiser": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "typescript": "catalog:ts6",
+    "typescript-eslint": "catalog:"
+  }
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/design/EVIDENCE_MATRIX.md from REQUIREMENTS.md, WORK_PACKAGES.md and the checks below,
-and fail if any v1 requirement lacks exactly one owner or any owned ID is unknown. Design-phase tool."""
+and fail if any v1 requirement lacks exactly one owner or any owned ID is unknown. With --check it
+writes nothing and fails when the committed matrix is stale (the docs job in CI runs this)."""
 import re, sys, pathlib
 
 D = pathlib.Path(__file__).resolve().parents[2] / "docs" / "design"
@@ -213,7 +214,13 @@ def main():
            "", "| ID | Owner | Route | Concrete check | Evidence |", "|---|---|---|---|---|"]
     for rid, r in v1.items():
         out.append(f"| {rid} | {owners[rid][0]} | {r['route']} | {CHECKS[rid]} | {evidence.get(rid, 'unverified')} |")
-    (d / "EVIDENCE_MATRIX.md").write_text("\n".join(out) + "\n")
+    text = "\n".join(out) + "\n"
+    target = d / "EVIDENCE_MATRIX.md"
+    if "--check" in sys.argv:
+        if target.read_text() != text:
+            sys.exit("docs/design/EVIDENCE_MATRIX.md is stale: run python3 tools/design/evidence_matrix.py")
+    else:
+        target.write_text(text)
     counts = {}
     for rid in v1:
         counts[owners[rid][0]] = counts.get(owners[rid][0], 0) + 1

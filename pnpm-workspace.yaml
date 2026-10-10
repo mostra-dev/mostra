@@ -9,6 +9,7 @@ packages:
   - examples/*
   - tools
   - tools/ts6
+  - tests/*
 
 # Supply chain: install nothing published less than 7 days ago (Renovate uses the same cooldown),
 # fail instead of falling back, refuse trust downgrades, and run no install scripts unless allowed.
