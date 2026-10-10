@@ -15,6 +15,7 @@
 | M5 | 2026-10-10T07:05:13.203Z | "Yes to everything." Approved the RSC plan, multi-base shadcn, the name Mostra, the v1 scope, the C03-A home and standards, and the license acknowledgment flow. Asked for thorough documents in which nothing discussed is missed. |
 | M6 | 2026-10-10T10:07:56.180Z | C03-A round 1. Confirmed agent evaluations with an ask-first rule, OAuth only, a mostly-GPT model mix and token-based cost reports. v1.0 explicitly excludes Windows. Approving a WP approves all of its publication. Postpone or cheapen the domain; created the GitHub org `mostra-dev`; npm org next. Delegated addressing (Q5) and secrets details. Approved Q6 to Q13, the round-1 defaults and the tooling stack, and asked that version-churn guidance cover every tool with a recent major. Added four working notes: ask him for anything, install any tool, use only the `fast-worker` sub-agent, and establish strong repository standards from the start. |
 | M7 | 2026-10-10T10:59:01.070Z | C03-A round 2. Confirmed D34 as stated. Evaluations run in small batches, starting with a single call to find bottlenecks, then two or four at a time so a shared 5-hour usage limit isn't exhausted mid-batch; possibly two accounts; Claude runs to be discussed when ready; choose Codex or Jcode deliberately. Delegated Q2 to Q4 and approved Q5 to Q14, trusting C03-A's judgement throughout. Added a note: long-lived artifacts (a 24/7 personal dashboard, a company dashboard, an AI task manager) must be supported as fully as one-off artifacts, possibly with changes to submit and drafts. |
+| M8 | 2026-10-10T12:41:03.402Z | C03-A rounds 3 and 4. Confirmed the long-lived additions (D63) and direct npm publishing "in a robust and enterprise-grade way"; approved round 3 ("I trust your judgement"). Shell prototype accepted as a direction; artifact design must be unlimited and up to the authoring agent, with a baseline that makes even a weak agent's output beautiful and lets a frontier model customize everything. Skill trigger: "The agent wants to visually communicate to/with the user." |
 
 ## Program-level decisions
 
@@ -400,6 +401,34 @@ Evaluation runs never fire as one big batch. The first run of a new harness is a
 - Jcode's sub-agents aren't ready for this use (D49).
 
 *Source:* M7 Q1.
+
+### D65. Round 3 shapes (delegated)
+Mirza approved every shape in [rounds/ROUND-3.md](rounds/ROUND-3.md) as written. Those sections are the record and are carried into the dossier unchanged:
+- kit components resolving without copying, and `mostra add` copying one for editing (§1.1);
+- the warm set, with maps, 3D and Excalidraw installed on demand (§1.2);
+- one token system mapped to the MCP Apps variables (§1.3);
+- the questionnaire (§1.4) and review sets with a trusted Choose control (§2);
+- the `Timeline`/`Clip`/`useFrame` composition primitive (§3) and the Slidev-style MDX deck grammar (§4);
+- terminals declared in the manifest, the frame model, node-pty in a PTY host process, and web demos with bridge injection on by default (§5);
+- the six v1 contract packages, the plugin manifest, packs, and the loading and conflict rules (§6);
+- the internal `RenderMode` contract (§7) and the shell bridge message set, with a host-replaceable shell (§8);
+- the `verify` code scheme, smoke-test scope, regression baseline, viewports and warm browser (§9);
+- harness plugins and MCP Apps conformance scope (§10);
+- package map P2 (§11.1), the repository standards (§11.2) and the publication pipeline (§11.3).
+
+*Source:* M8 Q3.
+
+### D66. Long-lived additions confirmed
+D63 is confirmed as written: two configurations of one model, set mainly by the submission policy and field scope. *Source:* M8 Q1.
+
+### D67. Direct npm publishing from a protected environment
+Releases publish when the Changesets release pull request merges. The workflow runs in a protected GitHub environment that only that merge can trigger. npm trusted publishing is configured for direct `npm publish` with provenance, and each package is set to "Require two-factor authentication and disallow tokens". crates.io uses trusted publishing through `rust-lang/crates-io-auth-action`. *Rejected:* stage-only publishing, which needs Mirza's 2FA on every release (D36). *Source:* M8 Q2.
+
+### D68. Design freedom with a beautiful baseline
+Artifacts have no imposed look. An artifact's design is entirely the authoring agent's choice: any styling, fonts, layout, motion, libraries, or none of the kit at all. The kit and its tokens are a **baseline** that makes the result beautiful when an agent with no design skill uses the defaults. Every kit component is restyleable through tokens, `className` and copy-source editing, and nothing in Mostra enforces kit usage. The shell is deliberately quiet so it never competes with the artifact. The round-4 shell prototype is a **direction**, not the final visual design; the final pass happens in the shell's WP with design-focused review (Mirza may supply design skills). *Source:* M8 Q4.
+
+### D69. Skill trigger
+The Agent Skill's description triggers on one branch: **the agent wants to communicate visually with the user**. That covers every case (asking, showing, deciding, reporting, demonstrating, keeping something up to date), since the uses are unbounded. The rest of [rounds/ROUND-4.md](rounds/ROUND-4.md) part B (purposes, boundaries, structures and leading words) is agreed, and full drafts are iterated with Mirza. *Source:* M8 Q5.
 
 ## Research consensus adopted
 
