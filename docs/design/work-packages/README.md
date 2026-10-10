@@ -21,7 +21,7 @@ WORK PACKAGE: WP-NN
 
    When in doubt, read more (D49). Bulk material you only need summarized (long research reports, large upstream docs) may go to a `fast-worker` sub-agent with an explicit file list, returning the summary in its reply. That is the only sub-agent use allowed (D49). Design and implementation decisions are never delegated.
 2. **Record the baseline** in your progress notes: branch, `HEAD`, `git status`, and the result of `pnpm check` (from WP-02 on) with any failures that were already there.
-3. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance).
+3. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance). Push the branch and open a pull request early so CI runs on GitHub while you work (D76). Merge only after acceptance.
 4. **Re-verify facts.** Check every third-party version, license or behavior you depend on and that [../VERIFIED_FACTS.md](../VERIFIED_FACTS.md) doesn't already cover for the current date. Append what you verify, with source and date.
 
 ## 2. Working

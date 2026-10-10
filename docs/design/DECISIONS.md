@@ -17,6 +17,7 @@
 | M7 | 2026-10-10T10:59:01.070Z | C03-A round 2. Confirmed D34 as stated. Evaluations run in small batches, starting with a single call to find bottlenecks, then two or four at a time so a shared 5-hour usage limit isn't exhausted mid-batch; possibly two accounts; Claude runs to be discussed when ready; choose Codex or Jcode deliberately. Delegated Q2 to Q4 and approved Q5 to Q14, trusting C03-A's judgement throughout. Added a note: long-lived artifacts (a 24/7 personal dashboard, a company dashboard, an AI task manager) must be supported as fully as one-off artifacts, possibly with changes to submit and drafts. |
 | M8 | 2026-10-10T12:41:03.402Z | C03-A rounds 3 and 4. Confirmed the long-lived additions (D63) and direct npm publishing "in a robust and enterprise-grade way"; approved round 3 ("I trust your judgement"). Shell prototype accepted as a direction; artifact design must be unlimited and up to the authoring agent, with a baseline that makes even a weak agent's output beautiful and lets a frontier model customize everything. Skill trigger: "The agent wants to visually communicate to/with the user." |
 | M9 | 2026-10-10T14:55:06.757Z | Design approval. Q1: "Approved!" (the complete design, including D70 to D72 and the 27 work packages). Q2: WP-14 accepted as the planned C03-B threshold; "It's okay if this threshold moves to a later WP." Q3: approved a Claude check of EVAL-01 ("we can run it now"), asking first which harness it uses so he can sign in the right OAuth account. Q4: confirmed drafting the agent-facing prose in the WPs that build it. |
+| M10 | 2026-10-10T15:11:53.172Z | Signed in Claude Code for EVAL-01b ("you can run the sonnet prompts"). GitHub: "i approve everything needed that we planned for git/github related stuff. you can create & push the repo, and the wp-01 agent can work on it in any way needed." |
 
 ## Program-level decisions
 
@@ -463,6 +464,14 @@ The Skill and AGENTS.md texts are drafted in WP-14, the MCP tool descriptions in
 
 ### D75. EVAL-01b: Claude check of the default base
 A Claude Sonnet run of EVAL-01 (6 prompts × 2 bases, in pairs, through Claude Code signed in with Mirza's OAuth account) checks D72 across model families, as D34 asks. Mirza approved the batch at M9. D72's overturn rule applies to its result. *Source:* M9 Q3.
+
+### D76. GitHub repository and pre-acceptance pushes
+Standing authorization for everything planned on Git and GitHub:
+- **The design session** creates the public repository `mostra-dev/mostra` (D13) and pushes `main` with the accepted dossier.
+- **WP sessions** may push their `wp/NN-*` branches and open pull requests before acceptance, so CI evidence exists when Mirza reviews.
+- **WP-01** may configure the repository as REPO_STANDARDS requires: private vulnerability reporting, secret scanning with push protection, branch protection and required checks on `main`, the protected `release` environment, Actions permissions, CODEOWNERS, labels and Pages.
+
+Merging to `main` and publishing packages still follow acceptance (D36). Deleting the repository, transferring it, or making it private would still need Mirza's explicit approval (STANDARDS). *Source:* M10.
 
 ## Research consensus adopted
 

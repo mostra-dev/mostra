@@ -134,6 +134,7 @@ These need Mirza's explicit approval each time, unless a standing authorization 
 
 **Standing authorizations.**
 - **Publication (D36).** Mirza's acceptance of a work package authorizes every publication step for it: pushing to the public repository, publishing to npm and crates.io, creating releases and deploying the docs site. Ask only when something is uncertain or a real dilemma arises.
+- **GitHub (D76).** The public repository `mostra-dev/mostra` exists. WP sessions may push their branches and open pull requests before acceptance, and WP-01 configures the repository settings REPO_STANDARDS requires. Merging to `main` follows acceptance. Deleting, transferring or privatizing the repository still needs Mirza's approval.
 - **Tools (D49).** Agents may install any tool without asking. Large installs may use the external disk `Active` when the internal disk is tight. This extends the 2026-09-18T21:12:17.500Z authorization.
 - **GPT-only evaluation batches (D34)** start after the agent announces them; they don't wait for approval.
 
