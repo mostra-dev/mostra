@@ -18,6 +18,7 @@
 | M8 | 2026-10-10T12:41:03.402Z | C03-A rounds 3 and 4. Confirmed the long-lived additions (D63) and direct npm publishing "in a robust and enterprise-grade way"; approved round 3 ("I trust your judgement"). Shell prototype accepted as a direction; artifact design must be unlimited and up to the authoring agent, with a baseline that makes even a weak agent's output beautiful and lets a frontier model customize everything. Skill trigger: "The agent wants to visually communicate to/with the user." |
 | M9 | 2026-10-10T14:55:06.757Z | Design approval. Q1: "Approved!" (the complete design, including D70 to D72 and the 27 work packages). Q2: WP-14 accepted as the planned C03-B threshold; "It's okay if this threshold moves to a later WP." Q3: approved a Claude check of EVAL-01 ("we can run it now"), asking first which harness it uses so he can sign in the right OAuth account. Q4: confirmed drafting the agent-facing prose in the WPs that build it. |
 | M10 | 2026-10-10T15:11:53.172Z | Signed in Claude Code for EVAL-01b ("you can run the sonnet prompts"). GitHub: "i approve everything needed that we planned for git/github related stuff. you can create & push the repo, and the wp-01 agent can work on it in any way needed." |
+| M11 | 2026-10-10T18:49:28.119Z | WP-01 questions. Approved the Crockford alphabet for version IDs ("I trust you to make the most robust decision"), the first host protocol revision `2026-10-10`, protected `main` with no bypass, installing Renovate himself, and the REPO_STANDARDS §4 correction. Contact address mmirzabicer@gmail.com; his surname is Biçer ("c" is fine for compatibility). Delegated the agent-facing prose and asked that branch protection, pull requests, CI and publishing all be done "in the **best** manner possible", acting where possible and instructing him otherwise. |
 
 ## Program-level decisions
 
@@ -472,6 +473,15 @@ Standing authorization for everything planned on Git and GitHub:
 - **WP-01** may configure the repository as REPO_STANDARDS requires: private vulnerability reporting, secret scanning with push protection, branch protection and required checks on `main`, the protected `release` environment, Actions permissions, CODEOWNERS, labels and Pages.
 
 Merging to `main` and publishing packages still follow acceptance (D36). Deleting the repository, transferring it, or making it private would still need Mirza's explicit approval (STANDARDS). *Source:* M10.
+
+### D77. Version IDs use Crockford base32 (delegated)
+`versionId` is `ver_` plus the first 26 characters of the SHA-256 digest of `sourceDigest ‖ envDigest` in Crockford's base32 alphabet (`0-9A-HJKMNP-TV-Z`, uppercase, most significant bit first), 130 bits. Every Mostra ID body then uses the one alphabet ULIDs use, so parsers, logs and copy-paste behave alike, and the letters I, L, O and U never appear. `VersionId.fromSha256` in `@mostra/protocol` is the single encoder. *Source:* M11 Q1 (delegated). *Fills* DATA_MODEL §2, which named "base32" without an alphabet.
+
+### D78. The first host protocol revision is `2026-10-10`
+`HOST_PROTOCOL_REVISIONS` in `@mostra/protocol` starts at `2026-10-10`, the date WP-01 defined the protocol's foundations. Later work packages extend it additively; a breaking change adds a newer revision (D32, D59). *Source:* M11 Q2.
+
+### D79. `main` is protected; everything lands through pull requests
+`main` takes changes only through pull requests that pass the `ci-ok` check and code scanning, merged with merge commits. Force pushes and deletion are blocked, and nobody bypasses the rules, including administrators. The progress report a WP finalizes after acceptance therefore reaches `main` through its own small pull request that merges when green. Release tags can't be moved or deleted. *Source:* M11 Q3. *Changes* the publication step of work-packages/README.md §4, which said "push".
 
 ## Research consensus adopted
 

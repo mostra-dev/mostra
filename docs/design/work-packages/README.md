@@ -66,8 +66,8 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
 ## 4. Acceptance, publication and handoff
 
 1. **Present the candidate to Mirza:** what was built, the evidence table, deviations and their reasons, what wasn't run and why, and any prose awaiting his review.
-2. **After he accepts, publish** under D36 and D67: merge to `main`, push, release (packages publish through the release pipeline once WP-11 exists) and deploy docs. Ask only where something is genuinely uncertain.
-3. **Finalize `docs/progress/PROGRESS-WP-NN.md`:**
+2. **After he accepts, publish** under D36, D67 and D79: merge the pull request into the protected `main`, release (packages publish through the release pipeline once WP-11 exists) and deploy docs. Ask only where something is genuinely uncertain.
+3. **Finalize `docs/progress/PROGRESS-WP-NN.md`** and land it on `main` through a small pull request that merges when green (D79):
    - the decisions taken inside the package;
    - the exact commits (range and `HEAD`);
    - the evidence table (§3), every owned requirement in it;

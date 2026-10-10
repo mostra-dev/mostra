@@ -9,7 +9,7 @@
   | Prefix | Entity | Form |
   |---|---|---|
   | `art_` | artifact | ULID |
-  | `ver_` | version | 26 characters of base32 SHA-256 (DATA_MODEL §2), so content-addressed |
+  | `ver_` | version | 26 characters of Crockford base32 SHA-256 (DATA_MODEL §2, D77), so content-addressed |
   | `vw_` | view | ULID |
   | `vwr_` | viewer | ULID |
   | `sub_` | submission | ULID |

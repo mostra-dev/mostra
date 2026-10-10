@@ -123,11 +123,12 @@ explicitly accepted, and your diff review leaves nothing to fix.
 
    Keep it short and plain.
 2. Work through his feedback until he accepts the package.
-3. After acceptance, merge to main, push, publish through the release pipeline (from WP-11 on) and
-   deploy the docs where your package changed them (D36). Ask only when something is genuinely
-   uncertain.
+3. After acceptance, merge the pull request into the protected main (D79), publish through the
+   release pipeline (from WP-11 on) and deploy the docs where your package changed them (D36). Ask
+   only when something is genuinely uncertain.
 4. Finalize docs/progress/PROGRESS-WP-NN.md with the contents protocol §4 lists, regenerate the
-   evidence matrix, commit both and push them to main.
+   evidence matrix, commit both and land them on main through a pull request that merges when
+   green.
 5. Tell Mirza the package is done and name the next unit: the next package in WORK_PACKAGES.md, or
    the phase closeout after WP-27.
 
