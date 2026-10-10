@@ -121,7 +121,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
-          tool: cargo-nextest@0.9.148,cargo-deny@0.20.2
+          tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
       - name: pnpm check --job rust
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
 
