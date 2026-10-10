@@ -1,6 +1,6 @@
 # WP-01 progress: repository foundation and protocol package
 
-**Status:** Accepted by Mirza on 2026-10-10 (M12). Finalized after the merge (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-10 (M12), merged to `main` as `536d151`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | not available: no `package.json` existed (`ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND`). WP-01 creates it |
 | Predecessors | none (WP-01 depends on nothing); no earlier `PROGRESS-WP-*.md` or `RECOVERY-WP-01-*.md` |
 | Local toolchain | Node 24.12.0, npm 11.6.2, pnpm 10.27.0 (global; the pinned `packageManager` pnpm 12.9.0 takes over), Rust 1.97.1, macOS arm64 |
-| Pull request | [#1](https://github.com/mostra-dev/mostra/pull/1) (draft) |
+| Pull request | [#1](https://github.com/mostra-dev/mostra/pull/1), merged |
 
 ## What was built
 
@@ -59,9 +59,9 @@ Applied and verified by `node tools/github/settings.ts apply|verify`:
 | EN-01 | verified | LICENSE is the canonical Apache-2.0 text (SHA-256 `cfc7749b…3d30`) and NOTICE exists, checked by repository lint; CONTRIBUTING carries the DCO; the `commits` job rejects an unsigned, non-conventional commit; lefthook's commit-msg hook rejects it locally | `pnpm --filter @mostra/tools test` (gates › commits, repository lint › LICENSE); `git commit --allow-empty -m "Add stuff"`; CI `commits` job on PR #1 | red on seeded unsigned commit, tampered LICENSE and deleted NOTICE; green on the fix; local hook printed both violations and refused the commit |
 | EN-02 | verified | Tooling baseline (pnpm 12, Turborepo, Changesets, tsdown, TypeScript 7, Vitest 5, Playwright, Biome, ESLint hooks, API Extractor, publint, attw, cargo fmt, clippy, cargo-deny) pinned through catalogs; repository lint rejects a version outside a catalog; every CI job runs `pnpm check --job <name>` | `pnpm check`; CI run [38077818981](https://github.com/mostra-dev/mostra/actions/runs/38077818981); gates › repository lint › catalogs; `pnpm --filter @mostra/e2e e2e` | local `pnpm check` and CI pass the same jobs; seeded `"zod": "^4.6.5"` red, `catalog:` green; e2e harness green in Chromium, Firefox and WebKit |
 | EN-04 | verified | API Extractor fails on a stale report in CI, writes it locally, and the changeset rule fails until a changeset names the package; publint and attw fail on a broken types path | `pnpm --filter @mostra/tools test` (gates › API reports) | red on seeded export (stale report, then no changeset) and on a seeded missing `.d.ts`; green after the changeset and the fix |
-| EN-06 | plausible | Pinned action SHAs (repository lint plus the repository's SHA-pinning requirement); CodeQL on three languages; dependency review; Renovate with a 7-day minimum release age; Scorecard | gates › repository lint › unpinned action; CodeQL and dependency review on PR #1; `renovate-config-validator renovate.json` | unpinned `actions/checkout@v4` red, pinned green; CodeQL and dependency review green on PR #1; Renovate config valid. Open: Renovate runs once Mirza installs the app (external); Scorecard first runs on the push to `main` after merge |
+| EN-06 | verified | Pinned action SHAs (repository lint plus the repository's SHA-pinning requirement); CodeQL on three languages; dependency review; Renovate with a 7-day minimum release age; Scorecard | gates › repository lint › unpinned action; CodeQL and dependency review on PR #1; `renovate-config-validator renovate.json` | unpinned `actions/checkout@v4` red, pinned green; CodeQL and dependency review green on PR #1; Renovate config valid. External: Renovate installed by Mirza, autoclosed its onboarding PR on our config and opened the [Dependency Dashboard](https://github.com/mostra-dev/mostra/issues/4), with npm updates held by the 7-day release age; Scorecard [run 38083859394](https://github.com/mostra-dev/mostra/actions/runs/38083859394) on `main` published a score of 7.4 |
 | EN-07 | verified | CI under 10 minutes with parallel, affected-only jobs; seeded violations caught by each gate; lefthook hooks run | full run [38076222130](https://github.com/mostra-dev/mostra/actions/runs/38076222130); typical one-package PR [#2](https://github.com/mostra-dev/mostra/pull/2) run [38077999613](https://github.com/mostra-dev/mostra/actions/runs/38077999613); `pnpm --filter @mostra/tools test` | full run 3m03s; typical PR 1m57s (plan: `@mostra/protocol`; licenses, rust and docs skipped); every gate red on its seed and green on the fix; pre-commit (Biome), commit-msg and pre-push (`pnpm check --fast`) ran on real commits and pushes |
-| HY-06 | validated | SECURITY.md with private vulnerability reporting enabled (repository setting checked) | `gh api repos/mostra-dev/mostra/private-vulnerability-reporting`; `node tools/github/settings.ts verify` | `{"enabled":true}`; settings verify green. Mirza's review of SECURITY.md pending |
+| HY-06 | verified | SECURITY.md with private vulnerability reporting enabled (repository setting checked) | `gh api repos/mostra-dev/mostra/private-vulnerability-reporting`; `node tools/github/settings.ts verify` | `{"enabled":true}`; settings verify green; Mirza accepted the package with SECURITY.md (M12) |
 | DP-06 | verified | License audit fails on a seeded PolyForm dependency in the core, on any `@pnpm/pnpr*` package, on PolyForm terms hidden under an MIT `license` field as in pnpm's `pnpr/`, and on a non-OSI engine reached through an installed peer; passes on the real tree | `pnpm --filter @mostra/tools test` (license-audit); CI `licenses` job | red on each seed with the dependency path named; green on this repository |
 | KT-02 | verified | License audit fails on a seeded non-OSI engine ("SEE LICENSE IN" with PolyForm text) in a published package's production closure; passes on the real tree | `pnpm --filter @mostra/tools test` (license-audit › PolyForm-licensed engine); CI `licenses` job | red on the seed, green on the real tree |
 | HO-07 | verified | The schema snapshot check fails on a removed field, a removed enum value, a newly required field, a narrowed type, a removed bundle and a custom refinement, and accepts an additive change once regenerated; a breaking change passes only under a new revision with the old bundle kept for 12 months; rules unit-tested, including constraints beside references and unions, tuples, `oneOf`, recursion and fail-closed unknown keywords | `pnpm --filter @mostra/tools test` (gates › wire schemas, rules › schema compatibility); CI `api` job | four seeds red with the path and reason named; additive change green. Boundary: the browser-protocol, CLI JSON and MCP tool surfaces don't exist yet; their packages register bundles in `scripts/wire-schemas.ts` and get the same check |
@@ -90,12 +90,25 @@ All 13 GPT findings held up and are fixed, each with a regression test (marked "
 | 12 | DCO checks skipped merge commits | Merges are checked for a sign-off; CI checks the PR head, not GitHub's synthetic merge |
 | 13 | Quoted keys or flow mappings hid unpinned actions | Workflows are parsed as YAML |
 
-## Prose awaiting review (D74)
+## Agent-facing prose (D74)
 
-Mirza delegated the drafts on 2026-10-10 (M11 Q6); they are on the pull request for his look: root `AGENTS.md`, `packages/protocol/AGENTS.md`, `crates/mostra-host/AGENTS.md`, the `MOSTRA_HOST_REVISION_UNSUPPORTED` hint and docs text, the `docs/agents/` playbooks. WP-14 finalizes the root AGENTS.md.
+Mirza delegated the drafts on 2026-10-10 (M11 Q6) and accepted them with the package (M12): root `AGENTS.md`, `packages/protocol/AGENTS.md`, `crates/mostra-host/AGENTS.md`, the `MOSTRA_HOST_REVISION_UNSUPPORTED` hint and docs text, the `docs/agents/` playbooks. WP-14 finalizes the root AGENTS.md.
 
-## Not run, and why
+## Untested boundaries
 
-- Renovate has not run: the Mend Renovate GitHub App needs installing on `mostra-dev` (an account action for Mirza).
-- Scorecard has not run: it runs on pushes to `main` and weekly, so its first run follows the merge.
-- The `e2e`, `hygiene`, `conformance` and `examples` CI jobs of REPO_STANDARDS §6 don't exist yet; the packages they test arrive in WP-05 onward.
+- The browser-protocol, CLI JSON and MCP tool schema surfaces don't exist yet. Their packages (WP-05, WP-10, WP-15) register bundles in `scripts/wire-schemas.ts` and inherit the HO-07 check.
+- The `e2e`, `hygiene`, `conformance` and `examples` CI jobs of REPO_STANDARDS §6 arrive with the packages they test (WP-05 onward); the Playwright harness already runs in Chromium, Firefox and WebKit.
+- Copilot code review is requested automatically on every pull request push, but Copilot declines on a quota limit of the requesting account (M12: not pursued).
+- Scorecard 7.4: Code-Review and Branch-Protection are lowered by having no required approvals (a single maintainer, D79), Maintained and Contributors by the repository's age, and CII-Best-Practices by the absence of an OpenSSF badge registration. None is a defect in the configuration.
+
+## Commits and publication
+
+- **Range:** `6dd2191..536d151` on `main`: 25 signed-off commits on `wp/01-foundation` (`6a5c70d` to `93d7005`) and the merge commit `536d151` of [#1](https://github.com/mostra-dev/mostra/pull/1). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38083859353](https://github.com/mostra-dev/mostra/actions/runs/38083859353), CodeQL [38083859363](https://github.com/mostra-dev/mostra/actions/runs/38083859363) and Scorecard [38083859394](https://github.com/mostra-dev/mostra/actions/runs/38083859394), all green.
+- **Packages:** nothing published. `@mostra/protocol` carries a changeset for its first minor release; the release pipeline is WP-11's (EN-05).
+- **Docs:** GitHub Pages enabled; WP-26 deploys the site.
+- **Remaining dirty paths:** none in the repository. Outside it, the session removed its own scratch copy and, with Mirza's authorization (M12), the reinstallable `node_modules` of the finished EVAL-01 runs in `~/.jcode/scratch/eval-base` (about 20 GB; sources, lockfiles, builds and logs kept).
+
+## Next
+
+WP-02, instance, ledger and host protocol server (`docs/design/work-packages/WP-02.md`).

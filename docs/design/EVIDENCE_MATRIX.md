@@ -70,7 +70,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | unverified |
 | HY-04 | WP-13 | X | External: real `tailscale serve` share from a phone; identity header maps to viewer; spoofed header from loopback-bypassing request impossible | unverified |
 | HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | unverified |
-| HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | validated ([WP-01](../progress/PROGRESS-WP-01.md)) |
+| HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance) | unverified |
 | HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | unverified |
 | HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | unverified |
@@ -120,7 +120,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | EN-03 | WP-26 | B | CI job verifies every example and template with committed visual and ARIA baselines | unverified |
 | EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
-| EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | plausible ([WP-01](../progress/PROGRESS-WP-01.md)) |
+| EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | unverified |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | unverified |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | unverified |
