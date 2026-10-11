@@ -47,8 +47,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its
-behavior, and pass a `handler(definition, fn)` from `protocol-server` to the `ProtocolServer` that
-`instance` builds.
+behavior, and pass a `handler(definition, fn)` to the `ProtocolServer` that `instance` builds.
+`handler` lives in `protocol-server/server.ts`; export it from the module's `index.ts` when the
+first module outside `protocol-server` needs it.
 
 ## Tests to run
 
