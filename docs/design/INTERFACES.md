@@ -227,7 +227,7 @@ Mostra → host (only to the connection that registered the port)
   port/<name>.<method>   see §7
 ```
 
-`SourceRef` is `{ path }` or `{ artifactId }`. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
+`SourceRef` is `{ path }` or `{ artifactId }`. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the capability URL; it is optional on the wire because instances without the gateway (WP-03, before WP-05) have none, and WP-05 sets it on every publish (D90). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
 
 The initialize shapes (D84):
 
@@ -365,7 +365,7 @@ Exported MCP Apps:
 interface Diagnostic {
   code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
-  //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM
+  //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM ARTIFACT (D92)
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong
