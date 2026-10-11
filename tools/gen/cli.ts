@@ -159,7 +159,15 @@ function generateDiagnostic(code: string): string[] {
       `export { type ${typeName}, ${camel(lower)}DiagnosticCodes } from "./${lower}.ts";`,
       true,
     );
-    insertAt(index, "gen:area-codes", `${typeName} |`, true);
+    // After Biome formats the union one member per line, members lead with "|"; match the form
+    // of the member that follows the marker so the union stays valid either way.
+    const following = readFileSync(join(root, index), "utf8").split("// gen:area-codes\n")[1] ?? "";
+    insertAt(
+      index,
+      "gen:area-codes",
+      following.trimStart().startsWith("|") ? `| ${typeName}` : `${typeName} |`,
+      true,
+    );
     insertAt(index, "gen:area-spreads", `...${constName},`, true);
     insertAt(
       "packages/protocol/src/index.ts",

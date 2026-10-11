@@ -272,6 +272,34 @@ describe("diagnostic catalog (AX-03)", () => {
     );
     expect(codes).toContain("...shareDiagnostics,");
   });
+
+  it("keeps the code union valid when two new areas are added in a row (WP-03 finding)", () => {
+    for (const code of ["MOSTRA_SHARE_SEEDED", "MOSTRA_TERM_SEEDED"]) {
+      const generated = node(
+        "tools/gen/cli.ts",
+        "diagnostic",
+        code,
+        "--severity",
+        "error",
+        "--phase",
+        "host",
+        "--title",
+        "Seeded",
+      );
+      expect(generated.code).toBe(0);
+    }
+    const codes = readFileSync(
+      join(repo.root, "packages/protocol/src/diagnostics/codes/index.ts"),
+      "utf8",
+    );
+    const union = codes.slice(
+      codes.indexOf("KnownDiagnosticCode ="),
+      codes.indexOf(";", codes.indexOf("KnownDiagnosticCode =")),
+    );
+    expect(union).toMatch(/\bShareDiagnosticCode\b/);
+    expect(union).toMatch(/\bTermDiagnosticCode\b/);
+    expect(union).not.toMatch(/\|\s*\|/);
+  });
 });
 
 describe("repository lint", () => {
