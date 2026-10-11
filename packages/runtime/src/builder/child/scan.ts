@@ -16,7 +16,37 @@ interface Node {
   readonly [key: string]: unknown;
 }
 
-const SCRIPT = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"]);
+/** Every script extension the bundler loads; a "use server" module may have any of them. */
+export const SCRIPT: ReadonlySet<string> = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+]);
+
+/** Oxc's language for a script file. */
+function langOf(file: string): "ts" | "tsx" | "js" | "jsx" {
+  const ext = extname(file);
+  if (ext === ".tsx") return "tsx";
+  if (ext === ".jsx") return "jsx";
+  if (ext === ".ts" || ext === ".mts" || ext === ".cts") return "ts";
+  return "js";
+}
+
+/**
+ * Whether a script starts with the `"use server"` directive. `undefined` when it doesn't parse:
+ * the bundler, which parses the same way, then reports the syntax error.
+ */
+export function startsWithUseServer(file: string, text: string): boolean | undefined {
+  if (!text.includes("use server")) return false;
+  const parsed = parseSync(file, text, { lang: langOf(file) });
+  if (parsed.errors.length > 0) return undefined;
+  return isServerModule(parsed.program as unknown as Node);
+}
 const PAGE = new Set([".tsx", ".jsx", ".mdx"]);
 const SERVER_PACKAGE = "@mostra/server";
 
@@ -338,10 +368,7 @@ export async function scanArtifact(sourceDir: string): Promise<ScanResult> {
     if (!SCRIPT.has(extname(file))) continue;
     const text = await readFile(join(sourceDir, file), "utf8");
     if (!text.includes("use server") && file !== "live.ts") continue;
-    const lang = extname(file).replace(/^\.m?/, "") as "ts" | "tsx" | "js" | "jsx";
-    const parsed = parseSync(file, text, {
-      lang: lang === "ts" || lang === "tsx" || lang === "jsx" ? lang : "js",
-    });
+    const parsed = parseSync(file, text, { lang: langOf(file) });
     if (parsed.errors.length > 0) continue; // The bundler reports syntax errors with full context.
     const program = parsed.program as unknown as Node;
     if (file === "live.ts") liveSources = liveExports(program);

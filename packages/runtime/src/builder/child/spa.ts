@@ -223,7 +223,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
       ...baseConfig(request, sourceDir, [
         confinePlugin(inputs),
         mdxPlugin(),
-        serverClientStubPlugin(serverModules),
+        serverClientStubPlugin(serverModules, sourceDir),
         react(),
         tailwind(),
       ]),

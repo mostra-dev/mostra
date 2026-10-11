@@ -5,12 +5,13 @@
  */
 
 import { existsSync, realpathSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { extname, isAbsolute, relative } from "node:path";
 import { compile } from "@mdx-js/mdx";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import type { Plugin } from "vite";
 import type { ServerFunctionEntry } from "../types.ts";
+import { SCRIPT, startsWithUseServer } from "./scan.ts";
 
 /** Compiles `.mdx` files to JavaScript with React's JSX runtime, frontmatter removed (MDX 3). */
 export function mdxPlugin(): Plugin {
@@ -46,19 +47,43 @@ export function serverStub(entries: readonly ServerFunctionEntry[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+/** The ID prefix of the virtual stub modules that stand in for server modules in the client. */
+const STUB_PREFIX = "\0mostra-server-reference:";
+
 /**
  * Replaces `"use server"` modules with their client stubs. `modules` maps each module's absolute
  * path to its exports, from the scan.
  */
 export function serverClientStubPlugin(
   modules: ReadonlyMap<string, readonly ServerFunctionEntry[]>,
+  sourceDir: string,
 ): Plugin {
   return {
     name: "mostra:use-server-client",
     enforce: "pre",
+    // Server modules resolve to a virtual stub module whose ID ends in `.mjs`: the bundler reads a
+    // `.cts` or `.cjs` file name as CommonJS, and the stub is an ES module.
+    async resolveId(source, importer, options) {
+      if (source.startsWith(STUB_PREFIX)) return source;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      const file = resolved?.id.split("?")[0];
+      return file !== undefined && modules.has(file) ? `${STUB_PREFIX}${file}.mjs` : null;
+    },
     load(id) {
-      const entries = modules.get(id.split("?")[0] ?? id);
+      if (!id.startsWith(STUB_PREFIX)) return null;
+      const entries = modules.get(id.slice(STUB_PREFIX.length, -".mjs".length));
       return entries === undefined ? null : { code: serverStub(entries), moduleType: "js" };
+    },
+    // Fails closed (D54): a module of the artifact that reaches the client build with the
+    // directive, but without a stub, would ship its server code to every viewer.
+    transform(code, id) {
+      const file = id.split("?")[0] ?? id;
+      if (!file.startsWith(`${sourceDir}/`) || modules.has(file)) return null;
+      if (!SCRIPT.has(extname(file))) return null;
+      if (startsWithUseServer(file, code) !== true) return null;
+      return this.error(
+        `${relative(sourceDir, file)} starts with "use server" but has no client stub, so its server code would reach the browser; give it one of the extensions ${[...SCRIPT].join(", ")}.`,
+      );
     },
   };
 }

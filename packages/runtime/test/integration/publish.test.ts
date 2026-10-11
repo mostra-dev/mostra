@@ -484,4 +484,35 @@ describe("review findings (D80)", () => {
     );
     expect(detail).toMatchObject({ title: "caf\u00e9" });
   });
+
+  it("keeps a .cts server module's body out of the client, source maps included (Claude finding 2)", async () => {
+    const dir = join(tempDir("cts"), "artifact");
+    mkdirSync(dir);
+    writeFileSync(
+      join(dir, "actions.cts"),
+      '"use server";\nexport async function secretThing() { return "CTS_SERVER_BODY_MARKER"; }\n',
+    );
+    writeFileSync(
+      join(dir, "index.tsx"),
+      'import { secretThing } from "./actions.cts";\nexport default function Page() { return <button onClick={() => void secretThing()}>go</button>; }\n',
+    );
+    const receipt = await publish(dir);
+    const version = join(home.home, "versions", receipt.versionId);
+    const registry = JSON.parse(readFileSync(join(version, "registry.json"), "utf8")) as {
+      actions: { id: string }[];
+    };
+    expect(registry.actions.map((action) => action.id)).toEqual(["actions.cts#secretThing"]);
+    const client: string[] = [];
+    const walk = (path: string): void => {
+      for (const entry of readdirSync(path, { withFileTypes: true })) {
+        if (entry.isDirectory()) walk(join(path, entry.name));
+        else client.push(readFileSync(join(path, entry.name), "utf8"));
+      }
+    };
+    walk(join(version, "client"));
+    expect(client.join("\n")).not.toContain("CTS_SERVER_BODY_MARKER");
+    expect(readFileSync(join(version, "server", "entry.mjs"), "utf8")).toContain(
+      "CTS_SERVER_BODY_MARKER",
+    );
+  });
 });

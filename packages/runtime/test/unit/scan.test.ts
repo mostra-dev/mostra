@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { serverStub } from "../../src/builder/child/plugins.ts";
+import { serverClientStubPlugin, serverStub } from "../../src/builder/child/plugins.ts";
 import { scanArtifact } from "../../src/builder/child/scan.ts";
 import { tempDir } from "../support.ts";
 
@@ -193,5 +193,36 @@ export const helper = 1;
     ]);
     const clash = await scanArtifact(artifact({ "pages/a.tsx": "", "pages/a/index.tsx": "" }));
     expect(clash.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["MOSTRA_BUILD_FAILED"]);
+  });
+});
+
+describe("server modules of every script extension (D80 Claude review finding 2)", () => {
+  it("scans .cts, .cjs, .mts and .mjs modules", async () => {
+    const scan = await scanArtifact(
+      artifact({
+        "a.cts": '"use server";\nexport async function a(x: number) { return x; }\n',
+        "b.cjs": '"use server";\nexport async function b() { return 1; }\n',
+        "c.mts": '"use server";\nexport async function c(): Promise<number> { return 1; }\n',
+        "d.mjs": '"use server";\nexport async function d() { return 1; }\n',
+      }),
+    );
+    expect(scan.diagnostics).toEqual([]);
+    expect([...scan.serverModules.keys()].sort()).toEqual(["a.cts", "b.cjs", "c.mts", "d.mjs"]);
+  });
+
+  it("fails the client build for a server module that has no stub, instead of shipping it", () => {
+    const plugin = serverClientStubPlugin(new Map(), "/art/source");
+    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    const context = {
+      error(message: string): never {
+        throw new Error(message);
+      },
+    };
+    const server = '"use server";\nexport async function leak() { return "SECRET"; }\n';
+    expect(() => transform.call(context, server, "/art/source/x.cts")).toThrow(/use server/);
+    // Ordinary modules, files outside the artifact and non-scripts pass through untouched.
+    expect(transform.call(context, "export const a = 1;\n", "/art/source/y.ts")).toBeNull();
+    expect(transform.call(context, server, "/elsewhere/x.ts")).toBeNull();
+    expect(transform.call(context, server, "/art/source/x.css")).toBeNull();
   });
 });
