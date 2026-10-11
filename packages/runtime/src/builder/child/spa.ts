@@ -4,20 +4,21 @@
  * loads (WP-08). The build runs in a staging directory whose `node_modules` is a link to the warm
  * set (D91), so an artifact needs no `package.json` (AU-03). Nothing in the artifact runs.
  */
-import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { build, type InlineConfig, type PluginOption } from "vite";
-import type {
-  BuildRequest,
-  BuildResponse,
-  ServerFunctionEntry,
-  VersionRegistry,
+import {
+  type BuildRequest,
+  type BuildResponse,
+  type ServerFunctionEntry,
+  STAGING_FILES,
+  type VersionRegistry,
 } from "../types.ts";
-import { confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
+import { type BuildInputs, confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
 import { type ScanResult, scanArtifact } from "./scan.ts";
 
 /** Where generated build files live inside the staging directory (never in the snapshot). */
@@ -148,8 +149,35 @@ function baseConfig(
       alias: [{ find: /^@\//, replacement: `${sourceDir}/` }],
       dedupe: ["react", "react-dom"],
     },
+    // Settings given here are never searched for: no PostCSS config, from anywhere above the
+    // home, is loaded or run (VR-01). Tailwind is a plugin of its own.
+    css: { postcss: {} },
     plugins,
   };
+}
+
+/**
+ * The real directories the warm set's packages and their dependencies live in: for a package in a
+ * pnpm store, the store (`.pnpm`) that holds it and its dependencies; otherwise the package's own
+ * directory (a workspace link such as `@mostra/react`).
+ */
+async function packageRoots(nodeModules: string): Promise<string[]> {
+  const roots = new Set<string>([await realpath(nodeModules)]);
+  const packages: string[] = [];
+  for (const entry of await readdir(nodeModules, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    if (entry.name.startsWith("@")) {
+      for (const scoped of await readdir(join(nodeModules, entry.name))) {
+        packages.push(join(nodeModules, entry.name, scoped));
+      }
+    } else packages.push(join(nodeModules, entry.name));
+  }
+  for (const link of packages) {
+    const dir = await realpath(link);
+    const store = dir.lastIndexOf("/.pnpm/");
+    roots.add(store === -1 ? dir : dir.slice(0, store + "/.pnpm".length));
+  }
+  return [...roots];
 }
 
 /** Runs the SPA build of `request`. */
@@ -173,6 +201,14 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
 
   const generated = join(request.stagingDir, GENERATED);
   await mkdir(generated, { recursive: true });
+  for (const [name, text] of Object.entries(STAGING_FILES)) {
+    await writeFile(join(request.stagingDir, name), text);
+  }
+  const inputs: BuildInputs = {
+    sourceDir,
+    generatedDir: generated,
+    packageRoots: await packageRoots(request.nodeModules),
+  };
   await rm(join(request.stagingDir, "node_modules"), { force: true, recursive: true });
   await symlink(request.nodeModules, join(request.stagingDir, "node_modules"), "dir");
   await writeFile(join(request.stagingDir, "index.html"), html(request.manifest.title));
@@ -185,7 +221,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   try {
     await build({
       ...baseConfig(request, sourceDir, [
-        confinePlugin(sourceDir),
+        confinePlugin(inputs),
         mdxPlugin(),
         serverClientStubPlugin(serverModules),
         react(),
@@ -209,7 +245,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
     try {
       await build({
-        ...baseConfig(request, sourceDir, [confinePlugin(sourceDir), mdxPlugin(), react()]),
+        ...baseConfig(request, sourceDir, [confinePlugin(inputs), mdxPlugin(), react()]),
         publicDir: false,
         ssr: { noExternal: true, external: ["@mostra/server"], target: "node" },
         build: {

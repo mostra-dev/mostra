@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
-import { BUILD_METHOD, type BuildRequest, type BuildResponse } from "./types.ts";
+import { BUILD_METHOD, type BuildRequest, type BuildResponse, STAGING_FILES } from "./types.ts";
 
 export type { BuildRequest, BuildResponse } from "./types.ts";
 
@@ -35,7 +35,7 @@ const BUILD_PACKAGES = [
 ] as const;
 
 /** Bumped whenever the SPA build's settings change, so older versions aren't reused. */
-const SPA_CONFIG_REVISION = 1;
+const SPA_CONFIG_REVISION = 2;
 
 /** What a render mode can deliver for a manifest (ROUND-3 §7). */
 export interface RenderCapabilities {
@@ -158,6 +158,7 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
     base: "/",
     sourcemap: true,
     packages: buildPackages,
+    stagingFiles: STAGING_FILES,
   };
   const timeoutMs = options.timeoutMs ?? BUILD_TIMEOUT_MS;
   const env = options.env ?? process.env;

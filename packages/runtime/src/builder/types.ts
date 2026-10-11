@@ -67,3 +67,27 @@ export type BuildResponse =
 
 /** The IPC method the supervisor calls on the builder child. */
 export const BUILD_METHOD = "builder/build";
+
+/**
+ * The files written into the staging root so the bundler's upward searches stop there instead of
+ * reaching directories above the home (VR-01): a `tsconfig.json` with the compile settings Mostra
+ * chooses (an artifact's own `tsconfig.json`, part of its source, still applies to its files),
+ * and a `package.json` that marks the build as ES modules. Their contents are part of
+ * `buildConfigDigest`.
+ */
+export const STAGING_FILES: Readonly<Record<string, string>> = {
+  "tsconfig.json": `${JSON.stringify(
+    {
+      compilerOptions: {
+        target: "ES2022",
+        useDefineForClassFields: true,
+        jsx: "react-jsx",
+        jsxImportSource: "react",
+        experimentalDecorators: false,
+      },
+    },
+    null,
+    2,
+  )}\n`,
+  "package.json": `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`,
+};

@@ -4,8 +4,8 @@
  * `createServerReference` stubs so no server code reaches the browser (D54).
  */
 
-import { existsSync } from "node:fs";
-import { relative } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, relative } from "node:path";
 import { compile } from "@mdx-js/mdx";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -63,28 +63,55 @@ export function serverClientStubPlugin(
   };
 }
 
+/** Where an artifact's build may read from (VR-01: every input is covered by a digest). */
+export interface BuildInputs {
+  /** The artifact's snapshot (`sourceDigest`). */
+  readonly sourceDir: string;
+  /** Mostra's generated build files (`buildConfigDigest`), whose imports are checked like the artifact's. */
+  readonly generatedDir: string;
+  /** Real directories holding the warm set's packages and their dependencies (`lockDigest`). */
+  readonly packageRoots: readonly string[];
+}
+
 /**
- * Keeps an artifact's imports inside its snapshot (VR-01): a relative or absolute import from an
- * artifact file that resolves outside the artifact would bring bytes into the build that neither
- * `sourceDigest` nor `envDigest` covers, so a later change to them would go unnoticed. Packages
- * (bare imports) resolve from the warm set, which `envDigest` covers.
+ * Keeps a build's inputs inside what the version's digests cover (VR-01, DATA_MODEL §2). A relative
+ * or absolute import from an artifact file must resolve inside the artifact, and a package import
+ * from an artifact file or a generated file must resolve into the warm set. Anything else (a file
+ * beside the artifact, a stray `node_modules` above the home) would bring bytes into the build
+ * that no digest covers, so a later change to them would go unnoticed.
  */
-export function confinePlugin(sourceDir: string): Plugin {
-  const inside = (file: string): boolean => file.startsWith(`${sourceDir}/`);
+export function confinePlugin(inputs: BuildInputs): Plugin {
+  const under = (file: string, dir: string): boolean => file.startsWith(`${dir}/`);
+  const checked = (file: string): boolean =>
+    under(file, inputs.sourceDir) || under(file, inputs.generatedDir);
+  const real = (file: string): string => {
+    try {
+      return realpathSync.native(file);
+    } catch {
+      return file;
+    }
+  };
   return {
     name: "mostra:confine",
     enforce: "pre",
     async resolveId(source, importer, options) {
       const from = importer?.split("?")[0];
-      if (from === undefined || !inside(from)) return null;
-      if (!source.startsWith(".") && !source.startsWith("/")) return null;
+      if (from === undefined || !checked(from) || source.startsWith("\0")) return null;
+      const bare = !source.startsWith(".") && !source.startsWith("/");
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || resolved.external) return resolved;
-      const file = resolved.id.split("?")[0] ?? resolved.id;
-      // Virtual modules and public URLs (`/logo.svg` from `public/`) aren't files outside the artifact.
-      if (file.startsWith("\0") || inside(file) || !existsSync(file)) return resolved;
+      const id = resolved.id.split("?")[0] ?? resolved.id;
+      // Virtual modules, browser stubs for Node built-ins and public URLs (`/logo.svg` from
+      // `public/`) aren't files, so there is nothing outside to read.
+      if (id.startsWith("\0") || !isAbsolute(id) || !existsSync(id)) return resolved;
+      const file = real(id);
+      if (under(file, inputs.sourceDir) || under(file, inputs.generatedDir)) return resolved;
+      if (bare && inputs.packageRoots.some((root) => under(file, root))) return resolved;
+      const where = relative(inputs.sourceDir, from);
       return this.error(
-        `Could not resolve "${source}" from ${relative(sourceDir, from)}: it is outside the artifact, and a version is built only from the artifact's own files.`,
+        bare
+          ? `Could not resolve "${source}" from ${where}: it isn't in the warm set, and a version is built only from the artifact's own files and the warm set's packages.`
+          : `Could not resolve "${source}" from ${where}: it is outside the artifact, and a version is built only from the artifact's own files.`,
       );
     },
   };
