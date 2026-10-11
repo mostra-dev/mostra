@@ -36,8 +36,6 @@ const STDERR_TAIL = 50;
  * leaves a gate that reads end-of-file and exits 125 without running anything.
  */
 const GATE_SCRIPT = 'IFS= read -r go <&3 && [ "$go" = go ] || exit 125; exec 3<&-; exec "$@"';
-/** The exit code of a gate that was never opened. */
-export const GATE_CLOSED_EXIT = 125;
 
 /** How a child ended. */
 export interface ChildExit {

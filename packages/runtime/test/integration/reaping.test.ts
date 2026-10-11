@@ -4,9 +4,9 @@
  * own session; the next `mostra-runtime daemon` reaps them by recorded PID and start time, and
  * leaves alone processes that only look like recorded ones.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import {
   eventually,
   initializeParams,
   startDaemon,
+  tempDir,
   testHome,
 } from "../support.ts";
 
@@ -147,5 +148,35 @@ describe("reaping after a supervisor crash (RT-09)", () => {
     } finally {
       for (const pid of [reused, older]) process.kill(-pid, "SIGKILL");
     }
+  });
+});
+
+describe("a child is recorded before it runs (issue #7)", () => {
+  it("never runs the command of a child whose supervisor died before recording it", async () => {
+    const home = testHome();
+    const marker = join(tempDir("gate"), "ran.txt");
+    const supervisor = spawn(process.execPath, [fixture("gated-spawn.mjs"), home.home, marker], {
+      env: { ...home.env, MOSTRA_TEST_FAULTS: "spawn:before-record:crash" },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    let output = "";
+    supervisor.stdout?.setEncoding("utf8");
+    supervisor.stdout?.on("data", (chunk: string) => {
+      output += chunk;
+    });
+    const [code, signal] = await once(supervisor, "exit");
+    expect({ code, signal, output }).toEqual({ code: null, signal: "SIGKILL", output: "ready\n" });
+
+    // The gate read end-of-file and exited without running the command; nothing is left to reap.
+    const gates = () =>
+      spawnSync("ps", ["-axo", "args="], { encoding: "utf8" })
+        .stdout.split("\n")
+        .filter((line) => line.includes(marker));
+    await eventually(() => gates().length === 0, 10_000, "the gate to exit");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(existsSync(marker)).toBe(false);
+    const ledger = new Database(join(home.home, "store", "ledger.sqlite"), { readonly: true });
+    expect(ledger.prepare("SELECT count(*) n FROM child").get()).toEqual({ n: 0 });
+    ledger.close();
   });
 });

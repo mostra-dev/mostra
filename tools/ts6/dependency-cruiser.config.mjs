@@ -69,6 +69,17 @@ rules.push(
     },
   },
   {
+    name: "runtime-native-modules-lazy",
+    comment:
+      "The supervisor loads native modules on first use (createRequire), never at import: the platform gate must answer before anything platform-specific loads (RT-07).",
+    severity: "error",
+    from: { path: "^packages/runtime/src/", pathNot: "^packages/runtime/src/builder/child/" },
+    to: {
+      path: "node_modules/(oxc-parser|better-sqlite3)/",
+      dependencyTypesNot: ["type-only"],
+    },
+  },
+  {
     name: "runtime-builder-child-isolated",
     comment:
       "Supervisor code never imports the builder child's modules; it starts the child as a process (RT-02).",

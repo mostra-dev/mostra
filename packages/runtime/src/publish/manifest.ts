@@ -5,6 +5,8 @@
  * Values that need evaluation are `MOSTRA_MANIFEST_NOT_LITERAL`; values the manifest doesn't allow
  * are `MOSTRA_MANIFEST_INVALID`; unknown keys are `MOSTRA_MANIFEST_UNKNOWN_KEY` warnings.
  */
+
+import { createRequire } from "node:module";
 import {
   ARTIFACT_MANIFEST_KEYS,
   ArtifactManifest,
@@ -12,8 +14,18 @@ import {
   type Diagnostic,
   RpcError,
 } from "@mostra/protocol";
-import { parseSync } from "oxc-parser";
+import type * as Oxc from "oxc-parser";
 import { parseDocument } from "yaml";
+
+let oxc: typeof Oxc | undefined;
+/**
+ * Loads the native parser on first use: importing this module loads no native code, so the
+ * platform gate answers before anything platform-specific loads (RT-07), as the ledger does.
+ */
+function parser(): typeof Oxc {
+  oxc ??= createRequire(import.meta.url)("oxc-parser") as typeof Oxc;
+  return oxc;
+}
 
 /** What an entry declares. */
 export interface ExtractedManifest {
@@ -309,7 +321,7 @@ function validate(
 
 function extractScript(file: string, text: string): ExtractedManifest {
   const x = new Extraction(file, text);
-  const parsed = parseSync(file, text, { lang: file.endsWith(".jsx") ? "jsx" : "tsx" });
+  const parsed = parser().parseSync(file, text, { lang: file.endsWith(".jsx") ? "jsx" : "tsx" });
   const [error] = parsed.errors;
   if (error) {
     return x.fail(
