@@ -20,6 +20,7 @@
 | M10 | 2026-10-10T15:11:53.172Z | Signed in Claude Code for EVAL-01b ("you can run the sonnet prompts"). GitHub: "i approve everything needed that we planned for git/github related stuff. you can create & push the repo, and the wp-01 agent can work on it in any way needed." |
 | M11 | 2026-10-10T18:49:28.119Z | WP-01 questions. Approved the Crockford alphabet for version IDs ("I trust you to make the most robust decision"), the first host protocol revision `2026-10-10`, protected `main` with no bypass, installing Renovate himself, and the REPO_STANDARDS §4 correction. Contact address mmirzabicer@gmail.com; his surname is Biçer ("c" is fine for compatibility). Delegated the agent-facing prose and asked that branch protection, pull requests, CI and publishing all be done "in the **best** manner possible", acting where possible and instructing him otherwise. |
 | M12 | 2026-10-10T19:49:22.550Z / 20:07:46.058Z | Accepted WP-01. Left the pre-merge review to the agent's judgement: `codex review` with GPT-6.1-Sol, GitHub Copilot review (integrated into CI if GitHub allows), or neither, and asked that future WPs build reviews into CI or the documented workflow. Claude Opus 5.5 may review truly substantial packages, at most 20% of Mostra's WPs. Copilot review may need organization credits; not important. |
+| M13 | 2026-10-11T04:37:16.061Z | WP-02 questions. The C03-A design expert answered at Mirza's request (his message of 2026-10-11T04:32:46.030Z), and Mirza agreed with every point: the ledger lock as the home's authority, with `instance.json` for discovery and a self-healing socket; the XDG fallback with a `MOSTRA_RUNTIME_DIR` override; the socket name; one JSON-RPC core in `@mostra/protocol` without batches; the `mostra/initialize` shapes with `HomeConfig.path` as a check; the runtime binary and module layout; the `integration` CI job; signal handling and `mostra/shutdown` for attached clients, with idle exit left to WP-08; and a prose review limited to five hints and `packages/runtime/AGENTS.md`. These fill gaps and change no approved decision. |
 
 ## Program-level decisions
 
@@ -491,6 +492,50 @@ Every work package gets an independent code review before it is presented to Mir
 3. **Claude Opus 5.5** also reviews the truly substantial packages, at most one in five of Mostra's WPs. It waits for Mirza's approval like every Anthropic batch (D34).
 
 Reviews find defects; they never replace the evidence table. The WP-01 review (13 findings, all fixed with regression tests) showed the value: a green gate suite still had false negatives. *Source:* M12.
+
+### D81. The ledger lock decides who owns a home
+A supervisor owns a home by holding an exclusive SQLite lock on its ledger (`locking_mode=EXCLUSIVE` in WAL mode), taken with a write transaction before anything else in the home is used. The operating system releases the lock when the process dies, so it never goes stale, and any second opener fails at once. The control socket is only how clients find the owner:
+1. The owner unlinks any leftover socket file at its path and binds a new one. No takeover mutex is needed, because only the lock holder touches the socket.
+2. After binding, the owner writes `instance.json` in the home (a temporary file, then a rename) with its PID, process start time, socket path, runtime version and protocol revisions, and removes it on a clean exit. The file is for discovery only, never a lock. It is stale when its PID and start time don't match a live process.
+3. A starter that can't take the lock reads `instance.json` and attaches to the socket recorded there. Only when that socket can't be reached does it fail with `MOSTRA_HOME_LOCKED`, naming the owner's PID and how to restart it. `mostra host` never attaches to another instance: it reports `MOSTRA_HOME_LOCKED` with the owner's PID.
+4. A running supervisor checks its socket at least every 10 s and re-creates it when the file has disappeared, for example when a Linux logout removes `$XDG_RUNTIME_DIR`.
+
+Consequence: every ledger reader, including `mostra doctor`'s integrity check, goes through the supervisor or runs only when no supervisor holds the lock. *Supersedes* the `run/takeover.lock` mutex in FAILURE_MODEL §2 and WP-02's original design detail. *Strengthens* D45 and D71. *Source:* M13 points 1 and 6.
+
+### D82. Runtime directory and socket name
+The control socket is `<runtime dir>/<home hash>.sock`:
+- **Runtime directory.** `MOSTRA_RUNTIME_DIR` when set. Otherwise `~/.mostra/run` on macOS. On Linux, `$XDG_RUNTIME_DIR/mostra` when `$XDG_RUNTIME_DIR` is a directory the user owns with mode 0700, else `${XDG_STATE_HOME:-~/.local/state}/mostra/run`. Mostra creates its directory with mode 0700. A directory owned by someone else fails closed with `MOSTRA_HOME_NOT_OWNED`. Two starters with different environments may compute different directories; `instance.json` (D81) is how they find each other.
+- **Home hash.** The first 16 characters, in D77's Crockford base32 alphabet, of the SHA-256 of the home's real path, so a symlinked home maps to the same socket.
+- **Length.** A socket path over the operating system's limit (103 bytes on macOS, 107 on Linux) fails closed with `MOSTRA_HOME_SOCKET_TOO_LONG`, whose hint names `MOSTRA_RUNTIME_DIR`.
+
+*Source:* M13 points 2 and 3. *Fills* ARCHITECTURE §4 and DATA_MODEL §1.
+
+### D83. One JSON-RPC 2.0 core in `@mostra/protocol`
+`@mostra/protocol` holds the one JSON-RPC 2.0 implementation every Mostra connection uses: message schemas, request correlation, notifications, timeouts, connection close, and errors carried as diagnostics. The host protocol server and its clients, child-process messaging and the shell bridge all use it. It has no I/O and no Node built-ins, works in the browser and is tree-shakable; size-limit gates the browser packages that import it. Revision `2026-10-10` has **no batches**: a batch is answered with an Invalid Request error (-32600) carrying a diagnostic. Batches can be added later without breaking anything, and MCP dropped them too. *Source:* M13 point 4.
+
+### D84. The `mostra/initialize` shapes
+- **`capabilities`.** The client lists the notifications it accepts. The instance lists its methods, the notifications it sends and the ports it supports.
+- **`HomeConfig.path` is a check, not a setting.** The supervisor resolves its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`) and has locked it before `mostra/initialize` arrives. When `HomeConfig.path` is present and names a different home, initialization is refused with `MOSTRA_HOME_MISMATCH`.
+- **`instance`** also reports the supervisor's `pid` and its `mode` (`host` or `daemon`).
+- **Ports.** Registering a port the instance doesn't implement, including the reserved `ai` (D46), returns a warning. It is never a silent no-op.
+
+*Source:* M13 point 5. *Fills* INTERFACES §6.
+
+### D85. The runtime binary and module layout
+- **Binary.** `mostra-runtime host|daemon` is the runtime bundle's entry point. `mostra host` is `mostra-runtime host`, so the Rust crate and the SDK spawn it directly from the bundle, and `mostra daemon start` runs `mostra-runtime daemon`.
+- **Modules.** `@mostra/runtime` gains the modules `home` (resolution, permissions, the runtime directory and acquisition) and `instance`. `instance` is the composition root only: it assembles the other modules and holds no policy of its own.
+- **Home permissions.** A home the user owns is tightened to mode 0700, and the supervisor logs that it did. A home owned by someone else fails closed with `MOSTRA_HOME_NOT_OWNED`, because Mostra keeps secrets there (D44).
+
+*Source:* M13 point 6. *Fills* REPO_STANDARDS §3 and INTERFACES §6.
+
+### D86. An `integration` CI job on macOS and Linux
+Suites that run real Mostra processes (sockets, process groups, start times) run in an `integration` job on both macOS and Linux. The plan job runs it only when the runtime or the protocol is affected, so pull requests stay inside the 10-minute target (D50). Later packages add their real-process suites to this job. *Source:* M13 point 7. *Fills* REPO_STANDARDS §6.
+
+### D87. Stopping an instance
+SIGTERM and SIGINT stop an instance cleanly: in-flight ledger transactions finish, children stop, and the socket and `instance.json` are removed before it exits 0. `mostra/shutdown` is available to attached clients of a daemon as well as to the spawning host. The socket is owner-only, so every attached client is the same user, and `mostra daemon stop` uses the method. Idle exit after 30 minutes stays with WP-08 (RT-08, D62). *Source:* M13 point 8. *Amends* INTERFACES §6, which said "host-spawned only".
+
+### D88. Prose review for WP-02
+Mirza delegates WP-02's diagnostic wording as at M11, except for the hints a person is likely to read when something goes wrong. He reviews those in the candidate: `MOSTRA_HOME_LOCKED`, `MOSTRA_HOME_NOT_OWNED`, `MOSTRA_HOME_SOCKET_TOO_LONG`, `MOSTRA_HOME_TOO_NEW` and `MOSTRA_PLATFORM_UNSUPPORTED`. `packages/runtime/AGENTS.md` is shown in full, because agents read it in every later package. *Source:* M13 point 9.
 
 ## Research consensus adopted
 

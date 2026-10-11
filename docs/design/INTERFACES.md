@@ -178,13 +178,17 @@ JSON-RPC 2.0 over `postMessage`, with exact origin checks and schema validation.
 
 ## 6. Host protocol (clients ↔ supervisor)
 
-JSON-RPC 2.0 over newline-delimited stdio (spawned, `mostra host`) or the home's Unix socket (attached). Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03).
+JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the runtime bundle's `mostra-runtime host`, D85) or the home's Unix socket (attached to `mostra-runtime daemon`). Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03).
+
+**Framing and errors.** Each message is one line of JSON (JSON never contains a raw newline). Revision `2026-10-10` has no batches: a JSON array is answered with an Invalid Request error (D83). Every error's `data` is the diagnostic, and `error.code` is the JSON-RPC code: -32700 for unparseable JSON and -32600 for a message that isn't a valid request (`MOSTRA_HOST_MALFORMED`), -32601 for an unknown method (`MOSTRA_HOST_METHOD_UNKNOWN`), -32602 for params that fail the method's schema (`MOSTRA_HOST_INVALID_PARAMS`), -32603 for an unexpected failure (`MOSTRA_HOST_INTERNAL_ERROR`), and -32000 for every other diagnostic. Clients switch on `data.code`, never on the message.
+
+**Session rules.** `mostra/initialize` is the first request on every connection and is sent once; anything else first, or a second initialize, gets `MOSTRA_HOST_INITIALIZE_ORDER`. Notifications before initialization are ignored.
 
 ```text
 Session
-  mostra/initialize { client: {name, version}, revisions: string[], capabilities, ports: PortName[], home?: HomeConfig }
-      → { revision, instance: {version, home, platform}, capabilities, warnings: Diagnostic[] }
-  mostra/shutdown {}                               (host-spawned only)
+  mostra/initialize { client: {name, version}, revisions: string[], capabilities: ClientCapabilities, ports: PortName[], home?: HomeConfig }
+      → { revision, instance: InstanceInfo, capabilities: InstanceCapabilities, warnings: Diagnostic[] }
+  mostra/shutdown {}                       → {}   (the spawning host, or any attached client of a daemon, D87)
 
 Authoring
   artifact/create  { dir, template?, title? }       → { artifactId, dir }
@@ -215,14 +219,30 @@ Events
 
 Administration
   secret/set | secret/list | secret/delete         (value only via set; never returned)
-  instance/status    {}                              → processes, ports, pending deliveries, shares, versions in use
+  instance/status    {}                              → { instance, connections, processes } (WP-02); ports, pending deliveries, shares and versions in use are added by the packages that own them
   gc/run             { dryRun? }                     → reclaimed
 
 Mostra → host (only to the connection that registered the port)
   port/<name>.<method>   see §7
 ```
 
-`SourceRef` is `{ path }` or `{ artifactId }`. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `HomeConfig` lets a spawning host set the home, the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4).
+`SourceRef` is `{ path }` or `{ artifactId }`. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
+
+The initialize shapes (D84):
+
+```ts
+interface ClientCapabilities { notifications?: string[] }        // notification methods the client accepts; the instance sends no others
+interface InstanceCapabilities {
+  methods: string[];                                            // every method this instance serves
+  notifications: string[];                                      // notifications it may send
+  ports: PortName[];                                            // ports it calls when a client registers them
+}
+interface InstanceInfo { version: string; home: string; platform: string; pid: number; mode: "host" | "daemon" }
+type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addressing" | "trustedControls"
+              | "capture" | "secrets" | "pty" | "ai" | (string & {}); // "ai" is reserved (D46)
+```
+
+Registering a port the instance doesn't list in `capabilities.ports` returns the warning `MOSTRA_HOST_PORT_UNSUPPORTED` in `warnings`. Port names are open strings on the wire, so an older instance warns about a newer port instead of refusing the session.
 
 ## 7. Ports
 

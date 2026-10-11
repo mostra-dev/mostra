@@ -5,9 +5,11 @@
 ## 1. The home
 
 ```text
-<home>/                        default ~/.mostra (macOS), ${XDG_DATA_HOME:-~/.local/share}/mostra (Linux); mode 0700
+<home>/                        default ~/.mostra (macOS), ${XDG_DATA_HOME:-~/.local/share}/mostra (Linux); mode 0700 (D85)
   config.json                  home settings written by `mostra` and by hosts through HomeConfig
-  store/ledger.sqlite          the ledger (WAL, synchronous=FULL), with -wal and -shm
+  instance.json                discovery record of the running supervisor (D81): pid, start time, socket, runtime version, revisions; never a lock
+  store/ledger.sqlite          the ledger (WAL, synchronous=FULL, locking_mode=EXCLUSIVE: no -shm file), with -wal
+  store/ledger.sqlite.bak-<from>-<to>   backup written before a migration (§6)
   versions/<versionId>/        immutable: manifest.json, client/, server/ (optional), registry.json, lock.yaml
   sources/<artifactId>/<sourceDigest>.tar.zst   source snapshots for every published version (H-11)
   blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
@@ -17,8 +19,12 @@
   cache/verify/<digests>.json  cached verdicts (D41)
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)
   logs/                        rotated supervisor and child logs, capability URLs redacted
-<runtime dir>/<home-hash>.sock control socket (ARCHITECTURE §4)
+<runtime dir>/<home-hash>.sock control socket (ARCHITECTURE §4, D82): runtime dir is MOSTRA_RUNTIME_DIR, else ~/.mostra/run (macOS),
+                               $XDG_RUNTIME_DIR/mostra when owned and 0700, else ${XDG_STATE_HOME:-~/.local/state}/mostra/run (Linux);
+                               home-hash is 16 Crockford base32 characters of SHA-256(realpath(home))
 ```
+
+**Who owns the home** (D81). The supervisor holding the ledger's exclusive SQLite lock owns the home. The operating system releases the lock when the process dies. The socket and `instance.json` are only how clients find that owner. Because the lock excludes every other connection, any other ledger reader (including `mostra doctor`'s integrity check) goes through the supervisor, or runs only when no supervisor holds the lock. Within the supervisor, nothing but SQLite opens the ledger file: POSIX releases a process's locks on a file when any descriptor for it closes.
 
 **Why sources are snapshotted.** Artifacts, versions and submissions must stay readable after the authoring directory disappears (HO-08, H-11). A version's source snapshot also makes `verify` regression baselines and `export bundle` independent of the working tree.
 
@@ -82,7 +88,8 @@ token(id PK, secret_hash, artifact_id, scopes_json, viewer_id NULL, expires_at N
 session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, created_at, last_seen_at)
 share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, PRIMARY KEY(pid, start_time))
-schema_migration(version PK, applied_at)
+schema_migration(version PK, name, runtime_version, applied_at)
+ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- written when the lock is taken (D81)
 ```
 
 Invariants carried by constraints:
@@ -131,4 +138,4 @@ These are ephemeral and never stored (D47, D63): presence, live updates, action 
 
 ## 6. Migrations
 
-The ledger carries `schema_migration`. A newer runtime migrates forward in one transaction at start-up, after a file-level backup (`ledger.sqlite.bak-<from>-<to>`). An older runtime refuses a newer ledger with `MOSTRA_HOME_TOO_NEW`, naming the required version. Version directories, blobs and source snapshots are immutable, so they never migrate.
+The ledger carries `schema_migration`. A new ledger is built in a temporary file with `schema_migration` and `ledger_lock`, then linked into place without replacing anything, so an existing `ledger.sqlite` is always a complete database and Mostra never recreates an empty ledger over one. A newer runtime migrates forward in one transaction at start-up, after `PRAGMA quick_check` passes and a file-level backup (`ledger.sqlite.bak-<from>-<to>`, written with `VACUUM INTO`, which SQLite fsyncs under `synchronous=FULL`; copying the file would drop the supervisor's lock). An older runtime refuses a newer ledger with `MOSTRA_HOME_TOO_NEW`, naming the schema version and the runtime version that wrote it. A file that isn't a Mostra ledger, or can't be read, is `MOSTRA_HOME_LEDGER_UNREADABLE`. `child.start_time` is an opaque identity of a process start (the boot plus `/proc/<pid>/stat` start ticks on Linux, the boot plus `ps -o lstart` seconds on macOS). Version directories, blobs and source snapshots are immutable, so they never migrate.

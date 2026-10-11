@@ -14,9 +14,10 @@
 
 | Failure | Behavior |
 |---|---|
-| Two supervisors start for one home | The first to bind the socket wins. The others attach as clients, or with `mostra host` get `MOSTRA_HOME_LOCKED` naming the owner's PID (prototype: 3 × 16 racers, one winner each) |
-| Stale socket after a crash | A starter that can't connect to the socket takes the `run/takeover.lock` mutex (atomic `mkdir`). It re-probes, unlinks and binds. A mutex older than 30 s, whose owner PID is gone, is broken |
-| Supervisor crashes or is killed | Children notice the IPC disconnect and exit. Process groups make sure grandchildren (demo servers, PTY programs) die too. On the next start the supervisor reaps any recorded `child` rows whose PID and start time still match. Committed state is intact, and in-flight requests were unacknowledged, so clients retry them by ID |
+| Two supervisors start for one home | Ownership is the ledger's exclusive SQLite lock, taken before the socket (D81). The first starter to take it owns the home; the lock fails at once for the others. A daemon starter that loses reads `instance.json` and attaches to the socket recorded there, waiting a bounded time while the owner finishes starting. Only when that socket can't be reached does it fail with `MOSTRA_HOME_LOCKED`, naming the owner's PID and how to restart it. `mostra host` never attaches: it gets `MOSTRA_HOME_LOCKED` naming the owner's PID (prototype: 3 × 16 racers, one winner each) |
+| Stale socket after a crash | The operating system released the dead supervisor's lock. The next starter takes it, unlinks the leftover socket file and binds a new one. No takeover mutex is needed, because only the lock holder touches the socket. A stale `instance.json` (its PID and start time match no live process) is replaced |
+| Socket file removed while the supervisor runs (for example a Linux logout removing `$XDG_RUNTIME_DIR`) | The supervisor checks its socket at least every 10 s and re-creates it. Until then, starters find the owner through `instance.json`, and no second supervisor can start because the lock is held |
+| Supervisor crashes or is killed | Children notice the IPC disconnect, signal their own process group and exit. Process groups make sure grandchildren (demo servers, PTY programs) die too; a child that runs programs in their own sessions (the PTY host) registers them with the supervisor. On the next start the supervisor reaps every recorded `child` row: when the recorded leader's PID and start time still match, or the leader is gone and the machine hasn't rebooted, it signals the group's members that started no earlier than the leader (SIGTERM, then SIGKILL). A PID now held by an unrelated process is left alone. Committed state is intact, and in-flight requests were unacknowledged, so clients retry them by ID |
 | Worker crashes, OOMs or hangs | Crash or heap exhaustion: the exit is detected. A hang: the 10 s event-loop watchdog kills it. Running action runs end `failed` with reason `interrupted`, and their pages see it. `worker.crashed` is appended. The next request restarts the worker with exponential backoff (1 s to 60 s). Other artifacts and the gateway are unaffected (RT-04; prototype: crash, OOM and hang each isolated) |
 | A worker crashes repeatedly (more than 5 crashes in 10 minutes) | The worker is parked. Requests return `MOSTRA_RUNTIME_WORKER_PARKED` with the last cause, and the shell shows "This artifact's server code keeps crashing". `verify` and the next publish clear the park |
 | Builder or verify runner crashes | The operation fails with `MOSTRA_BUILD_CRASHED` or `MOSTRA_VERIFY_CRASHED` plus the child's last stderr lines. Nothing is published. The next operation starts a fresh child |
@@ -31,10 +32,13 @@
 | Crash during publish | Staging and build outputs are written outside `versions/`, and promotion is an atomic rename followed by the ledger transaction. A crash before the transaction leaves no visible version (VR-02). The orphaned directory is removed on the next start, because no ledger row names it |
 | Crash between the version rename and the ledger insert | Same as above: the version directory isn't visible without its row, and a later publish of the same digests reuses the directory after checking it |
 | Disk full | The transaction fails and the client gets `MOSTRA_HOME_DISK_FULL`. The viewer's unsaved edits stay in the browser journal (§5). Nothing partial is committed |
-| Ledger can't be opened (corrupt, unreadable) | The supervisor refuses to start with `MOSTRA_HOME_LEDGER_UNREADABLE`. `mostra doctor` runs SQLite's integrity check and points to the latest backup. Mostra never recreates an empty ledger over an existing file |
-| Ledger is newer than the runtime | `MOSTRA_HOME_TOO_NEW` names the version required (DATA_MODEL §6) |
+| Ledger can't be opened (corrupt, unreadable, or not a Mostra ledger) | The supervisor refuses to start with `MOSTRA_HOME_LEDGER_UNREADABLE`. `mostra doctor` runs SQLite's integrity check (through the supervisor, or only when no supervisor holds the lock, D81) and points to the latest backup. Mostra never recreates an empty ledger over an existing file |
+| Ledger is newer than the runtime | `MOSTRA_HOME_TOO_NEW` names the schema version and the runtime version that wrote it (DATA_MODEL §6) |
+| Migration fails part-way | The migration transaction rolls back, the ledger stays at its old version, and the backup taken before it remains next to the ledger |
 | Blob or version file missing or altered | Reads verify content hashes. A mismatch is `MOSTRA_HOME_INTEGRITY` naming the object. The viewer sees "This version is damaged", and the agent gets the code |
-| Home directory removed while running | Writes fail closed. The supervisor stops accepting requests, reports `MOSTRA_HOME_GONE` and exits |
+| Home directory removed while running | Writes fail closed. The supervisor checks its home at least every 10 s; when the home is gone it stops accepting requests, answers them with `MOSTRA_HOME_GONE`, stops its children and exits |
+| Home owned by another user | Every entry point fails closed with `MOSTRA_HOME_NOT_OWNED` before using it, because the home holds secrets (D44). A home the user owns is tightened to mode 0700 (D85) |
+| Control socket path too long for the operating system | `MOSTRA_HOME_SOCKET_TOO_LONG`, naming `MOSTRA_RUNTIME_DIR` as the fix (D82) |
 
 ## 4. Submissions and delivery (IN-05, IN-12, IN-13)
 
@@ -121,6 +125,6 @@
 | Manifest isn't a literal, or is invalid | `verify` and `publish` report `MOSTRA_MANIFEST_*` with the location and a fix. Unknown keys are warnings, so manifests evolve additively |
 | Unknown import with `dependencies: "explicit"` | `MOSTRA_DEP_MISSING` with the exact `mostra add` command (D43) |
 | Package lifecycle script fails | The install fails with the script's output. It runs in an install child with the artifact's directory and environment, never in the supervisor (DP-05) |
-| Unsupported platform (Windows, other architectures) | Every entry point fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` before touching the home (D35) |
+| Unsupported platform (Windows, other architectures) | Every entry point fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` before touching the home (D35). `mostra-runtime host` also answers the host's first request with it, so a spawning host gets a typed error |
 | No browser available for `verify` | `MOSTRA_ENV_BROWSER_MISSING` with the install command. The runtime bundle includes the headless shell, so this means a damaged bundle |
 | Required tool missing for sharing | `MOSTRA_SHARE_TOOL_MISSING` with install instructions (D47) |

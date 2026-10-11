@@ -54,7 +54,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | crate `mostra-host` | Rust hosts | serde, tokio | |
 | crate `mostra-term-capture` | ratatui authors | ratatui, serde | |
 
-Inside `@mostra/runtime` the modules are deep and owned: `ledger`, `interaction`, `gateway`, `addressing`, `registry`, `publish`, `deps`, `processes`, `live`, `share`, `protocol-server`, `builder` (child entry). Each module has one public `index.ts`, and dependency-cruiser forbids imports into another module's internals.
+Inside `@mostra/runtime` the modules are deep and owned: `ledger`, `interaction`, `gateway`, `addressing`, `registry`, `publish`, `deps`, `processes`, `live`, `share`, `protocol-server`, `builder` (child entry), `home` (the platform gate, resolution, permissions, the runtime directory and acquisition, D85) and `instance`, the composition root, which assembles the others and holds no policy of its own (D85). Each module has one public `index.ts`, and dependency-cruiser forbids imports into another module's internals. The package's binary, `mostra-runtime host|daemon`, is the runtime bundle's entry point (D85).
 
 ## 4. Toolchain
 
@@ -98,6 +98,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | boundaries | always | dependency-cruiser, knip |
 | api | affected public packages | API Extractor diff, publint, attw; a changed report needs a changeset |
 | e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix; macOS and Linux for platform-specific suites |
+| integration | runtime or protocol affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86) |
 | hygiene | runtime affected | negative tests (bad Host, bad Origin, missing token, CSRF, revoked token) |
 | conformance | runtime, sdk, crates affected | the kit against standalone adapters and the reference test host |
 | examples | examples, templates, kit, runtime affected | `mostra verify` on every example and template, sharded; visual and ARIA baselines compared |
