@@ -38,7 +38,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "api": "mostra-tools api"
+    "api": "mostra-tools api",
+    "prove:seeds": "node scripts/prove-seeds.ts"
   },
   "dependencies": {
     "@mostra/protocol": "workspace:*",

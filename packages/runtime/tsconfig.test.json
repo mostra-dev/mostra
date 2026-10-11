@@ -9,7 +9,7 @@
     "rewriteRelativeImportExtensions": false,
     "allowImportingTsExtensions": true
   },
-  "include": ["test", "*.config.ts"],
+  "include": ["test", "scripts", "*.config.ts"],
   "references": [
     {
       "path": "./tsconfig.src.json"
