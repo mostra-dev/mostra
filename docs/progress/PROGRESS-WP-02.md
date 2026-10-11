@@ -12,7 +12,7 @@
 | `pnpm check` | green: format-lint, types, unit, build, boundaries, api, licenses, rust, docs and commits all pass (33 s, macOS arm64) |
 | Predecessors | WP-01 done ([PROGRESS-WP-01](PROGRESS-WP-01.md) on `origin/main`); no `RECOVERY-WP-02-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS arm64 |
-| Pull request | [#6](https://github.com/mostra-dev/mostra/pull/6), draft |
+| Pull request | [#6](https://github.com/mostra-dev/mostra/pull/6), merged |
 
 ## What was built
 
@@ -74,3 +74,16 @@ The finding 4 test then failed on the Linux CI leg (run [38123396018](https://gi
 ## Agent-facing prose (D88)
 
 Waiting for Mirza's review: the hints of `MOSTRA_HOME_LOCKED`, `MOSTRA_HOME_NOT_OWNED`, `MOSTRA_HOME_SOCKET_TOO_LONG`, `MOSTRA_HOME_TOO_NEW` and `MOSTRA_PLATFORM_UNSUPPORTED`, and `packages/runtime/AGENTS.md` in full. The other codes' text, `packages/protocol/AGENTS.md` and the playbook step are delegated (D88).
+
+## Commits and publication
+
+- **Range:** `ca5ec05..570b9a2` on `main`: 19 signed-off commits on `wp/02-instance` (`8cad073` to `0205a77`) and the merge commit `570b9a2` of [#6](https://github.com/mostra-dev/mostra/pull/6). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38126143477](https://github.com/mostra-dev/mostra/actions/runs/38126143477), CodeQL [38126143482](https://github.com/mostra-dev/mostra/actions/runs/38126143482) and Scorecard [38126143474](https://github.com/mostra-dev/mostra/actions/runs/38126143474), all green.
+- **Packages:** nothing published. Changesets record a minor release of `@mostra/protocol` (the JSON-RPC core, session methods and codes) and the first release of `@mostra/runtime`; the release pipeline is WP-11's (EN-05).
+- **Docs:** generated diagnostic pages for the 18 new codes in `docs/reference/`; the docs site is WP-26's.
+- **Follow-ups:** [#7](https://github.com/mostra-dev/mostra/issues/7) (WP-03) and [#8](https://github.com/mostra-dev/mostra/issues/8) (WP-08), both in those packages' specifications.
+- **Remaining dirty paths:** none in the repository. Outside it: the disposable prototypes in `$JCODE_SCRATCH_DIR` (`proto2`, `bsq`, `seeds`) and the review transcript `~/.jcode/scratch-review-wp-02.md`.
+
+## Next
+
+WP-03, builder, versions and publish (`docs/design/work-packages/WP-03.md`).
