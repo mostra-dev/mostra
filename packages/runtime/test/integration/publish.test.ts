@@ -30,6 +30,7 @@ import {
   type LineClient,
   type Message,
   type RuntimeProcess,
+  removeAll,
   startDaemon,
   type TestHome,
   tempDir,
@@ -514,5 +515,35 @@ describe("review findings (D80)", () => {
     expect(readFileSync(join(version, "server", "entry.mjs"), "utf8")).toContain(
       "CTS_SERVER_BODY_MARKER",
     );
+  });
+
+  it("rebuilds a lost or altered version directory when the same source is published again (Claude finding 3)", async () => {
+    const dir = join(copyFixture("single-tsx"), "page.tsx");
+    const first = await publish(dir);
+    const version = join(home.home, "versions", first.versionId);
+    const recorded = (): string =>
+      (JSON.parse(readFileSync(join(version, "manifest.json"), "utf8")) as { outputDigest: string })
+        .outputDigest;
+
+    removeAll(version);
+    expect(await publish(dir)).toEqual({ ...first, reused: true });
+    expect(existsSync(join(version, "client", "index.html"))).toBe(true);
+    expect(statSync(version).mode & 0o777).toBe(0o555);
+    const restored = recorded();
+
+    // An edit inside the sealed directory is damage too.
+    chmodSync(version, 0o755);
+    chmodSync(join(version, "client"), 0o755);
+    chmodSync(join(version, "client", "index.html"), 0o644);
+    writeFileSync(join(version, "client", "index.html"), "<p>tampered</p>");
+    expect(await publish(dir)).toEqual({ ...first, reused: true });
+    expect(readFileSync(join(version, "client", "index.html"), "utf8")).not.toContain("tampered");
+    expect(recorded()).toBe(restored);
+
+    // The artifact still has one version, number 1.
+    const detail = ok(
+      await client.call("artifact/get", { artifact: { artifactId: first.artifactId } }),
+    ) as { versions: unknown[] };
+    expect(detail.versions).toHaveLength(1);
   });
 });

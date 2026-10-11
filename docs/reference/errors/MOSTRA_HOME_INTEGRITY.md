@@ -16,8 +16,8 @@ Mostra checks stored versions, source snapshots and blobs against their recorded
 
 ## How to fix it
 
-Leave files inside the home unchanged. Republishing the artifact from its source writes a fresh version; `mostra doctor` lists other damaged objects.
+Leave files inside the home unchanged. To repair a version, publish the same source again: Mostra rebuilds the version's directory and puts it back under the same version ID, and the artifact keeps its version number. If the source has changed since, the publish makes a new version and the damaged one stays as it is; its source snapshot in the home holds the original files. `mostra doctor` lists other damaged objects.
 
 ## Hint
 
-Run `mostra doctor`; publish the artifact again to rebuild a damaged version.
+Publish the version's source again to rebuild a damaged version in place, and run `mostra doctor` for other damaged objects.

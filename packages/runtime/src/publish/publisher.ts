@@ -251,6 +251,28 @@ async function writeScaffold(dir: string, artifactId: string, title: string): Pr
   fsyncPath(dir, true);
 }
 
+/**
+ * What is wrong with a stored version directory, or `undefined` when it is intact: its
+ * `manifest.json` names an output digest, and its `client/`, `server/` and `registry.json` still
+ * have that digest (DATA_MODEL §2).
+ */
+async function versionDamage(dir: string): Promise<string | undefined> {
+  let recorded: unknown;
+  try {
+    recorded = (
+      JSON.parse(await readFile(join(dir, "manifest.json"), "utf8")) as { outputDigest?: unknown }
+    ).outputDigest;
+  } catch (error) {
+    return `its manifest.json can't be read (${(error as NodeJS.ErrnoException).code ?? "invalid JSON"})`;
+  }
+  try {
+    const actual = listingDigest(await outputListing(dir));
+    return actual === recorded ? undefined : "its files no longer match their output digest";
+  } catch (error) {
+    return `its files can't be read (${(error as NodeJS.ErrnoException).code ?? "error"})`;
+  }
+}
+
 /** Serializes work per key, so two publishes of one artifact never race (FAILURE_MODEL §1 rule 2). */
 class KeyedQueue {
   readonly #tails = new Map<string, Promise<unknown>>();
@@ -391,15 +413,17 @@ export function createPublisher(options: PublisherOptions): Publisher {
           // 5. Build, archive and promote, unless this artifact already has this exact version.
           let outputDigest: string | undefined;
           const forcedCodes: string[] = [];
-          if (registry.hasVersion(versionId)) {
-            if (!existsSync(registry.store.versionDir(versionId))) {
-              throw new RpcError(
-                createDiagnostic("MOSTRA_HOME_INTEGRITY", {
-                  message: `The stored version ${versionId} is missing from ${registry.store.versionsDir}.`,
-                }),
-              );
-            }
-          } else {
+          // A version whose directory is missing or no longer matches its own recorded output
+          // digest is rebuilt from the same source and environment, and put back in place; its
+          // ledger row stays as it was (FAILURE_MODEL §3, D80 Claude review finding 3).
+          const exists = registry.hasVersion(versionId);
+          const damage = exists
+            ? await versionDamage(registry.store.versionDir(versionId))
+            : undefined;
+          if (damage !== undefined) {
+            log.warn("publish.version_damaged", { versionId, damage });
+          }
+          if (!exists || damage !== undefined) {
             const out = join(staging, "out");
             const built = await renderMode.build({
               stagingDir: staging,
@@ -449,6 +473,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               undo.push(() => rm(archive, { force: true }));
             }
             faults.at("publish:after-archive");
+            if (damage !== undefined) await removeTree(registry.store.versionDir(versionId));
             undo.push(() => removeTree(registry.store.versionDir(versionId)));
             await registry.store.promote(out, versionId);
             faults.at("publish:after-promote");
