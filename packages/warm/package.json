@@ -1,0 +1,16 @@
+{
+  "name": "@mostra/warm",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The warm set: the packages every Mostra artifact resolves without a package.json (D91). No code; the runtime bundle ships it.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "type": "module",
+  "dependencies": {
+    "@mostra/react": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:",
+    "tailwindcss": "catalog:"
+  }
+}

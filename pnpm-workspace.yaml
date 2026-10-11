@@ -41,6 +41,22 @@ catalog:
   # Runtime dependencies of published packages
   zod: 4.6.5
   better-sqlite3: 13.0.3
+  oxc-parser: 0.152.0
+  ignore: 7.0.12
+
+  # The builder child (WP-03): Vite 8 with React, MDX 3 and Tailwind 4 (VERIFIED_FACTS, WP-03)
+  vite: 8.3.2
+  '@vitejs/plugin-react': 6.1.1
+  '@mdx-js/mdx': 3.1.1
+  remark-frontmatter: 5.0.0
+  remark-gfm: 4.0.1
+  '@tailwindcss/vite': 4.3.3
+
+  # The warm set artifacts resolve (@mostra/warm, D91)
+  react: 19.3.0
+  react-dom: 19.3.0
+  react-router: 8.4.0
+  tailwindcss: 4.3.3
 
   # Build, types and tests
   typescript: 7.0.2
@@ -49,6 +65,7 @@ catalog:
   vitest: 5.0.3
   fast-check: 4.10.2
   '@playwright/test': 1.63.0
+  playwright: 1.63.0
   '@types/node': 24.19.1
   '@types/better-sqlite3': 9.6.0
 

@@ -42,14 +42,25 @@
     "prove:seeds": "node scripts/prove-seeds.ts"
   },
   "dependencies": {
+    "@mdx-js/mdx": "catalog:",
     "@mostra/protocol": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "better-sqlite3": "catalog:",
+    "ignore": "catalog:",
+    "oxc-parser": "catalog:",
+    "remark-frontmatter": "catalog:",
+    "remark-gfm": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@mostra/tools": "workspace:*",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
+    "playwright": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

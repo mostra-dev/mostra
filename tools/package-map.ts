@@ -112,6 +112,18 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     published: true,
   },
   {
+    // The warm set (D91): the packages every artifact resolves with no package.json. It has no
+    // code; the builder links each build's node_modules to its dependencies. Unpublished: the
+    // runtime bundle ships it (WP-11).
+    name: "@mostra/warm",
+    dir: "packages/warm",
+    audience: "runtime bundle (the warm set artifacts resolve)",
+    environment: "browser",
+    workspace: ["@mostra/react"],
+    external: "any",
+    published: false,
+  },
+  {
     name: "@mostra/pty-host",
     dir: "packages/pty-host",
     audience: "runtime bundle",
