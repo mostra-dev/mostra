@@ -203,20 +203,25 @@ async function reapRecorded(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
       }),
     ),
   ];
+  // A listing is a series of reads, so a process that starts while another exits can slip
+  // between them; the groups count as gone only when the kernel has no member left either.
+  const groupsLeft = (): boolean => owned.some((row) => groupAlive(row.pgid));
   signalAll(members(before), "SIGTERM");
   const deadline = Date.now() + REAP_GRACE_MS;
   let remaining = members(await listProcesses());
-  while (remaining.length > 0 && Date.now() < deadline) {
+  while ((remaining.length > 0 || groupsLeft()) && Date.now() < deadline) {
     await delay(100);
     remaining = members(await listProcesses());
   }
   const killDeadline = Date.now() + KILL_WAIT_MS;
-  while (remaining.length > 0 && Date.now() < killDeadline) {
+  while ((remaining.length > 0 || groupsLeft()) && Date.now() < killDeadline) {
     signalAll(remaining, "SIGKILL");
     await delay(50);
     remaining = members(await listProcesses());
   }
-  if (remaining.length > 0) log.warn("process.reap_incomplete", { pids: remaining });
+  if (remaining.length > 0 || groupsLeft()) {
+    log.warn("process.reap_incomplete", { pids: remaining, pgids: owned.map((row) => row.pgid) });
+  }
   ledger.write((db) => {
     for (const { row } of plan) {
       db.run("DELETE FROM child WHERE pid = ? AND start_time = ?", row.pid, row.start_time);
