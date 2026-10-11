@@ -153,7 +153,11 @@ function sameHome(home: string, path: string): boolean {
 
 async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise<Instance> {
   const { log } = home;
-  const { manager, reaped } = await openProcessManager({ ledger: home.ledger, log });
+  const { manager, reaped } = await openProcessManager({
+    ledger: home.ledger,
+    log,
+    redactor: home.redactor,
+  });
   const info: InstanceInfo = {
     version: runtimeVersion(),
     home: home.path,
@@ -210,8 +214,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
   };
 
-  await server.listen(home.socketPath, options.checkIntervalMs);
-  home.publish(options.mode);
+  try {
+    await server.listen(home.socketPath, options.checkIntervalMs);
+    home.publish(options.mode);
+  } catch (error) {
+    // Undo what started before the home is released, so no listener or child outlives it.
+    server.close();
+    await manager.stopAll();
+    throw error;
+  }
   home.watch((diagnostic) => {
     log.error("instance.home_gone", { message: diagnostic.message });
     server.refuse(diagnostic);

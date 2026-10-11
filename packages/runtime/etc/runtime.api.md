@@ -101,6 +101,7 @@ export interface SpawnSpec {
     };
     readonly kind: string;
     readonly ownerRef: string;
+    readonly redact?: readonly string[];
 }
 
 // @public

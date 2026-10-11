@@ -15,7 +15,7 @@ import {
   RpcError,
 } from "@mostra/protocol";
 import { LEDGER_FILE, type Ledger, openLedger } from "../ledger/index.ts";
-import { type Environment, type Log, openFileLog } from "../log.ts";
+import { type Environment, type Log, openFileLog, Redactor } from "../log.ts";
 import { readProcess } from "../processes/index.ts";
 import { attach, type SocketClient } from "../protocol-server/index.ts";
 import {
@@ -61,6 +61,8 @@ export interface OwnedHome {
   readonly runtimeDir: RuntimeDirChoice;
   readonly ledger: Ledger;
   readonly log: Log;
+  /** Removes secrets and capability material from everything the instance logs or reports. */
+  readonly redactor: Redactor;
   /** This process's identity, as recorded in `ledger_lock` and `instance.json`. */
   readonly self: { readonly pid: number; readonly startTime: string };
   /** When this process took the home (RFC 3339). */
@@ -108,8 +110,11 @@ export async function acquireHome(options: AcquireHomeOptions): Promise<HomeAcqu
   // path, which is the one bound (on macOS, /tmp is /private/tmp).
   socketPathFor(runtimeDir.dir, home);
   const socketPath = socketPathFor(prepareOwnedDirectory(runtimeDir.dir).realPath, home);
+  const redactor = new Redactor();
+  redactor.protectEnvironment(options.env);
   const log = openFileLog({
     dir: join(home, "logs"),
+    redactor,
     ...(options.mirror ? { mirror: options.mirror } : {}),
   });
   if (prepared.tightenedFrom !== undefined) {
@@ -139,7 +144,16 @@ export async function acquireHome(options: AcquireHomeOptions): Promise<HomeAcqu
       log.info("home.acquired", { home, socket: socketPath, pid: self.pid });
       return {
         kind: "owner",
-        home: own({ home, socketPath, runtimeDir, ledger: opening.ledger, log, self, options }),
+        home: own({
+          home,
+          socketPath,
+          runtimeDir,
+          ledger: opening.ledger,
+          log,
+          redactor,
+          self,
+          options,
+        }),
       };
     }
 
@@ -184,6 +198,7 @@ interface OwnInputs {
   readonly runtimeDir: RuntimeDirChoice;
   readonly ledger: Ledger;
   readonly log: Log;
+  readonly redactor: Redactor;
   readonly self: { readonly pid: number; readonly startTime: string };
   readonly options: AcquireHomeOptions;
 }
@@ -198,7 +213,7 @@ function identity(path: string): string | undefined {
 }
 
 function own(inputs: OwnInputs): OwnedHome {
-  const { home, socketPath, runtimeDir, ledger, log, self } = inputs;
+  const { home, socketPath, runtimeDir, ledger, log, redactor, self } = inputs;
   const startedAt = new Date().toISOString();
   const homeId = identity(home);
   const ledgerId = identity(join(home, "store", LEDGER_FILE));
@@ -210,6 +225,7 @@ function own(inputs: OwnInputs): OwnedHome {
     runtimeDir,
     ledger,
     log,
+    redactor,
     self,
     startedAt,
     publish(mode) {

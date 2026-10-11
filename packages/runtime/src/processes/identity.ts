@@ -3,7 +3,7 @@
  * reused, so a process is identified by its PID plus an opaque start time: the boot it started in
  * and when it started within that boot. Linux reads `/proc/<pid>/stat` (start ticks since boot)
  * and the boot ID; macOS reads `ps -o lstart` (seconds) and `kern.boottime` (VERIFIED_FACTS,
- * WP-02).
+ * WP-02). Zombies count as gone: they have exited and only wait for their parent.
  */
 import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
@@ -53,6 +53,8 @@ export function parseProcStat(line: string, boot: string): ProcessInfo | undefin
     .slice(close + 1)
     .trim()
     .split(/\s+/);
+  // A zombie has exited; only its parent's wait is missing. It runs nothing and is skipped.
+  if (rest[0] === "Z") return undefined;
   const pgid = Number(rest[2]);
   const start = rest[19];
   if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(pgid) || start === undefined) {
@@ -65,13 +67,14 @@ export function parseProcStat(line: string, boot: string): ProcessInfo | undefin
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * Parses one line of `LC_ALL=C TZ=UTC ps -o pid=,pgid=,lstart=`, such as
- * `  214 99444 Tue Oct  6 13:53:19 2026`.
+ * Parses one line of `LC_ALL=C TZ=UTC ps -o pid=,pgid=,stat=,lstart=`, such as
+ * `  214 99444 Ss   Tue Oct  6 13:53:19 2026`. Zombies (`stat` starting with `Z`) are skipped.
  */
 export function parsePsLine(line: string, boot: string): ProcessInfo | undefined {
   const fields = line.trim().split(/\s+/);
-  if (fields.length < 7) return undefined;
-  const [pidText, pgidText, , monthText, dayText, timeText, yearText] = fields;
+  if (fields.length < 8) return undefined;
+  const [pidText, pgidText, stat, , monthText, dayText, timeText, yearText] = fields;
+  if (stat?.startsWith("Z")) return undefined;
   const pid = Number(pidText);
   const pgid = Number(pgidText);
   const month = MONTHS.indexOf(monthText ?? "");
@@ -141,7 +144,12 @@ export async function readProcess(pid: number): Promise<ProcessInfo | undefined>
       return undefined;
     }
   }
-  const { code, stdout } = await run("/bin/ps", ["-o", "pid=,pgid=,lstart=", "-p", String(pid)]);
+  const { code, stdout } = await run("/bin/ps", [
+    "-o",
+    "pid=,pgid=,stat=,lstart=",
+    "-p",
+    String(pid),
+  ]);
   if (code !== 0) return undefined;
   const [line] = stdout.split("\n").filter((text) => text.trim() !== "");
   return line === undefined ? undefined : parsePsLine(line, boot);
@@ -163,7 +171,7 @@ export async function listProcesses(): Promise<ProcessInfo[]> {
     );
     return infos.filter((info): info is ProcessInfo => info !== undefined);
   }
-  const { stdout } = await run("/bin/ps", ["-A", "-o", "pid=,pgid=,lstart="]);
+  const { stdout } = await run("/bin/ps", ["-A", "-o", "pid=,pgid=,stat=,lstart="]);
   return stdout
     .split("\n")
     .map((line) => parsePsLine(line, boot))

@@ -9,11 +9,10 @@ import { createInterface } from "node:readline";
 import { type JsonRpcParams, RpcPeer } from "@mostra/protocol";
 import * as z from "zod";
 import type { Ledger } from "../ledger/index.ts";
-import type { Environment, Log } from "../log.ts";
+import type { Environment, Log, Redactor } from "../log.ts";
 import {
   listProcesses,
   type ProcessInfo,
-  pidExists,
   readProcess,
   sameBoot,
   startedNoEarlier,
@@ -52,6 +51,11 @@ export interface SpawnSpec {
   readonly cwd?: string;
   /** The child's whole environment. Default: the supervisor's. */
   readonly env?: Environment;
+  /**
+   * Values the child receives that must never appear in logs or reports, such as secrets.
+   * Variables whose names look like secrets (`*_TOKEN`, `*_SECRET` …) are redacted as well.
+   */
+  readonly redact?: readonly string[];
   /**
    * Opens a JSON-RPC channel over Node IPC; the command must then be a Node.js executable. The
    * handlers answer the child's requests besides the built-in `child/adopt` and `child/release`.
@@ -124,6 +128,8 @@ export interface ProcessManager {
 export interface ProcessManagerOptions {
   readonly ledger: Ledger;
   readonly log: Log;
+  /** Learns the secrets children receive, so their output is redacted wherever it goes. */
+  readonly redactor: Redactor;
 }
 
 /**
@@ -185,25 +191,32 @@ async function reapRecorded(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
   if (rows.length === 0) return [];
   const before = await listProcesses();
   const plan = rows.map((row) => ({ row, targets: targetsFor(row, before) }));
-  const signalled = new Map<number, string>();
-  for (const { targets } of plan) {
-    if (!Array.isArray(targets)) continue;
-    for (const pid of targets) {
-      const info = before.find((candidate) => candidate.pid === pid);
-      if (info) signalled.set(pid, info.startTime);
-    }
-  }
-  signalAll([...signalled.keys()], "SIGTERM");
+  // Only groups proven to be the recorded children's are signalled, then watched until they are
+  // empty: a member may start more processes in the group while it handles SIGTERM, so every
+  // round re-lists the groups instead of trusting the first snapshot (RT-09).
+  const owned = plan.filter((entry) => Array.isArray(entry.targets)).map((entry) => entry.row);
+  const members = (processes: readonly ProcessInfo[]): number[] => [
+    ...new Set(
+      owned.flatMap((row) => {
+        const targets = targetsFor(row, processes);
+        return Array.isArray(targets) ? targets : [];
+      }),
+    ),
+  ];
+  signalAll(members(before), "SIGTERM");
   const deadline = Date.now() + REAP_GRACE_MS;
-  while (Date.now() < deadline && [...signalled.keys()].some(pidExists)) await delay(50);
-  if ([...signalled.keys()].some(pidExists)) {
-    // SIGKILL only processes that are still the ones signalled (same PID and start time).
-    const now = await listProcesses();
-    signalAll(
-      now.filter((info) => signalled.get(info.pid) === info.startTime).map((info) => info.pid),
-      "SIGKILL",
-    );
+  let remaining = members(await listProcesses());
+  while (remaining.length > 0 && Date.now() < deadline) {
+    await delay(100);
+    remaining = members(await listProcesses());
   }
+  const killDeadline = Date.now() + KILL_WAIT_MS;
+  while (remaining.length > 0 && Date.now() < killDeadline) {
+    signalAll(remaining, "SIGKILL");
+    await delay(50);
+    remaining = members(await listProcesses());
+  }
+  if (remaining.length > 0) log.warn("process.reap_incomplete", { pids: remaining });
   ledger.write((db) => {
     for (const { row } of plan) {
       db.run("DELETE FROM child WHERE pid = ? AND start_time = ?", row.pid, row.start_time);
@@ -219,7 +232,7 @@ async function reapRecorded(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
   return report;
 }
 
-function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
+function createManager({ ledger, log, redactor }: ProcessManagerOptions): ProcessManager {
   const running = new Map<number, ChildHandle>();
   let stopping = false;
 
@@ -258,6 +271,8 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
 
   const spawnChild = async (spec: SpawnSpec): Promise<ChildHandle> => {
     if (stopping) throw new Error("The process manager is stopping.");
+    for (const value of spec.redact ?? []) redactor.protect(value);
+    redactor.protectEnvironment(spec.env ?? process.env);
     const child: ChildProcess = spawn(spec.command, [...(spec.args ?? [])], {
       cwd: spec.cwd,
       env: spec.env ?? process.env,
@@ -266,11 +281,10 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
       serialization: "json",
     });
     const startedAt = new Date().toISOString();
-    const spawned = await new Promise<number>((resolve, reject) => {
+    const pid = await new Promise<number>((resolve, reject) => {
       child.once("spawn", () => resolve(child.pid ?? 0));
       child.once("error", reject);
     });
-    const pid = spawned;
     // After the spawn, errors (a failed signal or IPC send) are reported, never thrown: an
     // unhandled 'error' event would take the supervisor down.
     child.on("error", (error) => log.warn("process.error", { kind: spec.kind, pid, error }));
@@ -287,7 +301,8 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
     }
     if (child.stderr) {
       createInterface({ input: child.stderr }).on("line", (line) => {
-        stderrTail.push(line);
+        // The log redacts what it writes; the tail feeds diagnostics, so it is redacted here.
+        stderrTail.push(redactor.redact(line));
         if (stderrTail.length > STDERR_TAIL) stderrTail.shift();
         log.info("process.stderr", { kind: spec.kind, pid, line });
       });
@@ -342,8 +357,9 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
 
     // Record the child before anyone relies on it (RT-09). If it already exited, nothing is left
     // to reap.
-    const info = await readProcess(pid);
-    if (info) {
+    const registered = (async () => {
+      const info = await readProcess(pid);
+      if (!info) return;
       record({
         pid,
         start_time: info.startTime,
@@ -353,12 +369,13 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
         started_at: startedAt,
         parent_pid: null,
       });
-    }
-    log.info("process.started", { kind: spec.kind, ownerRef: spec.ownerRef, pid });
+    })();
 
+    // From here on, the child's group ends with it, whatever happens to its registration.
     const exited = exit.then(async ({ code, signal }) => {
       // The child's lifetime bounds its group and the groups it adopted.
       await endGroups([pid, ...adopted.values()], 2000);
+      await registered.catch(() => {});
       running.delete(pid);
       try {
         forget(pid);
@@ -386,12 +403,36 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
         return exited;
       },
     };
+    // Tracked from the spawn on, so stopAll reaches a child whose registration is still running.
     running.set(pid, handle);
+
+    try {
+      await registered;
+    } catch (error) {
+      // A child that can't be recorded can't be reaped after a crash: don't keep it.
+      log.error("process.record_failed", { kind: spec.kind, pid, error });
+      await handle.stop(500);
+      throw error;
+    }
+    log.info("process.started", { kind: spec.kind, ownerRef: spec.ownerRef, pid });
     return handle;
   };
 
+  /** Spawns in progress, so stopAll waits for them before it stops the children. */
+  const inflight = new Set<Promise<unknown>>();
+  const trackedSpawn = (spec: SpawnSpec): Promise<ChildHandle> => {
+    const spawning = spawnChild(spec);
+    const settled = spawning.then(
+      () => undefined,
+      () => undefined,
+    );
+    inflight.add(settled);
+    void settled.then(() => inflight.delete(settled));
+    return spawning;
+  };
+
   return {
-    spawn: spawnChild,
+    spawn: trackedSpawn,
     list: () =>
       [...running.values()].map((child) => ({
         pid: child.pid,
@@ -401,6 +442,8 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
       })),
     async stopAll(graceMs = DEFAULT_GRACE_MS) {
       stopping = true;
+      // Spawns already under way finish first, so their children are tracked and stopped too.
+      await Promise.all(inflight);
       await Promise.all([...running.values()].map((child) => child.stop(graceMs)));
     },
   };

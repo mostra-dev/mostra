@@ -23,6 +23,9 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   (`@mostra/worker`, `@mostra/pty-host`) implement the same rule.
 - **The platform gate runs first (D35, RT-07).** No entry point touches the home before
   `checkPlatform` passes.
+- **No secret reaches a log or a report.** Every string the log writes passes through the
+  instance's `Redactor`, and child output is redacted before it is kept. Pass the secrets a child
+  receives in `SpawnSpec.redact`; variables named like secrets are redacted on their own.
 - **Hosts reach the instance only through the protocol (D59).** Methods are defined in
   `@mostra/protocol` and served through `ProtocolServer`; port calls go only to the connection that
   registered the port.

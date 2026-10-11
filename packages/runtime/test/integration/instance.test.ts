@@ -7,13 +7,16 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
+import { RpcError } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
+import { startInstance } from "../../src/index.ts";
 import {
   alive,
   connectTo,
@@ -249,5 +252,25 @@ describe("stopping and failing closed (D87, FAILURE_MODEL §3)", () => {
     expect((await daemon.exited).code).toBe(3);
     expect(existsSync(longRun)).toBe(false);
     expect(existsSync(join(home.home, "store"))).toBe(false);
+  });
+});
+
+describe("review finding 5 (D80)", () => {
+  it("closes its socket and releases the home when start-up fails after binding", async () => {
+    const home = testHome();
+    // instance.json can't be written while a non-empty directory holds its name.
+    mkdirSync(join(home.home, "instance.json", "blocker"), { recursive: true });
+    const failure = await startInstance({ mode: "daemon", home: home.home, env: home.env }).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(RpcError);
+    const sockets = existsSync(home.runtimeDir) ? readdirSync(home.runtimeDir) : [];
+    expect(sockets).toEqual([]);
+    // Nothing still owns the home: the next start takes it.
+    rmSync(join(home.home, "instance.json"), { recursive: true });
+    const started = await startInstance({ mode: "daemon", home: home.home, env: home.env });
+    expect(started.kind).toBe("owner");
+    if (started.kind === "owner") await started.instance.stop("test");
   });
 });

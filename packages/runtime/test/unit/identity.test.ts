@@ -44,16 +44,18 @@ describe("start-time parsing", () => {
     });
     expect(parseProcStat("garbage", "boot-a")).toBeUndefined();
     expect(parseProcStat("12 (x) S 1", "boot-a")).toBeUndefined();
+    expect(parseProcStat(`4242 (x) Z ${fields.slice(1).join(" ")}`, "boot-a")).toBeUndefined();
   });
 
-  it("reads ps -o pid=,pgid=,lstart= lines in UTC", () => {
-    expect(parsePsLine("  214 99444 Tue Oct  6 13:53:19 2026", "b")).toEqual({
+  it("reads ps -o pid=,pgid=,stat=,lstart= lines in UTC and skips zombies", () => {
+    expect(parsePsLine("  214 99444 Ss   Tue Oct  6 13:53:19 2026", "b")).toEqual({
       pid: 214,
       pgid: 99444,
       startTime: `b/${Date.UTC(2026, 9, 6, 13, 53, 19) / 1000}`,
     });
-    expect(parsePsLine("214 1 Xyz Oct 6 13:53:19 2026 extra", "b")?.pid).toBe(214);
-    expect(parsePsLine("214 1 Tue Foo 6 13:53:19 2026", "b")).toBeUndefined();
+    expect(parsePsLine("214 1 S Xyz Oct 6 13:53:19 2026 extra", "b")?.pid).toBe(214);
+    expect(parsePsLine("214 1 S Tue Foo 6 13:53:19 2026", "b")).toBeUndefined();
+    expect(parsePsLine("214 1 Z Tue Oct 6 13:53:19 2026", "b")).toBeUndefined();
     expect(parsePsLine("", "b")).toBeUndefined();
   });
 
