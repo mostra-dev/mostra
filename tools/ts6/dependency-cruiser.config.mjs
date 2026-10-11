@@ -101,7 +101,9 @@ export default {
   forbidden: rules,
   options: {
     doNotFollow: { path: "node_modules" },
-    exclude: { path: "(^|/)(dist|\\.tsbuild|coverage)/" },
+    // Only this repository's build outputs: resolved npm packages often live in their own dist/,
+    // and excluding those would hide the imports the external-allowlist rules exist to catch.
+    exclude: { path: "^(packages|plugins|apps|tools|tests)/[^/]+/(dist|\\.tsbuild|coverage)/" },
     tsPreCompilationDeps: true,
     combinedDependencies: true,
     enhancedResolveOptions: {

@@ -63,6 +63,34 @@ describe("boundaries", () => {
     expect(fixed.code, fixed.output).toBe(0);
   });
 
+  it("dependency-cruiser keeps the bundler and native modules out of the supervisor (RT-02, RT-07)", () => {
+    // The supervisor imports Vite, a builder child module, and a native module at load time.
+    repo.write(
+      "packages/runtime/src/seed-supervisor.ts",
+      [
+        'import { build } from "vite";',
+        'import { buildSpa } from "./builder/child/spa.ts";',
+        'import { parseSync } from "oxc-parser";',
+        "export const seeded = [build, buildSpa, parseSync];",
+        "",
+      ].join("\n"),
+    );
+    const result = depcruise();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("runtime-vite-in-builder-only");
+    expect(result.output).toContain("runtime-builder-child-isolated");
+    expect(result.output).toContain("runtime-native-modules-lazy");
+
+    repo.reset();
+    // A type-only import of a native module is fine: it loads nothing.
+    repo.write(
+      "packages/runtime/src/seed-supervisor.ts",
+      'import type * as Oxc from "oxc-parser";\nexport type Seeded = typeof Oxc;\n',
+    );
+    const fixed = depcruise();
+    expect(fixed.code, fixed.output).toBe(0);
+  });
+
   it("knip rejects an unused export", () => {
     expect(repo.run("node_modules/.bin/knip", ["--no-progress", "--no-config-hints"]).code).toBe(0);
     repo.edit(
