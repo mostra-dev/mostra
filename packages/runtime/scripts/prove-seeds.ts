@@ -283,6 +283,39 @@ const SEEDS: readonly Seed[] = [
     to: 'node.type.startsWith("TS");',
     check: ["--project", "unit", "test/unit/scan.test.ts"],
   },
+  // The Claude Opus review's findings (D80).
+  {
+    requirement: "claude-1",
+    name: "any package that resolves is built, from wherever it lives",
+    file: "src/builder/child/plugins.ts",
+    from: "if (bare && inputs.packageRoots.some((root) => under(file, root))) return resolved;",
+    to: "if (bare) return resolved;",
+    check: integration("ancestors.test.ts", "isn't in the warm set"),
+  },
+  {
+    requirement: "claude-1",
+    name: "PostCSS config is searched for again",
+    file: "src/builder/child/spa.ts",
+    from: "css: { postcss: {} },",
+    to: "",
+    check: integration("ancestors.test.ts", "runs no PostCSS config"),
+  },
+  {
+    requirement: "claude-2",
+    name: "a server module without a stub reaches the client",
+    file: "src/builder/child/scan.ts",
+    from: '".cts",',
+    to: "",
+    check: integration("publish.test.ts", "cts server module"),
+  },
+  {
+    requirement: "claude-3",
+    name: "a damaged version is left as it is",
+    file: "src/publish/publisher.ts",
+    from: "if (!exists || damage !== undefined) {",
+    to: "if (!exists) {",
+    check: integration("publish.test.ts", "rebuilds a lost"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
