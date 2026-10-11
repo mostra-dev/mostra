@@ -178,16 +178,6 @@ export async function listProcesses(): Promise<ProcessInfo[]> {
     .filter((info): info is ProcessInfo => info !== undefined);
 }
 
-/** Whether a process with this PID exists (it may belong to another user). */
-export function pidExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 /** Whether the process recorded as `pid` and `startTime` is still the one running. */
 export async function isSameProcess(pid: number, startTime: string): Promise<boolean> {
   const info = await readProcess(pid);
