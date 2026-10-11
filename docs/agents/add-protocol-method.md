@@ -20,7 +20,13 @@ The method's schemas live in `@mostra/protocol`; the server that implements it l
    gets a stable id: it becomes a definition name in the published JSON Schema.
 4. **Test it** in `packages/protocol/test`: valid and invalid params and results through the
    public entry.
-5. **Regenerate and record.** `pnpm --filter @mostra/protocol gen:schemas`, rebuild for the API
+5. **Serve it** (client-to-instance methods). Implement it in the `@mostra/runtime` module that
+   owns the behavior and register `handler(definition, fn)` with the `ProtocolServer` that the
+   `instance` module builds. The server validates params and results against the schemas and turns
+   thrown `RpcError`s into diagnostics. Add a scenario to
+   `packages/runtime/test/integration/protocol-suite.test.ts`, which runs it over stdio and the
+   socket.
+6. **Regenerate and record.** `pnpm --filter @mostra/protocol gen:schemas`, rebuild for the API
    report, and add a changeset for `@mostra/protocol`.
 
 Within a revision, a method only grows: new optional params, new result fields, new methods. A
