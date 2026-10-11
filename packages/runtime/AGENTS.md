@@ -61,6 +61,8 @@ behavior, and pass a `handler(definition, fn)` from `protocol-server` to the `Pr
 ## Gotchas
 
 - Integration tests run `dist/bin.js`; rebuild after changing `src` or `@mostra/protocol`.
+- Linux differs from macOS in process listings, signals and `/bin/sh` (`dash`). Run process and
+  socket changes on Linux before pushing ([playbook](../../docs/agents/reproduce-on-linux.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits
   socket paths to 103 bytes, and its `os.tmpdir()` is long.
 - `net.Server.close()` removes the socket file. Close an old listener before binding its

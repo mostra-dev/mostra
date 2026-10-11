@@ -47,11 +47,28 @@ The ledger requirements of the scope are proven by `test/unit/ledger.test.ts`: W
 
 The `integration` job took 1 min 10 s on Linux and 1 min 22 s on macOS in run [38120269565](https://github.com/mostra-dev/mostra/actions/runs/38120269565); the whole pull request run stayed under the 10-minute target (D50).
 
+## Independent review (D80)
+
+- **GPT-6.1-Sol** through `codex review --base origin/main` (codex-cli 0.162.1, OpenAI, ChatGPT sign-in), effort high, 2026-10-11, on `6484680`: 2,367,392 input tokens (2,239,744 cached), 11,431 output tokens (5,951 reasoning). A GPT-only run, announced with the candidate (D34).
+- **GitHub Copilot** posted no review on the draft pull request.
+
+Each finding was assessed before it was addressed. All five hold, and each is fixed in `1ab6714` with a regression test that fails on the previous code (shown by restoring the old source and running the test):
+
+| # | Finding | Assessment | Fix and test |
+|---|---|---|---|
+| 1 | Child output reached the log and the stderr tail unredacted | Holds: children will receive secrets (WP-08), and STANDARDS keeps secrets out of logs | A per-instance `Redactor` applied to every logged string and to the stderr tail; it learns `SpawnSpec.redact` values, secret-named variables and capability URL parameters. `processes.test.ts` finding 1 |
+| 2 | A child whose registration failed stayed alive and untracked | Holds: a closed or full ledger left an orphan that crash reaping can't find | The child is tracked from its spawn, and stopped when it can't be recorded. Finding 2 |
+| 3 | `stopAll` missed spawns still in progress | Holds: a child could start after shutdown began and outlive it | In-flight spawns are awaited before children are stopped; new spawns are refused. Finding 3 |
+| 4 | Reaping trusted its first snapshot of a group | Holds: a member that starts a process on SIGTERM left it running, and the row was deleted | Every round re-lists the recorded groups until they are empty, then SIGKILLs what remains. Zombies count as gone. Finding 4 |
+| 5 | A start-up failure after binding left the listener open | Holds for in-process callers of `startInstance` | The listener is closed and the children stopped before the home is released. `instance.test.ts` finding 5 |
+
+The finding 4 test then failed on the Linux CI leg (run [38123396018](https://github.com/mostra-dev/mostra/actions/runs/38123396018)) and exposed a further defect, reproduced in a Linux container ([playbook](../agents/reproduce-on-linux.md)): a listing is a series of `/proc` reads, so a process that starts while its parent exits can be missed by both reads, and reaping stopped on one empty listing. Reaping now also waits until the kernel reports the recorded groups empty. The same CI run caught an unused export (`pidExists`) that a push without the pre-push hook had let through.
+
 ## Untested boundaries
 
 - A supervisor killed between spawning a child and recording it (a few milliseconds) leaves that child unrecorded. Node children still exit on the IPC disconnect; a command child started in that window would survive.
 - macOS start times have one-second resolution. A process that reuses a reaped group's ID within the same second as the recorded leader could be signalled; Linux uses clock ticks.
-- Reaping signals by PID and start time read at one moment; a member that exits and whose PID is reused between the listing and SIGTERM would be signalled. The SIGKILL pass re-checks identities.
+- Reaping signals the PIDs of one listing; a member that exits and whose PID is reused by an unrelated process in the few milliseconds before the signal would be signalled. Each round re-lists the groups and checks start times again.
 - `$XDG_RUNTIME_DIR` handling is tested with directories the test creates; a real logout removing it is simulated by deleting the socket.
 
 ## Agent-facing prose (D88)
