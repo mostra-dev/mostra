@@ -271,6 +271,9 @@ function createManager({ ledger, log }: ProcessManagerOptions): ProcessManager {
       child.once("error", reject);
     });
     const pid = spawned;
+    // After the spawn, errors (a failed signal or IPC send) are reported, never thrown: an
+    // unhandled 'error' event would take the supervisor down.
+    child.on("error", (error) => log.warn("process.error", { kind: spec.kind, pid, error }));
     const adopted = new Map<number, number>(); // adopted pid → its pgid
     const stderrTail: string[] = [];
     const exit = new Promise<{ code: number | null; signal: string | null }>((resolve) => {

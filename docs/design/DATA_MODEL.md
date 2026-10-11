@@ -87,7 +87,7 @@ port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo')), owner
 token(id PK, secret_hash, artifact_id, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at)
 session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, created_at, last_seen_at)
 share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
-child(pid, start_time, kind, owner_ref, pgid, started_at, PRIMARY KEY(pid, start_time))
+child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it
 schema_migration(version PK, name, runtime_version, applied_at)
 ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- written when the lock is taken (D81)
 ```

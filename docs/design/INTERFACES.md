@@ -220,7 +220,7 @@ Events
 
 Administration
   secret/set | secret/list | secret/delete         (value only via set; never returned)
-  instance/status    {}                              → { instance, connections, processes } (WP-02); ports, pending deliveries, shares and versions in use are added by the packages that own them
+  instance/status    {}                              → { instance, startedAt, socket, connections, processes } (WP-02); ports, pending deliveries, shares and versions in use are added by the packages that own them
   gc/run             { dryRun? }                     → reclaimed
 
 Mostra → host (only to the connection that registered the port)
