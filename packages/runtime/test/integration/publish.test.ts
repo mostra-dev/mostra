@@ -5,6 +5,7 @@
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -220,25 +221,27 @@ describe("content-addressed versions (VR-01)", () => {
 
   it("ignores node_modules, .git, editor files and .mostraignore'd paths", async () => {
     const dir = copyFixture("directory");
+    // .mostraignore is itself part of the source, so it is in place before the first publish.
+    writeFileSync(join(dir, ".mostraignore"), "notes/\n");
     const first = await publish(dir);
+    // Each ignored path, added one at a time, leaves the version as it was.
     for (const [path, text] of [
       ["node_modules/x/index.js", "x"],
+      ["components/node_modules/y.js", "y"],
       [".git/HEAD", "ref"],
+      [".mostra/cache.json", "{}"],
       ["index.tsx.swp", "swap"],
+      ["draft.md~", "backup"],
       [".DS_Store", "finder"],
       ["notes/draft.md", "draft"],
     ] as const) {
-      const target = join(dir, path);
-      cpSync(join(dir, "styles.css"), target, { force: true });
-      writeFileSync(target, text);
+      mkdirSync(join(dir, path, ".."), { recursive: true });
+      writeFileSync(join(dir, path), text);
+      expect(await publish(dir), path).toEqual({ ...first, reused: true });
     }
-    writeFileSync(join(dir, ".mostraignore"), "notes/\n");
-    const withIgnoreFile = await publish(dir);
-    // .mostraignore is itself part of the source; everything it and the built-in rules exclude isn't.
-    expect(withIgnoreFile.versionId).not.toBe(first.versionId);
-    rmSync(join(dir, "notes"), { recursive: true });
-    const withoutNotes = await publish(dir);
-    expect(withoutNotes).toEqual({ ...withIgnoreFile, reused: true });
+    // A file that isn't ignored makes a new version.
+    writeFileSync(join(dir, "notes.md"), "kept");
+    expect((await publish(dir)).versionId).not.toBe(first.versionId);
   });
 
   it("gives two artifacts with identical files two versions (D89)", async () => {
