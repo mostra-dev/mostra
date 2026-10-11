@@ -95,6 +95,49 @@ export async function fine() { return 1; }
     expect(scan.serverModules.get("actions.ts")?.map((entry) => entry.export)).toEqual(["fine"]);
   });
 
+  it("sees through erased TypeScript wrappers and overloads (review finding 8)", async () => {
+    const scan = await scanArtifact(
+      artifact({
+        "actions.ts": `"use server";
+import { dryRun } from "@mostra/server";
+export const typed = (async () => (dryRun() ? 0 : 1)) satisfies () => Promise<number>;
+export const asserted = (async () => 1) as () => Promise<number>;
+const held = async (n: number) => n;
+export const nonNull = held!;
+export async function overloaded(a: string): Promise<string>;
+export async function overloaded(a: number): Promise<number>;
+export async function overloaded(a: string | number) { return a; }
+export declare const ambient: number;
+`,
+      }),
+    );
+    expect(scan.diagnostics).toEqual([]);
+    expect(
+      scan.serverModules.get("actions.ts")?.map((entry) => [entry.export, entry.dryRun]),
+    ).toEqual([
+      ["typed", true],
+      ["asserted", false],
+      ["nonNull", false],
+      ["overloaded", false],
+    ]);
+  });
+
+  it("reports enums and namespaces, which are values at run time (review finding 10)", async () => {
+    const scan = await scanArtifact(
+      artifact({
+        "actions.ts": `"use server";
+export enum Mode { A, B }
+export namespace Tools { export const x = 1; }
+export async function fine() { return 1; }
+`,
+      }),
+    );
+    expect(scan.diagnostics.map((diagnostic) => diagnostic.location)).toEqual([
+      { file: "actions.ts", line: 2, column: 8 },
+      { file: "actions.ts", line: 3, column: 8 },
+    ]);
+  });
+
   it("compiles a module into client stubs that carry only IDs", () => {
     const stub = serverStub([
       { id: "actions.ts#send", module: "actions.ts", export: "send", dryRun: false },

@@ -20,7 +20,7 @@ import { appendEvent } from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import { openVersionStore, type VersionStore } from "./store.ts";
 
-export { removeTree, type VersionStore } from "./store.ts";
+export { fsyncPath, removeTree, type VersionStore } from "./store.ts";
 
 interface ArtifactRow {
   id: string;

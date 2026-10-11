@@ -3,6 +3,7 @@
  * builder children and commits versions (AU-01 to AU-04, AU-07, VR-01, VR-11).
  */
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -15,6 +16,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import { zstdDecompressSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listingDigest, readTar, sha256Hex } from "../../src/publish/index.ts";
@@ -385,5 +387,94 @@ describe("versions outlive their source directory (VR-11)", () => {
       source: { artifactId: receipt.artifactId },
     });
     expect(republish.error?.data.code).toBe("MOSTRA_ARTIFACT_SOURCE_MISSING");
+  });
+});
+
+describe("review findings (D80)", () => {
+  it("redacts capability material that reaches an error (finding 1)", async () => {
+    const dir = copyFixture("single-tsx");
+    const file = join(dir, "page.tsx");
+    writeFileSync(
+      file,
+      `import data from "./missing.json?t=CAPABILITY_SECRET_12345";\nvoid data;\n${readFileSync(file, "utf8")}`,
+    );
+    const response = await client.call("artifact/publish", { source: { path: file } });
+    expect(response.error?.data.code).toBe("MOSTRA_BUILD_UNRESOLVED");
+    expect(JSON.stringify(response)).not.toContain("CAPABILITY_SECRET_12345");
+    expect(response.error?.data.message).toContain("t=[redacted]");
+  });
+
+  it("refuses imports from outside the artifact, which no digest would cover (finding 5)", async () => {
+    const parent = tempDir("outside");
+    const dir = join(parent, "artifact");
+    cpSync(join(FIXTURES, "single-tsx"), dir, { recursive: true });
+    writeFileSync(join(parent, "shared.ts"), "export const shared = 1;\n");
+    const file = join(dir, "page.tsx");
+    writeFileSync(
+      file,
+      `import { shared } from "../shared";\nvoid shared;\n${readFileSync(file, "utf8")}`,
+    );
+    // The snapshot holds only the artifact, so a relative import out of it finds nothing.
+    expect((await failure(file)).code).toBe("MOSTRA_BUILD_UNRESOLVED");
+    writeFileSync(
+      file,
+      `import { shared } from ${JSON.stringify(join(parent, "shared.ts"))};\nvoid shared;\n${readFileSync(join(FIXTURES, "single-tsx/page.tsx"), "utf8")}`,
+    );
+    // An absolute path would resolve; it is refused, because no digest covers its bytes.
+    const absolute = await failure(file);
+    expect(absolute.code).toBe("MOSTRA_BUILD_UNRESOLVED");
+    expect(absolute.message).toContain("outside the artifact");
+    // Plain text: the bundler's terminal colours are stripped.
+    expect(stripVTControlCharacters(absolute.message)).toBe(absolute.message);
+  });
+
+  it("records an outputDigest that the stored version reproduces, execute bits and all (findings 6, 7)", async () => {
+    const dir = copyFixture("directory");
+    writeFileSync(join(dir, "public/tool.sh"), "#!/bin/sh\necho hi\n");
+    chmodSync(join(dir, "public/tool.sh"), 0o755);
+    const receipt = await publish(dir);
+    const detail = ok(
+      await client.call("artifact/get", { artifact: { artifactId: receipt.artifactId } }),
+    ) as {
+      latestVersion: { outputDigest: string };
+    };
+    // The listing of the stored, sealed tree, built here from DATA_MODEL §2's rules alone.
+    const version = join(home.home, "versions", receipt.versionId);
+    const listing: { path: string; executable: boolean; sha256: string }[] = [];
+    const walk = (dir: string, prefix: string): void => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path, `${prefix}${name}/`);
+        else {
+          const mode = statSync(path).mode;
+          listing.push({
+            path: `${prefix}${name}`,
+            executable: (mode & 0o111) !== 0,
+            sha256: sha256Hex(readFileSync(path)),
+          });
+        }
+      }
+    };
+    walk(join(version, "client"), "client/");
+    walk(join(version, "server"), "server/");
+    listing.push({
+      path: "registry.json",
+      executable: false,
+      sha256: sha256Hex(readFileSync(join(version, "registry.json"))),
+    });
+    expect(listing.map((file) => file.path)).toContain("client/tool.sh");
+    expect(listingDigest(listing)).toBe(detail.latestVersion.outputDigest);
+  });
+
+  it("publishes a single file whose name isn't in NFC (finding 9)", async () => {
+    const dir = tempDir("nfc");
+    const file = join(dir, "cafe\u0301.tsx");
+    cpSync(join(FIXTURES, "single-tsx/page.tsx"), file);
+    const receipt = await publish(file);
+    expect(receipt).toMatchObject({ version: 1, reused: false });
+    const detail = ok(
+      await client.call("artifact/get", { artifact: { artifactId: receipt.artifactId } }),
+    );
+    expect(detail).toMatchObject({ title: "caf\u00e9" });
   });
 });

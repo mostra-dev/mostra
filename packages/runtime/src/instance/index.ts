@@ -214,6 +214,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     describe: () => info,
     servesHome: (path) => sameHome(home.path, path),
     supportedPorts: [],
+    redact: (text) => home.redactor.redact(text),
     handlers: [
       ...artifactMethods({ registry, publisher: getPublisher }),
       ...sessionMethods({

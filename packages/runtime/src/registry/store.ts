@@ -20,13 +20,20 @@ async function walk(
   }
 }
 
-function fsyncPath(path: string): void {
+/**
+ * Syncs a file or a directory to disk. A file that can't be synced fails the caller (its bytes
+ * would not be durable); a directory may not support it on some file systems, and only that
+ * case is tolerated (EINVAL, ENOTSUP, EISDIR, EPERM, EACCES on `open`).
+ */
+export function fsyncPath(path: string, directory = false): void {
   let fd: number | undefined;
   try {
     fd = openSync(path, "r");
     fsyncSync(fd);
-  } catch {
-    // Some file systems can't sync a directory; the files themselves are synced.
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    const unsupported = ["EINVAL", "ENOTSUP", "EISDIR", "EPERM", "EACCES"];
+    if (!directory || !unsupported.includes(code ?? "")) throw error;
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
@@ -39,10 +46,10 @@ function fsyncPath(path: string): void {
 export async function sealTree(dir: string, keepTop = false): Promise<void> {
   await walk(dir, async (path, isDirectory) => {
     await chmod(path, isDirectory ? 0o555 : 0o444);
-    fsyncPath(path);
+    fsyncPath(path, isDirectory);
   });
   if (!keepTop) await chmod(dir, 0o555);
-  fsyncPath(dir);
+  fsyncPath(dir, true);
 }
 
 /** Removes a tree, sealed or not. Missing trees are fine. */
@@ -100,8 +107,8 @@ export async function openVersionStore(home: string): Promise<VersionStore> {
       await removeTree(target);
       await rename(built, target);
       await chmod(target, 0o555);
-      fsyncPath(target);
-      fsyncPath(versionsDir);
+      fsyncPath(target, true);
+      fsyncPath(versionsDir, true);
     },
     async sweep(known) {
       const removed = { versions: [] as string[], snapshots: [] as string[] };

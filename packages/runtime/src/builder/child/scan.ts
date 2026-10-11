@@ -66,12 +66,45 @@ function isServerModule(program: Node): boolean {
   return false;
 }
 
-const isAsyncFunction = (node: Node | undefined): boolean =>
-  node !== undefined &&
-  (node.type === "FunctionDeclaration" ||
-    node.type === "FunctionExpression" ||
-    node.type === "ArrowFunctionExpression") &&
-  node["async"] === true;
+/** TypeScript wrappers that compile away: `as`, `satisfies`, `!`, `<T>x` and parentheses. */
+const ERASED_WRAPPERS = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "TSTypeAssertion",
+  "TSInstantiationExpression",
+  "ParenthesizedExpression",
+]);
+
+/** The expression a wrapper chain wraps: `(async () => 1) satisfies F` is the arrow function. */
+function unwrap(node: Node | undefined): Node | undefined {
+  let current = node;
+  while (current !== undefined && ERASED_WRAPPERS.has(current.type)) {
+    current = current["expression"] as Node | undefined;
+  }
+  return current;
+}
+
+const isAsyncFunction = (node: Node | undefined): boolean => {
+  const target = unwrap(node);
+  return (
+    target !== undefined &&
+    (target.type === "FunctionDeclaration" ||
+      target.type === "FunctionExpression" ||
+      target.type === "ArrowFunctionExpression") &&
+    target["async"] === true
+  );
+};
+
+/**
+ * Declarations that exist only for the type checker: types, interfaces, overload signatures and
+ * anything `declare`d. Enums and namespaces are values at run time, so they are not among them.
+ */
+const isErasedDeclaration = (node: Node): boolean =>
+  node["declare"] === true ||
+  node.type === "TSTypeAliasDeclaration" ||
+  node.type === "TSInterfaceDeclaration" ||
+  node.type === "TSDeclareFunction";
 
 /**
  * Reads one `"use server"` module: every export must be an async function (React's contract),
@@ -138,7 +171,7 @@ function serverExports(
       }
       const declaration = statement["declaration"] as Node | null;
       if (declaration) {
-        if (declaration.type.startsWith("TS")) continue;
+        if (isErasedDeclaration(declaration)) continue;
         remember(declaration);
         if (declaration.type === "FunctionDeclaration") {
           const name = (declaration["id"] as Node)["name"] as string;
@@ -188,7 +221,7 @@ function serverExports(
         statement.start,
         `${module} re-exports with \`export *\`; a "use server" module exports only its own async functions.`,
       );
-    } else {
+    } else if (!isErasedDeclaration(statement)) {
       remember(statement);
     }
   }
@@ -228,7 +261,13 @@ function serverExports(
 
   const entries: ServerFunctionEntry[] = [];
   for (const { name, local, at } of exported) {
-    const target = local?.type === "Ref" ? functions.get(local["name"] as string) : local;
+    // Follow `export const x = y` (and `y!`, `y as F`) to the function `y` names.
+    let target = unwrap(local?.type === "Ref" ? functions.get(local["name"] as string) : local);
+    const followed = new Set<string>();
+    while (target?.type === "Identifier" && !followed.has(target["name"] as string)) {
+      followed.add(target["name"] as string);
+      target = unwrap(functions.get(target["name"] as string));
+    }
     if (!isAsyncFunction(target)) {
       invalid(
         at,

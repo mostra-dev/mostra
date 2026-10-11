@@ -46,7 +46,7 @@ import type { RenderMode, WarmSet } from "../builder/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
-import { type Registry, removeTree } from "../registry/index.ts";
+import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
 import {
   type BuildEnvironment,
   canonicalJson,
@@ -129,8 +129,13 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** The canonical listing of a directory's files, paths prefixed with `prefix`. */
-async function listTree(dir: string, prefix: string): Promise<ListedFile[]> {
+/**
+ * The canonical listing of a version's output (DATA_MODEL §2, `outputDigest`): every file under
+ * `client/` and `server/`, and `registry.json`, with paths relative to the version directory.
+ * The version is sealed read-only (0444), so no file is listed as executable: the digest
+ * describes the stored tree exactly and can be recomputed from it.
+ */
+async function outputListing(versionDir: string): Promise<ListedFile[]> {
   const files: ListedFile[] = [];
   const walk = async (current: string, relative: string): Promise<void> => {
     for (const entry of await readdir(current, { withFileTypes: true })) {
@@ -138,16 +143,18 @@ async function listTree(dir: string, prefix: string): Promise<ListedFile[]> {
       const absolute = join(current, entry.name);
       if (entry.isDirectory()) await walk(absolute, path);
       else if (entry.isFile()) {
-        const info = await stat(absolute);
-        files.push({
-          path,
-          executable: (info.mode & 0o111) !== 0,
-          sha256: await hashFile(absolute),
-        });
+        files.push({ path, executable: false, sha256: await hashFile(absolute) });
       }
     }
   };
-  if (existsSync(dir)) await walk(dir, prefix);
+  for (const top of ["client", "server"]) {
+    if (existsSync(join(versionDir, top))) await walk(join(versionDir, top), top);
+  }
+  files.push({
+    path: "registry.json",
+    executable: false,
+    sha256: await hashFile(join(versionDir, "registry.json")),
+  });
   return files;
 }
 
@@ -161,7 +168,10 @@ async function archiveSnapshot(
   target: string,
 ): Promise<boolean> {
   if (existsSync(target)) return false;
+  const created = !existsSync(dirname(target));
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  // A new artifact directory in sources/ must be durable too.
+  if (created) fsyncPath(dirname(dirname(target)), true);
   const temporary = `${target}.${process.pid}.tmp`;
   const sorted = [...files].sort((a, b) =>
     Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)),
@@ -182,7 +192,51 @@ async function archiveSnapshot(
     await handle.close();
   }
   await rename(temporary, target);
+  fsyncPath(dirname(target), true);
   return true;
+}
+
+/** The entry `artifact/create` writes: a manifest with the generated `id` and a minimal page. */
+function scaffold(artifactId: string, title: string): string {
+  return [
+    'import { defineArtifact } from "@mostra/react";',
+    "",
+    "export const artifact = defineArtifact({",
+    `  id: ${JSON.stringify(artifactId)},`,
+    `  title: ${JSON.stringify(title)},`,
+    "});",
+    "",
+    "export default function Page() {",
+    "  return (",
+    '    <main className="mx-auto max-w-2xl p-8">',
+    '      <h1 className="text-2xl font-semibold">{artifact.title}</h1>',
+    "    </main>",
+    "  );",
+    "}",
+    "",
+  ].join("\n");
+}
+
+/**
+ * Writes `artifact/create`'s entry into `dir`, completing an interrupted write: an existing file
+ * that is the expected text or a prefix of it (a write cut short) ends as the expected text, and
+ * anything else the author has written since is left alone.
+ */
+async function writeScaffold(dir: string, artifactId: string, title: string): Promise<void> {
+  const expected = scaffold(artifactId, title);
+  const file = join(dir, "index.tsx");
+  await mkdir(dir, { recursive: true });
+  let current: string | undefined;
+  try {
+    current = await readFile(file, "utf8");
+  } catch {
+    current = undefined;
+  }
+  if (current !== undefined && !expected.startsWith(current)) return;
+  if (current === expected) return;
+  await writeFile(file, expected);
+  fsyncPath(file);
+  fsyncPath(dir, true);
 }
 
 /** Serializes work per key, so two publishes of one artifact never race (FAILURE_MODEL §1 rule 2). */
@@ -272,7 +326,10 @@ export function createPublisher(options: PublisherOptions): Publisher {
     return queue.run(`path:${source.bindingPath}`, async () => {
       const peek = extractManifest(
         source.entry,
-        await readFile(join(source.root, source.entry), "utf8"),
+        await readFile(
+          source.kind === "file" ? source.bindingPath : join(source.root, source.entry),
+          "utf8",
+        ),
       );
       const provisional = registry.identityFor(source.bindingPath, peek.manifest?.id, () =>
         ArtifactId.create(),
@@ -353,13 +410,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               `${JSON.stringify(built.registry, null, 2)}\n`,
             );
             await writeFile(join(out, "lock.yaml"), lock);
-            outputDigest = listingDigest([
-              ...(await listTree(join(out, "client"), "client")),
-              ...(await listTree(join(out, "server"), "server")),
-              ...(await listTree(out, "").then((all) =>
-                all.filter((file) => file.path === "/registry.json"),
-              )),
-            ]);
+            outputDigest = listingDigest(await outputListing(out));
             await writeFile(
               join(out, "manifest.json"),
               `${JSON.stringify(
@@ -445,50 +496,55 @@ export function createPublisher(options: PublisherOptions): Publisher {
         // The receipt is recorded inside the commit's transaction (Registry.commit).
         return publishOnce(params);
       }),
-    create: (params) =>
-      idempotent("artifact/create", params.requestId, async () => {
-        if (params.template !== undefined) {
-          throw new RpcError(
-            createDiagnostic("MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", {
-              message: `This Mostra release provides no template "${params.template}"; create the artifact without one.`,
-            }),
-          );
-        }
-        if (existsSync(params.dir)) {
-          const info = await stat(params.dir);
-          if (!info.isDirectory() || (await readdir(params.dir)).length > 0) {
-            throw new RpcError(
-              createDiagnostic("MOSTRA_ARTIFACT_DIR_NOT_EMPTY", {
-                message: `${params.dir} already exists and isn't an empty directory.`,
-              }),
-            );
-          }
-        }
-        await mkdir(params.dir, { recursive: true });
-        const dir = await realpath(params.dir);
-        const artifactId = ArtifactId.create();
-        const title = params.title ?? basename(dir);
-        const entry = [
-          'import { defineArtifact } from "@mostra/react";',
-          "",
-          "export const artifact = defineArtifact({",
-          `  id: ${JSON.stringify(artifactId)},`,
-          `  title: ${JSON.stringify(title)},`,
-          "});",
-          "",
-          "export default function Page() {",
-          "  return (",
-          '    <main className="mx-auto max-w-2xl p-8">',
-          '      <h1 className="text-2xl font-semibold">{artifact.title}</h1>',
-          "    </main>",
-          "  );",
-          "}",
-          "",
-        ].join("\n");
-        await writeFile(join(dir, "index.tsx"), entry, { flag: "wx" });
-        const result: ArtifactCreateResult = { artifactId, dir, files: ["index.tsx"] };
-        record("artifact/create", params.requestId, result);
-        return result;
-      }),
+    // Creates run one at a time: two requests for one directory, or one request sent twice, can
+    // never both find it empty.
+    create: (params) => queue.run("create", () => create(params)),
   };
+
+  async function create(params: ArtifactCreateParams): Promise<ArtifactCreateResult> {
+    // A retried request completes what the first attempt recorded (H-03): the entry is written
+    // only after the result is durable, so a crash in between leaves something to finish.
+    const requestId = params.requestId;
+    if (requestId !== undefined) {
+      const recorded = ledger.read((db) =>
+        db.get<{ result_json: string }>(
+          "SELECT result_json FROM request WHERE method = 'artifact/create' AND request_id = ?",
+          requestId,
+        ),
+      );
+      if (recorded) {
+        const result = JSON.parse(recorded.result_json) as ArtifactCreateResult;
+        await writeScaffold(result.dir, result.artifactId, params.title ?? basename(result.dir));
+        return result;
+      }
+    }
+    if (params.template !== undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", {
+          message: `This Mostra release provides no template "${params.template}"; create the artifact without one.`,
+        }),
+      );
+    }
+    if (existsSync(params.dir)) {
+      const info = await stat(params.dir);
+      if (!info.isDirectory() || (await readdir(params.dir)).length > 0) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_ARTIFACT_DIR_NOT_EMPTY", {
+            message: `${params.dir} already exists and isn't an empty directory.`,
+          }),
+        );
+      }
+    }
+    await mkdir(params.dir, { recursive: true });
+    const dir = await realpath(params.dir);
+    const result: ArtifactCreateResult = {
+      artifactId: ArtifactId.create(),
+      dir,
+      files: ["index.tsx"],
+    };
+    record("artifact/create", params.requestId, result);
+    faults.at("create:after-record");
+    await writeScaffold(dir, result.artifactId, params.title ?? basename(dir));
+    return result;
+  }
 }

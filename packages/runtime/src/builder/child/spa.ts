@@ -6,6 +6,7 @@
  */
 import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -16,7 +17,7 @@ import type {
   ServerFunctionEntry,
   VersionRegistry,
 } from "../types.ts";
-import { mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
+import { confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
 import { type ScanResult, scanArtifact } from "./scan.ts";
 
 /** Where generated build files live inside the staging directory (never in the snapshot). */
@@ -109,7 +110,11 @@ function diagnose(error: unknown, sourceDir: string): Diagnostic {
     }[];
   };
   const first = failure.errors?.[0] ?? failure;
-  const rawMessage = (first.message ?? String(error)).replaceAll(`${sourceDir}/`, "");
+  // Bundler messages carry terminal colours; diagnostics are plain text.
+  const rawMessage = stripVTControlCharacters(first.message ?? String(error)).replaceAll(
+    `${sourceDir}/`,
+    "",
+  );
   const file = first.loc?.file ?? first.id;
   const inSource = file?.startsWith(sourceDir) ? relative(sourceDir, file) : undefined;
   const location =
@@ -180,6 +185,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   try {
     await build({
       ...baseConfig(request, sourceDir, [
+        confinePlugin(sourceDir),
         mdxPlugin(),
         serverClientStubPlugin(serverModules),
         react(),
@@ -203,7 +209,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
     try {
       await build({
-        ...baseConfig(request, sourceDir, [mdxPlugin(), react()]),
+        ...baseConfig(request, sourceDir, [confinePlugin(sourceDir), mdxPlugin(), react()]),
         publicDir: false,
         ssr: { noExternal: true, external: ["@mostra/server"], target: "node" },
         build: {

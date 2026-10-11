@@ -2,7 +2,7 @@
  * A failed publish leaves no visible version (VR-02, FAILURE_MODEL §2, §3): a fault injected at
  * every publish step, as a crash (SIGKILL) or a thrown error, and a builder that crashes or hangs.
  */
-import { cpSync, existsSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -162,6 +162,38 @@ describe("a failure at any publish step leaves no visible version and nothing be
       await stop(client, daemon.exited);
     });
   }
+});
+
+describe("artifact/create retried after a crash (H-03, review finding 4)", () => {
+  it("completes the creation the first attempt recorded", async () => {
+    const home = testHome();
+    const dir = join(tempDir("create-crash"), "plan");
+    const params = { dir, title: "Plan", requestId: "create-1" };
+    const crashing = await session(home, "create:after-record:crash");
+    crashing.client.sendRaw(
+      JSON.stringify({ jsonrpc: "2.0", id: 98, method: "artifact/create", params }),
+    );
+    await crashing.daemon.exited;
+    expect(existsSync(join(dir, "index.tsx"))).toBe(false);
+
+    const next = await session(home);
+    const created = result(await next.client.call("artifact/create", params)) as {
+      artifactId: string;
+      dir: string;
+    };
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain(created.artifactId);
+    // A write cut short is completed too, and the same request keeps answering the same.
+    writeFileSync(
+      join(dir, "index.tsx"),
+      readFileSync(join(dir, "index.tsx"), "utf8").slice(0, 40),
+    );
+    expect(result(await next.client.call("artifact/create", params))).toEqual(created);
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain('title: "Plan"');
+    // And the artifact publishes with that identity.
+    const receipt = result(await next.client.call("artifact/publish", { source: { path: dir } }));
+    expect(receipt).toMatchObject({ artifactId: created.artifactId });
+    await stop(next.client, next.daemon.exited);
+  });
 });
 
 describe("builder failures (FAILURE_MODEL §2, §9)", () => {
