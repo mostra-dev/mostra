@@ -17,25 +17,29 @@ describe("fsyncPath", () => {
     expect(() => fsyncPath(dir, true)).not.toThrow();
   });
 
-  it("fails for a file it can't sync, and tolerates only a directory that refuses", () => {
-    const dir = tempDir("sync");
-    const file = join(dir, "unreadable");
-    writeFileSync(file, "x");
-    chmodSync(file, 0o000);
-    try {
-      // Opening fails with EACCES: for a file that is a failure, never "unsupported".
-      expect(() => fsyncPath(file)).toThrow(/EACCES/);
-      expect(() => fsyncPath(join(dir, "missing"))).toThrow(/ENOENT/);
-      expect(() => fsyncPath(join(dir, "missing"), true)).toThrow(/ENOENT/);
-      const locked = join(dir, "locked");
-      mkdirSync(locked);
-      chmodSync(locked, 0o000);
-      expect(() => fsyncPath(locked, true)).not.toThrow();
-      chmodSync(locked, 0o755);
-    } finally {
-      chmodSync(file, 0o644);
-    }
-  });
+  // Root opens anything, so the refusals below exist only for an ordinary user (as CI runs).
+  it.skipIf(process.getuid?.() === 0)(
+    "fails for a file it can't sync, and tolerates only a directory that refuses",
+    () => {
+      const dir = tempDir("sync");
+      const file = join(dir, "unreadable");
+      writeFileSync(file, "x");
+      chmodSync(file, 0o000);
+      try {
+        // Opening fails with EACCES: for a file that is a failure, never "unsupported".
+        expect(() => fsyncPath(file)).toThrow(/EACCES/);
+        expect(() => fsyncPath(join(dir, "missing"))).toThrow(/ENOENT/);
+        expect(() => fsyncPath(join(dir, "missing"), true)).toThrow(/ENOENT/);
+        const locked = join(dir, "locked");
+        mkdirSync(locked);
+        chmodSync(locked, 0o000);
+        expect(() => fsyncPath(locked, true)).not.toThrow();
+        chmodSync(locked, 0o755);
+      } finally {
+        chmodSync(file, 0o644);
+      }
+    },
+  );
 });
 
 describe("sealing", () => {
