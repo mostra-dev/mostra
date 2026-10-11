@@ -257,3 +257,30 @@ describe("writes (FAILURE_MODEL §1, §3)", () => {
     ledger.close();
   });
 });
+
+describe("write-once rows (invariant 3, IN-08)", () => {
+  it("refuses to change a published version or an event, and keeps them as they were", () => {
+    const ledger = open(storeDir());
+    ledger.write((db) => {
+      db.run("INSERT INTO artifact VALUES ('art_1', 'A', NULL, '[]', NULL, 'now', NULL)");
+      db.run(
+        "INSERT INTO version VALUES ('ver_1', 'art_1', 1, 's', 'e', 'o', '{\"title\":\"A\"}', NULL, 'now')",
+      );
+      db.run(
+        "INSERT INTO event (artifact_id, seq, type, actor_json, payload_json, at) VALUES ('art_1', 1, 'version.published', '{}', '{}', 'now')",
+      );
+    });
+    expect(() =>
+      ledger.write((db) =>
+        db.run("UPDATE version SET source_digest = 'changed' WHERE id = 'ver_1'"),
+      ),
+    ).toThrow("published versions are immutable");
+    expect(() =>
+      ledger.write((db) => db.run("UPDATE event SET type = 'changed' WHERE seq = 1")),
+    ).toThrow("events are append-only");
+    expect(
+      ledger.read((db) => db.get<{ source_digest: string }>("SELECT source_digest FROM version")),
+    ).toEqual({ source_digest: "s" });
+    ledger.close();
+  });
+});
