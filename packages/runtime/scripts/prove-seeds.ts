@@ -21,6 +21,8 @@ interface Seed {
   readonly file: string;
   readonly from: string;
   readonly to: string;
+  /** Further edits planted with the first, for a violation that must defeat more than one guard. */
+  readonly also?: readonly { readonly file: string; readonly from: string; readonly to: string }[];
   /** Vitest arguments, run in packages/runtime. */
   readonly check: readonly string[];
 }
@@ -294,11 +296,28 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "claude-1",
+    // Two independent guards stop the search: the inline config, and the staging root's own
+    // package.json (PostCSS's search stops at a package root). Both are removed.
     name: "PostCSS config is searched for again",
     file: "src/builder/child/spa.ts",
     from: "css: { postcss: {} },",
     to: "",
+    also: [
+      {
+        file: "src/builder/types.ts",
+        from: '"package.json": `${JSON.stringify({ private: true, type: "module" }, null, 2)}\\n`,',
+        to: "",
+      },
+    ],
     check: integration("ancestors.test.ts", "runs no PostCSS config"),
+  },
+  {
+    requirement: "claude-1",
+    name: "a tsconfig.json above the home sets the compile options",
+    file: "src/builder/types.ts",
+    from: '"tsconfig.json": `',
+    to: '"tsconfig.unused.json": `',
+    check: integration("ancestors.test.ts", "compiles with Mostra's settings"),
   },
   {
     requirement: "claude-2",
@@ -344,17 +363,25 @@ process.on("SIGINT", () => {
 let missed = 0;
 for (const seed of SEEDS) {
   if (values.only && seed.requirement !== values.only) continue;
-  const path = join(runtime, seed.file);
-  const original = readFileSync(path, "utf8");
-  if (!original.includes(seed.from)) {
-    console.log(`${seed.requirement} | ${seed.name} | SEED NOT FOUND in ${seed.file}`);
+  const edits = [{ file: seed.file, from: seed.from, to: seed.to }, ...(seed.also ?? [])];
+  const originals = edits.map((edit) => {
+    const path = join(runtime, edit.file);
+    return { path, edit, text: readFileSync(path, "utf8") };
+  });
+  const absent = originals.find(({ edit, text }) => !text.includes(edit.from));
+  if (absent) {
+    console.log(`${seed.requirement} | ${seed.name} | SEED NOT FOUND in ${absent.edit.file}`);
     missed++;
     continue;
   }
-  restore = () => writeFileSync(path, original);
+  restore = () => {
+    for (const { path, text } of originals) writeFileSync(path, text);
+  };
   let red: { ok: boolean; summary: string };
   try {
-    writeFileSync(path, original.replace(seed.from, seed.to));
+    for (const { path, edit } of originals) {
+      writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
+    }
     build();
     red = check(seed.check);
   } finally {
