@@ -621,7 +621,7 @@ export const PortName: z.ZodType<PortName, string>;
 export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
 
 // @public
-export const publishDiagnosticCodes: readonly ["MOSTRA_PUBLISH_ID_CONFLICT"];
+export const publishDiagnosticCodes: readonly ["MOSTRA_PUBLISH_ID_CONFLICT", "MOSTRA_PUBLISH_SOURCE_CHANGED"];
 
 // @public
 export interface PublishReceipt {

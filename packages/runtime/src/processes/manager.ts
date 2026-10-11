@@ -394,7 +394,14 @@ function createManager({
     const registered = (async () => {
       const info = await readProcess(pid);
       faults.at("spawn:before-record");
-      if (!info) return;
+      if (!info) {
+        // Gone already: nothing is left to record or reap.
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        // Still waiting at its gate, so it can't have exited by itself: its identity just
+        // couldn't be read. Without a row it couldn't be reaped, so it never runs (D80 Claude
+        // review finding 8); the caller stops it and fails the spawn.
+        throw new Error(`Couldn't read the process identity of ${spec.kind} ${pid}.`);
+      }
       record({
         pid,
         start_time: info.startTime,

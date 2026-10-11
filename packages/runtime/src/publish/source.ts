@@ -7,7 +7,16 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, constants as fsConstants } from "node:fs";
-import { chmod, copyFile, mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  stat,
+} from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import ignore from "ignore";
@@ -150,7 +159,12 @@ export async function listSource(source: ResolvedSource): Promise<SourceFile[]> 
       }
       if (kind === "dir") {
         if (IGNORED_DIRS.has(entry.name) || rules.ignores(`${path}/`)) continue;
-        const real = await realpath(absolute);
+        let real: string;
+        try {
+          real = await realpath(absolute);
+        } catch (error) {
+          throw unreadable(absolute, error);
+        }
         if (ancestors.has(real)) continue;
         await walk(absolute, path, new Set([...ancestors, real]));
       } else if (kind === "file") {
@@ -202,17 +216,57 @@ export async function copySnapshot(
   const listed: ListedFile[] = [];
   for (const file of files) {
     const destination = join(target, ...file.path.split("/"));
+    let info: Awaited<ReturnType<typeof stat>>;
     try {
-      const info = await stat(file.absolute);
+      info = await stat(file.absolute);
+    } catch (error) {
+      throw unreadable(file.absolute, error);
+    }
+    try {
       await mkdir(dirname(destination), { recursive: true });
       await copyFile(file.absolute, destination, fsConstants.COPYFILE_FICLONE);
       const executable = (info.mode & 0o111) !== 0;
       await chmod(destination, executable ? 0o755 : 0o644);
       listed.push({ path: file.path, executable, sha256: await hashFile(destination) });
     } catch (error) {
-      if (error instanceof RpcError) throw error;
-      throw unreadable(file.absolute, error);
+      throw await snapshotError(error, file.absolute);
     }
   }
   return listed;
+}
+
+/**
+ * Says which side of a snapshot copy failed (D80 Claude review finding 6): a full disk is the
+ * home's (`MOSTRA_HOME_DISK_FULL`, FAILURE_MODEL §3); a source the author can no longer read is
+ * the author's; anything else happened in the home's staging and stays an internal failure,
+ * logged with its cause, rather than being blamed on the author's file.
+ */
+export async function snapshotError(error: unknown, source: string): Promise<unknown> {
+  const code = errno(error);
+  if (code === "ENOSPC" || code === "EDQUOT") {
+    return new RpcError(
+      createDiagnostic("MOSTRA_HOME_DISK_FULL", {
+        message: `The disk holding the home is full; ${source} couldn't be snapshotted, and nothing was published.`,
+      }),
+    );
+  }
+  try {
+    await access(source, fsConstants.R_OK);
+  } catch (readError) {
+    return unreadable(source, readError);
+  }
+  return error;
+}
+
+/** Reads an artifact's entry from disk, with the same diagnostics as the rest of its source. */
+export async function readEntry(source: ResolvedSource): Promise<string> {
+  const path = source.kind === "file" ? source.bindingPath : join(source.root, source.entry);
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (errno(error) === "ENOENT") {
+      throw artifactError("MOSTRA_ARTIFACT_SOURCE_MISSING", `The entry ${path} disappeared.`);
+    }
+    throw unreadable(path, error);
+  }
 }

@@ -57,7 +57,13 @@ import {
   versionIdFor,
 } from "./digest.ts";
 import { extractManifest } from "./manifest.ts";
-import { copySnapshot, listSource, type ResolvedSource, resolveSource } from "./source.ts";
+import {
+  copySnapshot,
+  listSource,
+  type ResolvedSource,
+  readEntry,
+  resolveSource,
+} from "./source.ts";
 import { TAR_END, tarFile } from "./tar.ts";
 
 /** Options for {@link createPublisher}. */
@@ -358,13 +364,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // copies claiming one ID never promote the same version directory at once. The commit checks
     // the identity again inside its transaction.
     return queue.run(`path:${source.bindingPath}`, async () => {
-      const peek = extractManifest(
-        source.entry,
-        await readFile(
-          source.kind === "file" ? source.bindingPath : join(source.root, source.entry),
-          "utf8",
-        ),
-      );
+      const peek = extractManifest(source.entry, await readEntry(source));
       const provisional = registry.identityFor(source.bindingPath, peek.manifest?.id, () =>
         ArtifactId.create(),
       );
@@ -392,7 +392,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
             () => provisional,
           );
           if (artifactId !== provisional) {
-            throw new Error(`The manifest of ${path} changed during the publish; publish again.`);
+            throw new RpcError(
+              createDiagnostic("MOSTRA_PUBLISH_SOURCE_CHANGED", {
+                message: `The manifest of ${path} changed while it was being published.`,
+              }),
+            );
           }
 
           // 2, 3. Lockfile and digests (DATA_MODEL §2).

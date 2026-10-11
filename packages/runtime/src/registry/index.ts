@@ -198,8 +198,10 @@ export async function openRegistry(options: {
         const resolved =
           input.manifestId ?? boundArtifact(db, input.bindingPath) ?? input.artifactId;
         if (resolved !== input.artifactId) {
-          throw new Error(
-            `The artifact of ${input.bindingPath} changed during the publish; publish again.`,
+          throw new RpcError(
+            createDiagnostic("MOSTRA_PUBLISH_SOURCE_CHANGED", {
+              message: `The artifact ${input.bindingPath} belongs to changed while it was being published.`,
+            }),
           );
         }
 
@@ -326,7 +328,9 @@ export async function openRegistry(options: {
           `SELECT artifact.*, version.published_at FROM artifact
            JOIN version ON version.id = artifact.latest_version_id
            ${filter.family !== undefined ? "WHERE artifact.family = ?" : ""}
-           ORDER BY version.published_at DESC, artifact.id`,
+           ORDER BY (SELECT MAX(cursor) FROM event
+                     WHERE event.artifact_id = artifact.id AND event.type = 'version.published') DESC,
+                    artifact.id`,
           ...(filter.family !== undefined ? [filter.family] : []),
         );
         return rows.map((row) => summary(db, row).summary);

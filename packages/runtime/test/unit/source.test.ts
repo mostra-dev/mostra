@@ -15,7 +15,12 @@ import {
 import { join } from "node:path";
 import { RpcError } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
-import { copySnapshot, listSource, resolveSource } from "../../src/publish/source.ts";
+import {
+  copySnapshot,
+  listSource,
+  resolveSource,
+  snapshotError,
+} from "../../src/publish/source.ts";
 import { readTar, TAR_END, tarFile } from "../../src/publish/tar.ts";
 import { tempDir } from "../support.ts";
 
@@ -160,4 +165,44 @@ describe("snapshots", () => {
       expect((statSync(path).mode & 0o111) !== 0).toBe(entry.executable);
     }
   });
+});
+
+describe("snapshot failures (D80 Claude review finding 6)", () => {
+  const fail = (code: string): NodeJS.ErrnoException =>
+    Object.assign(new Error(code), { code }) as NodeJS.ErrnoException;
+
+  it("calls a full disk the home's, and leaves other home-side failures unblamed on the author", async () => {
+    const root = tree({ "index.tsx": "x" });
+    const source = join(root, "index.tsx");
+    expect(((await snapshotError(fail("ENOSPC"), source)) as RpcError).diagnostic.code).toBe(
+      "MOSTRA_HOME_DISK_FULL",
+    );
+    expect(((await snapshotError(fail("EDQUOT"), source)) as RpcError).diagnostic.code).toBe(
+      "MOSTRA_HOME_DISK_FULL",
+    );
+    const staging = fail("EACCES");
+    expect(await snapshotError(staging, source)).toBe(staging);
+    expect(
+      ((await snapshotError(fail("EIO"), join(root, "gone.tsx"))) as RpcError).diagnostic.code,
+    ).toBe("MOSTRA_ARTIFACT_SOURCE_UNREADABLE");
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "doesn't blame the source for an unwritable staging directory",
+    async () => {
+      const root = tree({ "index.tsx": "x" });
+      const files = await listSource(await resolveSource(root));
+      const target = tempDir("staging");
+      chmodSync(target, 0o555);
+      try {
+        const error = await copySnapshot(files, join(target, "source")).catch(
+          (caught: unknown) => caught,
+        );
+        expect(error).not.toBeInstanceOf(RpcError);
+        expect((error as NodeJS.ErrnoException).code).toBe("EACCES");
+      } finally {
+        chmodSync(target, 0o755);
+      }
+    },
+  );
 });

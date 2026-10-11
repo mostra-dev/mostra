@@ -22,7 +22,9 @@ import type { Publisher } from "./publisher.ts";
 function canonical(path: string): string {
   const absolute = resolve(path);
   try {
-    return realpathSync(absolute);
+    // The native realpath(3), as `resolveSource` uses: on a case- or normalization-insensitive
+    // file system it returns the on-disk spelling the binding was stored with.
+    return realpathSync.native(absolute);
   } catch {
     const parent = dirname(absolute);
     return parent === absolute ? absolute : join(canonical(parent), basename(absolute));

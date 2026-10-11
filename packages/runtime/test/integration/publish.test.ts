@@ -265,7 +265,10 @@ describe("content-addressed versions (VR-01)", () => {
     const receipt = await publish(join(dir, "page.tsx"));
     const version = join(home.home, "versions", receipt.versionId);
     expect(statSync(join(version, "client/index.html")).mode & 0o222).toBe(0);
-    expect(() => writeFileSync(join(version, "client/index.html"), "tampered")).toThrow();
+    // Root writes through any mode, so the refusal is checked only for an ordinary user (as CI runs).
+    if (process.getuid?.() !== 0) {
+      expect(() => writeFileSync(join(version, "client/index.html"), "tampered")).toThrow();
+    }
   });
 });
 
@@ -546,4 +549,50 @@ describe("review findings (D80)", () => {
     ) as { versions: unknown[] };
     expect(detail.versions).toHaveLength(1);
   });
+
+  it("finds an artifact by any spelling of its path that the file system accepts (Claude finding 4)", async () => {
+    const parent = tempDir("spelling");
+    const dir = join(parent, "CasePlan");
+    cpSync(join(FIXTURES, "single-tsx"), dir, { recursive: true });
+    renameSync(join(dir, "page.tsx"), join(dir, "index.tsx"));
+    const other = join(parent, "caseplan");
+    // Only a case-insensitive file system (macOS's default) has a second spelling to test.
+    if (!existsSync(other)) return;
+    const receipt = await publish(other);
+    const detail = ok(await client.call("artifact/get", { artifact: { path: other } })) as {
+      id: string;
+    };
+    expect(detail.id).toBe(receipt.artifactId);
+  });
+
+  it("lists the artifact published most recently first, a republished earlier version included (Claude finding 5)", async () => {
+    const x = join(copyFixture("single-tsx"), "page.tsx");
+    const original = readFileSync(x, "utf8");
+    const first = await publish(x);
+    writeFileSync(x, `${original}\n// v2\n`);
+    await publish(x);
+    const y = await publish(join(copyFixture("single-mdx"), "page.mdx"));
+    writeFileSync(x, original);
+    expect(await publish(x)).toMatchObject({ versionId: first.versionId, reused: true });
+    const ids = (
+      ok(await client.call("artifact/list", {})) as { artifacts: { id: string }[] }
+    ).artifacts.map((artifact) => artifact.id);
+    expect(ids.indexOf(first.artifactId)).toBeLessThan(ids.indexOf(y.artifactId));
+    expect(ids[0]).toBe(first.artifactId);
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "reports an entry the publisher can't read as unreadable, not as an internal error (Claude finding 7)",
+    async () => {
+      const dir = copyFixture("directory");
+      chmodSync(join(dir, "index.tsx"), 0o000);
+      try {
+        const failed = await failure(dir);
+        expect(failed.code).toBe("MOSTRA_ARTIFACT_SOURCE_UNREADABLE");
+        expect(failed.message).toContain("index.tsx");
+      } finally {
+        chmodSync(join(dir, "index.tsx"), 0o644);
+      }
+    },
+  );
 });
