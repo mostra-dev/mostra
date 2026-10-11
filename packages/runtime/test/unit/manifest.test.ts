@@ -108,6 +108,7 @@ describe("values that need evaluation (AU-07)", () => {
     ["a call", "export const artifact = defineArtifact({ title: makeTitle() });", "makeTitle"],
     ["a spread", 'export const artifact = defineArtifact({ ...base, title: "x" });', "...base"],
     ["a computed key", 'export const artifact = defineArtifact({ [key]: "x" });', "[key]"],
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the case is artifact source with a placeholder.
     ["a template placeholder", "export const artifact = defineArtifact({ title: `Q${n}` });", "`Q"],
     ["a shorthand property", "export const artifact = defineArtifact({ title });", "title }"],
     ["a method", "export const artifact = defineArtifact({ title() { return 1; } });", "title()"],

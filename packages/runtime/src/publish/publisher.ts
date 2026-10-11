@@ -16,7 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -95,17 +95,29 @@ function defaultTitle(source: ResolvedSource): string {
  * runs inside the commit transaction. Anything unreadable no longer claims anything.
  */
 function stillClaims(path: string, artifactId: string): boolean {
-  try {
-    const info = statSync(path);
-    const entry = info.isDirectory()
-      ? ENTRY_NAMES.map((name) => join(path, name)).find((file) => existsSync(file))
-      : path;
-    if (entry === undefined) return false;
-    const { manifest } = extractManifest(basename(entry), readFileSync(entry, "utf8"));
-    return manifest?.id === artifactId;
-  } catch {
-    return false;
+  // Read, never check-then-read: the source may change between the two (CodeQL js/file-system-race).
+  const claims = (file: string): boolean | undefined => {
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EISDIR" || code === "ENOTDIR") return undefined;
+      return false;
+    }
+    try {
+      return extractManifest(basename(file), text).manifest?.id === artifactId;
+    } catch {
+      return false;
+    }
+  };
+  const asFile = claims(path);
+  if (asFile !== undefined) return asFile;
+  for (const name of ENTRY_NAMES) {
+    const result = claims(join(path, name));
+    if (result !== undefined) return result;
   }
+  return false;
 }
 
 /** The frozen lockfile of a version (D20): today the warm set; WP-04 adds on-demand packages. */

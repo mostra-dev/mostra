@@ -4,9 +4,12 @@
  */
 import {
   chmodSync,
+  closeSync,
   cpSync,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -442,16 +445,20 @@ describe("review findings (D80)", () => {
     const version = join(home.home, "versions", receipt.versionId);
     const listing: { path: string; executable: boolean; sha256: string }[] = [];
     const walk = (dir: string, prefix: string): void => {
-      for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        if (statSync(path).isDirectory()) walk(path, `${prefix}${name}/`);
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path, `${prefix}${entry.name}/`);
         else {
-          const mode = statSync(path).mode;
-          listing.push({
-            path: `${prefix}${name}`,
-            executable: (mode & 0o111) !== 0,
-            sha256: sha256Hex(readFileSync(path)),
-          });
+          const handle = openSync(path, "r");
+          try {
+            listing.push({
+              path: `${prefix}${entry.name}`,
+              executable: (fstatSync(handle).mode & 0o111) !== 0,
+              sha256: sha256Hex(readFileSync(handle)),
+            });
+          } finally {
+            closeSync(handle);
+          }
         }
       }
     };
