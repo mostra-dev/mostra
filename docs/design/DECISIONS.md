@@ -21,6 +21,7 @@
 | M11 | 2026-10-10T18:49:28.119Z | WP-01 questions. Approved the Crockford alphabet for version IDs ("I trust you to make the most robust decision"), the first host protocol revision `2026-10-10`, protected `main` with no bypass, installing Renovate himself, and the REPO_STANDARDS §4 correction. Contact address mmirzabicer@gmail.com; his surname is Biçer ("c" is fine for compatibility). Delegated the agent-facing prose and asked that branch protection, pull requests, CI and publishing all be done "in the **best** manner possible", acting where possible and instructing him otherwise. |
 | M12 | 2026-10-10T19:49:22.550Z / 20:07:46.058Z | Accepted WP-01. Left the pre-merge review to the agent's judgement: `codex review` with GPT-6.1-Sol, GitHub Copilot review (integrated into CI if GitHub allows), or neither, and asked that future WPs build reviews into CI or the documented workflow. Claude Opus 5.5 may review truly substantial packages, at most 20% of Mostra's WPs. Copilot review may need organization credits; not important. |
 | M13 | 2026-10-11T04:37:16.061Z | WP-02 questions. The C03-A design expert answered at Mirza's request (his message of 2026-10-11T04:32:46.030Z), and Mirza agreed with every point: the ledger lock as the home's authority, with `instance.json` for discovery and a self-healing socket; the XDG fallback with a `MOSTRA_RUNTIME_DIR` override; the socket name; one JSON-RPC core in `@mostra/protocol` without batches; the `mostra/initialize` shapes with `HomeConfig.path` as a check; the runtime binary and module layout; the `integration` CI job; signal handling and `mostra/shutdown` for attached clients, with idle exit left to WP-08; and a prose review limited to five hints and `packages/runtime/AGENTS.md`. These fill gaps and change no approved decision. |
+| M14 | 2026-10-11T11:52:42.559Z | WP-03 questions. Delegated the version-identity collision, the publish receipt's URL before the gateway (asking that every change later packages must make be noted where those packages will see it), the warm-set package, the diagnostic area for artifact lookups and the check boundaries, each with "I trust you to make the most robust … good-engineering decision". Confirmed that the gated child launcher (issue #7) belongs in WP-03 and that WP-02 left it out of the specification. Delegated the agent-facing prose, to be brought for review only where the agent isn't confident, at the very end before the merge. |
 
 ## Program-level decisions
 
@@ -536,6 +537,29 @@ SIGTERM and SIGINT stop an instance cleanly: in-flight ledger transactions finis
 
 ### D88. Prose review for WP-02
 Mirza delegates WP-02's diagnostic wording as at M11, except for the hints a person is likely to read when something goes wrong. He reviews those in the candidate: `MOSTRA_HOME_LOCKED`, `MOSTRA_HOME_NOT_OWNED`, `MOSTRA_HOME_SOCKET_TOO_LONG`, `MOSTRA_HOME_TOO_NEW` and `MOSTRA_PLATFORM_UNSUPPORTED`. `packages/runtime/AGENTS.md` is shown in full, because agents read it in every later package. *Source:* M13 point 9.
+
+### D89. Version identity covers the artifact (delegated)
+`versionId` is `ver_` plus the first 26 Crockford base32 characters (D77) of the SHA-256 of the artifact ID's UTF-8 bytes, one `0x00` byte, the 32 bytes of `sourceDigest` and the 32 bytes of `envDigest`. Publishing the same source in the same environment for the same artifact still returns the existing version (`reused: true`), and a bundle imported into another home keeps its version ID because it keeps its artifact ID (RM-01). Two artifacts with identical files, such as a copied directory bound by path, now get two versions instead of colliding on `version.id`. *Source:* M14 Q1 (delegated); found by WP-03. *Amends* D77 and DATA_MODEL §2, which hashed `sourceDigest ‖ envDigest` only.
+
+### D90. The publish receipt and events before the gateway (delegated)
+- `PublishReceipt.url` is optional on the wire. The capability URL needs the gateway, its leased ports and tokens (WP-05), so WP-03's receipts have none. WP-05 sets it on every publish, and from then on every receipt carries it. The field stays optional, so the schema never changes; hosts use it when present.
+- WP-03 creates DATA_MODEL §3's `event` table and appends `artifact.created` and `version.published` in the publish transaction, as ARCHITECTURE §3 step 6 says, so the receipt's `cursor` is real from the start. WP-06 adds reading, filters, subscriptions and the other event types on the same table.
+- Whatever a later package must change because of this is written into that package's specification (WP-05, WP-06), so its session sees it.
+
+*Source:* M14 Q2 (delegated, with the request to note follow-ups where later packages see them).
+
+### D91. The warm set is the package `@mostra/warm` (delegated)
+The warm set (ROUND-3 §1.2) is an unpublished workspace package, `packages/warm`, whose dependencies are exactly the warm packages and which contains no code. The builder links each build's `node_modules` to it, so artifacts resolve the warm set with no `package.json` and one React copy, and `@mostra/runtime` keeps no dependency on React (REPO_STANDARDS §3). WP-03 starts it with what WP-03's builds need (`react`, `react-dom`, `react-router`, `tailwindcss`, `@mostra/react`); WP-04 turns it into the pre-built warm layout of the shared store and adds the rest of the warm set; WP-11 ships it in the runtime bundle. *Source:* M14 Q3 (delegated). *Amends* the package map (REPO_STANDARDS §3).
+
+### D92. The `ARTIFACT` diagnostic area (delegated)
+INTERFACES §13 gains the area `ARTIFACT` for finding and creating artifacts: an unknown artifact or source path, a source that no longer exists, a directory that isn't empty, an unknown template. Every method that takes an `ArtifactRef` or a `SourceRef` reports these codes. *Source:* M14 Q5 (delegated).
+
+### D93. WP-03's check boundaries and prose
+- **Boundaries.** Some WP-03 checks name features later packages build: `verify` in AU-01 and AU-02 (WP-09), results in AU-04 and VR-11 (WP-06), regression baselines in VR-11 (WP-09), and verify and action calls in RT-02's process audit (WP-08, WP-09). WP-03 proves everything else through the real interfaces. Each of those packages extends WP-03's fixtures and audit to its feature, as its specification says.
+- **Issue #7.** The gated child launcher, which records a child before it may run its command, is WP-03's (it was left out of WP-03's specification by mistake).
+- **Prose.** The agent-facing prose of WP-03 is delegated (as at M11). The agent brings Mirza only the texts it isn't confident in, at the very end, when the pull request is about to merge.
+
+*Source:* M14 Q4, Q6, Q7.
 
 ## Research consensus adopted
 

@@ -45,6 +45,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/worker` | runtime bundle | protocol, server | runtime |
 | `@mostra/verify` | runtime bundle | protocol, playwright, axe-core | runtime internals |
 | `@mostra/shell` | runtime bundle | react, protocol, kit tokens | runtime |
+| `@mostra/warm` (unpublished) | runtime bundle: the warm set artifacts resolve (D91) | react, the kit and the other warm packages, as dependencies only; it has no code | runtime, worker |
 | `@mostra/pty-host` | runtime bundle | node-pty, protocol | runtime |
 | `@mostra/sdk` | JavaScript hosts | protocol | runtime internals (spawns it) |
 | `@mostra/cli` | agents, people | protocol, sdk | runtime internals |

@@ -60,10 +60,32 @@ rules.push(
   },
   {
     name: "runtime-vite-in-builder-only",
-    comment: "Vite loads only in the builder child's entry (REPO_STANDARDS §3).",
+    comment:
+      "The bundler (Vite, its React, MDX and Tailwind plugins) loads only in the builder child (src/builder/child/), never in the supervisor (REPO_STANDARDS §3, RT-02).",
     severity: "error",
-    from: { path: "^packages/runtime/src/", pathNot: "^packages/runtime/src/builder/" },
-    to: { path: "node_modules/vite/" },
+    from: { path: "^packages/runtime/src/", pathNot: "^packages/runtime/src/builder/child/" },
+    to: {
+      path: "node_modules/(vite|rolldown|@vitejs/plugin-react|@mdx-js/mdx|@tailwindcss/vite|remark-gfm|remark-frontmatter)/",
+    },
+  },
+  {
+    name: "runtime-native-modules-lazy",
+    comment:
+      "The supervisor loads native modules on first use (createRequire), never at import: the platform gate must answer before anything platform-specific loads (RT-07).",
+    severity: "error",
+    from: { path: "^packages/runtime/src/", pathNot: "^packages/runtime/src/builder/child/" },
+    to: {
+      path: "node_modules/(oxc-parser|better-sqlite3)/",
+      dependencyTypesNot: ["type-only"],
+    },
+  },
+  {
+    name: "runtime-builder-child-isolated",
+    comment:
+      "Supervisor code never imports the builder child's modules; it starts the child as a process (RT-02).",
+    severity: "error",
+    from: { path: "^packages/runtime/src/", pathNot: "^packages/runtime/src/builder/child/" },
+    to: { path: "^packages/runtime/src/builder/child/" },
   },
   {
     name: "no-circular",
@@ -79,7 +101,9 @@ export default {
   forbidden: rules,
   options: {
     doNotFollow: { path: "node_modules" },
-    exclude: { path: "(^|/)(dist|\\.tsbuild|coverage)/" },
+    // Only this repository's build outputs: resolved npm packages often live in their own dist/,
+    // and excluding those would hide the imports the external-allowlist rules exist to catch.
+    exclude: { path: "^(packages|plugins|apps|tools|tests)/[^/]+/(dist|\\.tsbuild|coverage)/" },
     tsPreCompilationDeps: true,
     combinedDependencies: true,
     enhancedResolveOptions: {

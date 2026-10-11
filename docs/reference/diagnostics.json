@@ -1,6 +1,132 @@
 {
   "codes": [
     {
+      "code": "MOSTRA_ACTION_EXPORT_INVALID",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Server module exports something other than an async function",
+      "hint": "Export only async functions from a \"use server\" module; move other exports to an ordinary module.",
+      "explanation": "A module that starts with `\"use server\"` makes every export a server function the page can call. React's contract allows only async functions there. Mostra reports this code for any other export (a constant, a class, a non-async function, `export *`), naming the export.",
+      "fix": "Make the function `async`, or move the value to a separate module without the directive and import it from both sides."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
+      "severity": "error",
+      "phase": "host",
+      "title": "Directory isn't empty",
+      "hint": "Choose a new or empty directory for the artifact.",
+      "explanation": "Creating an artifact writes its entry into a directory, and the directory given already has files. Mostra never overwrites them.",
+      "fix": "Pass a path that doesn't exist yet or an empty directory. To make existing files an artifact, add the entry yourself and publish."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "More than one entry file",
+      "hint": "Keep one entry file in the directory and rename or remove the others.",
+      "explanation": "A directory artifact has exactly one entry, and this directory has more than one of `index.tsx`, `index.jsx` and `index.mdx`, so Mostra can't tell which one is the page.",
+      "fix": "Keep the entry you mean and rename the others, for example into `components/`."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_NO_ENTRY",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "No entry file",
+      "hint": "Add `index.tsx` or `index.mdx` to the directory, or publish a single `.tsx` or `.mdx` file.",
+      "explanation": "An artifact is a single `.tsx`, `.jsx` or `.mdx` file, or a directory whose entry is `index.tsx`, `index.jsx` or `index.mdx`. The source given is neither.",
+      "fix": "Create the entry: its default export is the page, and its manifest is `export const artifact = defineArtifact({ title: \"...\" })` (or frontmatter in MDX). For a single page, publish the file itself."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_NO_PAGE",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Entry has no page",
+      "hint": "Export the page component as the entry's default export, or add a `pages/` folder.",
+      "explanation": "The entry has no default export and the artifact has no `pages/` folder, so there is nothing to render. With `pages/`, each file there is a route and the entry's default export, when present, is the layout around them.",
+      "fix": "Add `export default function Page() { ... }` to the entry, or move pages into `pages/index.tsx`, `pages/settings.tsx` and so on."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_NOT_FOUND",
+      "severity": "error",
+      "phase": "host",
+      "title": "Artifact not found",
+      "hint": "Check the artifact ID or source path, or list the home's artifacts with `mostra list`.",
+      "explanation": "The artifact named by an ID or a source path doesn't exist in this home: the ID was never published here, or the path was never published.",
+      "fix": "Use an ID or path from `mostra list`. A source that was never published becomes an artifact at its first `mostra publish`. A host that uses its own home sees only the artifacts published there."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_SOURCE_MISSING",
+      "severity": "error",
+      "phase": "publish",
+      "title": "Artifact source missing",
+      "hint": "Publish from the artifact's source path, or restore the directory the message names.",
+      "explanation": "Publishing needs the artifact's source files. The path given, or the path the artifact was last published from, doesn't exist. Versions already published stay readable, because Mostra keeps a snapshot of their source in the home.",
+      "fix": "Pass the path where the source lives now. Its manifest `id`, if it has one, keeps the artifact identity at the new path."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_SOURCE_UNREADABLE",
+      "severity": "error",
+      "phase": "publish",
+      "title": "Artifact source can't be read",
+      "hint": "Fix the file or directory the message names so your user can read it, then publish again.",
+      "explanation": "Mostra couldn't read a file of the artifact's source: permissions, a file that disappeared while it was copied, or two names that are the same after Unicode normalization. Nothing was published.",
+      "fix": "Make the named file readable, rename one of two clashing names, or exclude the file with `.mostraignore` in the artifact's root."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN",
+      "severity": "error",
+      "phase": "host",
+      "title": "Unknown template",
+      "hint": "Create the artifact without a template, or use a template this Mostra release provides.",
+      "explanation": "The template named isn't one this runtime provides. Without a template, Mostra writes a minimal entry with a generated artifact ID.",
+      "fix": "Leave out the template, or use one of the templates of this release."
+    },
+    {
+      "code": "MOSTRA_BUILD_CRASHED",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Builder crashed",
+      "hint": "Publish again; if it crashes again, report the builder's last output from the message.",
+      "explanation": "The builder child process exited before it finished, for example after running out of memory or on a signal. The supervisor and everything else in the instance keep working, and nothing was published. The message carries the builder's last lines of error output.",
+      "fix": "Run the publish again, which starts a fresh builder. A crash that repeats points at the artifact's size or at a defect in Mostra: very large inline data is better kept in `public/` or loaded through a live source."
+    },
+    {
+      "code": "MOSTRA_BUILD_FAILED",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Build failed",
+      "hint": "Fix the error at the reported location, then publish again.",
+      "explanation": "The builder couldn't bundle the artifact: a syntax error, an invalid JSX or MDX construct, a CSS error or another bundler error. The message carries the bundler's own explanation, and the location points at the file, line and column when the bundler reports one. Nothing was published.",
+      "fix": "Open the reported file at the reported line and fix the code there. For MDX, check that JSX in the document is closed and that `{` and `<` in prose are escaped. Run `mostra verify` to see the same error with the type checker's findings."
+    },
+    {
+      "code": "MOSTRA_BUILD_TIMEOUT",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Build timed out",
+      "hint": "Make the build smaller, for example by moving large data into `public/`, then publish again.",
+      "explanation": "The build took longer than its limit (180 seconds) and was stopped. Nothing was published.",
+      "fix": "Move large data files that are imported into code into `public/` and fetch them at run time, split very large modules, and remove unused imports of heavy libraries. Then publish again."
+    },
+    {
+      "code": "MOSTRA_BUILD_UNRESOLVED",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Import can't be resolved",
+      "hint": "Correct the import path, or import the package from the warm set or add it with `mostra add`.",
+      "explanation": "An import in the artifact names a file or package the builder can't find. Relative imports resolve inside the artifact's own files, `@/...` resolves from the artifact's root, and package imports resolve from Mostra's warm set and the artifact's installed packages. The message names the import and the file that contains it.",
+      "fix": "For a file, check the path and its extension against the artifact's files. For a package, check its name; packages outside the warm set install with `mostra add <package>`."
+    },
+    {
+      "code": "MOSTRA_ENV_WARM_MISSING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Warm package set missing",
+      "hint": "Reinstall the Mostra runtime, or set `MOSTRA_WARM_DIR` to its warm package set.",
+      "explanation": "Builds resolve React, Tailwind and Mostra's own client packages from the warm package set that ships with the runtime. The runtime couldn't find it, which means the runtime installation is incomplete.",
+      "fix": "Reinstall Mostra so the runtime bundle is complete. A custom layout can point the runtime at the warm set's directory with `MOSTRA_WARM_DIR`."
+    },
+    {
       "code": "MOSTRA_HOME_DISK_FULL",
       "severity": "error",
       "phase": "host",
@@ -17,6 +143,15 @@
       "hint": "Restore or recreate the home directory, then start Mostra again.",
       "explanation": "The instance's home directory disappeared or was replaced while the instance was running. Writing anywhere else could split the home's data, so the instance stops accepting requests, stops its child processes and exits.",
       "fix": "Put the home back (or choose a new one with `--home` or `MOSTRA_HOME`) and start Mostra again. Clients reconnect and retry their requests by ID."
+    },
+    {
+      "code": "MOSTRA_HOME_INTEGRITY",
+      "severity": "error",
+      "phase": "host",
+      "title": "Stored version or file damaged",
+      "hint": "Publish the version's source again to rebuild a damaged version in place, and run `mostra doctor` for other damaged objects.",
+      "explanation": "Mostra checks stored versions, source snapshots and blobs against their recorded content digests before using them. This code means a stored object is missing or its content changed after it was written, for example after a disk error or a manual edit inside the home. The message names the object.",
+      "fix": "Leave files inside the home unchanged. To repair a version, publish the same source again: Mostra rebuilds the version's directory and puts it back under the same version ID, and the artifact keeps its version number. If the source has changed since, the publish makes a new version and the damaged one stays as it is; its source snapshot in the home holds the original files. `mostra doctor` lists other damaged objects."
     },
     {
       "code": "MOSTRA_HOME_LEDGER_UNREADABLE",
@@ -163,6 +298,33 @@
       "fix": "Retry with the same request ID, which returns the recorded result if the first attempt completed. Allow a longer timeout for slow operations."
     },
     {
+      "code": "MOSTRA_MANIFEST_INVALID",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Manifest value is invalid",
+      "hint": "Fix the manifest field named in the message so it matches the manifest's documented shape.",
+      "explanation": "The manifest was read, but a field has a value the manifest doesn't allow: a missing `title`, a wrong type, an `id` that isn't an artifact ID (`art_` followed by a ULID), a `mode` this runtime doesn't build (`spa` is the only one), or frontmatter that isn't valid YAML. The message names the field and what was expected.",
+      "fix": "Correct the field the message names. Leave `id` out to let Mostra bind the artifact to its source path at first publish, or keep the `id` that `mostra new` wrote. Every field except `title` is optional."
+    },
+    {
+      "code": "MOSTRA_MANIFEST_NOT_LITERAL",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Manifest isn't a literal",
+      "hint": "Write the manifest as plain values: strings, numbers, booleans, null, arrays and objects, with no variables, calls, spreads or computed keys.",
+      "explanation": "Mostra reads an artifact's manifest without running its code: the `export const artifact = defineArtifact({...})` in a TSX entry, or the frontmatter of an MDX entry. It reports this code when the exported `artifact` isn't a `defineArtifact(...)` call with one object literal, or when a value inside it needs evaluation (an identifier, a function call, a spread, a computed key, a template literal with a placeholder). The location points at the first such value.",
+      "fix": "Replace the value with the literal it stands for, for example `title: \"Q3 review\"` instead of `title: TITLE`. Keep computed values in the page code, where they can use anything. `as const` and `satisfies` on the object are fine."
+    },
+    {
+      "code": "MOSTRA_MANIFEST_UNKNOWN_KEY",
+      "severity": "warning",
+      "phase": "manifest",
+      "title": "Unknown manifest key",
+      "hint": "Remove the key or correct its spelling; a newer Mostra may support it.",
+      "explanation": "The manifest has a key this runtime doesn't know. Mostra ignores it, so manifests written for a newer release still publish, but a misspelled key (`familly`, `decription`) silently has no effect.",
+      "fix": "Check the key against the manifest fields (`id`, `title`, `description`, `family`, `links`, `mode`, `submission`, `kit`, `terminals`, `demos`, `limits`, `verify`) and fix the spelling, or remove it."
+    },
+    {
       "code": "MOSTRA_PLATFORM_UNSUPPORTED",
       "severity": "error",
       "phase": "platform",
@@ -170,6 +332,33 @@
       "hint": "Run Mostra on macOS or Linux, on an x64 or arm64 machine.",
       "explanation": "Mostra 1.0 runs on macOS and Linux, on x64 and arm64. On any other operating system or architecture, Windows included, every entry point stops with this code before it creates or changes anything, because the process model, sockets and storage are built and tested only on those platforms. The message names the platform that was detected.",
       "fix": "Run Mostra on a macOS or Linux machine with an x64 or arm64 processor. Windows support is planned for a release after 1.0."
+    },
+    {
+      "code": "MOSTRA_PUBLISH_ID_CONFLICT",
+      "severity": "error",
+      "phase": "publish",
+      "title": "Artifact ID claimed by two sources",
+      "hint": "Give one of the two sources a different `id`, or delete the `id` line from the copy so it becomes a new artifact.",
+      "explanation": "An artifact's `id` names exactly one source. Mostra reports this code when a manifest claims an `id` that is already bound to another source path whose entry still claims it, which usually means a directory was copied. A source that moved, so that the old path no longer claims the `id`, is rebound instead. The message names both paths.",
+      "fix": "Decide which source is the artifact. In the other one, remove the `id` from the manifest (it is then bound to its own path at its first publish) or replace it with a new ID from `mostra new`."
+    },
+    {
+      "code": "MOSTRA_PUBLISH_SOURCE_CHANGED",
+      "severity": "error",
+      "phase": "publish",
+      "title": "Source changed during the publish",
+      "hint": "Publish again once the artifact's files have stopped changing.",
+      "explanation": "Publishing reads the entry's manifest twice: once to find the artifact, and again from the snapshot it builds. Mostra reports this code when the two disagree about which artifact the source is, because the manifest `id` or the source's binding changed while the publish ran, for example when an editor saved the entry mid-publish or another publish rebound the path. Nothing was published.",
+      "fix": "Wait until the files are saved and nothing else is publishing the same source, then publish again. If the manifest `id` was changed on purpose, the next publish uses the new one."
+    },
+    {
+      "code": "MOSTRA_TARGET_UNAVAILABLE",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Not available in this delivery target",
+      "hint": "Open the published version through Mostra to use this feature.",
+      "explanation": "The page called something that needs Mostra's server, such as a server function, and this delivery target doesn't provide it: a static export, a file opened from disk, or a runtime without server support. The page keeps working without it.",
+      "fix": "Open the artifact through its Mostra link, where server functions, submissions and live data are available. In a static export, handle the error so the page explains what isn't available."
     }
   ]
 }

@@ -10,12 +10,14 @@
   instance.json                discovery record of the running supervisor (D81): pid, start time, socket, runtime version, revisions; never a lock
   store/ledger.sqlite          the ledger (WAL, synchronous=FULL, locking_mode=EXCLUSIVE: no -shm file), with -wal
   store/ledger.sqlite.bak-<from>-<to>   backup written before a migration (§6)
-  versions/<versionId>/        immutable: manifest.json, client/, server/ (optional), registry.json, lock.yaml
+  versions/<versionId>/        immutable and read-only (files 0444, directories 0555): manifest.json, client/, server/
+                               (optional, entry.mjs), registry.json, lock.yaml
   sources/<artifactId>/<sourceDigest>.tar.zst   source snapshots for every published version (H-11)
   blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
   deps/store/                  shared content-addressed package store (pnpm-compatible, MIT parts only, D20)
   deps/locks/<lockDigest>/     per-lockfile node_modules layouts, hard-linked from the store
   cache/builds/<digests>/      verify-built outputs awaiting publish; LRU-capped at 5 GB (D47)
+  cache/staging/               one directory per publish in progress (snapshot copy, build output); emptied at every start
   cache/verify/<digests>.json  cached verdicts (D41)
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)
   logs/                        rotated supervisor and child logs, capability URLs redacted
@@ -30,11 +32,11 @@
 
 ## 2. Identity and digests
 
-- **`sourceDigest`** is the SHA-256 of a canonical listing of the source tree: for every file, its path (relative, `/`-separated, NFC), its executable bit and the SHA-256 of its bytes, sorted by path. It excludes `node_modules/`, `.git/`, `.mostra/`, editor swap files and anything matched by `.mostraignore`. Content is hashed as bytes, never normalized.
-- **`envDigest`** is the SHA-256 of canonical JSON: `{ mostraVersion, kitVersion, kitBase, mode, lockDigest, buildConfigDigest, browserProtocolRevision }`. `lockDigest` hashes the frozen lockfile. `buildConfigDigest` covers Mostra's build settings for this mode and its target list.
-- **`versionId`** is `ver_` plus the first 26 characters of the SHA-256 of `sourceDigest ‖ envDigest` in Crockford base32 (`0-9A-HJKMNP-TV-Z`, uppercase, the ULID alphabet; D77), computed by `VersionId.fromSha256`. Publishing the same pair again returns the existing version (`reused: true`). The version number is a per-artifact sequence, for people.
-- **`outputDigest`** is the SHA-256 of the canonical listing of the build output, recorded and never used as identity (VR-01).
-- **Artifact identity.** An artifact's `id` comes from its manifest (D51) or from a binding of its canonical source path, created at first publish. `source_bindings` makes path → artifact unique, and a manifest `id` claimed by a second path is `MOSTRA_PUBLISH_ID_CONFLICT`.
+- **`sourceDigest`** is the SHA-256 of a canonical listing of the source tree: for every file, its path (relative, `/`-separated, NFC), its executable bit and the SHA-256 of its bytes, sorted by path. The listing is the JSON array `[[path, executable, sha256hex], …]` sorted by the paths' UTF-8 bytes. It excludes `node_modules/`, `.git/` and `.mostra/` at any depth, editor swap and backup files (`*.swp` and kin, `*~`, `.#*`, `#*#`), Finder's `.DS_Store`, and anything matched by `.mostraignore` (gitignore rules, in the source root). Symbolic links are followed; a link back into its own ancestry is skipped. A single-file artifact's tree is that one file. Content is hashed as bytes, never normalized. Publish hashes its staging copy of the files, so the digest describes exactly what is built and archived. Every digest is written as lowercase hex.
+- **`envDigest`** is the SHA-256 of canonical JSON (RFC 8785): `{ mostraVersion, kitVersion, kitBase, mode, lockDigest, buildConfigDigest, browserProtocolRevision }`. `lockDigest` hashes the frozen lockfile (`lock.yaml`: the warm set's packages and versions until WP-04 adds on-demand packages). `buildConfigDigest` covers Mostra's build settings for this mode: the render mode, a settings revision, the base path, source maps, the versions of the bundler and its plugins, and the `tsconfig.json` and `package.json` Mostra writes at the build's root. A build reads nothing else: packages come only from the warm set, and no configuration is read from outside the artifact (INTERFACES §2.1), so these digests cover every input. `kitVersion` and `browserProtocolRevision` are `null` until the kit (WP-18) and the browser protocol (WP-07) exist; their arrival changes `envDigest`, as it should.
+- **`versionId`** is `ver_` plus the first 26 characters, in Crockford base32 (`0-9A-HJKMNP-TV-Z`, uppercase, the ULID alphabet; D77), of the SHA-256 of the artifact ID's UTF-8 bytes, one `0x00` byte, and the 32-byte `sourceDigest` and `envDigest` (D89), computed by `VersionId.fromSha256`. Publishing the same source and environment for the same artifact again returns the existing version (`reused: true`). The version number is a per-artifact sequence, for people.
+- **`outputDigest`** is the SHA-256 of the canonical listing of the build output (every file under the version's `client/` and `server/`, and `registry.json`, paths relative to the version directory, none executable since the version is sealed read-only), recorded and never used as identity (VR-01).
+- **Artifact identity.** An artifact's `id` comes from its manifest (D51) or from a binding of its canonical source path (its real path), created at first publish. `source_bindings` makes path → artifact unique. A manifest `id` must be an artifact ID (`art_` and a ULID), and it wins over a path binding. When a manifest `id` is bound to another path: if that path's entry still claims the `id` (a copy), the publish is `MOSTRA_PUBLISH_ID_CONFLICT`; if it doesn't (the source moved or changed its `id`), the binding moves to the new path. Publishing an earlier version's exact source again reuses that version and makes it the latest again, with a new `version.published` event (`republished: true`).
 
 ## 3. Ledger tables
 
@@ -89,6 +91,7 @@ session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csr
 share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it
 schema_migration(version PK, name, runtime_version, applied_at)
+request(method, request_id, result_json, created_at, PRIMARY KEY(method, request_id))  -- H-03: a mutating request's recorded result
 ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- written when the lock is taken (D81)
 ```
 
@@ -101,7 +104,7 @@ Invariants carried by constraints:
 - **Event order:** the home-wide cursor gives total order, and the per-artifact sequence gives each artifact's order (IN-08).
 - **Leases:** each port has exactly one lease holder.
 
-`snapshot_json` is the canonical answer document. Its digest is SHA-256 over RFC 8785 (JCS) canonical JSON. Submissions are write-once: no `UPDATE` touches `submission` after insert. A test in the interaction WP enforces this with a trigger (invariant 4).
+`snapshot_json` is the canonical answer document. Its digest is SHA-256 over RFC 8785 (JCS) canonical JSON. Submissions are write-once: no `UPDATE` touches `submission` after insert. A test in the interaction WP enforces this with a trigger (invariant 4). Versions are write-once the same way: a trigger refuses any `UPDATE` of `version` (invariant 3), and `event` is append-only.
 
 ## 4. Event catalog
 

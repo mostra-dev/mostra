@@ -37,6 +37,13 @@ my-artifact/            or a single page.tsx / page.mdx
   public/               static assets served as-is
 ```
 
+The conventions WP-03 fixed:
+- **Entries.** A single-file artifact is any `.tsx`, `.jsx` or `.mdx` file. A directory's entry is exactly one of `index.tsx`, `index.jsx` and `index.mdx` (`MOSTRA_ARTIFACT_NO_ENTRY`, `MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS`).
+- **Pages (D57).** Every `.tsx`, `.jsx` and `.mdx` file under `pages/` is a route: `pages/index.tsx` is `/`, `pages/settings.tsx` is `/settings`, `pages/reports/index.tsx` is `/reports`, `pages/reports/[id].tsx` is `/reports/:id` and `pages/docs/[...rest].tsx` is `/docs/*`. With `pages/`, the entry's default export is optional and, when present, is the layout every page renders inside, receiving the page as `children`. Without `pages/`, the entry's default export is the page (`MOSTRA_ARTIFACT_NO_PAGE` when it has none).
+- **Imports.** Relative and absolute imports stay inside the artifact: one that resolves outside it is refused (`MOSTRA_BUILD_UNRESOLVED`), because no digest would cover its bytes. `@/…` resolves from the artifact's root, so `@/components/ui/button` finds a copied component (ROUND-3 §1.1). Packages resolve from the warm set only (D91): a package found anywhere else, such as a `node_modules` above the home, is refused with `MOSTRA_BUILD_UNRESOLVED`; WP-04 adds on-demand installs. Builds read no configuration from outside the artifact: Mostra writes its own `tsconfig.json` and `package.json` at the build's root and configures PostCSS inline, so no `tsconfig.json`, PostCSS config or `package.json` above the home is used or run. Nothing needs a `package.json` or a config file (AU-03), and a publish writes nothing into the artifact's directory.
+- **Styles.** Every build includes Tailwind CSS 4 (its preflight and the utilities the artifact uses, scanned from its files) as the baseline the kit is built on (D68); an artifact's own CSS imports apply after it.
+- **Server code.** Every module whose first statement is `"use server"` exports only async functions (`MOSTRA_ACTION_EXPORT_INVALID` otherwise). Client code that imports it gets stubs carrying each function's ID, `<module path>#<export>`; the bodies go only into the server bundle (`server/entry.mjs`, which exports `functions` by ID and `live`).
+
 ### 2.2 Manifest
 
 ```ts
@@ -56,7 +63,7 @@ export const artifact = defineArtifact({
 });
 ```
 
-Mostra reads it statically, so every value must be a literal (`MOSTRA_MANIFEST_NOT_LITERAL` otherwise). `{port}` in a demo command is replaced with the leased port. MDX uses the same fields as YAML frontmatter, and decks add `deck:` (D65).
+Mostra reads it statically, so every value must be a literal (`MOSTRA_MANIFEST_NOT_LITERAL` otherwise, with the location of the first value that needs evaluation); `as const` and `satisfies` are fine. `defineArtifact` is imported from `@mostra/react`. An entry without a manifest publishes with defaults, its title taken from its directory's name (or a single file's own name). A manifest that is present needs a `title`, and its `id` is an artifact ID (`art_` and a ULID); values the manifest doesn't allow are `MOSTRA_MANIFEST_INVALID`, and unknown keys are `MOSTRA_MANIFEST_UNKNOWN_KEY` warnings. `{port}` in a demo command is replaced with the leased port. MDX uses the same fields as YAML frontmatter, and decks add `deck:` (D65).
 
 ### 2.3 `@mostra/react` (client runtime)
 
@@ -227,7 +234,7 @@ Mostra → host (only to the connection that registered the port)
   port/<name>.<method>   see §7
 ```
 
-`SourceRef` is `{ path }` or `{ artifactId }`. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
+`SourceRef` is `{ path }` (an absolute path; clients resolve relative ones) or `{ artifactId }` (the path it was last published from). `ArtifactRef` has the same two forms and names an existing artifact; a path is matched by its real path, so a deleted source's path still names its artifact. `ArtifactSummary` is `{ id, title, description?, family?, links, mode, policy?, source?, createdAt, latestVersion? }`, with metadata from the latest version's manifest; `ArtifactDetail` adds the latest `manifest` and every `VersionSummary` (`{ id, number, publishedAt, sourceDigest, envDigest, outputDigest, forcedDiagnostics? }`), newest first. `artifact/list` takes `filter: { family? }`. `artifact/create` writes a minimal entry with a generated `id` into an empty directory and returns `{ artifactId, dir, files }`; the artifact appears in `artifact/list` once published, and templates arrive with WP-26. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the capability URL; it is optional on the wire because instances without the gateway (WP-03, before WP-05) have none, and WP-05 sets it on every publish (D90). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (D43), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
 
 The initialize shapes (D84):
 
@@ -332,7 +339,7 @@ The `text` format is exact cells with wide tails omitted, followed by a lint sec
 
 ## 11. Build and render mode (internal)
 
-`RenderMode` is in [rounds/ROUND-3.md §7](rounds/ROUND-3.md#7-render-mode-contract-rd1). The builder entry is `build({ source, lockfile, base, mode, out }) → { client, server?, registry: { fields, actions (with dryRun flags), liveSources, pages, terminals, demos }, diagnostics }`. The registry feeds `verify`, the shell and `results`.
+`RenderMode` is in [rounds/ROUND-3.md §7](rounds/ROUND-3.md#7-render-mode-contract-rd1). The builder entry is `build({ source, lockfile, base, mode, out }) → { client, server?, registry: { fields, actions (with dryRun flags), liveSources, pages, terminals, demos }, diagnostics }`. The registry feeds `verify`, the shell and `results`. WP-03's builder writes `registry.json` with `schemaVersion`, `entry`, `actions` (`{ id, module, export, dryRun }`), `liveSources`, `pages` (`{ path, file }`), `terminals` and `demos`; `fields` join it with the client runtime (WP-07). The builder runs in a child process per build (`builder/build` over IPC), so the supervisor never loads the bundler (RT-02).
 
 ## 12. MCP server
 
@@ -365,7 +372,7 @@ Exported MCP Apps:
 interface Diagnostic {
   code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
-  //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM
+  //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM ARTIFACT (D92)
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong

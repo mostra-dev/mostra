@@ -1,7 +1,7 @@
 # @mostra/runtime
 
-The supervisor that owns a Mostra home: its ledger, its control socket, the host protocol server and
-every child process. Audience: the runtime bundle. `mostra-runtime host|daemon` (`src/bin.ts`) is
+The supervisor that owns a Mostra home: its ledger, its control socket, the host protocol server,
+every child process, and the artifacts and versions published into it. Audience: the runtime bundle. `mostra-runtime host|daemon` (`src/bin.ts`) is
 the bundle's entry point (D85); it never runs artifact code (RT-02).
 
 ## Invariants it owns
@@ -22,7 +22,19 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   ends its process group when the IPC channel disconnects. Packages that can't import this one
   (`@mostra/worker`, `@mostra/pty-host`) implement the same rule.
 - **The platform gate runs first (D35, RT-07).** No entry point touches the home before
-  `checkPlatform` passes.
+  `checkPlatform` passes, and nothing platform-specific loads before it: native modules
+  (`better-sqlite3`, `oxc-parser`) load on first use through `createRequire`, which a boundary rule
+  enforces.
+- **The supervisor never runs artifact code (RT-02).** It reads manifests by parsing (Oxc, YAML)
+  and builds in a builder child per build (`builder/child/`, the only code that may import Vite and
+  its plugins). The RT-02 audit (`test/integration/audit.test.ts`) records every module the
+  supervisor loads.
+- **A child runs only once it is recorded (issue #7).** `ProcessManager.spawn` starts every child
+  behind a `/bin/sh` gate that `exec`s the command after the supervisor wrote its `child` row.
+- **Versions are immutable and appear atomically (VR-01, VR-02).** A version directory is built in
+  `cache/staging`, sealed read-only, renamed into `versions/`, and becomes visible only when its
+  ledger row commits; a failed publish removes what it placed, and the next start removes anything
+  without a row. `version` rows have an UPDATE-refusing trigger; `event` is append-only.
 - **No secret reaches a log or a report.** Every string the log writes passes through the
   instance's `Redactor`, and child output is redacted before it is kept. Pass the secrets a child
   receives in `SpawnSpec.redact`; variables named like secrets are redacted on their own.
@@ -39,11 +51,18 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 |---|---|
 | `home` | Platform gate, home and runtime-directory resolution, permissions, the socket name, taking the lock or finding the owner, `instance.json` |
 | `ledger` | The SQLite ledger: lock, pragmas, migrations with backup, integrity, error mapping |
-| `processes` | Process identity (PID plus start time), the process manager, reaping, the child side of IPC |
+| `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC |
 | `protocol-server` | The JSON-RPC dispatcher for stdio and the socket, session rules, the session methods |
+| `builder` | The `RenderMode` contract and its SPA implementation; the warm set; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources and pages) |
+| `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` methods |
+| `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
+| `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
-`src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`.
+`src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
+`MOSTRA_TEST_FAULTS` (`<point>:throw|crash`, comma-separated), the fault points tests use to fail
+or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
+`MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit. Both are for tests only.
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its
@@ -56,12 +75,18 @@ first module outside `protocol-server` needs it.
 - `pnpm --filter @mostra/runtime test`: unit tests in-process (`test/unit`).
 - `pnpm --filter @mostra/runtime build && pnpm --filter @mostra/runtime test:integration`: the
   built binary as real processes (`test/integration`): the protocol suite over stdio and the
-  socket, racing starters, stale sockets, reaping after SIGKILL, the platform gate. CI runs them on
-  macOS and Linux (`integration` job, D86).
+  socket, racing starters, stale sockets, reaping after SIGKILL, the platform gate, publishing,
+  faults at every publish step, the RT-02 module audit, and rendering versions in Chromium
+  (`pnpm --filter @mostra/runtime exec playwright install --only-shell chromium` once). CI runs
+  them on macOS and Linux (`integration` job, D86).
 
 ## Gotchas
 
-- Integration tests run `dist/bin.js`; rebuild after changing `src` or `@mostra/protocol`.
+- Integration tests run `dist/bin.js` and `dist/builder/child/main.js`; rebuild after changing
+  `src`, `@mostra/protocol` or `@mostra/react` (builds resolve its `dist`).
+- Version directories are read-only; remove a test home with `removeAll` from `test/support.ts`.
+- Artifact fixtures live in `test/fixtures/artifacts/`, outside type checking and linting: they
+  are what agents write, not this package's code.
 - Linux differs from macOS in process listings, signals and `/bin/sh` (`dash`). Run process and
   socket changes on Linux before pushing ([playbook](../../docs/agents/reproduce-on-linux.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits

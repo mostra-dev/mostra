@@ -22,6 +22,16 @@ on SIGTERM, SIGINT or the `mostra/shutdown` protocol method. `host` lives as lon
 The control socket lives in `MOSTRA_RUNTIME_DIR` when set, else `~/.mostra/run` on macOS and
 `$XDG_RUNTIME_DIR/mostra` (or `~/.local/state/mostra/run`) on Linux.
 
+## Publishing
+
+`artifact/publish` turns an artifact's source (a `.tsx`, `.jsx` or `.mdx` file, or a directory with
+an `index` entry) into an immutable version in `<home>/versions/<versionId>/`. Nothing in the
+artifact's directory is written, and no `package.json` is needed: builds resolve React, React
+Router, Tailwind CSS and `@mostra/react` from the warm set the runtime ships beside it (or
+`MOSTRA_WARM_DIR`). A copy of every published source stays in `<home>/sources/`, so versions stay
+readable after the source directory is gone. Publishing the same source again returns the same
+version. `artifact/create`, `artifact/list` and `artifact/get` complete the authoring methods.
+
 ## Platforms
 
 macOS and Linux, on x64 and arm64. Elsewhere, including Windows, it stops with

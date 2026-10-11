@@ -4,24 +4,54 @@
  */
 import type { Diagnostic } from "../diagnostic.ts";
 import { buildDiagnostic, type DiagnosticDetails, type DiagnosticSpec } from "../spec.ts";
+import { type ActionDiagnosticCode, actionDiagnostics } from "./action.ts";
+import { type ArtifactDiagnosticCode, artifactDiagnostics } from "./artifact.ts";
+import { type BuildDiagnosticCode, buildDiagnostics } from "./build.ts";
 // gen:area-imports
+import { type EnvDiagnosticCode, envDiagnostics } from "./env.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
+import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
+import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
+import { type TargetDiagnosticCode, targetDiagnostics } from "./target.ts";
 
+export { type ActionDiagnosticCode, actionDiagnosticCodes } from "./action.ts";
+export { type ArtifactDiagnosticCode, artifactDiagnosticCodes } from "./artifact.ts";
+export { type BuildDiagnosticCode, buildDiagnosticCodes } from "./build.ts";
 // gen:area-exports
+export { type EnvDiagnosticCode, envDiagnosticCodes } from "./env.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
+export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
+export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
+export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
 
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
-  HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+  | EnvDiagnosticCode
+  | TargetDiagnosticCode
+  | ArtifactDiagnosticCode
+  | PublishDiagnosticCode
+  | ActionDiagnosticCode
+  | BuildDiagnosticCode
+  | ManifestDiagnosticCode
+  | HomeDiagnosticCode
+  | PlatformDiagnosticCode
+  | HostDiagnosticCode;
 
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...envDiagnostics,
+  ...targetDiagnostics,
+  ...artifactDiagnostics,
+  ...publishDiagnostics,
+  ...actionDiagnostics,
+  ...buildDiagnostics,
+  ...manifestDiagnostics,
   ...homeDiagnostics,
   ...platformDiagnostics,
   ...hostDiagnostics,

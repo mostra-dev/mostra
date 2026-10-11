@@ -19,6 +19,8 @@ afterEach(() => {
 interface Dep {
   readonly name: string;
   readonly license?: string;
+  /** The deprecated `licenses: [{ type }]` form some old packages use. */
+  readonly legacyLicenses?: readonly string[];
   readonly files?: Record<string, string>;
   /** Peer dependencies installed next to this one. */
   readonly peers?: readonly Dep[];
@@ -50,6 +52,9 @@ function workspace(deps: readonly Dep[]): string {
         name: dep.name,
         version: "1.0.0",
         ...(dep.license ? { license: dep.license } : {}),
+        ...(dep.legacyLicenses
+          ? { licenses: dep.legacyLicenses.map((type) => ({ type, url: "https://example.com" })) }
+          : {}),
         ...(dep.peers ? { peerDependencies: peers } : {}),
       }),
     );
@@ -75,6 +80,17 @@ describe("license audit", () => {
     const result = audit(ROOT);
     expect(result.output).toContain("✓ license audit");
     expect(result.code).toBe(0);
+  });
+
+  it("reads the deprecated licenses array, as format@0.2.2 uses it (WP-03 finding)", () => {
+    expect(audit(workspace([{ name: "old-format", legacyLicenses: ["MIT"] }])).code).toBe(0);
+    expect(
+      audit(workspace([{ name: "old-dual", legacyLicenses: ["MIT", "Apache-2.0"] }])).code,
+    ).toBe(0);
+    const proprietary = audit(workspace([{ name: "old-closed", legacyLicenses: ["Proprietary"] }]));
+    expect(proprietary.code).not.toBe(0);
+    expect(proprietary.output).toContain("old-closed");
+    expect(audit(workspace([{ name: "old-none" }])).output).toContain("declares no SPDX license");
   });
 
   it("passes on an OSI-licensed dependency tree", () => {

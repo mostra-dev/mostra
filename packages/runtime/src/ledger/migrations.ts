@@ -54,4 +54,69 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: "artifacts, versions and events",
+    up(db) {
+      // DATA_MODEL §3. `artifact` mirrors the latest version's manifest metadata; `version` rows
+      // are immutable (VR-01, invariant 3) and the trigger refuses any UPDATE. `event` is
+      // append-only; WP-03 appends `artifact.created` and `version.published`, WP-06 reads them.
+      // `request` records the result of each mutating request with a `requestId` (H-03).
+      db.exec(`
+        CREATE TABLE artifact (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          family TEXT,
+          links_json TEXT NOT NULL,
+          policy_json TEXT,
+          created_at TEXT NOT NULL,
+          latest_version_id TEXT
+        );
+        CREATE TABLE source_binding (
+          path TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          bound_at TEXT NOT NULL
+        );
+        CREATE INDEX source_binding_artifact ON source_binding (artifact_id);
+        CREATE TABLE version (
+          id TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          number INTEGER NOT NULL CHECK (number >= 1),
+          source_digest TEXT NOT NULL,
+          env_digest TEXT NOT NULL,
+          output_digest TEXT NOT NULL,
+          manifest_json TEXT NOT NULL,
+          forced_codes_json TEXT,
+          published_at TEXT NOT NULL,
+          UNIQUE (artifact_id, number)
+        );
+        CREATE TRIGGER version_immutable BEFORE UPDATE ON version
+        BEGIN
+          SELECT RAISE(ABORT, 'published versions are immutable');
+        END;
+        CREATE TABLE event (
+          cursor INTEGER PRIMARY KEY AUTOINCREMENT,
+          artifact_id TEXT,
+          seq INTEGER,
+          type TEXT NOT NULL,
+          actor_json TEXT NOT NULL,
+          causation_json TEXT,
+          payload_json TEXT NOT NULL,
+          at TEXT NOT NULL,
+          UNIQUE (artifact_id, seq)
+        );
+        CREATE TRIGGER event_append_only BEFORE UPDATE ON event
+        BEGIN
+          SELECT RAISE(ABORT, 'events are append-only');
+        END;
+        CREATE TABLE request (
+          method TEXT NOT NULL,
+          request_id TEXT NOT NULL,
+          result_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (method, request_id)
+        );
+      `);
+    },
+  },
 ];

@@ -7,16 +7,177 @@
 import * as z from 'zod';
 
 // @public
+export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
+
+// @public
+export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID"];
+
+// @public
 export type AnyMethod = MethodDefinition<unknown, unknown>;
 
 // @public
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
 
 // @public
+export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[];
+
+// @public
+export const artifactCreateMethod: MethodDefinition<ArtifactCreateParams, ArtifactCreateResult>;
+
+// @public
+export interface ArtifactCreateParams {
+    readonly dir: string;
+    readonly requestId?: string;
+    readonly template?: string;
+    readonly title?: string;
+}
+
+// @public
+export interface ArtifactCreateResult {
+    readonly artifactId: string;
+    readonly dir: string;
+    readonly files: readonly string[];
+}
+
+// @public
+export interface ArtifactDetail extends ArtifactSummary {
+    readonly manifest: ArtifactManifest;
+    readonly versions: readonly VersionSummary[];
+}
+
+// @public
+export const ArtifactDetail: z.ZodType<ArtifactDetail>;
+
+// @public
+export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
+
+// @public
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN"];
+
+// @public
+export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
+
+// @public
+export const artifactGetMethod: MethodDefinition<ArtifactGetParams, ArtifactGetResult>;
+
+// @public
+export interface ArtifactGetParams {
+    readonly artifact: ArtifactRef;
+}
+
+// @public
+export type ArtifactGetResult = ArtifactDetail;
+
+// @public
 export type ArtifactId = Id<"art">;
 
 // @public
 export const ArtifactId: GeneratedIdKind<"art">;
+
+// @public
+export interface ArtifactLink {
+    readonly artifact: string;
+    readonly rel: "round-of" | "follows" | "replaces" | (string & {});
+}
+
+// @public
+export const ArtifactLink: z.ZodType<ArtifactLink>;
+
+// @public
+export interface ArtifactListFilter {
+    readonly family?: string;
+}
+
+// @public
+export const artifactListMethod: MethodDefinition<ArtifactListParams, ArtifactListResult>;
+
+// @public
+export interface ArtifactListParams {
+    readonly filter?: ArtifactListFilter;
+}
+
+// @public
+export interface ArtifactListResult {
+    readonly artifacts: readonly ArtifactSummary[];
+}
+
+// @public
+export interface ArtifactManifest {
+    readonly demos?: Readonly<Record<string, DemoSpec>>;
+    readonly description?: string;
+    readonly family?: ArtifactFamily;
+    readonly id?: string;
+    readonly kit?: {
+        readonly base?: "base" | "radix";
+        readonly theme?: string;
+    };
+    readonly limits?: {
+        readonly heapMb?: number;
+        readonly watchdogMs?: number;
+        readonly idleMinutes?: number;
+    };
+    readonly links?: readonly ArtifactLink[];
+    readonly mode?: "spa";
+    readonly submission?: SubmissionPolicy;
+    readonly terminals?: Readonly<Record<string, TerminalSpec>>;
+    readonly title: string;
+    readonly verify?: {
+        readonly viewports?: readonly string[];
+        readonly frames?: readonly string[];
+        readonly extraChecks?: readonly string[];
+        readonly smoke?: boolean;
+    };
+}
+
+// @public
+export const ArtifactManifest: z.ZodType<ArtifactManifest>;
+
+// @public
+export const artifactPublishMethod: MethodDefinition<ArtifactPublishParams, ArtifactPublishResult>;
+
+// @public
+export interface ArtifactPublishParams {
+    readonly force?: boolean;
+    readonly policy?: SubmissionPolicy;
+    readonly requestId?: string;
+    readonly source: SourceRef;
+}
+
+// @public
+export type ArtifactPublishResult = PublishReceipt;
+
+// @public
+export type ArtifactRef = {
+    readonly artifactId: string;
+} | {
+    readonly path: string;
+};
+
+// @public
+export const ArtifactRef: z.ZodType<ArtifactRef>;
+
+// @public
+export interface ArtifactSummary {
+    readonly createdAt: string;
+    readonly description?: string;
+    readonly family?: string;
+    readonly id: string;
+    readonly latestVersion?: VersionSummary;
+    readonly links: readonly ArtifactLink[];
+    readonly mode: "spa";
+    readonly policy?: SubmissionPolicy;
+    readonly source?: string;
+    readonly title: string;
+}
+
+// @public
+export const ArtifactSummary: z.ZodType<ArtifactSummary>;
+
+// @public
+export type BuildDiagnosticCode = (typeof buildDiagnosticCodes)[number];
+
+// @public
+export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUILD_UNRESOLVED", "MOSTRA_BUILD_CRASHED", "MOSTRA_BUILD_TIMEOUT"];
 
 // @public
 export interface ChildProcessStatus {
@@ -103,6 +264,17 @@ export const DEFAULT_DOCS_BASE: string;
 export function defineMethod<Params, Result>(definition: MethodDefinition<Params, Result>): MethodDefinition<Params, Result>;
 
 // @public
+export type DemoSpec = {
+    readonly command: readonly string[];
+    readonly cwd?: string;
+    readonly ready?: string;
+    readonly bridge?: boolean;
+} | {
+    readonly attach: number;
+    readonly bridge?: boolean;
+};
+
+// @public
 export interface Diagnostic {
     readonly code: DiagnosticCode;
     readonly count?: number;
@@ -122,7 +294,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -196,6 +368,12 @@ export function docsUrl(code: string, docsBase?: string): string;
 export function encodeLine(message: JsonRpcMessage): string;
 
 // @public
+export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
+
+// @public
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING"];
+
+// @public
 export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
     create(): Id<P>;
 }
@@ -212,7 +390,7 @@ export const HomeConfig: z.ZodType<HomeConfig>;
 export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 
 // @public
-export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH"];
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY"];
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
@@ -359,7 +537,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -367,6 +545,12 @@ export class LineSplitter {
     push(chunk: string): string[];
     get rest(): string;
 }
+
+// @public
+export type ManifestDiagnosticCode = (typeof manifestDiagnosticCodes)[number];
+
+// @public
+export const manifestDiagnosticCodes: readonly ["MOSTRA_MANIFEST_NOT_LITERAL", "MOSTRA_MANIFEST_INVALID", "MOSTRA_MANIFEST_UNKNOWN_KEY"];
 
 // @public
 export interface MethodDefinition<Params, Result> {
@@ -432,6 +616,26 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 
 // @public
 export const PortName: z.ZodType<PortName, string>;
+
+// @public
+export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
+
+// @public
+export const publishDiagnosticCodes: readonly ["MOSTRA_PUBLISH_ID_CONFLICT", "MOSTRA_PUBLISH_SOURCE_CHANGED"];
+
+// @public
+export interface PublishReceipt {
+    readonly artifactId: string;
+    readonly cursor: string;
+    readonly forcedDiagnostics?: readonly string[];
+    readonly reused: boolean;
+    readonly url?: string;
+    readonly version: number;
+    readonly versionId: string;
+}
+
+// @public
+export const PublishReceipt: z.ZodType<PublishReceipt>;
 
 // @public
 export type Revision = string & {
@@ -505,10 +709,49 @@ export type RunId = Id<"run">;
 export const RunId: GeneratedIdKind<"run">;
 
 // @public
+export type SourceRef = {
+    readonly path: string;
+} | {
+    readonly artifactId: string;
+};
+
+// @public
+export const SourceRef: z.ZodType<SourceRef>;
+
+// @public
 export type SubmissionId = Id<"sub">;
 
 // @public
 export const SubmissionId: GeneratedIdKind<"sub">;
+
+// @public
+export type SubmissionPolicy = {
+    readonly policy: "once";
+    readonly scope?: "per-artifact" | "per-viewer";
+} | {
+    readonly policy: "epochs";
+} | {
+    readonly policy: "none";
+};
+
+// @public
+export const SubmissionPolicy: z.ZodType<SubmissionPolicy>;
+
+// @public
+export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
+
+// @public
+export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE"];
+
+// @public
+export interface TerminalSpec {
+    readonly cols?: number;
+    readonly command: readonly string[];
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly input?: boolean;
+    readonly rows?: number;
+}
 
 // @public
 export type ThreadId = Id<"thr">;
@@ -532,6 +775,20 @@ export const VersionId: VersionIdKind;
 export interface VersionIdKind extends IdKind<"ver"> {
     fromSha256(digest: Uint8Array): VersionId;
 }
+
+// @public
+export interface VersionSummary {
+    readonly envDigest: string;
+    readonly forcedDiagnostics?: readonly string[];
+    readonly id: string;
+    readonly number: number;
+    readonly outputDigest: string;
+    readonly publishedAt: string;
+    readonly sourceDigest: string;
+}
+
+// @public
+export const VersionSummary: z.ZodType<VersionSummary>;
 
 // @public
 export type ViewerId = Id<"vwr">;

@@ -70,6 +70,12 @@ export interface ProtocolServerOptions {
   readonly supportedPorts: readonly string[];
   /** The revisions this instance speaks. Default: `HOST_PROTOCOL_REVISIONS`. */
   readonly revisions?: readonly Revision[];
+  /**
+   * Applied to the text of every diagnostic a response carries, so secrets and capability
+   * material that reach an error (a bundler message quoting an import, say) never leave the
+   * instance (STANDARDS security). Default: the identity.
+   */
+  readonly redact?: (text: string) => string;
 }
 
 interface Connection {
@@ -263,6 +269,27 @@ export class ProtocolServer {
   }
 
   async #dispatch(session: MutableSession, method: string, params: unknown): Promise<unknown> {
+    try {
+      return await this.#route(session, method, params);
+    } catch (error) {
+      const redact = this.#options.redact;
+      if (!redact || !(error instanceof RpcError)) throw error;
+      const { diagnostic } = error;
+      throw new RpcError(
+        {
+          ...diagnostic,
+          message: redact(diagnostic.message),
+          ...(diagnostic.hint !== undefined ? { hint: redact(diagnostic.hint) } : {}),
+          ...(diagnostic.fix?.text !== undefined
+            ? { fix: { ...diagnostic.fix, text: redact(diagnostic.fix.text) } }
+            : {}),
+        },
+        error.code,
+      );
+    }
+  }
+
+  async #route(session: MutableSession, method: string, params: unknown): Promise<unknown> {
     if (this.#refusal) throw new RpcError(this.#refusal);
     if (method === mostraInitializeMethod.method) return this.#initialize(session, params);
     if (!session.initialized) {

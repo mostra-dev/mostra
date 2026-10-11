@@ -7,16 +7,38 @@
  * @packageDocumentation
  */
 export {
+  ArtifactDetail,
+  ArtifactRef,
+  ArtifactSummary,
+  PublishReceipt,
+  SourceRef,
+  VersionSummary,
+} from "./artifact.ts";
+export {
+  type ActionDiagnosticCode,
+  type ArtifactDiagnosticCode,
+  actionDiagnosticCodes,
+  artifactDiagnosticCodes,
+  type BuildDiagnosticCode,
+  buildDiagnosticCodes,
   type CreateDiagnosticOptions,
   createDiagnostic,
   diagnosticCatalog,
+  type EnvDiagnosticCode,
+  envDiagnosticCodes,
   type HomeDiagnosticCode,
   type HostDiagnosticCode,
   homeDiagnosticCodes,
   hostDiagnosticCodes,
   type KnownDiagnosticCode,
+  type ManifestDiagnosticCode,
+  manifestDiagnosticCodes,
   type PlatformDiagnosticCode,
+  type PublishDiagnosticCode,
   platformDiagnosticCodes,
+  publishDiagnosticCodes,
+  type TargetDiagnosticCode,
+  targetDiagnosticCodes,
 } from "./diagnostics/codes/index.ts";
 // gen:area-entry-exports (`pnpm gen diagnostic` adds a new area's exports here; Biome merges them)
 export {
@@ -56,11 +78,41 @@ export {
   ViewId,
 } from "./ids.ts";
 export {
+  ARTIFACT_MANIFEST_KEYS,
+  type ArtifactFamily,
+  ArtifactLink,
+  ArtifactManifest,
+  type DemoSpec,
+  SubmissionPolicy,
+  type TerminalSpec,
+} from "./manifest.ts";
+export {
   type AnyMethod,
   defineMethod,
   type MethodDefinition,
   type MethodDirection,
 } from "./method.ts";
+export {
+  type ArtifactCreateParams,
+  type ArtifactCreateResult,
+  artifactCreateMethod,
+} from "./methods/artifact/create.ts";
+export {
+  type ArtifactGetParams,
+  type ArtifactGetResult,
+  artifactGetMethod,
+} from "./methods/artifact/get.ts";
+export {
+  type ArtifactListFilter,
+  type ArtifactListParams,
+  type ArtifactListResult,
+  artifactListMethod,
+} from "./methods/artifact/list.ts";
+export {
+  type ArtifactPublishParams,
+  type ArtifactPublishResult,
+  artifactPublishMethod,
+} from "./methods/artifact/publish.ts";
 export { hostMethods } from "./methods/index.ts";
 export {
   ChildProcessStatus,

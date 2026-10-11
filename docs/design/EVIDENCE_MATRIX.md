@@ -6,21 +6,21 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 
 | ID | Owner | Route | Concrete check | Evidence |
 |---|---|---|---|---|
-| AU-01 | WP-03 | M, B | Fixture artifacts using plain React, TSX and MDX with no Mostra-specific constructs build, verify and render (WP-03 integration, browser) | unverified |
-| AU-02 | WP-03 | I, B | A single page.tsx, a single page.mdx and a directory with pages, components, "use server" modules, data and assets each publish and render | unverified |
-| AU-03 | WP-03 | I | Fresh directory without package.json or config publishes (integration); no config file is written | unverified |
-| AU-04 | WP-03 | M | Manifest metadata (title, description, family, links, mode) round-trips into artifact/get and results; mode defaults to spa (unit + integration) | unverified |
+| AU-01 | WP-03 | M, B | Fixture artifacts using plain React, TSX and MDX with no Mostra-specific constructs build, verify and render (WP-03 integration, browser) | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
+| AU-02 | WP-03 | I, B | A single page.tsx, a single page.mdx and a directory with pages, components, "use server" modules, data and assets each publish and render | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
+| AU-03 | WP-03 | I | Fresh directory without package.json or config publishes (integration); no config file is written | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
+| AU-04 | WP-03 | M | Manifest metadata (title, description, family, links, mode) round-trips into artifact/get and results; mode defaults to spa (unit + integration) | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-05 | WP-09 | M, B | Fixtures with duplicate IDs, IDs changing between renders and unbound controls produce MOSTRA_FIELD_* codes at the right severity | unverified |
 | AU-06 | WP-26 | I, R | `mostra new --template <family>` for every family produces an artifact that passes verify, with AGENTS.md (CI matrix); Mirza reviews | unverified |
 | RT-01 | WP-11 | I, X | Clean macOS and Linux CI runners without Node: npm create mostra → verify → publish; tampered bundle rejected; external: real install | unverified |
-| RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | unverified |
+| RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | unverified |
 | RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | unverified |
 | RT-05 | WP-05 | I | Client-only version served with zero worker processes (process table assertion) | unverified |
 | RT-06 | WP-02 | I, C | 16 racing starters converge on one supervisor; stale socket recovered; `mostra host` over stdio and attach over socket both pass the protocol suite | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | RT-07 | WP-02 | I | macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
-| VR-01 | WP-03 | M, I | Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused | unverified |
-| VR-02 | WP-03 | I | Fault injection at each publish step leaves no visible version and cleans staging on next start | unverified |
+| VR-01 | WP-03 | M, I | Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
+| VR-02 | WP-03 | I | Fault injection at each publish step leaves no visible version and cleans staging on next start | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | unverified |
 | VR-04 | WP-07 | B | Open view shows the banner within one event after a publish (browser, three engines) | unverified |
 | VR-05 | WP-07 | I, B | Version with removed field: banner counts orphans, panel shows values read-only, results include `orphaned` (browser + integration) | unverified |
@@ -121,14 +121,14 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
 | EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | unverified |
+| AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | unverified |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | unverified |
 | RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | unverified |
 | RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
 | VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | unverified |
-| VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | unverified |
+| VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | unverified |
 | LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | unverified |
 | LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | unverified |

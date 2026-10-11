@@ -45,7 +45,7 @@ The owner is where the invariant is enforced; packages not built yet are named b
 |---|---|
 | No content or capability guardrails | every package |
 | Only capability-URL holders use an artifact; loopback by default | gateway, addressing (WP-05) |
-| Published versions are immutable; humans see only published versions | publish, version store (WP-03) |
+| Published versions are immutable; humans see only published versions | runtime `registry` (sealed version store, write-once rows) and `publish` (atomic publish) |
 | Submissions are immutable, from the canonical draft, bound to version and view | interaction ledger (WP-06) |
 | Drafts are never delivered as submissions | interaction ledger (WP-06) |
 | A submission is durable before any delivery attempt | interaction ledger, outbox (WP-06) |

@@ -98,6 +98,28 @@ function readManifest(dir: string): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/**
+ * A manifest's license as an SPDX expression. Besides the `license` string, old packages use the
+ * deprecated forms npm still documents: `license: { type }` and `licenses: [{ type }, …]`, the
+ * latter meaning the user may choose any of them (so `A OR B`).
+ */
+function declaredLicense(manifest: Record<string, unknown>): string | undefined {
+  const typeOf = (value: unknown): string | undefined =>
+    typeof value === "string"
+      ? value
+      : typeof value === "object" &&
+          value !== null &&
+          typeof (value as { type?: unknown }).type === "string"
+        ? (value as { type: string }).type
+        : undefined;
+  if (manifest["license"] !== undefined) return typeOf(manifest["license"]);
+  const legacy = manifest["licenses"];
+  if (!Array.isArray(legacy) || legacy.length === 0) return undefined;
+  const types = legacy.map(typeOf);
+  if (types.some((type) => type === undefined)) return undefined;
+  return types.length === 1 ? types[0] : `(${types.join(" OR ")})`;
+}
+
 /** Node's lookup: the nearest `node_modules/<name>` from `from` upwards. */
 function locate(name: string, from: string): string | undefined {
   let dir = from;
@@ -131,7 +153,7 @@ function closure(rootDir: string, rootName: string): Installed[] {
         name,
         version: String(own["version"] ?? "?"),
         dir: found,
-        license: own["license"],
+        license: declaredLicense(own),
         via: `${via} > ${name}`,
       };
       seen.set(found, entry);

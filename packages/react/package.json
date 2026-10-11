@@ -1,0 +1,69 @@
+{
+  "name": "@mostra/react",
+  "version": "0.0.0",
+  "description": "Mostra client runtime for artifact authors: defineArtifact and the client side of server functions.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/react#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/react"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api",
+    "size": "size-limit"
+  },
+  "dependencies": {
+    "@mostra/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "size-limit": "catalog:",
+    "@size-limit/preset-small-lib": "catalog:"
+  },
+  "keywords": [
+    "mostra",
+    "react",
+    "artifact",
+    "agent"
+  ],
+  "size-limit": [
+    {
+      "name": "@mostra/react whole entry",
+      "path": "dist/index.js",
+      "import": "*",
+      "limit": "1 kB"
+    }
+  ]
+}
