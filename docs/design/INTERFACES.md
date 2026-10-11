@@ -188,7 +188,8 @@ JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the 
 Session
   mostra/initialize { client: {name, version}, revisions: string[], capabilities: ClientCapabilities, ports: PortName[], home?: HomeConfig }
       → { revision, instance: InstanceInfo, capabilities: InstanceCapabilities, warnings: Diagnostic[] }
-  mostra/shutdown {}                       → {}   (the spawning host, or any attached client of a daemon, D87)
+  mostra/shutdown {}                       → {}   (the spawning host, or any attached client of a daemon, D87;
+                                                  other callers get MOSTRA_HOST_SHUTDOWN_REFUSED)
 
 Authoring
   artifact/create  { dir, template?, title? }       → { artifactId, dir }

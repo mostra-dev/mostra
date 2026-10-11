@@ -14,6 +14,7 @@ export const hostDiagnosticCodes = [
   "MOSTRA_HOST_PORT_UNSUPPORTED",
   "MOSTRA_HOST_CONNECTION_CLOSED",
   "MOSTRA_HOST_TIMEOUT",
+  "MOSTRA_HOST_SHUTDOWN_REFUSED",
   // gen:codes
 ] as const;
 
@@ -119,6 +120,17 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       explanation:
         "No response arrived within the time the caller allowed. The other side may still be working on the request, and it may still take effect.",
       fix: "Retry with the same request ID, which returns the recorded result if the first attempt completed. Allow a longer timeout for slow operations.",
+    },
+  },
+  MOSTRA_HOST_SHUTDOWN_REFUSED: {
+    severity: "error",
+    phase: "host",
+    title: "Only the spawning host can stop this instance",
+    hint: "Ask the host that started this instance to stop it, or end the connection you opened instead.",
+    docs: {
+      explanation:
+        "An instance started by a host over stdio (`mostra host`) lives as long as that host's connection, so only the host may stop it with `mostra/shutdown`. A client that attached through the home's socket asked it to stop. A daemon (`mostra daemon`) accepts `mostra/shutdown` from every attached client (D87).",
+      fix: "Close your own connection when you are done. To stop the instance, stop the host that spawned it, or have the host send `mostra/shutdown` or close its stdio.",
     },
   },
   // gen:entries

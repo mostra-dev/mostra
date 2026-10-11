@@ -145,6 +145,15 @@
       "fix": "Restart the daemon so it runs the same release as the client: `mostra daemon restart`. Durable state survives the restart, and open views reconnect. A host that embeds Mostra updates its pinned Mostra runtime or its host library until both support a common revision."
     },
     {
+      "code": "MOSTRA_HOST_SHUTDOWN_REFUSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Only the spawning host can stop this instance",
+      "hint": "Ask the host that started this instance to stop it, or end the connection you opened instead.",
+      "explanation": "An instance started by a host over stdio (`mostra host`) lives as long as that host's connection, so only the host may stop it with `mostra/shutdown`. A client that attached through the home's socket asked it to stop. A daemon (`mostra daemon`) accepts `mostra/shutdown` from every attached client (D87).",
+      "fix": "Close your own connection when you are done. To stop the instance, stop the host that spawned it, or have the host send `mostra/shutdown` or close its stdio."
+    },
+    {
       "code": "MOSTRA_HOST_TIMEOUT",
       "severity": "error",
       "phase": "host",

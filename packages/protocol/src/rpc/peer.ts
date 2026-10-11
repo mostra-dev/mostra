@@ -66,7 +66,7 @@ interface Pending {
   readonly method: string;
   resolve(result: unknown): void;
   reject(error: RpcError): void;
-  timer?: unknown;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 /** One end of a JSON-RPC 2.0 connection. */
