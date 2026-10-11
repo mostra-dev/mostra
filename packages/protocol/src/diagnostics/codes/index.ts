@@ -5,19 +5,25 @@
 import type { Diagnostic } from "../diagnostic.ts";
 import { buildDiagnostic, type DiagnosticDetails, type DiagnosticSpec } from "../spec.ts";
 // gen:area-imports
+import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
+import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
 
 // gen:area-exports
+export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
+export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
 
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
-  HostDiagnosticCode;
+  HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...homeDiagnostics,
+  ...platformDiagnostics,
   ...hostDiagnostics,
 };
 

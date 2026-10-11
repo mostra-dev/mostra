@@ -4,7 +4,7 @@
  * the real gate command there and expects a failure that names the problem, then removes the
  * violation and expects the gate to pass.
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { copyRepository, type RepoCopy } from "./repo-copy.ts";
@@ -77,9 +77,11 @@ describe("size budget", () => {
     const size = () => repo.run("node_modules/.bin/size-limit", [], { cwd: "packages/protocol" });
     expect(repo.run("node_modules/.bin/tsdown", [], { cwd: "packages/protocol" }).code).toBe(0);
     expect(size().code).toBe(0);
-    repo.edit("packages/protocol/package.json", (text) =>
-      text.replace('"limit": "4 kB"', '"limit": "1 kB"'),
-    );
+    repo.edit("packages/protocol/package.json", (text) => {
+      const seeded = text.replace(/"limit": "[^"]+"/g, '"limit": "100 B"');
+      expect(seeded).not.toBe(text);
+      return seeded;
+    });
     const result = size();
     expect(result.code).not.toBe(0);
     expect(result.output).toMatch(/Package size limit has exceeded|exceeded/i);
@@ -241,6 +243,31 @@ describe("diagnostic catalog (AX-03)", () => {
     const removed = check();
     expect(removed.code).not.toBe(0);
     expect(removed.output).toContain("MOSTRA_HOST_REVISION_UNSUPPORTED was removed");
+  });
+
+  it("wires a new area into the catalog and the package entry point", () => {
+    const generated = node(
+      "tools/gen/cli.ts",
+      "diagnostic",
+      "MOSTRA_SHARE_SEEDED",
+      "--severity",
+      "error",
+      "--phase",
+      "host",
+      "--title",
+      "Seeded",
+    );
+    expect(generated.code).toBe(0);
+    const entry = readFileSync(join(repo.root, "packages/protocol/src/index.ts"), "utf8");
+    // Biome merges the generated line into the entry's export from the catalog.
+    const fromCatalog = /export \{([^}]*)\} from "\.\/diagnostics\/codes\/index\.ts";/.exec(entry);
+    expect(fromCatalog?.[1]).toMatch(/\btype ShareDiagnosticCode\b/);
+    expect(fromCatalog?.[1]).toMatch(/\bshareDiagnosticCodes\b/);
+    const codes = readFileSync(
+      join(repo.root, "packages/protocol/src/diagnostics/codes/index.ts"),
+      "utf8",
+    );
+    expect(codes).toContain("...shareDiagnostics,");
   });
 });
 

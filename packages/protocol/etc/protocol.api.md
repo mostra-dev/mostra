@@ -19,6 +19,56 @@ export type ArtifactId = Id<"art">;
 export const ArtifactId: GeneratedIdKind<"art">;
 
 // @public
+export interface ChildProcessStatus {
+    readonly kind: string;
+    readonly ownerRef: string;
+    readonly pid: number;
+    readonly startedAt: string;
+}
+
+// @public
+export const ChildProcessStatus: z.ZodType<ChildProcessStatus>;
+
+// @public
+export type ClassifiedMessage = {
+    readonly kind: "request";
+    readonly message: JsonRpcRequest;
+} | {
+    readonly kind: "notification";
+    readonly message: JsonRpcNotification;
+} | {
+    readonly kind: "success";
+    readonly message: JsonRpcSuccess;
+} | {
+    readonly kind: "failure";
+    readonly message: JsonRpcFailure;
+} | {
+    readonly kind: "invalid";
+    readonly reason: string;
+    readonly id: JsonRpcId | null;
+};
+
+// @public
+export function classifyMessage(value: unknown): ClassifiedMessage;
+
+// @public
+export interface ClientCapabilities {
+    readonly notifications?: readonly string[];
+}
+
+// @public
+export const ClientCapabilities: z.ZodType<ClientCapabilities>;
+
+// @public
+export interface ClientInfo {
+    readonly name: string;
+    readonly version: string;
+}
+
+// @public
+export const ClientInfo: z.ZodType<ClientInfo>;
+
+// @public
 export type CommentId = Id<"cmt">;
 
 // @public
@@ -143,9 +193,26 @@ export interface DiagnosticSpec {
 export function docsUrl(code: string, docsBase?: string): string;
 
 // @public
+export function encodeLine(message: JsonRpcMessage): string;
+
+// @public
 export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
     create(): Id<P>;
 }
+
+// @public
+export interface HomeConfig {
+    readonly path?: string;
+}
+
+// @public
+export const HomeConfig: z.ZodType<HomeConfig>;
+
+// @public
+export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
+
+// @public
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH"];
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
@@ -154,7 +221,7 @@ export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
-export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED"];
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT"];
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -182,7 +249,124 @@ export interface IdKind<P extends IdPrefix> {
 export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "run" | "thr" | "cmt" | "tok" | "mut";
 
 // @public
-export type KnownDiagnosticCode = HostDiagnosticCode;
+export interface InstanceCapabilities {
+    readonly methods: readonly string[];
+    readonly notifications: readonly string[];
+    readonly ports: readonly PortName[];
+}
+
+// @public
+export const InstanceCapabilities: z.ZodType<InstanceCapabilities>;
+
+// @public
+export interface InstanceInfo {
+    readonly home: string;
+    readonly mode: "host" | "daemon";
+    readonly pid: number;
+    readonly platform: string;
+    readonly version: string;
+}
+
+// @public
+export const InstanceInfo: z.ZodType<InstanceInfo>;
+
+// @public
+export const instanceStatusMethod: MethodDefinition<InstanceStatusParams, InstanceStatusResult>;
+
+// @public
+export type InstanceStatusParams = Record<string, never>;
+
+// @public
+export interface InstanceStatusResult {
+    readonly connections: number;
+    readonly instance: InstanceInfo;
+    readonly processes: readonly ChildProcessStatus[];
+    readonly socket: string;
+    readonly startedAt: string;
+}
+
+// @public
+export const JSON_RPC_ERROR_CODES: {
+    readonly parseError: -32700;
+    readonly invalidRequest: -32600;
+    readonly methodNotFound: -32601;
+    readonly invalidParams: -32602;
+    readonly internalError: -32603;
+    readonly diagnostic: -32000;
+};
+
+// @public
+export interface JsonRpcErrorObject {
+    readonly code: number;
+    readonly data?: unknown;
+    readonly message: string;
+}
+
+// @public
+export const JsonRpcErrorObject: z.ZodType<JsonRpcErrorObject>;
+
+// @public
+export interface JsonRpcFailure {
+    readonly error: JsonRpcErrorObject;
+    readonly id: JsonRpcId | null;
+    readonly jsonrpc: "2.0";
+}
+
+// @public
+export const JsonRpcFailure: z.ZodType<JsonRpcFailure>;
+
+// @public
+export type JsonRpcId = string | number;
+
+// @public
+export type JsonRpcMessage = JsonRpcRequest | JsonRpcNotification | JsonRpcResponse;
+
+// @public
+export interface JsonRpcNotification {
+    readonly jsonrpc: "2.0";
+    readonly method: string;
+    readonly params?: JsonRpcParams;
+}
+
+// @public
+export const JsonRpcNotification: z.ZodType<JsonRpcNotification>;
+
+// @public
+export type JsonRpcParams = Readonly<Record<string, unknown>> | readonly unknown[];
+
+// @public
+export interface JsonRpcRequest {
+    readonly id: JsonRpcId;
+    readonly jsonrpc: "2.0";
+    readonly method: string;
+    readonly params?: JsonRpcParams;
+}
+
+// @public
+export const JsonRpcRequest: z.ZodType<JsonRpcRequest>;
+
+// @public
+export type JsonRpcResponse = JsonRpcSuccess | JsonRpcFailure;
+
+// @public
+export interface JsonRpcSuccess {
+    readonly id: JsonRpcId;
+    readonly jsonrpc: "2.0";
+    readonly result: unknown;
+}
+
+// @public
+export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
+
+// @public
+export type KnownDiagnosticCode = HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+
+// @public
+export class LineSplitter {
+    constructor(maxLineLength?: number);
+    push(chunk: string): string[];
+    get rest(): string;
+}
 
 // @public
 export interface MethodDefinition<Params, Result> {
@@ -197,6 +381,35 @@ export interface MethodDefinition<Params, Result> {
 export type MethodDirection = "client-to-instance" | "instance-to-host";
 
 // @public
+export const mostraInitializeMethod: MethodDefinition<MostraInitializeParams, MostraInitializeResult>;
+
+// @public
+export interface MostraInitializeParams {
+    readonly capabilities: ClientCapabilities;
+    readonly client: ClientInfo;
+    readonly home?: HomeConfig;
+    readonly ports: readonly PortName[];
+    readonly revisions: readonly string[];
+}
+
+// @public
+export interface MostraInitializeResult {
+    readonly capabilities: InstanceCapabilities;
+    readonly instance: InstanceInfo;
+    readonly revision: Revision;
+    readonly warnings: readonly Diagnostic[];
+}
+
+// @public
+export const mostraShutdownMethod: MethodDefinition<MostraShutdownParams, MostraShutdownResult>;
+
+// @public
+export type MostraShutdownParams = Record<string, never>;
+
+// @public
+export type MostraShutdownResult = Record<string, never>;
+
+// @public
 export type MutationId = Id<"mut">;
 
 // @public
@@ -204,6 +417,21 @@ export const MutationId: GeneratedIdKind<"mut">;
 
 // @public
 export function negotiateRevision(offered: readonly string[], supported?: readonly Revision[], options?: CreateDiagnosticOptions): RevisionNegotiation;
+
+// @public
+export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
+
+// @public
+export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
+
+// @public
+export const platformDiagnosticCodes: readonly ["MOSTRA_PLATFORM_UNSUPPORTED"];
+
+// @public
+export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addressing" | "trustedControls" | "capture" | "secrets" | "pty" | "ai" | (string & {});
+
+// @public
+export const PortName: z.ZodType<PortName, string>;
 
 // @public
 export type Revision = string & {
@@ -227,6 +455,48 @@ export type RevisionNegotiation = {
     readonly ok: false;
     readonly diagnostic: Diagnostic;
 };
+
+// @public
+export class RpcError extends Error {
+    constructor(diagnostic: Diagnostic, code?: number);
+    readonly code: number;
+    readonly diagnostic: Diagnostic;
+    static fromErrorObject(error: JsonRpcErrorObject, docsBase?: string): RpcError;
+    toErrorObject(): JsonRpcErrorObject;
+}
+
+// @public
+export class RpcPeer {
+    constructor(options: RpcPeerOptions);
+    call<P, R>(definition: MethodDefinition<P, R>, params: P, options?: RpcRequestOptions): Promise<R>;
+    close(diagnostic?: Diagnostic): void;
+    get closed(): boolean;
+    notify(method: string, params?: JsonRpcParams): void;
+    get pendingRequests(): number;
+    receive(value: unknown): void;
+    receiveLine(line: string): void;
+    request(method: string, params?: JsonRpcParams, options?: RpcRequestOptions): Promise<unknown>;
+}
+
+// @public
+export interface RpcPeerOptions {
+    readonly docsBase?: string;
+    onInternalError?(error: unknown, method: string): void;
+    onNotification?(method: string, params: unknown): void;
+    onRequest?(method: string, params: unknown, context: RpcRequestContext): unknown;
+    send(message: JsonRpcMessage): void;
+}
+
+// @public
+export interface RpcRequestContext {
+    readonly id: JsonRpcId;
+    readonly method: string;
+}
+
+// @public
+export interface RpcRequestOptions {
+    readonly timeoutMs?: number;
+}
 
 // @public
 export type RunId = Id<"run">;
