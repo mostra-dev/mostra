@@ -13,7 +13,7 @@
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D80, with source messages M1 to M12. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D88, with source messages M1 to M13. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J12, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, and the resolution of every seed open question (§15).

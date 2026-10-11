@@ -12,6 +12,7 @@ export const JOB_NAMES = [
   "format-lint",
   "types",
   "unit",
+  "integration",
   "build",
   "boundaries",
   "api",
@@ -95,6 +96,16 @@ export const JOBS: readonly Job[] = [
     applies: affectsPackages,
     tasks: ["test"],
     fast: true,
+  },
+  {
+    name: "integration",
+    summary:
+      "Suites through real Mostra processes (sockets, process groups), on macOS and Linux in CI",
+    // D86: only when the runtime or the protocol it speaks is affected (dependents included).
+    applies: (plan) =>
+      plan.packages === "all" ||
+      plan.packages.some((name) => name === "@mostra/runtime" || name === "@mostra/protocol"),
+    tasks: ["test:integration"],
   },
   {
     name: "build",

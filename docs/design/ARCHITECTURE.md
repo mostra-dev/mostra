@@ -103,13 +103,13 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 
 ## 4. Process model
 
-**Instance per home** (D45). A home is a directory chosen by the host (`MOSTRA_HOME`, `--home`, or the SDK's `home`), defaulting to `~/.mostra` on macOS and `${XDG_DATA_HOME:-~/.local/share}/mostra` on Linux. One supervisor owns a home, enforced by binding the home's control socket.
-- **Lock and socket.** The socket lives in a short per-user runtime directory (`$XDG_RUNTIME_DIR/mostra/<home-hash>.sock`, or `~/.mostra/run/<home-hash>.sock` on macOS), because macOS limits socket paths to 104 bytes (VERIFIED_FACTS, process model).
-- **Races and stale sockets.** A starter that loses the bind race attaches instead. A stale socket is taken over under an atomic `mkdir` mutex that is itself recoverable after a timeout (FAILURE_MODEL §2).
+**Instance per home** (D45). A home is a directory chosen by the host (`MOSTRA_HOME`, `--home`, or the SDK's `home`), defaulting to `~/.mostra` on macOS and `${XDG_DATA_HOME:-~/.local/share}/mostra` on Linux. One supervisor owns a home, enforced by an exclusive SQLite lock on the home's ledger, which the operating system releases when the process dies (D81).
+- **Lock and socket.** The control socket is how clients find the owner, never the lock. It lives in a short per-user runtime directory (`MOSTRA_RUNTIME_DIR`, `$XDG_RUNTIME_DIR/mostra/<home-hash>.sock` when that directory is safe, or `~/.mostra/run/<home-hash>.sock` on macOS, D82), because macOS limits socket paths to 104 bytes (VERIFIED_FACTS, process model). The owner records its PID, start time and socket in `instance.json` in the home, and re-creates the socket if the file disappears.
+- **Races and stale sockets.** A starter that can't take the lock reads `instance.json` and attaches to the recorded socket. The lock holder simply replaces a stale socket file (FAILURE_MODEL §2).
 
 **Two ways to run** (RT-06, H-12):
-- **Attached daemon.** `mostra daemon start` (or the first CLI command that needs it) starts a detached supervisor. Clients attach over the socket. It keeps running while it has open views, active shares, pending deliveries, running producers or attached clients, and otherwise exits after 30 idle minutes. `mostra daemon install` registers a launchd or systemd user service for always-on artifacts (D62, D63).
-- **Host-spawned.** `mostra host` speaks the protocol over stdio and lives exactly as long as the connection. While it runs it also binds the home socket, so the CLI and MCP server inside that host's environment attach to the same instance (through `MOSTRA_HOME`).
+- **Attached daemon.** `mostra daemon start` (or the first CLI command that needs it) starts a detached supervisor (`mostra-runtime daemon`, D85). Clients attach over the socket. It keeps running while it has open views, active shares, pending deliveries, running producers or attached clients, and otherwise exits after 30 idle minutes. `mostra daemon install` registers a launchd or systemd user service for always-on artifacts (D62, D63).
+- **Host-spawned.** `mostra host` (`mostra-runtime host` in the runtime bundle, D85) speaks the protocol over stdio and lives exactly as long as the connection. While it runs it also binds the home socket, so the CLI and MCP server inside that host's environment attach to the same instance (through `MOSTRA_HOME`).
 
 **Children.** The supervisor's process manager starts, watches and reaps every child:
 - builders;

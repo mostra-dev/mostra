@@ -161,6 +161,11 @@ function generateDiagnostic(code: string): string[] {
     );
     insertAt(index, "gen:area-codes", `${typeName} |`, true);
     insertAt(index, "gen:area-spreads", `...${constName},`, true);
+    insertAt(
+      "packages/protocol/src/index.ts",
+      "gen:area-entry-exports",
+      `export { type ${typeName}, ${camel(lower)}DiagnosticCodes } from "./diagnostics/codes/index.ts";`,
+    );
   }
   const text = readFileSync(join(root, file), "utf8");
   if (text.includes(`${code}:`)) throw new Error(`${code} already exists in ${file}.`);
@@ -169,7 +174,6 @@ function generateDiagnostic(code: string): string[] {
   return [
     `Write the title, hint and docs text for ${code} in ${file} (diagnostic hints are reviewed with Mirza, D74).`,
     "Run `node tools/docs/diagnostics.ts write` to generate its docs page.",
-    `Export ${typeName} and ${camel(lower)}DiagnosticCodes from packages/protocol/src/index.ts if the area is new.`,
     "Add a changeset for @mostra/protocol (the API report lists the new code), then run `pnpm check`.",
   ];
 }
@@ -199,9 +203,9 @@ function generateMethod(method: string): string[] {
       'import { wireRegistry } from "../../wire-registry.ts";',
       "",
       `/** The params of \`${method}\` (INTERFACES §6). */`,
-      `export interface ${base}Params {`,
-      ...requestId,
-      "}",
+      ...(values.mutating
+        ? [`export interface ${base}Params {`, ...requestId, "}"]
+        : [`export type ${base}Params = Record<string, never>;`]),
       "",
       `/** The result of \`${method}\`. */`,
       `export type ${base}Result = Record<string, never>;`,

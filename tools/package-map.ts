@@ -181,6 +181,8 @@ export const RUNTIME_MODULES: readonly string[] = [
   "share",
   "protocol-server",
   "builder",
+  "home",
+  "instance",
 ];
 
 /** Finds a package of the map by npm name. */

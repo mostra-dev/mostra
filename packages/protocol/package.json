@@ -66,13 +66,31 @@
   },
   "size-limit": [
     {
-      "name": "@mostra/protocol (whole entry, zod excluded)",
+      "name": "@mostra/protocol whole entry (zod excluded)",
       "path": "dist/index.js",
       "import": "*",
       "ignore": [
         "zod"
       ],
-      "limit": "4 kB"
+      "limit": "10 kB"
+    },
+    {
+      "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",
+      "path": "dist/index.js",
+      "import": "{ RpcPeer, RpcError, encodeLine, LineSplitter }",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "5 kB"
+    },
+    {
+      "name": "@mostra/protocol IDs alone (zod excluded)",
+      "path": "dist/index.js",
+      "import": "{ ArtifactId, VersionId, Cursor }",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "1.5 kB"
     }
   ]
 }

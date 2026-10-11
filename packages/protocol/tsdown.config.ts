@@ -8,5 +8,6 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
+  unbundle: true,
   tsconfig: "tsconfig.src.json",
 });

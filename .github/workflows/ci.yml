@@ -127,6 +127,29 @@ jobs:
       - name: pnpm check --job rust
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
 
+  # Suites through real Mostra processes (sockets, process groups, start times) on both v1
+  # platforms (D86). The plan runs it only when the runtime or the protocol is affected.
+  integration:
+    name: integration (${{ matrix.os }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"integration"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: integration
+      - name: pnpm check --job integration
+        run: node tools/check/cli.ts --job integration $SCOPE --verbose
+
   dependency-review:
     name: dependency review
     if: github.event_name == 'pull_request'
@@ -145,7 +168,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, check, rust, dependency-review]
+    needs: [plan, check, rust, integration, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

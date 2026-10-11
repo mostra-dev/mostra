@@ -4,7 +4,7 @@
  * the real gate command there and expects a failure that names the problem, then removes the
  * violation and expects the gate to pass.
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { copyRepository, type RepoCopy } from "./repo-copy.ts";
@@ -26,7 +26,8 @@ beforeEach(() => repo.reset());
 
 describe("boundaries", () => {
   it("dependency-cruiser rejects imports across the package map", () => {
-    expect(depcruise().code).toBe(0);
+    const baseline = depcruise();
+    expect(baseline.code, baseline.output).toBe(0);
 
     repo.write(
       "packages/protocol/src/seed-builtin.ts",
@@ -36,18 +37,19 @@ describe("boundaries", () => {
       "packages/protocol/src/seed-external.ts",
       'import ts from "typescript";\nexport const y = ts;\n',
     );
-    mkdirSync(join(repo.root, "packages/runtime/src/ledger"), { recursive: true });
-    mkdirSync(join(repo.root, "packages/runtime/src/gateway"), { recursive: true });
+    // Seeded modules with names of their own, so the real runtime modules stay untouched.
+    mkdirSync(join(repo.root, "packages/runtime/src/seed-store"), { recursive: true });
+    mkdirSync(join(repo.root, "packages/runtime/src/seed-gate"), { recursive: true });
     mkdirSync(join(repo.root, "packages/worker/src"), { recursive: true });
-    repo.write("packages/runtime/src/ledger/index.ts", 'export * from "./internal.ts";\n');
-    repo.write("packages/runtime/src/ledger/internal.ts", "export const ledger = 1;\n");
+    repo.write("packages/runtime/src/seed-store/index.ts", 'export * from "./internal.ts";\n');
+    repo.write("packages/runtime/src/seed-store/internal.ts", "export const ledger = 1;\n");
     repo.write(
-      "packages/runtime/src/gateway/index.ts",
-      'export { ledger } from "../ledger/internal.ts";\n',
+      "packages/runtime/src/seed-gate/index.ts",
+      'export { ledger } from "../seed-store/internal.ts";\n',
     );
     repo.write(
       "packages/worker/src/index.ts",
-      'export { ledger } from "../../runtime/src/ledger/index.ts";\n',
+      'export { ledger } from "../../runtime/src/seed-store/index.ts";\n',
     );
     const result = depcruise();
     expect(result.code).not.toBe(0);
@@ -57,7 +59,8 @@ describe("boundaries", () => {
     expect(result.output).toContain("runtime-module-internals");
 
     repo.reset();
-    expect(depcruise().code).toBe(0);
+    const fixed = depcruise();
+    expect(fixed.code, fixed.output).toBe(0);
   });
 
   it("knip rejects an unused export", () => {
@@ -77,9 +80,11 @@ describe("size budget", () => {
     const size = () => repo.run("node_modules/.bin/size-limit", [], { cwd: "packages/protocol" });
     expect(repo.run("node_modules/.bin/tsdown", [], { cwd: "packages/protocol" }).code).toBe(0);
     expect(size().code).toBe(0);
-    repo.edit("packages/protocol/package.json", (text) =>
-      text.replace('"limit": "4 kB"', '"limit": "1 kB"'),
-    );
+    repo.edit("packages/protocol/package.json", (text) => {
+      const seeded = text.replace(/"limit": "[^"]+"/g, '"limit": "100 B"');
+      expect(seeded).not.toBe(text);
+      return seeded;
+    });
     const result = size();
     expect(result.code).not.toBe(0);
     expect(result.output).toMatch(/Package size limit has exceeded|exceeded/i);
@@ -241,6 +246,31 @@ describe("diagnostic catalog (AX-03)", () => {
     const removed = check();
     expect(removed.code).not.toBe(0);
     expect(removed.output).toContain("MOSTRA_HOST_REVISION_UNSUPPORTED was removed");
+  });
+
+  it("wires a new area into the catalog and the package entry point", () => {
+    const generated = node(
+      "tools/gen/cli.ts",
+      "diagnostic",
+      "MOSTRA_SHARE_SEEDED",
+      "--severity",
+      "error",
+      "--phase",
+      "host",
+      "--title",
+      "Seeded",
+    );
+    expect(generated.code).toBe(0);
+    const entry = readFileSync(join(repo.root, "packages/protocol/src/index.ts"), "utf8");
+    // Biome merges the generated line into the entry's export from the catalog.
+    const fromCatalog = /export \{([^}]*)\} from "\.\/diagnostics\/codes\/index\.ts";/.exec(entry);
+    expect(fromCatalog?.[1]).toMatch(/\btype ShareDiagnosticCode\b/);
+    expect(fromCatalog?.[1]).toMatch(/\bshareDiagnosticCodes\b/);
+    const codes = readFileSync(
+      join(repo.root, "packages/protocol/src/diagnostics/codes/index.ts"),
+      "utf8",
+    );
+    expect(codes).toContain("...shareDiagnostics,");
   });
 });
 

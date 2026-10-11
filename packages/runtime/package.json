@@ -1,0 +1,67 @@
+{
+  "name": "@mostra/runtime",
+  "version": "0.0.0",
+  "description": "The Mostra runtime: the supervisor that owns a home, its ledger, its child processes and the host protocol server (mostra-runtime host|daemon).",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "api": "mostra-tools api",
+    "prove:seeds": "node scripts/prove-seeds.ts"
+  },
+  "dependencies": {
+    "@mostra/protocol": "workspace:*",
+    "better-sqlite3": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "keywords": [
+    "mostra",
+    "agent",
+    "artifact",
+    "runtime",
+    "supervisor"
+  ],
+  "bin": {
+    "mostra-runtime": "./dist/bin.js"
+  }
+}

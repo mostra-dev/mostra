@@ -1,6 +1,141 @@
 {
   "codes": [
     {
+      "code": "MOSTRA_HOME_DISK_FULL",
+      "severity": "error",
+      "phase": "host",
+      "title": "Disk full",
+      "hint": "Free space on the disk that holds the Mostra home, then retry.",
+      "explanation": "A ledger write failed because the disk holding the home is full. The transaction was rolled back, so nothing partial was saved and nothing that was acknowledged earlier is lost. Viewers keep unsaved edits in their browser until a retry succeeds.",
+      "fix": "Free space on that disk (`mostra gc` removes unreferenced versions; build caches can be deleted), then retry the operation. Retries with the same request or mutation ID are safe."
+    },
+    {
+      "code": "MOSTRA_HOME_GONE",
+      "severity": "error",
+      "phase": "host",
+      "title": "Home directory removed",
+      "hint": "Restore or recreate the home directory, then start Mostra again.",
+      "explanation": "The instance's home directory disappeared or was replaced while the instance was running. Writing anywhere else could split the home's data, so the instance stops accepting requests, stops its child processes and exits.",
+      "fix": "Put the home back (or choose a new one with `--home` or `MOSTRA_HOME`) and start Mostra again. Clients reconnect and retry their requests by ID."
+    },
+    {
+      "code": "MOSTRA_HOME_LEDGER_UNREADABLE",
+      "severity": "error",
+      "phase": "host",
+      "title": "Ledger can't be read",
+      "hint": "Restore the ledger from the latest `ledger.sqlite.bak-*` backup in the home's `store/` directory, or move the damaged file aside.",
+      "explanation": "The ledger (`store/ledger.sqlite` in the home) holds drafts, submissions, events and the rest of the home's interaction data. Mostra reports this code when the file can't be opened, isn't a SQLite database, isn't a Mostra ledger, or fails SQLite's integrity check. Mostra never replaces an existing ledger with an empty one.",
+      "fix": "Stop every Mostra process for this home. Copy `store/ledger.sqlite` somewhere safe, then restore the newest `store/ledger.sqlite.bak-<from>-<to>` in its place, or move the damaged file aside to start an empty ledger. Versions, sources and blobs in the home are untouched either way."
+    },
+    {
+      "code": "MOSTRA_HOME_LOCKED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Home in use by another instance",
+      "hint": "Use the instance that already owns this home, or stop it (`mostra daemon stop`, or end the process named in the message) and start again.",
+      "explanation": "One Mostra instance owns a home at a time. It holds an exclusive lock on the home's ledger, and the operating system releases that lock when the process exits. Mostra reports this code in two cases: `mostra host` was started for a home another instance already owns, or a starter found the owner but couldn't reach its control socket. The message names the owner's process ID.",
+      "fix": "To share the running instance, attach to it: start the client with the same home (`MOSTRA_HOME` or `--home`) instead of starting a second instance. To replace it, stop it with `mostra daemon stop`, or end the process named in the message, and start again. A host that needs its own instance gives it its own home."
+    },
+    {
+      "code": "MOSTRA_HOME_MISMATCH",
+      "severity": "error",
+      "phase": "host",
+      "title": "Instance serves a different home",
+      "hint": "Connect to the instance for the home you expect, or start it with `--home` set to that home.",
+      "explanation": "A client sent `home.path` in `mostra/initialize`, and it names a different home from the one the instance locked at start-up. The home is chosen when the instance starts (`--home`, then `MOSTRA_HOME`, then the platform default), so `home.path` is a check: it stops a client from writing to a home it didn't mean.",
+      "fix": "Start the instance with `--home` set to the home the client expects, or connect to the socket of the instance that serves it. Leave `home.path` out to accept whichever home the instance serves."
+    },
+    {
+      "code": "MOSTRA_HOME_NOT_OWNED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Directory not owned by you",
+      "hint": "Choose a home you own with `--home` or `MOSTRA_HOME`, or give the directory named in the message back to your user with `chown`.",
+      "explanation": "Mostra keeps secrets, answers and its ledger in the home, and its control socket in a runtime directory, so it uses only directories that belong to the user running it. It reports this code when the home or the runtime directory is owned by another user, or when the path exists but isn't a directory. Mostra changes nothing in that case.",
+      "fix": "Point Mostra at a directory you own: `--home <dir>` or `MOSTRA_HOME` for the home, `MOSTRA_RUNTIME_DIR` for the runtime directory. If the directory should be yours, change its owner with `chown`. Mostra tightens a directory you own to mode 0700 by itself."
+    },
+    {
+      "code": "MOSTRA_HOME_SOCKET_TOO_LONG",
+      "severity": "error",
+      "phase": "host",
+      "title": "Control socket path too long",
+      "hint": "Set `MOSTRA_RUNTIME_DIR` to a short directory you own, for example `/tmp/mostra-$USER`, and start again.",
+      "explanation": "Clients reach an instance through a Unix socket in a per-user runtime directory. The operating system limits a socket path to 103 bytes on macOS and 107 on Linux, and the path Mostra computed is longer, usually because the home directory's path is long. Mostra stops instead of using a different place that clients couldn't find.",
+      "fix": "Set `MOSTRA_RUNTIME_DIR` to a short directory you own, such as `/tmp/mostra-$USER`, in the environment of every Mostra client and host that uses this home. Mostra creates it with mode 0700 and re-creates its socket if a temporary-file cleanup removes it."
+    },
+    {
+      "code": "MOSTRA_HOME_TOO_NEW",
+      "severity": "error",
+      "phase": "host",
+      "title": "Home written by a newer Mostra",
+      "hint": "Run a Mostra release at least as new as the one named in the message, or use another home with `--home`.",
+      "explanation": "A newer Mostra migrated this home's ledger to a schema version this runtime doesn't know. Reading it could misinterpret or lose data, so this runtime refuses to open it. The message names the schema version and the release that wrote it.",
+      "fix": "Upgrade the runtime (or the host or CLI that bundles it) to at least the release named in the message. Mostra never migrates a ledger backwards; to keep an older release, give it a separate home with `--home` or `MOSTRA_HOME`."
+    },
+    {
+      "code": "MOSTRA_HOST_CONNECTION_CLOSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Connection closed",
+      "hint": "Reconnect, then retry the request with the same request ID.",
+      "explanation": "The connection to the other side closed before a response arrived, for example because the instance exited or restarted. The request may or may not have taken effect.",
+      "fix": "Reconnect and send `mostra/initialize` again, then retry the request with the same request ID. Mutating methods are idempotent by request ID, so a retry never applies twice."
+    },
+    {
+      "code": "MOSTRA_HOST_INITIALIZE_ORDER",
+      "severity": "error",
+      "phase": "host",
+      "title": "Initialize first, and only once",
+      "hint": "Send `mostra/initialize` as the first request on the connection, and only once.",
+      "explanation": "Every connection starts with `mostra/initialize`, which agrees the protocol revision and registers the client's ports. The instance received another request before it, or a second `mostra/initialize` on the same connection.",
+      "fix": "Send `mostra/initialize` first and wait for its result before any other request. To renegotiate, open a new connection."
+    },
+    {
+      "code": "MOSTRA_HOST_INTERNAL_ERROR",
+      "severity": "error",
+      "phase": "host",
+      "title": "Unexpected failure in the instance",
+      "hint": "Retry the request with the same request ID; if it fails again, report it with the instance's log.",
+      "explanation": "The instance failed while handling the request, for a reason that isn't one of its known conditions. Durable state is unaffected: a request is acknowledged only after its ledger transaction commits. The details are in the instance's log (`logs/supervisor.log` in the home), not in the response.",
+      "fix": "Retry the request with the same request ID; retries are idempotent. If the failure repeats, report it with the relevant lines of `logs/supervisor.log`."
+    },
+    {
+      "code": "MOSTRA_HOST_INVALID_PARAMS",
+      "severity": "error",
+      "phase": "host",
+      "title": "Invalid method params",
+      "hint": "Fix the params named in the message so they match the method's schema.",
+      "explanation": "The request's `params` don't match the method's published schema: a required field is missing, a value has the wrong type, or a value is outside its allowed range. The message names the first problem found.",
+      "fix": "Compare the request with the method's schema in `@mostra/protocol` (or the published JSON Schema) and correct the field named in the message."
+    },
+    {
+      "code": "MOSTRA_HOST_MALFORMED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Malformed protocol message",
+      "hint": "Send each message as one line of JSON holding a single JSON-RPC 2.0 request or notification.",
+      "explanation": "Every message on a Mostra connection is one line of JSON with one JSON-RPC 2.0 object. This code means a line wasn't valid JSON, wasn't a JSON-RPC 2.0 request or response, or was a batch (a JSON array), which revision `2026-10-10` doesn't accept. A client also reports it when a response doesn't match the method's result schema.",
+      "fix": "Encode one request per line with `\"jsonrpc\": \"2.0\"`, a `method`, an `id` for requests, and `params` as an object. Send several requests as separate lines instead of a batch."
+    },
+    {
+      "code": "MOSTRA_HOST_METHOD_UNKNOWN",
+      "severity": "error",
+      "phase": "host",
+      "title": "Unknown protocol method",
+      "hint": "Call only the methods listed in `capabilities.methods` of the `mostra/initialize` result.",
+      "explanation": "The instance doesn't serve the method that was called. Either the name is misspelled, or the client is newer than the instance and calls a method the instance's release doesn't have.",
+      "fix": "Check the method name against INTERFACES §6, and against `capabilities.methods` in the `mostra/initialize` result, which lists every method this instance serves. Upgrade the instance if the client needs a newer method."
+    },
+    {
+      "code": "MOSTRA_HOST_PORT_UNSUPPORTED",
+      "severity": "warning",
+      "phase": "host",
+      "title": "Port not supported by this instance",
+      "hint": "Leave the port out of `mostra/initialize`, or run a Mostra release that lists it in `capabilities.ports`.",
+      "explanation": "The client registered a port this instance doesn't call, so registering it has no effect. The port may be reserved for a later release (such as `ai`), or the client may be newer than the instance. The session continues without the port, and Mostra uses its standalone behavior instead.",
+      "fix": "Register only the ports listed in `capabilities.ports` of the `mostra/initialize` result. If the host needs the port, upgrade the instance to a release that supports it."
+    },
+    {
       "code": "MOSTRA_HOST_REVISION_UNSUPPORTED",
       "severity": "error",
       "phase": "host",
@@ -8,6 +143,33 @@
       "hint": "Run the client and the instance from the same Mostra release, for example with `mostra daemon restart`.",
       "explanation": "A client and a Mostra instance agree on a host protocol revision when they connect (`mostra/initialize`). The client offers the revisions it speaks, and the instance picks the newest one it also supports. This code means the two lists have nothing in common, usually because the client and the running daemon come from Mostra releases far apart.",
       "fix": "Restart the daemon so it runs the same release as the client: `mostra daemon restart`. Durable state survives the restart, and open views reconnect. A host that embeds Mostra updates its pinned Mostra runtime or its host library until both support a common revision."
+    },
+    {
+      "code": "MOSTRA_HOST_SHUTDOWN_REFUSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Only the spawning host can stop this instance",
+      "hint": "Ask the host that started this instance to stop it, or end the connection you opened instead.",
+      "explanation": "An instance started by a host over stdio (`mostra host`) lives as long as that host's connection, so only the host may stop it with `mostra/shutdown`. A client that attached through the home's socket asked it to stop. A daemon (`mostra daemon`) accepts `mostra/shutdown` from every attached client (D87).",
+      "fix": "Close your own connection when you are done. To stop the instance, stop the host that spawned it, or have the host send `mostra/shutdown` or close its stdio."
+    },
+    {
+      "code": "MOSTRA_HOST_TIMEOUT",
+      "severity": "error",
+      "phase": "host",
+      "title": "Request timed out",
+      "hint": "Retry the request with the same request ID, or allow it more time.",
+      "explanation": "No response arrived within the time the caller allowed. The other side may still be working on the request, and it may still take effect.",
+      "fix": "Retry with the same request ID, which returns the recorded result if the first attempt completed. Allow a longer timeout for slow operations."
+    },
+    {
+      "code": "MOSTRA_PLATFORM_UNSUPPORTED",
+      "severity": "error",
+      "phase": "platform",
+      "title": "Unsupported platform",
+      "hint": "Run Mostra on macOS or Linux, on an x64 or arm64 machine.",
+      "explanation": "Mostra 1.0 runs on macOS and Linux, on x64 and arm64. On any other operating system or architecture, Windows included, every entry point stops with this code before it creates or changes anything, because the process model, sockets and storage are built and tested only on those platforms. The message names the platform that was detected.",
+      "fix": "Run Mostra on a macOS or Linux machine with an x64 or arm64 processor. Windows support is planned for a release after 1.0."
     }
   ]
 }

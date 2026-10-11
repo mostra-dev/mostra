@@ -161,7 +161,7 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
     );
     const ok = summary !== undefined && blamed.length === 0 && (code === 0 || anyFailed);
     const lines = [
-      `tasks: ${own.map((task) => task.taskId).join(", ") || "none"}`,
+      `tasks: ${own.map((task) => `${task.taskId} (${task.cache?.status === "HIT" ? "cached" : "ran"})`).join(", ") || "none"}`,
       ...(ok
         ? []
         : [

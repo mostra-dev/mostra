@@ -10,6 +10,9 @@
     },
     {
       "path": "tests/e2e"
+    },
+    {
+      "path": "packages/runtime"
     }
   ]
 }

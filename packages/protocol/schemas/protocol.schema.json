@@ -10,6 +10,64 @@
       "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
     },
+    "ChildProcessStatus": {
+      "type": "object",
+      "properties": {
+        "pid": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "kind": {
+          "type": "string"
+        },
+        "ownerRef": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "pid",
+        "kind",
+        "ownerRef",
+        "startedAt"
+      ],
+      "description": "One child process the instance supervises."
+    },
+    "ClientCapabilities": {
+      "type": "object",
+      "properties": {
+        "notifications": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "What the client can handle: the notification methods it accepts."
+    },
+    "ClientInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "description": "The client that opens a connection."
+    },
     "CommentId": {
       "type": "string",
       "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
@@ -196,10 +254,338 @@
       ],
       "description": "How bad it is: error only for definite failures."
     },
+    "HomeConfig": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84)."
+    },
+    "InstanceCapabilities": {
+      "type": "object",
+      "properties": {
+        "methods": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notifications": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          }
+        }
+      },
+      "required": [
+        "methods",
+        "notifications",
+        "ports"
+      ],
+      "description": "What the instance offers: methods, notifications and supported ports."
+    },
+    "InstanceInfo": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "home": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "host",
+            "daemon"
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "home",
+        "platform",
+        "pid",
+        "mode"
+      ],
+      "description": "The instance a client is connected to."
+    },
+    "InstanceStatusParams": {
+      "type": "object",
+      "properties": {}
+    },
+    "InstanceStatusResult": {
+      "type": "object",
+      "properties": {
+        "instance": {
+          "$ref": "#/$defs/InstanceInfo"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "socket": {
+          "type": "string"
+        },
+        "connections": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "processes": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChildProcessStatus"
+          }
+        }
+      },
+      "required": [
+        "instance",
+        "startedAt",
+        "socket",
+        "connections",
+        "processes"
+      ]
+    },
+    "JsonRpcErrorObject": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {}
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "description": "The error of a failed JSON-RPC 2.0 response; Mostra puts the diagnostic in data."
+    },
+    "JsonRpcFailure": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "type": "string",
+          "const": "2.0"
+        },
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/JsonRpcErrorObject"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "description": "A failed JSON-RPC 2.0 response; id is null when the request's id was unreadable."
+    },
+    "JsonRpcNotification": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "type": "string",
+          "const": "2.0"
+        },
+        "method": {
+          "type": "string"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            {
+              "readOnly": true,
+              "type": "array",
+              "items": {}
+            }
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "description": "A JSON-RPC 2.0 notification: a request without an id, never answered."
+    },
+    "JsonRpcRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "type": "string",
+          "const": "2.0"
+        },
+        "id": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "method": {
+          "type": "string"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            {
+              "readOnly": true,
+              "type": "array",
+              "items": {}
+            }
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "method"
+      ],
+      "description": "A JSON-RPC 2.0 request: answered by a response with the same id."
+    },
+    "JsonRpcSuccess": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "type": "string",
+          "const": "2.0"
+        },
+        "id": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "result": {}
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "description": "A successful JSON-RPC 2.0 response."
+    },
+    "MostraInitializeParams": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/ClientInfo"
+        },
+        "revisions": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ClientCapabilities"
+        },
+        "ports": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          }
+        },
+        "home": {
+          "$ref": "#/$defs/HomeConfig"
+        }
+      },
+      "required": [
+        "client",
+        "revisions",
+        "capabilities",
+        "ports"
+      ]
+    },
+    "MostraInitializeResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "instance": {
+          "$ref": "#/$defs/InstanceInfo"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/InstanceCapabilities"
+        },
+        "warnings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "instance",
+        "capabilities",
+        "warnings"
+      ]
+    },
+    "MostraShutdownParams": {
+      "type": "object",
+      "properties": {}
+    },
+    "MostraShutdownResult": {
+      "type": "object",
+      "properties": {}
+    },
     "MutationId": {
       "type": "string",
       "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Mutation ID: \"mut_\" followed by a 26-character ULID."
+    },
+    "PortName": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*$",
+      "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
     },
     "Revision": {
       "type": "string",
