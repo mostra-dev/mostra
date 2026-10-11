@@ -17,8 +17,8 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | unverified |
 | RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | unverified |
 | RT-05 | WP-05 | I | Client-only version served with zero worker processes (process table assertion) | unverified |
-| RT-06 | WP-02 | I, C | 16 racing starters converge on one supervisor; stale socket recovered; `mostra host` over stdio and attach over socket both pass the protocol suite | unverified ([WP-02](../progress/PROGRESS-WP-02.md)) |
-| RT-07 | WP-02 | I | macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home | unverified ([WP-02](../progress/PROGRESS-WP-02.md)) |
+| RT-06 | WP-02 | I, C | 16 racing starters converge on one supervisor; stale socket recovered; `mostra host` over stdio and attach over socket both pass the protocol suite | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
+| RT-07 | WP-02 | I | macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-01 | WP-03 | M, I | Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused | unverified |
 | VR-02 | WP-03 | I | Fault injection at each publish step leaves no visible version and cleans staging on next start | unverified |
 | VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | unverified |
@@ -72,7 +72,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | unverified |
 | HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance) | unverified |
-| HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | unverified ([WP-02](../progress/PROGRESS-WP-02.md)) |
+| HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | unverified |
 | HO-04 | WP-11 | M, C | SDK host registers ports, publishes, receives delivery, waits and reads results (integration) | unverified |
 | HO-05 | WP-12 | C | Conformance kit passes on standalone adapters and both reference hosts; broken host fails expected scenarios; baselines work | unverified |
@@ -125,7 +125,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | unverified |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | unverified |
 | RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | unverified |
-| RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | unverified ([WP-02](../progress/PROGRESS-WP-02.md)) |
+| RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
 | VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | unverified |
 | VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | unverified |
