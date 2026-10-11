@@ -24,6 +24,7 @@ import {
   readFile,
   realpath,
   rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -150,13 +151,16 @@ async function listTree(dir: string, prefix: string): Promise<ListedFile[]> {
   return files;
 }
 
-/** Writes the source snapshot archive (`sources/<artifact>/<sourceDigest>.tar.zst`), atomically. */
+/**
+ * Writes the source snapshot archive (`sources/<artifact>/<sourceDigest>.tar.zst`), atomically.
+ * Returns whether it wrote one: an existing archive holds the same tree (content-addressed).
+ */
 async function archiveSnapshot(
   source: string,
   files: readonly ListedFile[],
   target: string,
-): Promise<void> {
-  if (existsSync(target)) return; // Content-addressed: an existing archive holds the same tree.
+): Promise<boolean> {
+  if (existsSync(target)) return false;
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   const temporary = `${target}.${process.pid}.tmp`;
   const sorted = [...files].sort((a, b) =>
@@ -178,6 +182,7 @@ async function archiveSnapshot(
     await handle.close();
   }
   await rename(temporary, target);
+  return true;
 }
 
 /** Serializes work per key, so two publishes of one artifact never race (FAILURE_MODEL §1 rule 2). */
@@ -274,6 +279,10 @@ export function createPublisher(options: PublisherOptions): Publisher {
       );
       return queue.run(`artifact:${provisional}`, async () => {
         const staging = await mkdtemp(join(registry.store.stagingDir, "publish-"));
+        // What this publish placed in the store before its commit; removed again if it fails
+        // (the next start removes it too, should this process die first: FAILURE_MODEL §3).
+        const undo: (() => Promise<void>)[] = [];
+        let committed = false;
         try {
           // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read.
           const files = await listSource(source);
@@ -372,18 +381,18 @@ export function createPublisher(options: PublisherOptions): Publisher {
                 2,
               )}\n`,
             );
-            await archiveSnapshot(
-              join(staging, "source"),
-              listed,
-              registry.store.snapshotPath(artifactId, sourceDigest),
-            );
+            const archive = registry.store.snapshotPath(artifactId, sourceDigest);
+            if (await archiveSnapshot(join(staging, "source"), listed, archive)) {
+              undo.push(() => rm(archive, { force: true }));
+            }
             faults.at("publish:after-archive");
+            undo.push(() => removeTree(registry.store.versionDir(versionId)));
             await registry.store.promote(out, versionId);
             faults.at("publish:after-promote");
           }
 
-          // 6. One transaction: identity, version, binding, events (and the request's result).
-          const committed = registry.commit({
+          // 6. One transaction: identity, version, binding, events.
+          const result = registry.commit({
             artifactId,
             bindingPath: source.bindingPath,
             manifestId: manifest.id,
@@ -397,21 +406,31 @@ export function createPublisher(options: PublisherOptions): Publisher {
             stillClaims,
             faults,
           });
+          committed = true;
           faults.at("publish:after-commit");
           log.info("publish.committed", {
             artifactId,
             versionId,
-            version: committed.version,
-            reused: committed.reused,
+            version: result.version,
+            reused: result.reused,
           });
           return {
             artifactId,
             versionId,
-            version: committed.version,
-            cursor: committed.cursor,
-            reused: committed.reused,
+            version: result.version,
+            cursor: result.cursor,
+            reused: result.reused,
             ...(forcedCodes.length > 0 ? { forcedDiagnostics: forcedCodes } : {}),
           };
+        } catch (error) {
+          if (!committed) {
+            for (const step of undo.reverse()) {
+              await step().catch((cleanup: unknown) =>
+                log.warn("publish.undo_failed", { error: cleanup }),
+              );
+            }
+          }
+          throw error;
         } finally {
           await removeTree(staging);
         }

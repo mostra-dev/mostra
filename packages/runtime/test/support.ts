@@ -130,8 +130,8 @@ export class LineClient {
     });
   }
 
-  /** Sends a request and waits for its response. */
-  call(method: string, params?: unknown): Promise<Message> {
+  /** Sends a request and waits for its response (builds take seconds, so the default is generous). */
+  call(method: string, params?: unknown, timeoutMs = 60_000): Promise<Message> {
     const id = this.#nextId++;
     this.sendRaw(
       JSON.stringify(
@@ -140,7 +140,7 @@ export class LineClient {
           : { jsonrpc: "2.0", id, method, params },
       ),
     );
-    return this.next((message) => message.id === id);
+    return this.next((message) => message.id === id, timeoutMs);
   }
 
   close(): void {
