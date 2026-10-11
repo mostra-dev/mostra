@@ -90,6 +90,11 @@ describe("ignore rules (DATA_MODEL §2)", () => {
     expect(files).toEqual([".mostraignore", "components/a.tsx", "index.tsx"]);
   });
 
+  it("refuses a .mostraignore that excludes the entry", async () => {
+    const root = tree({ "index.tsx": "", ".mostraignore": "*.tsx\n" });
+    expect(await code(listSource(await resolveSource(root)))).toBe("MOSTRA_ARTIFACT_NO_ENTRY");
+  });
+
   it("follows symbolic links to files and directories, and skips loops and dangling links", async () => {
     const outside = tree({ "shared.json": "{}" });
     const root = tree({ "index.tsx": "" });

@@ -203,6 +203,14 @@ const SEEDS: readonly Seed[] = [
     check: integration("audit.test.ts"),
   },
   {
+    requirement: "VR-02",
+    name: "a publish's receipt isn't recorded with its commit",
+    file: "src/registry/index.ts",
+    from: "if (input.requestId !== undefined) {",
+    to: "if (false) {",
+    check: integration("publish-faults.test.ts", "replays the committed receipt"),
+  },
+  {
     requirement: "#7",
     name: "children run before they are recorded",
     file: "src/processes/manager.ts",

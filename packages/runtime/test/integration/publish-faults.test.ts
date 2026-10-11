@@ -109,6 +109,22 @@ describe("a crash at any publish step leaves no visible version (VR-02)", () => 
     });
   }
 
+  it("replays the committed receipt for a requestId retried after a crash (H-03)", async () => {
+    const home = testHome();
+    const source = artifact();
+    const params = { source: { path: source }, requestId: "req-crash" };
+    const crashing = await session(home, "publish:after-commit:crash");
+    crashing.client.sendRaw(
+      JSON.stringify({ jsonrpc: "2.0", id: 99, method: "artifact/publish", params }),
+    );
+    await crashing.daemon.exited;
+    const next = await session(home);
+    const replay = result(await next.client.call("artifact/publish", params));
+    // The first attempt's receipt, never a "reused" one: the response the client missed.
+    expect(replay).toMatchObject({ version: 1, reused: false });
+    await stop(next.client, next.daemon.exited);
+  });
+
   it("keeps a version committed just before a crash, and publishes it again as reused", async () => {
     const home = testHome();
     const source = artifact();

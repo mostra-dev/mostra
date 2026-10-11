@@ -168,6 +168,12 @@ export async function listSource(source: ResolvedSource): Promise<SourceFile[]> 
     }
   };
   await walk(source.root, "", new Set([source.root]));
+  if (!files.some((file) => file.path === source.entry)) {
+    throw artifactError(
+      "MOSTRA_ARTIFACT_NO_ENTRY",
+      `${source.entry} is excluded by ${join(source.root, ".mostraignore")}; an artifact's entry can't be ignored.`,
+    );
+  }
   return files;
 }
 

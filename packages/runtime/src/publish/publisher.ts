@@ -405,6 +405,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
             forcedCodes,
             stillClaims,
             faults,
+            requestId: params.requestId,
           });
           committed = true;
           faults.at("publish:after-commit");
@@ -441,9 +442,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
   return {
     publish: (params) =>
       idempotent("artifact/publish", params.requestId, async () => {
-        const receipt = await publishOnce(params);
-        record("artifact/publish", params.requestId, receipt);
-        return receipt;
+        // The receipt is recorded inside the commit's transaction (Registry.commit).
+        return publishOnce(params);
       }),
     create: (params) =>
       idempotent("artifact/create", params.requestId, async () => {

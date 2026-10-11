@@ -68,6 +68,11 @@ export interface VersionCommit {
   readonly stillClaims: (path: string, artifactId: string) => boolean;
   /** Test fault points: `publish:in-commit` runs inside the transaction, before it commits. */
   readonly faults?: Faults;
+  /**
+   * The publish's `requestId` (H-03): its receipt is recorded in the same transaction, so a retry
+   * after any crash replays exactly what the first attempt committed.
+   */
+  readonly requestId?: string | undefined;
 }
 
 /** What a commit recorded. */
@@ -287,8 +292,23 @@ export async function openRegistry(options: {
           input.artifactId,
           now,
         );
+        const committed = { version: number, cursor, reused: existing !== undefined };
+        if (input.requestId !== undefined) {
+          const receipt = {
+            artifactId: input.artifactId,
+            versionId: input.versionId,
+            ...committed,
+            ...(input.forcedCodes.length > 0 ? { forcedDiagnostics: [...input.forcedCodes] } : {}),
+          };
+          db.run(
+            "INSERT INTO request (method, request_id, result_json, created_at) VALUES ('artifact/publish', ?, ?, ?)",
+            input.requestId,
+            JSON.stringify(receipt),
+            now,
+          );
+        }
         input.faults?.at("publish:in-commit");
-        return { version: number, cursor, reused: existing !== undefined };
+        return committed;
       });
     },
     sourceOf(artifactId) {
