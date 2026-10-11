@@ -26,7 +26,8 @@ beforeEach(() => repo.reset());
 
 describe("boundaries", () => {
   it("dependency-cruiser rejects imports across the package map", () => {
-    expect(depcruise().code).toBe(0);
+    const baseline = depcruise();
+    expect(baseline.code, baseline.output).toBe(0);
 
     repo.write(
       "packages/protocol/src/seed-builtin.ts",
@@ -36,18 +37,19 @@ describe("boundaries", () => {
       "packages/protocol/src/seed-external.ts",
       'import ts from "typescript";\nexport const y = ts;\n',
     );
-    mkdirSync(join(repo.root, "packages/runtime/src/ledger"), { recursive: true });
-    mkdirSync(join(repo.root, "packages/runtime/src/gateway"), { recursive: true });
+    // Seeded modules with names of their own, so the real runtime modules stay untouched.
+    mkdirSync(join(repo.root, "packages/runtime/src/seed-store"), { recursive: true });
+    mkdirSync(join(repo.root, "packages/runtime/src/seed-gate"), { recursive: true });
     mkdirSync(join(repo.root, "packages/worker/src"), { recursive: true });
-    repo.write("packages/runtime/src/ledger/index.ts", 'export * from "./internal.ts";\n');
-    repo.write("packages/runtime/src/ledger/internal.ts", "export const ledger = 1;\n");
+    repo.write("packages/runtime/src/seed-store/index.ts", 'export * from "./internal.ts";\n');
+    repo.write("packages/runtime/src/seed-store/internal.ts", "export const ledger = 1;\n");
     repo.write(
-      "packages/runtime/src/gateway/index.ts",
-      'export { ledger } from "../ledger/internal.ts";\n',
+      "packages/runtime/src/seed-gate/index.ts",
+      'export { ledger } from "../seed-store/internal.ts";\n',
     );
     repo.write(
       "packages/worker/src/index.ts",
-      'export { ledger } from "../../runtime/src/ledger/index.ts";\n',
+      'export { ledger } from "../../runtime/src/seed-store/index.ts";\n',
     );
     const result = depcruise();
     expect(result.code).not.toBe(0);
@@ -57,7 +59,8 @@ describe("boundaries", () => {
     expect(result.output).toContain("runtime-module-internals");
 
     repo.reset();
-    expect(depcruise().code).toBe(0);
+    const fixed = depcruise();
+    expect(fixed.code, fixed.output).toBe(0);
   });
 
   it("knip rejects an unused export", () => {

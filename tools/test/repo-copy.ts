@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOT } from "../lib/repo.ts";
+import { listPackages } from "../lib/workspace.ts";
 
 /** The output of one command run in the copy. */
 export interface Ran {
@@ -36,13 +37,16 @@ export interface RepoCopy {
   dispose(): void;
 }
 
-const LINKED = [
-  "node_modules",
-  "tools/node_modules",
-  "tools/ts6/node_modules",
-  "packages/protocol/node_modules",
-  "tests/e2e/node_modules",
-];
+/**
+ * The workspace packages' `node_modules`, copied as they are: pnpm fills them with relative
+ * symlinks, so `@mostra/*` links resolve to the copy's own packages and third-party links reach the
+ * shared root `node_modules` through the copy's link to it.
+ */
+function packageModuleDirs(): string[] {
+  return listPackages()
+    .map((pkg) => `${pkg.dir}/node_modules`)
+    .filter((dir) => existsSync(join(ROOT, dir)));
+}
 
 /**
  * Copies the working tree (committed or not) into a temporary Git repository whose single commit
@@ -69,8 +73,15 @@ export function copyRepository(): RepoCopy {
     { encoding: "utf8" },
   );
   if (rsync.status !== 0) throw new Error(`rsync failed: ${rsync.stderr}`);
-  for (const path of LINKED) {
-    if (existsSync(join(ROOT, path))) symlinkSync(join(ROOT, path), join(root, path));
+  // The root node_modules is shared through one symlink; it is never written.
+  symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"));
+  for (const dir of packageModuleDirs()) {
+    const copied = spawnSync(
+      "rsync",
+      ["-a", "--exclude", ".vite*", `${join(ROOT, dir)}/`, `${join(root, dir)}/`],
+      { encoding: "utf8" },
+    );
+    if (copied.status !== 0) throw new Error(`rsync of ${dir} failed: ${copied.stderr}`);
   }
   const env: NodeJS.ProcessEnv = {
     ...process.env,
