@@ -1,6 +1,6 @@
 # WP-03 progress: builder, versions and publish
 
-**Status:** Candidate, awaiting the independent review (D80) and Mirza's acceptance. The report is finalized after acceptance (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-11, merged to `main` as `87487b5`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | green: format-lint, types, unit, integration, build, boundaries, api, licenses, rust, docs and commits all pass (38 s, macOS arm64) |
 | Predecessors | WP-02 done ([PROGRESS-WP-02](PROGRESS-WP-02.md) on `origin/main`); no `RECOVERY-WP-03-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS arm64 |
-| Pull request | [#10](https://github.com/mostra-dev/mostra/pull/10), draft |
+| Pull request | [#10](https://github.com/mostra-dev/mostra/pull/10), merged |
 
 ## What was built
 
@@ -107,7 +107,7 @@ The first seed for the PostCSS guard stayed green: the staging `package.json` al
 
 ## Agent-facing prose (D93)
 
-Delegated. Written following the writing-for-agents guidance: the hints and docs pages of the 20 new codes, `packages/react/AGENTS.md`, `packages/warm/AGENTS.md` and the additions to `packages/runtime/AGENTS.md`. Texts for Mirza's review, if any, are listed here before the merge.
+Delegated, and written following the writing-for-agents guidance: the hints and docs pages of the 21 new codes (`MOSTRA_PUBLISH_SOURCE_CHANGED` came from the Claude review), the corrected `MOSTRA_HOME_INTEGRITY` hint, `packages/react/AGENTS.md`, `packages/warm/AGENTS.md` and the additions to `packages/runtime/AGENTS.md`. None needed Mirza's review before the merge.
 
 ## Untested boundaries
 
@@ -117,3 +117,17 @@ Delegated. Written following the writing-for-agents guidance: the hints and docs
 - Confinement covers module imports (JavaScript, TypeScript, MDX, JSON and assets imported from code). A CSS `@import` or `url()` that reaches outside the artifact goes through Vite's CSS resolver and isn't refused; such a file would still be missing from the snapshot, so it resolves only by absolute path.
 - Directory syncs after the archive rename (GPT finding 3) are checked by inspection, not by a power cut.
 - `MOSTRA_PUBLISH_SOURCE_CHANGED` (a source edited between the two reads of one publish) and the stopped gate when `ps` fails (Claude findings 7 and 8) are checked by inspection: both depend on timing or on a failing system tool.
+
+## Commits and publication
+
+- **Range:** `79216c4..87487b5` on `main`: 30 signed-off commits on `wp/03-builder` (`232eb44` to `ec47ea1`) and the merge commit `87487b5` of [#10](https://github.com/mostra-dev/mostra/pull/10). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38167206158](https://github.com/mostra-dev/mostra/actions/runs/38167206158), CodeQL [38167206134](https://github.com/mostra-dev/mostra/actions/runs/38167206134) and Scorecard [38167206110](https://github.com/mostra-dev/mostra/actions/runs/38167206110), all green.
+- **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol` (the manifest, the artifact methods and their codes) and `@mostra/runtime` (builder, registry and publish), and the first release of `@mostra/react`; `@mostra/warm` is private. The release pipeline is WP-11's (EN-05).
+- **Docs:** generated diagnostic pages for the 21 new codes in `docs/reference/`; the docs site is WP-26's.
+- **Issues:** [#7](https://github.com/mostra-dev/mostra/issues/7) closed by the child gate.
+- **Follow-ups for later packages** are in their specifications (D93): WP-04 (on-demand packages extend the warm set and the lockfile), WP-05 (`PublishReceipt.url` on every publish, D90; the render fixtures through the gateway in Chromium, Firefox and WebKit, added to its specification at finalization), WP-06 (event reading on the `event` table; results in AU-04 and VR-11), WP-07 (history mode, fields and the browser-protocol revision in `envDigest`), WP-08 and WP-09 (verify and action calls in the RT-02 audit; verify on the AU-01 and AU-02 fixtures; regression baselines from the source snapshots), WP-10 (`mostra dev` through `RenderMode.dev`).
+- **Remaining dirty paths:** none in the repository. Outside it: disposable scripts and prototypes in `$JCODE_SCRATCH_DIR/wp03`, `proto3` and the review transcripts `review-wp-03.md` and `review-wp-03.err`.
+
+## Next
+
+WP-04, dependencies (`docs/design/work-packages/WP-04.md`).
