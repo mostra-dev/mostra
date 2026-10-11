@@ -148,8 +148,9 @@ export type VersionId = Id<"ver">;
 export interface VersionIdKind extends IdKind<"ver"> {
   /**
    * Returns the version ID for a SHA-256 digest: `ver_` plus the first 26 characters of the
-   * digest in Crockford base32 (130 bits). The caller computes the digest of
-   * `sourceDigest ‖ envDigest` (DATA_MODEL §2).
+   * digest in Crockford base32 (130 bits). The caller computes the digest of the artifact ID's
+   * UTF-8 bytes, a `0x00` byte, and the 32-byte `sourceDigest` and `envDigest` (DATA_MODEL §2,
+   * D89).
    *
    * @throws RangeError when `digest` is not 32 bytes long.
    */

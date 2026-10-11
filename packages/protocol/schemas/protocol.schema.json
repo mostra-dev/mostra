@@ -5,10 +5,477 @@
     "host-protocol": "2026-10-10"
   },
   "$defs": {
+    "ArtifactCreateParams": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "pattern": "^\\/"
+        },
+        "template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    },
+    "ArtifactCreateResult": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "dir",
+        "files"
+      ]
+    },
+    "ArtifactDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactLink"
+          }
+        },
+        "mode": {
+          "type": "string",
+          "const": "spa"
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        },
+        "source": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "latestVersion": {
+          "$ref": "#/$defs/VersionSummary"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ArtifactManifest"
+        },
+        "versions": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VersionSummary"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "links",
+        "mode",
+        "createdAt",
+        "manifest",
+        "versions"
+      ],
+      "description": "One artifact in full: its summary, the latest manifest and every version."
+    },
+    "ArtifactGetParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
     "ArtifactId": {
       "type": "string",
       "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
+    },
+    "ArtifactLink": {
+      "type": "object",
+      "properties": {
+        "rel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "rel",
+        "artifact"
+      ],
+      "description": "A related artifact: how this one relates (rel) and the other artifact's ID."
+    },
+    "ArtifactListParams": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "object",
+          "properties": {
+            "family": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "ArtifactListResult": {
+      "type": "object",
+      "properties": {
+        "artifacts": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactSummary"
+          }
+        }
+      },
+      "required": [
+        "artifacts"
+      ]
+    },
+    "ArtifactManifest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactLink"
+          }
+        },
+        "mode": {
+          "type": "string",
+          "const": "spa"
+        },
+        "submission": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        },
+        "kit": {
+          "type": "object",
+          "properties": {
+            "base": {
+              "type": "string",
+              "enum": [
+                "base",
+                "radix"
+              ]
+            },
+            "theme": {
+              "type": "string"
+            }
+          }
+        },
+        "terminals": {
+          "readOnly": true,
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "readOnly": true,
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "env": {
+                "readOnly": true,
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "cols": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "input": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
+        },
+        "demos": {
+          "readOnly": true,
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "readOnly": true,
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "ready": {
+                    "type": "string"
+                  },
+                  "bridge": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "attach": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "bridge": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "attach"
+                ]
+              }
+            ]
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "heapMb": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "watchdogMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "idleMinutes": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "properties": {
+            "viewports": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "frames": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extraChecks": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "smoke": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "description": "The artifact manifest (INTERFACES §2.2): literal metadata from the entry's defineArtifact call or MDX frontmatter."
+    },
+    "ArtifactPublishParams": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
+    "ArtifactRef": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "artifactId": {
+              "$ref": "#/$defs/ArtifactId"
+            }
+          },
+          "required": [
+            "artifactId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^\\/"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      ],
+      "description": "Names an artifact by its ID or by an absolute source path bound to it."
+    },
+    "ArtifactSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactLink"
+          }
+        },
+        "mode": {
+          "type": "string",
+          "const": "spa"
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        },
+        "source": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "latestVersion": {
+          "$ref": "#/$defs/VersionSummary"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "links",
+        "mode",
+        "createdAt"
+      ],
+      "description": "One artifact: metadata from its latest version, its source and latest version."
     },
     "ChildProcessStatus": {
       "type": "object",
@@ -587,6 +1054,46 @@
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
     },
+    "PublishReceipt": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "versionId": {
+          "$ref": "#/$defs/VersionId"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "url": {
+          "type": "string"
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "forcedDiagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "version",
+        "cursor",
+        "reused"
+      ],
+      "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
+    },
     "Revision": {
       "type": "string",
       "format": "date",
@@ -598,10 +1105,86 @@
       "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Action run ID: \"run_\" followed by a 26-character ULID."
     },
+    "SourceRef": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^\\/"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "artifactId": {
+              "$ref": "#/$defs/ArtifactId"
+            }
+          },
+          "required": [
+            "artifactId"
+          ]
+        }
+      ],
+      "description": "Where to build an artifact from: an absolute source path, or an artifact ID (its last published source path)."
+    },
     "SubmissionId": {
       "type": "string",
       "pattern": "^sub_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Submission ID: \"sub_\" followed by a 26-character ULID."
+    },
+    "SubmissionPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "once"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "per-artifact",
+                "per-viewer"
+              ]
+            }
+          },
+          "required": [
+            "policy"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "epochs"
+            }
+          },
+          "required": [
+            "policy"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "required": [
+            "policy"
+          ]
+        }
+      ],
+      "description": "A submission policy: once (per-artifact or per-viewer), epochs, or none."
     },
     "ThreadId": {
       "type": "string",
@@ -617,6 +1200,52 @@
       "type": "string",
       "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
       "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
+    },
+    "VersionSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/VersionId"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "sourceDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "envDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "outputDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "forcedDiagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "publishedAt",
+        "sourceDigest",
+        "envDigest",
+        "outputDigest"
+      ],
+      "description": "One published version."
     },
     "ViewId": {
       "type": "string",

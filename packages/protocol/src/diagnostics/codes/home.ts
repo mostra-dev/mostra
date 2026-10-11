@@ -14,6 +14,7 @@ export const homeDiagnosticCodes = [
   "MOSTRA_HOME_DISK_FULL",
   "MOSTRA_HOME_GONE",
   "MOSTRA_HOME_MISMATCH",
+  "MOSTRA_HOME_INTEGRITY",
   // gen:codes
 ] as const;
 
@@ -108,6 +109,17 @@ export const homeDiagnostics: AreaCatalog<HomeDiagnosticCode> = {
       explanation:
         "A client sent `home.path` in `mostra/initialize`, and it names a different home from the one the instance locked at start-up. The home is chosen when the instance starts (`--home`, then `MOSTRA_HOME`, then the platform default), so `home.path` is a check: it stops a client from writing to a home it didn't mean.",
       fix: "Start the instance with `--home` set to the home the client expects, or connect to the socket of the instance that serves it. Leave `home.path` out to accept whichever home the instance serves.",
+    },
+  },
+  MOSTRA_HOME_INTEGRITY: {
+    severity: "error",
+    phase: "host",
+    title: "Stored version or file damaged",
+    hint: "Run `mostra doctor`; publish the artifact again to rebuild a damaged version.",
+    docs: {
+      explanation:
+        "Mostra checks stored versions, source snapshots and blobs against their recorded content digests before using them. This code means a stored object is missing or its content changed after it was written, for example after a disk error or a manual edit inside the home. The message names the object.",
+      fix: "Leave files inside the home unchanged. Republishing the artifact from its source writes a fresh version; `mostra doctor` lists other damaged objects.",
     },
   },
   // gen:entries
