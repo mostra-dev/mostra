@@ -1,0 +1,4 @@
+/* The artifact's own CSS, next to the Tailwind baseline every build includes. */
+.dashboard {
+  font-family: system-ui, sans-serif;
+}

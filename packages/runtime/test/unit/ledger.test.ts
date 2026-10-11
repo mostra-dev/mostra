@@ -42,8 +42,12 @@ function failure(fn: () => unknown): RpcError {
   throw new Error("expected a failure");
 }
 
+/** The runtime's latest schema version, and the one a test migration adds after it. */
+const LATEST = MIGRATIONS.at(-1)?.version ?? 0;
+const NEXT = LATEST + 1;
+
 const notes: Migration = {
-  version: 2,
+  version: NEXT,
   name: "notes",
   up: (db) => db.exec("CREATE TABLE note (id INTEGER PRIMARY KEY, text TEXT NOT NULL)"),
 };
@@ -134,8 +138,8 @@ describe("migrations (DATA_MODEL §6)", () => {
     v1.close();
 
     const v2 = open(dir, [...MIGRATIONS, notes], "1.1.0");
-    const backup = join(dir, `${LEDGER_FILE}.bak-1-2`);
-    expect(v2.migrated).toEqual({ from: 1, to: 2, backup });
+    const backup = join(dir, `${LEDGER_FILE}.bak-${LATEST}-${NEXT}`);
+    expect(v2.migrated).toEqual({ from: LATEST, to: NEXT, backup });
     expect(
       v2.read((db) => db.all("SELECT name FROM sqlite_master WHERE name = 'note'")),
     ).toHaveLength(1);
@@ -143,15 +147,18 @@ describe("migrations (DATA_MODEL §6)", () => {
     expect(
       v2.read((db) =>
         db.get<{ runtime_version: string }>(
-          "SELECT runtime_version FROM schema_migration WHERE version = 2",
+          "SELECT runtime_version FROM schema_migration WHERE version = ?",
+          NEXT,
         ),
       ),
     ).toEqual({ runtime_version: "1.1.0" });
     v2.close();
 
-    // The backup is the version-1 ledger, with its data and without the new table.
+    // The backup is the previous ledger, with its data and without the new table.
     const copy = new Database(backup, { readonly: true });
-    expect(copy.prepare("SELECT max(version) v FROM schema_migration").get()).toEqual({ v: 1 });
+    expect(copy.prepare("SELECT max(version) v FROM schema_migration").get()).toEqual({
+      v: LATEST,
+    });
     expect(copy.prepare("SELECT count(*) n FROM child").get()).toEqual({ n: 1 });
     expect(copy.prepare("SELECT count(*) n FROM sqlite_master WHERE name = 'note'").get()).toEqual({
       n: 0,
@@ -163,7 +170,7 @@ describe("migrations (DATA_MODEL §6)", () => {
     const dir = storeDir();
     open(dir).close();
     const broken: Migration = {
-      version: 2,
+      version: NEXT,
       name: "broken",
       up: (db) => {
         db.exec("CREATE TABLE half (x)");
@@ -174,12 +181,12 @@ describe("migrations (DATA_MODEL §6)", () => {
     const ledger = open(dir);
     expect(
       ledger.read((db) => db.get<{ v: number }>("SELECT max(version) v FROM schema_migration"))?.v,
-    ).toBe(1);
+    ).toBe(LATEST);
     expect(
       ledger.read((db) => db.all("SELECT name FROM sqlite_master WHERE name = 'half'")),
     ).toEqual([]);
     ledger.close();
-    expect(existsSync(join(dir, `${LEDGER_FILE}.bak-1-2`))).toBe(true);
+    expect(existsSync(join(dir, `${LEDGER_FILE}.bak-${LATEST}-${NEXT}`))).toBe(true);
   });
 
   it("refuses a ledger newer than the runtime with MOSTRA_HOME_TOO_NEW, naming both versions", () => {
@@ -187,7 +194,7 @@ describe("migrations (DATA_MODEL §6)", () => {
     open(dir, [...MIGRATIONS, notes], "2.0.0").close();
     const error = failure(() => open(dir, MIGRATIONS, "1.0.0"));
     expect(error.diagnostic.code).toBe("MOSTRA_HOME_TOO_NEW");
-    expect(error.diagnostic.message).toContain("schema version 2");
+    expect(error.diagnostic.message).toContain(`schema version ${NEXT}`);
     expect(error.diagnostic.message).toContain("Mostra 2.0.0");
     expect(error.diagnostic.message).toContain("1.0.0");
     // Refusing leaves the ledger as it was.

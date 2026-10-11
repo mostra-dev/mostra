@@ -4,7 +4,15 @@
  * `@mostra/protocol`.
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  type Dirent,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -15,8 +23,24 @@ import { afterAll } from "vitest";
 
 const created: string[] = [];
 afterAll(() => {
-  for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of created.splice(0)) removeAll(dir);
 });
+
+/** Removes a tree, including sealed (read-only) version directories. */
+export function removeAll(dir: string): void {
+  const unseal = (path: string): void => {
+    let entries: Dirent[];
+    try {
+      chmodSync(path, 0o755);
+      entries = readdirSync(path, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) if (entry.isDirectory()) unseal(join(path, entry.name));
+  };
+  unseal(dir);
+  rmSync(dir, { recursive: true, force: true });
+}
 
 /**
  * A fresh directory, removed after the file's tests. `short` places it under `/tmp`, because

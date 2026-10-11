@@ -20,6 +20,8 @@ import {
   type MostraInitializeResult,
   RpcError,
 } from "@mostra/protocol";
+import { createSpaRenderMode, locateWarmSet } from "../builder/index.ts";
+import { faultsFrom } from "../faults.ts";
 import {
   acquireHome,
   checkPlatform,
@@ -31,6 +33,8 @@ import {
 import type { Environment } from "../log.ts";
 import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
 import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
+import { artifactMethods, createPublisher, type Publisher } from "../publish/index.ts";
+import { openRegistry } from "../registry/index.ts";
 
 /** Options for {@link startInstance}. */
 export interface StartInstanceOptions {
@@ -153,11 +157,35 @@ function sameHome(home: string, path: string): boolean {
 
 async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise<Instance> {
   const { log } = home;
+  const environment = options.env ?? process.env;
+  const faults = faultsFrom(environment);
   const { manager, reaped } = await openProcessManager({
     ledger: home.ledger,
     log,
     redactor: home.redactor,
+    faults,
   });
+  const registry = await openRegistry({ home: home.path, ledger: home.ledger });
+  const recovered = await registry.recover();
+  if (recovered.versions.length > 0 || recovered.snapshots.length > 0) {
+    log.info("publish.recovered", { ...recovered });
+  }
+  // Built on first use: a runtime without its warm set still starts and says what's missing.
+  let publisher: Publisher | undefined;
+  const getPublisher = (): Publisher => {
+    if (publisher) return publisher;
+    const warm = locateWarmSet(environment);
+    publisher = createPublisher({
+      registry,
+      ledger: home.ledger,
+      renderMode: createSpaRenderMode({ processes: manager, log, warm, env: environment }),
+      warm,
+      runtimeVersion: runtimeVersion(),
+      log,
+      faults,
+    });
+    return publisher;
+  };
   const info: InstanceInfo = {
     version: runtimeVersion(),
     home: home.path,
@@ -177,14 +205,17 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     describe: () => info,
     servesHome: (path) => sameHome(home.path, path),
     supportedPorts: [],
-    handlers: sessionMethods({
-      describe: () => info,
-      startedAt: home.startedAt,
-      socketPath: () => home.socketPath,
-      connections: () => server.connections,
-      processes: () => manager.list(),
-      shutdown: (reason) => void instance.stop(reason, 0),
-    }),
+    handlers: [
+      ...artifactMethods({ registry, publisher: getPublisher }),
+      ...sessionMethods({
+        describe: () => info,
+        startedAt: home.startedAt,
+        socketPath: () => home.socketPath,
+        connections: () => server.connections,
+        processes: () => manager.list(),
+        shutdown: (reason) => void instance.stop(reason, 0),
+      }),
+    ],
   });
 
   const instance: Instance = {
