@@ -6,8 +6,10 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import type { Writable } from "node:stream";
 import { type JsonRpcParams, RpcPeer } from "@mostra/protocol";
 import * as z from "zod";
+import { type Faults, noFaults } from "../faults.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Environment, Log, Redactor } from "../log.ts";
 import {
@@ -26,6 +28,16 @@ const REAP_GRACE_MS = 2000;
 const KILL_WAIT_MS = 5000;
 /** How many stderr lines a child's exit report keeps. */
 const STDERR_TAIL = 50;
+
+/**
+ * The gate every child starts behind (issue #7): `/bin/sh` waits for "go" on file descriptor 3 and
+ * only then replaces itself with the real command, keeping its PID, process group and start time.
+ * The supervisor writes "go" after it has recorded the child, so a supervisor killed in between
+ * leaves a gate that reads end-of-file and exits 125 without running anything.
+ */
+const GATE_SCRIPT = 'IFS= read -r go <&3 && [ "$go" = go ] || exit 125; exec 3<&-; exec "$@"';
+/** The exit code of a gate that was never opened. */
+export const GATE_CLOSED_EXIT = 125;
 
 /** How a child ended. */
 export interface ChildExit {
@@ -130,6 +142,8 @@ export interface ProcessManagerOptions {
   readonly log: Log;
   /** Learns the secrets children receive, so their output is redacted wherever it goes. */
   readonly redactor: Redactor;
+  /** Test fault points (`spawn:before-record`). Default: none. */
+  readonly faults?: Faults;
 }
 
 /**
@@ -237,7 +251,12 @@ async function reapRecorded(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
   return report;
 }
 
-function createManager({ ledger, log, redactor }: ProcessManagerOptions): ProcessManager {
+function createManager({
+  ledger,
+  log,
+  redactor,
+  faults = noFaults,
+}: ProcessManagerOptions): ProcessManager {
   const running = new Map<number, ChildHandle>();
   let stopping = false;
 
@@ -278,12 +297,24 @@ function createManager({ ledger, log, redactor }: ProcessManagerOptions): Proces
     if (stopping) throw new Error("The process manager is stopping.");
     for (const value of spec.redact ?? []) redactor.protect(value);
     redactor.protectEnvironment(spec.env ?? process.env);
-    const child: ChildProcess = spawn(spec.command, [...(spec.args ?? [])], {
-      cwd: spec.cwd,
-      env: spec.env ?? process.env,
-      detached: true,
-      stdio: spec.ipc ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
-      serialization: "json",
+    // fd 3 is the gate; the IPC channel, when there is one, is fd 4 (NODE_CHANNEL_FD survives
+    // the gate replacing itself with the command).
+    const child: ChildProcess = spawn(
+      "/bin/sh",
+      ["-c", GATE_SCRIPT, `mostra-${spec.kind}`, spec.command, ...(spec.args ?? [])],
+      {
+        cwd: spec.cwd,
+        env: spec.env ?? process.env,
+        detached: true,
+        stdio: spec.ipc
+          ? ["ignore", "pipe", "pipe", "pipe", "ipc"]
+          : ["ignore", "pipe", "pipe", "pipe"],
+        serialization: "json",
+      },
+    );
+    const gate = child.stdio[3] as Writable | null;
+    gate?.on("error", () => {
+      // The child exited before reading "go"; its exit is reported through `exited`.
     });
     const startedAt = new Date().toISOString();
     const pid = await new Promise<number>((resolve, reject) => {
@@ -360,10 +391,11 @@ function createManager({ ledger, log, redactor }: ProcessManagerOptions): Proces
       child.on("disconnect", () => connected.close());
     }
 
-    // Record the child before anyone relies on it (RT-09). If it already exited, nothing is left
-    // to reap.
+    // Record the child before it may run its command (RT-09, issue #7), then open its gate. If it
+    // already exited, nothing is left to reap.
     const registered = (async () => {
       const info = await readProcess(pid);
+      faults.at("spawn:before-record");
       if (!info) return;
       record({
         pid,
@@ -374,6 +406,7 @@ function createManager({ ledger, log, redactor }: ProcessManagerOptions): Proces
         started_at: startedAt,
         parent_pid: null,
       });
+      gate?.end("go\n");
     })();
 
     // From here on, the child's group ends with it, whatever happens to its registration.
