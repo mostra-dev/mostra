@@ -67,6 +67,12 @@ export interface SpawnSpec {
    */
   readonly redact?: readonly string[];
   /**
+   * Receives each line the child writes to stdout, redacted, instead of the log: for children
+   * whose output is data, such as the installer's NDJSON report. Every line has arrived before
+   * `exited` resolves.
+   */
+  readonly onStdout?: (line: string) => void;
+  /**
    * Opens a JSON-RPC channel over Node IPC; the command must then be a Node.js executable. The
    * handlers answer the child's requests besides the built-in `child/adopt` and `child/release`.
    */
@@ -179,6 +185,24 @@ function signalGroup(pgid: number, signal: NodeJS.Signals): boolean {
 const groupAlive = (pgid: number): boolean => signalGroup(pgid, 0 as unknown as NodeJS.Signals);
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits for `promise` to settle, or `ms` at most, leaving no timer behind. */
+async function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      promise.then(
+        () => undefined,
+        () => undefined,
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** The processes of a recorded group that are provably the recorded child's: see FAILURE_MODEL §2. */
 function targetsFor(
@@ -327,14 +351,21 @@ function createManager({
     const exit = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
       child.once("exit", (code, signal) => resolve({ code, signal }));
     });
+    // Output can still be in the pipes when the process exits; `exited` waits for it.
+    const drained: Promise<unknown>[] = [];
 
     if (child.stdout) {
-      createInterface({ input: child.stdout }).on("line", (line) =>
-        log.info("process.stdout", { kind: spec.kind, pid, line }),
-      );
+      const lines = createInterface({ input: child.stdout });
+      drained.push(new Promise((resolve) => lines.once("close", resolve)));
+      lines.on("line", (line) => {
+        if (spec.onStdout) spec.onStdout(redactor.redact(line));
+        else log.info("process.stdout", { kind: spec.kind, pid, line });
+      });
     }
     if (child.stderr) {
-      createInterface({ input: child.stderr }).on("line", (line) => {
+      const lines = createInterface({ input: child.stderr });
+      drained.push(new Promise((resolve) => lines.once("close", resolve)));
+      lines.on("line", (line) => {
         // The log redacts what it writes; the tail feeds diagnostics, so it is redacted here.
         stderrTail.push(redactor.redact(line));
         if (stderrTail.length > STDERR_TAIL) stderrTail.shift();
@@ -418,6 +449,9 @@ function createManager({
     const exited = exit.then(async ({ code, signal }) => {
       // The child's lifetime bounds its group and the groups it adopted.
       await endGroups([pid, ...adopted.values()], 2000);
+      // The group is gone, so nothing holds the pipes open any more; the bound covers a
+      // descendant that left the group with them.
+      await settleWithin(Promise.all(drained), 2000);
       await registered.catch(() => {});
       running.delete(pid);
       try {

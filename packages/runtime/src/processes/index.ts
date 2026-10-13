@@ -7,6 +7,7 @@ export {
   type SupervisorConnection,
   type SupervisorConnectionOptions,
 } from "./child.ts";
+export { artifactEnvironment } from "./environment.ts";
 export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
 export {
   type ChildExit,

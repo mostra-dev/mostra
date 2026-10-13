@@ -20,7 +20,8 @@ import {
   type MostraInitializeResult,
   RpcError,
 } from "@mostra/protocol";
-import { createSpaRenderMode, locateWarmSet } from "../builder/index.ts";
+import { createSpaRenderMode } from "../builder/index.ts";
+import { createDependencies, locateWarmSet, recoverDependencies } from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
 import {
   acquireHome,
@@ -28,7 +29,9 @@ import {
   type InstanceRecord,
   type OwnedHome,
   platformName,
+  readHomeSettings,
   resolveHomePath,
+  writeHomeSettings,
 } from "../home/index.ts";
 import type { Environment } from "../log.ts";
 import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
@@ -170,6 +173,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   if (recovered.versions.length > 0 || recovered.snapshots.length > 0) {
     log.info("publish.recovered", { ...recovered });
   }
+  await recoverDependencies({ home: home.path, log });
   // Built on first use: a runtime without its warm set still starts and says what's missing.
   let publisher: Publisher | undefined;
   const getPublisher = (): Publisher => {
@@ -178,17 +182,28 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     publisher = createPublisher({
       registry,
       ledger: home.ledger,
+      dependencies: createDependencies({
+        home: home.path,
+        ledger: home.ledger,
+        processes: manager,
+        log,
+        env: environment,
+        warm,
+        policy: () => readHomeSettings(home.path).dependencies ?? "auto",
+        // Tests shorten the 300 s install limit to exercise MOSTRA_DEP_TIMEOUT.
+        ...(Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) > 0
+          ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
+          : {}),
+      }),
       renderMode: createSpaRenderMode({
         processes: manager,
         log,
-        warm,
         env: environment,
         // Tests shorten the 180 s build limit to exercise MOSTRA_BUILD_TIMEOUT.
         ...(Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) > 0
           ? { timeoutMs: Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) }
           : {}),
       }),
-      warm,
       runtimeVersion: runtimeVersion(),
       log,
       faults,
@@ -213,6 +228,13 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log,
     describe: () => info,
     servesHome: (path) => sameHome(home.path, path),
+    // A host's settings persist in the home's config.json for every later client (D95).
+    configureHome: (config) => {
+      if (config.dependencies !== undefined) {
+        writeHomeSettings(home.path, { dependencies: config.dependencies });
+        log.info("home.settings_written", { dependencies: config.dependencies });
+      }
+    },
     supportedPorts: [],
     redact: (text) => home.redactor.redact(text),
     handlers: [

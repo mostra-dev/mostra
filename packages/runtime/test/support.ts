@@ -77,7 +77,13 @@ export type Message = {
   readonly error?: {
     code: number;
     message: string;
-    data: { code: string; message: string; hint?: string };
+    data: {
+      code: string;
+      message: string;
+      hint?: string;
+      location?: unknown;
+      fix?: { kind: string; command?: string };
+    };
   };
   readonly method?: string;
 };

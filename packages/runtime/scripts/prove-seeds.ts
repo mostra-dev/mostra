@@ -290,9 +290,9 @@ const SEEDS: readonly Seed[] = [
     requirement: "claude-1",
     name: "any package that resolves is built, from wherever it lives",
     file: "src/builder/child/plugins.ts",
-    from: "if (bare && inputs.packageRoots.some((root) => under(file, root))) return resolved;",
-    to: "if (bare) return resolved;",
-    check: integration("ancestors.test.ts", "isn't in the warm set"),
+    from: "if (fromPackage && !packaged(from)) return null;",
+    to: "if (fromPackage) return null;",
+    check: integration("ancestors.test.ts", "undeclared dependency"),
   },
   {
     requirement: "claude-1",

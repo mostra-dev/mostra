@@ -2,11 +2,13 @@
  * A build reads nothing from the directories above the home (VR-01, D80 Claude review finding 1):
  * a stray `node_modules`, `tsconfig.json` or PostCSS config there would change versions without
  * changing any digest. The test plants all three beside a real home, and a marker file that a
- * PostCSS config writes when it runs.
+ * PostCSS config writes when it runs. Packages come from the warm set and the artifact's lockfile
+ * (D95), installed from a local registry, never from the planted `node_modules`.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   connectTo,
   initializeParams,
@@ -22,6 +24,7 @@ let home: TestHome;
 let root: string;
 let client: LineClient;
 let exited: Promise<unknown>;
+let registry: FakeRegistry;
 
 beforeAll(async () => {
   home = testHome();
@@ -41,7 +44,10 @@ beforeAll(async () => {
     "postcss.config.cjs",
     `require("node:fs").writeFileSync(${JSON.stringify(join(root, "postcss-ran"))}, "ran");\nmodule.exports = { plugins: [] };\n`,
   );
-  const daemon = await startDaemon(home);
+  registry = await startRegistry(FIXTURE_PACKAGES);
+  const daemon = await startDaemon(home, {
+    env: { ...home.env, HOME: tempDir("ancestors-user"), npm_config_registry: registry.url },
+  });
   exited = daemon.exited;
   client = await connectTo(daemon.status.socket as string);
   expect((await client.call("mostra/initialize", initializeParams())).error).toBeUndefined();
@@ -50,7 +56,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await client?.call("mostra/shutdown", {});
   await exited;
+  await registry?.close();
 });
+
+/** The JavaScript of a version's client build. */
+const clientScript = (versionId: string): string => {
+  const assets = join(home.home, "versions", versionId, "client", "assets");
+  return readdirSync(assets)
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => readFileSync(join(assets, name), "utf8"))
+    .join("\n");
+};
 
 function artifact(page: string): string {
   const dir = join(tempDir("ancestors"), "artifact");
@@ -64,14 +80,26 @@ const publish = (dir: string): Promise<Message> =>
   client.call("artifact/publish", { source: { path: dir } });
 
 describe("inputs above the home (VR-01)", () => {
-  it("refuses a package that isn't in the warm set, even when a node_modules above the home has it", async () => {
+  it("installs a package the artifact imports from the registry, never from a node_modules above the home", async () => {
     const response = await publish(
       artifact(
         'import { marker } from "leftpad-x";\nexport default function Page() { return <p>{marker}</p>; }\n',
       ),
     );
+    expect(response.error).toBeUndefined();
+    const script = clientScript((response.result as { versionId: string }).versionId);
+    expect(script).toContain("REGISTRY_PACKAGE");
+    expect(script).not.toContain("ANCESTOR_PACKAGE");
+  });
+
+  it("refuses a package's undeclared dependency that only a node_modules above the home has", async () => {
+    const response = await publish(
+      artifact(
+        'import { marker } from "mostra-fixture-phantom";\nexport default function Page() { return <p>{marker}</p>; }\n',
+      ),
+    );
     expect(response.error?.data.code).toBe("MOSTRA_BUILD_UNRESOLVED");
-    expect(response.error?.data.message).toContain("isn't in the warm set");
+    expect(response.error?.data.message).toContain("isn't among the build's packages");
   });
 
   it("compiles with Mostra's settings, not a tsconfig.json above the home, and runs no PostCSS config from there", async () => {
@@ -86,12 +114,7 @@ describe("inputs above the home (VR-01)", () => {
       ),
     );
     expect(response.error).toBeUndefined();
-    const { versionId } = response.result as { versionId: string };
-    const assets = join(home.home, "versions", versionId, "client", "assets");
-    const script = readdirSync(assets)
-      .filter((name) => name.endsWith(".js"))
-      .map((name) => readFileSync(join(assets, name), "utf8"))
-      .join("\n");
+    const script = clientScript((response.result as { versionId: string }).versionId);
     // useDefineForClassFields: true keeps the class field; the planted `false` would turn it into
     // an assignment in a constructor.
     expect(script).toContain("FIELD_MARK");

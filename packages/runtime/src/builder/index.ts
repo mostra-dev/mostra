@@ -6,14 +6,14 @@
  * `MOSTRA_BUILD_TIMEOUT` (FAILURE_MODEL §2, §9).
  *
  * ```ts
- * const spa = createSpaRenderMode({ processes, log, warm: locateWarmSet(env) });
- * const result = await spa.build({ stagingDir, entry: "index.tsx", entryHasDefault: true, manifest, … });
+ * const spa = createSpaRenderMode({ processes, log });
+ * const result = await spa.build({ stagingDir, entry: "index.tsx", entryHasDefault: true, manifest, nodeModules, … });
  * ```
  */
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDiagnostic, RpcError } from "@mostra/protocol";
+import { createDiagnostic } from "@mostra/protocol";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { BUILD_METHOD, type BuildRequest, type BuildResponse, STAGING_FILES } from "./types.ts";
@@ -53,17 +53,13 @@ export interface RenderMode {
   /** The settings that define the build, hashed into `buildConfigDigest`. */
   readonly buildConfig: Readonly<Record<string, unknown>>;
   capabilities(input: { readonly hasServerCode: boolean }): RenderCapabilities;
-  /** Builds the snapshot in `request.stagingDir` into `request.outDir`. */
-  build(request: Omit<BuildRequest, "nodeModules">): Promise<BuildResponse>;
+  /**
+   * Builds the snapshot in `request.stagingDir` into `request.outDir`, resolving packages from
+   * `request.nodeModules`: the warm layout or the artifact's lock layout (D95).
+   */
+  build(request: BuildRequest): Promise<BuildResponse>;
   /** The server bundle a worker loads from a version directory, when the version has one. */
   serverEntry(versionDir: string): string | undefined;
-}
-
-/** The warm set (D91): where its `node_modules` is and what versions it holds. */
-export interface WarmSet {
-  readonly nodeModules: string;
-  /** Package name → installed version, written into each version's `lock.yaml`. */
-  readonly packages: Readonly<Record<string, string>>;
 }
 
 /** The directory of `@mostra/runtime`'s package.json. */
@@ -98,33 +94,6 @@ function versionOf(dir: string): string {
     .version;
 }
 
-function warmMissing(message: string): RpcError {
-  return new RpcError(createDiagnostic("MOSTRA_ENV_WARM_MISSING", { message }));
-}
-
-/**
- * Finds the warm set (D91): `MOSTRA_WARM_DIR`, else the `warm` directory beside the runtime
- * package, as the runtime bundle and this repository lay it out.
- */
-export function locateWarmSet(env: Environment): WarmSet {
-  const dir = env["MOSTRA_WARM_DIR"] ?? resolve(runtimeRoot(), "..", "warm");
-  const manifestFile = join(dir, "package.json");
-  if (!existsSync(manifestFile)) throw warmMissing(`No warm package set at ${dir}.`);
-  const { dependencies = {} } = JSON.parse(readFileSync(manifestFile, "utf8")) as {
-    dependencies?: Record<string, string>;
-  };
-  const nodeModules = join(dir, "node_modules");
-  const packages: Record<string, string> = {};
-  for (const name of Object.keys(dependencies).sort()) {
-    const installed = join(nodeModules, name);
-    if (!existsSync(join(installed, "package.json"))) {
-      throw warmMissing(`The warm package set at ${dir} lacks ${name}.`);
-    }
-    packages[name] = versionOf(installed);
-  }
-  return { nodeModules: realpathSync(nodeModules), packages };
-}
-
 /** The builder child's entry: the compiled one beside the compiled supervisor, else the source. */
 function childEntry(root: string): string {
   return fileURLToPath(import.meta.url).endsWith(".ts")
@@ -136,7 +105,6 @@ function childEntry(root: string): string {
 export interface SpaRenderModeOptions {
   readonly processes: ProcessManager;
   readonly log: Log;
-  readonly warm: WarmSet;
   /** Default {@link BUILD_TIMEOUT_MS}. */
   readonly timeoutMs?: number;
   /** The environment the builder's minimal environment takes `PATH` and `HOME` from. */
@@ -192,12 +160,11 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
         env: childEnv,
         ipc: {},
       });
-      const full: BuildRequest = { ...request, nodeModules: options.warm.nodeModules };
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const outcome = await Promise.race([
           child
-            .request(BUILD_METHOD, full as unknown as Record<string, unknown>, {
+            .request(BUILD_METHOD, request as unknown as Record<string, unknown>, {
               timeoutMs: timeoutMs + 1000,
             })
             .then(

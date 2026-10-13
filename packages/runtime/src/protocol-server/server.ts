@@ -13,6 +13,7 @@ import {
   createDiagnostic,
   type Diagnostic,
   HOST_PROTOCOL_REVISIONS,
+  type HomeConfig,
   type InstanceInfo,
   type JsonRpcParams,
   type MethodDefinition,
@@ -64,6 +65,11 @@ export interface ProtocolServerOptions {
   describe(): InstanceInfo;
   /** Whether a client's `home.path` names this instance's home (D84). */
   servesHome(path: string): boolean;
+  /**
+   * Applies a client's home settings (`HomeConfig` without `path`), such as the dependency policy
+   * (D95). Runs during `mostra/initialize`, after the home check; a throw refuses the session.
+   */
+  configureHome?(home: HomeConfig): void;
   /** Every method besides `mostra/initialize`. */
   readonly handlers: readonly MethodHandler[];
   /** The ports this instance calls when a client registers them. */
@@ -343,6 +349,7 @@ export class ProtocolServer {
         }),
       );
     }
+    if (params.home !== undefined) this.#options.configureHome?.(params.home);
     const supported = new Set(this.#options.supportedPorts);
     const warnings: Diagnostic[] = [];
     for (const port of new Set(params.ports)) {

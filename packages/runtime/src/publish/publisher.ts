@@ -3,7 +3,7 @@
  * content-addressed version. Steps, any of which can fail and leave no visible version:
  *
  * 1. snapshot the source into staging and read its manifest from the snapshot (never running it);
- * 2. freeze the dependencies into `lock.yaml` (the warm set until WP-04);
+ * 2. resolve and freeze the dependencies into `lock.yaml` (D95), installing what's missing;
  * 3. compute `sourceDigest`, `envDigest` and the version ID (D89);
  * 4. (the verify gate, WP-09);
  * 5. build in a builder child, archive the source snapshot into `sources/`, seal the output and
@@ -39,10 +39,14 @@ import {
   type ArtifactManifest,
   type ArtifactPublishParams,
   createDiagnostic,
+  type DepsAddParams,
+  type DepsAddResult,
   type PublishReceipt,
   RpcError,
+  type SourceRef,
 } from "@mostra/protocol";
-import type { RenderMode, WarmSet } from "../builder/index.ts";
+import type { RenderMode } from "../builder/index.ts";
+import { type Dependencies, lockKey } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
@@ -71,7 +75,8 @@ export interface PublisherOptions {
   readonly registry: Registry;
   readonly ledger: Ledger;
   readonly renderMode: RenderMode;
-  readonly warm: WarmSet;
+  /** Resolves each build's packages and lockfile (D95). */
+  readonly dependencies: Dependencies;
   /** This runtime's release (`mostraVersion` in `envDigest`). */
   readonly runtimeVersion: string;
   readonly log: Log;
@@ -85,6 +90,8 @@ export interface Publisher {
   publish(params: ArtifactPublishParams): Promise<PublishReceipt>;
   /** `artifact/create`. */
   create(params: ArtifactCreateParams): Promise<ArtifactCreateResult>;
+  /** `deps/add`: adds packages to an artifact's working lockfile (D95). */
+  addDependencies(params: DepsAddParams): Promise<DepsAddResult>;
 }
 
 const ENTRY_NAMES = ["index.tsx", "index.jsx", "index.mdx"];
@@ -124,21 +131,6 @@ function stillClaims(path: string, artifactId: string): boolean {
     if (result !== undefined) return result;
   }
   return false;
-}
-
-/** The frozen lockfile of a version (D20): today the warm set; WP-04 adds on-demand packages. */
-function lockfile(warm: WarmSet): string {
-  const lines = [
-    "# Mostra lockfile: the packages this version was built with. Frozen at publish.",
-    "lockfileVersion: 1",
-    "warm:",
-  ];
-  for (const [name, version] of Object.entries(warm.packages).sort(([a], [b]) =>
-    a < b ? -1 : 1,
-  )) {
-    lines.push(`  ${JSON.stringify(name)}: ${JSON.stringify(version)}`);
-  }
-  return `${lines.join("\n")}\n`;
 }
 
 async function hashFile(path: string): Promise<string> {
@@ -299,11 +291,9 @@ class KeyedQueue {
 
 /** Creates the publisher of one instance. */
 export function createPublisher(options: PublisherOptions): Publisher {
-  const { registry, ledger, renderMode, warm, log } = options;
+  const { registry, ledger, renderMode, dependencies, log } = options;
   const faults = options.faults ?? noFaults;
   const queue = new KeyedQueue();
-  const lock = lockfile(warm);
-  const lockDigest = sha256Hex(lock);
   const buildConfigDigest = sha256Hex(canonicalJson(renderMode.buildConfig));
   const inflight = new Map<string, Promise<unknown>>();
 
@@ -343,20 +333,22 @@ export function createPublisher(options: PublisherOptions): Publisher {
     );
   };
 
-  const publishOnce = async (params: ArtifactPublishParams): Promise<PublishReceipt> => {
-    let path: string;
-    if ("path" in params.source) path = params.source.path;
-    else {
-      const bound = registry.sourceOf(params.source.artifactId);
-      if (bound === undefined) {
-        throw new RpcError(
-          createDiagnostic("MOSTRA_ARTIFACT_NOT_FOUND", {
-            message: `No artifact ${params.source.artifactId} was published in this home; publish it from its source path.`,
-          }),
-        );
-      }
-      path = bound;
+  /** The path a `SourceRef` names: itself, or the path an artifact was last published from. */
+  const pathOf = (ref: SourceRef): string => {
+    if ("path" in ref) return ref.path;
+    const bound = registry.sourceOf(ref.artifactId);
+    if (bound === undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_ARTIFACT_NOT_FOUND", {
+          message: `No artifact ${ref.artifactId} was published in this home; name it by its source path.`,
+        }),
+      );
     }
+    return bound;
+  };
+
+  const publishOnce = async (params: ArtifactPublishParams): Promise<PublishReceipt> => {
+    const path = pathOf(params.source);
     const source = await resolveSource(path);
 
     // Publishes of one source path, then of one artifact, run one at a time (always in that
@@ -399,14 +391,27 @@ export function createPublisher(options: PublisherOptions): Publisher {
             );
           }
 
-          // 2, 3. Lockfile and digests (DATA_MODEL §2).
+          // 2. The dependencies, from the snapshot's imports and the artifact's working lockfile.
+          const key = lockKey(
+            manifest.id ?? registry.artifactAt(source.bindingPath),
+            source.bindingPath,
+          );
+          const deps = await dependencies.resolve({
+            key,
+            sourceDir: join(staging, "source"),
+            artifactDir: source.root,
+            artifactPath: path,
+          });
+          faults.at("publish:after-dependencies");
+
+          // 3. Digests (DATA_MODEL §2).
           const sourceDigest = listingDigest(listed);
           const environment: BuildEnvironment = {
             mostraVersion: options.runtimeVersion,
             kitVersion: null,
             kitBase: manifest.kit?.base ?? "base",
             mode: manifest.mode ?? "spa",
-            lockDigest,
+            lockDigest: deps.lockDigest,
             buildConfigDigest,
             browserProtocolRevision: null,
           };
@@ -434,6 +439,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               entry: source.entry,
               entryHasDefault: extracted.hasDefaultExport,
               manifest,
+              nodeModules: deps.nodeModules,
               outDir: out,
             });
             if (!built.ok) {
@@ -449,7 +455,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               join(out, "registry.json"),
               `${JSON.stringify(built.registry, null, 2)}\n`,
             );
-            await writeFile(join(out, "lock.yaml"), lock);
+            await writeFile(join(out, "lock.yaml"), deps.lock);
             outputDigest = listingDigest(await outputListing(out));
             await writeFile(
               join(out, "manifest.json"),
@@ -498,6 +504,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
             stillClaims,
             faults,
             requestId: params.requestId,
+            // A path-keyed working lockfile follows the path to the artifact it is now bound to.
+            inTransaction: (db) => dependencies.bind(db, key, artifactId),
           });
           committed = true;
           faults.at("publish:after-commit");
@@ -540,6 +548,22 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // Creates run one at a time: two requests for one directory, or one request sent twice, can
     // never both find it empty.
     create: (params) => queue.run("create", () => create(params)),
+    // Runs in the source path's queue, like its publishes, so a publish that binds the path never
+    // races an addition to the path-keyed lockfile it re-keys.
+    addDependencies: async (params) => {
+      const path = pathOf(params.artifact);
+      const source = await resolveSource(path);
+      return queue.run(`path:${source.bindingPath}`, async () => {
+        const manifestId = extractManifest(source.entry, await readEntry(source)).manifest?.id;
+        return dependencies.add({
+          key: lockKey(manifestId ?? registry.artifactAt(source.bindingPath), source.bindingPath),
+          artifactDir: source.root,
+          artifactPath: path,
+          packages: params.packages,
+          ...(params.requestId !== undefined ? { requestId: params.requestId } : {}),
+        });
+      });
+    },
   };
 
   async function create(params: ArtifactCreateParams): Promise<ArtifactCreateResult> {
