@@ -35,12 +35,12 @@
       "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
       "ignore": ["test/fixtures/artifacts/**"],
-      "ignoreDependencies": ["tailwindcss"]
+      "ignoreDependencies": ["tailwindcss", "pnpm"]
     },
     "packages/warm": {
       "entry": [],
       "project": [],
-      "ignoreDependencies": ["@mostra/react", "react", "react-dom", "react-router", "tailwindcss"]
+      "ignoreDependencies": [".+"]
     }
   },
   "ignore": ["docs/design/evaluations/**"],

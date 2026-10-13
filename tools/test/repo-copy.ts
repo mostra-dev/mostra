@@ -67,6 +67,10 @@ export function copyRepository(): RepoCopy {
       ".turbo",
       "--exclude",
       "target",
+      // Build outputs: a parallel `build` task may be rewriting them while the copy is made, and
+      // every gate that needs them builds them in the copy (WP-04 baseline finding).
+      "--exclude",
+      "/packages/*/dist",
       `${ROOT}/`,
       `${root}/`,
     ],

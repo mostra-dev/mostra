@@ -18,6 +18,8 @@ afterEach(() => {
 
 interface Dep {
   readonly name: string;
+  /** Default 1.0.0. */
+  readonly version?: string;
   readonly license?: string;
   /** The deprecated `licenses: [{ type }]` form some old packages use. */
   readonly legacyLicenses?: readonly string[];
@@ -26,8 +28,11 @@ interface Dep {
   readonly peers?: readonly Dep[];
 }
 
-/** A workspace with one published package depending on `deps` (installed as node_modules links). */
-function workspace(deps: readonly Dep[]): string {
+/** A workspace with one package depending on `deps` (installed as node_modules links). */
+function workspace(
+  deps: readonly Dep[],
+  owner: { readonly name?: string; readonly private?: boolean } = {},
+): string {
   const root = mkdtempSync(join(tmpdir(), "mostra-license-"));
   created.push(root);
   writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
@@ -36,10 +41,11 @@ function workspace(deps: readonly Dep[]): string {
   writeFileSync(
     join(core, "package.json"),
     JSON.stringify({
-      name: "@mostra/core-fixture",
+      name: owner.name ?? "@mostra/core-fixture",
       version: "0.0.0",
+      ...(owner.private ? { private: true } : {}),
       license: "Apache-2.0",
-      dependencies: Object.fromEntries(deps.map((dep) => [dep.name, "1.0.0"])),
+      dependencies: Object.fromEntries(deps.map((dep) => [dep.name, dep.version ?? "1.0.0"])),
     }),
   );
   const install = (dep: Dep, into: string): void => {
@@ -50,7 +56,7 @@ function workspace(deps: readonly Dep[]): string {
       join(dir, "package.json"),
       JSON.stringify({
         name: dep.name,
-        version: "1.0.0",
+        version: dep.version ?? "1.0.0",
         ...(dep.license ? { license: dep.license } : {}),
         ...(dep.legacyLicenses
           ? { licenses: dep.legacyLicenses.map((type) => ({ type, url: "https://example.com" })) }
@@ -143,6 +149,29 @@ describe("license audit", () => {
     expect(result.output).toContain(
       "unlicensed@1.0.0 (@mostra/core-fixture > unlicensed) declares no SPDX license",
     );
+  });
+
+  it("fails on pnpm 11 or later and on pnpm's native binaries, and accepts pnpm 10 (D94)", () => {
+    const pnpm12 = audit(workspace([{ name: "pnpm", version: "12.9.0", license: "MIT" }]));
+    expect(pnpm12.code).toBe(1);
+    expect(pnpm12.output).toContain("pnpm@12.9.0 (@mostra/core-fixture > pnpm) bundles code");
+    const pnpm11 = audit(workspace([{ name: "pnpm", version: "11.28.5", license: "MIT" }]));
+    expect(pnpm11.code).toBe(1);
+    expect(pnpm11.output).toContain("use pnpm 10 (D94)");
+    const exe = audit(
+      workspace([{ name: "@pnpm/exe.darwin-arm64", version: "12.9.0", license: "MIT" }]),
+    );
+    expect(exe.code).toBe(1);
+    expect(exe.output).toContain("links PolyForm-licensed pnpr code");
+    expect(audit(workspace([{ name: "pnpm", version: "10.34.6", license: "MIT" }])).code).toBe(0);
+  });
+
+  it("audits the private warm set, which ships in the runtime bundle (D91)", () => {
+    const deps = [{ name: "warm-engine", license: "BUSL-1.1" }];
+    const warm = audit(workspace(deps, { name: "@mostra/warm", private: true }));
+    expect(warm.code).toBe(1);
+    expect(warm.output).toContain("warm-engine@1.0.0 (@mostra/warm > warm-engine)");
+    expect(audit(workspace(deps, { name: "@mostra/other", private: true })).code).toBe(0);
   });
 
   it("follows installed peer dependencies (review finding 8)", () => {
