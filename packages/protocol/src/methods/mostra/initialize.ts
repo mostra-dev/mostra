@@ -57,7 +57,25 @@ export interface HomeConfig {
    * different one.
    */
   readonly path?: string;
+  /**
+   * The dependency policy (D43, D95), kept in the home's `config.json` for every later client:
+   * `auto` (the default) installs any package an artifact imports; `explicit` installs only what
+   * `deps/add` adds and reports other imports as `MOSTRA_DEP_MISSING`.
+   */
+  readonly dependencies?: DependencyPolicy;
 }
+
+/** How packages enter an artifact's lockfile (D43). */
+export type DependencyPolicy = "auto" | "explicit";
+
+/** The Zod schema of the `DependencyPolicy` type. */
+export const DependencyPolicy: z.ZodType<DependencyPolicy> = z
+  .enum(["auto", "explicit"])
+  .register(wireRegistry, {
+    id: "DependencyPolicy",
+    description:
+      "How packages enter an artifact's lockfile: auto installs what artifacts import; explicit only what deps/add adds (D43).",
+  });
 
 /** The params of `mostra/initialize` (INTERFACES §6). */
 export interface MostraInitializeParams {
@@ -131,11 +149,14 @@ export const ClientCapabilities: z.ZodType<ClientCapabilities> = z
 
 /** The Zod schema of the `HomeConfig` type. */
 export const HomeConfig: z.ZodType<HomeConfig> = z
-  .object({ path: z.string().min(1).exactOptional() })
+  .object({
+    path: z.string().min(1).exactOptional(),
+    dependencies: DependencyPolicy.exactOptional(),
+  })
   .register(wireRegistry, {
     id: "HomeConfig",
     description:
-      "Home settings from a spawning host; path is a check against the instance's home (D84).",
+      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43).",
   });
 
 /** The Zod schema of the `InstanceInfo` type. */

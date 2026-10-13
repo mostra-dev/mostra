@@ -13,6 +13,16 @@ export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
 export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID"];
 
 // @public
+export interface AddedPackage {
+    readonly name: string;
+    readonly version: string;
+    readonly warm: boolean;
+}
+
+// @public
+export const AddedPackage: z.ZodType<AddedPackage>;
+
+// @public
 export type AnyMethod = MethodDefinition<unknown, unknown>;
 
 // @public
@@ -275,6 +285,34 @@ export type DemoSpec = {
 };
 
 // @public
+export type DepDiagnosticCode = (typeof depDiagnosticCodes)[number];
+
+// @public
+export const depDiagnosticCodes: readonly ["MOSTRA_DEP_MISSING", "MOSTRA_DEP_NOT_FOUND", "MOSTRA_DEP_OFFLINE", "MOSTRA_DEP_TIMEOUT", "MOSTRA_DEP_INSTALL_FAILED", "MOSTRA_DEP_WARM_CONFLICT", "MOSTRA_DEP_SPEC_INVALID"];
+
+// @public
+export type DependencyPolicy = "auto" | "explicit";
+
+// @public
+export const DependencyPolicy: z.ZodType<DependencyPolicy>;
+
+// @public
+export const depsAddMethod: MethodDefinition<DepsAddParams, DepsAddResult>;
+
+// @public
+export interface DepsAddParams {
+    readonly artifact: SourceRef;
+    readonly packages: readonly string[];
+    readonly requestId?: string;
+}
+
+// @public
+export interface DepsAddResult {
+    readonly lockDigest: string;
+    readonly packages: readonly AddedPackage[];
+}
+
+// @public
 export interface Diagnostic {
     readonly code: DiagnosticCode;
     readonly count?: number;
@@ -380,6 +418,7 @@ export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
 
 // @public
 export interface HomeConfig {
+    readonly dependencies?: DependencyPolicy;
     readonly path?: string;
 }
 
@@ -537,7 +576,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {

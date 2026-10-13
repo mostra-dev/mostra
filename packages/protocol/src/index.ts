@@ -23,6 +23,8 @@ export {
   buildDiagnosticCodes,
   type CreateDiagnosticOptions,
   createDiagnostic,
+  type DepDiagnosticCode,
+  depDiagnosticCodes,
   diagnosticCatalog,
   type EnvDiagnosticCode,
   envDiagnosticCodes,
@@ -113,6 +115,12 @@ export {
   type ArtifactPublishResult,
   artifactPublishMethod,
 } from "./methods/artifact/publish.ts";
+export {
+  AddedPackage,
+  type DepsAddParams,
+  type DepsAddResult,
+  depsAddMethod,
+} from "./methods/deps/add.ts";
 export { hostMethods } from "./methods/index.ts";
 export {
   ChildProcessStatus,
@@ -123,6 +131,7 @@ export {
 export {
   ClientCapabilities,
   ClientInfo,
+  DependencyPolicy,
   HomeConfig,
   InstanceCapabilities,
   InstanceInfo,
