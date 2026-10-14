@@ -76,9 +76,15 @@ export async function startRegistry(packages: readonly FixturePackage[]): Promis
   const server: Server = createServer((request, response) => {
     const path = decodeURIComponent((request.url ?? "/").split("?")[0] ?? "/").slice(1);
     requests.push(path);
-    const file = /^(.+)\/-\/[^/]+-(\d[^/]*)\.tgz$/.exec(path);
-    if (file) {
-      const found = byName.get(file[1] ?? "")?.find((entry) => entry.version === file[2]);
+    // Tarballs live at `<name>/-/<basename>-<version>.tgz`; parsed without a backtracking regex.
+    const marker = path.lastIndexOf("/-/");
+    const tarballFile = marker === -1 ? "" : path.slice(marker + 3);
+    if (marker !== -1 && tarballFile.endsWith(".tgz")) {
+      const name = path.slice(0, marker);
+      const stem = tarballFile.slice(0, -".tgz".length);
+      const base = `${name.split("/").pop()}-`;
+      const version = stem.startsWith(base) ? stem.slice(base.length) : "";
+      const found = byName.get(name)?.find((entry) => entry.version === version);
       if (found) {
         response.writeHead(200, { "content-type": "application/octet-stream" });
         response.end(found.tgz);

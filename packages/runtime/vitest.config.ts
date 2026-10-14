@@ -21,6 +21,18 @@ export default defineConfig({
           fileParallelism: false,
         },
       },
+      {
+        // External evidence (STANDARDS, Verification layer 7): the real npm registry. Run by hand
+        // with `pnpm --filter @mostra/runtime test:external`; never part of CI.
+        extends: true,
+        test: {
+          name: "external",
+          include: ["test/external/**/*.test.ts"],
+          testTimeout: 600_000,
+          hookTimeout: 120_000,
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });

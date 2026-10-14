@@ -38,6 +38,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:external": "vitest run --project external",
     "api": "mostra-tools api",
     "prove:seeds": "node scripts/prove-seeds.ts"
   },
