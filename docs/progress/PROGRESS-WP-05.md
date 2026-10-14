@@ -1,6 +1,6 @@
 # WP-05 progress: gateway, addressing and hygiene
 
-**Status:** Candidate, awaiting the review decision of D80 (Claude Opus) and Mirza's acceptance. The report is finalized after acceptance (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-14 ("approved 100%"), merged to `main` as `175a38f`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | green: format-lint, types, unit, integration, build, boundaries, api, licenses, rust, docs and commits all pass (2 min 55 s, macOS arm64) |
 | Predecessors | WP-02 and WP-03 done ([PROGRESS-WP-02](PROGRESS-WP-02.md), [PROGRESS-WP-03](PROGRESS-WP-03.md) on `origin/main`); WP-04 done too; no `RECOVERY-WP-05-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64, Safari 26.2 |
-| Pull request | [#14](https://github.com/mostra-dev/mostra/pull/14) |
+| Pull request | [#14](https://github.com/mostra-dev/mostra/pull/14), merged |
 
 ## What was built
 
@@ -147,11 +147,12 @@ Written following the writing-for-agents guidance; not yet reviewed by Mirza:
 
 ## Commits and publication
 
-- **Range so far:** `3aa4300..fe4cfe6` on `wp/05-gateway`, and this report's commit. It is finalized with the merge (D79).
+- **Range:** `3aa4300..175a38f` on `main`: 30 signed-off commits on `wp/05-gateway` (`031ef21` to `63dda45`) and the merge commit `175a38f` of [#14](https://github.com/mostra-dev/mostra/pull/14). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38641322353](https://github.com/mostra-dev/mostra/actions/runs/38641322353), CodeQL [38641322390](https://github.com/mostra-dev/mostra/actions/runs/38641322390) and Scorecard [38641322437](https://github.com/mostra-dev/mostra/actions/runs/38641322437), all green.
 - **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol`, `@mostra/react` and `@mostra/runtime`, and the first release of `@mostra/shell`. The release pipeline is WP-11's (EN-05).
 - **Docs:** generated diagnostic pages for the 18 new codes in `docs/reference/`; the docs site is WP-26's.
 - **Follow-ups for later packages** are in their specifications (D96): WP-06, WP-07, WP-08, WP-10, WP-13, WP-15 and WP-20.
-- **Remaining dirty paths:** none in the repository. Outside it: edit scripts, the MCP Apps tarball and the review transcript `review-wp-05.md` in `$JCODE_SCRATCH_DIR/wp05`. The e2e and Safari runs now remove their homes (`MOSTRA_E2E_KEEP=1` keeps the e2e one); the 34 homes earlier runs left in `/tmp`, and the old `/tmp/mostra-e2e-run.json`, were removed.
+- **Remaining dirty paths:** none in the repository. Outside it: edit scripts, the MCP Apps tarball, the seed logs, the GPT review transcript `review-wp-05.md` and copies of the Claude review (`opus-review.md`, `opus-inline.md`) in `$JCODE_SCRATCH_DIR/wp05`; Playwright 1.63's browsers stay in the Playwright cache beside 1.64's. The e2e and Safari runs now remove their homes (`MOSTRA_E2E_KEEP=1` keeps the e2e one); the 34 homes earlier runs left in `/tmp`, and the old `/tmp/mostra-e2e-run.json`, were removed.
 
 ## Next
 
