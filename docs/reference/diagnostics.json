@@ -82,6 +82,15 @@
       "fix": "Leave out the template, or use one of the templates of this release."
     },
     {
+      "code": "MOSTRA_ARTIFACT_VERSION_NOT_FOUND",
+      "severity": "error",
+      "phase": "host",
+      "title": "No such version",
+      "hint": "Name a version the artifact has (`artifact/get` lists them), or leave the version out for the latest.",
+      "explanation": "The request named a version number or version ID that this artifact never published in this home. Viewers only ever open published versions (D09), so there is nothing to show.",
+      "fix": "List the artifact's versions with `artifact/get` and pick one, or omit the version to open the latest. A link to `/a/<artifactId>/v/<number>` needs a number from that list."
+    },
+    {
       "code": "MOSTRA_BUILD_CRASHED",
       "severity": "error",
       "phase": "compile",
@@ -179,6 +188,33 @@
       "hint": "Add the package without a version, or with one the warm set's version satisfies.",
       "explanation": "The package is part of Mostra's warm set, which every artifact resolves at one fixed version so that React and the other shared packages exist exactly once. The requested version doesn't match the warm one, and an artifact can't replace a warm package.",
       "fix": "Drop the version from the spec (`mostra add react`), or request a range the warm version satisfies. The message names the warm version."
+    },
+    {
+      "code": "MOSTRA_ENV_BIND_FAILED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Gateway can't bind",
+      "hint": "Start Mostra with an address this machine has, or without `--bind` to use the loopback address.",
+      "explanation": "The gateway couldn't listen on the address it was given: `--bind` named an address no interface has, a wildcard bind came without `--url-host`, or the operating system refused the address. Mostra doesn't start rather than serve on an address nobody asked for.",
+      "fix": "Omit `--bind` to serve on `127.0.0.1` only (the default). For a wider bind, pass an address of one of this machine's interfaces, and with `0.0.0.0` or `::` also `--url-host <name>`, the name viewers use to reach it."
+    },
+    {
+      "code": "MOSTRA_ENV_PORT_TAKEN",
+      "severity": "warning",
+      "phase": "host",
+      "title": "Leased port taken",
+      "hint": "Open the artifact through a new link: `view/url` or `mostra open` mints one on the new port.",
+      "explanation": "The shell's port or an artifact's port is leased per home and reused across restarts, so links keep working (D62, D99). At start-up another program held the leased port, so Mostra leased a new one. Links that named the old port stop working; the shell's port changing affects every link of the home.",
+      "fix": "Mint new links with `view/url` (the publish receipt of the next publish carries the new default link too). Stop the program that took the port if you want the old links back; `mostra doctor` names it where it can."
+    },
+    {
+      "code": "MOSTRA_ENV_SHELL_MISSING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Shell app missing",
+      "hint": "Reinstall the Mostra runtime, or set `MOSTRA_SHELL_DIR` to its built shell.",
+      "explanation": "Viewers open artifacts inside the shell, Mostra's trusted page, which ships with the runtime as built files. The runtime couldn't find them, which means the runtime installation is incomplete. Artifact frames are still served.",
+      "fix": "Reinstall Mostra so the runtime bundle is complete. A custom layout can point the runtime at the shell's built directory with `MOSTRA_SHELL_DIR`."
     },
     {
       "code": "MOSTRA_ENV_WARM_MISSING",
@@ -334,6 +370,15 @@
       "fix": "Register only the ports listed in `capabilities.ports` of the `mostra/initialize` result. If the host needs the port, upgrade the instance to a release that supports it."
     },
     {
+      "code": "MOSTRA_HOST_REQUEST_ID_REUSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "A requestId was reused with other parameters",
+      "hint": "Send a new `requestId` for a new request; repeat the exact parameters only to retry one.",
+      "explanation": "A mutating method recorded its result under this `requestId` for different parameters. Replaying that result would answer a request nobody made (a link for another artifact or with other scopes, another source's publish), so the instance refuses (H-03). Retries with the same parameters still return the recorded result.",
+      "fix": "Generate a fresh `requestId` for every new request, and reuse one only to retry the same request after a timeout or a lost connection."
+    },
+    {
       "code": "MOSTRA_HOST_REVISION_UNSUPPORTED",
       "severity": "error",
       "phase": "host",
@@ -359,6 +404,123 @@
       "hint": "Retry the request with the same request ID, or allow it more time.",
       "explanation": "No response arrived within the time the caller allowed. The other side may still be working on the request, and it may still take effect.",
       "fix": "Retry with the same request ID, which returns the recorded result if the first attempt completed. Allow a longer timeout for slow operations."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_CONTENT_TYPE",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "JSON content type required",
+      "hint": "Send the body as JSON with `Content-Type: application/json`.",
+      "explanation": "Requests that change state must have a JSON body. A form or plain-text body is something any website can send without asking the browser first, so the gateway refuses it with 415.",
+      "fix": "Send `Content-Type: application/json` and a JSON body."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_CSRF_MISSING",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "CSRF token missing or wrong",
+      "hint": "Send the session's CSRF token from `GET /_mostra/session` in the `X-Mostra-CSRF` header.",
+      "explanation": "Every request that changes state through a session carries the session's CSRF token in the `X-Mostra-CSRF` header. The token comes only from the session endpoint of the same origin, which no other page can read. A missing or different token is answered with 403.",
+      "fix": "Read `csrf` from `GET /_mostra/session` (on the shell, `GET /a/<artifactId>/_mostra/session`) and send it with every POST. Mostra's client runtime and shell do this for you."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "The request's headers are too large",
+      "hint": "Open the link again: this page cleared the cookies that made the request too large.",
+      "explanation": "The request's headers passed the gateway's limit of 1 MiB, more than any browser sends for one host's cookies. Every port of the loopback host shares one cookie jar, so a page on any of them can fill it. The gateway answers 431 with `Clear-Site-Data: \"cookies\"`, which empties the host's cookies, so the next request works. Mostra's sessions go with them and come back when a link is opened again.",
+      "fix": "Open the artifact's link again. If it keeps happening, find the page that sets the cookies: it runs on this host."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_HOST_REFUSED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Host not served",
+      "hint": "Open the artifact through the exact link Mostra gave you.",
+      "explanation": "The request's `Host` header named a host this gateway doesn't serve. Each gateway listener accepts exactly the host and port its capability URLs use, so a page that rebinds its own DNS name to the loopback address can't reach an artifact (DNS rebinding). The gateway answers 421.",
+      "fix": "Use the URL from `view/url` or the publish receipt as it is, without replacing `127.0.0.1` by `localhost` or another name. A gateway started with `--bind` and `--url-host` accepts the URL host it was given."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_NOT_SERVED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Nothing served here",
+      "hint": "Request a published version's files or a documented `/_mostra/` path.",
+      "explanation": "The gateway serves only published versions' client files and the browser-protocol paths under `/_mostra/`. Everything else in the home, such as sources, server bundles, staging and unpublished builds, has no URL. A path or method nothing answers gets 404 or 405.",
+      "fix": "Check the path. Server code runs through the browser protocol, never as a file, and an artifact becomes viewable only once it is published."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_ORIGIN_REFUSED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Origin refused",
+      "hint": "Send the request from the page's own origin.",
+      "explanation": "A request that changes state, opens a stream or upgrades to a WebSocket must carry an `Origin` header equal to the origin it is sent to. The gateway compares the strings exactly and answers 403 otherwise, so another website, or another artifact on a different port, can't drive this one.",
+      "fix": "Call the gateway from the page it serves: the shell from the shell, the artifact from its own frame. Tools outside a browser send the listener's own origin."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_RATE_LIMITED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Too many failed attempts",
+      "hint": "Wait for the time in `Retry-After`, then open the link again.",
+      "explanation": "More than 30 capability tokens failed for this artifact within a minute, so the gateway refuses every token for it, valid ones included, until the minute has passed. A guess can't succeed while the limit holds, and only this artifact's links wait. The gateway answers 429 with `Retry-After`.",
+      "fix": "Wait, then open the link again. Repeated failures usually come from a mistyped link or a script retrying an old one."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_REQUEST_MALFORMED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Malformed request",
+      "hint": "Send one well-formed HTTP request with a path that starts with `/`.",
+      "explanation": "The gateway refused a request it can't interpret safely: a repeated `Host` or `Origin` header, a request target that isn't a path, an encoded `/` or `..` that would leave the served tree, a body that isn't valid JSON, or a header with control characters. It answers 400 rather than guess.",
+      "fix": "Send a single request with one `Host` header and a plain path. Browsers always do; this usually means a hand-written client or a probe."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_SCOPE_DENIED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Not allowed by this link",
+      "hint": "Open a link minted with this scope (`view/url` with `scopes`).",
+      "explanation": "The session's link doesn't carry the scope this request needs: `draft` to save answers, `submit` to submit, `review` to comment, and `action:*`, `action:<export>` or `action:<module path>#<export>` to run a server function. A view-and-comment link, for example, can't submit or run an action. The gateway answers 403.",
+      "fix": "Mint a link with the scopes the viewer needs, such as `view/url` with `scopes: [\"view\", \"draft\", \"submit\"]`. Without `scopes`, a link carries every scope."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_SESSION_CONFLICT",
+      "severity": "warning",
+      "phase": "hygiene",
+      "title": "Another link is already open for this artifact",
+      "hint": "Choose which link to keep; send `replace: true` to use the new one.",
+      "explanation": "This browser already has a live session for the artifact from a different link. Opening a link never silently replaces it, because a page elsewhere could send the viewer to its own, narrower link and take over their tabs (D98). The shell shows both links' access and lets the viewer choose; the answer is 409 with `current` and `offered`.",
+      "fix": "In the shell, choose the link to keep. A client exchanging tokens itself sends `replace: true` to replace the session."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_SESSION_MISSING",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "No session",
+      "hint": "Open the artifact's capability link again to start a session.",
+      "explanation": "The request carried no valid session for this origin. Sessions start when a capability link is opened: the shell exchanges the link's token for a session cookie, and gives the artifact frame a single-use ticket for its own. A session issued for another origin never counts, because every port of the host shares the browser's cookies. The gateway answers 401.",
+      "fix": "Open the full capability link, including the part after `#`. A bookmark of the page without it works while the browser keeps the session cookie (400 days)."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_TOKEN_INVALID",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Unknown capability token",
+      "hint": "Use the complete capability link Mostra gave you, or mint a new one with `view/url`.",
+      "explanation": "The capability token or frame ticket matched nothing in this home: it was mistyped, cut short, belongs to another home or artifact, or the ticket was already used or expired (tickets last 60 seconds and work once). Over the host protocol, the token ID named in `view/revoke` or `view/rotate` doesn't exist. The gateway answers 401, and failed attempts count towards the rate limit.",
+      "fix": "Copy the whole link again. An agent or host mints a fresh one with `view/url`; the shell gets a new frame ticket by reloading."
+    },
+    {
+      "code": "MOSTRA_HYGIENE_TOKEN_REVOKED",
+      "severity": "error",
+      "phase": "hygiene",
+      "title": "Link revoked or expired",
+      "hint": "Ask for a new link: `view/url` mints one, or `view/rotate` replaces this one.",
+      "explanation": "The capability link was revoked (`view/revoke`), replaced (`view/rotate`), or reached the end of its `ttl`. Every session started from it ends too. The gateway answers 410. Local links have no expiry unless one was asked for.",
+      "fix": "Get a new link from whoever shared this one. An agent mints it with `view/url`, or rotates the old one with `view/rotate`, and shares the new URL."
     },
     {
       "code": "MOSTRA_MANIFEST_INVALID",

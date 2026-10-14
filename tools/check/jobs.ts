@@ -13,6 +13,8 @@ export const JOB_NAMES = [
   "types",
   "unit",
   "integration",
+  "hygiene",
+  "e2e",
   "build",
   "boundaries",
   "api",
@@ -56,6 +58,14 @@ const RUST = [
   /^rustfmt\.toml$/,
   /^clippy\.toml$/,
 ];
+
+/** The packages whose changes reach the gateway's behavior. */
+const GATEWAY = ["@mostra/runtime", "@mostra/protocol", "@mostra/shell"];
+
+/** Whether the plan covers every package or one of `names`. */
+function affects(plan: Plan, names: readonly string[]): boolean {
+  return plan.packages === "all" || plan.packages.some((name) => names.includes(name));
+}
 
 /** Every job. */
 export const JOBS: readonly Job[] = [
@@ -106,6 +116,20 @@ export const JOBS: readonly Job[] = [
       plan.packages === "all" ||
       plan.packages.some((name) => name === "@mostra/runtime" || name === "@mostra/protocol"),
     tasks: ["test:integration"],
+  },
+  {
+    name: "hygiene",
+    summary:
+      "The hygiene checklist as negative tests against a real gateway (bad Host, Origin, token, CSRF, revoked token)",
+    applies: (plan) => affects(plan, GATEWAY),
+    tasks: ["test:hygiene"],
+  },
+  {
+    name: "e2e",
+    summary:
+      "Playwright through the real gateway in Chromium, Firefox and WebKit, on macOS and Linux in CI",
+    applies: (plan) => affects(plan, [...GATEWAY, "@mostra/react", "@mostra/e2e"]),
+    tasks: ["e2e"],
   },
   {
     name: "build",

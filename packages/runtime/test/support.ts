@@ -223,10 +223,10 @@ export interface DaemonStatus {
 /** Starts `mostra-runtime daemon` and waits for its status line. */
 export async function startDaemon(
   testHome: TestHome,
-  options: { env?: NodeJS.ProcessEnv; nodeArgs?: readonly string[] } = {},
+  options: { env?: NodeJS.ProcessEnv; nodeArgs?: readonly string[]; args?: readonly string[] } = {},
 ): Promise<RuntimeProcess & { status: DaemonStatus }> {
   const started = runBin(
-    ["daemon", "--home", testHome.home],
+    ["daemon", "--home", testHome.home, ...(options.args ?? [])],
     options.env ?? testHome.env,
     options.nodeArgs,
   );

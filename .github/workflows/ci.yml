@@ -62,7 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: [format-lint, types, unit, build, boundaries, api, licenses, docs, commits]
+        job: [format-lint, types, unit, hygiene, build, boundaries, api, licenses, docs, commits]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -158,6 +158,43 @@ jobs:
       - name: pnpm check --job integration
         run: node tools/check/cli.ts --job integration $SCOPE --verbose
 
+  # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
+  # platforms: WebKit on macOS is the closest Playwright gets to Safari.
+  e2e:
+    name: e2e (${{ matrix.os }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"e2e"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: e2e
+      - name: Cache the Playwright browsers
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
+          key: playwright-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Chromium, Firefox and WebKit
+        run: pnpm --filter @mostra/e2e exec playwright install --with-deps chromium firefox webkit
+      - name: pnpm check --job e2e
+        run: node tools/check/cli.ts --job e2e $SCOPE --verbose
+      - name: Keep the traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-traces-${{ matrix.os }}
+          path: tests/e2e/test-results
+          retention-days: 7
+
   dependency-review:
     name: dependency review
     if: github.event_name == 'pull_request'
@@ -176,7 +213,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, check, rust, integration, dependency-review]
+    needs: [plan, check, rust, integration, e2e, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -18,6 +18,16 @@ export interface ChildProcessStatus {
   readonly startedAt: string;
 }
 
+/** Where the gateway listens (D99, WP-05). */
+export interface GatewayStatus {
+  /** The address its listeners bind: `127.0.0.1` unless the instance started with `--bind`. */
+  readonly bind: string;
+  /** The shell's origin, where every capability link points. */
+  readonly shell: string;
+  /** The artifact origins it is serving now, one per opened artifact. */
+  readonly artifacts: readonly { readonly artifactId: string; readonly origin: string }[];
+}
+
 /**
  * The result of `instance/status`. The packages that add ports, deliveries, shares and versions
  * add their fields here (INTERFACES §6).
@@ -33,7 +43,18 @@ export interface InstanceStatusResult {
   readonly connections: number;
   /** The child processes the instance supervises. */
   readonly processes: readonly ChildProcessStatus[];
+  /** Where the gateway listens, once it has started (WP-05). */
+  readonly gateway?: GatewayStatus;
 }
+
+/** The Zod schema of the `GatewayStatus` type. */
+export const GatewayStatus: z.ZodType<GatewayStatus> = z
+  .object({
+    bind: z.string(),
+    shell: z.string(),
+    artifacts: z.array(z.object({ artifactId: z.string(), origin: z.string() })).readonly(),
+  })
+  .register(wireRegistry, { id: "GatewayStatus", description: "Where the gateway listens." });
 
 /** The Zod schema of the `ChildProcessStatus` type. */
 export const ChildProcessStatus: z.ZodType<ChildProcessStatus> = z
@@ -59,6 +80,7 @@ const result: z.ZodType<InstanceStatusResult> = z
     socket: z.string(),
     connections: z.int().min(0),
     processes: z.array(ChildProcessStatus).readonly(),
+    gateway: GatewayStatus.exactOptional(),
   })
   .register(wireRegistry, { id: "InstanceStatusResult" });
 

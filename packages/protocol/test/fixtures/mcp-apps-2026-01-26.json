@@ -1,0 +1,23 @@
+{
+  "source": "@modelcontextprotocol/ext-apps 2.0.3, dist/src/spec.types.d.ts (LATEST_PROTOCOL_VERSION 2026-01-26), checked 2026-10-14",
+  "protocolVersion": "2026-01-26",
+  "messages": {
+    "ui/initialize": { "from": "view", "kind": "request", "params": ["appInfo", "appCapabilities", "protocolVersion"], "result": ["protocolVersion", "hostInfo", "hostCapabilities", "hostContext"] },
+    "ui/notifications/initialized": { "from": "view", "kind": "notification" },
+    "ui/notifications/size-changed": { "from": "view", "kind": "notification", "params": ["width", "height"] },
+    "ui/open-link": { "from": "view", "kind": "request", "params": ["url"], "result": ["isError"] },
+    "ui/download-file": { "from": "view", "kind": "request" },
+    "ui/message": { "from": "view", "kind": "request" },
+    "ui/request-display-mode": { "from": "view", "kind": "request" },
+    "ui/update-model-context": { "from": "view", "kind": "request" },
+    "ui/notifications/request-teardown": { "from": "view", "kind": "notification" },
+    "ui/notifications/host-context-changed": { "from": "host", "kind": "notification" },
+    "ui/notifications/tool-input": { "from": "host", "kind": "notification" },
+    "ui/notifications/tool-input-partial": { "from": "host", "kind": "notification" },
+    "ui/notifications/tool-result": { "from": "host", "kind": "notification" },
+    "ui/notifications/tool-cancelled": { "from": "host", "kind": "notification" },
+    "ui/resource-teardown": { "from": "host", "kind": "request" },
+    "ui/notifications/sandbox-proxy-ready": { "from": "sandbox", "kind": "notification" },
+    "ui/notifications/sandbox-resource-ready": { "from": "host", "kind": "notification" }
+  }
+}

@@ -7,11 +7,12 @@ import { buildDiagnostic, type DiagnosticDetails, type DiagnosticSpec } from "..
 import { type ActionDiagnosticCode, actionDiagnostics } from "./action.ts";
 import { type ArtifactDiagnosticCode, artifactDiagnostics } from "./artifact.ts";
 import { type BuildDiagnosticCode, buildDiagnostics } from "./build.ts";
-// gen:area-imports
 import { type DepDiagnosticCode, depDiagnostics } from "./dep.ts";
 import { type EnvDiagnosticCode, envDiagnostics } from "./env.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
+// gen:area-imports
+import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
@@ -20,11 +21,12 @@ import { type TargetDiagnosticCode, targetDiagnostics } from "./target.ts";
 export { type ActionDiagnosticCode, actionDiagnosticCodes } from "./action.ts";
 export { type ArtifactDiagnosticCode, artifactDiagnosticCodes } from "./artifact.ts";
 export { type BuildDiagnosticCode, buildDiagnosticCodes } from "./build.ts";
-// gen:area-exports
 export { type DepDiagnosticCode, depDiagnosticCodes } from "./dep.ts";
 export { type EnvDiagnosticCode, envDiagnosticCodes } from "./env.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
+// gen:area-exports
+export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
@@ -33,6 +35,7 @@ export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | HygieneDiagnosticCode
   | DepDiagnosticCode
   | EnvDiagnosticCode
   | TargetDiagnosticCode
@@ -48,6 +51,7 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...hygieneDiagnostics,
   ...depDiagnostics,
   ...envDiagnostics,
   ...targetDiagnostics,

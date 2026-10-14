@@ -5,8 +5,13 @@
 ```ts
 
 import { ArtifactManifest } from '@mostra/protocol';
+import { Bridge } from '@mostra/protocol';
+import { UiInitializeResult } from '@mostra/protocol';
 
 export { ArtifactManifest }
+
+// @public
+export function connectShell(): Promise<ShellConnection | undefined>;
 
 // @public
 export function createServerReference(id: string): ServerReference;
@@ -15,9 +20,22 @@ export function createServerReference(id: string): ServerReference;
 export function defineArtifact<const M extends ArtifactManifest>(manifest: M): M;
 
 // @public
+export function openLink(url: string): Promise<boolean>;
+
+// @public
+export function reportReady(): void;
+
+// @public
 export interface ServerReference<A extends unknown[] = unknown[], R = unknown> {
     (...args: A): Promise<R>;
     readonly mostraServerFunctionId: string;
+}
+
+// @public
+export interface ShellConnection {
+    readonly bridge: Bridge;
+    readonly host: UiInitializeResult;
+    readonly shellOrigin: string;
 }
 
 // (No @packageDocumentation comment for this package)

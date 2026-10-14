@@ -13,6 +13,7 @@ export const artifactDiagnosticCodes = [
   "MOSTRA_ARTIFACT_NO_PAGE",
   "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
   "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN",
+  "MOSTRA_ARTIFACT_VERSION_NOT_FOUND",
   // gen:codes
 ] as const;
 
@@ -107,6 +108,17 @@ export const artifactDiagnostics: AreaCatalog<ArtifactDiagnosticCode> = {
       explanation:
         "The template named isn't one this runtime provides. Without a template, Mostra writes a minimal entry with a generated artifact ID.",
       fix: "Leave out the template, or use one of the templates of this release.",
+    },
+  },
+  MOSTRA_ARTIFACT_VERSION_NOT_FOUND: {
+    severity: "error",
+    phase: "host",
+    title: "No such version",
+    hint: "Name a version the artifact has (`artifact/get` lists them), or leave the version out for the latest.",
+    docs: {
+      explanation:
+        "The request named a version number or version ID that this artifact never published in this home. Viewers only ever open published versions (D09), so there is nothing to show.",
+      fix: "List the artifact's versions with `artifact/get` and pick one, or omit the version to open the latest. A link to `/a/<artifactId>/v/<number>` needs a number from that list.",
     },
   },
   // gen:entries

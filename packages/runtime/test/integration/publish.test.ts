@@ -68,7 +68,11 @@ interface Receipt {
   cursor: string;
   reused: boolean;
   url?: string;
+  tokenId?: string;
 }
+
+/** The shape of every receipt's capability link since WP-05 (D90, D97): the shell, the artifact, the secret in the fragment. */
+const LINK = /^http:\/\/127\.0\.0\.1:\d+\/a\/art_[0-9A-HJKMNP-TV-Z]{26}#t=[0-9A-HJKMNP-TV-Z]{26}$/;
 
 let home: TestHome;
 let daemon: RuntimeProcess & { status: DaemonStatus };
@@ -107,7 +111,10 @@ describe("artifacts build with no configuration (AU-01, AU-02, AU-03)", () => {
     const receipt = await publish(join(dir, "page.tsx"));
     expect(receipt).toMatchObject({ version: 1, reused: false });
     expect(receipt.versionId).toMatch(/^ver_[0-9A-HJKMNP-TV-Z]{26}$/);
-    expect(receipt.url).toBeUndefined(); // D90: the gateway (WP-05) adds it.
+    // D90: every receipt carries the artifact's default capability link since WP-05 (D97 item 3).
+    expect(receipt.url).toMatch(LINK);
+    expect(receipt.url).toContain(`/a/${receipt.artifactId}#t=`);
+    expect(receipt.tokenId).toMatch(/^tok_[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(treeState(dir)).toEqual(before);
     const version = join(home.home, "versions", receipt.versionId);
     expect(readFileSync(join(version, "client/index.html"), "utf8")).toContain(
@@ -215,6 +222,10 @@ describe("content-addressed versions (VR-01)", () => {
     writeFileSync(file, `${readFileSync(file, "utf8")}\n// changed\n`);
     const changed = await publish(file);
     expect(changed).toMatchObject({ artifactId: first.artifactId, version: 2, reused: false });
+    // The default link is the artifact's, not the version's: every publish returns the same one.
+    expect(first.url).toMatch(LINK);
+    expect(changed.url).toBe(first.url);
+    expect(changed.tokenId).toBe(first.tokenId);
     expect(changed.versionId).not.toBe(first.versionId);
     const detail = ok(await client.call("artifact/get", { artifact: { path: file } })) as {
       versions: { id: string; number: number; outputDigest: string }[];
@@ -349,6 +360,8 @@ describe("identity (AU-07)", () => {
     writeFileSync(file, `${readFileSync(file, "utf8")}\n// changed after the first request\n`);
     const replay = await publish(file, { requestId: "req-1" });
     expect(replay).toEqual(first);
+    // The replay carries the link too; the recorded receipt holds no secret (gateway.test.ts).
+    expect(replay.url).toMatch(LINK);
   });
 });
 

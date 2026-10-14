@@ -20,9 +20,17 @@ import {
   type MostraInitializeResult,
   RpcError,
 } from "@mostra/protocol";
+import { createAddressing, resolveBind } from "../addressing/index.ts";
 import { createSpaRenderMode } from "../builder/index.ts";
 import { createDependencies, locateWarmSet, recoverDependencies } from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
+import {
+  Capabilities,
+  capabilityKey,
+  createGateway,
+  type Gateway,
+  locateShell,
+} from "../gateway/index.ts";
 import {
   acquireHome,
   checkPlatform,
@@ -33,10 +41,16 @@ import {
   resolveHomePath,
   writeHomeSettings,
 } from "../home/index.ts";
-import type { Environment } from "../log.ts";
+import type { Environment, Log } from "../log.ts";
 import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
 import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
-import { artifactMethods, createPublisher, type Publisher } from "../publish/index.ts";
+import {
+  artifactMethods,
+  canonicalRef,
+  createPublisher,
+  type Publisher,
+  versionDamage,
+} from "../publish/index.ts";
 import { openRegistry } from "../registry/index.ts";
 
 /** Options for {@link startInstance}. */
@@ -55,6 +69,10 @@ export interface StartInstanceOptions {
   readonly checkIntervalMs?: number;
   /** Where warnings and errors are mirrored besides the log, such as stderr. */
   readonly mirror?: (line: string) => void;
+  /** `--bind`: the address the gateway listens on; `127.0.0.1` when absent (D99). */
+  readonly bind?: string | undefined;
+  /** `--url-host`: the host name URLs use; required with a wildcard `--bind` (D99). */
+  readonly urlHost?: string | undefined;
 }
 
 /** How a stopped instance ended. */
@@ -128,6 +146,8 @@ export async function startInstance(options: StartInstanceOptions): Promise<Star
   const gate = checkPlatform();
   if (gate) throw new RpcError(gate);
   if (options.mode === "host" && !options.stdio) throw new Error("host mode needs stdio.");
+  // Wrong bind flags fail before the home is touched (D99).
+  resolveBind({ bind: options.bind, urlHost: options.urlHost });
   const env = options.env ?? process.env;
   const acquisition = await acquireHome({
     home: resolveHomePath({ home: options.home, env }),
@@ -211,6 +231,37 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     });
     return publisher;
   };
+  // The gateway (WP-05): leased ports, capability links and sessions, static versions.
+  const clockOffset = testClockOffset(environment["MOSTRA_TEST_CLOCK_OFFSET_MS"], log);
+  const addressing = createAddressing({
+    ledger: home.ledger,
+    log,
+    bind: resolveBind({ bind: options.bind, urlHost: options.urlHost }),
+  });
+  const capabilities = new Capabilities({
+    ledger: home.ledger,
+    log,
+    key: capabilityKey(home.path, log),
+    // Tests move the gateway's clock to check link lifetimes (LL-05, HY-03).
+    now: () => Date.now() + clockOffset,
+    shellOrigin: () => gateway.shellOrigin(),
+  });
+  const shellDir = locateShell(environment);
+  if (shellDir === undefined)
+    log.warn("gateway.shell_missing", { code: "MOSTRA_ENV_SHELL_MISSING" });
+  const gateway: Gateway = createGateway({
+    ledger: home.ledger,
+    log,
+    addressing,
+    capabilities,
+    artifacts: {
+      get: (ref) => registry.get(canonicalRef(ref)),
+      versionDir: (versionId) => registry.store.versionDir(versionId),
+      damage: (versionId) => versionDamage(registry.store.versionDir(versionId)),
+    },
+    shellDir,
+  });
+  let gatewayStarted = false;
   const info: InstanceInfo = {
     version: runtimeVersion(),
     home: home.path,
@@ -239,13 +290,29 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     supportedPorts: [],
     redact: (text) => home.redactor.redact(text),
     handlers: [
-      ...artifactMethods({ registry, publisher: getPublisher }),
+      ...artifactMethods({
+        registry,
+        publisher: getPublisher,
+        link: (artifactId) => gateway.defaultLink(artifactId),
+      }),
+      ...gateway.methods(),
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,
         socketPath: () => home.socketPath,
         connections: () => server.connections,
         processes: () => manager.list(),
+        gateway: () =>
+          gatewayStarted
+            ? {
+                bind: addressing.bindAddress,
+                shell: gateway.shellOrigin(),
+                artifacts: [...gateway.artifactOrigins()].map(([artifactId, origin]) => ({
+                  artifactId,
+                  origin,
+                })),
+              }
+            : undefined,
         shutdown: (reason) => void instance.stop(reason, 0),
       }),
     ],
@@ -261,6 +328,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       stopping ??= (async () => {
         log.info("instance.stopping", { reason, exitCode });
         server.close();
+        await gateway.close();
         try {
           await manager.stopAll();
         } catch (error) {
@@ -279,11 +347,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   };
 
   try {
+    await gateway.start();
+    gatewayStarted = true;
     await server.listen(home.socketPath, options.checkIntervalMs);
     home.publish(options.mode);
   } catch (error) {
     // Undo what started before the home is released, so no listener or child outlives it.
     server.close();
+    await gateway.close();
     await manager.stopAll();
     throw error;
   }
@@ -297,6 +368,31 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       void instance.stop("the host closed stdio", 0);
     });
   }
-  log.info("instance.started", { mode: options.mode, pid: process.pid, socket: home.socketPath });
+  log.info("instance.started", {
+    mode: options.mode,
+    pid: process.pid,
+    socket: home.socketPath,
+    shell: gateway.shellOrigin(),
+  });
   return instance;
+}
+
+/** The longest test clock offset accepted: ten years. */
+const MAX_CLOCK_OFFSET_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * `MOSTRA_TEST_CLOCK_OFFSET_MS`, the forward move of the gateway's clock that tests use to check
+ * link lifetimes. Only a whole number of milliseconds from 0 to ten years counts: a negative one
+ * would keep expiring links alive and a huge one would break every date. An offset in use is
+ * logged, so a forgotten one is visible.
+ */
+function testClockOffset(value: string | undefined, log: Log): number {
+  if (value === undefined || value === "") return 0;
+  const offset = Number(value);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_CLOCK_OFFSET_MS) {
+    log.warn("instance.test_clock_ignored", { value });
+    return 0;
+  }
+  if (offset > 0) log.warn("instance.test_clock", { offsetMs: offset });
+  return offset;
 }

@@ -1,0 +1,203 @@
+/**
+ * One gateway listener: a Node HTTP server on a leased port with a Hono app behind it. Every
+ * request's envelope (exact `Host`, plain path, single headers) is checked before routing,
+ * methods other than GET, HEAD and POST are refused, upgrades are refused after their `Origin`
+ * check (no WebSocket endpoint exists yet; terminals add one, WP-21), and every response leaves
+ * with the base headers.
+ */
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { Duplex } from "node:stream";
+import { getRequestListener } from "@hono/node-server";
+import {
+  checkRequest,
+  createDiagnostic,
+  type Refusal,
+  type RequestPolicy,
+  refusal,
+} from "@mostra/protocol";
+import { Hono } from "hono";
+import type { Log } from "../log.ts";
+import { BASE_HEADERS, type HttpEnv, headerPairs, refusalResponse } from "./http.ts";
+import { refuse } from "./routes.ts";
+
+/**
+ * Node's limit on request headers for gateway listeners. Every port of the loopback host shares one
+ * cookie jar, and any artifact's page can fill it; Chromium, Firefox and WebKit keep about 410 KB
+ * per host (100 cookies of 4 KiB), so a jar filled to the brim fits with room to spare
+ * (VERIFIED_FACTS, WP-05). A request past this limit is answered with a page that clears the
+ * host's cookies (D98 item 9).
+ */
+export const MAX_HEADER_SIZE: number = 1024 * 1024;
+
+/** A listener: its server and its Hono app. */
+export interface Listener {
+  readonly server: Server;
+  readonly app: Hono<HttpEnv>;
+  /** Stops accepting connections and closes the open ones. */
+  close(): Promise<void>;
+}
+
+/** Writes a refusal straight to a socket, for upgrades and envelope failures before Hono. */
+function writeRaw(
+  socket: Duplex,
+  refused: Refusal,
+  extra: { readonly html?: string; readonly headers?: readonly string[] } = {},
+): void {
+  const body = extra.html ?? JSON.stringify(refused.diagnostic);
+  const headers = [
+    `HTTP/1.1 ${refused.status} Refused`,
+    "connection: close",
+    extra.html !== undefined
+      ? "content-type: text/html; charset=utf-8"
+      : "content-type: application/json; charset=utf-8",
+    `content-length: ${Buffer.byteLength(body)}`,
+    "cache-control: no-store",
+    ...Object.entries(BASE_HEADERS).map(([name, value]) => `${name}: ${value}`),
+    ...(extra.headers ?? []),
+  ];
+  socket.end(`${headers.join("\r\n")}\r\n\r\n${body}`);
+}
+
+/**
+ * The answer to headers past {@link MAX_HEADER_SIZE}: a page that says what happened and clears
+ * the host's cookies, which is what made them that large (D98 item 9). `Clear-Site-Data` acts on
+ * the host, so it empties the jar every port shares; Mostra's sessions return when a link is
+ * opened again. The page runs nothing and can't be framed.
+ */
+function headersTooLarge(socket: Duplex): void {
+  const refused = refusal(
+    "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+    "This browser sent more cookies than any page here sets.",
+  );
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mostra</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.25rem;padding:2rem;text-align:center;color-scheme:light dark}h1{font-size:1.25rem;margin:0}p{margin:0;opacity:.8}code{opacity:.5;font-size:.75rem;margin-top:1rem}</style></head><body><h1>This browser sent more cookies than Mostra accepts</h1><p>A page on this machine filled them. They have been cleared: open your link again.</p><code>MOSTRA_HYGIENE_HEADERS_TOO_LARGE</code></body></html>`;
+  writeRaw(socket, refused, {
+    html,
+    headers: [
+      'clear-site-data: "cookies"',
+      "content-security-policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+    ],
+  });
+}
+
+/** Creates a listener whose routes `configure` mounts; the server isn't bound yet. */
+export function createListener(options: {
+  readonly policy: () => RequestPolicy;
+  readonly log: Log;
+  readonly frameAncestors: () => string;
+  readonly configure: (app: Hono<HttpEnv>) => void;
+}): Listener {
+  const app = new Hono<HttpEnv>();
+  options.configure(app);
+  app.notFound((c) =>
+    refuse(options, refusal("MOSTRA_HYGIENE_NOT_SERVED", "Nothing is served at this path."), {
+      method: c.req.method,
+      path: new URL(c.req.url).pathname,
+      document: false,
+    }),
+  );
+  app.onError((error, c) => {
+    options.log.error("gateway.handler_failed", { error, path: new URL(c.req.url).pathname });
+    return refusalResponse(
+      {
+        status: 500,
+        diagnostic: createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+          message: "The gateway failed to answer this request.",
+        }),
+      },
+      { document: false, method: c.req.method },
+    );
+  });
+  const listener = getRequestListener(app.fetch, { overrideGlobalObjects: false });
+
+  const server = createServer({ maxHeaderSize: MAX_HEADER_SIZE }, (incoming, outgoing) => {
+    const policy = options.policy();
+    const method = incoming.method ?? "";
+    const envelope =
+      checkRequest(policy, {
+        method,
+        target: incoming.url ?? "",
+        headers: headerPairs(incoming),
+      }) ??
+      (method === "GET" || method === "HEAD" || method === "POST"
+        ? undefined
+        : method === "OPTIONS"
+          ? // A preflight never gets an Access-Control-* answer: no other origin may call in.
+            refusal(
+              "MOSTRA_HYGIENE_ORIGIN_REFUSED",
+              "This gateway answers no cross-origin requests.",
+            )
+          : refusal(
+              "MOSTRA_HYGIENE_NOT_SERVED",
+              `This gateway doesn't serve ${method} requests.`,
+              405,
+            ));
+    if (envelope) {
+      options.log.warn("gateway.refused", {
+        code: envelope.diagnostic.code,
+        status: envelope.status,
+        method,
+        origin: policy.origin,
+      });
+      const response = refusalResponse(envelope, { document: false, method });
+      // A request refused before routing ends its connection: nothing else is read from it.
+      outgoing.shouldKeepAlive = false;
+      outgoing.writeHead(response.status, {
+        ...Object.fromEntries(response.headers),
+        connection: "close",
+      });
+      void response.text().then((text) => outgoing.end(text));
+      return;
+    }
+    void listener(incoming, outgoing);
+  });
+  // A client that sends something Node can't parse gets a 400 and its connection closed.
+  server.on("clientError", (error: NodeJS.ErrnoException, socket) => {
+    if (!socket.writable) {
+      socket.destroy();
+      return;
+    }
+    if (error.code === "HPE_HEADER_OVERFLOW") {
+      options.log.warn("gateway.refused", {
+        code: "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+        status: 431,
+        origin: options.policy().origin,
+      });
+      headersTooLarge(socket);
+      return;
+    }
+    writeRaw(
+      socket,
+      refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "The request couldn't be parsed."),
+    );
+  });
+  server.on("upgrade", (incoming: IncomingMessage, socket: Duplex) => {
+    const policy = options.policy();
+    const refused =
+      checkRequest(policy, {
+        method: incoming.method ?? "",
+        target: incoming.url ?? "",
+        headers: headerPairs(incoming),
+        intent: "upgrade",
+      }) ?? refusal("MOSTRA_HYGIENE_NOT_SERVED", "This gateway serves no WebSocket here.");
+    options.log.warn("gateway.refused", {
+      code: refused.diagnostic.code,
+      status: refused.status,
+      method: "UPGRADE",
+      origin: policy.origin,
+    });
+    writeRaw(socket, refused);
+  });
+  server.headersTimeout = 30_000;
+  server.requestTimeout = 120_000;
+
+  return {
+    server,
+    app,
+    close: () =>
+      new Promise((resolve) => {
+        if (!server.listening) return resolve();
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  };
+}

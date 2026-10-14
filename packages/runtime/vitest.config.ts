@@ -22,6 +22,17 @@ export default defineConfig({
         },
       },
       {
+        // The hygiene checklist (HY-01) against a real daemon, run by the `hygiene` CI job.
+        extends: true,
+        test: {
+          name: "hygiene",
+          include: ["test/hygiene/**/*.test.ts"],
+          testTimeout: 60_000,
+          hookTimeout: 180_000,
+          fileParallelism: false,
+        },
+      },
+      {
         // External evidence (STANDARDS, Verification layer 7): the real npm registry. Run by hand
         // with `pnpm --filter @mostra/runtime test:external`; never part of CI.
         extends: true,

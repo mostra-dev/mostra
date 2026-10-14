@@ -11,6 +11,8 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
+    "@mostra/runtime": "workspace:*",
+    "@mostra/shell": "workspace:*",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:"

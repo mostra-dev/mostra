@@ -15,6 +15,7 @@ export const hostDiagnosticCodes = [
   "MOSTRA_HOST_CONNECTION_CLOSED",
   "MOSTRA_HOST_TIMEOUT",
   "MOSTRA_HOST_SHUTDOWN_REFUSED",
+  "MOSTRA_HOST_REQUEST_ID_REUSED",
   // gen:codes
 ] as const;
 
@@ -131,6 +132,17 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       explanation:
         "An instance started by a host over stdio (`mostra host`) lives as long as that host's connection, so only the host may stop it with `mostra/shutdown`. A client that attached through the home's socket asked it to stop. A daemon (`mostra daemon`) accepts `mostra/shutdown` from every attached client (D87).",
       fix: "Close your own connection when you are done. To stop the instance, stop the host that spawned it, or have the host send `mostra/shutdown` or close its stdio.",
+    },
+  },
+  MOSTRA_HOST_REQUEST_ID_REUSED: {
+    severity: "error",
+    phase: "host",
+    title: "A requestId was reused with other parameters",
+    hint: "Send a new `requestId` for a new request; repeat the exact parameters only to retry one.",
+    docs: {
+      explanation:
+        "A mutating method recorded its result under this `requestId` for different parameters. Replaying that result would answer a request nobody made (a link for another artifact or with other scopes, another source's publish), so the instance refuses (H-03). Retries with the same parameters still return the recorded result.",
+      fix: "Generate a fresh `requestId` for every new request, and reuse one only to retry the same request after a timeout or a lost connection.",
     },
   },
   // gen:entries

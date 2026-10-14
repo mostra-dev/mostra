@@ -23,6 +23,7 @@
   cache/staging/               one directory per publish in progress (snapshot copy, build output); emptied at every start
   cache/verify/<digests>.json  cached verdicts (D41)
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)
+  keys/capability              32 random bytes, mode 0600: the key capability secrets are derived under (D97)
   logs/                        rotated supervisor and child logs, capability URLs redacted
 <runtime dir>/<home-hash>.sock control socket (ARCHITECTURE §4, D82): runtime dir is MOSTRA_RUNTIME_DIR, else ~/.mostra/run (macOS),
                                $XDG_RUNTIME_DIR/mostra when owned and 0700, else ${XDG_STATE_HOME:-~/.local/state}/mostra/run (Linux);
@@ -89,12 +90,17 @@ live_ring(artifact_id, key, revision, value_json, at, PRIMARY KEY(artifact_id, k
 
 -- Addressing and processes
 port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo')), owner_ref, leased_at, UNIQUE(purpose, owner_ref))
-token(id PK, secret_hash, artifact_id, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at)
-session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, created_at, last_seen_at)
+token(id PK, secret_hash UNIQUE, artifact_id FK, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at,
+      is_default, pinned_version NULL, shell_origin, replaced_by NULL)  -- one default per artifact; a revoked row never changes;
+                                                                       -- a link works only at shell_origin (D97 items 9, 10)
+session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, version_id NULL, created_at, last_seen_at)
+                                                                 -- id: SHA-256 of the cookie; csrf: SHA-256 of the CSRF token (D98)
 share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it
 schema_migration(version PK, name, runtime_version, applied_at)
-request(method, request_id, result_json, created_at, PRIMARY KEY(method, request_id))  -- H-03: a mutating request's recorded result
+request(method, request_id, result_json, params_digest NULL, created_at, PRIMARY KEY(method, request_id))
+                                                                        -- H-03: a mutating request's recorded result, replayed only
+                                                                        -- for the same params_digest (D100)
 ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- written when the lock is taken (D81)
 
 -- Dependencies (D95)
@@ -111,6 +117,7 @@ Invariants carried by constraints:
 - **One delivery row per submission and port owner**, which makes the outbox idempotent (IN-12).
 - **Event order:** the home-wide cursor gives total order, and the per-artifact sequence gives each artifact's order (IN-08).
 - **Leases:** each port has exactly one lease holder.
+- **Capabilities:** the ledger holds no secret. A token's secret, a session's cookie and its CSRF token are stored only as SHA-256 hashes. A trigger refuses any change to a revoked token and any change to a token's secret, artifact, grant, expiry, version or shell origin, and a default token can't expire (D97, D98).
 
 `snapshot_json` is the canonical answer document. Its digest is SHA-256 over RFC 8785 (JCS) canonical JSON. Submissions are write-once: no `UPDATE` touches `submission` after insert. A test in the interaction WP enforces this with a trigger (invariant 4). Versions are write-once the same way: a trigger refuses any `UPDATE` of `version` (invariant 3), and `event` is append-only.
 

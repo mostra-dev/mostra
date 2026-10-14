@@ -159,21 +159,33 @@ Internal to Mostra, but immutable versions embed the client runtime, so this is 
 
 | Method and path | Purpose | Auth |
 |---|---|---|
-| `GET /_mostra/enter?ticket=…` (cookie mode) or `/_mostra/enter#t=…` (worker mode, D70) | Exchange a frame ticket for the frame session | ticket |
+| `GET /_mostra/enter?ticket=…` (cookie mode) or `/_mostra/enter#t=…` (worker mode, D70) | Exchange a frame ticket for the frame session; cookie mode answers 303 to `/` with the session cookie (D98) | ticket |
+| `GET /_mostra/session` | The frame session's facts for same-origin code: `{ csrf, artifactId, shellOrigin, scopes, version? }`; the client runtime learns the shell's exact origin for the bridge here (WP-05) | session |
+| `GET /*` | The version's client build: the version the frame session last entered, `/assets/*` of any version of the artifact, and `index.html` for a navigation to any other path (D57, D98) | session |
 | `GET /_mostra/sw.js` | Worker-mode service worker (`Service-Worker-Allowed: /`) | none |
 | `POST /_mostra/v/{rev}/fields` | Mutations: `{ mutationId, scope, baseRevision, viewId, ops[] }` → `{ revision, applied[], conflicts[] }` | session, CSRF, Origin |
 | `POST /_mostra/v/{rev}/submit` | `{ viewId, expectedRevision, channel: "artifact" }` → submission or typed conflict | session, `submit` scope |
-| `POST /_mostra/v/{rev}/signal` | `{ viewId, name, payload }` | session |
+| `POST /_mostra/v/{rev}/signal` | `{ viewId, name, payload }` | session, `signal` scope (D97) |
 | `POST /_mostra/v/{rev}/call/{fnId}` | Plain server-function call (Mostra serializer; streamed body for `AsyncIterable`) | session, `action:<name>` scope |
 | `POST /_mostra/v/{rev}/runs` | Start or join a run: `{ fnId, args, key?, clientKey }` → `{ runId }` | as above |
 | `POST /_mostra/v/{rev}/runs/{id}/cancel` | Cancel | as above |
 | `POST /_mostra/v/{rev}/ticket` | Single-use stream or WebSocket ticket (worker mode, terminals) | session |
 | `GET /_mostra/v/{rev}/events?view=…&cursor=…` | SSE: field changes, state, runs, live, version notices, delivery states | session or ticket |
 | `GET /_mostra/v/{rev}/events/poll?…&wait=25` | Long-poll on the same cursor (D47) | same |
-| `POST /_mostra/v/{rev}/review/*` | Shell only: comments, crops, choices | shell session |
+| `POST /a/{artifactId}/_mostra/v/{rev}/review/*` (on the shell origin) | Shell only: comments, crops, choices | shell session, `review` scope |
 | `GET /_mostra/v/{rev}/term/{session}` (WebSocket) | Live terminal frames: `data`, `resize`, `input`, `ack`, `exit` | ticket |
 
-The shell origin has its own endpoints for capability exchange, trusted-control activation, the banner, follow preferences and review, all with the same checks. Mutations require JSON content types and the CSRF header (seed hygiene items 5 and 11).
+The shell origin has its own endpoints for capability exchange, trusted-control activation, the banner, follow preferences and review, all with the same checks. Mutations require JSON content types and the CSRF header (seed hygiene items 5 and 11). WP-05 serves these on the shell origin, each artifact under `/a/{artifactId}`, so each has its own shell session (D97, D98):
+
+| Method and path | Purpose | Auth |
+|---|---|---|
+| `GET /a/{artifactId}` and `/a/{artifactId}/v/{number}` | The shell page; the link's token is in the fragment (`#t=…`), which the page sends to the exchange and removes | none |
+| `GET /_mostra/shell/assets/*` | The shell's built files | none |
+| `POST /a/{artifactId}/_mostra/session` | Exchange `{ token, replace? }` for the shell session → `{ csrf, artifact: { id, title }, scopes, expiresAt?, version? }`. While a live session from another link exists, 409 `MOSTRA_HYGIENE_SESSION_CONFLICT` with `current` and `offered` (`{ scopes, expiresAt?, version? }` each) unless `replace` is `true`; the same link again reuses its session (D98 item 8) | token, Origin |
+| `GET /a/{artifactId}/_mostra/session` | The same facts for an existing session | shell session |
+| `POST /a/{artifactId}/_mostra/ticket` | `{ version? }` → `{ src, artifactOrigin, version: { id, number }, latest: { number } }`: a single-use frame ticket (60 s, valid while this shell session exists) for the link's version, the asked one or the latest; a link that names a version gets 403 for any other (D97 item 9); a damaged version is 500 `MOSTRA_HOME_INTEGRITY` | shell session, CSRF |
+
+Every route declares its intent (read, stream, upgrade, exchange or mutation), its session and its scope, and one runner applies the checks in one order: Host, request target and headers; Origin and content type; the rate limit on token paths; the session (bound to the origin it was issued for, with a live token); the CSRF token; the scope (D96). A route a later package serves answers 501 `MOSTRA_HYGIENE_NOT_SERVED` once every check has passed. Refusals are the HYGIENE diagnostics as JSON, or a plain page for a navigation: 421 for a Host outside the allowlist, 400 for a malformed request, 401 without a session or with an unknown token, 410 for a revoked or expired one, 403 for another Origin, a missing or wrong CSRF token or a scope the link lacks, 415 for a body not declared as JSON, 429 with `Retry-After` while guessing for the artifact is limited, 409 when another link's session is open, 431 with `Clear-Site-Data: "cookies"` for headers past 1 MiB, and 404 or 405 for what isn't served. Every response carries `Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`; none carries an `Access-Control-*` header. The shell page sends `frame-ancestors 'none'`, `X-Frame-Options: DENY` and `Cross-Origin-Opener-Policy: same-origin`, and artifact documents `frame-ancestors <shell origin>`; the shell sandboxes the frame with every capability but navigating the viewer's tab (D98 item 7).
 
 ## 5. Shell ↔ artifact bridge
 
@@ -181,11 +193,12 @@ JSON-RPC 2.0 over `postMessage`, with exact origin checks and schema validation.
 - `mostra/fields` carries `{ id, label, required, scope, sensitive }` registrations, so the shell lists blockers and labels.
 - `mostra/controls.request` covers `submit` (label, confirm text) and `choose` (review set). The shell decides what to render: the artifact asks, the shell answers.
 - `mostra/version.available` carries `{ versionId, version, orphans: number }`. The artifact may show its own notice too, but the trusted banner always appears.
+- `ui/open-link` (MCP Apps, `{ url }` → `{ isError? }`) is how the artifact sends the viewer elsewhere, since its frame can't navigate the viewer's tab (D98 item 7). The shell opens `http:`, `https:`, `mailto:` and `tel:` URLs (`OPEN_LINK_SCHEMES`) in a new tab without an opener, announced as `hostCapabilities.openLinks`; `openLink(url)` in `@mostra/react` sends it, or opens the URL itself outside a shell. WP-05 ships `ui/initialize`, `ui/notifications/initialized`, `ui/notifications/size-changed`, `ui/open-link` and `mostra/ready`.
 - A host-supplied shell implements the same set and passes the shell conformance scenarios.
 
 ## 6. Host protocol (clients ↔ supervisor)
 
-JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the runtime bundle's `mostra-runtime host`, D85) or the home's Unix socket (attached to `mostra-runtime daemon`). Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03).
+JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the runtime bundle's `mostra-runtime host`, D85) or the home's Unix socket (attached to `mostra-runtime daemon`). Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03): a retry with the same parameters returns the recorded result, and the same `requestId` with other parameters is `MOSTRA_HOST_REQUEST_ID_REUSED` (D100).
 
 **Framing and errors.** Each message is one line of JSON (JSON never contains a raw newline). Revision `2026-10-10` has no batches: a JSON array is answered with an Invalid Request error (D83). Every error's `data` is the diagnostic, and `error.code` is the JSON-RPC code: -32700 for unparseable JSON and -32600 for a message that isn't a valid request (`MOSTRA_HOST_MALFORMED`), -32601 for an unknown method (`MOSTRA_HOST_METHOD_UNKNOWN`), -32602 for params that fail the method's schema (`MOSTRA_HOST_INVALID_PARAMS`), -32603 for an unexpected failure (`MOSTRA_HOST_INTERNAL_ERROR`), and -32000 for every other diagnostic. Clients switch on `data.code`, never on the message.
 
@@ -208,8 +221,9 @@ Authoring
   deps/add         { artifact: SourceRef, packages: string[] } → { packages: AddedPackage[], lockDigest }   (D95; `mostra add`)
 
 Viewing and sharing
-  view/url        { artifact, version?, scopes?, viewer?, ttl? } → { url, tokenId, expiresAt? }
-  view/revoke     { tokenId }                        → {}
+  view/url        { artifact, version?, scopes?, ttl?, requestId? } → CapabilityLink { url, tokenId, scopes, expiresAt? }   (D97; `viewer?` arrives with WP-06)
+  view/rotate     { tokenId, requestId? }            → CapabilityLink   (D97; same artifact, scopes, expiry and pinned version; the old token answers 410)
+  view/revoke     { tokenId, requestId? }            → {}   (revoking a revoked token succeeds; an unknown one is MOSTRA_HYGIENE_TOKEN_INVALID)
   share/start     { artifact, via: "tailnet" | "funnel" | "cloudflare", ttl? } → { url, hostname, mode: "cookie" | "worker" }
   share/stop      { artifact | shareId }             → {}
 
@@ -228,16 +242,20 @@ Events
 
 Administration
   secret/set | secret/list | secret/delete         (value only via set; never returned)
-  instance/status    {}                              → { instance, startedAt, socket, connections, processes } (WP-02); ports, pending deliveries, shares and versions in use are added by the packages that own them
+  instance/status    {}                              → { instance, startedAt, socket, connections, processes, gateway? } (WP-02; `gateway: { bind, shell, artifacts: { artifactId, origin }[] }`, WP-05); ports, pending deliveries, shares and versions in use are added by the packages that own them
   gc/run             { dryRun? }                     → reclaimed
 
 Mostra → host (only to the connection that registered the port)
   port/<name>.<method>   see §7
 ```
 
-`SourceRef` is `{ path }` (an absolute path; clients resolve relative ones) or `{ artifactId }` (the path it was last published from). `ArtifactRef` has the same two forms and names an existing artifact; a path is matched by its real path, so a deleted source's path still names its artifact. `ArtifactSummary` is `{ id, title, description?, family?, links, mode, policy?, source?, createdAt, latestVersion? }`, with metadata from the latest version's manifest; `ArtifactDetail` adds the latest `manifest` and every `VersionSummary` (`{ id, number, publishedAt, sourceDigest, envDigest, outputDigest, forcedDiagnostics? }`), newest first. `artifact/list` takes `filter: { family? }`. `artifact/create` writes a minimal entry with a generated `id` into an empty directory and returns `{ artifactId, dir, files }`; the artifact appears in `artifact/list` once published, and templates arrive with WP-26. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the capability URL; it is optional on the wire because instances without the gateway (WP-03, before WP-05) have none, and WP-05 sets it on every publish (D90). `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (`dependencies: "auto" | "explicit"`, D43, D95, kept in the home's `config.json` for every later client), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
+`SourceRef` is `{ path }` (an absolute path; clients resolve relative ones) or `{ artifactId }` (the path it was last published from). `ArtifactRef` has the same two forms and names an existing artifact; a path is matched by its real path, so a deleted source's path still names its artifact. `ArtifactSummary` is `{ id, title, description?, family?, links, mode, policy?, source?, createdAt, latestVersion? }`, with metadata from the latest version's manifest; `ArtifactDetail` adds the latest `manifest` and every `VersionSummary` (`{ id, number, publishedAt, sourceDigest, envDigest, outputDigest, forcedDiagnostics? }`), newest first. `artifact/list` takes `filter: { family? }`. `artifact/create` writes a minimal entry with a generated `id` into an empty directory and returns `{ artifactId, dir, files }`; the artifact appears in `artifact/list` once published, and templates arrive with WP-26. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url?, tokenId?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the artifact's default capability link (D97 item 3): the same across publishes and `requestId` replays until it is rotated or revoked, with `tokenId` to do either. Both are optional on the wire because instances without the gateway (WP-03, before WP-05) have none; WP-05 sets them on every publish (D90). A recorded receipt that a `requestId` replays never holds the link's secret: the link joins every answer from the token. `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (`dependencies: "auto" | "explicit"`, D43, D95, kept in the home's `config.json` for every later client), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
 
 `deps/add` (D95) takes npm registry specs (`name`, `name@version`, `name@range`, `name@tag`) and records each package at an exact version in the artifact's working lockfile, installing it into the home's store. A package of the warm set is answered with its warm version (`warm: true`), and a version of it the warm one doesn't satisfy is `MOSTRA_DEP_WARM_CONFLICT`. `AddedPackage` is `{ name, version, warm }`; `lockDigest` is the lockfile's digest after the change, which the artifact's next publish uses. Packages added this way stay in the lockfile whether or not the source imports them. The supervisor treats itself as offline when its environment sets `MOSTRA_OFFLINE` (any value but `0`, `false` or `no`) or no network interface has a routable address; offline, packages resolve only from the home's store.
+
+`view/url` mints a new token on every call (D97), for the artifact's latest version or a pinned `version` (a number or a version ID; an unknown one is `MOSTRA_ARTIFACT_VERSION_NOT_FOUND`). `scopes` default to every scope: `view` (always added), `draft`, `submit`, `review`, `signal` and `action:*`; `action:<export>` and `action:<module path>#<export>` grant one action. A link with a `version` opens that version only (D97 item 9), and every link works only at the shell address it was minted for (D97 item 10). `ttl` is a duration such as `30m`, `24h` or `7d`; without one the link doesn't expire (D63). A replayed `requestId` with the same parameters returns the same link (D100). `CapabilityLink.url` is `http://<url host>:<shell port>/a/<artifactId>[/v/<number>]#t=<secret>`.
+
+`mostra-runtime host|daemon` take `--bind <address>` (default `127.0.0.1`) and `--url-host <name>`, which a wildcard address needs; neither is remembered (D99). A bad pair fails with `MOSTRA_ENV_BIND_FAILED` before the home is touched.
 
 The initialize shapes (D84):
 

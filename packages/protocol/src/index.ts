@@ -15,6 +15,38 @@ export {
   VersionSummary,
 } from "./artifact.ts";
 export {
+  type AnyBridgeMessage,
+  BRIDGE_MESSAGES,
+  type Bridge,
+  type BridgeEvent,
+  type BridgeHostContext,
+  type BridgeImplementation,
+  type BridgeMessage,
+  type BridgeOptions,
+  type BridgePeer,
+  type BridgeReceiver,
+  type BridgeRejection,
+  type BridgeSide,
+  connectBridge,
+  MCP_APPS_PROTOCOL_VERSION,
+  mostraReady,
+  OPEN_LINK_SCHEMES,
+  type UiInitializeParams,
+  type UiInitializeResult,
+  uiInitialize,
+  uiInitialized,
+  uiOpenLink,
+  uiSizeChanged,
+} from "./bridge.ts";
+export {
+  ALL_SCOPES,
+  CapabilityScope,
+  Duration,
+  durationMs,
+  normalizeScopes,
+  scopeAllows,
+} from "./capability.ts";
+export {
   type ActionDiagnosticCode,
   type ArtifactDiagnosticCode,
   actionDiagnosticCodes,
@@ -30,8 +62,10 @@ export {
   envDiagnosticCodes,
   type HomeDiagnosticCode,
   type HostDiagnosticCode,
+  type HygieneDiagnosticCode,
   homeDiagnosticCodes,
   hostDiagnosticCodes,
+  hygieneDiagnosticCodes,
   type KnownDiagnosticCode,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
@@ -60,6 +94,19 @@ export {
   type DiagnosticSpec,
   docsUrl,
 } from "./diagnostics/spec.ts";
+export {
+  CSRF_HEADER,
+  checkRequest,
+  headerValue,
+  isJsonContentType,
+  type Refusal,
+  type RequestFacts,
+  type RequestIntent,
+  type RequestPolicy,
+  refusal,
+  safeEqual,
+  safePath,
+} from "./hygiene.ts";
 export {
   ArtifactId,
   CommentId,
@@ -124,6 +171,7 @@ export {
 export { hostMethods } from "./methods/index.ts";
 export {
   ChildProcessStatus,
+  GatewayStatus,
   type InstanceStatusParams,
   type InstanceStatusResult,
   instanceStatusMethod,
@@ -145,6 +193,22 @@ export {
   type MostraShutdownResult,
   mostraShutdownMethod,
 } from "./methods/mostra/shutdown.ts";
+export {
+  type ViewRevokeParams,
+  type ViewRevokeResult,
+  viewRevokeMethod,
+} from "./methods/view/revoke.ts";
+export {
+  type ViewRotateParams,
+  type ViewRotateResult,
+  viewRotateMethod,
+} from "./methods/view/rotate.ts";
+export {
+  CapabilityLink,
+  type ViewUrlParams,
+  type ViewUrlResult,
+  viewUrlMethod,
+} from "./methods/view/url.ts";
 export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,

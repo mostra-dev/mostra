@@ -16,12 +16,12 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | unverified |
 | RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | unverified |
-| RT-05 | WP-05 | I | Client-only version served with zero worker processes (process table assertion) | unverified |
+| RT-05 | WP-05 | I | Client-only version served with zero worker processes (process table assertion) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | RT-06 | WP-02 | I, C | 16 racing starters converge on one supervisor; stale socket recovered; `mostra host` over stdio and attach over socket both pass the protocol suite | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | RT-07 | WP-02 | I | macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-01 | WP-03 | M, I | Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | VR-02 | WP-03 | I | Fault injection at each publish step leaves no visible version and cleans staging on next start | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
-| VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | unverified |
+| VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | VR-04 | WP-07 | B | Open view shows the banner within one event after a publish (browser, three engines) | unverified |
 | VR-05 | WP-07 | I, B | Version with removed field: banner counts orphans, panel shows values read-only, results include `orphaned` (browser + integration) | unverified |
 | VR-06 | WP-10 | I | gc property test never removes a version referenced by a submission, view, review set or follow; dry run lists candidates | unverified |
@@ -59,15 +59,15 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | RV-03 | WP-20 | B | Gallery, focus, compare (2 to 4, synchronized, pixel diff) and choose-one; choice and comments arrive with the submission | unverified |
 | RV-04 | WP-20 | B | Artifact attempts to hide, cover or forge the overlay and its controls fail (browser tests) | unverified |
 | RV-05 | WP-20 | I | `mostra review export` Markdown and JSON goldens with crop paths that exist | unverified |
-| SH-01 | WP-05 | B | Shell and artifact are different origins; trusted controls exist only in the shell DOM (browser assertion) | unverified |
+| SH-01 | WP-05 | B | Shell and artifact are different origins; trusted controls exist only in the shell DOM (browser assertion) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-02 | WP-07 | B, C | Artifact requests a label; it cannot click or spoof the control; host shell-only policy denies artifact submit with the code; channel recorded | unverified |
-| SH-03 | WP-05 | B | Cookie mode in Chromium, Firefox, WebKit and real Safari; leases stable across restart; cross-site fixtures select worker mode | unverified |
-| SH-04 | WP-05 | M, B | Bridge rejects wrong origin and malformed messages (unit); message names match MCP Apps where shared | unverified |
+| SH-03 | WP-05 | B | Cookie mode in Chromium, Firefox, WebKit and real Safari; leases stable across restart; cross-site fixtures select worker mode | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
+| SH-04 | WP-05 | M, B | Bridge rejects wrong origin and malformed messages (unit); message names match MCP Apps where shared | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-05 | WP-20 | R | Mirza's review of the final shell design (D68) | unverified |
 | SH-06 | WP-20 | B, R | Mobile layouts in WebKit and Chromium emulation; external: real phone over tailnet; Mirza reviews | unverified |
-| HY-01 | WP-05 | M, I (negative tests: bad Host, bad Origin, missing token, CSRF) | All 13 checklist items as automated negative tests (bad Host, bad Origin, missing token, CSRF, CORS, CORP, referrer, revocation 410, rate limit, redaction, GET side effects, header fuzzing, MCP HTTP) | unverified |
-| HY-02 | WP-05 | I | Default bind is loopback only (socket inspection); wider bind needs the flag | unverified |
-| HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | unverified |
+| HY-01 | WP-05 | M, I (negative tests: bad Host, bad Origin, missing token, CSRF) | All 13 checklist items as automated negative tests (bad Host, bad Origin, missing token, CSRF, CORS, CORP, referrer, revocation 410, rate limit, redaction, GET side effects, header fuzzing, MCP HTTP) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
+| HY-02 | WP-05 | I | Default bind is loopback only (socket inspection); wider bind needs the flag | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
+| HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-04 | WP-13 | X | External: real `tailscale serve` share from a phone; identity header maps to viewer; spoofed header from loopback-bypassing request impossible | unverified |
 | HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | unverified |
 | HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
@@ -133,7 +133,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | unverified |
 | LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | unverified |
 | LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | unverified |
-| LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | unverified |
+| LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | unverified |
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |

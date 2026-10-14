@@ -50,6 +50,34 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   counts only once it carries `.mostra-layout`. Every pin in a lockfile is exact, `lockDigest` is
   part of `envDigest`, and offline requests the store index can't satisfy fail before any child
   starts.
+- **Only capability holders use an artifact (D06, D96 to D99, HY-01 to HY-03).** Every HTTP
+  route is declared once in `gateway/routes.ts` with its intent, session and scope, and one runner
+  applies `@mostra/protocol`'s `checkRequest` (exact Host, request target and headers, exact
+  Origin, JSON content type, CSRF), then the rate limit, the origin-bound session and the scope,
+  before any handler. Add a route by declaring it there, never by mounting a handler of its own.
+  Unbuilt routes answer 501 behind the same checks, so a later package attaches a handler and
+  repeats the scope test.
+- **The ledger holds no capability secret.** Tokens, session cookies and CSRF tokens are stored
+  only as SHA-256 hashes; a token's secret is derived from its ID under `<home>/keys/capability`
+  (D97). A revoked token never changes again (a trigger refuses it); rotate in one transaction.
+  A token works only at the shell origin it was minted for, and a link that names a version opens
+  only that version, assets included (D97 items 9 and 10).
+- **Guessing is limited per artifact, at the token check (D97 item 8).** `presentToken` checks
+  the limit itself, so concurrent guesses can't slip past it; frame tickets never count.
+- **A `requestId` replays only its own request (D100).** Record results with `recordResult` and
+  replay with `recordedResult` from `ledger`, keyed by `requestKey(method, params)`, in the
+  transaction of the effect; never read or write `request` by hand.
+- **Every served file comes from an intact version (FAILURE_MODEL §3).** `gateway/integrity.ts`
+  checks a version against its output digest before its first file and again when a file's change
+  time differs; serve through it.
+- **The gateway binds `127.0.0.1` unless `--bind` says otherwise (D99, HY-02),** never
+  remembered. `addressing` leases every port from 20000 to 32767 and binds every lease at start.
+- **Viewers reach only published client builds (VR-03).** Artifact origins serve files only from
+  a version's `client/` directory, through `serve.ts`, which refuses anything whose real path
+  leaves that root. Serving a version starts no process (RT-05).
+- **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
+  nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
+  it; an artifact document may be framed only by its shell (D98 items 4 and 7).
 
 ## Where things are
 
@@ -67,14 +95,20 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |
+| `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
 `MOSTRA_TEST_FAULTS` (`<point>:throw|crash`, comma-separated), the fault points tests use to fail
 or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
-the 300 s install limit. These are for tests only. `MOSTRA_OFFLINE` (not a test variable) makes
-the instance offline: packages resolve only from the home's store.
+the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
+(token expiry, session age) without waiting. These are for tests only. `MOSTRA_OFFLINE` (not a
+test variable) makes the instance offline: packages resolve only from the home's store.
+`MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
+`shell/dist` beside the runtime package); without one the shell's pages answer
+`MOSTRA_ENV_SHELL_MISSING` and the instance still starts.
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its
@@ -90,8 +124,16 @@ first module outside `protocol-server` needs it.
   socket, racing starters, stale sockets, reaping after SIGKILL, the platform gate, publishing,
   faults at every publish step, the RT-02 module audit, rendering versions in Chromium
   (`pnpm --filter @mostra/runtime exec playwright install --only-shell chromium` once), and
-  on-demand installs against the local registry in `test/registry.ts` (`deps.test.ts`). CI runs
-  them on macOS and Linux (`integration` job, D86).
+  on-demand installs against the local registry in `test/registry.ts` (`deps.test.ts`), and the
+  gateway through a real daemon (`gateway.test.ts`: serving with no process, route
+  enumeration, restarts, a week of simulated time, binds, leases). CI runs them on macOS and
+  Linux (`integration` job, D86).
+- `pnpm --filter @mostra/runtime test:hygiene`: the hygiene checklist (ARCHITECTURE §10) as
+  negative tests against a real gateway, through `test/browser-client.ts`, a cookie-jar HTTP
+  client that behaves like a browser (`hygiene` job).
+- `pnpm check --job e2e`: capability links in Chromium, Firefox and WebKit
+  (`tests/e2e/specs/gateway.spec.ts`); `node scripts/safari-smoke.ts` opens one in real Safari on
+  macOS (external evidence, run by hand).
 - `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
   violations: red with the seed, green without it.
 

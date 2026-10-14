@@ -107,6 +107,7 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/shell",
     audience: "runtime bundle",
     environment: "browser",
+    // The kit's tokens join with the shell's design pass (WP-20).
     workspace: ["@mostra/protocol", "@mostra/kit"],
     external: "any",
     published: true,

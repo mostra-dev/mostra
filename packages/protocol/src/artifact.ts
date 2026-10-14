@@ -3,7 +3,7 @@
  * source, and the summaries `artifact/list`, `artifact/get` and `artifact/publish` return.
  */
 import * as z from "zod";
-import { ArtifactId, Cursor, VersionId } from "./ids.ts";
+import { ArtifactId, Cursor, TokenId, VersionId } from "./ids.ts";
 import { ArtifactLink, ArtifactManifest, SubmissionPolicy } from "./manifest.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
@@ -98,10 +98,16 @@ export interface PublishReceipt {
   /** The version number. */
   readonly version: number;
   /**
-   * The capability URL. Present once the instance serves views (the gateway, WP-05); optional on
+   * The capability URL: the artifact's default link (D97), the same for every publish until it is
+   * rotated or revoked. Instances with the gateway (WP-05 on) always set it; optional on
    * the wire so instances without it can publish (D90).
    */
   readonly url?: string;
+  /**
+   * The ID of the token behind `url`, the artifact's default link (D97), for `view/rotate` and
+   * `view/revoke`. Present whenever `url` is.
+   */
+  readonly tokenId?: string;
   /** The event cursor of the version's `version.published` event; `wait` and events read after it. */
   readonly cursor: string;
   /** `true` when this artifact already had this exact source and environment as a version. */
@@ -163,6 +169,7 @@ export const PublishReceipt: z.ZodType<PublishReceipt> = z
     versionId: VersionId.schema,
     version: z.int().min(1),
     url: z.string().exactOptional(),
+    tokenId: TokenId.schema.exactOptional(),
     cursor: Cursor.schema,
     reused: z.boolean(),
     forcedDiagnostics: z.array(z.string()).readonly().exactOptional(),
