@@ -98,7 +98,12 @@ async function call(method: string, params: unknown, id: number): Promise<Record
     });
     socket.on("data", (chunk: string) => {
       buffer += chunk;
-      for (const line of buffer.split("\n")) {
+      // Only newline-terminated records are complete; the tail waits for the next chunk.
+      const end = buffer.lastIndexOf("\n");
+      if (end < 0) return;
+      const complete = buffer.slice(0, end);
+      buffer = buffer.slice(end + 1);
+      for (const line of complete.split("\n")) {
         if (!line.trim()) continue;
         const message = JSON.parse(line) as {
           id: number;
@@ -110,7 +115,6 @@ async function call(method: string, params: unknown, id: number): Promise<Record
         if (message.error) reject(new Error(JSON.stringify(message.error)));
         else resolve(message.result ?? {});
       }
-      buffer = buffer.slice(buffer.lastIndexOf("\n") + 1);
     });
   });
 }
