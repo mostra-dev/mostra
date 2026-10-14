@@ -102,9 +102,13 @@
 |---|---|
 | Event stream drops | The client reconnects with its cursor and receives every durable event after it. If SSE fails twice in a row, the client switches to long-polling (D47) |
 | Daemon restarts while views are open | Same as a drop. Ports are leased, so URLs keep working. Sessions are durable rows, so viewers stay signed in |
-| Leased port taken by another program | The gateway leases a new port and records it. Existing URLs for that artifact stop working, and `mostra open` reissues them. `mostra doctor` names the conflicting process where it can |
+| Leased port taken by another program | The gateway leases a new port, records it and logs `MOSTRA_ENV_PORT_TAKEN`. Existing URLs for that artifact stop working, and `mostra open` reissues them. When the shell's port moves, every link minted for the old address answers 410, since the program on that port could read their secrets, and the next publish receipt carries a default link at the new address (D97 item 10). `mostra doctor` names the conflicting process where it can |
 | Token expired or revoked | 410 with `MOSTRA_HYGIENE_TOKEN_REVOKED`. The shell explains "This link was revoked or has expired" and keeps any unsaved local edits in the journal (HY-03) |
 | Bad Host, bad Origin, missing token or missing CSRF header | 403, 421 or 401 with a code, logged without the request's capability material (HY-01) |
+| Guessing a token | Past 30 failed tokens for one artifact in a minute, every token for it gets 429 with `Retry-After`, a right one too; other artifacts' links keep working (D97 item 8) |
+| Another link opened for an artifact this browser already has open | The shell shows what each link allows and asks which to keep; nothing is replaced until the viewer chooses (D98 item 8) |
+| A page fills the host's cookie jar | Up to 1 MiB of headers, more than browsers keep per host, is served. Past that, 431 `MOSTRA_HYGIENE_HEADERS_TOO_LARGE` with a page that clears the host's cookies; the viewer opens the link again (D98 item 9) |
+| A version's files altered or removed while the gateway runs | The next request for one of its files checks the version again and answers 500 `MOSTRA_HOME_INTEGRITY` until a republish rebuilds it (§3, D98 item 5) |
 | Tunnel drops | Viewers over the tunnel reconnect when it returns. `mostra share` reports the drop. Public shares never fall back to a wider bind |
 | Worker-mode frame bootstrap fails (service worker blocked) | The shell shows `MOSTRA_HYGIENE_FRAME_SESSION`, with the reason and a suggestion to open the tailnet or Funnel link instead (D70) |
 
