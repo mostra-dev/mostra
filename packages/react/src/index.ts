@@ -19,6 +19,7 @@ import type { ArtifactManifest } from "@mostra/protocol";
 
 export type { ArtifactManifest } from "@mostra/protocol";
 export { createServerReference, type ServerReference } from "./server-reference.ts";
+export { connectShell, reportReady, type ShellConnection } from "./shell-bridge.ts";
 
 /**
  * Declares an artifact's manifest (INTERFACES §2.2, D51). Mostra reads the object statically

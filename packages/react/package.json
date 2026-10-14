@@ -60,10 +60,19 @@
   ],
   "size-limit": [
     {
-      "name": "@mostra/react whole entry",
+      "name": "@mostra/react whole entry, zod included (every version embeds it)",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "1 kB"
+      "limit": "30 kB"
+    },
+    {
+      "name": "@mostra/react whole entry, zod excluded",
+      "path": "dist/index.js",
+      "import": "*",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "7 kB"
     }
   ]
 }
