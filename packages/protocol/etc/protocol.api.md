@@ -281,7 +281,7 @@ export interface CapabilityLink {
 export const CapabilityLink: z.ZodType<CapabilityLink>;
 
 // @public
-export type CapabilityScope = "view" | "draft" | "submit" | "review" | `action:${string}`;
+export type CapabilityScope = "view" | "draft" | "submit" | "review" | "signal" | `action:${string}`;
 
 // @public
 export const CapabilityScope: z.ZodType<CapabilityScope>;
@@ -569,7 +569,7 @@ export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
-export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED"];
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED"];
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -578,7 +578,7 @@ export const hostMethods: readonly AnyMethod[];
 export type HygieneDiagnosticCode = (typeof hygieneDiagnosticCodes)[number];
 
 // @public
-export const hygieneDiagnosticCodes: readonly ["MOSTRA_HYGIENE_HOST_REFUSED", "MOSTRA_HYGIENE_ORIGIN_REFUSED", "MOSTRA_HYGIENE_CSRF_MISSING", "MOSTRA_HYGIENE_CONTENT_TYPE", "MOSTRA_HYGIENE_REQUEST_MALFORMED", "MOSTRA_HYGIENE_SESSION_MISSING", "MOSTRA_HYGIENE_TOKEN_INVALID", "MOSTRA_HYGIENE_TOKEN_REVOKED", "MOSTRA_HYGIENE_SCOPE_DENIED", "MOSTRA_HYGIENE_RATE_LIMITED", "MOSTRA_HYGIENE_NOT_SERVED"];
+export const hygieneDiagnosticCodes: readonly ["MOSTRA_HYGIENE_HOST_REFUSED", "MOSTRA_HYGIENE_ORIGIN_REFUSED", "MOSTRA_HYGIENE_CSRF_MISSING", "MOSTRA_HYGIENE_CONTENT_TYPE", "MOSTRA_HYGIENE_REQUEST_MALFORMED", "MOSTRA_HYGIENE_SESSION_MISSING", "MOSTRA_HYGIENE_TOKEN_INVALID", "MOSTRA_HYGIENE_TOKEN_REVOKED", "MOSTRA_HYGIENE_SCOPE_DENIED", "MOSTRA_HYGIENE_RATE_LIMITED", "MOSTRA_HYGIENE_NOT_SERVED", "MOSTRA_HYGIENE_SESSION_CONFLICT", "MOSTRA_HYGIENE_HEADERS_TOO_LARGE"];
 
 // @public
 export type Id<P extends IdPrefix> = `${P}_${string}` & {
@@ -790,6 +790,9 @@ export function negotiateRevision(offered: readonly string[], supported?: readon
 
 // @public
 export function normalizeScopes(scopes: readonly CapabilityScope[]): CapabilityScope[];
+
+// @public
+export const OPEN_LINK_SCHEMES: readonly string[];
 
 // @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
@@ -1011,6 +1014,14 @@ export interface UiInitializeResult {
     readonly hostInfo: BridgeImplementation;
     readonly protocolVersion: string;
 }
+
+// @public
+export const uiOpenLink: BridgeMessage<{
+    readonly url: string;
+}, {
+    readonly isError?: boolean;
+    readonly [key: string]: unknown;
+}>;
 
 // @public
 export const uiSizeChanged: BridgeMessage<{

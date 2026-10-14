@@ -74,6 +74,8 @@ const STATUS: Readonly<Record<HygieneDiagnosticCode, number>> = {
   MOSTRA_HYGIENE_SCOPE_DENIED: 403,
   MOSTRA_HYGIENE_RATE_LIMITED: 429,
   MOSTRA_HYGIENE_NOT_SERVED: 404,
+  MOSTRA_HYGIENE_SESSION_CONFLICT: 409,
+  MOSTRA_HYGIENE_HEADERS_TOO_LARGE: 431,
 };
 
 /** Builds a refusal with the status the code's HTTP mapping gives (FAILURE_MODEL §8). */

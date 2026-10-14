@@ -559,8 +559,8 @@
     },
     "CapabilityScope": {
       "type": "string",
-      "pattern": "^(view|draft|submit|review|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$",
-      "description": "A capability token's scope: view, draft, submit, review, action:*, action:<export> or action:<module path>#<export>."
+      "pattern": "^(view|draft|submit|review|signal|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$",
+      "description": "A capability token's scope: view, draft, submit, review, signal, action:*, action:<export> or action:<module path>#<export>."
     },
     "ChildProcessStatus": {
       "type": "object",

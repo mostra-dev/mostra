@@ -13,6 +13,7 @@ import {
   mostraReady,
   uiInitialize,
   uiInitialized,
+  uiOpenLink,
 } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -230,5 +231,11 @@ describe("the bridge (SH-04)", () => {
       delete missing[key];
       expect(uiInitialize.params.safeParse(missing).success, `without ${key}`).toBe(false);
     }
+    // ui/open-link takes MCP Apps' `url` and answers with its optional `isError`.
+    expect(fixture.messages["ui/open-link"]?.params).toEqual(["url"]);
+    expect(uiOpenLink.params.safeParse({ url: "https://example.com" }).success).toBe(true);
+    expect(uiOpenLink.params.safeParse({}).success).toBe(false);
+    expect(uiOpenLink.result.safeParse({}).success).toBe(true);
+    expect(uiOpenLink.result.safeParse({ isError: true }).success).toBe(true);
   });
 });

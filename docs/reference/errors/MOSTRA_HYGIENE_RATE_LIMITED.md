@@ -12,7 +12,7 @@ Too many failed attempts. Severity: error. Phase: hygiene.
 
 ## What it means
 
-More than 30 capability tokens or frame tickets failed on this gateway within a minute, so it refuses every attempt on those paths, valid ones included, until the minute has passed. A guess can't succeed while the limit holds. The gateway answers 429 with `Retry-After`.
+More than 30 capability tokens failed for this artifact within a minute, so the gateway refuses every token for it, valid ones included, until the minute has passed. A guess can't succeed while the limit holds, and only this artifact's links wait. The gateway answers 429 with `Retry-After`.
 
 ## How to fix it
 

@@ -12,19 +12,26 @@ import { wireRegistry } from "./wire-registry.ts";
  * - `draft`: save answers and other field values.
  * - `submit`: submit.
  * - `review`: comment and choose.
+ * - `signal`: raise a signal for the host's attention (D10), which a waiting agent may act on.
  * - `action:*`: run every server function; `action:<export>` runs that export of any
  *   `"use server"` module; `action:<module path>#<export>` runs one function ID.
  */
-export type CapabilityScope = "view" | "draft" | "submit" | "review" | `action:${string}`;
+export type CapabilityScope =
+  | "view"
+  | "draft"
+  | "submit"
+  | "review"
+  | "signal"
+  | `action:${string}`;
 
 /** The Zod schema of the `CapabilityScope` type. */
 export const CapabilityScope: z.ZodType<CapabilityScope> = z
   .string()
-  .regex(/^(view|draft|submit|review|action:(\*|[^\s#*]+(#[^\s#*]+)?))$/)
+  .regex(/^(view|draft|submit|review|signal|action:(\*|[^\s#*]+(#[^\s#*]+)?))$/)
   .register(wireRegistry, {
     id: "CapabilityScope",
     description:
-      "A capability token's scope: view, draft, submit, review, action:*, action:<export> or action:<module path>#<export>.",
+      "A capability token's scope: view, draft, submit, review, signal, action:*, action:<export> or action:<module path>#<export>.",
   }) as z.ZodType<CapabilityScope>;
 
 /** Every scope at once: what a link minted without `scopes`, and every default link, carries. */
@@ -33,6 +40,7 @@ export const ALL_SCOPES: readonly CapabilityScope[] = [
   "draft",
   "submit",
   "review",
+  "signal",
   "action:*",
 ];
 

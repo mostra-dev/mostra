@@ -18,6 +18,8 @@ export const hygieneDiagnosticCodes = [
   "MOSTRA_HYGIENE_SCOPE_DENIED",
   "MOSTRA_HYGIENE_RATE_LIMITED",
   "MOSTRA_HYGIENE_NOT_SERVED",
+  "MOSTRA_HYGIENE_SESSION_CONFLICT",
+  "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
   // gen:codes
 ] as const;
 
@@ -132,7 +134,7 @@ export const hygieneDiagnostics: AreaCatalog<HygieneDiagnosticCode> = {
     hint: "Wait for the time in `Retry-After`, then open the link again.",
     docs: {
       explanation:
-        "More than 30 capability tokens or frame tickets failed on this gateway within a minute, so it refuses every attempt on those paths, valid ones included, until the minute has passed. A guess can't succeed while the limit holds. The gateway answers 429 with `Retry-After`.",
+        "More than 30 capability tokens failed for this artifact within a minute, so the gateway refuses every token for it, valid ones included, until the minute has passed. A guess can't succeed while the limit holds, and only this artifact's links wait. The gateway answers 429 with `Retry-After`.",
       fix: "Wait, then open the link again. Repeated failures usually come from a mistyped link or a script retrying an old one.",
     },
   },
@@ -145,6 +147,28 @@ export const hygieneDiagnostics: AreaCatalog<HygieneDiagnosticCode> = {
       explanation:
         "The gateway serves only published versions' client files and the browser-protocol paths under `/_mostra/`. Everything else in the home, such as sources, server bundles, staging and unpublished builds, has no URL. A path or method nothing answers gets 404 or 405.",
       fix: "Check the path. Server code runs through the browser protocol, never as a file, and an artifact becomes viewable only once it is published.",
+    },
+  },
+  MOSTRA_HYGIENE_SESSION_CONFLICT: {
+    severity: "warning",
+    phase: "hygiene",
+    title: "Another link is already open for this artifact",
+    hint: "Choose which link to keep; send `replace: true` to use the new one.",
+    docs: {
+      explanation:
+        "This browser already has a live session for the artifact from a different link. Opening a link never silently replaces it, because a page elsewhere could send the viewer to its own, narrower link and take over their tabs (D98). The shell shows both links' access and lets the viewer choose; the answer is 409 with `current` and `offered`.",
+      fix: "In the shell, choose the link to keep. A client exchanging tokens itself sends `replace: true` to replace the session.",
+    },
+  },
+  MOSTRA_HYGIENE_HEADERS_TOO_LARGE: {
+    severity: "error",
+    phase: "hygiene",
+    title: "The request's headers are too large",
+    hint: "Open the link again: this page cleared the cookies that made the request too large.",
+    docs: {
+      explanation:
+        "The request's headers passed the gateway's limit of 1 MiB, more than any browser sends for one host's cookies. Every port of the loopback host shares one cookie jar, so a page on any of them can fill it. The gateway answers 431 with `Clear-Site-Data: \"cookies\"`, which empties the host's cookies, so the next request works. Mostra's sessions go with them and come back when a link is opened again.",
+      fix: "Open the artifact's link again. If it keeps happening, find the page that sets the cookies: it runs on this host.",
     },
   },
   // gen:entries

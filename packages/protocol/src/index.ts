@@ -30,10 +30,12 @@ export {
   connectBridge,
   MCP_APPS_PROTOCOL_VERSION,
   mostraReady,
+  OPEN_LINK_SCHEMES,
   type UiInitializeParams,
   type UiInitializeResult,
   uiInitialize,
   uiInitialized,
+  uiOpenLink,
   uiSizeChanged,
 } from "./bridge.ts";
 export {

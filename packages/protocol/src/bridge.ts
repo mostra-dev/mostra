@@ -151,6 +151,28 @@ export const uiSizeChanged: BridgeMessage<
   result: z.undefined(),
 };
 
+/**
+ * The URL schemes `ui/open-link` opens: the web, mail and phone numbers. Anything else, such as
+ * `javascript:` or `data:`, would run or show content in the shell's own context.
+ */
+export const OPEN_LINK_SCHEMES: readonly string[] = ["http:", "https:", "mailto:", "tel:"];
+
+/**
+ * `ui/open-link`: the artifact asks the shell to open a URL in a new tab (MCP Apps). The frame
+ * can't navigate the viewer's tab itself (D98 item 7), so this is how an artifact sends the
+ * viewer anywhere. `isError` is `true` when the shell couldn't open it.
+ */
+export const uiOpenLink: BridgeMessage<
+  { readonly url: string },
+  { readonly isError?: boolean; readonly [key: string]: unknown }
+> = {
+  method: "ui/open-link",
+  from: "artifact",
+  kind: "request",
+  params: z.looseObject({ url: z.string().min(1).max(8192) }),
+  result: z.looseObject({ isError: z.boolean().exactOptional() }),
+};
+
 /** `mostra/ready`: the artifact's page has rendered; `verify` waits for it (ROUND-3 §8). */
 export const mostraReady: BridgeMessage<Readonly<Record<string, unknown>>, undefined> = {
   method: "mostra/ready",
@@ -168,6 +190,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   uiInitialize,
   uiInitialized,
   uiSizeChanged,
+  uiOpenLink,
   mostraReady,
 ] as readonly AnyBridgeMessage[];
 
