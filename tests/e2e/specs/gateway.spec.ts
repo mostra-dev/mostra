@@ -337,3 +337,202 @@ test.describe("framing and revoked links (HY-01, D98 item 4)", () => {
     }
   });
 });
+
+test.describe("one artifact against the others and against its shell (Claude review)", () => {
+  test("an artifact page can't lock another artifact's viewers out (finding 1)", async ({
+    page,
+    browser,
+  }) => {
+    const target = await openShell(page, run.receipts.mdx.url);
+    const targetOrigin = new URL(target.frame.url()).origin;
+    const attacker = await page.context().newPage();
+    const { frame } = await openShell(attacker, run.receipts.tsx.url);
+    // The artifact's own script loads 40 entry URLs of the other artifact with junk tickets.
+    await frame.evaluate(async (origin) => {
+      await Promise.all(
+        Array.from(
+          { length: 40 },
+          (_, index) =>
+            new Promise((resolve) => {
+              const image = new Image();
+              image.onload = image.onerror = resolve;
+              image.src = `${origin}/_mostra/enter?ticket=${String(index).padStart(26, "0")}`;
+            }),
+        ),
+      );
+    }, targetOrigin);
+    // A viewer of the other artifact, in a fresh browser profile, still gets in.
+    const context = await browser.newContext();
+    try {
+      await openShell(await context.newPage(), run.receipts.mdx.url);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("an artifact page can't break every link by filling the host's cookie jar (finding 3)", async ({
+    page,
+  }) => {
+    const { frame } = await openShell(page, run.receipts.tsx.url);
+    const kept = await frame.evaluate(() => {
+      for (let index = 0; index < 400; index++) {
+        document.cookie = `junk${index}=${"x".repeat(4090)}; path=/; max-age=3600`;
+      }
+      return document.cookie.length;
+    });
+    expect(kept).toBeGreaterThan(32 * 1024);
+    // Every link on the host still opens, the artifact's own and another one.
+    await openShell(await page.context().newPage(), run.receipts.mdx.url);
+    await openShell(await page.context().newPage(), run.receipts.tsx.url);
+  });
+
+  test("the frame can't replace the shell page, neither itself nor through a popup (finding 4)", async ({
+    page,
+  }) => {
+    const { frame } = await openShell(page, run.receipts.tsx.url);
+    const shellUrl = page.url();
+    const artifactOrigin = new URL(frame.url()).origin;
+    // A click gives the frame user activation, which top navigation would otherwise accept.
+    await frame.locator("body").click();
+    const direct = await frame.evaluate((origin) => {
+      try {
+        // biome-ignore lint/style/noNonNullAssertion: the frame always has a top window
+        window.top!.location.href = `${origin}/a/look-alike`;
+        return "assigned";
+      } catch (error) {
+        return String(error);
+      }
+    }, artifactOrigin);
+    await page.waitForTimeout(1_000);
+    expect(page.url(), direct).toBe(shellUrl);
+    // A popup the frame opens runs unsandboxed, but it can't navigate the shell either.
+    const [popup] = await Promise.all([
+      page.context().waitForEvent("page"),
+      frame
+        .locator("body")
+        .click({ modifiers: [] })
+        .then(() =>
+          frame.evaluate(() => {
+            window.open("about:blank", "_blank");
+          }),
+        ),
+    ]);
+    const viaPopup = await popup.evaluate((origin) => {
+      try {
+        // biome-ignore lint/style/noNonNullAssertion: the popup's opener is the frame
+        window.opener!.top.location.href = `${origin}/a/look-alike`;
+        return "assigned";
+      } catch (error) {
+        return String(error);
+      }
+    }, artifactOrigin);
+    await page.waitForTimeout(1_000);
+    expect(page.url(), viaPopup).toBe(shellUrl);
+    // Nor by naming the top as a target, in script or in a link the viewer clicks.
+    await frame.locator("body").click();
+    await frame.evaluate((origin) => {
+      window.open(`${origin}/a/look-alike`, "_top");
+    }, artifactOrigin);
+    await frame.evaluate((origin) => {
+      const link = document.createElement("a");
+      link.href = `${origin}/a/look-alike`;
+      link.target = "_top";
+      link.textContent = "look-alike";
+      link.id = "look-alike";
+      document.body.append(link);
+    }, artifactOrigin);
+    await frame.locator("#look-alike").click();
+    await page.waitForTimeout(1_000);
+    expect(page.url()).toBe(shellUrl);
+    await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
+  });
+
+  test("ui/open-link opens a new tab, and refuses a URL that would run in the shell", async ({
+    page,
+  }) => {
+    const target: Server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end("<!doctype html><title>opened</title><p>opened</p>");
+    });
+    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+    const address = target.address();
+    if (address === null || typeof address === "string") throw new Error("no port");
+    try {
+      const { frame } = await openShell(page, run.receipts.tsx.url);
+      const shellOrigin = new URL(page.url()).origin;
+      const ask = (url: string, id: number) =>
+        frame.evaluate(
+          ({ url, id, shellOrigin }) =>
+            new Promise<unknown>((resolve) => {
+              const listener = (event: MessageEvent) => {
+                const data = event.data as { id?: number };
+                if (event.origin !== shellOrigin || data?.id !== id) return;
+                window.removeEventListener("message", listener);
+                resolve(data);
+              };
+              window.addEventListener("message", listener);
+              window.parent.postMessage(
+                { jsonrpc: "2.0", id, method: "ui/open-link", params: { url } },
+                shellOrigin,
+              );
+            }),
+          { url, id, shellOrigin },
+        );
+      const refused = await ask("javascript:alert(1)", 9001);
+      expect(refused).toMatchObject({ result: { isError: true } });
+      // A click inside the frame activates the shell too, so its window.open isn't blocked.
+      await frame.locator("body").click();
+      const [opened, answer] = await Promise.all([
+        page.context().waitForEvent("page"),
+        ask(`http://127.0.0.1:${address.port}/`, 9002),
+      ]);
+      expect(answer).toMatchObject({ result: {} });
+      await opened.waitForLoadState("domcontentloaded");
+      expect(opened.url()).toBe(`http://127.0.0.1:${address.port}/`);
+      // noopener: the new tab can't reach back into the shell.
+      expect(await opened.evaluate(() => window.opener)).toBeNull();
+      expect(page.url()).toContain("/a/");
+    } finally {
+      target.close();
+    }
+  });
+
+  test("a second link for an open artifact asks before it replaces the session (finding 6)", async ({
+    page,
+  }) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const narrow = await client.call<{ url: string }>("view/url", {
+        artifact: { artifactId: run.receipts.directory.artifactId },
+        scopes: ["view"],
+      });
+      await openShell(page, run.receipts.directory.url);
+      const scopes = (target: Page) =>
+        target.evaluate(async () => {
+          const response = await fetch(`${location.pathname.replace(/\/$/, "")}/_mostra/session`);
+          return ((await response.json()) as { scopes: string[] }).scopes;
+        });
+      // Another link: the shell asks, and keeping the current link changes nothing.
+      const second = await page.context().newPage();
+      await second.goto(narrow.url);
+      await expect(second.locator("html")).toHaveAttribute("data-shell", "choosing");
+      await expect(second.getByText("The link you just opened: Can view.")).toBeVisible();
+      await second.getByRole("button", { name: "Keep the link I have" }).click();
+      await expect(second.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 15_000,
+      });
+      expect(await scopes(second)).toContain("submit");
+      // Using the new link replaces the session for every tab.
+      const third = await page.context().newPage();
+      await third.goto(narrow.url);
+      await expect(third.locator("html")).toHaveAttribute("data-shell", "choosing");
+      await third.getByRole("button", { name: "Use the new link" }).click();
+      await expect(third.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 15_000,
+      });
+      expect(await scopes(third)).toEqual(["view"]);
+    } finally {
+      client.close();
+    }
+  });
+});
