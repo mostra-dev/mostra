@@ -254,7 +254,12 @@ async function writeScaffold(dir: string, artifactId: string, title: string): Pr
  * `manifest.json` names an output digest, and its `client/`, `server/` and `registry.json` still
  * have that digest (DATA_MODEL §2).
  */
-async function versionDamage(dir: string): Promise<string | undefined> {
+/**
+ * What is wrong with a stored version directory, or `undefined` when its files still match the
+ * output digest its manifest records (FAILURE_MODEL §3). Publish rebuilds a damaged directory; the
+ * gateway refuses to show one.
+ */
+export async function versionDamage(dir: string): Promise<string | undefined> {
   let recorded: unknown;
   try {
     recorded = (

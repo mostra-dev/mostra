@@ -49,6 +49,7 @@ import {
   canonicalRef,
   createPublisher,
   type Publisher,
+  versionDamage,
 } from "../publish/index.ts";
 import { openRegistry } from "../registry/index.ts";
 
@@ -255,6 +256,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     artifacts: {
       get: (ref) => registry.get(canonicalRef(ref)),
       versionDir: (versionId) => registry.store.versionDir(versionId),
+      damage: (versionId) => versionDamage(registry.store.versionDir(versionId)),
     },
     shellDir,
   });

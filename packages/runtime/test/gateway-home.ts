@@ -27,6 +27,7 @@ export interface Receipt {
   readonly version: number;
   readonly url: string;
   readonly tokenId: string;
+  readonly reused: boolean;
 }
 
 /** A link as `view/url` and `view/rotate` return it. */

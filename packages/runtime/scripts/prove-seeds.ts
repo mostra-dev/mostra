@@ -220,6 +220,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "VR-03",
+    name: "a damaged version is shown (the WP-05 review finding)",
+    file: "src/gateway/index.ts",
+    from: "      if (damage !== undefined) {\n        log.error(",
+    to: '      if (damage === "never") {\n        log.error(',
+    check: integration("gateway.test.ts", "damaged version"),
+  },
+  {
+    requirement: "VR-03",
     name: "a frame reaches the whole version directory, server bundle included",
     file: "src/gateway/index.ts",
     from: 'join(artifacts.versionDir(versionId), "client")',

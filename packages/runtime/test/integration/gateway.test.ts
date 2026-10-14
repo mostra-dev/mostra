@@ -5,7 +5,7 @@
  * port, and the methods `view/url`, `view/rotate` and `view/revoke` (HY-03).
  */
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -449,6 +449,55 @@ describe("a runtime without its shell build", () => {
       );
       // Everything but the shell's page still works: the exchange, the ticket and the frame.
       expect((await openLink(browser, receipt.url)).page.status).toBe(200);
+    } finally {
+      await gateway.stop();
+    }
+  });
+});
+
+describe("a damaged version (FAILURE_MODEL §3)", () => {
+  it("is never shown: the ticket answers MOSTRA_HOME_INTEGRITY until a republish repairs it", async () => {
+    const gateway = await new GatewayHome().start();
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const version = join(gateway.home.home, "versions", receipt.versionId);
+      chmodSync(version, 0o755);
+      chmodSync(join(version, "client"), 0o755);
+      chmodSync(join(version, "client", "index.html"), 0o644);
+      writeFileSync(join(version, "client", "index.html"), "<p>tampered</p>");
+      const browser = new Browser();
+      const link = parseLink(receipt.url);
+      const shell = await browser.fetchJson(
+        link.shell,
+        `/a/${receipt.artifactId}/_mostra/session`,
+        {
+          body: { token: link.secret },
+        },
+      );
+      const csrf = shell.json<{ csrf: string }>().csrf;
+      const ticket = await browser.fetchJson(
+        link.shell,
+        `/a/${receipt.artifactId}/_mostra/ticket`,
+        {
+          body: {},
+          csrf,
+        },
+      );
+      expect(ticket.status).toBe(500);
+      expect(ticket.json()).toMatchObject({ code: "MOSTRA_HOME_INTEGRITY" });
+      expect(ticket.body).not.toContain("tampered");
+      // Publishing the source again rebuilds the directory (WP-03), and the version opens.
+      const again = ok<Receipt>(
+        await gateway.client.call(
+          "artifact/publish",
+          { source: { artifactId: receipt.artifactId } },
+          120_000,
+        ),
+      );
+      expect(again.reused).toBe(true);
+      const opened = await openLink(new Browser(), receipt.url);
+      expect(opened.page.status).toBe(200);
+      expect(opened.page.body).not.toContain("tampered");
     } finally {
       await gateway.stop();
     }

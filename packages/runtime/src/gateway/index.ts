@@ -59,6 +59,8 @@ export interface GatewayArtifacts {
   get(ref: ArtifactRef): ArtifactDetail;
   /** The directory of a published version (`versions/<id>`). */
   versionDir(versionId: string): string;
+  /** What is wrong with a version's stored files, or `undefined` when they match their digest. */
+  damage(versionId: string): Promise<string | undefined>;
 }
 
 /** Options for {@link createGateway}. */
@@ -162,6 +164,8 @@ export function createGateway(options: GatewayOptions): Gateway {
     { readonly listener: Listener; readonly port: number }
   >();
   const opening = new Map<string, Promise<number>>();
+  /** Versions whose stored files matched their digest in this process; damaged ones are re-checked. */
+  const intact = new Set<string>();
 
   const link = (token: MintedToken): CapabilityLink => ({
     url: `${shellOrigin()}/a/${token.artifactId}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
@@ -335,6 +339,20 @@ export function createGateway(options: GatewayOptions): Gateway {
         }),
         { status: 404 },
       );
+    }
+    // A damaged version is never shown (FAILURE_MODEL §3); an intact one is checked once.
+    if (!intact.has(version.id)) {
+      const damage = await artifacts.damage(version.id);
+      if (damage !== undefined) {
+        log.error("gateway.version_damaged", { versionId: version.id, damage });
+        return jsonResponse(
+          createDiagnostic("MOSTRA_HOME_INTEGRITY", {
+            message: `Version ${version.number} of this artifact is damaged: ${damage}.`,
+          }),
+          { status: 500 },
+        );
+      }
+      intact.add(version.id);
     }
     const port = await openArtifact(artifactId);
     const artifactOrigin = addressing.origin(port);

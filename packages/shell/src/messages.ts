@@ -23,6 +23,12 @@ export function explain(code: string): { readonly title: string; readonly detail
         title: "This version doesn't exist",
         detail: "Open the link without its version number to see the latest version.",
       };
+    case "MOSTRA_HOME_INTEGRITY":
+      return {
+        title: "This version is damaged",
+        detail:
+          "Its files on this machine changed after it was published. Ask for it to be published again.",
+      };
     case "MOSTRA_HYGIENE_SCOPE_DENIED":
       return { title: "This link doesn't allow that", detail: "Ask for a link with more access." };
     case "NO_ARTIFACT":
