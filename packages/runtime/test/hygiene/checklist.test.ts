@@ -474,6 +474,23 @@ describe("item 10: expiry, rotation, revocation (410) and rate limits", () => {
     expect(again.error?.data.code).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
   });
 
+  it("refuses cross-site frame entries without counting them, so a page elsewhere can't lock viewers out", async () => {
+    const stranger = new Browser();
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const answer = await stranger.ask({
+        url: `${opened.frameOrigin}/_mostra/enter?ticket=${String(attempt).padStart(26, "0")}`,
+        headers: { accept: "application/json", "sec-fetch-site": "cross-site" },
+      });
+      // A frame entry is a navigation: its refusal is a plain page naming the code.
+      expect(answer.status).toBe(403);
+      expect(answer.body).toContain("MOSTRA_HYGIENE_ORIGIN_REFUSED");
+    }
+    // The limit wasn't touched: a real link still opens.
+    const link = await gateway.link(receipt.artifactId);
+    secrets.push(parseLink(link.url).secret);
+    expect((await openLink(new Browser(), link.url)).page.status).toBe(200);
+  });
+
   it("rate-limits guessing: past 30 failures a minute, every attempt gets 429, a right token too", async () => {
     const link = await gateway.link(receipt.artifactId);
     secrets.push(parseLink(link.url).secret);

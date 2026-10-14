@@ -419,6 +419,16 @@ export function createGateway(options: GatewayOptions): Gateway {
     const enter = (context: RouteContext): Response => {
       const url = new URL(context.request.url);
       const meta = { method: "GET", path: url.pathname, document: true };
+      // A frame enters from its shell, which is same-site. A page elsewhere can navigate a hidden
+      // frame here with junk tickets; its entries are refused before redeeming, so they never
+      // count towards the guessing limit and can't lock real viewers out (D97 item 8).
+      if (context.request.headers.get("sec-fetch-site") === "cross-site") {
+        return refuse(
+          checks(),
+          refusal("MOSTRA_HYGIENE_ORIGIN_REFUSED", "A frame enters only from its shell."),
+          meta,
+        );
+      }
       const redeemed = capabilities.redeemTicket(url.searchParams.get("ticket"), origin());
       if (isRefusal(redeemed)) return refuse(checks(), redeemed, meta);
       if (redeemed.artifactId !== artifactId) {
@@ -480,8 +490,14 @@ export function createGateway(options: GatewayOptions): Gateway {
         path: url.pathname,
         document: context.document,
       };
-      const path = safePath(url.pathname) ?? "/";
-      if (!session?.versionId || path === "/_mostra" || path.startsWith("/_mostra/")) {
+      // `checkRequest` refused unsafe targets already; an unsafe one here is still never served.
+      const path = safePath(url.pathname);
+      if (
+        path === undefined ||
+        !session?.versionId ||
+        path === "/_mostra" ||
+        path.startsWith("/_mostra/")
+      ) {
         return refuse(
           checks(),
           refusal("MOSTRA_HYGIENE_NOT_SERVED", "Nothing is served at this path."),

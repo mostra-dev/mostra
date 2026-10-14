@@ -118,6 +118,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "HY-01",
+    name: "a page elsewhere spends the guessing limit (the WP-05 review finding)",
+    file: "src/gateway/index.ts",
+    from: 'if (context.request.headers.get("sec-fetch-site") === "cross-site") {',
+    to: "if (false) {",
+    check: e2e("can't lock viewers out"),
+    e2e: true,
+  },
+  {
     requirement: "HY-02",
     name: "the gateway listens on every interface while it reports loopback",
     file: "src/addressing/index.ts",

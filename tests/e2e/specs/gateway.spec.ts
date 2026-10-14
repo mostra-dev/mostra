@@ -263,6 +263,38 @@ test.describe("framing and revoked links (HY-01, D98 item 4)", () => {
     }
   });
 
+  test("a page elsewhere can't lock viewers out by spending the guessing limit", async ({
+    page,
+  }) => {
+    const opened = await openShell(page, run.receipts.mdx.url);
+    const artifactOrigin = new URL(opened.frame.url()).origin;
+    // Forty hidden frames entering with junk tickets: more than the 30 failures a minute allows.
+    const server: Server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      const frames = Array.from(
+        { length: 40 },
+        (_, index) =>
+          `<iframe src="${artifactOrigin}/_mostra/enter?ticket=${String(index).padStart(26, "0")}"></iframe>`,
+      ).join("");
+      response.end(`<!doctype html><title>elsewhere</title>${frames}`);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("no port");
+    try {
+      const attacker = await page.context().newPage();
+      await attacker.goto(`http://localhost:${address.port}/`, { waitUntil: "domcontentloaded" });
+      await attacker.waitForTimeout(2_000);
+      await attacker.close();
+      // A viewer opening a link right after still gets in.
+      const viewer = await page.context().newPage();
+      await openShell(viewer, run.receipts.mdx.url);
+      await viewer.close();
+    } finally {
+      server.close();
+    }
+  });
+
   test("a revoked link says so in plain words", async ({ page }) => {
     const client = await Client.connect(run.socket);
     try {

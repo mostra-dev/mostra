@@ -605,7 +605,7 @@ Each split leaves the later package free: WP-05 builds nothing the later package
 5. **Expiry.** `ttl` is a duration (`30m`, `24h`, `7d`); local links have none by default (D63). An expired or revoked token, and every session made from it, answers 410 with `MOSTRA_HYGIENE_TOKEN_REVOKED`.
 6. **Rotation.** `view/rotate { tokenId }` mints, in one transaction, a token with the same artifact, scopes and expiry and revokes the old one, appending `token.revoked`. Rotating the default link makes the new token the default.
 7. **Viewer.** `view/url`'s `viewer` arrives with WP-06, which first records viewers; until then every session is the home's local user.
-8. **Guessing.** Failed exchanges and frame entries count per gateway; past 30 in a minute, every attempt on those paths gets 429 with `Retry-After` until the window clears. A correct token is refused too while the limit holds, so a guess can't succeed during an attack.
+8. **Guessing.** Failed exchanges and frame entries count per gateway; past 30 in a minute, every attempt on those paths gets 429 with `Retry-After` until the window clears. A correct token is refused too while the limit holds, so a guess can't succeed during an attack. A frame entry the browser marks `Sec-Fetch-Site: cross-site` is refused (403) before its ticket is looked at and doesn't count, so a page elsewhere can't spend the limit and lock real viewers out; a real entry comes from the shell, which is same-site (found in WP-05's review).
 
 *Source:* M16 points 4 to 7.
 
