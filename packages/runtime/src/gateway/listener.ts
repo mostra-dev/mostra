@@ -104,7 +104,12 @@ export function createListener(options: {
         origin: policy.origin,
       });
       const response = refusalResponse(envelope, { document: false, method });
-      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+      // A request refused before routing ends its connection: nothing else is read from it.
+      outgoing.shouldKeepAlive = false;
+      outgoing.writeHead(response.status, {
+        ...Object.fromEntries(response.headers),
+        connection: "close",
+      });
       void response.text().then((text) => outgoing.end(text));
       return;
     }

@@ -189,6 +189,7 @@ export const MIGRATIONS: readonly Migration[] = [
           token_id TEXT NOT NULL REFERENCES token(id),
           origin TEXT NOT NULL,
           mode TEXT NOT NULL CHECK (mode IN ('cookie', 'worker')),
+          -- The SHA-256 of the session's CSRF token, which is derived from the cookie (D98).
           csrf TEXT NOT NULL,
           version_id TEXT REFERENCES version(id),
           created_at TEXT NOT NULL,

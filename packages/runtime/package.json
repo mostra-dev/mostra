@@ -40,7 +40,8 @@
     "test:integration": "vitest run --project integration",
     "test:external": "vitest run --project external",
     "api": "mostra-tools api",
-    "prove:seeds": "node scripts/prove-seeds.ts"
+    "prove:seeds": "node scripts/prove-seeds.ts",
+    "test:hygiene": "vitest run --project hygiene"
   },
   "dependencies": {
     "@hono/node-server": "catalog:",

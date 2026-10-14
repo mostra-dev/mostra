@@ -76,6 +76,15 @@ export function hashSecret(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
+/**
+ * A session's CSRF token, derived from its cookie (D98 item 2). The ledger holds neither: only
+ * the SHA-256 of the cookie (the session's ID) and of the CSRF token, and neither hash leads to
+ * the other. Whoever holds the cookie already holds the session, so deriving costs nothing.
+ */
+export function csrfOf(cookie: string): string {
+  return crockford(createHash("sha256").update(`mostra csrf ${cookie}`, "utf8").digest());
+}
+
 /** Whether a value has the shape of a secret, checked before any lookup. */
 export function looksLikeSecret(value: unknown): value is string {
   return (
@@ -243,9 +252,10 @@ export class Capabilities {
       readonly expiresAt?: string | undefined;
       readonly pinnedVersion?: number | undefined;
       readonly isDefault: boolean;
+      readonly tokenId?: string;
     },
   ): MintedToken {
-    const tokenId = TokenId.create();
+    const tokenId = input.tokenId ?? TokenId.create();
     const secret = this.secretOf(tokenId);
     const scopes = normalizeScopes(input.scopes);
     db.run(
@@ -362,20 +372,23 @@ export class Capabilities {
       if (!row) return undefined;
       if (!this.#live(row)) return "dead";
       const grant = grantOf(row);
-      // The old token stops being the default first: the index allows one default per artifact.
+      const replacement = TokenId.create();
+      // The old token stops being the default first (one default per artifact), in the only update
+      // a revocation makes: a revoked token never changes again (the ledger's trigger).
       db.run(
-        "UPDATE token SET revoked_at = ?, is_default = 0 WHERE id = ?",
+        "UPDATE token SET revoked_at = ?, is_default = 0, replaced_by = ? WHERE id = ?",
         this.#iso(this.#now()),
+        replacement,
         tokenId,
       );
       const minted = this.#insert(db, {
+        tokenId: replacement,
         artifactId: grant.artifactId,
         scopes: grant.scopes,
         expiresAt: grant.expiresAt,
         pinnedVersion: grant.pinnedVersion,
         isDefault: grant.isDefault,
       });
-      db.run("UPDATE token SET replaced_by = ? WHERE id = ?", minted.tokenId, tokenId);
       appendEvent(db, {
         artifactId: grant.artifactId,
         type: "token.revoked",
@@ -450,7 +463,7 @@ export class Capabilities {
     readonly id: string;
   } {
     const cookie = randomSecret();
-    const csrf = randomSecret();
+    const csrf = csrfOf(cookie);
     const id = hashSecret(cookie);
     const now = this.#iso(this.#now());
     this.#ledger.write((db) =>
@@ -459,7 +472,7 @@ export class Capabilities {
         id,
         input.tokenId,
         input.origin,
-        csrf,
+        hashSecret(csrf),
         input.versionId ?? null,
         now,
         now,
@@ -492,10 +505,13 @@ export class Capabilities {
         revoked = true;
         continue;
       }
+      const csrf = csrfOf(value);
+      // A row whose CSRF hash doesn't match was not made by this code: it doesn't count.
+      if (!safeEqual(hashSecret(csrf), found.session.csrf)) continue;
       this.#touch(found.session.id);
       return {
         id: found.session.id,
-        csrf: found.session.csrf,
+        csrf,
         ...(found.session.version_id !== null ? { versionId: found.session.version_id } : {}),
         grant: grantOf(found.token),
       };
