@@ -59,6 +59,8 @@ export interface FoundFile {
   readonly path: string;
   readonly size: number;
   readonly mtimeMs: number;
+  /** When its contents or mode last changed; integrity checks compare it (FAILURE_MODEL §3). */
+  readonly ctimeMs: number;
 }
 
 /**
@@ -72,7 +74,9 @@ export async function findFile(root: string, path: string): Promise<FoundFile | 
     const real = await realpath(join(realRoot, path));
     if (real !== realRoot && !real.startsWith(`${realRoot}${sep}`)) return undefined;
     const info = await stat(real);
-    return info.isFile() ? { path: real, size: info.size, mtimeMs: info.mtimeMs } : undefined;
+    return info.isFile()
+      ? { path: real, size: info.size, mtimeMs: info.mtimeMs, ctimeMs: info.ctimeMs }
+      : undefined;
   } catch {
     return undefined;
   }

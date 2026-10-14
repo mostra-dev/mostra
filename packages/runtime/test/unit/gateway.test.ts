@@ -2,6 +2,7 @@
  * Capability tokens, sessions and tickets (HY-03, D97, D98) and port leases (D99) against a real
  * ledger, in-process. The gateway's integration and browser suites exercise them over HTTP.
  */
+import { createServer as createHttpServer } from "node:http";
 import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -21,12 +22,20 @@ import {
   SECRET_LENGTH,
   TICKET_TTL_MS,
 } from "../../src/gateway/capabilities.ts";
-import { type Ledger, openLedger } from "../../src/ledger/index.ts";
+import {
+  type Ledger,
+  openLedger,
+  recordedResult,
+  recordResult,
+  requestKey,
+} from "../../src/ledger/index.ts";
 import { silentLog } from "../../src/log.ts";
 import { tempDir } from "../support.ts";
 
 const ARTIFACT = "art_01JB8Z3QF6S7W3N8D5K2C4V9XG";
 const OTHER = "art_01JB8Z3QF6S7W3N8D5K2C4V9XH";
+/** The shell's origin in these tests; links are minted for it. */
+const SHELL_ORIGIN = { value: "http://127.0.0.1:20000" };
 
 function ledger(): Ledger {
   const opening = openLedger({
@@ -51,7 +60,14 @@ function ledger(): Ledger {
 function authority(clock = { now: Date.parse("2026-10-14T00:00:00Z") }) {
   const db = ledger();
   const key = capabilityKey(tempDir("mostra-key"), silentLog);
-  const capabilities = new Capabilities({ ledger: db, log: silentLog, key, now: () => clock.now });
+  SHELL_ORIGIN.value = "http://127.0.0.1:20000";
+  const capabilities = new Capabilities({
+    ledger: db,
+    log: silentLog,
+    key,
+    now: () => clock.now,
+    shellOrigin: () => SHELL_ORIGIN.value,
+  });
   return { db, capabilities, clock, key };
 }
 
@@ -84,7 +100,7 @@ describe("capability tokens (HY-03, D97)", () => {
   it("grant only their artifact and default to every scope", () => {
     const { capabilities } = authority();
     const token = capabilities.mint({ artifactId: ARTIFACT });
-    expect(token.scopes).toEqual(["action:*", "draft", "review", "submit", "view"]);
+    expect(token.scopes).toEqual(["action:*", "draft", "review", "signal", "submit", "view"]);
     expect(code(capabilities.presentToken(token.secret, OTHER))).toBe(
       "MOSTRA_HYGIENE_TOKEN_INVALID",
     );
@@ -206,6 +222,7 @@ describe("capability tokens (HY-03, D97)", () => {
       log: silentLog,
       key: Buffer.alloc(32, 1),
       now: () => clock.now,
+      shellOrigin: () => SHELL_ORIGIN.value,
     });
     const old = first.defaultLink(ARTIFACT);
     const second = new Capabilities({
@@ -213,6 +230,7 @@ describe("capability tokens (HY-03, D97)", () => {
       log: silentLog,
       key: Buffer.alloc(32, 2),
       now: () => clock.now,
+      shellOrigin: () => SHELL_ORIGIN.value,
     });
     expect(code(second.presentToken(old.secret, ARTIFACT))).toBeUndefined();
     const fresh = second.defaultLink(ARTIFACT);
@@ -222,19 +240,74 @@ describe("capability tokens (HY-03, D97)", () => {
 });
 
 describe("guessing is rate-limited (D97 item 8)", () => {
-  it("refuses every attempt, valid ones too, while the limit holds, and recovers after a minute", () => {
+  it("refuses every token for the artifact, valid ones too, while the limit holds, and recovers after a minute", () => {
     const { capabilities, clock } = authority();
     const token = capabilities.mint({ artifactId: ARTIFACT });
+    const other = capabilities.mint({ artifactId: OTHER });
     for (let index = 0; index < FAILURE_LIMIT; index++) {
-      expect(capabilities.limited()).toBeUndefined();
+      expect(capabilities.limited(ARTIFACT)).toBeUndefined();
       capabilities.presentToken(randomSecret(), ARTIFACT);
     }
-    const limited = capabilities.limited();
+    const limited = capabilities.limited(ARTIFACT);
     expect(limited?.status).toBe(429);
     expect(limited?.retryAfter).toBeGreaterThan(0);
+    // The check is part of the token check itself, so guesses in flight can't slip past it.
+    expect(code(capabilities.presentToken(token.secret, ARTIFACT))).toBe(
+      "MOSTRA_HYGIENE_RATE_LIMITED",
+    );
+    // Claude review finding 1: another artifact's links are untouched.
+    expect(capabilities.limited(OTHER)).toBeUndefined();
+    expect(code(capabilities.presentToken(other.secret, OTHER))).toBeUndefined();
     clock.now += 60_001;
-    expect(capabilities.limited()).toBeUndefined();
+    expect(capabilities.limited(ARTIFACT)).toBeUndefined();
     expect(code(capabilities.presentToken(token.secret, ARTIFACT))).toBeUndefined();
+  });
+
+  it("doesn't count failed frame tickets, which no page can guess and any page could spend", () => {
+    const { capabilities } = authority();
+    for (let index = 0; index < FAILURE_LIMIT * 2; index++) {
+      capabilities.redeemTicket(randomSecret(), "http://127.0.0.1:20001");
+    }
+    expect(capabilities.limited(ARTIFACT)).toBeUndefined();
+    expect(capabilities.limited("")).toBeUndefined();
+  });
+
+  it("counts tokens for artifacts this home doesn't have under one key, which bounds memory", () => {
+    const { capabilities } = authority();
+    for (let index = 0; index < 50; index++) {
+      capabilities.presentToken(
+        randomSecret(),
+        `art_01JB8Z3QF6S7W3N8D5K2C4V${String(index).padStart(3, "0")}`,
+      );
+    }
+    expect(capabilities.limited(ARTIFACT)).toBeUndefined();
+  });
+});
+
+describe("links work only at the shell address they were minted for (D97 item 10)", () => {
+  it("refuse a link once the shell moved, mint a new default there, and work again when it returns", () => {
+    const { capabilities } = authority();
+    const old = capabilities.mint({ artifactId: ARTIFACT });
+    const oldDefault = capabilities.defaultLink(ARTIFACT);
+    expect(old.shellOrigin).toBe("http://127.0.0.1:20000");
+    SHELL_ORIGIN.value = "http://127.0.0.1:20999";
+    expect(code(capabilities.presentToken(old.secret, ARTIFACT))).toBe(
+      "MOSTRA_HYGIENE_TOKEN_REVOKED",
+    );
+    expect(code(capabilities.presentToken(oldDefault.secret, ARTIFACT))).toBe(
+      "MOSTRA_HYGIENE_TOKEN_REVOKED",
+    );
+    const moved = capabilities.defaultLink(ARTIFACT);
+    expect(moved.tokenId).not.toBe(oldDefault.tokenId);
+    expect(moved.shellOrigin).toBe("http://127.0.0.1:20999");
+    expect(code(capabilities.presentToken(moved.secret, ARTIFACT))).toBeUndefined();
+    // A rotation mints for the address in use.
+    const rotated = capabilities.rotate(old.tokenId);
+    expect(rotated !== undefined && rotated !== "dead" && rotated.shellOrigin).toBe(
+      "http://127.0.0.1:20999",
+    );
+    SHELL_ORIGIN.value = "http://127.0.0.1:20000";
+    expect(code(capabilities.presentToken(oldDefault.secret, ARTIFACT))).toBeUndefined();
   });
 });
 
@@ -274,15 +347,17 @@ describe("sessions and tickets (D98)", () => {
     expect("csrf" in resolved && resolved.csrf).toBe(session.csrf);
   });
 
-  it("redeem a ticket once, on its origin, within 60 seconds", () => {
-    const { capabilities, clock } = authority();
+  it("redeem a ticket once, on its origin, within 60 seconds, while its shell session lives", () => {
+    const { db, capabilities, clock } = authority();
     const token = capabilities.mint({ artifactId: ARTIFACT });
+    const shell = capabilities.createSession({ tokenId: token.tokenId, origin: SHELL });
     const grant = {
       tokenId: token.tokenId,
       artifactId: ARTIFACT,
       versionId: "ver_X",
       origin: FRAME,
       shellOrigin: SHELL,
+      shellSessionId: shell.id,
     };
     const once = capabilities.mintTicket(grant);
     expect(capabilities.redeemTicket(once, FRAME)).toEqual(grant);
@@ -297,7 +372,13 @@ describe("sessions and tickets (D98)", () => {
     const late = capabilities.mintTicket(grant);
     clock.now += TICKET_TTL_MS + 1;
     expect(code(capabilities.redeemTicket(late, FRAME))).toBe("MOSTRA_HYGIENE_TOKEN_INVALID");
-    const revoked = capabilities.mintTicket(grant);
+    // Claude review: a ticket is bound to the shell session that asked for it (D98 item 3).
+    const orphan = capabilities.mintTicket(grant);
+    db.write((tx) => tx.run("DELETE FROM session WHERE id = ?", shell.id));
+    expect(code(capabilities.redeemTicket(orphan, FRAME))).toBe("MOSTRA_HYGIENE_SESSION_MISSING");
+    const again = capabilities.createSession({ tokenId: token.tokenId, origin: SHELL });
+    const live = { ...grant, shellSessionId: again.id };
+    const revoked = capabilities.mintTicket(live);
     capabilities.revoke(token.tokenId);
     expect(code(capabilities.redeemTicket(revoked, FRAME))).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
   });
@@ -323,6 +404,28 @@ describe("addressing (D99)", () => {
     expect(failure({ bind: "localhost" })).toBe("MOSTRA_ENV_BIND_FAILED");
     expect(failure({ urlHost: "example.test" })).toBe("MOSTRA_ENV_BIND_FAILED");
     expect(failure({ bind: "0.0.0.0", urlHost: "bad host/" })).toBe("MOSTRA_ENV_BIND_FAILED");
+    // Claude review finding 9: every spelling of the unspecified address is a wildcard.
+    for (const bind of ["0:0:0:0:0:0:0:0", "::0", "[0::0]", "0000::", "::ffff:0.0.0.0", "[::]"]) {
+      expect(failure({ bind }), bind).toBe("MOSTRA_ENV_BIND_FAILED");
+      expect(failure({ bind, urlHost: "box.local" }), bind).toBe("none");
+    }
+  });
+
+  it("maps every bind error that no other port would fix to MOSTRA_ENV_BIND_FAILED (Claude review finding 10)", async () => {
+    const db = ledger();
+    // An address of the documentation range no interface has: EADDRNOTAVAIL.
+    const addressing = createAddressing({
+      ledger: db,
+      log: silentLog,
+      bind: resolveBind({ bind: "192.0.2.1", urlHost: "box.local" }),
+    });
+    const server = createHttpServer();
+    const failure = await addressing.listen(server, { purpose: "shell", owner: "shell" }).then(
+      () => "none",
+      (error: { diagnostic?: { code: string } }) => error.diagnostic?.code ?? String(error),
+    );
+    server.close();
+    expect(failure).toBe("MOSTRA_ENV_BIND_FAILED");
   });
 
   it("forms exact origins and Host allowlists, bracketing IPv6", () => {
@@ -384,5 +487,34 @@ describe("addressing (D99)", () => {
     const shellPort = await addressing.listen(shell, { purpose: "shell", owner: "shell" });
     expect(shellPort).not.toBe(moved);
     await close(shell);
+  });
+});
+
+describe("requestId replays (H-03, Claude review finding 8)", () => {
+  it("replay only the parameters they recorded", () => {
+    const db = ledger();
+    const key = requestKey("view/url", { artifact: { artifactId: ARTIFACT }, requestId: "r-1" });
+    const same = requestKey("view/url", { requestId: "r-1", artifact: { artifactId: ARTIFACT } });
+    const other = requestKey("view/url", {
+      artifact: { artifactId: ARTIFACT },
+      scopes: ["view"],
+      requestId: "r-1",
+    });
+    const noId: { artifact: { artifactId: string }; requestId?: string } = {
+      artifact: { artifactId: ARTIFACT },
+    };
+    expect(requestKey("view/url", noId)).toBeUndefined();
+    if (!key || !same || !other) throw new Error("keys");
+    expect(same.digest).toBe(key.digest);
+    expect(other.digest).not.toBe(key.digest);
+    db.write((tx) => recordResult(tx, key, { tokenId: "tok_A" }));
+    expect(db.read((tx) => recordedResult(tx, same))).toEqual({ tokenId: "tok_A" });
+    let refused = "";
+    try {
+      db.read((tx) => recordedResult(tx, other));
+    } catch (error) {
+      refused = (error as { diagnostic: { code: string } }).diagnostic.code;
+    }
+    expect(refused).toBe("MOSTRA_HOST_REQUEST_ID_REUSED");
   });
 });

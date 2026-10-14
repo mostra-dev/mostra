@@ -2,8 +2,9 @@
  * Capability tokens, sessions and frame tickets (D97, D98, HY-03): the gateway's authority over
  * who may use an artifact. Tokens are minted with secrets derived from the home's capability key
  * and stored only as hashes; sessions are stored as hashes of their cookies and bound to the one
- * origin they were issued for; tickets live in memory for 60 seconds and work once. Every check
- * reads the ledger, so a revocation applies to the very next request.
+ * origin they were issued for; tickets live in memory for 60 seconds, work once and only while the
+ * shell session that asked for them lives. A link works only at the shell address it was minted
+ * for. Every check reads the ledger, so a revocation applies to the very next request.
  */
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import {
@@ -39,7 +40,11 @@ export const SECRET_LENGTH = 26;
 /** How long a frame ticket works (D98). */
 export const TICKET_TTL_MS = 60_000;
 
-/** Failed token or ticket attempts a gateway tolerates per minute (D97 item 8). */
+/**
+ * Failed capability tokens tolerated per artifact and minute (D97 item 8). Tickets don't count:
+ * they are single-use 130-bit secrets that live for a minute, and any page on the host could spend
+ * a count by loading an entry URL.
+ */
 export const FAILURE_LIMIT = 30;
 const FAILURE_WINDOW_MS = 60_000;
 
@@ -138,6 +143,8 @@ export interface Grant {
   readonly pinnedVersion?: number;
   /** Whether it is the artifact's default link. */
   readonly isDefault: boolean;
+  /** The shell origin the link was minted for; it works only there. */
+  readonly shellOrigin: string;
 }
 
 /** A token with its secret, just minted or derived again. */
@@ -164,6 +171,8 @@ export interface TicketGrant {
   readonly origin: string;
   /** The shell origin that minted it, which the frame's bridge talks to. */
   readonly shellOrigin: string;
+  /** The shell session that asked for it: the ticket works only while that session lives. */
+  readonly shellSessionId: string;
 }
 
 interface TokenRow {
@@ -175,6 +184,7 @@ interface TokenRow {
   revoked_at: string | null;
   is_default: number;
   pinned_version: number | null;
+  shell_origin: string;
 }
 
 interface SessionRow {
@@ -192,6 +202,7 @@ const grantOf = (row: TokenRow): Grant => ({
   ...(row.expires_at !== null ? { expiresAt: row.expires_at } : {}),
   ...(row.pinned_version !== null ? { pinnedVersion: row.pinned_version } : {}),
   isDefault: row.is_default === 1,
+  shellOrigin: row.shell_origin,
 });
 
 /** Options for {@link Capabilities}. */
@@ -202,6 +213,8 @@ export interface CapabilitiesOptions {
   readonly key: Buffer;
   /** The clock, in milliseconds since the epoch. */
   readonly now: () => number;
+  /** The shell's origin, once the gateway listens: links are minted for it and work only there. */
+  readonly shellOrigin: () => string;
 }
 
 /** The capability authority of one instance. */
@@ -210,8 +223,10 @@ export class Capabilities {
   readonly #log: Log;
   readonly #key: Buffer;
   readonly #now: () => number;
+  readonly #shellOrigin: () => string;
   readonly #tickets = new Map<string, TicketGrant & { readonly expires: number }>();
-  readonly #failures: number[] = [];
+  /** Failure times per artifact (`""` for tokens of no artifact in this home). */
+  readonly #failures = new Map<string, number[]>();
   readonly #touched = new Map<string, number>();
 
   constructor(options: CapabilitiesOptions) {
@@ -219,6 +234,7 @@ export class Capabilities {
     this.#log = options.log;
     this.#key = options.key;
     this.#now = options.now;
+    this.#shellOrigin = options.shellOrigin;
   }
 
   /** Runs `fn` in the caller's transaction, or in a new one. */
@@ -258,8 +274,9 @@ export class Capabilities {
     const tokenId = input.tokenId ?? TokenId.create();
     const secret = this.secretOf(tokenId);
     const scopes = normalizeScopes(input.scopes);
+    const shellOrigin = this.#shellOrigin();
     db.run(
-      "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, expires_at, revoked_at, created_at, is_default, pinned_version) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?)",
+      "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, expires_at, revoked_at, created_at, is_default, pinned_version, shell_origin) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)",
       tokenId,
       hashSecret(secret),
       input.artifactId,
@@ -268,6 +285,7 @@ export class Capabilities {
       this.#iso(this.#now()),
       input.isDefault ? 1 : 0,
       input.pinnedVersion ?? null,
+      shellOrigin,
     );
     return {
       tokenId,
@@ -277,6 +295,7 @@ export class Capabilities {
       ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
       ...(input.pinnedVersion !== undefined ? { pinnedVersion: input.pinnedVersion } : {}),
       isDefault: input.isDefault,
+      shellOrigin,
     };
   }
 
@@ -304,7 +323,8 @@ export class Capabilities {
   /**
    * The artifact's default link (D97 item 3): the live default token, shown again from its
    * derived secret, or a new one. A default whose secret the current key no longer derives (the
-   * key was replaced) stays valid for whoever holds it, and a new default takes its place.
+   * key was replaced) stays valid for whoever holds it, and a new default takes its place; so does
+   * one minted for another shell address, which works again if the gateway returns there.
    */
   defaultLink(artifactId: string): MintedToken {
     return this.#ledger.write((db) => {
@@ -314,9 +334,16 @@ export class Capabilities {
       );
       if (row) {
         const secret = this.secretOf(row.id);
-        if (safeEqual(hashSecret(secret), row.secret_hash)) return { ...grantOf(row), secret };
+        const here = row.shell_origin === this.#shellOrigin();
+        if (here && safeEqual(hashSecret(secret), row.secret_hash)) {
+          return { ...grantOf(row), secret };
+        }
         db.run("UPDATE token SET is_default = 0 WHERE id = ?", row.id);
-        this.#log.warn("gateway.default_link_replaced", { artifactId, tokenId: row.id });
+        this.#log.warn("gateway.default_link_replaced", {
+          artifactId,
+          tokenId: row.id,
+          reason: here ? "the capability key changed" : "the shell's address changed",
+        });
       }
       return this.#insert(db, { artifactId, scopes: ALL_SCOPES, isDefault: true });
     });
@@ -398,35 +425,55 @@ export class Capabilities {
     });
   }
 
-  /** A refusal, with its `Retry-After` seconds, while too many attempts failed in the last minute (D97 item 8). */
-  limited(): (Refusal & { readonly retryAfter: number }) | undefined {
+  /**
+   * A refusal, with its `Retry-After` seconds, while too many tokens for `artifactId` failed in the
+   * last minute (D97 item 8). One artifact's limit never holds another's links back.
+   */
+  limited(artifactId: string): (Refusal & { readonly retryAfter: number }) | undefined {
     const now = this.#now();
-    while (this.#failures.length > 0 && (this.#failures[0] ?? 0) <= now - FAILURE_WINDOW_MS) {
-      this.#failures.shift();
+    const failures = this.#failures.get(artifactId);
+    if (!failures) return undefined;
+    while (failures.length > 0 && (failures[0] ?? 0) <= now - FAILURE_WINDOW_MS) failures.shift();
+    if (failures.length === 0) {
+      this.#failures.delete(artifactId);
+      return undefined;
     }
-    if (this.#failures.length < FAILURE_LIMIT) return undefined;
-    const retry = Math.max(
-      1,
-      Math.ceil(((this.#failures[0] ?? now) + FAILURE_WINDOW_MS - now) / 1000),
-    );
+    if (failures.length < FAILURE_LIMIT) return undefined;
+    const retry = Math.max(1, Math.ceil(((failures[0] ?? now) + FAILURE_WINDOW_MS - now) / 1000));
     return {
       ...refusal("MOSTRA_HYGIENE_RATE_LIMITED", `Too many failed attempts; retry in ${retry} s.`),
       retryAfter: retry,
     };
   }
 
-  #fail(): void {
-    this.#failures.push(this.#now());
+  /** Counts a failed token for `artifactId`; a token for no artifact of this home counts once, under `""`. */
+  #fail(artifactId: string): void {
+    const known =
+      artifactId !== "" &&
+      this.#ledger.read((db) => db.get("SELECT 1 FROM artifact WHERE id = ?", artifactId)) !==
+        undefined;
+    const key = known ? artifactId : "";
+    const now = this.#now();
+    const failures = (this.#failures.get(key) ?? []).filter((at) => at > now - FAILURE_WINDOW_MS);
+    failures.push(now);
+    this.#failures.set(key, failures);
   }
 
   /**
-   * Checks a capability token presented for `artifactId`: an unknown secret, or one for another
-   * artifact, is `MOSTRA_HYGIENE_TOKEN_INVALID`; a revoked or expired one `_TOKEN_REVOKED`. Every
-   * failure counts towards the rate limit.
+   * Checks a capability token presented for `artifactId`. While the artifact's guessing limit
+   * holds, every token is refused, a right one too, and the limit is checked here, at the moment
+   * of the check, so concurrent guesses can't slip past it. An unknown secret, or one for another
+   * artifact, is `MOSTRA_HYGIENE_TOKEN_INVALID`; a revoked or expired one, or one minted for
+   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit.
    */
-  presentToken(secret: unknown, artifactId: string): Grant | Refusal {
+  presentToken(
+    secret: unknown,
+    artifactId: string,
+  ): Grant | (Refusal & { readonly retryAfter?: number }) {
+    const limited = this.limited(artifactId);
+    if (limited) return limited;
     if (!looksLikeSecret(secret)) {
-      this.#fail();
+      this.#fail(artifactId);
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_INVALID",
         "The capability token isn't one Mostra minted.",
@@ -436,17 +483,22 @@ export class Capabilities {
       db.get<TokenRow>("SELECT * FROM token WHERE secret_hash = ?", hashSecret(secret)),
     );
     if (!row || row.artifact_id !== artifactId) {
-      this.#fail();
+      this.#fail(artifactId);
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_INVALID",
         "No capability token in this home matches this link.",
       );
     }
     if (!this.#live(row)) {
-      this.#fail();
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         row.revoked_at !== null ? "This link was revoked." : "This link has expired.",
+      );
+    }
+    if (row.shell_origin !== this.#shellOrigin()) {
+      return refusal(
+        "MOSTRA_HYGIENE_TOKEN_REVOKED",
+        `This link was made for ${row.shell_origin}, an address this Mostra no longer serves.`,
       );
     }
     return grantOf(row);
@@ -557,22 +609,35 @@ export class Capabilities {
     return ticket;
   }
 
-  /** Redeems a ticket on `origin`, once; every failure counts towards the rate limit. */
+  /**
+   * Redeems a ticket on `origin`, once, while the shell session that asked for it lives and its
+   * link is live (D98 item 3).
+   */
   redeemTicket(ticket: unknown, origin: string): TicketGrant | Refusal {
     this.#sweepTickets();
     const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
     const entry = key === undefined ? undefined : this.#tickets.get(key);
     if (key !== undefined) this.#tickets.delete(key);
     if (!entry || entry.origin !== origin) {
-      this.#fail();
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_INVALID",
         "The frame ticket is unknown, used or expired.",
       );
     }
+    const shellSession = this.#ledger.read((db) =>
+      db.get<{ token_id: string }>(
+        "SELECT token_id FROM session WHERE id = ?",
+        entry.shellSessionId,
+      ),
+    );
+    if (shellSession?.token_id !== entry.tokenId) {
+      return refusal(
+        "MOSTRA_HYGIENE_SESSION_MISSING",
+        "The shell session that asked for this frame ticket has ended.",
+      );
+    }
     const grant = this.grant(entry.tokenId);
     if (!grant?.live) {
-      this.#fail();
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         "The link behind this frame was revoked or has expired.",

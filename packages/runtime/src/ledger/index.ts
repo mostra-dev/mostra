@@ -31,6 +31,13 @@ import { BOOTSTRAP_SQL, MIGRATIONS, type Migration } from "./migrations.ts";
 import type { LedgerDb, MigrationDb, RunResult, SqlValue } from "./types.ts";
 
 export { MIGRATIONS, type Migration } from "./migrations.ts";
+export {
+  InflightRequests,
+  type RequestKey,
+  recordedResult,
+  recordResult,
+  requestKey,
+} from "./requests.ts";
 export type { LedgerDb } from "./types.ts";
 
 /** The ledger's file name inside `<home>/store`. */

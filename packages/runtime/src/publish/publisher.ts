@@ -48,7 +48,14 @@ import {
 import type { RenderMode } from "../builder/index.ts";
 import { type Dependencies, lockKey } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
-import type { Ledger } from "../ledger/index.ts";
+import {
+  InflightRequests,
+  type Ledger,
+  type RequestKey,
+  recordedResult,
+  recordResult,
+  requestKey,
+} from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
 import {
@@ -300,42 +307,23 @@ export function createPublisher(options: PublisherOptions): Publisher {
   const faults = options.faults ?? noFaults;
   const queue = new KeyedQueue();
   const buildConfigDigest = sha256Hex(canonicalJson(renderMode.buildConfig));
-  const inflight = new Map<string, Promise<unknown>>();
+  const inflight = new InflightRequests();
 
-  /** Replays a recorded result for a repeated `requestId` (H-03), or runs `task` once. */
-  const idempotent = async <T>(
-    method: string,
-    requestId: string | undefined,
-    task: () => Promise<T>,
-  ): Promise<T> => {
-    if (requestId === undefined) return task();
-    const recorded = ledger.read((db) =>
-      db.get<{ result_json: string }>(
-        "SELECT result_json FROM request WHERE method = ? AND request_id = ?",
-        method,
-        requestId,
-      ),
-    );
-    if (recorded) return JSON.parse(recorded.result_json) as T;
-    const key = `${method} ${requestId}`;
-    const running = inflight.get(key);
-    if (running) return running as Promise<T>;
-    const started = task().finally(() => inflight.delete(key));
-    inflight.set(key, started);
-    return started;
+  /**
+   * Replays the result recorded for a repeated `requestId` with the same parameters (H-03), joins
+   * an attempt still running, or runs `task` once. The same `requestId` with other parameters is
+   * `MOSTRA_HOST_REQUEST_ID_REUSED`.
+   */
+  const idempotent = async <T>(key: RequestKey | undefined, task: () => Promise<T>): Promise<T> => {
+    if (key === undefined) return task();
+    const recorded = ledger.read((db) => recordedResult<T>(db, key));
+    if (recorded !== undefined) return recorded;
+    return inflight.run(key, task);
   };
 
-  const record = (method: string, requestId: string | undefined, result: unknown): void => {
-    if (requestId === undefined) return;
-    ledger.write((db) =>
-      db.run(
-        "INSERT OR IGNORE INTO request (method, request_id, result_json, created_at) VALUES (?, ?, ?, ?)",
-        method,
-        requestId,
-        JSON.stringify(result),
-        new Date().toISOString(),
-      ),
-    );
+  const record = (key: RequestKey | undefined, result: unknown): void => {
+    if (key === undefined) return;
+    ledger.write((db) => recordResult(db, key, result));
   };
 
   /** The path a `SourceRef` names: itself, or the path an artifact was last published from. */
@@ -508,7 +496,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
             forcedCodes,
             stillClaims,
             faults,
-            requestId: params.requestId,
+            request: requestKey("artifact/publish", params),
             // The resolution becomes the artifact's working lockfile only with the version (D95):
             // a refused publish, such as a copy claiming another artifact's ID, changes nothing.
             inTransaction: (db) => deps.save(db, artifactId),
@@ -547,7 +535,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
 
   return {
     publish: (params) =>
-      idempotent("artifact/publish", params.requestId, async () => {
+      idempotent(requestKey("artifact/publish", params), async () => {
         // The receipt is recorded inside the commit's transaction (Registry.commit).
         return publishOnce(params);
       }),
@@ -566,7 +554,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
           artifactDir: source.root,
           artifactPath: path,
           packages: params.packages,
-          ...(params.requestId !== undefined ? { requestId: params.requestId } : {}),
+          request: requestKey("deps/add", params),
         });
       });
     },
@@ -575,16 +563,10 @@ export function createPublisher(options: PublisherOptions): Publisher {
   async function create(params: ArtifactCreateParams): Promise<ArtifactCreateResult> {
     // A retried request completes what the first attempt recorded (H-03): the entry is written
     // only after the result is durable, so a crash in between leaves something to finish.
-    const requestId = params.requestId;
-    if (requestId !== undefined) {
-      const recorded = ledger.read((db) =>
-        db.get<{ result_json: string }>(
-          "SELECT result_json FROM request WHERE method = 'artifact/create' AND request_id = ?",
-          requestId,
-        ),
-      );
-      if (recorded) {
-        const result = JSON.parse(recorded.result_json) as ArtifactCreateResult;
+    const key = requestKey("artifact/create", params);
+    if (key !== undefined) {
+      const result = ledger.read((db) => recordedResult<ArtifactCreateResult>(db, key));
+      if (result !== undefined) {
         await writeScaffold(result.dir, result.artifactId, params.title ?? basename(result.dir));
         return result;
       }
@@ -613,7 +595,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       dir,
       files: ["index.tsx"],
     };
-    record("artifact/create", params.requestId, result);
+    record(key, result);
     faults.at("create:after-record");
     await writeScaffold(dir, result.artifactId, params.title ?? basename(dir));
     return result;

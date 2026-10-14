@@ -17,7 +17,7 @@ import {
 } from "@mostra/protocol";
 import type { Faults } from "../faults.ts";
 import { appendEvent } from "../interaction/index.ts";
-import type { Ledger, LedgerDb } from "../ledger/index.ts";
+import { type Ledger, type LedgerDb, type RequestKey, recordResult } from "../ledger/index.ts";
 import { openVersionStore, type VersionStore } from "./store.ts";
 
 export { fsyncPath, removeTree, type VersionStore } from "./store.ts";
@@ -72,7 +72,7 @@ export interface VersionCommit {
    * The publish's `requestId` (H-03): its receipt is recorded in the same transaction, so a retry
    * after any crash replays exactly what the first attempt committed.
    */
-  readonly requestId?: string | undefined;
+  readonly request?: RequestKey | undefined;
   /** Runs inside the transaction, after the version and the binding are written. */
   readonly inTransaction?: (db: LedgerDb) => void;
 }
@@ -303,19 +303,14 @@ export async function openRegistry(options: {
         );
         input.inTransaction?.(db);
         const committed = { version: number, cursor, reused: existing !== undefined };
-        if (input.requestId !== undefined) {
+        if (input.request !== undefined) {
           const receipt = {
             artifactId: input.artifactId,
             versionId: input.versionId,
             ...committed,
             ...(input.forcedCodes.length > 0 ? { forcedDiagnostics: [...input.forcedCodes] } : {}),
           };
-          db.run(
-            "INSERT INTO request (method, request_id, result_json, created_at) VALUES ('artifact/publish', ?, ?, ?)",
-            input.requestId,
-            JSON.stringify(receipt),
-            now,
-          );
+          recordResult(db, input.request, receipt);
         }
         input.faults?.at("publish:in-commit");
         return committed;

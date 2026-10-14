@@ -5,7 +5,7 @@
  * port, and the methods `view/url`, `view/rotate` and `view/revoke` (HY-03).
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -194,9 +194,12 @@ describe("serving versions (RT-05, VR-03)", () => {
     ).toBe(401);
   });
 
-  it("pins a version when the link names one, and refuses one that doesn't exist", async () => {
+  it("opens only the version a link names, and refuses one that doesn't exist (D97 item 9, Claude review finding 2)", async () => {
     const entry = join(receipt.dir, "index.tsx");
     writeFileSync(entry, readFileSync(entry, "utf8").replace("UNPUBLISHED-EDIT", "VERSION-TWO"));
+    // A file only version 2 has, at a path the asset fallback of D98 item 5 would look in.
+    mkdirSync(join(receipt.dir, "public", "assets"), { recursive: true });
+    writeFileSync(join(receipt.dir, "public", "assets", "only-two.txt"), "VERSION-TWO-ONLY");
     const second = ok<Receipt>(
       await gateway.client.call("artifact/publish", { source: { path: receipt.dir } }, 120_000),
     );
@@ -215,6 +218,35 @@ describe("serving versions (RT-05, VR-03)", () => {
       },
     );
     expect(ticket.json()).toMatchObject({ version: { number: 1 }, latest: { number: 2 } });
+    // The pinned link can't ask for another version, existing or not.
+    for (const version of [2, 9]) {
+      const other = await browser.fetchJson(
+        opened.link.shell,
+        `/a/${receipt.artifactId}/_mostra/ticket`,
+        { body: { version }, csrf: opened.shellCsrf },
+      );
+      expect(`${other.status} ${other.json<{ code: string }>().code}`, String(version)).toBe(
+        "403 MOSTRA_HYGIENE_SCOPE_DENIED",
+      );
+    }
+    // Nor reach version 2's files through the asset fallback of D98 item 5.
+    const assets = (versionId: string): string[] =>
+      readdirSync(join(gateway.home.home, "versions", versionId, "client", "assets"));
+    const onlyInTwo = assets(second.versionId).filter(
+      (name) => !assets(receipt.versionId).includes(name),
+    );
+    expect(onlyInTwo).toContain("only-two.txt");
+    for (const name of onlyInTwo) {
+      expect((await browser.ask({ url: `${opened.frameOrigin}/assets/${name}` })).status).toBe(404);
+    }
+    const inOne = assets(receipt.versionId)[0];
+    expect((await browser.ask({ url: `${opened.frameOrigin}/assets/${inOne}` })).status).toBe(200);
+    // The unpinned link reaches them, as D98 item 5 says.
+    const full = new Browser();
+    const latest = await openLink(full, receipt.url);
+    expect((await full.ask({ url: `${latest.frameOrigin}/assets/${onlyInTwo[0]}` })).status).toBe(
+      200,
+    );
     expect(
       refused(
         await gateway.client.call("view/url", {
@@ -223,12 +255,15 @@ describe("serving versions (RT-05, VR-03)", () => {
         }),
       ),
     ).toBe("MOSTRA_ARTIFACT_VERSION_NOT_FOUND");
-    const missing = await browser.fetchJson(
-      opened.link.shell,
+    // An unpinned link asking for a version that doesn't exist gets 404.
+    const unpinned = new Browser();
+    const unpinnedOpen = await openLink(unpinned, receipt.url);
+    const missing = await unpinned.fetchJson(
+      unpinnedOpen.link.shell,
       `/a/${receipt.artifactId}/_mostra/ticket`,
       {
         body: { version: 9 },
-        csrf: opened.shellCsrf,
+        csrf: unpinnedOpen.shellCsrf,
       },
     );
     expect(missing.status).toBe(404);
@@ -345,6 +380,39 @@ describe("links outlive restarts and a week (LL-05, SH-03)", () => {
       scopes: ["review"],
     });
     expect(replay).toEqual(first);
+    // Claude review finding 8: the same requestId with other parameters is refused, never
+    // answered with the recorded (here wider) link.
+    for (const params of [
+      { requestId: "mint-1", scopes: ["view"] },
+      { requestId: "mint-1", scopes: ["review"], ttl: "1h" },
+      { requestId: "mint-1" },
+    ]) {
+      expect(
+        refused(
+          await gateway.client.call("view/url", {
+            artifact: { artifactId: receipt.artifactId },
+            ...params,
+          }),
+        ),
+        JSON.stringify(params),
+      ).toBe("MOSTRA_HOST_REQUEST_ID_REUSED");
+    }
+    // The same holds for every recorded method: a publish's requestId too.
+    const published = await gateway.client.call(
+      "artifact/publish",
+      { source: { artifactId: receipt.artifactId }, requestId: "pub-1" },
+      120_000,
+    );
+    expect(ok<Receipt>(published).artifactId).toBe(receipt.artifactId);
+    expect(
+      refused(
+        await gateway.client.call(
+          "artifact/publish",
+          { source: { artifactId: receipt.artifactId }, requestId: "pub-1", force: true },
+          120_000,
+        ),
+      ),
+    ).toBe("MOSTRA_HOST_REQUEST_ID_REUSED");
     await gateway.stop();
     const ledger = readFileSync(join(gateway.home.home, "store", "ledger.sqlite")).toString(
       "latin1",
@@ -429,6 +497,47 @@ describe("a leased port another program took (FAILURE_MODEL §8)", () => {
   });
 });
 
+describe("links work only at the address they were made for (D97 item 10)", () => {
+  it("refuses an old link once the shell moved to another port, and a new link works", async () => {
+    const gateway = await new GatewayHome().start();
+    const receipt = await gateway.publish("single-tsx", "page.tsx");
+    const old = parseLink(receipt.url);
+    const shellPort = Number(new URL(old.shell).port);
+    await gateway.stop();
+    const squatter: Server = createServer((socket) =>
+      socket.end("HTTP/1.1 200 OK\r\n\r\nsquatter"),
+    );
+    await new Promise<void>((resolve) => squatter.listen(shellPort, "127.0.0.1", resolve));
+    try {
+      await gateway.start();
+      const status = await gateway.status();
+      expect(status.gateway.shell).not.toBe(old.shell);
+      // Whoever holds the old port could read the old link's secret: the gateway no longer takes it.
+      const stolen = await new Browser().fetchJson(
+        status.gateway.shell,
+        `/a/${receipt.artifactId}/_mostra/session`,
+        { body: { token: old.secret } },
+      );
+      expect(`${stolen.status} ${stolen.json<{ code: string }>().code}`).toBe(
+        "410 MOSTRA_HYGIENE_TOKEN_REVOKED",
+      );
+      // The receipt of the next publish carries a default link at the new address.
+      const again = ok<Receipt>(
+        await gateway.client.call(
+          "artifact/publish",
+          { source: { artifactId: receipt.artifactId } },
+          120_000,
+        ),
+      );
+      expect(again.url.startsWith(`${status.gateway.shell}/`)).toBe(true);
+      expect((await openLink(new Browser(), again.url)).page.status).toBe(200);
+    } finally {
+      squatter.close();
+      await gateway.stop();
+    }
+  });
+});
+
 describe("a runtime without its shell build", () => {
   it("still starts and serves frames; the shell's page says what is missing", async () => {
     const gateway = await new GatewayHome().start({
@@ -495,9 +604,35 @@ describe("a damaged version (FAILURE_MODEL §3)", () => {
         ),
       );
       expect(again.reused).toBe(true);
-      const opened = await openLink(new Browser(), receipt.url);
+      const viewer = new Browser();
+      const opened = await openLink(viewer, receipt.url);
       expect(opened.page.status).toBe(200);
       expect(opened.page.body).not.toContain("tampered");
+      // Claude review finding 5: a frame session that exists already, reloading after a restart
+      // or a change while running, gets no damaged file either.
+      for (const restart of [true, false]) {
+        if (restart) await gateway.stop();
+        chmodSync(version, 0o755);
+        chmodSync(join(version, "client"), 0o755);
+        chmodSync(join(version, "client", "index.html"), 0o644);
+        writeFileSync(join(version, "client", "index.html"), "<p>tampered</p>");
+        if (restart) await gateway.start();
+        const reload = await viewer.navigate(`${opened.frameOrigin}/`, opened.link.shell);
+        expect(reload.status, `restart: ${restart}`).toBe(500);
+        expect(reload.body).not.toContain("<p>tampered</p>");
+        expect(reload.body).toContain("MOSTRA_HOME_INTEGRITY");
+        const repaired = ok<Receipt>(
+          await gateway.client.call(
+            "artifact/publish",
+            { source: { artifactId: receipt.artifactId } },
+            120_000,
+          ),
+        );
+        expect(repaired.reused).toBe(true);
+        expect((await viewer.navigate(`${opened.frameOrigin}/`, opened.link.shell)).status).toBe(
+          200,
+        );
+      }
     } finally {
       await gateway.stop();
     }

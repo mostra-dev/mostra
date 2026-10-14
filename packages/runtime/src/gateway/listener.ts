@@ -20,8 +20,13 @@ import type { Log } from "../log.ts";
 import { BASE_HEADERS, type HttpEnv, headerPairs, refusalResponse } from "./http.ts";
 import { refuse } from "./routes.ts";
 
-/** Node's limit on request headers for gateway listeners; cookies of many artifacts share a host. */
-const MAX_HEADER_SIZE = 32 * 1024;
+/**
+ * Node's limit on request headers for gateway listeners. Every port of the loopback host shares one
+ * cookie jar, and any artifact's page can fill it; browsers keep at most 180 cookies of about 4 KiB
+ * per host, about 740 KiB, so a jar filled to the brim still fits (VERIFIED_FACTS, WP-05). A request
+ * past this limit is answered with a page that clears the host's cookies (D98 item 9).
+ */
+export const MAX_HEADER_SIZE: number = 1024 * 1024;
 
 /** A listener: its server and its Hono app. */
 export interface Listener {
@@ -32,16 +37,45 @@ export interface Listener {
 }
 
 /** Writes a refusal straight to a socket, for upgrades and envelope failures before Hono. */
-function writeRaw(socket: Duplex, refused: Refusal): void {
-  const body = JSON.stringify(refused.diagnostic);
+function writeRaw(
+  socket: Duplex,
+  refused: Refusal,
+  extra: { readonly html?: string; readonly headers?: readonly string[] } = {},
+): void {
+  const body = extra.html ?? JSON.stringify(refused.diagnostic);
   const headers = [
     `HTTP/1.1 ${refused.status} Refused`,
     "connection: close",
-    "content-type: application/json; charset=utf-8",
+    extra.html !== undefined
+      ? "content-type: text/html; charset=utf-8"
+      : "content-type: application/json; charset=utf-8",
     `content-length: ${Buffer.byteLength(body)}`,
+    "cache-control: no-store",
     ...Object.entries(BASE_HEADERS).map(([name, value]) => `${name}: ${value}`),
+    ...(extra.headers ?? []),
   ];
   socket.end(`${headers.join("\r\n")}\r\n\r\n${body}`);
+}
+
+/**
+ * The answer to headers past {@link MAX_HEADER_SIZE}: a page that says what happened and clears
+ * the host's cookies, which is what made them that large (D98 item 9). `Clear-Site-Data` acts on
+ * the host, so it empties the jar every port shares; Mostra's sessions return when a link is
+ * opened again. The page runs nothing and can't be framed.
+ */
+function headersTooLarge(socket: Duplex): void {
+  const refused = refusal(
+    "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+    "This browser sent more cookies than any page here sets.",
+  );
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mostra</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.25rem;padding:2rem;text-align:center;color-scheme:light dark}h1{font-size:1.25rem;margin:0}p{margin:0;opacity:.8}code{opacity:.5;font-size:.75rem;margin-top:1rem}</style></head><body><h1>This browser sent more cookies than Mostra accepts</h1><p>A page on this machine filled them. They have been cleared: open your link again.</p><code>MOSTRA_HYGIENE_HEADERS_TOO_LARGE</code></body></html>`;
+  writeRaw(socket, refused, {
+    html,
+    headers: [
+      'clear-site-data: "cookies"',
+      "content-security-policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+    ],
+  });
 }
 
 /** Creates a listener whose routes `configure` mounts; the server isn't bound yet. */
@@ -116,13 +150,24 @@ export function createListener(options: {
     void listener(incoming, outgoing);
   });
   // A client that sends something Node can't parse gets a 400 and its connection closed.
-  server.on("clientError", (_error, socket) => {
-    if (socket.writable) {
-      writeRaw(
-        socket,
-        refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "The request couldn't be parsed."),
-      );
-    } else socket.destroy();
+  server.on("clientError", (error: NodeJS.ErrnoException, socket) => {
+    if (!socket.writable) {
+      socket.destroy();
+      return;
+    }
+    if (error.code === "HPE_HEADER_OVERFLOW") {
+      options.log.warn("gateway.refused", {
+        code: "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+        status: 431,
+        origin: options.policy().origin,
+      });
+      headersTooLarge(socket);
+      return;
+    }
+    writeRaw(
+      socket,
+      refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "The request couldn't be parsed."),
+    );
   });
   server.on("upgrade", (incoming: IncomingMessage, socket: Duplex) => {
     const policy = options.policy();

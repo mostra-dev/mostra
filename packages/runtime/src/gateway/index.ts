@@ -33,10 +33,22 @@ import {
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
-import type { Ledger, LedgerDb } from "../ledger/index.ts";
+import {
+  type Ledger,
+  type LedgerDb,
+  type RequestKey,
+  recordedResult,
+  recordResult,
+  requestKey,
+} from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
-import { type Capabilities, type MintedToken, SESSION_MAX_AGE_S } from "./capabilities.ts";
+import {
+  type Capabilities,
+  type Grant,
+  type MintedToken,
+  SESSION_MAX_AGE_S,
+} from "./capabilities.ts";
 import {
   BASE_HEADERS,
   cookieValues,
@@ -45,8 +57,10 @@ import {
   jsonResponse,
   type ListenerKind,
   readJsonObject,
+  refusalResponse,
   sessionCookie,
 } from "./http.ts";
+import { versionIntegrity } from "./integrity.ts";
 import { createListener, type Listener } from "./listener.ts";
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
@@ -122,7 +136,13 @@ function laterArtifactRoutes(): RouteSpec[] {
       auth: "session",
       scope: () => "submit",
     },
-    { method: "POST", path: "/_mostra/v/:rev/signal", intent: "mutation", auth: "session" },
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/signal",
+      intent: "mutation",
+      auth: "session",
+      scope: () => "signal",
+    },
     // A function ID may hold `/` (`lib/mail.ts#send`), so the call path takes the rest of the path.
     {
       method: "POST",
@@ -164,8 +184,19 @@ export function createGateway(options: GatewayOptions): Gateway {
     { readonly listener: Listener; readonly port: number }
   >();
   const opening = new Map<string, Promise<number>>();
-  /** Versions whose stored files matched their digest in this process; damaged ones are re-checked. */
-  const intact = new Set<string>();
+  const integrity = versionIntegrity(artifacts, log);
+
+  /** The answer for a damaged version: a plain page for a navigation, else the diagnostic. */
+  const damaged = (number: number | undefined, damage: string, document: boolean): Response =>
+    refusalResponse(
+      {
+        status: 500,
+        diagnostic: createDiagnostic("MOSTRA_HOME_INTEGRITY", {
+          message: `${number === undefined ? "A version" : `Version ${number}`} of this artifact is damaged: ${damage}.`,
+        }),
+      },
+      { document, frameAncestors: shellOrigin() },
+    );
 
   const link = (token: MintedToken): CapabilityLink => ({
     url: `${shellOrigin()}/a/${token.artifactId}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
@@ -262,17 +293,17 @@ export function createGateway(options: GatewayOptions): Gateway {
     });
   };
 
+  /** What a link allows, as the shell shows it when two links meet. */
+  const access = (grant: Grant) => ({
+    scopes: grant.scopes,
+    ...(grant.expiresAt !== undefined ? { expiresAt: grant.expiresAt } : {}),
+    ...(grant.pinnedVersion !== undefined ? { version: grant.pinnedVersion } : {}),
+  });
+
   /** The session's facts, for the shell and the frame alike. */
-  const sessionFacts = (
-    artifactId: string,
-    grant: { readonly scopes: readonly string[]; readonly expiresAt?: string },
-  ) => {
+  const sessionFacts = (artifactId: string, grant: Grant) => {
     const detail = artifacts.get({ artifactId });
-    return {
-      artifact: { id: detail.id, title: detail.title },
-      scopes: grant.scopes,
-      ...(grant.expiresAt !== undefined ? { expiresAt: grant.expiresAt } : {}),
-    };
+    return { artifact: { id: detail.id, title: detail.title }, ...access(grant) };
   };
 
   const exchange = async (context: RouteContext): Promise<Response> => {
@@ -282,6 +313,32 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (isRefusal(body)) return refuse(shellChecks, body, meta);
     const grant = capabilities.presentToken(body["token"], artifactId);
     if (isRefusal(grant)) return refuse(shellChecks, grant, meta);
+    // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
+    // could send the viewer to its own, narrower link and take over their tabs.
+    const existing = capabilities.session(
+      cookieValues(context.request.headers.get("cookie"), shellChecks.cookieName()),
+      shellOrigin(),
+      artifactId,
+    );
+    if (!isRefusal(existing)) {
+      if (existing.grant.tokenId === grant.tokenId) {
+        return jsonResponse({ csrf: existing.csrf, ...sessionFacts(artifactId, existing.grant) });
+      }
+      if (body["replace"] !== true) {
+        log.info("gateway.session_conflict", { artifactId, origin: shellOrigin() });
+        return jsonResponse(
+          {
+            ...refusal(
+              "MOSTRA_HYGIENE_SESSION_CONFLICT",
+              "This browser already has this artifact open from another link.",
+            ).diagnostic,
+            current: access(existing.grant),
+            offered: access(grant),
+          },
+          { status: 409 },
+        );
+      }
+    }
     const session = capabilities.createSession({ tokenId: grant.tokenId, origin: shellOrigin() });
     log.info("gateway.session_started", {
       origin: shellOrigin(),
@@ -325,8 +382,17 @@ export function createGateway(options: GatewayOptions): Gateway {
         meta,
       );
     }
+    const pinned = session.grant.pinnedVersion;
+    // A link that names a version opens that version only (D97 item 9).
+    if (pinned !== undefined && asked !== undefined && asked !== pinned) {
+      return refuse(
+        shellChecks,
+        refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`),
+        meta,
+      );
+    }
     const detail = artifacts.get({ artifactId });
-    const version = versionOf(detail, (asked as number | undefined) ?? session.grant.pinnedVersion);
+    const version = versionOf(detail, (asked as number | undefined) ?? pinned);
     const latest = versionOf(detail, undefined);
     if (!version || !latest) {
       return jsonResponse(
@@ -340,20 +406,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         { status: 404 },
       );
     }
-    // A damaged version is never shown (FAILURE_MODEL §3); an intact one is checked once.
-    if (!intact.has(version.id)) {
-      const damage = await artifacts.damage(version.id);
-      if (damage !== undefined) {
-        log.error("gateway.version_damaged", { versionId: version.id, damage });
-        return jsonResponse(
-          createDiagnostic("MOSTRA_HOME_INTEGRITY", {
-            message: `Version ${version.number} of this artifact is damaged: ${damage}.`,
-          }),
-          { status: 500 },
-        );
-      }
-      intact.add(version.id);
-    }
+    // A damaged version is never shown (FAILURE_MODEL §3).
+    const damage = await integrity.check(version.id);
+    if (damage !== undefined) return damaged(version.number, damage, false);
     const port = await openArtifact(artifactId);
     const artifactOrigin = addressing.origin(port);
     if (addressing.frameMode(shellOrigin(), artifactOrigin) === "worker") {
@@ -370,6 +425,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       versionId: version.id,
       origin: artifactOrigin,
       shellOrigin: shellOrigin(),
+      shellSessionId: session.id,
     });
     const answer: TicketAnswer = {
       src: `${artifactOrigin}/_mostra/enter?ticket=${value}`,
@@ -524,13 +580,30 @@ export function createGateway(options: GatewayOptions): Gateway {
       }
       const root = (versionId: string): string => join(artifacts.versionDir(versionId), "client");
       const headers = { ...documentHeaders(kind(), "") };
-      let file = await findFile(root(session.versionId), path);
-      // Content-hashed chunks stay reachable after another tab moved the session on (D98 item 5).
-      if (!file && path.startsWith("/assets/")) {
+      const versionId = session.versionId;
+      let file = await findFile(root(versionId), path);
+      let from = versionId;
+      // Content-hashed chunks stay reachable after another tab moved the session on (D98 item 5),
+      // from the versions the link may open: a pinned link's own only (D97 item 9).
+      if (!file && path.startsWith("/assets/") && session.grant.pinnedVersion === undefined) {
         for (const version of artifacts.get({ artifactId }).versions) {
-          if (version.id === session.versionId) continue;
+          if (version.id === versionId) continue;
           file = await findFile(root(version.id), path);
-          if (file) break;
+          if (file) {
+            from = version.id;
+            break;
+          }
+        }
+      }
+      // Every file served comes from a version whose stored files match their digest, checked
+      // again whenever a file changed since (FAILURE_MODEL §3).
+      const checked =
+        file ?? (context.document ? await findFile(root(versionId), "/index.html") : undefined);
+      if (checked) {
+        const damage = await integrity.serve(from, checked);
+        if (damage !== undefined) {
+          const number = artifacts.get({ artifactId }).versions.find((v) => v.id === from)?.number;
+          return damaged(number, damage, context.document);
         }
       }
       if (file) {
@@ -560,7 +633,6 @@ export function createGateway(options: GatewayOptions): Gateway {
         path: "/_mostra/enter",
         intent: "read",
         auth: "none",
-        tokenPath: true,
         handler: enter,
       },
       {
@@ -616,32 +688,23 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   // ── View methods ─────────────────────────────────────────────────────────────────────────
 
-  /** Replays a recorded request, or runs `fn` and records `{ tokenId }` in the same transaction. */
+  /**
+   * Replays a request recorded with the same parameters (H-03), or runs `fn` and records
+   * `{ tokenId }` in the same transaction. The same `requestId` with other parameters is
+   * `MOSTRA_HOST_REQUEST_ID_REUSED`, never another link.
+   */
   const recorded = (
-    method: string,
-    requestId: string | undefined,
+    key: RequestKey | undefined,
     fn: (db: LedgerDb) => MintedToken,
   ): CapabilityLink => {
     const token = options.ledger.write((db) => {
-      if (requestId !== undefined) {
-        const row = db.get<{ result_json: string }>(
-          "SELECT result_json FROM request WHERE method = ? AND request_id = ?",
-          method,
-          requestId,
-        );
-        if (row) return { replay: (JSON.parse(row.result_json) as { tokenId: string }).tokenId };
+      if (key !== undefined) {
+        const row = recordedResult<{ tokenId: string }>(db, key);
+        if (row) return { replay: row.tokenId };
       }
       const minted = fn(db);
-      if (requestId !== undefined) {
-        // Only the token ID is recorded: the ledger never holds a link's secret (D97 item 2).
-        db.run(
-          "INSERT INTO request (method, request_id, result_json, created_at) VALUES (?, ?, ?, ?)",
-          method,
-          requestId,
-          JSON.stringify({ tokenId: minted.tokenId }),
-          new Date().toISOString(),
-        );
-      }
+      // Only the token ID is recorded: the ledger never holds a link's secret (D97 item 2).
+      if (key !== undefined) recordResult(db, key, { tokenId: minted.tokenId });
       return { minted };
     });
     if ("minted" in token) return link(token.minted);
@@ -706,7 +769,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             }),
           );
         }
-        return recorded("view/url", params.requestId, (db) =>
+        return recorded(requestKey("view/url", params), (db) =>
           capabilities.mint(
             {
               artifactId: detail.id,
@@ -719,7 +782,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         );
       }),
       handler(viewRotateMethod, (params) =>
-        recorded("view/rotate", params.requestId, (db) => {
+        recorded(requestKey("view/rotate", params), (db) => {
           const rotated = capabilities.rotate(params.tokenId, db);
           if (rotated === undefined) {
             return fail(

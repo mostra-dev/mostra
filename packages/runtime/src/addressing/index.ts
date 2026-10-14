@@ -72,7 +72,8 @@ export interface Addressing {
   frameMode(shellOrigin: string, artifactOrigin: string): FrameMode;
 }
 
-const WILDCARDS = new Set(["0.0.0.0", "::", "[::]"]);
+/** The unspecified addresses, as {@link authorityHost} writes them: each listens everywhere. */
+const WILDCARDS = new Set(["0.0.0.0", "[::]", "[::ffff:0:0]"]);
 
 function bindFailed(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_ENV_BIND_FAILED", { message }));
@@ -95,7 +96,8 @@ export function resolveBind(options: {
   if (options.urlHost !== undefined && options.bind === undefined) {
     throw bindFailed("--url-host needs --bind: without it the gateway listens on 127.0.0.1 only.");
   }
-  if (WILDCARDS.has(address) && options.urlHost === undefined) {
+  // Compared in canonical form, so `0:0:0:0:0:0:0:0`, `::0` and `::ffff:0.0.0.0` count too.
+  if (WILDCARDS.has(authorityHost(bare)) && options.urlHost === undefined) {
     throw bindFailed(
       `--bind ${address} listens on every interface; name the host viewers use with --url-host.`,
     );
@@ -126,7 +128,10 @@ function authorityHost(host: string): string {
   return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}/`).hostname;
 }
 
-/** Binds `server` to `port` on `address`; resolves `false` when the port is in use. */
+/**
+ * Binds `server` to `port` on `address`; resolves `false` when that port is taken. Every other
+ * failure is about the address, so no port would do: it is `MOSTRA_ENV_BIND_FAILED`.
+ */
 function tryListen(server: Server, port: number, address: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const onError = (error: NodeJS.ErrnoException): void => {
@@ -134,7 +139,17 @@ function tryListen(server: Server, port: number, address: string): Promise<boole
       if (error.code === "EADDRINUSE" || error.code === "EACCES") resolve(false);
       else if (error.code === "EADDRNOTAVAIL") {
         reject(bindFailed(`No network interface of this machine has the address ${address}.`));
-      } else reject(error);
+      } else if (error.code === "EAFNOSUPPORT") {
+        reject(
+          bindFailed(
+            `This machine has no ${isIP(address) === 6 ? "IPv6" : "IPv4"} support for ${address}.`,
+          ),
+        );
+      } else {
+        reject(
+          bindFailed(`The gateway can't listen on ${address}: ${error.code ?? error.message}.`),
+        );
+      }
     };
     const onListening = (): void => {
       server.off("error", onError);

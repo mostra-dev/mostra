@@ -8,4 +8,6 @@ single-use frame tickets, checks every request's Host, Origin, CSRF token, conte
 and serves published versions straight from disk with no process. `view/url`, `view/rotate` and
 `view/revoke` mint, replace and end capability links; every publish receipt carries the artifact's
 default link; `instance/status` reports where the gateway listens. `mostra-runtime host|daemon`
-take `--bind` and `--url-host` for a wider bind.
+take `--bind` and `--url-host` for a wider bind. Every mutating method now refuses a `requestId`
+reused with other parameters (`MOSTRA_HOST_REQUEST_ID_REUSED`) instead of replaying another
+request's result.

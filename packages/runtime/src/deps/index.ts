@@ -33,7 +33,13 @@ import {
 } from "@mostra/protocol";
 import semver from "semver";
 import { type Faults, noFaults } from "../faults.ts";
-import type { Ledger, LedgerDb } from "../ledger/index.ts";
+import {
+  type Ledger,
+  type LedgerDb,
+  type RequestKey,
+  recordedResult,
+  recordResult,
+} from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
@@ -111,7 +117,7 @@ export interface Dependencies {
   add(
     target: DependencyTarget & {
       readonly packages: readonly string[];
-      readonly requestId?: string;
+      readonly request?: RequestKey | undefined;
     },
   ): Promise<DepsAddResult>;
 }
@@ -529,17 +535,12 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
 
     add: (target) =>
       byArtifact.run(target.key, async () => {
-        const requestId = target.requestId;
+        const request = target.request;
         const recorded =
-          requestId === undefined
+          request === undefined
             ? undefined
-            : ledger.read((db) =>
-                db.get<{ result_json: string }>(
-                  "SELECT result_json FROM request WHERE method = 'deps/add' AND request_id = ?",
-                  requestId,
-                ),
-              );
-        if (recorded) return JSON.parse(recorded.result_json) as DepsAddResult;
+            : ledger.read((db) => recordedResult<DepsAddResult>(db, request));
+        if (recorded !== undefined) return recorded;
         const specs: PackageSpec[] = [];
         for (const text of target.packages) {
           const spec = parseSpec(text);
@@ -601,16 +602,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             : { name: spec.name, version: lock.packages[spec.name] as string, warm: false };
         });
         const result: DepsAddResult = { packages, lockDigest: resolved.lockDigest };
-        if (requestId !== undefined) {
-          ledger.write((db) =>
-            db.run(
-              "INSERT OR IGNORE INTO request (method, request_id, result_json, created_at) VALUES ('deps/add', ?, ?, ?)",
-              requestId,
-              JSON.stringify(result),
-              new Date().toISOString(),
-            ),
-          );
-        }
+        if (request !== undefined) ledger.write((db) => recordResult(db, request, result));
         return result;
       }),
   };

@@ -41,7 +41,7 @@ import {
   resolveHomePath,
   writeHomeSettings,
 } from "../home/index.ts";
-import type { Environment } from "../log.ts";
+import type { Environment, Log } from "../log.ts";
 import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
 import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
 import {
@@ -232,7 +232,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     return publisher;
   };
   // The gateway (WP-05): leased ports, capability links and sessions, static versions.
-  const clockOffset = Number(environment["MOSTRA_TEST_CLOCK_OFFSET_MS"]) || 0;
+  const clockOffset = testClockOffset(environment["MOSTRA_TEST_CLOCK_OFFSET_MS"], log);
   const addressing = createAddressing({
     ledger: home.ledger,
     log,
@@ -244,6 +244,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     key: capabilityKey(home.path, log),
     // Tests move the gateway's clock to check link lifetimes (LL-05, HY-03).
     now: () => Date.now() + clockOffset,
+    shellOrigin: () => gateway.shellOrigin(),
   });
   const shellDir = locateShell(environment);
   if (shellDir === undefined)
@@ -374,4 +375,24 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     shell: gateway.shellOrigin(),
   });
   return instance;
+}
+
+/** The longest test clock offset accepted: ten years. */
+const MAX_CLOCK_OFFSET_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * `MOSTRA_TEST_CLOCK_OFFSET_MS`, the forward move of the gateway's clock that tests use to check
+ * link lifetimes. Only a whole number of milliseconds from 0 to ten years counts: a negative one
+ * would keep expiring links alive and a huge one would break every date. An offset in use is
+ * logged, so a forgotten one is visible.
+ */
+function testClockOffset(value: string | undefined, log: Log): number {
+  if (value === undefined || value === "") return 0;
+  const offset = Number(value);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_CLOCK_OFFSET_MS) {
+    log.warn("instance.test_clock_ignored", { value });
+    return 0;
+  }
+  if (offset > 0) log.warn("instance.test_clock", { offsetMs: offset });
+  return offset;
 }

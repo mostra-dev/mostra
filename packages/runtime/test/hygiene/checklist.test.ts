@@ -7,6 +7,7 @@
  * Item 13, MCP over HTTP, is WP-15's transport; it applies the same `checkRequest` (D96).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -366,6 +367,50 @@ describe("item 7 and 8: CORP, Referrer-Policy and framing on every response", ()
   });
 });
 
+describe("one link per browser and artifact, never replaced silently (D98 item 8, Claude review finding 6)", () => {
+  it("asks before another link replaces a live session, and keeps or replaces it as told", async () => {
+    const narrow = await gateway.link(receipt.artifactId, { scopes: ["view"] });
+    secrets.push(parseLink(narrow.url).secret);
+    const browser = new Browser();
+    const full = await openLink(browser, receipt.url);
+    const exchange = (token: string, replace?: boolean) =>
+      browser.fetchJson(full.link.shell, `${api()}/session`, {
+        body: replace === undefined ? { token } : { token, replace },
+      });
+    // The same link again reuses the session: no new cookie, the same CSRF token.
+    const again = await exchange(full.link.secret);
+    expect(again.status).toBe(200);
+    expect(again.header("set-cookie")).toBeUndefined();
+    expect(again.json<{ csrf: string }>().csrf).toBe(full.shellCsrf);
+    // Another link is refused with what each allows, and the session is unchanged.
+    const conflict = await exchange(parseLink(narrow.url).secret);
+    expect(code(conflict)).toBe("409 MOSTRA_HYGIENE_SESSION_CONFLICT");
+    expect(conflict.header("set-cookie")).toBeUndefined();
+    expect(conflict.json()).toMatchObject({
+      current: { scopes: ["action:*", "draft", "review", "signal", "submit", "view"] },
+      offered: { scopes: ["view"] },
+    });
+    const still = await browser.fetchJson(full.link.shell, `${api()}/session`);
+    expect(still.json<{ scopes: string[] }>().scopes).toContain("submit");
+    // Told to, it replaces the session.
+    const replaced = await exchange(parseLink(narrow.url).secret, true);
+    expect(replaced.status).toBe(200);
+    expect(replaced.header("set-cookie")).toBeDefined();
+    const now = await browser.fetchJson(full.link.shell, `${api()}/session`);
+    expect(now.json<{ scopes: string[] }>().scopes).toEqual(["view"]);
+  });
+
+  it("replaces a session whose link died without asking", async () => {
+    const first = await gateway.link(receipt.artifactId);
+    const second = await gateway.link(receipt.artifactId);
+    secrets.push(parseLink(first.url).secret, parseLink(second.url).secret);
+    const browser = new Browser();
+    await openLink(browser, first.url);
+    await gateway.client.call("view/revoke", { tokenId: first.tokenId });
+    expect((await openLink(browser, second.url)).page.status).toBe(200);
+  });
+});
+
 describe("item 9: per-scope tokens (HY-03)", () => {
   it("lets a view-and-review link view, and refuses drafts, submits and actions", async () => {
     const link = await gateway.link(receipt.artifactId, { scopes: ["review"] });
@@ -382,6 +427,8 @@ describe("item 9: per-scope tokens (HY-03)", () => {
       "403 MOSTRA_HYGIENE_SCOPE_DENIED",
     );
     expect(code(await post("/_mostra/v/1/runs"))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
+    // A signal can wake an agent: it needs its own scope (D97 item 4, Claude review question).
+    expect(code(await post("/_mostra/v/1/signal"))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
     // Review lives on the shell origin, and this link carries it.
     const review = await browser.fetchJson(viewer.link.shell, `${api()}/v/1/review/comments`, {
       body: {},
@@ -507,13 +554,35 @@ describe("item 10: expiry, rotation, revocation (410) and rate limits", () => {
       body: { token: parseLink(link.url).secret },
     });
     expect(code(right)).toBe("429 MOSTRA_HYGIENE_RATE_LIMITED");
+    // Frame tickets don't count and aren't limited (D97 item 8 as amended after the Claude
+    // review): they are single-use 130-bit secrets, and any page on the host could spend a count.
     const ticket = await new Browser().navigate(
       `${opened.frameOrigin}/_mostra/enter?ticket=${"B".repeat(26)}`,
       opened.link.shell,
     );
-    expect(ticket.status).toBe(429);
+    expect(ticket.status).toBe(401);
     // A holder's session isn't a token path: it keeps working.
     expect((await holder.navigate(`${opened.frameOrigin}/`, opened.link.shell)).status).toBe(200);
+    // Claude review finding 1: the limit is this artifact's; another artifact's links open.
+    const other = await gateway.publish("single-mdx", "page.mdx");
+    secrets.push(parseLink(other.url).secret);
+    expect((await openLink(new Browser(), other.url)).page.status).toBe(200);
+  });
+
+  it("checks the limit at the token check, so concurrent guesses can't slip past it (Claude review finding 7)", async () => {
+    const target = await gateway.publish("directory");
+    const link = parseLink(target.url);
+    secrets.push(link.secret);
+    const port = Number(new URL(link.shell).port);
+    const path = `/a/${target.artifactId}/_mostra/session`;
+    const bodies = Array.from({ length: 60 }, (_, index) =>
+      JSON.stringify({ token: `GUESS${String(index).padStart(21, "0")}` }),
+    );
+    bodies.push(JSON.stringify({ token: link.secret }));
+    const statuses = await burst(port, link.shell, path, bodies);
+    // Every guess past the 30th, and the right token sent with them, is refused.
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThanOrEqual(30);
+    expect(statuses.at(-1)).toBe(429);
   });
 });
 
@@ -581,7 +650,11 @@ describe("robust header parsing (fuzzing)", () => {
       [`GET /../../store/ledger.sqlite HTTP/1.1\r\n${at(framePort)}\r\n\r\n`, [400]],
       [`GET /assets%2f..%2f..%2fserver HTTP/1.1\r\n${at(framePort)}\r\n\r\n`, [400]],
       [`GET /%00 HTTP/1.1\r\n${at(framePort)}\r\n\r\n`, [400]],
-      [`GET / HTTP/1.1\r\n${at(framePort)}\r\nX-Big: ${"a".repeat(40_000)}\r\n\r\n`, [431, 400]],
+      [`GET / HTTP/1.1\r\n${at(framePort)}\r\nX-Big: ${"a".repeat(1_100_000)}\r\n\r\n`, [431]],
+      [
+        `GET / HTTP/1.1\r\n${at(framePort)}\r\nCookie: ${"a=".padEnd(1_100_000, "b")}\r\n\r\n`,
+        [431],
+      ],
       [`GET / HTTP/1.1\r\n${at(framePort)}\r\nBad Header: x\r\n\r\n`, [400]],
       [`GET / HTTP/1.1\r\n${at(framePort)}\r\nCookie: a=1\r\nCookie: b=2\r\n\r\n`, [400]],
       [
@@ -597,5 +670,78 @@ describe("robust header parsing (fuzzing)", () => {
       expect(statuses, JSON.stringify(request.slice(0, 60))).toContain(answer.status);
       expect(answer.text).not.toContain("<title>single-tsx</title>");
     }
+  });
+});
+
+/** Sends the headers of every exchange first, then every body at once, on separate connections. */
+async function burst(
+  port: number,
+  origin: string,
+  path: string,
+  bodies: readonly string[],
+): Promise<number[]> {
+  const pending = await Promise.all(
+    bodies.map(
+      (body) =>
+        new Promise<{ socket: Socket; body: string; status: Promise<number> }>((resolve) => {
+          const socket = connect({ host: "127.0.0.1", port }, () => {
+            socket.write(
+              `POST ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nOrigin: ${origin}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n`,
+            );
+            let received = "";
+            const status = new Promise<number>((done) => {
+              socket.on("data", (chunk) => {
+                received += chunk.toString();
+              });
+              socket.on("close", () => done(Number(/^HTTP\/1\.1 (\d+)/.exec(received)?.[1] ?? 0)));
+              socket.on("error", () => done(0));
+            });
+            resolve({ socket, body, status });
+          });
+        }),
+    ),
+  );
+  // Every request has passed routing and waits for its body.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  for (const entry of pending) entry.socket.write(entry.body);
+  return Promise.all(pending.map((entry) => entry.status));
+}
+
+describe("a full cookie jar (D98 item 9, Claude review finding 3)", () => {
+  it("serves a holder whose host cookies are as large as a browser keeps them", async () => {
+    // 180 cookies of 4 KiB, what Chromium and Firefox keep at most for one host, set by any page.
+    const junk = Array.from({ length: 180 }, (_, index) => `junk${index}=${"x".repeat(4090)}`).join(
+      "; ",
+    );
+    const cookie = `${holder.cookiesFor(`${opened.frameOrigin}/`)}; ${junk}`;
+    expect(cookie.length).toBeGreaterThan(700_000);
+    const page = await holder.ask({
+      url: `${opened.frameOrigin}/`,
+      headers: { cookie, accept: "text/html", "sec-fetch-dest": "iframe" },
+      noCookies: true,
+    });
+    expect(page.status).toBe(200);
+    const session = await holder.ask({
+      url: `${opened.link.shell}${api()}/session`,
+      headers: { cookie: `${holder.cookiesFor(`${opened.link.shell}${api()}/session`)}; ${junk}` },
+      noCookies: true,
+    });
+    expect(session.status).toBe(200);
+  });
+
+  it("answers more than that with a page that clears the host's cookies", async () => {
+    const junk = Array.from({ length: 300 }, (_, index) => `junk${index}=${"x".repeat(4090)}`).join(
+      "; ",
+    );
+    const answer = await raw(
+      framePort,
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:${framePort}\r\nCookie: ${junk}\r\n\r\n`,
+    );
+    expect(answer.status).toBe(431);
+    const text = answer.text.toLowerCase();
+    expect(text).toContain('clear-site-data: "cookies"');
+    expect(answer.text).toContain("MOSTRA_HYGIENE_HEADERS_TOO_LARGE");
+    expect(text).toContain("frame-ancestors 'none'");
+    expect(text).not.toContain("<script");
   });
 });

@@ -55,6 +55,9 @@ export function documentHeaders(
         "object-src 'none'",
       ].join("; "),
       "x-frame-options": "DENY",
+      // Popups the artifact frame opens get no opener, so none can navigate this page (D98
+      // item 7): Firefox lets even a sandboxed popup navigate `opener.top`.
+      "cross-origin-opener-policy": "same-origin",
     };
   }
   return { "content-security-policy": `frame-ancestors ${listener.shellOrigin}` };

@@ -144,8 +144,8 @@ export function mount(
         );
       }
       // 2. The rate limit holds every attempt while too many failed.
-      if (route.tokenPath) {
-        const limited = checks.capabilities.limited();
+      if (route.tokenPath && artifactId !== undefined) {
+        const limited = checks.capabilities.limited(artifactId);
         if (limited) return refuse(checks, limited, meta);
       }
       // 3. The session.
