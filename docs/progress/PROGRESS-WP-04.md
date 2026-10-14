@@ -1,6 +1,6 @@
 # WP-04 progress: dependencies
 
-**Status:** Candidate, awaiting the independent review (D80) and Mirza's acceptance. The report is finalized after acceptance (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-14, merged to `main` as `b952fa1`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | red in one job: `unit` failed in `tools/test/gates.test.ts` with `rsync failed: … packages/runtime/dist/bin.d.ts: … No such file or directory`. The gate tests copied the working tree, `dist/` included, while the parallel `build` task rewrote `packages/runtime/dist`. `pnpm check --job unit` alone passed (159 s). Every other job passed: format-lint, types, integration, build, boundaries, api, licenses, rust, docs, commits (3 min 44 s, macOS arm64). Fixed in this package (`tools/test/repo-copy.ts` leaves `packages/*/dist` out of the copy; the copy's own build makes it) |
 | Predecessors | WP-03 done ([PROGRESS-WP-03](PROGRESS-WP-03.md) on `origin/main`); no `RECOVERY-WP-04-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS arm64 |
-| Pull request | [#12](https://github.com/mostra-dev/mostra/pull/12), draft |
+| Pull request | [#12](https://github.com/mostra-dev/mostra/pull/12), merged |
 
 ## What was built
 
@@ -92,7 +92,12 @@ Delegated (M15 Q8): the hints and docs pages of the seven DEP codes, the `MOSTRA
 
 ## Commits and publication
 
-To be completed after acceptance.
+- **Range:** `34ab3b6..b952fa1` on `main`: 9 signed-off commits on `wp/04-deps` (`d8ad6c4` to `2026dda`) and the merge commit `b952fa1` of [#12](https://github.com/mostra-dev/mostra/pull/12). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38537005181](https://github.com/mostra-dev/mostra/actions/runs/38537005181), CodeQL [38537005021](https://github.com/mostra-dev/mostra/actions/runs/38537005021) and Scorecard [38537005008](https://github.com/mostra-dev/mostra/actions/runs/38537005008), all green.
+- **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol` (`deps/add`, the dependency policy, the DEP codes) and `@mostra/runtime` (dependencies); `@mostra/warm` is private. The release pipeline is WP-11's (EN-05).
+- **Docs:** generated diagnostic pages for the seven DEP codes in `docs/reference/`; the docs site is WP-26's.
+- **Follow-ups for later packages** are in their specifications: WP-09 (verify resolves through `Dependencies.resolve`, so its cached `envDigest` matches publish), WP-10 (`mostra add` onto `deps/add`; `gc` of lock layouts and the store), WP-11 (ship the warm layout and pnpm 10 in the runtime bundle), WP-16 (license acknowledgments in the working lockfile; packs' npm dependencies through `deps/add`).
+- **Remaining dirty paths:** none in the repository. Outside it: the disposable prototypes and scripts in `$JCODE_SCRATCH_DIR/wp04` (pnpm tarballs, `proto/` with its fake registry, stores and probe scripts) and the review transcript `review-wp-04.md`; the prototype registry on port 48731 was stopped.
 
 ## Next
 
