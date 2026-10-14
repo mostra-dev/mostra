@@ -127,6 +127,14 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "wp05-review-1",
+    name: "an IPv6 bind keeps the flag's spelling in origins and the Host allowlist",
+    file: "src/addressing/index.ts",
+    from: "  return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}/`).hostname;",
+    to: "  return isIP(bare) === 6 ? `[${bare}]` : bare;",
+    check: unit("gateway.test.ts", "exact origins"),
+  },
+  {
     requirement: "HY-02",
     name: "the gateway listens on every interface while it reports loopback",
     file: "src/addressing/index.ts",

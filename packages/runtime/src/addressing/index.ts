@@ -106,12 +106,24 @@ export function resolveBind(options: {
   ) {
     throw bindFailed(`--url-host takes a host name or an IP address, not "${options.urlHost}".`);
   }
+  if (options.urlHost !== undefined) {
+    try {
+      authorityHost(options.urlHost);
+    } catch {
+      throw bindFailed(`--url-host takes a host name or an IP address, not "${options.urlHost}".`);
+    }
+  }
   return { address: bare, ...(options.urlHost !== undefined ? { urlHost: options.urlHost } : {}) };
 }
 
-/** Brackets an IPv6 literal for use in a URL authority. */
+/**
+ * A host as browsers write it in `Origin` and `Host`: lowercase, IPv6 compressed and bracketed
+ * (`0:0:0:0:0:0:0:1` is `[::1]`). Origins and the Host allowlist use this form, so the exact
+ * comparisons agree with what a browser sends however the flag spelled the address.
+ */
 function authorityHost(host: string): string {
-  return isIP(host.replace(/^\[(.*)\]$/, "$1")) === 6 && !host.startsWith("[") ? `[${host}]` : host;
+  const bare = host.replace(/^\[(.*)\]$/, "$1");
+  return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}/`).hostname;
 }
 
 /** Binds `server` to `port` on `address`; resolves `false` when the port is in use. */

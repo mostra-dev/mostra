@@ -332,6 +332,24 @@ describe("addressing (D99)", () => {
     expect(v4.hosts(20000)).toEqual(["127.0.0.1:20000"]);
     const v6 = createAddressing({ ledger: db, log: silentLog, bind: { address: "::1" } });
     expect(v6.origin(20000)).toBe("http://[::1]:20000");
+    // GPT review finding 1: hosts take the form a browser writes, whatever spelling the flag used.
+    for (const spelling of ["0:0:0:0:0:0:0:1", "[0:0:0:0:0:0:0:1]", "::0001"]) {
+      const bound = createAddressing({
+        ledger: db,
+        log: silentLog,
+        bind: resolveBind({ bind: spelling }),
+      });
+      expect(bound.origin(20000), spelling).toBe("http://[::1]:20000");
+      expect(bound.hosts(20000), spelling).toEqual(["[::1]:20000"]);
+      expect(bound.origin(20000)).toBe(new URL("http://[0:0:0:0:0:0:0:1]:20000").origin);
+    }
+    const named = createAddressing({
+      ledger: db,
+      log: silentLog,
+      bind: resolveBind({ bind: "0.0.0.0", urlHost: "Studio.Local" }),
+    });
+    expect(named.origin(20000)).toBe("http://studio.local:20000");
+    expect(named.hosts(20000)).toEqual(["studio.local:20000"]);
     expect(v6.frameMode("http://127.0.0.1:20000", "http://127.0.0.1:20001")).toBe("cookie");
     expect(v6.frameMode("https://a.trycloudflare.com", "https://b.trycloudflare.com")).toBe(
       "worker",
