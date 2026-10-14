@@ -190,6 +190,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         env: environment,
         warm,
         policy: () => readHomeSettings(home.path).dependencies ?? "auto",
+        faults,
         // Tests shorten the 300 s install limit to exercise MOSTRA_DEP_TIMEOUT.
         ...(Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) > 0
           ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }

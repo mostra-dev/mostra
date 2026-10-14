@@ -346,8 +346,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "DP-04",
     name: "offline requests go to the installer instead of the store index",
     file: "src/deps/index.ts",
-    from: "        if (version === null) {\n          throw fail(",
-    to: "        if (version === null && Date.now() < 0) {\n          throw fail(",
+    from: "        if (semver.maxSatisfying(versions, range) === null) {",
+    to: "        if (Date.now() < 0) {",
     check: integration("deps.test.ts", "within a second"),
   },
   {
@@ -373,6 +373,47 @@ const SEEDS: readonly Seed[] = [
     from: "        cwd: run.cwd,",
     to: "        cwd: run.dir,",
     check: integration("deps.test.ts", "lifecycle scripts"),
+  },
+  // WP-04's GPT review findings (D80): each test, red on the code before its fix.
+  {
+    requirement: "wp04-review-1",
+    name: "the install child doesn't end with its supervisor",
+    file: "src/deps/child/install.ts",
+    from: "\nconnectToSupervisor();\n",
+    to: "\n",
+    check: integration("deps.test.ts", "end with the supervisor"),
+  },
+  {
+    requirement: "wp04-review-2",
+    name: "the working lockfile changes before the publish commits",
+    file: "src/publish/publisher.ts",
+    from: '          faults.at("publish:after-dependencies");',
+    to: '          ledger.write((db) => deps.save(db, key));\n          faults.at("publish:after-dependencies");',
+    check: integration("deps.test.ts", "review finding 2"),
+  },
+  {
+    requirement: "wp04-review-3-4",
+    name: "offline, every spec becomes the highest stored version, exactly",
+    file: "src/deps/index.ts",
+    from: "    const additions = input.additions;",
+    to: '    const additions = isOff ? input.additions.map((spec) => { const v = semver.maxSatisfying(stored(spec.name), "*"); return v ? { name: spec.name, range: v, exact: v } : spec; }) : input.additions;',
+    check: integration("deps.test.ts", "review findings 3 and 4"),
+  },
+  {
+    requirement: "wp04-review-5",
+    name: "a layout is marked complete before the store index knows its packages",
+    file: "src/deps/index.ts",
+    from: "        const now = new Date().toISOString();\n        ledger.write((db) => {",
+    to: '        await writeFile(join(dir, LAYOUT_MARKER), "{}\\n");\n        faults.at("deps:before-marker");\n        const now = new Date().toISOString();\n        ledger.write((db) => {',
+    check: integration("deps.test.ts", "review finding 5"),
+  },
+  {
+    requirement: "wp04-review-6",
+    name: "CSS comments are scanned for imports",
+    file: "src/deps/scan.ts",
+    from: "  const text = withoutCssComments(source);",
+    to: "  const text = source;",
+    check: ["--project", "unit", "test/unit/deps.test.ts"],
   },
   // The Claude Opus review's findings (D80).
   {

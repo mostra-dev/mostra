@@ -504,8 +504,9 @@ export function createPublisher(options: PublisherOptions): Publisher {
             stillClaims,
             faults,
             requestId: params.requestId,
-            // A path-keyed working lockfile follows the path to the artifact it is now bound to.
-            inTransaction: (db) => dependencies.bind(db, key, artifactId),
+            // The resolution becomes the artifact's working lockfile only with the version (D95):
+            // a refused publish, such as a copy claiming another artifact's ID, changes nothing.
+            inTransaction: (db) => deps.save(db, artifactId),
           });
           committed = true;
           faults.at("publish:after-commit");

@@ -8,6 +8,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { Environment, Log } from "../log.ts";
 import { artifactEnvironment, type ProcessManager } from "../processes/index.ts";
@@ -73,6 +74,13 @@ function packageNamed(record: Record<string, unknown>, message: string): string 
   return /(?:for|resolve|GET \S+?\/)(@?[^\s@/:]+(?:\/[^\s@/:]+)?)/.exec(message)?.[1];
 }
 
+/** The install child's entry: the compiled one beside the compiled supervisor, else the source. */
+function childEntry(): string {
+  return fileURLToPath(import.meta.url).endsWith(".ts")
+    ? join(runtimeRoot(), "src/deps/child/install.ts")
+    : join(runtimeRoot(), "dist/deps/child/install.js");
+}
+
 /** Finds pnpm 10 beside the runtime; anything else is refused (D94). */
 function locatePnpm(): { entry: string; version: string } {
   let dir = runtimeRoot();
@@ -121,6 +129,7 @@ export interface InstallerOptions {
 /** Creates the installer. */
 export function createInstaller(options: InstallerOptions): Installer {
   const pnpm = locatePnpm();
+  const entry = childEntry();
   const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
   // The artifact environment passes no CI variable, which would switch pnpm to frozen installs on
   // its own; every run says what it wants.
@@ -130,6 +139,8 @@ export function createInstaller(options: InstallerOptions): Installer {
     version: pnpm.version,
     async run(run) {
       const args = [
+        // The install child connects to the supervisor and runs pnpm in its own process group.
+        entry,
         pnpm.entry,
         ...run.command,
         "--dir",
@@ -169,6 +180,8 @@ export function createInstaller(options: InstallerOptions): Installer {
         args,
         cwd: run.cwd,
         env,
+        // The IPC channel is the child's lifeline: when the supervisor dies, it ends its group.
+        ipc: {},
         onStdout: (line) => {
           let record: Record<string, unknown>;
           try {

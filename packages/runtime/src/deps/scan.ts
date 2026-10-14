@@ -174,8 +174,38 @@ function mdxImports(file: string, text: string): { specifier: string; offset: nu
   return found;
 }
 
+/**
+ * `text` with every CSS comment blanked to spaces (newlines kept), so offsets still point into the
+ * original. Strings are copied as they are: a `/*` inside one doesn't start a comment.
+ */
+function withoutCssComments(text: string): string {
+  let out = "";
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index] as string;
+    if (char === '"' || char === "'") {
+      let end = index + 1;
+      while (end < text.length && text[end] !== char && text[end] !== "\n") {
+        end += text[end] === "\\" ? 2 : 1;
+      }
+      out += text.slice(index, end + 1);
+      index = end + 1;
+    } else if (char === "/" && text[index + 1] === "*") {
+      const close = text.indexOf("*/", index + 2);
+      const end = close === -1 ? text.length : close + 2;
+      out += text.slice(index, end).replace(/[^\n]/g, " ");
+      index = end;
+    } else {
+      out += char;
+      index++;
+    }
+  }
+  return out;
+}
+
 /** The packages a CSS file loads: `@import`, Tailwind's `@plugin` and `@reference`. */
-function cssImports(text: string): { specifier: string; offset: number }[] {
+function cssImports(source: string): { specifier: string; offset: number }[] {
+  const text = withoutCssComments(source);
   const found: { specifier: string; offset: number }[] = [];
   const rule = /@(?:import|plugin|reference)\s+(?:url\(\s*)?(["'])([^"'\n]+)\1/g;
   for (const match of text.matchAll(rule)) {

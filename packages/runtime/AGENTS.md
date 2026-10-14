@@ -43,7 +43,9 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   registered the port.
 - **Packages come only from the warm set and the artifact's lockfile (D95, DP-01 to DP-05).** An
   install runs pnpm 10 (never 11 or later, D94) in an install child through the process manager,
-  in the artifact's directory with `artifactEnvironment`, never in the supervisor. A lock layout
+  in the artifact's directory with `artifactEnvironment`, never in the supervisor; the child is
+  IPC-connected, so it and its lifecycle scripts end with the supervisor. An artifact's working
+  lockfile changes only through `deps/add` or inside the transaction that commits a publish. A lock layout
   links every warm package through its `warm` symlink, so peers resolve to the one warm React; it
   counts only once it carries `.mostra-layout`. Every pin in a lockfile is exact, `lockDigest` is
   part of `envDigest`, and offline requests the store index can't satisfy fail before any child
@@ -61,7 +63,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC, the artifact environment children of artifacts get |
 | `protocol-server` | The JSON-RPC dispatcher for stdio and the socket, session rules, the session methods |
 | `builder` | The `RenderMode` contract and its SPA implementation; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources and pages, and the confinement of imports to the build's packages) |
-| `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 install child, offline answers, `deps/add` |
+| `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 installer, offline answers, `deps/add`; `child/install.ts` is the install child, which connects to the supervisor and runs pnpm in its process group |
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |

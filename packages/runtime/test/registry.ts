@@ -209,9 +209,14 @@ export const FIXTURE_PACKAGES: readonly FixturePackage[] = [
     version: "1.0.0",
     manifest: {
       main: "index.js",
-      scripts: { postinstall: 'node -e "setTimeout(() => {}, 600000)"' },
+      // Records its PID where the install runs (INIT_CWD, the lock layout), then never ends.
+      scripts: { postinstall: "node wait.cjs" },
     },
-    files: { "index.js": "module.exports = 1;\n" },
+    files: {
+      "index.js": "module.exports = 1;\n",
+      "wait.cjs":
+        'require("node:fs").writeFileSync(require("node:path").join(process.env.INIT_CWD, "slow.pid"), String(process.pid));\nsetTimeout(() => {}, 600000);\n',
+    },
   },
   {
     name: "mostra-fixture-fresh",

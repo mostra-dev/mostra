@@ -63,7 +63,7 @@ describe("the import scan", () => {
         "",
       ].join("\n"),
       "styles.css":
-        '@import "tailwindcss";\n@import url("css-pkg/dist/style.css");\n@plugin "@tailwindcss/typography";\n',
+        '/* @import "commented-pkg"; */\n@import "tailwindcss";\n.a { content: "/* not a comment */"; }\n@import url("css-pkg/dist/style.css");\n/*\n@plugin "commented-plugin";\n*/\n@plugin "@tailwindcss/typography";\n',
       "types.d.ts": 'import x from "declaration-pkg";\n',
       "public/vendor.js": 'import x from "public-pkg";\n',
     });
@@ -83,7 +83,7 @@ describe("the import scan", () => {
     ]);
     expect(found.get("react")).toEqual({ file: "index.tsx", line: 1, column: 19 });
     expect(found.get("mdx-pkg")).toEqual({ file: "page.mdx", line: 4, column: 23 });
-    expect(found.get("css-pkg")?.file).toBe("styles.css");
+    expect(found.get("css-pkg")).toEqual({ file: "styles.css", line: 4, column: 13 });
   });
 
   it("skips files that don't parse; the build reports them", async () => {

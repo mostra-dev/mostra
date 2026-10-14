@@ -27,11 +27,11 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | VR-06 | WP-10 | I | gc property test never removes a version referenced by a submission, view, review set or follow; dry run lists candidates | unverified |
 | VR-07 | WP-24 | I, B | Each export class produced from fixtures; static and html open from disk; snapshot marks actions unavailable; bundle runs via `mostra run` | unverified |
 | VR-08 | WP-10 | I | `mostra dev` hot-reloads on a separate port and is unreachable through capability URLs | unverified |
-| DP-01 | WP-04 | I | Warm-set imports resolve without install; runtime check shows one React instance with an on-demand peer-dependent package | unverified |
-| DP-02 | WP-04 | I, X | Unknown import installs into the shared store with a per-artifact lockfile; explicit policy returns MOSTRA_DEP_MISSING with the command; external: real npm | unverified |
-| DP-03 | WP-04 | I | Lockfile change changes envDigest; frozen version rebuilds offline from the store | unverified |
-| DP-04 | WP-04 | I | Offline missing package returns MOSTRA_DEP_OFFLINE within 1 s (timer assertion), no hang | unverified |
-| DP-05 | WP-04 | I | Lifecycle script records its PID, cwd and environment; they belong to the install child in the artifact context | unverified |
+| DP-01 | WP-04 | I | Warm-set imports resolve without install; runtime check shows one React instance with an on-demand peer-dependent package | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
+| DP-02 | WP-04 | I, X | Unknown import installs into the shared store with a per-artifact lockfile; explicit policy returns MOSTRA_DEP_MISSING with the command; external: real npm | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
+| DP-03 | WP-04 | I | Lockfile change changes envDigest; frozen version rebuilds offline from the store | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
+| DP-04 | WP-04 | I | Offline missing package returns MOSTRA_DEP_OFFLINE within 1 s (timer assertion), no hang | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
+| DP-05 | WP-04 | I | Lifecycle script records its PID, cwd and environment; they belong to the install child in the artifact context | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-06 | WP-01 | M (license audit) | License audit in CI fails on a seeded PolyForm or non-OSI dependency in the core and passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | IN-01 | WP-06 | M, I | Property tests for CAS, monotonic revisions and mutation-ID replay (unit + integration) | unverified |
 | IN-02 | WP-07 | B | Close the tab mid-debounce in three browsers; reopen shows the value (pagehide and journal paths) | unverified |

@@ -32,6 +32,7 @@ import {
   RpcError,
 } from "@mostra/protocol";
 import semver from "semver";
+import { type Faults, noFaults } from "../faults.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
@@ -63,6 +64,8 @@ export interface DependenciesOptions {
   readonly policy: () => DependencyPolicy;
   /** Default 300 s (FAILURE_MODEL §9). */
   readonly installTimeoutMs?: number;
+  /** Test fault points `deps:*`. */
+  readonly faults?: Faults;
 }
 
 /** What a build resolves its packages from. */
@@ -73,6 +76,16 @@ export interface ResolvedDependencies {
   readonly lockDigest: string;
   /** The `node_modules` the build links: the warm layout, or the lock's layout. */
   readonly nodeModules: string;
+}
+
+/** A resolution, and the step that makes it the artifact's working lockfile. */
+export interface Resolution extends ResolvedDependencies {
+  /**
+   * Inside the transaction that commits the publish: records the lockfile as the working
+   * lockfile of `artifactId`, moving a path-keyed one to it. Nothing is recorded when the publish
+   * fails, and a working lockfile changed since the resolution read it (by `deps/add`) is kept.
+   */
+  save(db: LedgerDb, artifactId: string): void;
 }
 
 /** One artifact, as dependencies see it. */
@@ -91,9 +104,9 @@ export interface Dependencies {
   /**
    * Resolves the packages the snapshot in `sourceDir` imports into a lockfile and a layout to
    * build with, installing what's missing (or, under the `explicit` policy, refusing it with
-   * `MOSTRA_DEP_MISSING`), and records the result as the artifact's working lockfile.
+   * `MOSTRA_DEP_MISSING`). The caller records it with {@link Resolution.save}.
    */
-  resolve(target: DependencyTarget & { readonly sourceDir: string }): Promise<ResolvedDependencies>;
+  resolve(target: DependencyTarget & { readonly sourceDir: string }): Promise<Resolution>;
   /** `deps/add`: adds packages to the artifact's working lockfile and installs them. */
   add(
     target: DependencyTarget & {
@@ -101,11 +114,6 @@ export interface Dependencies {
       readonly requestId?: string;
     },
   ): Promise<DepsAddResult>;
-  /**
-   * Inside a publish's transaction: moves a path-keyed working lockfile to the artifact the
-   * publish bound the path to.
-   */
-  bind(db: LedgerDb, key: string, artifactId: string): void;
 }
 
 /**
@@ -188,6 +196,7 @@ const fail = (code: Parameters<typeof createDiagnostic>[0], message: string): Rp
 /** Creates the dependencies of one instance. */
 export function createDependencies(options: DependenciesOptions): Dependencies {
   const { ledger, log, warm } = options;
+  const faults = options.faults ?? noFaults;
   const root = join(options.home, "deps");
   const dirs = {
     store: join(root, "store"),
@@ -248,6 +257,13 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       ),
     );
   };
+  /** A working lockfile's stored text, or `null` without one. */
+  const rowText = (key: string): string | null =>
+    ledger.read(
+      (db) =>
+        db.get<{ lock_text: string }>("SELECT lock_text FROM dependency_lock WHERE key = ?", key)
+          ?.lock_text ?? null,
+    );
   /** Versions of `name` the home's store holds, from the store index. */
   const stored = (name: string): string[] =>
     ledger
@@ -272,23 +288,21 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     readonly previous: string | undefined;
   }): Promise<Lock> => {
     const isOff = offline();
-    let additions = input.additions;
+    const additions = input.additions;
     if (isOff) {
-      // Offline, a package resolves only to a version the store already holds (DP-04).
-      additions = additions.map((spec) => {
+      // Offline, only the store can answer (DP-04). When no version it holds can match, say so at
+      // once; otherwise pnpm resolves the spec as given from its metadata cache, so tags and the
+      // release age still mean what they mean online.
+      for (const spec of additions) {
         const versions = stored(spec.name);
-        const range = spec.range ?? "*";
-        const version = semver.validRange(range)
-          ? semver.maxSatisfying(versions, range)
-          : (versions.sort(semver.rcompare)[0] ?? null);
-        if (version === null) {
+        const range = spec.range !== undefined && semver.validRange(spec.range) ? spec.range : "*";
+        if (semver.maxSatisfying(versions, range) === null) {
           throw fail(
             "MOSTRA_DEP_OFFLINE",
             `Mostra is offline and the home's package store doesn't hold ${spec.name}${spec.range ? `@${spec.range}` : ""}.`,
           );
         }
-        return { name: spec.name, range: version, exact: version };
-      });
+      }
     }
     await mkdir(dirs.tmp, { recursive: true });
     const work = join(dirs.tmp, `resolve-${randomBytes(6).toString("hex")}`);
@@ -393,6 +407,21 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           ownerRef: target.key,
         });
         if (!outcome.ok) throw new RpcError(outcome.diagnostic);
+        // The store index first, then the marker: a crash between them leaves an incomplete
+        // layout (removed at the next start) over packages the store does hold, never a complete
+        // layout whose packages the index doesn't know (D80 review finding 5).
+        const now = new Date().toISOString();
+        ledger.write((db) => {
+          for (const { name, version } of pinnedPackages(pnpm)) {
+            db.run(
+              "INSERT OR IGNORE INTO dependency_package (name, version, stored_at) VALUES (?, ?, ?)",
+              name,
+              version,
+              now,
+            );
+          }
+        });
+        faults.at("deps:before-marker");
         await writeFile(
           join(dir, LAYOUT_MARKER),
           `${JSON.stringify({ lockDigest: digest, installer: install().version })}\n`,
@@ -401,17 +430,6 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         await rm(dir, { recursive: true, force: true });
         throw error;
       }
-      const now = new Date().toISOString();
-      ledger.write((db) => {
-        for (const { name, version } of pinnedPackages(pnpm)) {
-          db.run(
-            "INSERT OR IGNORE INTO dependency_package (name, version, stored_at) VALUES (?, ?, ?)",
-            name,
-            version,
-            now,
-          );
-        }
-      });
       log.info("deps.layout_installed", {
         lockDigest: digest,
         packages: Object.keys(lock.packages),
@@ -484,8 +502,29 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           });
         }
         const resolved = await settle(lock, target);
-        writeWorking(target.key, resolved.lock, added);
-        return resolved;
+        const seen = rowText(target.key);
+        return {
+          ...resolved,
+          save(db, artifactId) {
+            const current = db.get<{ lock_text: string; added_json: string }>(
+              "SELECT lock_text, added_json FROM dependency_lock WHERE key = ?",
+              target.key,
+            );
+            // deps/add changed it after this resolution read it: the newer lockfile stays.
+            if ((current?.lock_text ?? null) !== seen) return;
+            const now = new Date().toISOString();
+            if (target.key !== artifactId) {
+              db.run("DELETE FROM dependency_lock WHERE key = ?", target.key);
+            }
+            db.run(
+              "INSERT INTO dependency_lock (key, lock_text, added_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET lock_text = excluded.lock_text, added_json = excluded.added_json, updated_at = excluded.updated_at",
+              artifactId,
+              resolved.lock,
+              JSON.stringify([...new Set(added)].sort()),
+              now,
+            );
+          },
+        };
       }),
 
     add: (target) =>
@@ -574,13 +613,5 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         }
         return result;
       }),
-
-    bind(db, key, artifactId) {
-      if (key === artifactId) return;
-      const row = db.get<{ key: string }>("SELECT key FROM dependency_lock WHERE key = ?", key);
-      if (!row) return;
-      db.run("DELETE FROM dependency_lock WHERE key = ?", artifactId);
-      db.run("UPDATE dependency_lock SET key = ? WHERE key = ?", artifactId, key);
-    },
   };
 }

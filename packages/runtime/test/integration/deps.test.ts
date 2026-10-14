@@ -25,8 +25,10 @@ import { type Browser, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
+  alive,
   connectTo,
   type DaemonStatus,
+  eventually,
   initializeParams,
   type LineClient,
   type Message,
@@ -303,6 +305,34 @@ describe("on-demand packages (DP-02)", () => {
     host.close();
   });
 
+  it("leaves an artifact's lockfile alone when a copy claiming its ID is refused (review finding 2)", async () => {
+    const target = await start();
+    const created = ok<{ artifactId: string }>(
+      await target.client.call("artifact/create", { dir: join(tempDir("deps-claim"), "original") }),
+    );
+    const manifest = `import { defineArtifact } from "@mostra/react";\nexport const artifact = defineArtifact({ id: ${JSON.stringify(created.artifactId)}, title: "Original" });\n`;
+    const original = artifact({ "index.tsx": `${manifest}${PEER_PAGE}` });
+    const first = ok<Receipt>(await publish(target, original));
+    // A copy that still claims the ID, and no longer imports the package.
+    const copy = artifact({
+      "index.tsx": `${manifest}export default function Page() { return <p>copy</p>; }\n`,
+    });
+    expect((await publish(target, copy)).error?.data.code).toBe("MOSTRA_PUBLISH_ID_CONFLICT");
+    // The original's pin survived: under the explicit policy it still publishes, as the same version.
+    const host = await connectTo(target.daemon.status.socket as string);
+    ok(
+      await host.call(
+        "mostra/initialize",
+        initializeParams({ home: { dependencies: "explicit" } }),
+      ),
+    );
+    expect(ok<Receipt>(await publish(target, original))).toMatchObject({
+      versionId: first.versionId,
+      reused: true,
+    });
+    host.close();
+  });
+
   it("reports what deps/add can't do with its own codes", async () => {
     const target = await start();
     const dir = artifact({ "index.tsx": "export default function Page() { return <p />; }\n" });
@@ -428,6 +458,54 @@ describe("the lockfile in the version identity (DP-03)", () => {
 });
 
 describe("offline (DP-04)", () => {
+  it("keeps tags and the release age offline (review findings 3 and 4)", async () => {
+    const online = await start();
+    const first = artifact({ "index.tsx": "export default function Page() { return <p />; }\n" });
+    const add = (target: Running, dir: string, packages: string[]) =>
+      target.client.call("deps/add", { artifact: { path: dir }, packages });
+    // The store gets a fresh release (named exactly) and a mature package with two versions.
+    ok(await add(online, first, ["mostra-fixture-fresh@1.0.0", "mostra-fixture-peer@1.0.0"]));
+    ok(await add(online, first, ["mostra-fixture-peer@1.1.0"]));
+    const home = online.home;
+    await stop(online);
+    // The same registry stays configured, as on a machine that went offline; pnpm's metadata
+    // cache is per registry. No request may reach it.
+    const before = registry.requests.length;
+    const offline = await start({ home, env: { MOSTRA_OFFLINE: "1" } });
+    const second = artifact({
+      "index.tsx":
+        'import { fresh } from "mostra-fixture-fresh";\nexport default function Page() { return <p>{fresh}</p>; }\n',
+    });
+    // A bare import doesn't take the fresh release just because the store holds it.
+    const bare = await publish(offline, second);
+    expect(bare.error?.data.code).toBe("MOSTRA_DEP_NOT_FOUND");
+    expect(bare.error?.data.message).toContain("at least a day old");
+    // A tag the registry never had isn't "the highest stored version".
+    expect((await add(offline, second, ["mostra-fixture-peer@nonexistent"])).error?.data.code).toBe(
+      "MOSTRA_DEP_NOT_FOUND",
+    );
+    // A tag the cached metadata names resolves to its version, offline.
+    expect(
+      ok<{ packages: unknown[] }>(await add(offline, second, ["mostra-fixture-peer@latest"]))
+        .packages,
+    ).toEqual([{ name: "mostra-fixture-peer", version: "1.1.0", warm: false }]);
+    expect(registry.requests.length).toBe(before);
+  });
+
+  it("knows what the store holds after a crash while a layout is finished (review finding 5)", async () => {
+    const crashing = await start({ env: { MOSTRA_TEST_FAULTS: "deps:before-marker:crash" } });
+    const dir = artifact({ "index.tsx": PEER_PAGE });
+    void publish(crashing, dir).catch(() => undefined);
+    await crashing.daemon.exited;
+    running.splice(running.indexOf(crashing), 1);
+    // The next start removes the unfinished layout; offline, the store still serves its packages.
+    const before = registry.requests.length;
+    const offline = await start({ home: crashing.home, env: { MOSTRA_OFFLINE: "1" } });
+    const receipt = ok<Receipt>(await publish(offline, dir));
+    expect(lockOf(offline, receipt.versionId)).toContain('"mostra-fixture-peer": "1.1.0"');
+    expect(registry.requests.length).toBe(before);
+  });
+
   it("answers a package the store doesn't hold with MOSTRA_DEP_OFFLINE within a second", async () => {
     const target = await start({ env: { MOSTRA_OFFLINE: "1" } });
     const before = registry.requests.length;
@@ -470,6 +548,36 @@ describe("offline (DP-04)", () => {
 });
 
 describe("lifecycle scripts (DP-05)", () => {
+  it("end with the supervisor: a SIGKILLed supervisor leaves no install child or script running", async () => {
+    const target = await start();
+    const dir = artifact({ "index.tsx": "export default function Page() { return <p />; }\n" });
+    void target.client.call("deps/add", {
+      artifact: { path: dir },
+      packages: ["mostra-fixture-slow"],
+    });
+    // The slow postinstall writes its PID into the layout it is installed in, then waits.
+    const locks = join(target.home.home, "deps", "locks");
+    let pidFile: string | undefined;
+    await eventually(
+      () => {
+        for (const layout of existsSync(locks) ? readdirSync(locks) : []) {
+          const file = join(locks, layout, "slow.pid");
+          if (existsSync(file) && readFileSync(file, "utf8") !== "") pidFile = file;
+        }
+        return pidFile !== undefined;
+      },
+      30_000,
+      "the slow postinstall",
+    );
+    const script = Number(readFileSync(pidFile as string, "utf8"));
+    expect(alive(script)).toBe(true);
+    process.kill(target.daemon.status.pid as number, "SIGKILL");
+    await target.daemon.exited;
+    running.splice(running.indexOf(target), 1);
+    // Nothing restarts the home: the install child ends its group when its channel closes.
+    await eventually(() => !alive(script), 10_000, "the script to end");
+  });
+
   it("run in the install child, in the artifact's directory with the artifact environment", async () => {
     const target = await start();
     const dir = artifact({
@@ -499,18 +607,23 @@ describe("lifecycle scripts (DP-05)", () => {
       ancestors: { pid: number; command: string; cwd: string | null }[];
     };
     const supervisor = target.daemon.status.pid as number;
-    // The script's ancestry: the shell pnpm runs it in, then the install child, then the supervisor.
-    const index = record.ancestors.findIndex((process) => process.command.includes("pnpm.cjs"));
-    expect(index).toBeGreaterThanOrEqual(0);
+    // The script's ancestry: the shell pnpm runs it in, pnpm, then the install child (connected to
+    // the supervisor, D95), then the supervisor.
+    const index = record.ancestors.findIndex((process) =>
+      process.command.includes("deps/child/install"),
+    );
+    expect(index).toBeGreaterThanOrEqual(1);
     const installChild = record.ancestors[index];
-    expect(installChild?.command).toContain(" install --frozen-lockfile");
+    const pnpm = record.ancestors[index - 1];
+    expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
     expect(record.ancestors[index + 1]?.pid).toBe(supervisor);
     expect(record.pid).not.toBe(supervisor);
     expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
       supervisor,
     );
-    // The install child runs in the artifact's source directory.
+    // The install child, and pnpm with it, run in the artifact's source directory.
     expect(installChild?.cwd).toBe(dir);
+    expect(pnpm?.cwd).toBe(dir);
     // The artifact environment, not the supervisor's.
     expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
     expect(record.env["HOME"]).toBe(target.user);
