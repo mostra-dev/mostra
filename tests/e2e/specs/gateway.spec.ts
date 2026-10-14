@@ -200,6 +200,22 @@ test.describe("the bridge (SH-04)", () => {
       );
     });
     await expect.poll(rejections).toBe(before + 5);
+    // A valid message from the artifact's own origin but another window (a nested frame):
+    // only the window check catches it.
+    await frame.evaluate(() => {
+      const nested = document.createElement("iframe");
+      nested.name = "nested-probe";
+      document.body.append(nested);
+    });
+    const named = () => page.frames().find((candidate) => candidate.name() === "nested-probe");
+    await expect.poll(named).toBeDefined();
+    const nested = named();
+    // The nested frame is about:blank: it inherits the artifact's origin.
+    expect(await nested?.evaluate(() => window.origin)).toBe(new URL(frame.url()).origin);
+    await nested?.evaluate(() =>
+      window.top?.postMessage({ jsonrpc: "2.0", method: "mostra/ready", params: {} }, "*"),
+    );
+    await expect.poll(rejections).toBe(before + 6);
     // None of it changed what the shell shows.
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
   });

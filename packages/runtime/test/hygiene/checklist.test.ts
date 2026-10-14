@@ -44,6 +44,15 @@ beforeAll(async () => {
     new URL(opened.ticketSrc).searchParams.get("ticket") ?? "",
   );
   for (const cookie of holder.jar.values()) secrets.push(cookie.value);
+  // More links, sessions and tickets, so item 12's check has material whichever tests run.
+  for (const scopes of [undefined, ["review"], ["submit"]] as const) {
+    const link = await gateway.link(receipt.artifactId, scopes ? { scopes: [...scopes] } : {});
+    const browser = new Browser();
+    const more = await openLink(browser, link.url);
+    secrets.push(parseLink(link.url).secret, more.shellCsrf, more.frameCsrf);
+    secrets.push(new URL(more.ticketSrc).searchParams.get("ticket") ?? "");
+    for (const cookie of browser.jar.values()) secrets.push(cookie.value);
+  }
 }, 180_000);
 
 afterAll(async () => {
@@ -304,8 +313,20 @@ describe("item 6: no permissive CORS", () => {
 });
 
 describe("item 7 and 8: CORP, Referrer-Policy and framing on every response", () => {
-  it("sends Cross-Origin-Resource-Policy, Referrer-Policy and nosniff on everything, and never Access-Control-*", () => {
-    expect(seen.length).toBeGreaterThan(30);
+  it("sends Cross-Origin-Resource-Policy, Referrer-Policy and nosniff on everything, and never Access-Control-*", async () => {
+    // Its own sweep over every kind of answer, so the check doesn't depend on the tests before it.
+    const stranger = new Browser();
+    await holder.navigate(`${opened.frameOrigin}/`, opened.link.shell);
+    await holder.navigate(`${opened.link.shell}/a/${receipt.artifactId}`);
+    await holder.fetchJson(opened.link.shell, `${api()}/session`);
+    await holder.ask({ url: `${opened.frameOrigin}/missing.js` });
+    await holder.ask({ url: `${opened.frameOrigin}/_mostra/v/1/fields`, method: "POST" });
+    await stranger.ask({ url: `${opened.frameOrigin}/` });
+    await stranger.fetchJson(opened.link.shell, `${api()}/session`, { body: { token: "0" } });
+    await stranger.ask({ url: `${opened.link.shell}/`, headers: { host: "evil.example" } });
+    await stranger.ask({ url: `${opened.frameOrigin}/`, method: "OPTIONS" });
+    expect(seen.length).toBeGreaterThan(9);
+    expect(new Set(seen.map((answer) => answer.status)).size).toBeGreaterThan(4);
     for (const answer of seen) {
       if (answer.status === 0) continue;
       expect(answer.header("cross-origin-resource-policy"), String(answer.status)).toBe(
