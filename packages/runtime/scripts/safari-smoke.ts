@@ -16,11 +16,13 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
@@ -168,5 +170,15 @@ for (const [fact, code] of facts)
   if (!EXPECTED.includes(fact)) console.log(`FAIL unexpected ${fact} (${code})`);
 passed &&= [...facts.keys()].every((fact) => EXPECTED.includes(fact));
 daemon.kill("SIGTERM");
+await new Promise((resolve) => daemon.once("exit", resolve));
+// The run's home goes too; published versions are sealed read-only, so directories open first.
+const open = (dir: string): void => {
+  chmodSync(dir, 0o700);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) open(join(dir, entry.name));
+  }
+};
+open(root);
+rmSync(root, { recursive: true, force: true });
 console.log(passed ? "Safari smoke run passed." : "Safari smoke run FAILED.");
 process.exitCode = passed ? 0 : 1;

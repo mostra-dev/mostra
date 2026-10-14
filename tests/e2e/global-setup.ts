@@ -5,7 +5,14 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Client, publishFixture, RUN_VARIABLE, type Run, startDaemon } from "./support/mostra.ts";
+import {
+  Client,
+  publishFixture,
+  RUN_VARIABLE,
+  type Run,
+  removeTree,
+  startDaemon,
+} from "./support/mostra.ts";
 
 export default async function setup(): Promise<() => Promise<void>> {
   const daemon = await startDaemon();
@@ -29,5 +36,7 @@ export default async function setup(): Promise<() => Promise<void>> {
   return async () => {
     daemon.child.kill("SIGTERM");
     await new Promise((resolve) => daemon.child.once("exit", resolve));
+    // Keep the home when asked, to look at its logs and ledger after a failure.
+    if (!process.env["MOSTRA_E2E_KEEP"]) removeTree(daemon.root);
   };
 }

@@ -6,9 +6,18 @@
  * stops it.
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createConnection, type Socket } from "node:net";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -103,6 +112,25 @@ export class Client {
   close(): void {
     this.#socket.end();
   }
+}
+
+/**
+ * Removes a run's directory. Published versions are sealed read-only (DATA_MODEL §1), so each
+ * directory is made writable before its entries go.
+ */
+export function removeTree(root: string): void {
+  // Only a run directory this harness made: `mostra-e2e-*` directly in the real `/tmp`.
+  if (dirname(root) !== realpathSync("/tmp") || !basename(root).startsWith("mostra-e2e-")) {
+    throw new Error(`refusing to remove ${root}`);
+  }
+  const open = (dir: string): void => {
+    chmodSync(dir, 0o700);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) open(join(dir, entry.name));
+    }
+  };
+  open(root);
+  rmSync(root, { recursive: true, force: true });
 }
 
 /** Starts a daemon on a fresh home; resolves with its status line and the process. */
