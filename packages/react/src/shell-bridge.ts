@@ -11,9 +11,11 @@ import {
   connectBridge,
   MCP_APPS_PROTOCOL_VERSION,
   mostraReady,
+  OPEN_LINK_SCHEMES,
   type UiInitializeResult,
   uiInitialize,
   uiInitialized,
+  uiOpenLink,
 } from "@mostra/protocol";
 
 /** The shell connection of this page, once it is established. */
@@ -83,4 +85,31 @@ export function reportReady(): void {
     if (!connection) return;
     requestAnimationFrame(() => connection.bridge.notify(mostraReady, {}));
   });
+}
+
+/**
+ * Opens `url` for the viewer in a new tab. Inside Mostra's shell the frame can't navigate the
+ * viewer's tab (D98 item 7), so the shell opens it (`ui/open-link`, MCP Apps); on a page of its
+ * own, the browser does. Only `http:`, `https:`, `mailto:` and `tel:` URLs open. Resolves `true`
+ * when the URL was handed to the browser.
+ */
+export async function openLink(url: string): Promise<boolean> {
+  const connection = await connectShell();
+  if (connection) {
+    try {
+      const result = await connection.bridge.call(uiOpenLink, { url });
+      return result.isError !== true;
+    } catch {
+      return false;
+    }
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url, window.location.href);
+  } catch {
+    return false;
+  }
+  if (!OPEN_LINK_SCHEMES.includes(parsed.protocol)) return false;
+  window.open(parsed.href, "_blank", "noopener,noreferrer");
+  return true;
 }

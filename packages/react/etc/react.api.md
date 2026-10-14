@@ -20,6 +20,9 @@ export function createServerReference(id: string): ServerReference;
 export function defineArtifact<const M extends ArtifactManifest>(manifest: M): M;
 
 // @public
+export function openLink(url: string): Promise<boolean>;
+
+// @public
 export function reportReady(): void;
 
 // @public
