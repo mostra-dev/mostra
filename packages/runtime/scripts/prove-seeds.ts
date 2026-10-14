@@ -234,9 +234,9 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-01",
     name: "guessing isn't rate-limited",
     file: "src/gateway/capabilities.ts",
-    from: "if (this.#failures.length < FAILURE_LIMIT) return undefined;",
-    to: "return undefined;",
-    check: hygiene("rate limits"),
+    from: "    if (failures.length < FAILURE_LIMIT) return undefined;",
+    to: "    return undefined;",
+    check: hygiene("rate-limits guessing"),
   },
   {
     requirement: "HY-01",
@@ -264,12 +264,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "HY-01",
-    name: "a page elsewhere spends the guessing limit (the WP-05 review finding)",
+    // Since the Claude review, frame tickets never count towards the limit (D97 item 8), so
+    // a cross-site entry can't lock anyone out even without this refusal; the refusal itself is
+    // what this seed undoes.
+    name: "a cross-site frame entry is looked at (the WP-05 review finding)",
     file: "src/gateway/index.ts",
     from: 'if (context.request.headers.get("sec-fetch-site") === "cross-site") {',
     to: "if (false) {",
-    check: e2e("can't lock viewers out"),
-    e2e: true,
+    check: hygiene("refuses cross-site frame entries"),
   },
   {
     requirement: "wp05-review-1",
@@ -374,7 +376,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "VR-03",
     name: "a damaged version is shown (the WP-05 review finding)",
-    file: "src/gateway/index.ts",
+    file: "src/gateway/integrity.ts",
     from: "      if (damage !== undefined) {\n        log.error(",
     to: '      if (damage === "never") {\n        log.error(',
     check: integration("gateway.test.ts", "damaged version"),

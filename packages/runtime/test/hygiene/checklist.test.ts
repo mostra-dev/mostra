@@ -521,7 +521,7 @@ describe("item 10: expiry, rotation, revocation (410) and rate limits", () => {
     expect(again.error?.data.code).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
   });
 
-  it("refuses cross-site frame entries without counting them, so a page elsewhere can't lock viewers out", async () => {
+  it("refuses cross-site frame entries before looking at their ticket, and a real link still opens", async () => {
     const stranger = new Browser();
     for (let attempt = 0; attempt < 40; attempt++) {
       const answer = await stranger.ask({
