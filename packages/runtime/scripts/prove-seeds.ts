@@ -671,7 +671,9 @@ function check(seed: Seed): { ok: boolean; summary: string } {
       });
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
   const summary =
-    text.split("\n").find((line) => line.includes("Tests ") || / (passed|failed) \(/.test(line)) ??
+    text
+      .split("\n")
+      .find((line) => line.includes("Tests ") || /^\s*\d+ (passed|failed)/.test(line)) ??
     "no summary";
   return { ok: result.status === 0, summary: summary.trim() };
 }
