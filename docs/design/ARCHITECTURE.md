@@ -80,7 +80,7 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 
 **Publish** runs these steps, any of which can fail and leave no visible version (VR-02, D41):
 1. Snapshot the source tree into staging.
-2. Resolve and freeze dependencies into a lockfile (D20, D43).
+2. Resolve and freeze dependencies into a lockfile (D20, D43, D95): the snapshot's imports, the warm set and the artifact's working lockfile, installing what the store lacks in an install child.
 3. Compute the digests.
 4. Reuse the cached `verify` verdict for those digests, or run `verify`. Error-severity diagnostics refuse the publish unless `--force`, which records the failing codes in the version manifest.
 5. Promote the verified build output (built once, by `verify`) into the content-addressed version store with an immutable manifest.

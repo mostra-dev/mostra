@@ -73,6 +73,8 @@ export interface VersionCommit {
    * after any crash replays exactly what the first attempt committed.
    */
   readonly requestId?: string | undefined;
+  /** Runs inside the transaction, after the version and the binding are written. */
+  readonly inTransaction?: (db: LedgerDb) => void;
 }
 
 /** What a commit recorded. */
@@ -91,6 +93,8 @@ export interface Registry {
    * artifact its path is bound to, else a new one. {@link Registry.commit} checks it again.
    */
   identityFor(bindingPath: string, manifestId: string | undefined, generate: () => string): string;
+  /** The artifact a source path is bound to, if any (D51). */
+  artifactAt(bindingPath: string): string | undefined;
   /** The version row of `versionId`, if it was committed. */
   hasVersion(versionId: string): boolean;
   /** Commits a version in one ledger transaction. Throws `MOSTRA_PUBLISH_ID_CONFLICT` for a copied ID. */
@@ -169,6 +173,9 @@ export async function openRegistry(options: {
     identityFor(bindingPath, manifestId, generate) {
       if (manifestId !== undefined) return manifestId;
       return ledger.read((db) => boundArtifact(db, bindingPath)) ?? generate();
+    },
+    artifactAt(bindingPath) {
+      return ledger.read((db) => boundArtifact(db, bindingPath));
     },
     hasVersion(versionId) {
       return ledger.read(
@@ -294,6 +301,7 @@ export async function openRegistry(options: {
           input.artifactId,
           now,
         );
+        input.inTransaction?.(db);
         const committed = { version: number, cursor, reused: existing !== undefined };
         if (input.requestId !== undefined) {
           const receipt = {

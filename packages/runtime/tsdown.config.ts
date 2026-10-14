@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts"],
+  entry: ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "src/deps/child/install.ts"],
   format: "esm",
   platform: "node",
   target: "es2024",

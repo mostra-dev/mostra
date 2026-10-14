@@ -32,6 +32,9 @@ export const OSI_ALLOWLIST: ReadonlySet<string> = new Set([
   "BSD-2-Clause",
   "BSD-3-Clause",
   "BSL-1.0",
+  // OSI-approved, file-level weak copyleft like MPL-2.0: elkjs, which Mermaid (a D26 kit default)
+  // depends on, ships under it (VERIFIED_FACTS, WP-04).
+  "EPL-2.0",
   "ISC",
   "LGPL-2.1-only",
   "LGPL-2.1-or-later",
@@ -58,8 +61,32 @@ const FORBIDDEN_TEXTS: readonly [RegExp, string][] = [
   [/Functional Source License/i, "Functional Source License"],
 ];
 
+/**
+ * Licenses read from a package's own license file where its manifest declares none, each checked
+ * by hand against the published tarball and recorded in VERIFIED_FACTS. Exact versions only, so
+ * an upgrade is checked again.
+ */
+const VERIFIED_LICENSES: ReadonlyMap<string, string> = new Map([
+  // `license` file: "The MIT License (MIT)"; no `license` field (VERIFIED_FACTS, WP-04).
+  ["khroma@2.1.0", "MIT"],
+]);
+
 /** Packages that belong to pnpm's PolyForm-licensed pnpr subsystem (D20). */
 const PNPR = /^@pnpm\/pnpr($|\.)/;
+
+/**
+ * pnpm releases whose published code includes `pnpr/` (D94): pnpm 12's native binaries
+ * (`@pnpm/exe.*`) link pnpr crates, and pnpm 11's bundle contains `pnpr/client`, though both
+ * declare MIT. Only pnpm 10 is free of it.
+ */
+const PNPM_EXE = /^@pnpm\/exe($|\.)/;
+const PNPM_FREE_OF_PNPR_BELOW = 11;
+
+/**
+ * Private packages whose dependencies still reach users: the warm set ships in the runtime bundle
+ * (D91, WP-11), so its packages are audited like a published package's.
+ */
+const SHIPPED_PRIVATE: ReadonlySet<string> = new Set(["@mostra/warm"]);
 
 type Spdx =
   | { license: string; plus?: boolean }
@@ -189,7 +216,16 @@ export function dependencyProblems(dep: Installed): string[] {
   const at = `${dep.name}@${dep.version} (${dep.via})`;
   if (PNPR.test(dep.name))
     problems.push(`${at} is part of pnpm's PolyForm-licensed pnpr subsystem (D20).`);
-  const license = typeof dep.license === "string" ? dep.license : undefined;
+  if (PNPM_EXE.test(dep.name))
+    problems.push(`${at} is pnpm's native binary, which links PolyForm-licensed pnpr code (D94).`);
+  if (dep.name === "pnpm" && !(Number.parseInt(dep.version, 10) < PNPM_FREE_OF_PNPR_BELOW))
+    problems.push(
+      `${at} bundles code from pnpm's PolyForm-licensed pnpr/ directory; use pnpm 10 (D94).`,
+    );
+  const license =
+    typeof dep.license === "string"
+      ? dep.license
+      : VERIFIED_LICENSES.get(`${dep.name}@${dep.version}`);
   if (!license) problems.push(`${at} declares no SPDX license.`);
   else if (!spdxAllowed(license))
     problems.push(`${at} is licensed "${license}", which is not on the OSI allowlist.`);
@@ -206,7 +242,9 @@ export function dependencyProblems(dep: Installed): string[] {
 /** Audits every published package under `root`. */
 export function audit(root: string): { problems: string[]; checked: number; published: string[] } {
   const problems: string[] = [];
-  const published = listPackages(root).filter((pkg) => !pkg.private);
+  const published = listPackages(root).filter(
+    (pkg) => !pkg.private || SHIPPED_PRIVATE.has(pkg.name),
+  );
   const checked = new Set<string>();
   for (const pkg of published) {
     for (const dep of closure(join(root, pkg.dir), pkg.name)) {

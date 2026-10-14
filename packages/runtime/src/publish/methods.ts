@@ -1,6 +1,6 @@
 /**
  * The authoring methods of the host protocol (INTERFACES §6): `artifact/create`,
- * `artifact/publish`, `artifact/list` and `artifact/get`.
+ * `artifact/publish`, `artifact/list`, `artifact/get` and `deps/add`.
  */
 import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -10,6 +10,7 @@ import {
   artifactGetMethod,
   artifactListMethod,
   artifactPublishMethod,
+  depsAddMethod,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import type { Registry } from "../registry/index.ts";
@@ -43,6 +44,7 @@ export function artifactMethods(options: {
   return [
     handler(artifactCreateMethod, (params) => options.publisher().create(params)),
     handler(artifactPublishMethod, (params) => options.publisher().publish(params)),
+    handler(depsAddMethod, (params) => options.publisher().addDependencies(params)),
     handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
     handler(artifactGetMethod, (params) => {
       const ref: ArtifactRef =

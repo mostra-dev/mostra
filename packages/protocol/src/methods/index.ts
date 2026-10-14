@@ -7,6 +7,7 @@ import { artifactCreateMethod } from "./artifact/create.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
 import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
+import { depsAddMethod } from "./deps/add.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
@@ -21,5 +22,6 @@ export const hostMethods: readonly AnyMethod[] = [
   artifactPublishMethod,
   artifactListMethod,
   artifactGetMethod,
+  depsAddMethod,
   // gen:methods
 ];

@@ -119,4 +119,29 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: "dependencies",
+    up(db) {
+      // D95. `dependency_lock` holds each artifact's working lockfile, keyed by its artifact ID,
+      // or by `path:<real path>` until its first publish binds it (re-keyed in that publish's
+      // transaction); `added_json` lists the packages added through deps/add, which stay in the
+      // lockfile whether or not the source imports them. `dependency_package` indexes what the
+      // home's package store holds, so an offline request for anything else fails at once (DP-04).
+      db.exec(`
+        CREATE TABLE dependency_lock (
+          key TEXT PRIMARY KEY,
+          lock_text TEXT NOT NULL,
+          added_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE dependency_package (
+          name TEXT NOT NULL,
+          version TEXT NOT NULL,
+          stored_at TEXT NOT NULL,
+          PRIMARY KEY (name, version)
+        );
+      `);
+    },
+  },
 ];

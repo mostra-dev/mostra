@@ -8,6 +8,7 @@ import { type ActionDiagnosticCode, actionDiagnostics } from "./action.ts";
 import { type ArtifactDiagnosticCode, artifactDiagnostics } from "./artifact.ts";
 import { type BuildDiagnosticCode, buildDiagnostics } from "./build.ts";
 // gen:area-imports
+import { type DepDiagnosticCode, depDiagnostics } from "./dep.ts";
 import { type EnvDiagnosticCode, envDiagnostics } from "./env.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
@@ -20,6 +21,7 @@ export { type ActionDiagnosticCode, actionDiagnosticCodes } from "./action.ts";
 export { type ArtifactDiagnosticCode, artifactDiagnosticCodes } from "./artifact.ts";
 export { type BuildDiagnosticCode, buildDiagnosticCodes } from "./build.ts";
 // gen:area-exports
+export { type DepDiagnosticCode, depDiagnosticCodes } from "./dep.ts";
 export { type EnvDiagnosticCode, envDiagnosticCodes } from "./env.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
@@ -31,6 +33,7 @@ export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | DepDiagnosticCode
   | EnvDiagnosticCode
   | TargetDiagnosticCode
   | ArtifactDiagnosticCode
@@ -45,6 +48,7 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...depDiagnostics,
   ...envDiagnostics,
   ...targetDiagnostics,
   ...artifactDiagnostics,

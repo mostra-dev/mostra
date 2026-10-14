@@ -54,7 +54,7 @@ export interface BuildRequest {
   readonly entryHasDefault: boolean;
   /** The artifact's manifest (with its title resolved). */
   readonly manifest: ArtifactManifest;
-  /** The warm set's `node_modules` (D91), linked as the build's `node_modules`. */
+  /** The `node_modules` the build links: the warm layout, or the artifact's lock layout (D95). */
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */
   readonly outDir: string;

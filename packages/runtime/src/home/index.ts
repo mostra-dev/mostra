@@ -12,3 +12,4 @@ export {
 } from "./paths.ts";
 export { checkPlatform, platformName } from "./platform.ts";
 export type { InstanceRecord } from "./record.ts";
+export { readHomeSettings, writeHomeSettings } from "./settings.ts";

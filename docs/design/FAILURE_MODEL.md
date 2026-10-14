@@ -30,6 +30,7 @@
 | Failure | Behavior |
 |---|---|
 | Crash during publish | Staging and build outputs are written outside `versions/`, and promotion is an atomic rename followed by the ledger transaction. A crash before the transaction leaves no visible version (VR-02). The orphaned directory is removed on the next start, because no ledger row names it |
+| Crash during a package install | A lock layout counts only once it carries its `.mostra-layout` marker, so the next start removes an unfinished one and the scratch projects of resolutions in progress (`deps/tmp/`). The artifact's working lockfile changes only after its layout is complete, and the store keeps whatever finished downloading |
 | Crash between the version rename and the ledger insert | Same as above: the version directory isn't visible without its row, and a later publish of the same digests reuses the directory after checking it |
 | Disk full | The transaction fails and the client gets `MOSTRA_HOME_DISK_FULL`. The viewer's unsaved edits stay in the browser journal (§5). Nothing partial is committed |
 | Ledger can't be opened (corrupt, unreadable, or not a Mostra ledger) | The supervisor refuses to start with `MOSTRA_HOME_LEDGER_UNREADABLE`. `mostra doctor` runs SQLite's integrity check (through the supervisor, or only when no supervisor holds the lock, D81) and points to the latest backup. Mostra never recreates an empty ledger over an existing file |
@@ -124,7 +125,9 @@
 |---|---|
 | Manifest isn't a literal, or is invalid | `verify` and `publish` report `MOSTRA_MANIFEST_*` with the location and a fix. Unknown keys are warnings, so manifests evolve additively |
 | Unknown import with `dependencies: "explicit"` | `MOSTRA_DEP_MISSING` with the exact `mostra add` command (D43) |
-| Package lifecycle script fails | The install fails with the script's output. It runs in an install child with the artifact's directory and environment, never in the supervisor (DP-05) |
+| Package lifecycle script fails | The install fails with `MOSTRA_DEP_INSTALL_FAILED` and the script's output; nothing is published. It runs in an install child with the artifact's directory and environment, never in the supervisor (DP-05) |
+| Registry unreachable, or a package the store lacks while offline | `MOSTRA_DEP_OFFLINE` naming the package; with `MOSTRA_OFFLINE` set or no network interface up, the supervisor answers from its store index before any child starts (DP-04). Everything the store holds keeps building, including rebuilds of published versions |
+| No such package or version, or only releases younger than a day for a spec without an exact version | `MOSTRA_DEP_NOT_FOUND` with the registry's answer (D95) |
 | Unsupported platform (Windows, other architectures) | Every entry point fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` before touching the home (D35). `mostra-runtime host` also answers the host's first request with it, so a spawning host gets a typed error |
 | No browser available for `verify` | `MOSTRA_ENV_BROWSER_MISSING` with the install command. The runtime bundle includes the headless shell, so this means a damaged bundle |
 | Required tool missing for sharing | `MOSTRA_SHARE_TOOL_MISSING` with install instructions (D47) |

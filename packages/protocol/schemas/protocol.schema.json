@@ -5,6 +5,28 @@
     "host-protocol": "2026-10-10"
   },
   "$defs": {
+    "AddedPackage": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "warm": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "warm"
+      ],
+      "description": "A package deps/add settled: its name, exact version and whether it is warm."
+    },
     "ArtifactCreateParams": {
       "type": "object",
       "properties": {
@@ -545,6 +567,59 @@
       "pattern": "^(0|[1-9][0-9]{0,18})$",
       "description": "Event cursor: the decimal string of a home-wide event position."
     },
+    "DependencyPolicy": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "explicit"
+      ],
+      "description": "How packages enter an artifact's lockfile: auto installs what artifacts import; explicit only what deps/add adds (D43)."
+    },
+    "DepsAddParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "packages": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "packages"
+      ]
+    },
+    "DepsAddResult": {
+      "type": "object",
+      "properties": {
+        "packages": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AddedPackage"
+          }
+        },
+        "lockDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "packages",
+        "lockDigest"
+      ]
+    },
     "Diagnostic": {
       "type": "object",
       "properties": {
@@ -727,9 +802,12 @@
         "path": {
           "type": "string",
           "minLength": 1
+        },
+        "dependencies": {
+          "$ref": "#/$defs/DependencyPolicy"
         }
       },
-      "description": "Home settings from a spawning host; path is a check against the instance's home (D84)."
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43)."
     },
     "InstanceCapabilities": {
       "type": "object",

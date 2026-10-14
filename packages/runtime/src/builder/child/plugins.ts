@@ -94,21 +94,25 @@ export interface BuildInputs {
   readonly sourceDir: string;
   /** Mostra's generated build files (`buildConfigDigest`), whose imports are checked like the artifact's. */
   readonly generatedDir: string;
-  /** Real directories holding the warm set's packages and their dependencies (`lockDigest`). */
+  /** Real directories holding the build's packages and their dependencies (`lockDigest`). */
   readonly packageRoots: readonly string[];
 }
 
 /**
  * Keeps a build's inputs inside what the version's digests cover (VR-01, DATA_MODEL §2). A relative
  * or absolute import from an artifact file must resolve inside the artifact, and a package import
- * from an artifact file or a generated file must resolve into the warm set. Anything else (a file
- * beside the artifact, a stray `node_modules` above the home) would bring bytes into the build
- * that no digest covers, so a later change to them would go unnoticed.
+ * from an artifact file or a generated file must resolve into the build's packages (the warm set
+ * and the artifact's lockfile). An import from inside a package must stay among those packages
+ * too: a package that imports a dependency it doesn't declare would otherwise find it in any
+ * `node_modules` above the home. Anything else (a file beside the artifact, a stray
+ * `node_modules` above the home) would bring bytes into the build that no digest covers, so a
+ * later change to them would go unnoticed.
  */
 export function confinePlugin(inputs: BuildInputs): Plugin {
   const under = (file: string, dir: string): boolean => file.startsWith(`${dir}/`);
-  const checked = (file: string): boolean =>
+  const ours = (file: string): boolean =>
     under(file, inputs.sourceDir) || under(file, inputs.generatedDir);
+  const packaged = (file: string): boolean => inputs.packageRoots.some((root) => under(file, root));
   const real = (file: string): string => {
     try {
       return realpathSync.native(file);
@@ -121,7 +125,9 @@ export function confinePlugin(inputs: BuildInputs): Plugin {
     enforce: "pre",
     async resolveId(source, importer, options) {
       const from = importer?.split("?")[0];
-      if (from === undefined || !checked(from) || source.startsWith("\0")) return null;
+      if (from === undefined || source.startsWith("\0")) return null;
+      const fromPackage = !ours(from);
+      if (fromPackage && !packaged(from)) return null;
       const bare = !source.startsWith(".") && !source.startsWith("/");
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || resolved.external) return resolved;
@@ -130,12 +136,18 @@ export function confinePlugin(inputs: BuildInputs): Plugin {
       // `public/`) aren't files, so there is nothing outside to read.
       if (id.startsWith("\0") || !isAbsolute(id) || !existsSync(id)) return resolved;
       const file = real(id);
-      if (under(file, inputs.sourceDir) || under(file, inputs.generatedDir)) return resolved;
-      if (bare && inputs.packageRoots.some((root) => under(file, root))) return resolved;
+      if (fromPackage) {
+        if (packaged(file)) return resolved;
+        return this.error(
+          `Could not resolve "${source}" from the package file ${from}: it isn't among the build's packages (the warm set and the artifact's lockfile), and a package can't take a dependency it doesn't declare from elsewhere.`,
+        );
+      }
+      if (ours(file)) return resolved;
+      if (bare && packaged(file)) return resolved;
       const where = relative(inputs.sourceDir, from);
       return this.error(
         bare
-          ? `Could not resolve "${source}" from ${where}: it isn't in the warm set, and a version is built only from the artifact's own files and the warm set's packages.`
+          ? `Could not resolve "${source}" from ${where}: it isn't in the warm set or the artifact's lockfile, and a version is built only from the artifact's own files and those packages; add it with \`mostra add\`.`
           : `Could not resolve "${source}" from ${where}: it is outside the artifact, and a version is built only from the artifact's own files.`,
       );
     },

@@ -59,14 +59,20 @@ export const BIN: string = join(dirname(fileURLToPath(import.meta.url)), "../dis
 export interface TestHome {
   readonly home: string;
   readonly runtimeDir: string;
-  /** The environment the binary runs with: the runtime directory, and no MOSTRA_HOME. */
+  /** The environment the binary runs with: the runtime directory, no MOSTRA_HOME and no npm configuration. */
   readonly env: NodeJS.ProcessEnv;
 }
 
 export function testHome(): TestHome {
   const root = tempDir("mrt", true);
   const runtimeDir = join(root, "run");
-  const { MOSTRA_HOME: _home, ...env } = process.env;
+  const { MOSTRA_HOME: _home, ...inherited } = process.env;
+  // npm and pnpm put their own configuration (`npm_config_userconfig` naming the developer's
+  // ~/.npmrc, among others) into the environment of every script they run; a test home's installs
+  // must not depend on it.
+  const env = Object.fromEntries(
+    Object.entries(inherited).filter(([name]) => !/^npm_config_/i.test(name)),
+  );
   return { home: join(root, "home"), runtimeDir, env: { ...env, MOSTRA_RUNTIME_DIR: runtimeDir } };
 }
 
@@ -77,7 +83,13 @@ export type Message = {
   readonly error?: {
     code: number;
     message: string;
-    data: { code: string; message: string; hint?: string };
+    data: {
+      code: string;
+      message: string;
+      hint?: string;
+      location?: unknown;
+      fix?: { kind: string; command?: string };
+    };
   };
   readonly method?: string;
 };

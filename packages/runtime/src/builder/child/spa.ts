@@ -2,8 +2,10 @@
  * The SPA render mode's build (D19, ROUND-3 §7): one Vite 8 build of the client, and, when the
  * artifact has `"use server"` modules or `live.ts`, one build of the server bundle the worker
  * loads (WP-08). The build runs in a staging directory whose `node_modules` is a link to the warm
- * set (D91), so an artifact needs no `package.json` (AU-03). Nothing in the artifact runs.
+ * set (D91) or to the artifact's lock layout (D95), so an artifact needs no `package.json` (AU-03).
+ * Nothing in the artifact runs.
  */
+import type { Dirent } from "node:fs";
 import { mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -157,26 +159,45 @@ function baseConfig(
 }
 
 /**
- * The real directories the warm set's packages and their dependencies live in: for a package in a
+ * The real directories the build's packages and their dependencies live in: for a package in a
  * pnpm store, the store (`.pnpm`) that holds it and its dependencies; otherwise the package's own
- * directory (a workspace link such as `@mostra/react`).
+ * directory (a workspace link such as `@mostra/react`), followed by the packages it depends on in
+ * turn (`@mostra/protocol`, say).
  */
 async function packageRoots(nodeModules: string): Promise<string[]> {
-  const roots = new Set<string>([await realpath(nodeModules)]);
-  const packages: string[] = [];
-  for (const entry of await readdir(nodeModules, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) continue;
-    if (entry.name.startsWith("@")) {
-      for (const scoped of await readdir(join(nodeModules, entry.name))) {
-        packages.push(join(nodeModules, entry.name, scoped));
+  const roots = new Set<string>();
+  const visit = async (modules: string): Promise<void> => {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(modules, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    roots.add(await realpath(modules));
+    const packages: string[] = [];
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      if (entry.name.startsWith("@")) {
+        for (const scoped of await readdir(join(modules, entry.name))) {
+          packages.push(join(modules, entry.name, scoped));
+        }
+      } else packages.push(join(modules, entry.name));
+    }
+    for (const link of packages) {
+      let dir: string;
+      try {
+        dir = await realpath(link);
+      } catch {
+        continue; // A dangling link brings nothing in.
       }
-    } else packages.push(join(nodeModules, entry.name));
-  }
-  for (const link of packages) {
-    const dir = await realpath(link);
-    const store = dir.lastIndexOf("/.pnpm/");
-    roots.add(store === -1 ? dir : dir.slice(0, store + "/.pnpm".length));
-  }
+      const store = dir.lastIndexOf("/.pnpm/");
+      const root = store === -1 ? dir : dir.slice(0, store + "/.pnpm".length);
+      if (roots.has(root)) continue;
+      roots.add(root);
+      if (store === -1) await visit(join(dir, "node_modules"));
+    }
+  };
+  await visit(nodeModules);
   return [...roots];
 }
 
