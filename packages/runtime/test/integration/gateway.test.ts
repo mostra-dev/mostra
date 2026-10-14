@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, parseLink } from "../browser-client.ts";
@@ -423,6 +424,32 @@ describe("a leased port another program took (FAILURE_MODEL §8)", () => {
       expect((await openLink(new Browser(), receipt.url)).frameOrigin).toBe(moved?.origin);
     } finally {
       squatter.close();
+      await gateway.stop();
+    }
+  });
+});
+
+describe("a runtime without its shell build", () => {
+  it("still starts and serves frames; the shell's page says what is missing", async () => {
+    const gateway = await new GatewayHome().start({
+      env: { MOSTRA_SHELL_DIR: join(tmpdir(), "mostra-no-shell-here") },
+    });
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const browser = new Browser();
+      const link = parseLink(receipt.url);
+      const page = await browser.ask({
+        url: `${link.shell}/a/${receipt.artifactId}`,
+        headers: { accept: "application/json" },
+      });
+      expect(page.status).toBe(503);
+      expect(page.json()).toMatchObject({ code: "MOSTRA_ENV_SHELL_MISSING" });
+      expect(logLines(gateway).some((line) => line["code"] === "MOSTRA_ENV_SHELL_MISSING")).toBe(
+        true,
+      );
+      // Everything but the shell's page still works: the exchange, the ticket and the frame.
+      expect((await openLink(browser, receipt.url)).page.status).toBe(200);
+    } finally {
       await gateway.stop();
     }
   });

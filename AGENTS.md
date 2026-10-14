@@ -44,12 +44,12 @@ The owner is where the invariant is enforced; packages not built yet are named b
 | Invariant | Owner |
 |---|---|
 | No content or capability guardrails | every package |
-| Only capability-URL holders use an artifact; loopback by default | gateway, addressing (WP-05) |
-| Published versions are immutable; humans see only published versions | runtime `registry` (sealed version store, write-once rows) and `publish` (atomic publish) |
+| Only capability-URL holders use an artifact; loopback by default | runtime `gateway` (hashed tokens, origin-bound sessions, one checked route table) and `addressing` (the bind), over `@mostra/protocol`'s `hygiene` checks |
+| Published versions are immutable; humans see only published versions | runtime `registry` (sealed version store, write-once rows), `publish` (atomic publish) and `gateway` (serves only published `client/` builds) |
 | Submissions are immutable, from the canonical draft, bound to version and view | interaction ledger (WP-06) |
 | Drafts are never delivered as submissions | interaction ledger (WP-06) |
 | A submission is durable before any delivery attempt | interaction ledger, outbox (WP-06) |
-| Trusted controls render only in the shell's origin | shell (WP-07) |
+| Trusted controls render only in the shell's origin | runtime `gateway` (shell and artifacts on separate origins, framing rules) and `@mostra/shell` (the controls arrive in WP-07) |
 | Non-OSI engines never bundled; licenses disclosed before install | license audit (`tools/license-audit`), plugins (WP-16) |
 | Everything users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE` |
 | Interfaces evolve additively within a revision | `@mostra/protocol` schema snapshots, API reports |
