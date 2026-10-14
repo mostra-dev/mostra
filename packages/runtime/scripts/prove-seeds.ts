@@ -25,6 +25,10 @@ interface Seed {
   readonly also?: readonly { readonly file: string; readonly from: string; readonly to: string }[];
   /** Vitest arguments, run in packages/runtime. */
   readonly check: readonly string[];
+  /** Playwright Test arguments instead, run in tests/e2e (three engines unless narrowed). */
+  readonly e2e?: boolean;
+  /** Where Vitest runs, relative to packages/runtime, when not there. */
+  readonly cwd?: string;
 }
 
 const integration = (file: string, ...filter: string[]): string[] => [
@@ -34,7 +38,185 @@ const integration = (file: string, ...filter: string[]): string[] => [
   ...(filter.length > 0 ? ["-t", ...filter] : []),
 ];
 
+const hygiene = (...filter: string[]): string[] => [
+  "--project",
+  "hygiene",
+  ...(filter.length > 0 ? ["-t", ...filter] : []),
+];
+const unit = (file: string, ...filter: string[]): string[] => [
+  "--project",
+  "unit",
+  `test/unit/${file}`,
+  ...(filter.length > 0 ? ["-t", ...filter] : []),
+];
+const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
+
 const SEEDS: readonly Seed[] = [
+  // WP-05: the gateway, addressing and hygiene.
+  {
+    requirement: "HY-01",
+    name: "any Host is accepted (DNS rebinding)",
+    file: "../protocol/src/hygiene.ts",
+    from: "if (host === undefined || !policy.hosts.includes(host)) {",
+    to: "if (host === undefined) {",
+    check: hygiene("Host allowlist"),
+  },
+  {
+    requirement: "HY-01",
+    name: "a mutation's Origin isn't checked",
+    file: "../protocol/src/hygiene.ts",
+    from: '      if (origin !== policy.origin) {\n        return refusal(\n          "MOSTRA_HYGIENE_ORIGIN_REFUSED",\n          origin === undefined',
+    to: '      if (origin === "never") {\n        return refusal(\n          "MOSTRA_HYGIENE_ORIGIN_REFUSED",\n          origin === undefined',
+    check: hygiene("exact Origin"),
+  },
+  {
+    requirement: "HY-01",
+    name: "the CSRF token isn't checked",
+    file: "../protocol/src/hygiene.ts",
+    from: "if (request.csrf === undefined || sent === undefined || !safeEqual(sent, request.csrf)) {",
+    to: "if (request.csrf === undefined) {",
+    check: hygiene("CSRF token"),
+  },
+  {
+    requirement: "HY-01",
+    name: "responses lose Cross-Origin-Resource-Policy",
+    file: "src/gateway/http.ts",
+    from: '"cross-origin-resource-policy": "same-origin",',
+    to: "",
+    check: hygiene("CORP"),
+  },
+  {
+    requirement: "HY-01",
+    name: "guessing isn't rate-limited",
+    file: "src/gateway/capabilities.ts",
+    from: "if (this.#failures.length < FAILURE_LIMIT) return undefined;",
+    to: "return undefined;",
+    check: hygiene("rate limits"),
+  },
+  {
+    requirement: "HY-01",
+    name: "the CSRF token is stored in plain text (the WP-05 finding)",
+    file: "src/gateway/capabilities.ts",
+    from: "        hashSecret(csrf),",
+    to: "        csrf,",
+    also: [
+      {
+        file: "src/gateway/capabilities.ts",
+        from: "if (!safeEqual(hashSecret(csrf), found.session.csrf)) continue;",
+        to: "if (!safeEqual(csrf, found.session.csrf)) continue;",
+      },
+    ],
+    check: hygiene("out of the logs and the ledger"),
+  },
+  {
+    requirement: "HY-01",
+    name: "any page may frame an artifact",
+    file: "src/gateway/http.ts",
+    from: 'return { "content-security-policy": `frame-ancestors ${listener.shellOrigin}` };',
+    to: "return {};",
+    check: e2e("no other page can frame"),
+    e2e: true,
+  },
+  {
+    requirement: "HY-02",
+    name: "the gateway listens on every interface while it reports loopback",
+    file: "src/addressing/index.ts",
+    from: "server.listen({ port, host: address, exclusive: true });",
+    to: 'server.listen({ port, host: "0.0.0.0", exclusive: true });',
+    check: integration("gateway.test.ts", "loopback only by default"),
+  },
+  {
+    requirement: "HY-03",
+    name: "scopes aren't enforced",
+    file: "src/gateway/routes.ts",
+    from: "        if (!allowed) {",
+    to: "        if (allowed === false && needed === undefined) {",
+    check: hygiene("per-scope tokens"),
+  },
+  {
+    requirement: "HY-03",
+    name: "a revoked token still works",
+    file: "src/gateway/capabilities.ts",
+    from: "      row.revoked_at === null &&\n",
+    to: "",
+    check: hygiene("410"),
+  },
+  {
+    requirement: "HY-03",
+    name: "a token's lifetime is ignored",
+    file: "src/gateway/capabilities.ts",
+    from: "(row.expires_at === null || Date.parse(row.expires_at) > this.#now())",
+    to: "true",
+    check: unit("gateway.test.ts", "expire after their ttl"),
+  },
+  {
+    requirement: "LL-05",
+    name: "a link minted without a lifetime expires after a week",
+    file: "src/gateway/capabilities.ts",
+    from: "expiresAt: input.ttlMs === undefined ? undefined : this.#iso(this.#now() + input.ttlMs),",
+    to: "expiresAt: this.#iso(this.#now() + (input.ttlMs ?? 7 * 86_400_000)),",
+    check: integration("gateway.test.ts", "after a week of simulated time"),
+  },
+  {
+    requirement: "SH-01",
+    name: "the frame is served on the shell's origin",
+    file: "src/gateway/index.ts",
+    from: "    const artifactOrigin = addressing.origin(port);",
+    to: "    const artifactOrigin = shellOrigin();",
+    check: e2e("live on two origins"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-03",
+    name: "session cookies are Lax and readable by scripts",
+    file: "src/gateway/http.ts",
+    from: "; HttpOnly; SameSite=Strict`;",
+    to: "; SameSite=Lax`;",
+    check: e2e("HttpOnly cookies"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-03",
+    name: "a lease isn't reused after a restart",
+    file: "src/addressing/index.ts",
+    from: "      const previous = leased(owner);",
+    to: "      const previous = undefined as number | undefined;",
+    check: integration("gateway.test.ts", "keeps ports and sessions across a restart"),
+  },
+  {
+    requirement: "SH-04",
+    name: "the bridge accepts messages from any origin",
+    file: "../protocol/src/bridge.ts",
+    from: 'if (event.origin !== options.peerOrigin) return "wrong-origin";',
+    to: "",
+    check: ["test/bridge.test.ts"],
+    cwd: "../protocol",
+  },
+  {
+    requirement: "SH-04",
+    name: "the bridge accepts messages from any window",
+    file: "../protocol/src/bridge.ts",
+    from: 'if (!peer || event.source !== peer) return "wrong-source";',
+    to: "",
+    check: e2e("drops messages from other windows"),
+    e2e: true,
+  },
+  {
+    requirement: "RT-05",
+    name: "serving a version starts a process",
+    file: "src/gateway/index.ts",
+    from: "    const files = async (context: RouteContext): Promise<Response> => {",
+    to: '    const files = async (context: RouteContext): Promise<Response> => {\n      process.getBuiltinModule("node:child_process").spawn("sleep", ["30"]);',
+    check: integration("gateway.test.ts", "no process"),
+  },
+  {
+    requirement: "VR-03",
+    name: "a frame reaches the whole version directory, server bundle included",
+    file: "src/gateway/index.ts",
+    from: 'join(artifacts.versionDir(versionId), "client")',
+    to: "artifacts.versionDir(versionId)",
+    check: integration("gateway.test.ts", "route enumeration"),
+  },
   {
     requirement: "RT-06",
     name: "the ledger lock isn't exclusive",
@@ -472,15 +654,25 @@ const root = join(runtime, "../..");
 const { values } = parseArgs({ options: { only: { type: "string" } } });
 
 function build(): void {
-  for (const name of ["@mostra/protocol", "@mostra/runtime"]) {
+  for (const name of ["@mostra/protocol", "@mostra/react", "@mostra/shell", "@mostra/runtime"]) {
     execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore" });
   }
 }
 
-function check(args: readonly string[]): { ok: boolean; summary: string } {
-  const result = spawnSync("npx", ["vitest", "run", ...args], { cwd: runtime, encoding: "utf8" });
+function check(seed: Seed): { ok: boolean; summary: string } {
+  const result = seed.e2e
+    ? spawnSync("npx", ["playwright", "test", ...seed.check], {
+        cwd: join(root, "tests", "e2e"),
+        encoding: "utf8",
+      })
+    : spawnSync("npx", ["vitest", "run", ...seed.check], {
+        cwd: join(runtime, seed.cwd ?? "."),
+        encoding: "utf8",
+      });
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
-  const summary = text.split("\n").find((line) => line.includes("Tests ")) ?? "no summary";
+  const summary =
+    text.split("\n").find((line) => line.includes("Tests ") || / (passed|failed) \(/.test(line)) ??
+    "no summary";
   return { ok: result.status === 0, summary: summary.trim() };
 }
 
@@ -513,13 +705,13 @@ for (const seed of SEEDS) {
       writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
     }
     build();
-    red = check(seed.check);
+    red = check(seed);
   } finally {
     restore();
     restore = undefined;
   }
   build();
-  const green = check(seed.check);
+  const green = check(seed);
   if (red.ok || !green.ok) missed++;
   console.log(
     `${seed.requirement} | ${seed.name} | seeded: ${red.ok ? "GREEN (missed)" : "red"} (${red.summary}) | restored: ${green.ok ? "green" : "RED"} (${green.summary})`,
