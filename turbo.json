@@ -35,6 +35,16 @@
     "schemas": {
       "outputs": [],
       "env": ["MOSTRA_BASE"]
+    },
+    "test:hygiene": {
+      "dependsOn": ["build", "^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+      "outputs": []
+    },
+    "e2e": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+      "outputs": []
     }
   }
 }

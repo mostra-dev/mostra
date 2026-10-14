@@ -604,6 +604,9 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.3.0(react@19.3.0)
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
     devDependencies:
       '@mostra/tools':
         specifier: workspace:*
@@ -764,6 +767,12 @@ importers:
 
   tests/e2e:
     devDependencies:
+      '@mostra/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@mostra/shell':
+        specifier: workspace:*
+        version: link:../../packages/shell
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.63.0

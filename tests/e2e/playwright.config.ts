@@ -4,6 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
 // (WP-05 onward) and run in all three engines where behavior differs (STANDARDS, Verification).
 export default defineConfig({
   testDir: "./specs",
+  // One real daemon for the run, with the render fixtures published (support/mostra.ts).
+  globalSetup: "./global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env["CI"],
   retries: 0,

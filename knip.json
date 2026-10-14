@@ -28,14 +28,16 @@
       "project": ["*.mjs"]
     },
     "tests/*": {
-      "entry": ["*.config.ts", "**/*.spec.ts"],
-      "project": ["**/*.ts"]
+      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
+      "project": ["**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime", "@mostra/shell"]
     },
     "packages/runtime": {
       "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
       "ignore": ["test/fixtures/artifacts/**"],
-      "ignoreDependencies": ["tailwindcss", "pnpm", "@mostra/shell"]
+      "ignoreDependencies": ["tailwindcss", "pnpm", "@mostra/shell"],
+      "ignoreBinaries": ["ss", "lsof", "ps"]
     },
     "packages/warm": {
       "entry": [],

@@ -34,7 +34,8 @@
   "dependencies": {
     "@mostra/protocol": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@mostra/tools": "workspace:*",
