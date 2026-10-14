@@ -2,12 +2,12 @@
  * The Mostra side of the end-to-end suites: one real `mostra-runtime daemon` per run on a fresh
  * home, a minimal host protocol client over its socket (newline-delimited JSON-RPC, as any host
  * speaks it), and the fixtures it publishes. Global set-up starts it and records what the specs
- * need in `RUN_FILE`; global teardown stops it.
+ * need in a file inside the run's private directory, named by `MOSTRA_E2E_RUN`; global teardown
+ * stops it.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,8 +18,11 @@ export const BIN = join(ROOT, "packages", "runtime", "dist", "bin.js");
 export const SHELL = join(ROOT, "packages", "shell", "dist", "index.html");
 /** The artifacts WP-03 rendered from a test server; here they go through the gateway. */
 export const FIXTURES = join(ROOT, "packages", "runtime", "test", "fixtures", "artifacts");
-/** Where global set-up records the run for the specs. */
-export const RUN_FILE = join(tmpdir(), "mostra-e2e-run.json");
+/**
+ * The variable naming the file where global set-up records the run. The file holds capability
+ * links, so it lives in the run's own mode-0700 directory, never at a predictable shared path.
+ */
+export const RUN_VARIABLE = "MOSTRA_E2E_RUN";
 
 /** What the specs read: the daemon, its socket and the published fixtures' receipts. */
 export interface Run {
@@ -33,7 +36,10 @@ export interface Run {
 
 /** Reads the run global set-up recorded. */
 export function readRun(): Run {
-  return JSON.parse(readFileSync(RUN_FILE, "utf8")) as Run;
+  const file = process.env[RUN_VARIABLE];
+  if (!file)
+    throw new Error(`${RUN_VARIABLE} isn't set: run the specs through Playwright's global set-up.`);
+  return JSON.parse(readFileSync(file, "utf8")) as Run;
 }
 
 /** A host protocol connection to the daemon's socket. */
@@ -102,6 +108,7 @@ export class Client {
 /** Starts a daemon on a fresh home; resolves with its status line and the process. */
 export async function startDaemon(): Promise<{
   child: ChildProcess;
+  root: string;
   home: string;
   socket: string;
 }> {
@@ -135,7 +142,7 @@ export async function startDaemon(): Promise<{
   });
   const status = JSON.parse(line) as { status: string; socket?: string };
   if (status.status !== "started" || !status.socket) throw new Error(`daemon: ${line}`);
-  return { child, home, socket: status.socket };
+  return { child, root, home, socket: status.socket };
 }
 
 /** Copies a fixture beside the home and publishes it. */
