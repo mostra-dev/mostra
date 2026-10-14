@@ -527,6 +527,19 @@ export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING"];
 
 // @public
+export interface GatewayStatus {
+    readonly artifacts: readonly {
+        readonly artifactId: string;
+        readonly origin: string;
+    }[];
+    readonly bind: string;
+    readonly shell: string;
+}
+
+// @public
+export const GatewayStatus: z.ZodType<GatewayStatus>;
+
+// @public
 export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
     create(): Id<P>;
 }
@@ -620,6 +633,7 @@ export type InstanceStatusParams = Record<string, never>;
 // @public
 export interface InstanceStatusResult {
     readonly connections: number;
+    readonly gateway?: GatewayStatus;
     readonly instance: InstanceInfo;
     readonly processes: readonly ChildProcessStatus[];
     readonly socket: string;

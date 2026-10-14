@@ -169,6 +169,7 @@ export {
 export { hostMethods } from "./methods/index.ts";
 export {
   ChildProcessStatus,
+  GatewayStatus,
   type InstanceStatusParams,
   type InstanceStatusResult,
   instanceStatusMethod,
