@@ -12,7 +12,9 @@
  * - `cookie-hidden`: scripts can't read the HttpOnly session cookie;
  * - `bridge-ready`: the bridge handshake with the shell (`ui/initialize`) completed;
  * - `parent-blocked`: the frame can't read the shell's document;
- * - the same four with `reload-`, after the frame reloaded itself on its persisted session.
+ * - `top-blocked`: the frame can't navigate the viewer's tab, which would replace the shell
+ *   (D98 item 7); a navigation that went through would log `top-navigated` and fail the run;
+ * - the first four with `reload-`, after the frame reloaded itself on its persisted session.
  */
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -31,7 +33,7 @@ import { fileURLToPath } from "node:url";
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bin.js");
 const FACTS = ["frame-ran", "cookie-hidden", "bridge-ready", "parent-blocked"];
-const EXPECTED = [...FACTS, ...FACTS.map((fact) => `reload-${fact}`)];
+const EXPECTED = [...FACTS, "top-blocked", ...FACTS.map((fact) => `reload-${fact}`)];
 
 const PROBE = `import { connectShell } from "@mostra/react";
 import { useEffect, useState } from "react";
@@ -54,6 +56,15 @@ export default function Page() {
         parent = "readable";
       } catch {}
       await probe(\`\${tag}parent-\${parent}\`);
+      if (!again) {
+        let top = "blocked";
+        try {
+          // biome-ignore lint/style/noNonNullAssertion: a framed page has a top window
+          window.top!.location.href = \`\${location.origin}/_mostra-probe/top-navigated\`;
+          top = "unblocked";
+        } catch {}
+        await probe(\`top-\${top}\`);
+      }
       setState(again ? "done" : "reloading");
       if (!again) {
         sessionStorage.setItem("mostra-smoke", "1");

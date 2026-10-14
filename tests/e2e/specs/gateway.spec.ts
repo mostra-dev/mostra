@@ -376,6 +376,7 @@ test.describe("one artifact against the others and against its shell (Claude rev
     const { frame } = await openShell(page, run.receipts.tsx.url);
     const kept = await frame.evaluate(() => {
       for (let index = 0; index < 400; index++) {
+        // biome-ignore lint/suspicious/noDocumentCookie: the attack under test fills the cookie jar
         document.cookie = `junk${index}=${"x".repeat(4090)}; path=/; max-age=3600`;
       }
       return document.cookie.length;

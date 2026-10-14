@@ -538,6 +538,32 @@ describe("links work only at the address they were made for (D97 item 10)", () =
   });
 });
 
+describe("the test clock (Claude review finding 11)", () => {
+  it("ignores an offset that is negative, fractional or past ten years, and logs one in use", async () => {
+    for (const value of ["-86400000", "1e20", "12.5"]) {
+      const gateway = await new GatewayHome().start({
+        env: { MOSTRA_TEST_CLOCK_OFFSET_MS: value },
+      });
+      try {
+        const receipt = await gateway.publish("single-tsx", "page.tsx");
+        const hour = await gateway.link(receipt.artifactId, { ttl: "1h" });
+        // The real clock: the link expires an hour from now, and it opens.
+        expect(Date.parse(hour.expiresAt ?? "") - Date.now()).toBeLessThan(3_700_000);
+        expect(Date.parse(hour.expiresAt ?? "") - Date.now()).toBeGreaterThan(3_400_000);
+        expect((await openLink(new Browser(), hour.url)).page.status).toBe(200);
+        expect(
+          logLines(gateway).some(
+            (line) => line["event"] === "instance.test_clock_ignored" && line["value"] === value,
+          ),
+          value,
+        ).toBe(true);
+      } finally {
+        await gateway.stop();
+      }
+    }
+  });
+});
+
 describe("a runtime without its shell build", () => {
   it("still starts and serves frames; the shell's page says what is missing", async () => {
     const gateway = await new GatewayHome().start({

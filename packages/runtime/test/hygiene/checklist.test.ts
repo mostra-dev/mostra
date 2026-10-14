@@ -709,7 +709,7 @@ async function burst(
 
 describe("a full cookie jar (D98 item 9, Claude review finding 3)", () => {
   it("serves a holder whose host cookies are as large as a browser keeps them", async () => {
-    // 180 cookies of 4 KiB, what Chromium and Firefox keep at most for one host, set by any page.
+    // 180 cookies of 4 KiB, more than the 100 any engine keeps for one host (VERIFIED_FACTS, WP-05).
     const junk = Array.from({ length: 180 }, (_, index) => `junk${index}=${"x".repeat(4090)}`).join(
       "; ",
     );

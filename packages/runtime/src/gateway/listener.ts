@@ -22,9 +22,10 @@ import { refuse } from "./routes.ts";
 
 /**
  * Node's limit on request headers for gateway listeners. Every port of the loopback host shares one
- * cookie jar, and any artifact's page can fill it; browsers keep at most 180 cookies of about 4 KiB
- * per host, about 740 KiB, so a jar filled to the brim still fits (VERIFIED_FACTS, WP-05). A request
- * past this limit is answered with a page that clears the host's cookies (D98 item 9).
+ * cookie jar, and any artifact's page can fill it; Chromium, Firefox and WebKit keep about 410 KB
+ * per host (100 cookies of 4 KiB), so a jar filled to the brim fits with room to spare
+ * (VERIFIED_FACTS, WP-05). A request past this limit is answered with a page that clears the
+ * host's cookies (D98 item 9).
  */
 export const MAX_HEADER_SIZE: number = 1024 * 1024;
 

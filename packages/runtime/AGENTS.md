@@ -60,13 +60,24 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **The ledger holds no capability secret.** Tokens, session cookies and CSRF tokens are stored
   only as SHA-256 hashes; a token's secret is derived from its ID under `<home>/keys/capability`
   (D97). A revoked token never changes again (a trigger refuses it); rotate in one transaction.
+  A token works only at the shell origin it was minted for, and a link that names a version opens
+  only that version, assets included (D97 items 9 and 10).
+- **Guessing is limited per artifact, at the token check (D97 item 8).** `presentToken` checks
+  the limit itself, so concurrent guesses can't slip past it; frame tickets never count.
+- **A `requestId` replays only its own request (D100).** Record results with `recordResult` and
+  replay with `recordedResult` from `ledger`, keyed by `requestKey(method, params)`, in the
+  transaction of the effect; never read or write `request` by hand.
+- **Every served file comes from an intact version (FAILURE_MODEL §3).** `gateway/integrity.ts`
+  checks a version against its output digest before its first file and again when a file's change
+  time differs; serve through it.
 - **The gateway binds `127.0.0.1` unless `--bind` says otherwise (D99, HY-02),** never
   remembered. `addressing` leases every port from 20000 to 32767 and binds every lease at start.
 - **Viewers reach only published client builds (VR-03).** Artifact origins serve files only from
   a version's `client/` directory, through `serve.ts`, which refuses anything whose real path
   leaves that root. Serving a version starts no process (RT-05).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
-  nothing; an artifact document only by its shell (D98 item 4).
+  nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
+  it; an artifact document may be framed only by its shell (D98 items 4 and 7).
 
 ## Where things are
 
@@ -85,7 +96,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the route table and its checks (`routes.ts`); the HTTP listeners (`listener.ts`); static files (`serve.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads

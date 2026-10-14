@@ -426,6 +426,25 @@ describe("addressing (D99)", () => {
     );
     server.close();
     expect(failure).toBe("MOSTRA_ENV_BIND_FAILED");
+    // Errors no other port would fix, such as a missing address family, are bind failures too.
+    for (const code of ["EAFNOSUPPORT", "EINVAL", "ENOTSUP"]) {
+      const broken = createHttpServer();
+      broken.listen = function (this: typeof broken) {
+        process.nextTick(() => this.emit("error", Object.assign(new Error(code), { code })));
+        return this;
+      } as typeof broken.listen;
+      const answer = await createAddressing({
+        ledger: db,
+        log: silentLog,
+        bind: resolveBind({}),
+      })
+        .listen(broken, { purpose: "shell", owner: `shell-${code}` })
+        .then(
+          () => "none",
+          (error: { diagnostic?: { code: string } }) => error.diagnostic?.code ?? String(error),
+        );
+      expect(answer, code).toBe("MOSTRA_ENV_BIND_FAILED");
+    }
   });
 
   it("forms exact origins and Host allowlists, bracketing IPv6", () => {
