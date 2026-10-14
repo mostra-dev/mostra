@@ -41,17 +41,25 @@ const html = (title: string): string =>
 </html>
 `;
 
-/** The client entry: mounts the page, or the `pages/` routes inside the entry's layout (D57). */
+/**
+ * The client entry: mounts the page, or the `pages/` routes inside the entry's layout (D57), then
+ * connects to the shell over the bridge and reports `mostra/ready` (SH-04, WP-05).
+ */
 function clientEntry(request: BuildRequest, scan: ScanResult): string {
   const source = (file: string): string => JSON.stringify(`../source/${file}`);
   const lines = [
     `import "./styles.css";`,
     `import { createElement } from "react";`,
     `import { createRoot } from "react-dom/client";`,
+    `import { reportReady } from "@mostra/react";`,
   ];
   const mount = `createRoot(document.getElementById("root")).render`;
   if (scan.pages.length === 0) {
-    lines.push(`import Page from ${source(request.entry)};`, `${mount}(createElement(Page));`);
+    lines.push(
+      `import Page from ${source(request.entry)};`,
+      `${mount}(createElement(Page));`,
+      `reportReady();`,
+    );
     return `${lines.join("\n")}\n`;
   }
   lines.push(
@@ -76,6 +84,7 @@ function clientEntry(request: BuildRequest, scan: ScanResult): string {
       ? `const router = createBrowserRouter([{ element: createElement(Layout, null, createElement(Outlet)), children: routes }]);`
       : `const router = createBrowserRouter(routes);`,
     `${mount}(createElement(RouterProvider, { router }));`,
+    `reportReady();`,
   );
   return `${lines.join("\n")}\n`;
 }

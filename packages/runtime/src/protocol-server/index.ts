@@ -5,6 +5,7 @@
 import {
   type ChildProcessStatus,
   createDiagnostic,
+  type GatewayStatus,
   type InstanceInfo,
   type InstanceStatusResult,
   instanceStatusMethod,
@@ -24,6 +25,8 @@ export interface SessionMethodsOptions {
   socketPath(): string;
   connections(): number;
   processes(): readonly ChildProcessStatus[];
+  /** Where the gateway listens, once it has started. */
+  gateway?(): GatewayStatus | undefined;
   /**
    * Stops the instance. Called after the `mostra/shutdown` response is on its way (D87).
    */
@@ -33,16 +36,17 @@ export interface SessionMethodsOptions {
 /** The handlers of `instance/status` and `mostra/shutdown`. */
 export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] {
   return [
-    handler(
-      instanceStatusMethod,
-      (): InstanceStatusResult => ({
+    handler(instanceStatusMethod, (): InstanceStatusResult => {
+      const gateway = options.gateway?.();
+      return {
         instance: options.describe(),
         startedAt: options.startedAt,
         socket: options.socketPath(),
         connections: options.connections(),
         processes: [...options.processes()],
-      }),
-    ),
+        ...(gateway ? { gateway } : {}),
+      };
+    }),
     handler(mostraShutdownMethod, (_params, session) => {
       // A host-spawned instance lives as long as its host's stdio; attached clients can't end it
       // (D87). A daemon stops for any attached client: its socket is owner-only.

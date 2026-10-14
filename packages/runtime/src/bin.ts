@@ -5,6 +5,10 @@
  *   mostra-runtime host [--home <dir>]     the host protocol over stdio (`mostra host`)
  *   mostra-runtime daemon [--home <dir>]   the home's daemon on its socket (`mostra daemon start`)
  *
+ * Both take `--bind <address>` to serve viewers on an address other than 127.0.0.1, and
+ * `--url-host <name>`, the host name links use, which a wildcard address needs (D99). Neither is
+ * remembered: every wider start is explicit.
+ *
  * `daemon` prints one JSON line on stdout: `{"status":"started",…}` when it took the home,
  * `{"status":"attached",…}` when another daemon already owns it (then it exits 0), or
  * `{"status":"failed","diagnostic":…}` (exit 3). `host` speaks only the protocol on stdout; when it
@@ -25,7 +29,8 @@ import { type Instance, runtimeVersion, startInstance } from "./instance/index.t
 /** Exit codes, as INTERFACES §9 defines them for the CLI. */
 const EXIT = { ok: 0, failure: 1, usage: 2, environment: 3 } as const;
 
-const USAGE = "usage: mostra-runtime <host|daemon> [--home <dir>]";
+const USAGE =
+  "usage: mostra-runtime <host|daemon> [--home <dir>] [--bind <address> [--url-host <name>]]";
 
 // A closed stdout or stderr (a starter that read the ready line and left) must not crash the
 // supervisor.
@@ -120,6 +125,8 @@ async function main(argv: readonly string[]): Promise<number> {
     const started = await startInstance({
       mode,
       home: values.home,
+      bind: values.bind,
+      urlHost: values["url-host"],
       mirror,
       ...(mode === "host" ? { stdio: { input: process.stdin, output: process.stdout } } : {}),
     });
@@ -169,6 +176,8 @@ function parse(argv: readonly string[]) {
     allowPositionals: true,
     options: {
       home: { type: "string" },
+      bind: { type: "string" },
+      "url-host": { type: "string" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean" },
     },

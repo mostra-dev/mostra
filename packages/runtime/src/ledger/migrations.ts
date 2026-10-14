@@ -144,4 +144,58 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: "addressing, tokens and sessions",
+    up(db) {
+      // DATA_MODEL §3, D97, D98, D99. `port_lease` gives the shell and each artifact a stable
+      // port per home. `token` keeps only the SHA-256 of each capability secret; `is_default`
+      // marks the artifact's default link (one live default per artifact, by the partial unique
+      // index) and `pinned_version` the version number a link's URL names, so a rotation keeps
+      // it. `session` keeps the SHA-256 of each session cookie, the origin it was issued for and,
+      // for an artifact frame, the version it entered (D98 item 5).
+      db.exec(`
+        CREATE TABLE port_lease (
+          port INTEGER PRIMARY KEY CHECK (port BETWEEN 1 AND 65535),
+          purpose TEXT NOT NULL CHECK (purpose IN ('shell', 'artifact', 'demo')),
+          owner_ref TEXT NOT NULL,
+          leased_at TEXT NOT NULL,
+          UNIQUE (purpose, owner_ref)
+        );
+        CREATE TABLE token (
+          id TEXT PRIMARY KEY,
+          secret_hash TEXT NOT NULL UNIQUE,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          scopes_json TEXT NOT NULL,
+          viewer_id TEXT,
+          expires_at TEXT,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+          pinned_version INTEGER CHECK (pinned_version >= 1),
+          replaced_by TEXT,
+          CHECK (is_default = 0 OR (revoked_at IS NULL AND expires_at IS NULL))
+        );
+        CREATE UNIQUE INDEX token_default ON token (artifact_id) WHERE is_default = 1;
+        CREATE INDEX token_artifact ON token (artifact_id);
+        CREATE TRIGGER token_revocation_final BEFORE UPDATE ON token
+        WHEN OLD.revoked_at IS NOT NULL OR NEW.secret_hash IS NOT OLD.secret_hash
+          OR NEW.artifact_id IS NOT OLD.artifact_id OR NEW.scopes_json IS NOT OLD.scopes_json
+        BEGIN
+          SELECT RAISE(ABORT, 'a token never changes its grant, and a revoked token stays revoked');
+        END;
+        CREATE TABLE session (
+          id TEXT PRIMARY KEY,
+          token_id TEXT NOT NULL REFERENCES token(id),
+          origin TEXT NOT NULL,
+          mode TEXT NOT NULL CHECK (mode IN ('cookie', 'worker')),
+          csrf TEXT NOT NULL,
+          version_id TEXT REFERENCES version(id),
+          created_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL
+        );
+        CREATE INDEX session_token ON session (token_id);
+      `);
+    },
+  },
 ];

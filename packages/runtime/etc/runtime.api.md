@@ -120,6 +120,7 @@ export function startInstance(options: StartInstanceOptions): Promise<StartedIns
 
 // @public
 export interface StartInstanceOptions {
+    readonly bind?: string | undefined;
     readonly checkIntervalMs?: number;
     readonly env?: Environment;
     readonly home?: string | undefined;
@@ -129,6 +130,7 @@ export interface StartInstanceOptions {
         readonly input: Readable;
         readonly output: Writable;
     };
+    readonly urlHost?: string | undefined;
     readonly waitMs?: number;
 }
 

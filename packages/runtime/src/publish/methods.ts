@@ -33,23 +33,37 @@ function canonical(path: string): string {
 }
 
 /**
+ * A path as an `ArtifactRef` names it: canonical, so a moved or deleted source still names its
+ * artifact (INTERFACES §6).
+ */
+export function canonicalRef(ref: ArtifactRef): ArtifactRef {
+  return "path" in ref ? { path: canonical(ref.path) } : ref;
+}
+
+/**
  * The handlers of the authoring methods. `publisher` is called on first use, so an instance
  * whose runtime lacks the warm set still starts and reports `MOSTRA_ENV_WARM_MISSING` per call.
  */
 export function artifactMethods(options: {
   readonly registry: Registry;
   readonly publisher: () => Publisher;
+  /**
+   * The artifact's default capability link (D90, D97 item 3), added to every receipt, replays
+   * included. Recorded receipts never hold it: the ledger keeps no link's secret.
+   */
+  readonly link?: (artifactId: string) => { readonly url: string; readonly tokenId: string };
 }): MethodHandler[] {
   const { registry } = options;
   return [
     handler(artifactCreateMethod, (params) => options.publisher().create(params)),
-    handler(artifactPublishMethod, (params) => options.publisher().publish(params)),
+    handler(artifactPublishMethod, async (params) => {
+      const receipt = await options.publisher().publish(params);
+      return options.link ? { ...receipt, ...options.link(receipt.artifactId) } : receipt;
+    }),
     handler(depsAddMethod, (params) => options.publisher().addDependencies(params)),
     handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
     handler(artifactGetMethod, (params) => {
-      const ref: ArtifactRef =
-        "path" in params.artifact ? { path: canonical(params.artifact.path) } : params.artifact;
-      return registry.get(ref);
+      return registry.get(canonicalRef(params.artifact));
     }),
   ];
 }

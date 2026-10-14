@@ -43,11 +43,13 @@
     "prove:seeds": "node scripts/prove-seeds.ts"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
     "@mdx-js/mdx": "catalog:",
     "@mostra/protocol": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "better-sqlite3": "catalog:",
+    "hono": "catalog:",
     "ignore": "catalog:",
     "oxc-parser": "catalog:",
     "pnpm": "catalog:",
@@ -60,6 +62,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@mostra/shell": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",

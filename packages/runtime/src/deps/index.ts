@@ -45,7 +45,7 @@ import type { WarmSet } from "./warm.ts";
 export { lockDigest, lockText, parseLock } from "./lock.ts";
 export { scanImports } from "./scan.ts";
 export { packageOf, parseSpec } from "./specifier.ts";
-export { locateWarmSet, type WarmSet } from "./warm.ts";
+export { locateWarmSet, runtimeRoot, type WarmSet } from "./warm.ts";
 
 /** The marker a complete lock layout carries; a layout without it is rebuilt. */
 const LAYOUT_MARKER = ".mostra-layout";

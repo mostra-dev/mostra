@@ -10,6 +10,6 @@ export {
   versionIdFor,
 } from "./digest.ts";
 export { extractManifest } from "./manifest.ts";
-export { artifactMethods } from "./methods.ts";
+export { artifactMethods, canonicalRef } from "./methods.ts";
 export { createPublisher, type Publisher } from "./publisher.ts";
 export { readTar } from "./tar.ts";
