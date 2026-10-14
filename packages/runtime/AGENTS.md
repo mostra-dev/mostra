@@ -41,6 +41,13 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **Hosts reach the instance only through the protocol (D59).** Methods are defined in
   `@mostra/protocol` and served through `ProtocolServer`; port calls go only to the connection that
   registered the port.
+- **Packages come only from the warm set and the artifact's lockfile (D95, DP-01 to DP-05).** An
+  install runs pnpm 10 (never 11 or later, D94) in an install child through the process manager,
+  in the artifact's directory with `artifactEnvironment`, never in the supervisor. A lock layout
+  links every warm package through its `warm` symlink, so peers resolve to the one warm React; it
+  counts only once it carries `.mostra-layout`. Every pin in a lockfile is exact, `lockDigest` is
+  part of `envDigest`, and offline requests the store index can't satisfy fail before any child
+  starts.
 
 ## Where things are
 
@@ -49,12 +56,13 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 
 | Module | Owns |
 |---|---|
-| `home` | Platform gate, home and runtime-directory resolution, permissions, the socket name, taking the lock or finding the owner, `instance.json` |
+| `home` | Platform gate, home and runtime-directory resolution, permissions, the socket name, taking the lock or finding the owner, `instance.json`, the home's settings (`config.json`) |
 | `ledger` | The SQLite ledger: lock, pragmas, migrations with backup, integrity, error mapping |
-| `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC |
+| `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC, the artifact environment children of artifacts get |
 | `protocol-server` | The JSON-RPC dispatcher for stdio and the socket, session rules, the session methods |
-| `builder` | The `RenderMode` contract and its SPA implementation; the warm set; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources and pages) |
-| `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` methods |
+| `builder` | The `RenderMode` contract and its SPA implementation; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources and pages, and the confinement of imports to the build's packages) |
+| `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 install child, offline answers, `deps/add` |
+| `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |
 | `instance` | The composition root: start-up and stop order only, no policy |
@@ -62,7 +70,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
 `MOSTRA_TEST_FAULTS` (`<point>:throw|crash`, comma-separated), the fault points tests use to fail
 or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
-`MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit. Both are for tests only.
+`MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
+the 300 s install limit. These are for tests only. `MOSTRA_OFFLINE` (not a test variable) makes
+the instance offline: packages resolve only from the home's store.
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its
@@ -76,9 +86,12 @@ first module outside `protocol-server` needs it.
 - `pnpm --filter @mostra/runtime build && pnpm --filter @mostra/runtime test:integration`: the
   built binary as real processes (`test/integration`): the protocol suite over stdio and the
   socket, racing starters, stale sockets, reaping after SIGKILL, the platform gate, publishing,
-  faults at every publish step, the RT-02 module audit, and rendering versions in Chromium
-  (`pnpm --filter @mostra/runtime exec playwright install --only-shell chromium` once). CI runs
+  faults at every publish step, the RT-02 module audit, rendering versions in Chromium
+  (`pnpm --filter @mostra/runtime exec playwright install --only-shell chromium` once), and
+  on-demand installs against the local registry in `test/registry.ts` (`deps.test.ts`). CI runs
   them on macOS and Linux (`integration` job, D86).
+- `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
+  violations: red with the seed, green without it.
 
 ## Gotchas
 
@@ -99,3 +112,9 @@ first module outside `protocol-server` needs it.
   `eventually`, never with a single check.
 - Keep a strong reference to an open better-sqlite3 `Database`: garbage collection closes it and
   drops the home's lock.
+- Tests never reach the real npm registry: start `startRegistry(FIXTURE_PACKAGES)` from
+  `test/registry.ts` and pass its URL as `npm_config_registry`, with a temporary `HOME` so no
+  user `.npmrc` applies.
+- pnpm 10 reads the release age's exemptions only from the install project's
+  `pnpm-workspace.yaml`, which the installer writes; `--ignore-workspace` would silently drop them
+  (VERIFIED_FACTS, WP-04).

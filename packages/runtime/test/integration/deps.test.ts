@@ -15,6 +15,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -118,6 +119,16 @@ const layouts = (target: Running): string[] => {
   return existsSync(dir) ? readdirSync(dir) : [];
 };
 
+/** How many install children the supervisor has started, from its log. */
+const installsStarted = (target: Running): number => {
+  const dir = join(target.home.home, "logs");
+  return readdirSync(dir)
+    .flatMap((name) => readFileSync(join(dir, name), "utf8").split("\n"))
+    .filter(
+      (line) => line.includes('"event":"process.started"') && line.includes('"kind":"install"'),
+    ).length;
+};
+
 /** Makes a sealed (read-only) tree removable. */
 function unseal(dir: string): void {
   chmodSync(dir, 0o755);
@@ -161,6 +172,7 @@ describe("the warm set and one React (DP-01)", () => {
       ].join("\n"),
     });
     const receipt = ok<Receipt>(await publish(target, dir));
+    expect(installsStarted(target)).toBe(0);
     expect(registry.requests.length).toBe(before);
     expect(layouts(target)).toEqual([]);
     const lock = lockOf(target, receipt.versionId);
@@ -239,8 +251,11 @@ describe("on-demand packages (DP-02)", () => {
     expect(readdirSync(join(target.home.home, "deps", "store")).length).toBeGreaterThan(0);
     // A second artifact with the same import shares the store and the layout: nothing is fetched.
     const fetched = registry.requests.length;
+    const installs = installsStarted(target);
     const second = ok<Receipt>(await publish(target, artifact({ "index.tsx": PEER_PAGE })));
     expect(second.artifactId).not.toBe(first.artifactId);
+    // One resolution (pnpm add, in the store and the metadata cache already), no new layout.
+    expect(installsStarted(target)).toBe(installs + 1);
     expect(registry.requests.length).toBe(fetched);
     expect(lockOf(target, second.versionId)).toBe(lock);
     expect(layouts(target)).toHaveLength(1);
@@ -364,6 +379,51 @@ describe("the lockfile in the version identity (DP-03)", () => {
     expect(again).toMatchObject({ versionId: first.versionId, version: 1, reused: true });
     expect(existsSync(join(versionDir, "client", "index.html"))).toBe(true);
     expect(registry.requests.length).toBe(before);
+  });
+
+  it("relinks a lock layout to the warm set when the runtime has moved", async () => {
+    // A warm set at a path of its own: package.json, and node_modules of absolute links to the
+    // real packages, as a runtime bundle unpacked elsewhere would have.
+    const warmCopy = (): string => {
+      const real = fileURLToPath(new URL("../../../warm", import.meta.url));
+      const dir = join(tempDir("deps-warm"), "warm");
+      mkdirSync(join(dir, "node_modules"), { recursive: true });
+      writeFileSync(join(dir, "package.json"), readFileSync(join(real, "package.json")));
+      for (const entry of readdirSync(join(real, "node_modules"))) {
+        if (entry.startsWith(".")) continue;
+        const names = entry.startsWith("@")
+          ? readdirSync(join(real, "node_modules", entry)).map((name) => `${entry}/${name}`)
+          : [entry];
+        for (const name of names) {
+          mkdirSync(join(dir, "node_modules", name, ".."), { recursive: true });
+          symlinkSync(
+            realpathSync(join(real, "node_modules", name)),
+            join(dir, "node_modules", name),
+          );
+        }
+      }
+      return dir;
+    };
+    const first = warmCopy();
+    const online = await start({ env: { MOSTRA_WARM_DIR: first } });
+    const dir = artifact({ "index.tsx": PEER_PAGE });
+    const receipt = ok<Receipt>(await publish(online, dir));
+    const home = online.home;
+    await stop(online);
+    rmSync(first, { recursive: true });
+    const versionDir = join(home.home, "versions", receipt.versionId);
+    unseal(versionDir);
+    rmSync(versionDir, { recursive: true });
+    const second = warmCopy();
+    const moved = await start({ home, env: { MOSTRA_WARM_DIR: second, MOSTRA_OFFLINE: "1" } });
+    expect(ok<Receipt>(await publish(moved, dir))).toMatchObject({
+      versionId: receipt.versionId,
+      reused: true,
+    });
+    const [layout] = layouts(moved);
+    expect(realpathSync(join(home.home, "deps", "locks", layout as string, "warm"))).toBe(
+      realpathSync(join(second, "node_modules")),
+    );
   });
 });
 
