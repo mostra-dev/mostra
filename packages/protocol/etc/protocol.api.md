@@ -23,6 +23,12 @@ export interface AddedPackage {
 export const AddedPackage: z.ZodType<AddedPackage>;
 
 // @public
+export const ALL_SCOPES: readonly CapabilityScope[];
+
+// @public
+export type AnyBridgeMessage = BridgeMessage<unknown, unknown>;
+
+// @public
 export type AnyMethod = MethodDefinition<unknown, unknown>;
 
 // @public
@@ -62,7 +68,7 @@ export const ArtifactDetail: z.ZodType<ArtifactDetail>;
 export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
 
 // @public
-export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN"];
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND"];
 
 // @public
 export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
@@ -184,10 +190,104 @@ export interface ArtifactSummary {
 export const ArtifactSummary: z.ZodType<ArtifactSummary>;
 
 // @public
+export interface Bridge {
+    call<P, R>(message: BridgeMessage<P, R>, params: P, options?: {
+        timeoutMs?: number;
+    }): Promise<R>;
+    close(): void;
+    notify<P>(message: BridgeMessage<P, undefined>, params: P): void;
+}
+
+// @public
+export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[];
+
+// @public
+export interface BridgeEvent {
+    readonly data: unknown;
+    readonly origin: string;
+    readonly source: unknown;
+}
+
+// @public
+export interface BridgeHostContext {
+    readonly [key: string]: unknown;
+    readonly availableDisplayModes?: readonly string[];
+    readonly displayMode?: "inline" | "fullscreen" | "pip";
+    readonly locale?: string;
+    readonly platform?: "web" | "desktop" | "mobile";
+    readonly theme?: "light" | "dark";
+    readonly timeZone?: string;
+}
+
+// @public
+export interface BridgeImplementation {
+    readonly name: string;
+    readonly title?: string;
+    readonly version: string;
+}
+
+// @public
+export interface BridgeMessage<P, R> {
+    readonly from: BridgeSide;
+    readonly kind: "request" | "notification";
+    readonly method: string;
+    readonly params: z.ZodType<P>;
+    readonly result: z.ZodType<R>;
+}
+
+// @public
+export interface BridgeOptions {
+    readonly onNotification?: (message: AnyBridgeMessage, params: unknown) => void;
+    readonly onRejected?: (reason: BridgeRejection, event: BridgeEvent) => void;
+    readonly onRequest?: (message: AnyBridgeMessage, params: unknown) => unknown;
+    readonly peer: () => BridgePeer | null | undefined;
+    readonly peerOrigin: string;
+    readonly receiver: BridgeReceiver;
+    readonly side: BridgeSide;
+}
+
+// @public
+export interface BridgePeer {
+    postMessage(message: unknown, targetOrigin: string): void;
+}
+
+// @public
+export interface BridgeReceiver {
+    addEventListener(type: "message", listener: (event: BridgeEvent) => void): void;
+    removeEventListener(type: "message", listener: (event: BridgeEvent) => void): void;
+}
+
+// @public
+export type BridgeRejection = "wrong-source" | "wrong-origin" | "not-json-rpc" | "unknown-method" | "wrong-direction" | "invalid-params";
+
+// @public
+export type BridgeSide = "shell" | "artifact";
+
+// @public
 export type BuildDiagnosticCode = (typeof buildDiagnosticCodes)[number];
 
 // @public
 export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUILD_UNRESOLVED", "MOSTRA_BUILD_CRASHED", "MOSTRA_BUILD_TIMEOUT"];
+
+// @public
+export interface CapabilityLink {
+    readonly expiresAt?: string;
+    readonly scopes: readonly CapabilityScope[];
+    readonly tokenId: string;
+    readonly url: string;
+}
+
+// @public
+export const CapabilityLink: z.ZodType<CapabilityLink>;
+
+// @public
+export type CapabilityScope = "view" | "draft" | "submit" | "review" | `action:${string}`;
+
+// @public
+export const CapabilityScope: z.ZodType<CapabilityScope>;
+
+// @public
+export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refusal | undefined;
 
 // @public
 export interface ChildProcessStatus {
@@ -246,12 +346,18 @@ export type CommentId = Id<"cmt">;
 export const CommentId: GeneratedIdKind<"cmt">;
 
 // @public
+export function connectBridge(options: BridgeOptions): Bridge;
+
+// @public
 export function createDiagnostic(code: KnownDiagnosticCode, details: DiagnosticDetails, options?: CreateDiagnosticOptions): Diagnostic;
 
 // @public
 export interface CreateDiagnosticOptions {
     readonly docsBase?: string;
 }
+
+// @public
+export const CSRF_HEADER = "x-mostra-csrf";
 
 // @public
 export type Cursor = string & {
@@ -403,18 +509,30 @@ export interface DiagnosticSpec {
 export function docsUrl(code: string, docsBase?: string): string;
 
 // @public
+export type Duration = `${number}${"s" | "m" | "h" | "d"}`;
+
+// @public
+export const Duration: z.ZodType<Duration>;
+
+// @public
+export function durationMs(duration: Duration): number;
+
+// @public
 export function encodeLine(message: JsonRpcMessage): string;
 
 // @public
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING"];
 
 // @public
 export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
     create(): Id<P>;
 }
+
+// @public
+export function headerValue(headers: readonly (readonly [string, string])[], name: string): string | undefined;
 
 // @public
 export interface HomeConfig {
@@ -442,6 +560,12 @@ export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", 
 
 // @public
 export const hostMethods: readonly AnyMethod[];
+
+// @public
+export type HygieneDiagnosticCode = (typeof hygieneDiagnosticCodes)[number];
+
+// @public
+export const hygieneDiagnosticCodes: readonly ["MOSTRA_HYGIENE_HOST_REFUSED", "MOSTRA_HYGIENE_ORIGIN_REFUSED", "MOSTRA_HYGIENE_CSRF_MISSING", "MOSTRA_HYGIENE_CONTENT_TYPE", "MOSTRA_HYGIENE_REQUEST_MALFORMED", "MOSTRA_HYGIENE_SESSION_MISSING", "MOSTRA_HYGIENE_TOKEN_INVALID", "MOSTRA_HYGIENE_TOKEN_REVOKED", "MOSTRA_HYGIENE_SCOPE_DENIED", "MOSTRA_HYGIENE_RATE_LIMITED", "MOSTRA_HYGIENE_NOT_SERVED"];
 
 // @public
 export type Id<P extends IdPrefix> = `${P}_${string}` & {
@@ -501,6 +625,9 @@ export interface InstanceStatusResult {
     readonly socket: string;
     readonly startedAt: string;
 }
+
+// @public
+export function isJsonContentType(value: string | undefined): boolean;
 
 // @public
 export const JSON_RPC_ERROR_CODES: {
@@ -576,7 +703,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -590,6 +717,9 @@ export type ManifestDiagnosticCode = (typeof manifestDiagnosticCodes)[number];
 
 // @public
 export const manifestDiagnosticCodes: readonly ["MOSTRA_MANIFEST_NOT_LITERAL", "MOSTRA_MANIFEST_INVALID", "MOSTRA_MANIFEST_UNKNOWN_KEY"];
+
+// @public
+export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26";
 
 // @public
 export interface MethodDefinition<Params, Result> {
@@ -624,6 +754,9 @@ export interface MostraInitializeResult {
 }
 
 // @public
+export const mostraReady: BridgeMessage<Readonly<Record<string, unknown>>, undefined>;
+
+// @public
 export const mostraShutdownMethod: MethodDefinition<MostraShutdownParams, MostraShutdownResult>;
 
 // @public
@@ -640,6 +773,9 @@ export const MutationId: GeneratedIdKind<"mut">;
 
 // @public
 export function negotiateRevision(offered: readonly string[], supported?: readonly Revision[], options?: CreateDiagnosticOptions): RevisionNegotiation;
+
+// @public
+export function normalizeScopes(scopes: readonly CapabilityScope[]): CapabilityScope[];
 
 // @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
@@ -668,6 +804,7 @@ export interface PublishReceipt {
     readonly cursor: string;
     readonly forcedDiagnostics?: readonly string[];
     readonly reused: boolean;
+    readonly tokenId?: string;
     readonly url?: string;
     readonly version: number;
     readonly versionId: string;
@@ -675,6 +812,33 @@ export interface PublishReceipt {
 
 // @public
 export const PublishReceipt: z.ZodType<PublishReceipt>;
+
+// @public
+export interface Refusal {
+    readonly diagnostic: Diagnostic;
+    readonly status: number;
+}
+
+// @public
+export function refusal(code: HygieneDiagnosticCode, message: string, status?: number): Refusal;
+
+// @public
+export interface RequestFacts {
+    readonly csrf?: string;
+    readonly headers: readonly (readonly [string, string])[];
+    readonly intent?: RequestIntent;
+    readonly method: string;
+    readonly target: string;
+}
+
+// @public
+export type RequestIntent = "read" | "stream" | "upgrade" | "exchange" | "mutation";
+
+// @public
+export interface RequestPolicy {
+    readonly hosts: readonly string[];
+    readonly origin: string;
+}
 
 // @public
 export type Revision = string & {
@@ -748,6 +912,15 @@ export type RunId = Id<"run">;
 export const RunId: GeneratedIdKind<"run">;
 
 // @public
+export function safeEqual(a: string, b: string): boolean;
+
+// @public
+export function safePath(target: string): string | undefined;
+
+// @public
+export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
+
+// @public
 export type SourceRef = {
     readonly path: string;
 } | {
@@ -805,6 +978,33 @@ export type TokenId = Id<"tok">;
 export const TokenId: GeneratedIdKind<"tok">;
 
 // @public
+export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>;
+
+// @public
+export const uiInitialized: BridgeMessage<Readonly<Record<string, unknown>>, undefined>;
+
+// @public
+export interface UiInitializeParams {
+    readonly appCapabilities: Readonly<Record<string, unknown>>;
+    readonly appInfo: BridgeImplementation;
+    readonly protocolVersion: string;
+}
+
+// @public
+export interface UiInitializeResult {
+    readonly hostCapabilities: Readonly<Record<string, unknown>>;
+    readonly hostContext: BridgeHostContext;
+    readonly hostInfo: BridgeImplementation;
+    readonly protocolVersion: string;
+}
+
+// @public
+export const uiSizeChanged: BridgeMessage<{
+    readonly width?: number;
+    readonly height?: number;
+}, undefined>;
+
+// @public
 export type VersionId = Id<"ver">;
 
 // @public
@@ -840,6 +1040,45 @@ export type ViewId = Id<"vw">;
 
 // @public
 export const ViewId: GeneratedIdKind<"vw">;
+
+// @public
+export const viewRevokeMethod: MethodDefinition<ViewRevokeParams, ViewRevokeResult>;
+
+// @public
+export interface ViewRevokeParams {
+    readonly requestId?: string;
+    readonly tokenId: string;
+}
+
+// @public
+export type ViewRevokeResult = Record<string, never>;
+
+// @public
+export const viewRotateMethod: MethodDefinition<ViewRotateParams, ViewRotateResult>;
+
+// @public
+export interface ViewRotateParams {
+    readonly requestId?: string;
+    readonly tokenId: string;
+}
+
+// @public
+export type ViewRotateResult = CapabilityLink;
+
+// @public
+export const viewUrlMethod: MethodDefinition<ViewUrlParams, ViewUrlResult>;
+
+// @public
+export interface ViewUrlParams {
+    readonly artifact: ArtifactRef;
+    readonly requestId?: string;
+    readonly scopes?: readonly CapabilityScope[];
+    readonly ttl?: Duration;
+    readonly version?: number | string;
+}
+
+// @public
+export type ViewUrlResult = CapabilityLink;
 
 // (No @packageDocumentation comment for this package)
 

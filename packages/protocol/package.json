@@ -72,7 +72,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "16 kB"
+      "limit": "24 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",
@@ -91,6 +91,15 @@
         "zod"
       ],
       "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/protocol bridge (SH-04, zod excluded)",
+      "path": "dist/index.js",
+      "import": "{ connectBridge, uiInitialize, uiInitialized, mostraReady }",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "6 kB"
     }
   ]
 }

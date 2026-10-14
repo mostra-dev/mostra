@@ -11,6 +11,9 @@ import { depsAddMethod } from "./deps/add.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
+import { viewRevokeMethod } from "./view/revoke.ts";
+import { viewRotateMethod } from "./view/rotate.ts";
+import { viewUrlMethod } from "./view/url.ts";
 // gen:method-imports
 
 /** Every host protocol method, in the order they were added. */
@@ -23,5 +26,8 @@ export const hostMethods: readonly AnyMethod[] = [
   artifactListMethod,
   artifactGetMethod,
   depsAddMethod,
+  viewUrlMethod,
+  viewRevokeMethod,
+  viewRotateMethod,
   // gen:methods
 ];

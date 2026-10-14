@@ -527,6 +527,41 @@
       ],
       "description": "One artifact: metadata from its latest version, its source and latest version."
     },
+    "CapabilityLink": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tokenId": {
+          "$ref": "#/definitions/TokenId"
+        },
+        "scopes": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CapabilityScope"
+          }
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "url",
+        "tokenId",
+        "scopes"
+      ],
+      "description": "A capability URL with its token ID, scopes and expiry."
+    },
+    "CapabilityScope": {
+      "type": "string",
+      "pattern": "^(view|draft|submit|review|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$",
+      "description": "A capability token's scope: view, draft, submit, review, action:*, action:<export> or action:<module path>#<export>."
+    },
     "ChildProcessStatus": {
       "type": "object",
       "properties": {
@@ -831,6 +866,11 @@
         "hint"
       ],
       "description": "How bad it is: error only for definite failures."
+    },
+    "Duration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,8}[smhd]$",
+      "description": "A duration: a positive whole number and s, m, h or d, such as 30m, 24h or 7d."
     },
     "HomeConfig": {
       "type": "object",
@@ -1193,6 +1233,13 @@
         "url": {
           "type": "string"
         },
+        "tokenId": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TokenId"
+            }
+          ]
+        },
         "cursor": {
           "$ref": "#/definitions/Cursor"
         },
@@ -1373,6 +1420,82 @@
       "type": "string",
       "pattern": "^vw_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "View ID: \"vw_\" followed by a 26-character ULID."
+    },
+    "ViewRevokeParams": {
+      "type": "object",
+      "properties": {
+        "tokenId": {
+          "$ref": "#/definitions/TokenId"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "tokenId"
+      ]
+    },
+    "ViewRevokeResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "ViewRotateParams": {
+      "type": "object",
+      "properties": {
+        "tokenId": {
+          "$ref": "#/definitions/TokenId"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "tokenId"
+      ]
+    },
+    "ViewUrlParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "$ref": "#/definitions/VersionId"
+            }
+          ]
+        },
+        "scopes": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CapabilityScope"
+          }
+        },
+        "ttl": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Duration"
+            }
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact"
+      ]
     },
     "ViewerId": {
       "type": "string",
