@@ -360,6 +360,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "DP-05",
+    name: "a user's ignore-scripts setting stops lifecycle scripts",
+    file: "src/deps/installer.ts",
+    from: '        "--config.ignore-scripts=false",',
+    to: "",
+    check: integration("deps.test.ts", "lifecycle scripts"),
+  },
+  {
+    requirement: "DP-05",
     name: "the install child runs in the layout, not the artifact's directory",
     file: "src/deps/installer.ts",
     from: "        cwd: run.cwd,",

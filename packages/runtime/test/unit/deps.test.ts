@@ -182,6 +182,7 @@ describe("the install child's settings and environment", () => {
     const env = artifactEnvironment({
       PATH: "/bin",
       HOME: "/home/u",
+      CC: "clang",
       HTTPS_PROXY: "http://proxy",
       npm_config_registry: "http://registry",
       MOSTRA_HOME: "/home/u/.mostra",
@@ -193,6 +194,7 @@ describe("the install child's settings and environment", () => {
     expect(env).toEqual({
       PATH: "/bin",
       HOME: "/home/u",
+      CC: "clang",
       HTTPS_PROXY: "http://proxy",
       npm_config_registry: "http://registry",
     });

@@ -476,6 +476,8 @@ describe("lifecycle scripts (DP-05)", () => {
       "index.tsx":
         'import "mostra-fixture-postinstall";\nexport default function Page() { return <p>installed</p>; }\n',
     });
+    // A user's npm settings that would change what D95 promises; Mostra's own settings win.
+    writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
     ok<Receipt>(await publish(target, dir));
     const [layout] = layouts(target);
     const layoutDir = join(target.home.home, "deps", "locks", layout as string);
