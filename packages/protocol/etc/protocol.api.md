@@ -658,6 +658,7 @@ export type EventsAckResult = Record<string, never>;
 
 // @public
 export interface EventsNotifyParams {
+    readonly compacted?: Diagnostic;
     readonly cursor: string;
     readonly events: readonly EventRecord[];
     readonly subscriptionId: string;
