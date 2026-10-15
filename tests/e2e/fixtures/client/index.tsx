@@ -125,6 +125,7 @@ export default function Page() {
       <span data-testid="result">{result}</span>
       <span data-testid="viewer">{viewer.name ?? ""}</span>
       <span data-testid="version">{shown.version}</span>
+      <span data-testid="view">{shown.viewId}</span>
       <span data-testid="mode">{shown.mode}</span>
     </main>
   );

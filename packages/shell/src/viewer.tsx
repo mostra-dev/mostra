@@ -695,9 +695,12 @@ export function ViewerPage(props: {
                         type="button"
                         className="mostra-link"
                         data-mostra-blocker={blocker.fieldId}
-                        onClick={() =>
-                          bridge.current?.notify(mostraFieldFocus, { id: blocker.fieldId })
-                        }
+                        onClick={() => {
+                          // The frame gets the focus first: a page can't take it from its
+                          // parent by itself (Firefox).
+                          document.querySelector<HTMLIFrameElement>("iframe.mostra-frame")?.focus();
+                          bridge.current?.notify(mostraFieldFocus, { id: blocker.fieldId });
+                        }}
                       >
                         {blocker.label ?? blocker.fieldId}
                       </button>{" "}
