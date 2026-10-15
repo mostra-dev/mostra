@@ -593,6 +593,26 @@
       "pattern": "^(view|draft|submit|review|signal|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$",
       "description": "A capability token's scope: view, draft, submit, review, signal, action:*, action:<export> or action:<module path>#<export>."
     },
+    "CarryOver": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "#/definitions/VersionRef"
+        },
+        "orphans": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrphanedField"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "orphans"
+      ],
+      "description": "The viewer's answers a version doesn't carry over."
+    },
     "ChildProcessStatus": {
       "type": "object",
       "properties": {
@@ -620,6 +640,41 @@
         "startedAt"
       ],
       "description": "One child process the instance supervises."
+    },
+    "ChooseRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "mutationId": {
+          "$ref": "#/definitions/MutationId"
+        },
+        "baseRevision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "reviewSetId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "viewId",
+        "mutationId",
+        "baseRevision",
+        "reviewSetId",
+        "candidateId"
+      ],
+      "description": "The shell's trusted Choose: the view, mutation, base revision, set and candidate."
     },
     "ClientCapabilities": {
       "type": "object",
@@ -655,6 +710,32 @@
       "type": "string",
       "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Comment ID: \"cmt_\" followed by a 26-character ULID."
+    },
+    "ControlsPolicy": {
+      "type": "object",
+      "properties": {
+        "submitChannels": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SubmitChannel"
+          }
+        },
+        "controls": {
+          "readOnly": true,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrustedControl"
+          }
+        }
+      },
+      "required": [
+        "submitChannels"
+      ],
+      "description": "Which submit channels a view accepts and which trusted controls its shell renders (D108)."
     },
     "Cursor": {
       "type": "string",
@@ -731,6 +812,10 @@
         },
         "reason": {
           "type": "string"
+        },
+        "waiting": {
+          "type": "boolean",
+          "const": true
         },
         "updatedAt": {
           "type": "string",
@@ -1455,6 +1540,93 @@
       ],
       "description": "A browser mutation: its ID, scope, base revision, view and field ops."
     },
+    "FollowRequest": {
+      "type": "object",
+      "properties": {
+        "follow": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "follow"
+      ],
+      "description": "Whether the viewer follows the artifact's new versions."
+    },
+    "FrameTicket": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "version": {
+          "$ref": "#/definitions/VersionRef"
+        },
+        "latest": {
+          "$ref": "#/definitions/VersionRef"
+        },
+        "policy": {
+          "$ref": "#/definitions/SubmissionPolicy"
+        },
+        "submitChannels": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SubmitChannel"
+          }
+        },
+        "controls": {
+          "readOnly": true,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrustedControl"
+          }
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "live",
+            "static",
+            "mcp-app",
+            "verify"
+          ]
+        },
+        "src": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactOrigin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "follow": {
+          "type": "boolean"
+        },
+        "pinned": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "artifactId",
+        "viewId",
+        "version",
+        "latest",
+        "policy",
+        "submitChannels",
+        "controls",
+        "target",
+        "src",
+        "artifactOrigin",
+        "follow",
+        "pinned"
+      ],
+      "description": "A frame ticket: the view it opens, where to load it, and the view's controls."
+    },
     "GatewayStatus": {
       "type": "object",
       "properties": {
@@ -1518,6 +1690,15 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/PortName"
+          }
+        },
+        "submitChannels": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SubmitChannel"
           }
         }
       },
@@ -1887,6 +2068,29 @@
       ],
       "description": "A mutation's outcome: the revision after it, the applied field IDs, the conflicts."
     },
+    "OrphanedField": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": {},
+        "fromVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "fromVersion"
+      ],
+      "description": "A draft field a version doesn't cover: its ID, label, value and source version."
+    },
     "PollResult": {
       "type": "object",
       "properties": {
@@ -1955,6 +2159,51 @@
           ]
         }
       ]
+    },
+    "PortTrustedControlsActivatedParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "control": {
+          "$ref": "#/definitions/TrustedControl"
+        },
+        "viewer": {
+          "$ref": "#/definitions/Viewer"
+        },
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "detail": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "control",
+        "viewer",
+        "viewId"
+      ],
+      "description": "A trusted control a person used: the artifact, control, viewer, view and detail."
+    },
+    "PortTrustedControlsPolicyParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactSummary"
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "description": "The artifact a frame is about to show, for its host's controls policy."
     },
     "PublishReceipt": {
       "type": "object",
@@ -2579,6 +2828,22 @@
       "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Action run ID: \"run_\" followed by a 26-character ULID."
     },
+    "ShellSubmitRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "expectedRevision": {
+          "$ref": "#/definitions/DocumentRevision"
+        }
+      },
+      "required": [
+        "viewId",
+        "expectedRevision"
+      ],
+      "description": "The shell's trusted Submit: the view and the draft revision the viewer saw."
+    },
     "SignalRequest": {
       "type": "object",
       "properties": {
@@ -2879,6 +3144,13 @@
             "undeliverable"
           ]
         },
+        "deliveries": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeliveryStatus"
+          }
+        },
         "duplicate": {
           "type": "boolean",
           "const": true
@@ -2898,6 +3170,14 @@
         "delivery"
       ],
       "description": "A submission as a submit answers it: ID, time, epoch, version, view, digest, delivery."
+    },
+    "SubmitChannel": {
+      "type": "string",
+      "enum": [
+        "shell",
+        "artifact"
+      ],
+      "description": "Where a submit comes from: the shell's trusted Submit, or the artifact's code."
     },
     "SubmitRequest": {
       "type": "object",
@@ -2930,10 +3210,33 @@
       "pattern": "^tok_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Capability token ID: \"tok_\" followed by a 26-character ULID."
     },
+    "TrustedControl": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "A trusted control the shell renders: submit, choose, approve; open for more."
+    },
     "VersionId": {
       "type": "string",
       "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
       "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
+    },
+    "VersionRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/VersionId"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "id",
+        "number"
+      ],
+      "description": "A version by ID and number."
     },
     "VersionSummary": {
       "type": "object",
@@ -2980,6 +3283,63 @@
         "outputDigest"
       ],
       "description": "One published version."
+    },
+    "ViewContext": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "version": {
+          "$ref": "#/definitions/VersionRef"
+        },
+        "latest": {
+          "$ref": "#/definitions/VersionRef"
+        },
+        "policy": {
+          "$ref": "#/definitions/SubmissionPolicy"
+        },
+        "submitChannels": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SubmitChannel"
+          }
+        },
+        "controls": {
+          "readOnly": true,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrustedControl"
+          }
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "live",
+            "static",
+            "mcp-app",
+            "verify"
+          ]
+        }
+      },
+      "required": [
+        "artifactId",
+        "viewId",
+        "version",
+        "latest",
+        "policy",
+        "submitChannels",
+        "controls",
+        "target"
+      ],
+      "description": "What one view is: its artifact, view ID, version, latest version, policy, channels and controls."
     },
     "ViewId": {
       "type": "string",

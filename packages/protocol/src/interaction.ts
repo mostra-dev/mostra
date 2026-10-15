@@ -366,6 +366,52 @@ export const WaitCondition: z.ZodType<WaitCondition> = z
 /** Where a submit came from (D40). */
 export type SubmitChannel = "shell" | "artifact";
 
+/** The Zod schema of the `SubmitChannel` type. */
+export const SubmitChannel: z.ZodType<SubmitChannel> = z
+  .enum(["shell", "artifact"])
+  .register(wireRegistry, {
+    id: "SubmitChannel",
+    description: "Where a submit comes from: the shell's trusted Submit, or the artifact's code.",
+  });
+
+/**
+ * A trusted control the shell renders outside the artifact's frame (D06, PRODUCT vocabulary):
+ * Submit, Choose (review sets) and Approve. Open for later controls on the wire.
+ */
+export type TrustedControl = "submit" | "choose" | "approve" | (string & {});
+
+/** The Zod schema of the `TrustedControl` type. */
+export const TrustedControl: z.ZodType<TrustedControl> = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,31}$/)
+  .register(wireRegistry, {
+    id: "TrustedControl",
+    description: "A trusted control the shell renders: submit, choose, approve; open for more.",
+  });
+
+/**
+ * Which submit channels a view accepts and which trusted controls its shell renders (D40, D108):
+ * the `trustedControls` port's answer, or the home's `HomeConfig.submitChannels`.
+ */
+export interface ControlsPolicy {
+  /** The channels submissions may come through; at least one. */
+  readonly submitChannels: readonly SubmitChannel[];
+  /** The trusted controls the shell may render; absent: every control the artifact asks for. */
+  readonly controls?: readonly TrustedControl[];
+}
+
+/** The Zod schema of the `ControlsPolicy` type. */
+export const ControlsPolicy: z.ZodType<ControlsPolicy> = z
+  .object({
+    submitChannels: z.array(SubmitChannel).min(1).max(2).readonly(),
+    controls: z.array(TrustedControl).max(32).readonly().exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "ControlsPolicy",
+    description:
+      "Which submit channels a view accepts and which trusted controls its shell renders (D108).",
+  });
+
 /** A delivery's state (FAILURE_MODEL §4). */
 export type DeliveryState = "pending" | "delivered" | "rejected" | "undeliverable";
 
@@ -384,6 +430,11 @@ export interface DeliveryStatus {
   readonly attempts: number;
   /** The host's reason, for a rejection. */
   readonly reason?: string;
+  /**
+   * `true` while a pending delivery waits: its host isn't connected, or an attempt failed and it
+   * will be retried (D47's "Pending delivery"). Absent while the first attempt is under way.
+   */
+  readonly waiting?: true;
   /** When its state last changed. */
   readonly updatedAt: string;
 }
@@ -396,6 +447,7 @@ export const DeliveryStatus: z.ZodType<DeliveryStatus> = z
     state: z.enum(["pending", "delivered", "rejected", "undeliverable"]),
     attempts: z.int().min(0),
     reason: z.string().exactOptional(),
+    waiting: z.literal(true).exactOptional(),
     updatedAt: z.iso.datetime(),
   })
   .register(wireRegistry, {
@@ -427,6 +479,8 @@ export interface SubmissionSummary {
   readonly digest: string;
   /** Every delivery's state, summed up: the worst of them. */
   readonly delivery: DeliveryState;
+  /** Each host's delivery, so a viewer sees which host has it (IN-13). */
+  readonly deliveries?: readonly DeliveryStatus[];
   /** `true` when this submit repeated an earlier one and got it back (D22). */
   readonly duplicate?: true;
 }
@@ -445,6 +499,7 @@ export const SubmissionSummary: z.ZodType<SubmissionSummary> = z
     draftRevision: DocumentRevision,
     digest: z.string().regex(/^[0-9a-f]{64}$/),
     delivery: z.enum(["pending", "delivered", "rejected", "undeliverable"]),
+    deliveries: z.array(DeliveryStatus).readonly().exactOptional(),
     duplicate: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {

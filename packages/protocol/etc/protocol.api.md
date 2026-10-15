@@ -307,6 +307,15 @@ export type CapabilityScope = "view" | "draft" | "submit" | "review" | "signal" 
 export const CapabilityScope: z.ZodType<CapabilityScope>;
 
 // @public
+export interface CarryOver {
+    readonly orphans: readonly OrphanedField[];
+    readonly version: VersionRef;
+}
+
+// @public
+export const CarryOver: z.ZodType<CarryOver>;
+
+// @public
 export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refusal | undefined;
 
 // @public
@@ -319,6 +328,19 @@ export interface ChildProcessStatus {
 
 // @public
 export const ChildProcessStatus: z.ZodType<ChildProcessStatus>;
+
+// @public
+export interface ChooseRequest {
+    readonly baseRevision: DocumentRevision;
+    readonly candidateId: string;
+    readonly label?: string;
+    readonly mutationId: string;
+    readonly reviewSetId: string;
+    readonly viewId: string;
+}
+
+// @public
+export const ChooseRequest: z.ZodType<ChooseRequest>;
 
 // @public
 export type ClassifiedMessage = {
@@ -367,6 +389,37 @@ export const CommentId: GeneratedIdKind<"cmt">;
 
 // @public
 export function connectBridge(options: BridgeOptions): Bridge;
+
+// @public
+export const CONTROL_LABEL_MAX = 48;
+
+// @public
+export type ControlRequest = {
+    readonly control: "submit";
+    readonly label?: string;
+    readonly confirm?: string;
+} | {
+    readonly control: "choose";
+    readonly reviewSetId: string;
+    readonly candidates: readonly {
+        readonly id: string;
+        readonly label?: string;
+    }[];
+    readonly current?: string;
+} | {
+    readonly control: "release";
+    readonly submit?: true;
+    readonly reviewSetId?: string;
+};
+
+// @public
+export interface ControlsPolicy {
+    readonly controls?: readonly TrustedControl[];
+    readonly submitChannels: readonly SubmitChannel[];
+}
+
+// @public
+export const ControlsPolicy: z.ZodType<ControlsPolicy>;
 
 // @public
 export function createDiagnostic(code: KnownDiagnosticCode, details: DiagnosticDetails, options?: CreateDiagnosticOptions): Diagnostic;
@@ -429,10 +482,14 @@ export interface DeliveryStatus {
     readonly reason?: string;
     readonly state: DeliveryState;
     readonly updatedAt: string;
+    readonly waiting?: true;
 }
 
 // @public
 export const DeliveryStatus: z.ZodType<DeliveryStatus>;
+
+// @public
+export type DeliveryTarget = "live" | "static" | "mcp-app" | "verify";
 
 // @public
 export type DemoSpec = {
@@ -754,7 +811,25 @@ export interface FieldOp {
 export const FieldOp: z.ZodType<FieldOp>;
 
 // @public
+export interface FieldRegistration {
+    readonly conflict?: boolean;
+    readonly error?: string;
+    readonly id: string;
+    readonly label?: string;
+    readonly required?: boolean;
+    readonly scope: "viewer" | "artifact";
+    readonly sensitive?: boolean;
+}
+
+// @public
 export type FieldScope = "viewer" | "artifact";
+
+// @public
+export interface FieldsParams {
+    readonly fields: readonly FieldRegistration[];
+    readonly save: SaveState;
+    readonly unsaved: boolean;
+}
 
 // @public
 export interface FieldsRequest {
@@ -783,6 +858,32 @@ export interface FieldState {
 export const FieldState: z.ZodType<FieldState>;
 
 // @public
+export interface FlushResult {
+    readonly blockers: readonly SubmitBlocker[];
+    readonly revision: string;
+    readonly unsaved: boolean;
+}
+
+// @public
+export interface FollowRequest {
+    readonly follow: boolean;
+}
+
+// @public
+export const FollowRequest: z.ZodType<FollowRequest>;
+
+// @public
+export interface FrameTicket extends ViewContext {
+    readonly artifactOrigin: string;
+    readonly follow: boolean;
+    readonly pinned: boolean;
+    readonly src: string;
+}
+
+// @public
+export const FrameTicket: z.ZodType<FrameTicket>;
+
+// @public
 export interface GatewayStatus {
     readonly artifacts: readonly {
         readonly artifactId: string;
@@ -809,6 +910,7 @@ export interface HomeConfig {
     readonly path?: string;
     readonly ports?: readonly PortName[];
     readonly submission?: SubmissionPolicy;
+    readonly submitChannels?: readonly SubmitChannel[];
 }
 
 // @public
@@ -1013,6 +1115,24 @@ export interface MethodDefinition<Params, Result> {
 export type MethodDirection = "client-to-instance" | "instance-to-host";
 
 // @public
+export const mostraControlsRequest: BridgeMessage<ControlRequest, {
+    readonly shown: boolean;
+}>;
+
+// @public
+export const mostraFieldFocus: BridgeMessage<{
+    readonly id: string;
+}, undefined>;
+
+// @public
+export const mostraFields: BridgeMessage<FieldsParams, undefined>;
+
+// @public
+export const mostraFlush: BridgeMessage<{
+    readonly reason: "submit" | "switch";
+}, FlushResult>;
+
+// @public
 export const mostraInitializeMethod: MethodDefinition<MostraInitializeParams, MostraInitializeResult>;
 
 // @public
@@ -1033,6 +1153,12 @@ export interface MostraInitializeResult {
 }
 
 // @public
+export const mostraPage: BridgeMessage<{
+    readonly path: string;
+    readonly title?: string;
+}, undefined>;
+
+// @public
 export const mostraReady: BridgeMessage<Readonly<Record<string, unknown>>, undefined>;
 
 // @public
@@ -1043,6 +1169,9 @@ export type MostraShutdownParams = Record<string, never>;
 
 // @public
 export type MostraShutdownResult = Record<string, never>;
+
+// @public
+export const mostraVersionAvailable: BridgeMessage<VersionAvailableParams, undefined>;
 
 // @public
 export type MutationId = Id<"mut">;
@@ -1068,6 +1197,17 @@ export function normalizeScopes(scopes: readonly CapabilityScope[]): CapabilityS
 
 // @public
 export const OPEN_LINK_SCHEMES: readonly string[];
+
+// @public
+export interface OrphanedField {
+    readonly fromVersion: number;
+    readonly id: string;
+    readonly label?: string;
+    readonly value: unknown;
+}
+
+// @public
+export const OrphanedField: z.ZodType<OrphanedField>;
 
 // @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
@@ -1099,6 +1239,32 @@ export const PortName: z.ZodType<PortName, string>;
 
 // @public
 export const portSubmissionsDeliverMethod: MethodDefinition<SubmissionEnvelope, SubmissionsDeliverResult>;
+
+// @public
+export const portTrustedControlsActivatedMethod: MethodDefinition<PortTrustedControlsActivatedParams, PortTrustedControlsActivatedResult>;
+
+// @public
+export interface PortTrustedControlsActivatedParams {
+    readonly artifactId: string;
+    readonly control: TrustedControl;
+    readonly detail?: Readonly<Record<string, string>>;
+    readonly viewer: Viewer;
+    readonly viewId: string;
+}
+
+// @public
+export type PortTrustedControlsActivatedResult = unknown;
+
+// @public
+export const portTrustedControlsPolicyMethod: MethodDefinition<PortTrustedControlsPolicyParams, PortTrustedControlsPolicyResult>;
+
+// @public
+export interface PortTrustedControlsPolicyParams {
+    readonly artifact: ArtifactSummary;
+}
+
+// @public
+export type PortTrustedControlsPolicyResult = ControlsPolicy;
 
 // @public
 export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
@@ -1283,6 +1449,9 @@ export interface ResultsMarkdown {
 export const ResultsMarkdown: z.ZodType<ResultsMarkdown>;
 
 // @public
+export const REVIEW_SET_ID_PATTERN: RegExp;
+
+// @public
 export type Revision = string & {
     readonly __mostraRevision: true;
 };
@@ -1360,7 +1529,19 @@ export function safeEqual(a: string, b: string): boolean;
 export function safePath(target: string): string | undefined;
 
 // @public
+export type SaveState = "saved" | "saving" | "offline" | "conflict";
+
+// @public
 export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
+
+// @public
+export interface ShellSubmitRequest {
+    readonly expectedRevision: DocumentRevision;
+    readonly viewId: string;
+}
+
+// @public
+export const ShellSubmitRequest: z.ZodType<ShellSubmitRequest>;
 
 // @public
 export const SIGNAL_NAME_PATTERN: RegExp;
@@ -1475,6 +1656,7 @@ export type SubmissionsDeliverResult = {
 export interface SubmissionSummary {
     readonly at: string;
     readonly channel: SubmitChannel;
+    readonly deliveries?: readonly DeliveryStatus[];
     readonly delivery: DeliveryState;
     readonly digest: string;
     readonly draftRevision: DocumentRevision;
@@ -1491,13 +1673,23 @@ export interface SubmissionSummary {
 export const SubmissionSummary: z.ZodType<SubmissionSummary>;
 
 // @public
+export interface SubmitBlocker {
+    readonly fieldId: string;
+    readonly label?: string;
+    readonly reason: "required" | "invalid" | "conflict";
+}
+
+// @public
 export type SubmitChannel = "shell" | "artifact";
+
+// @public
+export const SubmitChannel: z.ZodType<SubmitChannel>;
 
 // @public
 export type SubmitDiagnosticCode = (typeof submitDiagnosticCodes)[number];
 
 // @public
-export const submitDiagnosticCodes: readonly ["MOSTRA_SUBMIT_ALREADY", "MOSTRA_SUBMIT_REVISION_MOVED", "MOSTRA_SUBMIT_POLICY_NONE", "MOSTRA_SUBMIT_NOT_FOUND", "MOSTRA_SUBMIT_VIEW_INVALID", "MOSTRA_SUBMIT_SIGNAL_INVALID"];
+export const submitDiagnosticCodes: readonly ["MOSTRA_SUBMIT_ALREADY", "MOSTRA_SUBMIT_REVISION_MOVED", "MOSTRA_SUBMIT_POLICY_NONE", "MOSTRA_SUBMIT_NOT_FOUND", "MOSTRA_SUBMIT_VIEW_INVALID", "MOSTRA_SUBMIT_SIGNAL_INVALID", "MOSTRA_SUBMIT_CHANNEL_DENIED", "MOSTRA_SUBMIT_BLOCKED"];
 
 // @public
 export interface SubmitRequest {
@@ -1538,6 +1730,12 @@ export type TokenId = Id<"tok">;
 export const TokenId: GeneratedIdKind<"tok">;
 
 // @public
+export type TrustedControl = "submit" | "choose" | "approve" | (string & {});
+
+// @public
+export const TrustedControl: z.ZodType<TrustedControl>;
+
+// @public
 export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>;
 
 // @public
@@ -1555,6 +1753,7 @@ export interface UiInitializeResult {
     readonly hostCapabilities: Readonly<Record<string, unknown>>;
     readonly hostContext: BridgeHostContext;
     readonly hostInfo: BridgeImplementation;
+    readonly mostra?: ViewContext;
     readonly protocolVersion: string;
 }
 
@@ -1573,6 +1772,13 @@ export const uiSizeChanged: BridgeMessage<{
 }, undefined>;
 
 // @public
+export interface VersionAvailableParams {
+    readonly orphans: number;
+    readonly version: number;
+    readonly versionId: string;
+}
+
+// @public
 export type VersionId = Id<"ver">;
 
 // @public
@@ -1582,6 +1788,15 @@ export const VersionId: VersionIdKind;
 export interface VersionIdKind extends IdKind<"ver"> {
     fromSha256(digest: Uint8Array): VersionId;
 }
+
+// @public
+export interface VersionRef {
+    readonly id: string;
+    readonly number: number;
+}
+
+// @public
+export const VersionRef: z.ZodType<VersionRef>;
 
 // @public
 export interface VersionSummary {
@@ -1596,6 +1811,21 @@ export interface VersionSummary {
 
 // @public
 export const VersionSummary: z.ZodType<VersionSummary>;
+
+// @public
+export interface ViewContext {
+    readonly artifactId: string;
+    readonly controls: readonly TrustedControl[];
+    readonly latest: VersionRef;
+    readonly policy: SubmissionPolicy;
+    readonly submitChannels: readonly SubmitChannel[];
+    readonly target: DeliveryTarget;
+    readonly version: VersionRef;
+    readonly viewId: string;
+}
+
+// @public
+export const ViewContext: z.ZodType<ViewContext>;
 
 // @public
 export interface Viewer {

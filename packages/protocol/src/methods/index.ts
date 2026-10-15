@@ -17,6 +17,8 @@ import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
+import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
+import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
 import { resultsGetMethod } from "./results/get.ts";
 import { stateGetMethod } from "./state/get.ts";
 import { statePatchMethod } from "./state/patch.ts";
@@ -49,5 +51,7 @@ export const hostMethods: readonly AnyMethod[] = [
   eventsAckMethod,
   portSubmissionsDeliverMethod,
   portDraftsMirrorMethod,
+  portTrustedControlsPolicyMethod,
+  portTrustedControlsActivatedMethod,
   // gen:methods
 ];
