@@ -115,12 +115,21 @@ async function body<T>(
   );
 }
 
-/** The `cursor` a stream or poll resumes from: the query, else `Last-Event-ID`. */
+/**
+ * The cursor a stream or poll resumes from: the newer of `?cursor=` and `Last-Event-ID`. An
+ * `EventSource` reconnects to the URL it opened, query included, and adds `Last-Event-ID` with
+ * the last event it received, which is never older; taking the newer never repeats an event
+ * (Claude review finding 3).
+ */
 function cursorOf(request: Request): number | undefined | "invalid" {
   const url = new URL(request.url);
-  const value = url.searchParams.get("cursor") ?? request.headers.get("last-event-id");
-  if (value === null || value === "") return undefined;
-  return /^(0|[1-9][0-9]{0,15})$/.test(value) ? Number(value) : "invalid";
+  let resume: number | undefined;
+  for (const value of [url.searchParams.get("cursor"), request.headers.get("last-event-id")]) {
+    if (value === null || value === "") continue;
+    if (!/^(0|[1-9][0-9]{0,15})$/.test(value)) return "invalid";
+    resume = Math.max(resume ?? 0, Number(value));
+  }
+  return resume;
 }
 
 /** A route handler. */
@@ -143,7 +152,12 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     const session = context.session;
     const artifactId = context.artifactId;
     if (!session || artifactId === undefined) throw new Error("session route without a session");
-    return { artifactId, viewerId: interaction.viewerOf(session.grant.viewerId) };
+    return {
+      artifactId,
+      viewerId: interaction.viewerOf(session.grant.viewerId),
+      // A page names only views its own link opened (Claude review finding 11).
+      tokenId: session.grant.tokenId,
+    };
   };
 
   /** The view a stream or poll is for, checked against the page (D104). */
@@ -244,68 +258,100 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     const resume = cursorOf(context.request);
     if (resume === "invalid") return malformed("`cursor` must be an event cursor.");
     const encoder = new TextEncoder();
-    let cleanup = (): void => {};
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        let cursor = resume ?? -1;
-        let open = true;
-        const send = (text: string): void => {
-          if (open) controller.enqueue(encoder.encode(text));
-        };
-        const snapshot = (value: StreamSnapshot): void => {
-          cursor = Number(value.cursor);
-          send(`id: ${value.cursor}\nevent: snapshot\ndata: ${JSON.stringify(value)}\n\n`);
-        };
-        const close = (): void => {
-          if (!open) return;
-          open = false;
-          unsubscribe();
-          clearInterval(heartbeat);
-          context.request.signal.removeEventListener("abort", close);
-          try {
-            controller.close();
-          } catch {
-            // Already closed by the client.
-          }
-        };
-        const pump = (): void => {
-          if (!open) return;
-          if (!live(context)) {
-            close();
-            return;
-          }
-          try {
-            for (;;) {
-              const read = next(page, cursor);
-              if ("snapshot" in read) {
-                snapshot(read.snapshot);
-                return;
-              }
-              for (const event of read.events) {
-                send(`id: ${event.cursor}\nevent: mostra\ndata: ${JSON.stringify(event)}\n\n`);
-              }
-              cursor = read.cursor;
-              // A page cut short by size is not the end: read on until nothing is left.
-              if (read.events.length === 0) return;
-            }
-          } catch (error) {
-            log.error("gateway.stream_failed", { error });
-            close();
-          }
-        };
-        const unsubscribe = interaction.onCommit(() => setImmediate(pump));
-        const heartbeat = setInterval(() => send(": keepalive\n\n"), HEARTBEAT_MS);
-        heartbeat.unref?.();
-        context.request.signal.addEventListener("abort", close, { once: true });
-        cleanup = close;
-        send("retry: 2000\n\n");
-        if (resume === undefined) snapshot(interaction.pageSnapshot(page));
-        pump();
-      },
-      cancel() {
-        cleanup();
-      },
+    // Pull-based: a page of events is read only when the client took the last one, so a slow
+    // reader or a long backlog never makes the gateway buffer more than a page, and every page
+    // yields to the event loop (Claude review finding 6).
+    let cursor = resume ?? -1;
+    let open = true;
+    let dirty = false;
+    let wake: (() => void) | undefined;
+    const unsubscribe = interaction.onCommit(() => {
+      dirty = true;
+      wake?.();
     });
+    const close = (controller?: ReadableStreamDefaultController<Uint8Array>): void => {
+      if (!open) return;
+      open = false;
+      unsubscribe();
+      wake?.();
+      context.request.signal.removeEventListener("abort", aborted);
+      try {
+        controller?.close();
+      } catch {
+        // Already closed by the client.
+      }
+    };
+    const aborted = (): void => close();
+    context.request.signal.addEventListener("abort", aborted, { once: true });
+    const snapshotText = (value: StreamSnapshot): string => {
+      cursor = Number(value.cursor);
+      return `id: ${value.cursor}\nevent: snapshot\ndata: ${JSON.stringify(value)}\n\n`;
+    };
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          let text = "retry: 2000\n\n";
+          if (resume === undefined) text += snapshotText(interaction.pageSnapshot(page));
+          controller.enqueue(encoder.encode(text));
+        },
+        async pull(controller) {
+          await new Promise((resolve) => setImmediate(resolve));
+          for (;;) {
+            if (!open) return;
+            if (!live(context)) {
+              close(controller);
+              return;
+            }
+            dirty = false;
+            let read: ReturnType<typeof next>;
+            try {
+              read = next(page, cursor);
+            } catch (error) {
+              log.error("gateway.stream_failed", { error });
+              close(controller);
+              return;
+            }
+            if ("snapshot" in read) {
+              controller.enqueue(encoder.encode(snapshotText(read.snapshot)));
+              return;
+            }
+            cursor = read.cursor;
+            if (read.events.length > 0) {
+              controller.enqueue(
+                encoder.encode(
+                  read.events
+                    .map(
+                      (event) =>
+                        `id: ${event.cursor}\nevent: mostra\ndata: ${JSON.stringify(event)}\n\n`,
+                    )
+                    .join(""),
+                ),
+              );
+              return;
+            }
+            // Nothing new: wait for a commit, or send a heartbeat after a while.
+            if (dirty) continue;
+            const woke = await new Promise<"commit" | "heartbeat">((resolve) => {
+              const timer = setTimeout(() => resolve("heartbeat"), HEARTBEAT_MS);
+              timer.unref?.();
+              wake = () => {
+                clearTimeout(timer);
+                resolve("commit");
+              };
+            });
+            wake = undefined;
+            if (woke === "heartbeat" && open) {
+              controller.enqueue(encoder.encode(": keepalive\n\n"));
+              return;
+            }
+          }
+        },
+        cancel() {
+          close();
+        },
+      },
+      new CountQueuingStrategy({ highWaterMark: 1 }),
+    );
     return new Response(body, {
       headers: {
         ...BASE_HEADERS,
@@ -360,7 +406,13 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
           clearTimeout(timer);
           unsubscribe();
           context.request.signal.removeEventListener("abort", aborted);
-          resolve(value ?? once());
+          // A failing read here (the ledger closing at shutdown, say) answers this request; it
+          // never escapes the timer as an uncaught exception (Claude review finding 8).
+          try {
+            resolve(value ?? once());
+          } catch (error) {
+            reject(error);
+          }
         };
         const aborted = (): void => finish(first);
         const unsubscribe = interaction.onCommit(() =>

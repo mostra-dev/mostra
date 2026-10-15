@@ -25,10 +25,11 @@ export function defaultWaitCursor(db: LedgerDb, artifactId: string): number {
       "SELECT MAX(cursor) AS cursor FROM event WHERE artifact_id = ? AND type = 'version.published'",
       artifactId,
     )?.cursor ?? 0;
-  // A publish that was compacted away is inside a summary's range; wait after the summary.
+  // A publish that was compacted away is still known by its cursor, which its summary records:
+  // waiting after the summary instead would skip what happened between (Claude review finding 9).
   const compacted =
     db.get<{ cursor: number | null }>(
-      `SELECT MAX(cursor) AS cursor FROM event WHERE artifact_id = ? AND type = '${COMPACTED}'`,
+      `SELECT MAX(json_extract(payload_json, '$.latestVersion.cursor')) AS cursor FROM event WHERE artifact_id = ? AND type = '${COMPACTED}'`,
       artifactId,
     )?.cursor ?? 0;
   return Math.max(published, compacted);
@@ -49,6 +50,7 @@ function submissionEvent(db: LedgerDb, row: SubmissionRow): EventRecord {
     payload: {
       submissionId: row.id,
       versionId: row.version_id,
+      version: (JSON.parse(row.snapshot_json) as { version: number }).version,
       viewId: row.view_id,
       viewerId: row.viewer_id,
       channel: row.channel,
@@ -69,6 +71,7 @@ export function checkCondition(
   artifactId: string,
   until: string,
   after: number,
+  explicitAfter = true,
 ): { readonly event: EventRecord } | { readonly cursor: number } {
   const upTo = latestCursor(db);
   const first = (sql: string, ...params: (string | number)[]): EventRow | undefined =>
@@ -94,19 +97,21 @@ export function checkCondition(
         }),
       );
     }
-    // Level-triggered under once: any submission, at any cursor (D103).
-    const row =
-      policy.policy === "once"
-        ? db.get<SubmissionRow>(
-            "SELECT * FROM submission WHERE artifact_id = ? ORDER BY position LIMIT 1",
-            artifactId,
-          )
-        : db.get<SubmissionRow>(
-            "SELECT * FROM submission WHERE artifact_id = ? AND position > ? AND position <= ? ORDER BY position LIMIT 1",
-            artifactId,
-            after,
-            upTo,
-          );
+    // Level-triggered under once per-artifact, and under once per-viewer while no cursor was
+    // given: any submission satisfies it. After an explicit cursor, per-viewer is edge-triggered,
+    // so a survey's agent can wait for the next respondent (D107).
+    const level = policy.policy === "once" && (policy.scope !== "per-viewer" || !explicitAfter);
+    const row = level
+      ? db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE artifact_id = ? ORDER BY position LIMIT 1",
+          artifactId,
+        )
+      : db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE artifact_id = ? AND position > ? AND position <= ? ORDER BY position LIMIT 1",
+          artifactId,
+          after,
+          upTo,
+        );
     if (row) return { event: submissionEvent(db, row) };
     checkCompaction(db, { artifacts: [artifactId] }, after);
     return { cursor: Math.max(upTo, after) };
@@ -151,7 +156,8 @@ export interface WaitOptions {
 export async function waitFor(options: WaitOptions): Promise<WaitResult> {
   const { ledger, artifactId, until } = options;
   const after = options.after ?? ledger.read((db) => defaultWaitCursor(db, artifactId));
-  const check = () => ledger.read((db) => checkCondition(db, artifactId, until, after));
+  const explicit = options.after !== undefined;
+  const check = () => ledger.read((db) => checkCondition(db, artifactId, until, after, explicit));
   const answer = (outcome: ReturnType<typeof check>): WaitResult =>
     "event" in outcome
       ? { status: "satisfied", event: outcome.event, cursor: outcome.event.cursor }

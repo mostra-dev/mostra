@@ -388,6 +388,15 @@
       "fix": "Encode one request per line with `\"jsonrpc\": \"2.0\"`, a `method`, an `id` for requests, and `params` as an object. Send several requests as separate lines instead of a batch."
     },
     {
+      "code": "MOSTRA_HOST_MESSAGE_TOO_LARGE",
+      "severity": "error",
+      "phase": "host",
+      "title": "Message too large for the protocol",
+      "hint": "Ask for less at once: a specific submission, fewer events, or smaller values.",
+      "explanation": "One host-protocol message is one line of JSON, and a line holds at most 64 Mi characters (`MAX_LINE_LENGTH`), so neither side buffers without bound. Mostra checks every message before it writes it: an answer that would be longer is replaced by this error, and a delivery whose envelope would be longer is recorded as undeliverable instead of being sent and retried forever.",
+      "fix": "Read less per request (`events/read` with a smaller `limit`, `results/get` for one submission), and keep artifacts' values within the field and document limits."
+    },
+    {
       "code": "MOSTRA_HOST_METHOD_UNKNOWN",
       "severity": "error",
       "phase": "host",

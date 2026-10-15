@@ -7,6 +7,7 @@ import {
   createDiagnostic,
   encodeLine,
   LineSplitter,
+  MAX_LINE_LENGTH,
   RpcError,
   type RpcPeer,
 } from "@mostra/protocol";
@@ -55,8 +56,26 @@ export function pump(ends: StreamEnds, peer: () => RpcPeer, onEnd: () => void): 
   ends.input.on("error", end);
 }
 
-/** Writes one message as a line. Returns false when the stream can't take it any more. */
+/**
+ * Writes one message as a line. Returns false when the stream can't take it any more. A message
+ * longer than the line limit would make the reader drop the connection, so it is never written:
+ * an answer becomes `MOSTRA_HOST_MESSAGE_TOO_LARGE` for its request, and anything else is dropped
+ * (Mostra's own requests and notifications are bounded well below the limit).
+ */
 export function writeLine(output: Writable, message: Parameters<typeof encodeLine>[0]): boolean {
   if (output.destroyed || output.writableEnded) throw new Error("The connection is closed.");
-  return output.write(encodeLine(message));
+  let line = encodeLine(message);
+  if (line.length > MAX_LINE_LENGTH) {
+    if (!("id" in message) || "method" in message || message.id === null) return true;
+    line = encodeLine({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: new RpcError(
+        createDiagnostic("MOSTRA_HOST_MESSAGE_TOO_LARGE", {
+          message: `The answer is ${line.length} characters, longer than one protocol message carries (${MAX_LINE_LENGTH}).`,
+        }),
+      ).toErrorObject(),
+    });
+  }
+  return output.write(line);
 }

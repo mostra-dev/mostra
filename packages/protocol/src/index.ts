@@ -313,7 +313,7 @@ export {
 } from "./revision.ts";
 // gen:method-exports
 export { JSON_RPC_ERROR_CODES, RpcError } from "./rpc/error.ts";
-export { encodeLine, LineSplitter } from "./rpc/lines.ts";
+export { encodeLine, LineSplitter, MAX_LINE_LENGTH } from "./rpc/lines.ts";
 export {
   type ClassifiedMessage,
   classifyMessage,

@@ -12,5 +12,7 @@ wire types `Viewer`, `ViewerSpec`, `Actor`, `FieldOp`, `FieldState`, `FieldConfl
 (RFC 8785); browser-protocol revision `2026-10-15` with its request and stream payloads;
 `HomeConfig.submission` and `HomeConfig.ports`; `view/url`'s `viewer` and `CapabilityLink.viewer`;
 `instance/status`'s `deliveries`; and the SUBMIT and FIELD diagnostic areas with
-`MOSTRA_HOST_CURSOR_COMPACTED`, `MOSTRA_HOST_SUBSCRIPTION_UNKNOWN` and
-`MOSTRA_HOST_NOTIFICATION_UNSUPPORTED`.
+`MOSTRA_HOST_CURSOR_COMPACTED`, `MOSTRA_HOST_SUBSCRIPTION_UNKNOWN`,
+`MOSTRA_HOST_NOTIFICATION_UNSUPPORTED` and `MOSTRA_HOST_MESSAGE_TOO_LARGE`; `events/read`'s
+`acceptCompacted` and `compacted`, `events/notify`'s `compacted`, `Results.signalsOmitted` and
+`signalsCompacted`, and `MAX_LINE_LENGTH`.

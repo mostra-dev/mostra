@@ -670,6 +670,9 @@ The manifest requests a policy and the host decides (D39, D63). At every publish
 - **Submit is a signal.** Every submission also appends `signal.raised` with the name `submit` and its channel as the source, so `signal:submit` and host filters see it like any other signal. Required fields are checked by the shell and the client runtime before submit (WP-07); the server, which can't know which fields a page shows, doesn't guess.
 - **The browser protocol.** WP-06 defines revision `2026-10-15` of the browser protocol: the payloads of `fields`, `submit`, `signal`, `events` and `events/poll`, as Zod schemas in `@mostra/protocol`. The gateway serves only revisions it knows. WP-07 builds the client runtime on it and records it in `envDigest`; WP-13 adds the long-poll fallback over tunnels on the same handler.
 
+### D107. Waiting for the next respondent under `once` per-viewer (delegated under M18; found by the Claude review)
+Amends D103. Under `once` with scope `per-viewer` (a survey: one submission per person), `wait --until submitted` is level-triggered only when the caller gives no cursor, so "has anyone answered?" returns at once. After an explicit `after` cursor it is edge-triggered, as under `epochs`: the first submission after the cursor satisfies it, so an agent can wait for each next respondent without being handed the first one forever. `once` per-artifact stays level-triggered whatever the cursor (exactly one submission exists or will). *Source:* finding 5 of WP-06's Claude Opus review; Mirza delegated WP-06's interaction semantics at M18, and the choice is shown to him at the candidate.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.

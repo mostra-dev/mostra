@@ -30,6 +30,7 @@ export interface ViewRow {
   readonly version_id: string;
   readonly viewer_id: string;
   readonly token_id: string | null;
+  readonly opened_cursor: number | null;
 }
 
 /** The `external_ref` of the home's one local user. */
@@ -105,26 +106,29 @@ export function openView(
   },
 ): string {
   const id = ViewId.create();
-  db.run(
-    "INSERT INTO view (id, artifact_id, version_id, viewer_id, token_id, opened_at) VALUES (?, ?, ?, ?, ?, ?)",
-    id,
-    input.artifactId,
-    input.versionId,
-    input.viewerId,
-    input.tokenId ?? null,
-    new Date().toISOString(),
-  );
-  appendEvent(db, {
+  const cursor = appendEvent(db, {
     artifactId: input.artifactId,
     type: "view.opened",
     actor: { kind: "viewer", id: input.viewerId },
     payload: { viewId: id, versionId: input.versionId, viewerId: input.viewerId },
   });
+  db.run(
+    "INSERT INTO view (id, artifact_id, version_id, viewer_id, token_id, opened_cursor, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    id,
+    input.artifactId,
+    input.versionId,
+    input.viewerId,
+    input.tokenId ?? null,
+    Number(cursor),
+    new Date().toISOString(),
+  );
   return id;
 }
 
 /**
- * The view a request names, checked against the artifact and the viewer it must belong to;
+ * The view a request names, checked against the artifact and the viewer it must belong to, and,
+ * for a page, the link it was opened through: a page can't name a view another link opened, such
+ * as one of a version its own link may not open (Claude review finding 11).
  * `MOSTRA_SUBMIT_VIEW_INVALID` otherwise (D104).
  */
 export function viewFor(
@@ -132,11 +136,17 @@ export function viewFor(
   viewId: string,
   artifactId: string,
   viewerId: string,
+  tokenId?: string,
 ): ViewRow {
   const row = ViewId.is(viewId)
     ? db.get<ViewRow>("SELECT * FROM view WHERE id = ?", viewId)
     : undefined;
-  if (!row || row.artifact_id !== artifactId || row.viewer_id !== viewerId) {
+  if (
+    !row ||
+    row.artifact_id !== artifactId ||
+    row.viewer_id !== viewerId ||
+    (tokenId !== undefined && row.token_id !== tokenId)
+  ) {
     throw new RpcError(
       createDiagnostic("MOSTRA_SUBMIT_VIEW_INVALID", {
         message: `The view ${viewId} isn't one this page's link opened for this artifact.`,

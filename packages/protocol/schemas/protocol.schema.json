@@ -1180,6 +1180,9 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1000
+        },
+        "acceptCompacted": {
+          "type": "boolean"
         }
       }
     },
@@ -1195,6 +1198,9 @@
         },
         "cursor": {
           "$ref": "#/$defs/Cursor"
+        },
+        "compacted": {
+          "$ref": "#/$defs/Diagnostic"
         }
       },
       "required": [
@@ -2383,6 +2389,15 @@
               "at"
             ]
           }
+        },
+        "signalsOmitted": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "signalsCompacted": {
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [

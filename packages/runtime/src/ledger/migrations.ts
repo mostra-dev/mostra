@@ -217,7 +217,9 @@ export const MIGRATIONS: readonly Migration[] = [
       // replays its recorded result. Submissions are write-once (trigger); `position` is the
       // cursor of their `submission.created` event, the order deliveries replay in. A terminal
       // delivery never changes again (trigger). `subscriber` keeps durable acknowledged cursors.
-      // A token's viewer joins its immutable grant. `artifact.policy_chosen_json` keeps the policy a
+      // A token's viewer joins its immutable grant. INSERT OR REPLACE would delete a row without
+      // the DELETE and UPDATE triggers, so write-once tables also refuse an insert over an
+      // existing row (Claude review finding 7). `artifact.policy_chosen_json` keeps the policy a
       // publish named explicitly, which later publishes keep until another names one (D102).
       db.exec(`
         CREATE TABLE viewer (
@@ -234,6 +236,7 @@ export const MIGRATIONS: readonly Migration[] = [
           version_id TEXT NOT NULL REFERENCES version(id),
           viewer_id TEXT NOT NULL REFERENCES viewer(id),
           token_id TEXT REFERENCES token(id),
+          opened_cursor INTEGER,
           opened_at TEXT NOT NULL,
           closed_at TEXT,
           live_cursor_json TEXT
@@ -311,6 +314,13 @@ export const MIGRATIONS: readonly Migration[] = [
         BEGIN
           SELECT RAISE(ABORT, 'submissions are immutable');
         END;
+        -- INSERT OR REPLACE deletes the old row without the DELETE trigger: refuse it at insert.
+        CREATE TRIGGER submission_not_replaced BEFORE INSERT ON submission
+        WHEN EXISTS (SELECT 1 FROM submission WHERE id = NEW.id OR position = NEW.position
+          OR (artifact_id = NEW.artifact_id AND scope_key = NEW.scope_key AND epoch = NEW.epoch))
+        BEGIN
+          SELECT RAISE(ABORT, 'submissions are immutable');
+        END;
         CREATE TABLE delivery (
           id TEXT PRIMARY KEY,
           submission_id TEXT NOT NULL REFERENCES submission(id),
@@ -330,6 +340,27 @@ export const MIGRATIONS: readonly Migration[] = [
           OR NEW.port_owner IS NOT OLD.port_owner OR NEW.position IS NOT OLD.position
         BEGIN
           SELECT RAISE(ABORT, 'a delivery''s terminal state never changes');
+        END;
+        CREATE TRIGGER delivery_kept BEFORE DELETE ON delivery
+        BEGIN
+          SELECT RAISE(ABORT, 'deliveries are kept with their submissions');
+        END;
+        CREATE TRIGGER delivery_not_replaced BEFORE INSERT ON delivery
+        WHEN EXISTS (SELECT 1 FROM delivery WHERE id = NEW.id
+          OR (submission_id = NEW.submission_id AND port_owner = NEW.port_owner))
+        BEGIN
+          SELECT RAISE(ABORT, 'a delivery''s terminal state never changes');
+        END;
+        CREATE TRIGGER version_not_replaced BEFORE INSERT ON version
+        WHEN EXISTS (SELECT 1 FROM version WHERE id = NEW.id
+          OR (artifact_id = NEW.artifact_id AND number = NEW.number))
+        BEGIN
+          SELECT RAISE(ABORT, 'published versions are immutable');
+        END;
+        CREATE TRIGGER token_not_replaced BEFORE INSERT ON token
+        WHEN EXISTS (SELECT 1 FROM token WHERE id = NEW.id OR secret_hash = NEW.secret_hash)
+        BEGIN
+          SELECT RAISE(ABORT, 'a token never changes its grant, and a revoked token stays revoked');
         END;
         CREATE TABLE subscriber (
           name TEXT PRIMARY KEY,

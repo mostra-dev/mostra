@@ -53,7 +53,8 @@ version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest,
         forced_codes_json, published_at, UNIQUE(artifact_id, number))
 viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
                                                     -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104)
-view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_at, closed_at, live_cursor_json)
+view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json)
+                                                          -- token_id: the link that opened it; a page names only its own link's views
                                                     -- one frame load of one version (D104)
 follow(viewer_id, artifact_id, PRIMARY KEY(viewer_id, artifact_id))          -- D63
 
@@ -128,7 +129,7 @@ Invariants carried by constraints:
 - **Leases:** each port has exactly one lease holder.
 - **Capabilities:** the ledger holds no secret. A token's secret, a session's cookie and its CSRF token are stored only as SHA-256 hashes. A trigger refuses any change to a revoked token and any change to a token's secret, artifact, grant, expiry, version or shell origin, and a default token can't expire (D97, D98).
 
-`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans and the signals raised in the view. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4). Versions are write-once the same way: a trigger refuses any `UPDATE` of `version` (invariant 3), and `event` is append-only.
+`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
 
 ## 4. Event catalog
 

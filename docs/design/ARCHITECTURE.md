@@ -191,7 +191,7 @@ The viewer sees `Submitted` (durable in Mostra), then `Delivered` or `Pending de
 
 **Wait and results** (IN-10, IN-11):
 - `wait` blocks until a condition holds or the timeout passes. Its conditions are `submitted`, `signal:<name>`, `state:<field>` and `event:<type>`.
-- `submitted` is level-triggered under `once` (any existing submission satisfies it) and edge-triggered under `epochs`; it is refused under `none` (D103). The others are edge-triggered after a cursor, defaulting to the cursor of the artifact's latest publish.
+- `submitted` is level-triggered under `once` (any existing submission satisfies it; under `per-viewer` only while no cursor is given, D107) and edge-triggered under `epochs`; it is refused under `none` (D103). The others are edge-triggered after a cursor, defaulting to the cursor of the artifact's latest publish.
 - On timeout it returns `still_waiting` with a cursor and loses nothing.
 - `results` assembles the complete submission (INTERFACES §8) as JSON and as Markdown for agents.
 

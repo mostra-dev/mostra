@@ -1029,17 +1029,17 @@ describe("results (IN-11)", () => {
       [
         "# Sidebar review: submission sub_01JB8Z3QF6S7W3N8D5K2C4V9XG",
         "",
-        "- Artifact: art_01JB8Z3QF6S7W3N8D5K2C4V9XG (review)",
+        "- Artifact: art_01JB8Z3QF6S7W3N8D5K2C4V9XG (`review`)",
         "- Version: ver_0000000000000000000000000A (version 2), a stale view: version 3 was the latest",
-        "- View: vw_01JB8Z3QF6S7W3N8D5K2C4V9XG, channel shell, viewer Mirza (vwr_01JB8Z3QF6S7W3N8D5K2C4V9XG)",
+        '- View: vw_01JB8Z3QF6S7W3N8D5K2C4V9XG, channel shell, viewer "Mirza" (vwr_01JB8Z3QF6S7W3N8D5K2C4V9XG)',
         "- Submitted: 2026-10-15T09:00:00.000Z, epoch 1, policy once per-artifact",
         `- Draft revision 4, artifact state revision 2, digest ${"d".repeat(64)}`,
-        "- Delivery: pending (jcode: pending)",
-        "- Links: follows art_01JB8Z3QF6S7W3N8D5K2C4V9XH",
+        '- Delivery: pending ("jcode": pending)',
+        "- Links: `follows` `art_01JB8Z3QF6S7W3N8D5K2C4V9XH`",
         "",
         "## Answers",
         '- `layout`: "b"',
-        "- Reply to Alice (`reply.m1`): ",
+        '- "Reply to Alice" (`reply.m1`): ',
         "",
         "  ```text",
         "  Thanks,",
@@ -1051,20 +1051,20 @@ describe("results (IN-11)", () => {
         '- `tasks.today`: `["ship"]`',
         "",
         "## Choices",
-        "- sidebar: b (Compact)",
+        '- `sidebar`: "b" ("Compact")',
         "",
         "## Comments",
-        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop blobs/abc.png, on `header`, page /",
-        '  - Mirza at 2026-10-15T08:59:00.000Z: "Header too tall"',
+        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop `blobs/abc.png`, on `header`, page `/`",
+        '  - "Mirza" at 2026-10-15T08:59:00.000Z: "Header too tall"',
         "",
         "## Actions run in this view",
-        "- sendReply: succeeded at 2026-10-15T08:58:00.000Z (run run_01JB8Z3QF6S7W3N8D5K2C4V9XG)",
+        "- `sendReply`: succeeded at 2026-10-15T08:58:00.000Z (run run_01JB8Z3QF6S7W3N8D5K2C4V9XG)",
         "",
         "## Signals raised in this view",
-        "- ping at 2026-10-15T08:57:00.000Z",
+        "- `ping` at 2026-10-15T08:57:00.000Z",
         "",
         "## Not carried over from an earlier version",
-        '- Old question (`old`) from version 1: "kept"',
+        '- "Old question" (`old`) from version 1: "kept"',
         "",
       ].join("\n"),
     );
@@ -1330,7 +1330,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     };
     expect(first.subscriptionId).toBe(answer.subscriptionId);
     expect(first.compacted?.code).toBe("MOSTRA_HOST_CURSOR_COMPACTED");
-    expect(first.events.map((event) => event.type)).toEqual(["artifact.compacted"]);
+    expect(first.events[0]?.type).toBe("artifact.compacted");
     // It goes on: the event after the summary, and later commits, still arrive.
     mutate(ledger, artifactId, [set("a", "later")]);
     await until(() =>
@@ -1340,6 +1340,68 @@ describe("findings of the GPT-6.1-Sol review", () => {
         ),
       ),
     );
+    interaction.stop();
+  });
+
+  it("delivers other artifacts' events around a compacted range, with no gap and no repeat (Claude review finding 1)", async () => {
+    const { ledger } = freshLedger();
+    const x = addArtifact(ledger, { id: ArtifactId.create() }).artifactId;
+    const y = addArtifact(ledger, { id: ArtifactId.create() }).artifactId;
+    const hosts = new FakeHosts();
+    const interaction = createInteraction({
+      ledger,
+      log: silentLog,
+      faults: noFaults,
+      hosts,
+      expectedHosts: () => [],
+      artifacts: { resolve: () => x },
+    });
+    interaction.start();
+    const subscriber = {
+      ...session(9, "host", []),
+      notifications: new Set(["events/notify"]),
+    } as Session;
+    const subscribe = interaction
+      .methods()
+      .find((entry) => entry.definition.method === "events/subscribe");
+    mutate(ledger, x, [set("a", "first")]);
+    const start = Number(events(ledger, x).at(-1)?.cursor);
+    await subscribe?.handle({ after: String(start) }, subscriber);
+    // X and Y interleave; then X is compacted before the pump has sent anything.
+    for (let index = 0; index < 5; index++) {
+      mutate(ledger, y, [set("b", index)]);
+      mutate(ledger, x, [set("a", index)]);
+    }
+    mutate(ledger, y, [set("b", "last")]);
+    const all = ledger.read((db) =>
+      readEvents(db, { after: start, limit: 1000, maxBytes: Number.POSITIVE_INFINITY }),
+    ).events;
+    ledger.write((db) => compactEvents(db, x, Number(all.at(-1)?.cursor)));
+    await until(() =>
+      hosts.notifications.some(
+        (note) => (note.params as { cursor: string }).cursor === all.at(-1)?.cursor,
+      ),
+    );
+    const received = hosts.notifications.flatMap(
+      (note) => (note.params as { events: EventRecord[] }).events,
+    );
+    const cursors = received.map((event) => Number(event.cursor));
+    // In cursor order, each once.
+    expect(cursors).toEqual([...new Set(cursors)].sort((a, b) => a - b));
+    // Every Y event arrived; X's arrive as one summary in their place.
+    expect(received.filter((event) => event.artifactId === y).map((event) => event.cursor)).toEqual(
+      all.filter((event) => event.artifactId === y).map((event) => event.cursor),
+    );
+    expect(received.filter((event) => event.artifactId === x).map((event) => event.type)).toEqual([
+      "artifact.compacted",
+    ]);
+    expect(
+      hosts.notifications.some(
+        (note) =>
+          (note.params as { compacted?: { code: string } }).compacted?.code ===
+          "MOSTRA_HOST_CURSOR_COMPACTED",
+      ),
+    ).toBe(true);
     interaction.stop();
   });
 

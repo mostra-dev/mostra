@@ -1,8 +1,8 @@
 /**
  * Canonical JSON (RFC 8785, the JSON Canonicalization Scheme): one exact text for a JSON value,
  * so equal values hash equally wherever they are hashed. A submission's digest is the SHA-256 of
- * its snapshot in this form (DATA_MODEL §3), and a host can recompute it from the snapshot it
- * received.
+ * its stored snapshot in this form (DATA_MODEL §3). The snapshot stays in the ledger; results carry
+ * the digest as the snapshot's identity, so two results with the same digest hold the same answers.
  *
  * ```ts
  * canonicalJson({ b: [1, "x"], a: null }); // '{"a":null,"b":[1,"x"]}'

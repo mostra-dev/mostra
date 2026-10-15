@@ -15,13 +15,16 @@ import {
 } from "@mostra/protocol";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
-import { compactionCovering, eventRecord, latestCursor, readEvents } from "./events.ts";
+import { latestCursor, readEvents } from "./events.ts";
 
 /** Events per notification. */
 const PAGE = 100;
 
 /** Pages one pump sends before yielding, so a long backlog never blocks the instance. */
 const PAGES_PER_TURN = 10;
+
+/** Bytes one pump sends before yielding. */
+const BYTES_PER_TURN: number = 8 * 1024 * 1024;
 
 /** A connection as subscriptions see it. */
 export interface SubscriberSession {
@@ -37,6 +40,8 @@ interface Subscription {
   readonly name: string | undefined;
   /** Every event up to here was examined and the matching ones sent. */
   cursor: number;
+  /** Whether the pump waits for the connection to drain. */
+  waiting: boolean;
 }
 
 /** Options for {@link Subscriptions}. */
@@ -45,6 +50,8 @@ export interface SubscriptionsOptions {
   readonly log: Log;
   /** Sends a notification on a connection; `false` when the connection is gone. */
   readonly notify: (session: number, method: string, params: EventsNotifyParams) => boolean;
+  /** A promise that settles when the connection can take more, or `undefined` when it can now. */
+  readonly drained: (session: number) => Promise<void> | undefined;
 }
 
 /** The event subscriptions of one instance. */
@@ -83,24 +90,30 @@ export class Subscriptions {
       const latest = latestCursor(db);
       let start: number;
       if (params.after !== undefined) start = Number(params.after);
-      else if (params.name !== undefined) {
-        start =
-          db.get<{ acked_cursor: number }>(
-            "SELECT acked_cursor FROM subscriber WHERE name = ?",
-            params.name,
-          )?.acked_cursor ?? 0;
-      } else start = latest;
+      else {
+        // A known name resumes after its acknowledged cursor; a new one, like an unnamed
+        // subscription, starts now (the history stays readable through events/read).
+        const known =
+          params.name === undefined
+            ? undefined
+            : db.get<{ acked_cursor: number }>(
+                "SELECT acked_cursor FROM subscriber WHERE name = ?",
+                params.name,
+              );
+        start = known?.acked_cursor ?? latest;
+      }
       if (params.name !== undefined) {
         db.run(
-          `INSERT INTO subscriber (name, filter_json, acked_cursor, updated_at) VALUES (?, ?, 0, ?)
+          `INSERT INTO subscriber (name, filter_json, acked_cursor, updated_at) VALUES (?, ?, ?, ?)
            ON CONFLICT (name) DO UPDATE SET filter_json = excluded.filter_json, updated_at = excluded.updated_at`,
           params.name,
           JSON.stringify(params.filter ?? {}),
+          start,
           new Date().toISOString(),
         );
       }
-      // A cursor inside a compacted range is refused now, not after the answer.
-      readEvents(db, { filter: params.filter, after: start, limit: 1 });
+      // A cursor inside a compacted range isn't refused: the subscription delivers the summary
+      // in order, flagged `compacted`, and goes on.
       return start;
     });
     const subscription: Subscription = {
@@ -109,6 +122,7 @@ export class Subscriptions {
       filter: params.filter,
       name: params.name,
       cursor,
+      waiting: false,
     };
     this.#all.set(subscription.id, subscription);
     // The answer goes out first; the backlog follows it.
@@ -166,61 +180,59 @@ export class Subscriptions {
   }
 
   #pump(subscription: Subscription): void {
-    const { ledger, log, notify } = this.#options;
-    for (let page = 0; page < PAGES_PER_TURN; page++) {
+    const { ledger, log, notify, drained } = this.#options;
+    // While the host's connection is full, the pump waits for it to drain (flow control).
+    if (subscription.waiting) return;
+    let bytes = 0;
+    for (let page = 0; page < PAGES_PER_TURN && bytes < BYTES_PER_TURN; page++) {
       if (!this.#all.has(subscription.id)) return;
       let read: ReturnType<typeof readEvents>;
       try {
+        // Through a compacted range, not past it: the summary arrives in cursor order among the
+        // other artifacts' events, flagged `compacted`, and nothing between is skipped (DATA_MODEL §4).
         read = ledger.read((db) =>
-          readEvents(db, { filter: subscription.filter, after: subscription.cursor, limit: PAGE }),
+          readEvents(db, {
+            filter: subscription.filter,
+            after: subscription.cursor,
+            limit: PAGE,
+            acceptCompacted: true,
+          }),
         );
       } catch (error) {
-        if (
-          !(error instanceof RpcError) ||
-          error.diagnostic.code !== "MOSTRA_HOST_CURSOR_COMPACTED"
-        ) {
-          log.error("events.subscription_failed", { subscriptionId: subscription.id, error });
-          this.#all.delete(subscription.id);
-          return;
-        }
-        // Compaction removed events after this subscription's cursor: the host gets the summary
-        // with the diagnostic, never a silent gap, and the subscription continues after it
-        // (DATA_MODEL §4).
-        const summary = ledger.read((db) =>
-          compactionCovering(db, subscription.filter, subscription.cursor),
-        );
-        if (!summary) continue;
-        log.warn("events.subscription_compacted", {
-          subscriptionId: subscription.id,
-          after: subscription.cursor,
-          summary: summary.cursor,
-        });
-        const sent = notify(subscription.session, EVENTS_NOTIFY, {
-          subscriptionId: subscription.id,
-          events: [eventRecord(summary)],
-          cursor: String(summary.cursor),
-          compacted: error.diagnostic,
-        });
-        if (!sent) {
-          this.#all.delete(subscription.id);
-          return;
-        }
-        subscription.cursor = summary.cursor;
-        continue;
+        log.error("events.subscription_failed", { subscriptionId: subscription.id, error });
+        this.#all.delete(subscription.id);
+        return;
       }
       const next = Number(read.cursor);
       if (read.events.length > 0) {
+        if (read.compacted) {
+          log.warn("events.subscription_compacted", {
+            subscriptionId: subscription.id,
+            after: subscription.cursor,
+          });
+        }
         const sent = notify(subscription.session, EVENTS_NOTIFY, {
           subscriptionId: subscription.id,
           events: read.events,
           cursor: read.cursor,
+          ...(read.compacted ? { compacted: read.compacted } : {}),
         });
         if (!sent) {
           this.#all.delete(subscription.id);
           return;
         }
+        bytes += read.events.reduce((sum, event) => sum + JSON.stringify(event).length, 0);
       }
       subscription.cursor = next;
+      const waiting = drained(subscription.session);
+      if (waiting) {
+        subscription.waiting = true;
+        void waiting.then(() => {
+          subscription.waiting = false;
+          this.#pump(subscription);
+        });
+        return;
+      }
       // A page cut short by size (READ_MAX_BYTES) ends before the newest cursor: read on.
       if (read.events.length < PAGE && next >= ledger.read((db) => latestCursor(db))) return;
     }

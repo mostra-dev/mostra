@@ -579,12 +579,16 @@ export interface Results {
     readonly status: string;
     readonly at: string;
   }[];
-  /** Signals raised in this view before the submission. */
+  /** Signals raised in this view before the submission: the newest 100, within 1 MiB of payloads. */
   readonly signals: readonly {
     readonly name: string;
     readonly at: string;
     readonly payload?: unknown;
   }[];
+  /** How many older signals of the view the limit left out; absent when none. */
+  readonly signalsOmitted?: number;
+  /** Set when compaction removed events of this view before it submitted, so signals may be missing. */
+  readonly signalsCompacted?: true;
 }
 
 const RectSchema = z.object({
@@ -705,6 +709,8 @@ export const Results: z.ZodType<Results> = z
         z.object({ name: z.string(), at: z.iso.datetime(), payload: z.unknown().exactOptional() }),
       )
       .readonly(),
+    signalsOmitted: z.int().min(1).exactOptional(),
+    signalsCompacted: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {
     id: "Results",

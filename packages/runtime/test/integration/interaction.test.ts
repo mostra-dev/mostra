@@ -431,9 +431,35 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
       "last-event-id": messages[1]?.id as string,
     });
     expect(resumed[0]?.data).toMatchObject({ type: "signal.raised" });
+    // An EventSource that opened at a cursor reconnects to the same URL with Last-Event-ID: the
+    // newer of the two wins, so nothing repeats (Claude review finding 3).
+    const reconnected = await readStream(ana.browser, `${url}&cursor=${messages[0]?.id}`, 1, {
+      "last-event-id": messages[1]?.id as string,
+    });
+    expect(reconnected[0]?.id).toBe(messages[2]?.id);
+    expect(reconnected[0]?.data).toMatchObject({ type: "signal.raised" });
+    // A large backlog arrives whole and in order through the pull-based stream (finding 6).
+    const before = messages[2]?.id as string;
+    const big = "x".repeat(256 * 1024);
+    for (let index = 0; index < 24; index++) {
+      ok(
+        await gateway.client.call("state/patch", {
+          artifact: { artifactId: receipt.artifactId },
+          mutationId: MutationId.create(),
+          ops: [{ id: `big.${index}`, value: big }],
+        }),
+      );
+    }
+    const backlog = await readStream(ana.browser, `${url}&cursor=${before}`, 24);
+    const ids = backlog.map((message) => Number(message.id));
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(24);
+    expect(
+      backlog.every((message) => (message.data as { type: string }).type === "state.changed"),
+    ).toBe(true);
     // Long-poll on the same cursor (D47).
     const polled = (await ana.poll(messages[1]?.id, 0)).json<{ events: { type: string }[] }>();
-    expect(polled.events.map((event) => event.type)).toEqual(["signal.raised"]);
+    expect(polled.events[0]?.type).toBe("signal.raised");
   });
 });
 
@@ -555,7 +581,7 @@ describe("submissions, wait and results through the protocol (IN-05, IN-07, IN-0
       await gateway.client.call("results/get", { artifact, format: "md" }),
     ).markdown;
     expect(markdown).toContain(`submission ${summary.id}`);
-    expect(markdown).toContain('- Reply to Alice (`reply.m1`): "Thursday works"');
+    expect(markdown).toContain('- "Reply to Alice" (`reply.m1`): "Thursday works"');
     // A second submit from another tab is the typed conflict carrying the first (H-02).
     const tab = await page(receipt.url);
     const again = await tab.submit("1");

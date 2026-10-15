@@ -261,6 +261,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       call: (session, method, params, timeoutMs) =>
         server.callSession(session, method, params as JsonRpcParams, timeoutMs),
       notify: (session, method, params) => server.notify(session, method, params as JsonRpcParams),
+      drained: (session) => server.drained(session),
     },
     // The hosts that always provide the submissions port (D105).
     expectedHosts: () =>

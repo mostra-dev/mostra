@@ -17,6 +17,7 @@ import {
   type Actor,
   type Cursor,
   createDiagnostic,
+  type Diagnostic,
   type EventFilter,
   type EventRecord,
   RpcError,
@@ -180,6 +181,12 @@ export interface ReadOptions {
   readonly limit: number;
   /** At most about this many bytes of events; one event always fits. Default {@link READ_MAX_BYTES}. */
   readonly maxBytes?: number;
+  /**
+   * Read on through a compacted range that holds `after` instead of refusing it: the summary
+   * arrives in cursor order among other artifacts' events, so nothing between is skipped, and the
+   * page that carries it says so (`compacted`).
+   */
+  readonly acceptCompacted?: boolean;
 }
 
 /**
@@ -191,8 +198,10 @@ export interface ReadOptions {
 export function readEvents(
   db: LedgerDb,
   options: ReadOptions,
-): { readonly events: EventRecord[]; readonly cursor: string } {
-  checkCompaction(db, options.filter, options.after);
+): { readonly events: EventRecord[]; readonly cursor: string; readonly compacted?: Diagnostic } {
+  let covering: EventRow | undefined;
+  if (options.acceptCompacted) covering = compactionCovering(db, options.filter, options.after);
+  else checkCompaction(db, options.filter, options.after);
   const upTo = latestCursor(db);
   const { where, params } = filterSql(options.filter);
   const rows = db.all<EventRow>(
@@ -218,7 +227,14 @@ export function readEvents(
   }
   const last = events.at(-1)?.cursor;
   const cursor = full && last !== undefined ? Number(last) : Math.max(upTo, options.after);
-  return { events, cursor: String(cursor) };
+  // The page that carries the summary says that events after `after` were lost.
+  const compacted =
+    covering !== undefined && events.some((event) => Number(event.cursor) === covering.cursor)
+      ? createDiagnostic("MOSTRA_HOST_CURSOR_COMPACTED", {
+          message: `Events after cursor ${options.after} were compacted; the summary at cursor ${covering.cursor} stands in for them.`,
+        })
+      : undefined;
+  return { events, cursor: String(cursor), ...(compacted ? { compacted } : {}) };
 }
 
 /** What compaction left behind: the `artifact.compacted` event's payload (DATA_MODEL §4). */

@@ -180,20 +180,62 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
     orphaned: snapshot.orphaned,
     actions: [],
     signals: snapshot.signals,
+    ...(snapshot.signalsOmitted !== undefined ? { signalsOmitted: snapshot.signalsOmitted } : {}),
+    ...(snapshot.signalsCompacted ? { signalsCompacted: true as const } : {}),
   };
 }
 
-/** A value as one Markdown line, or an indented block for text with line breaks. */
+/**
+ * Text from viewers and hosts is data in the Markdown, never structure (Claude review finding 4):
+ * labels and string values are JSON strings, identifiers and JSON are code spans whose delimiters
+ * outrun any backticks inside, multi-line text sits in a fence longer than any backtick run in it,
+ * and everything else is folded onto one line.
+ */
+const LINE_BREAKS = /\r\n|\r|\n|\u2028|\u2029/;
+
+/** Control characters and line separators as spaces: the text stays on its line. */
+function oneLine(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point.
+  return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
+}
+
+/** The longest run of backticks in `text`. */
+function longestBacktickRun(text: string): number {
+  let longest = 0;
+  for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
+  return longest;
+}
+
+/** `text` as an inline code span that nothing inside can close. */
+export function code(text: string): string {
+  const line = oneLine(text);
+  const ticks = "`".repeat(longestBacktickRun(line) + 1);
+  const pad = line.startsWith("`") || line.endsWith("`") || line.trim() === "" ? " " : "";
+  return `${ticks}${pad}${line}${pad}${ticks}`;
+}
+
+/** `text` as a JSON string: quoted, with its line breaks and controls escaped. */
+function quoted(text: string): string {
+  return oneLine(JSON.stringify(text));
+}
+
+/** A value as one Markdown line, or a fenced block for text with line breaks. */
 function markdownValue(value: unknown): string {
   if (typeof value === "string") {
-    if (!value.includes("\n")) return JSON.stringify(value);
-    const fence = value.includes("```") ? "````" : "```";
-    return `\n\n  ${fence}text\n${value
-      .split("\n")
+    if (!LINE_BREAKS.test(value)) return quoted(value);
+    const fence = "`".repeat(Math.max(3, longestBacktickRun(value) + 1));
+    const body = value
+      .split(LINE_BREAKS)
       .map((line) => `  ${line}`)
-      .join("\n")}\n  ${fence}\n`;
+      .join("\n");
+    return `\n\n  ${fence}text\n${body}\n  ${fence}\n`;
   }
-  return `\`${JSON.stringify(value)}\``;
+  return code(JSON.stringify(value));
+}
+
+/** A field's name: its label as a JSON string, then its ID as code. */
+function fieldName(id: string, label: string | undefined): string {
+  return label !== undefined ? `${quoted(label)} (${code(id)})` : code(id);
 }
 
 function fieldLines(fields: Readonly<Record<string, SnapshotField>>): string[] {
@@ -201,8 +243,7 @@ function fieldLines(fields: Readonly<Record<string, SnapshotField>>): string[] {
   if (ids.length === 0) return ["- (none)"];
   return ids.map((id) => {
     const field = fields[id] as SnapshotField;
-    const name = field.label !== undefined ? `${field.label} (\`${id}\`)` : `\`${id}\``;
-    return `- ${name}: ${markdownValue(field.value)}`;
+    return `- ${fieldName(id, field.label)}: ${markdownValue(field.value)}`;
   });
 }
 
@@ -210,23 +251,30 @@ function fieldLines(fields: Readonly<Record<string, SnapshotField>>): string[] {
  * Results as Markdown for agents (ROUND-2 §1.1): a header with the IDs, then answers by label,
  * the artifact state, choices, comments with their crop paths, actions, signals, and what didn't
  * carry over. Every section is present, with "(none)" when empty, so an agent never wonders
- * whether a section was dropped.
+ * whether a section was dropped. Viewers' and hosts' text is rendered as data, so no answer,
+ * label or reason can forge a section.
  */
 export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
   const { submission } = results;
   const viewer = submission.viewer.name ?? submission.viewer.ref ?? submission.viewer.id;
+  const signalNotes = [
+    ...(results.signalsOmitted !== undefined
+      ? [`- (${results.signalsOmitted} older signals of this view left out)`]
+      : []),
+    ...(results.signalsCompacted ? ["- (some signals may have been removed by compaction)"] : []),
+  ];
   const lines = [
-    `# ${results.artifact.title}: submission ${submission.id}`,
+    `# ${oneLine(results.artifact.title)}: submission ${submission.id}`,
     "",
-    `- Artifact: ${results.artifact.id}${results.artifact.family ? ` (${results.artifact.family})` : ""}`,
+    `- Artifact: ${results.artifact.id}${results.artifact.family ? ` (${code(results.artifact.family)})` : ""}`,
     `- Version: ${submission.versionId} (version ${submission.version})${submission.staleView ? `, a stale view: version ${submission.latestVersion ?? "?"} was the latest` : ""}`,
-    `- View: ${submission.viewId}, channel ${submission.channel}, viewer ${viewer} (${submission.viewer.id})`,
+    `- View: ${submission.viewId}, channel ${submission.channel}, viewer ${quoted(viewer)} (${submission.viewer.id})`,
     `- Submitted: ${submission.at}, epoch ${submission.epoch}${submission.previous ? ` (after ${submission.previous})` : ""}, policy ${submission.policy.policy}${submission.policy.policy === "once" ? ` ${submission.policy.scope ?? "per-artifact"}` : ""}`,
     `- Draft revision ${submission.draftRevision}${submission.stateRevision !== undefined ? `, artifact state revision ${submission.stateRevision}` : ""}, digest ${submission.digest}`,
-    `- Delivery: ${submission.delivery}${submission.deliveries.length > 0 ? ` (${submission.deliveries.map((delivery) => `${delivery.owner === "" ? "built-in" : delivery.owner}: ${delivery.state}${delivery.reason ? `, ${delivery.reason}` : ""}`).join("; ")})` : ""}`,
+    `- Delivery: ${submission.delivery}${submission.deliveries.length > 0 ? ` (${submission.deliveries.map((delivery) => `${delivery.owner === "" ? "built-in" : quoted(delivery.owner)}: ${delivery.state}${delivery.reason ? `, ${quoted(delivery.reason)}` : ""}`).join("; ")})` : ""}`,
     ...(results.artifact.links.length > 0
       ? [
-          `- Links: ${results.artifact.links.map((link) => `${link.rel} ${link.artifact}`).join(", ")}`,
+          `- Links: ${results.artifact.links.map((link) => `${code(link.rel)} ${code(link.artifact)}`).join(", ")}`,
         ]
       : []),
     "",
@@ -240,17 +288,17 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
     ...(results.choices.length > 0
       ? results.choices.map(
           (choice) =>
-            `- ${choice.reviewSetId}: ${choice.candidateId}${choice.label ? ` (${choice.label})` : ""}`,
+            `- ${code(choice.reviewSetId)}: ${quoted(choice.candidateId)}${choice.label ? ` (${quoted(choice.label)})` : ""}`,
         )
       : ["- (none)"]),
     "",
     "## Comments",
     ...(results.comments.length > 0
       ? results.comments.flatMap((comment) => [
-          `- Thread ${comment.threadId} (${comment.status}), crop ${comment.crop.path}${comment.anchor.reviewId ? `, on \`${comment.anchor.reviewId}\`` : ""}${comment.anchor.page ? `, page ${comment.anchor.page}` : ""}`,
+          `- Thread ${comment.threadId} (${comment.status}), crop ${code(comment.crop.path)}${comment.anchor.reviewId ? `, on ${code(comment.anchor.reviewId)}` : ""}${comment.anchor.page ? `, page ${code(comment.anchor.page)}` : ""}`,
           ...comment.messages.map(
             (message) =>
-              `  - ${message.author.name ?? message.author.id} at ${message.at}: ${JSON.stringify(message.text)}`,
+              `  - ${quoted(message.author.name ?? message.author.id)} at ${message.at}: ${quoted(message.text)}`,
           ),
         ])
       : ["- (none)"]),
@@ -258,23 +306,26 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
     "## Actions run in this view",
     ...(results.actions.length > 0
       ? results.actions.map(
-          (run) => `- ${run.action}: ${run.status} at ${run.at} (run ${run.runId})`,
+          (run) => `- ${code(run.action)}: ${run.status} at ${run.at} (run ${run.runId})`,
         )
       : ["- (none)"]),
     "",
     "## Signals raised in this view",
-    ...(results.signals.length > 0
-      ? results.signals.map(
-          (signal) =>
-            `- ${signal.name} at ${signal.at}${signal.payload !== undefined ? `: \`${JSON.stringify(signal.payload)}\`` : ""}`,
-        )
+    ...(results.signals.length > 0 || signalNotes.length > 0
+      ? [
+          ...signalNotes,
+          ...results.signals.map(
+            (signal) =>
+              `- ${code(signal.name)} at ${signal.at}${signal.payload !== undefined ? `: ${code(JSON.stringify(signal.payload))}` : ""}`,
+          ),
+        ]
       : ["- (none)"]),
     "",
     "## Not carried over from an earlier version",
     ...(results.orphaned.length > 0
       ? results.orphaned.map(
           (orphan) =>
-            `- ${orphan.label !== undefined ? `${orphan.label} (\`${orphan.id}\`)` : `\`${orphan.id}\``} from version ${orphan.fromVersion}: ${markdownValue(orphan.value)}`,
+            `- ${fieldName(orphan.id, orphan.label)} from version ${orphan.fromVersion}: ${markdownValue(orphan.value)}`,
         )
       : ["- (none)"]),
     "",

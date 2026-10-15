@@ -672,6 +672,7 @@ export const eventsReadMethod: MethodDefinition<EventsReadParams, EventsReadResu
 
 // @public
 export interface EventsReadParams {
+    readonly acceptCompacted?: boolean;
     readonly after?: string;
     readonly filter?: EventFilter;
     readonly limit?: number;
@@ -679,6 +680,7 @@ export interface EventsReadParams {
 
 // @public
 export interface EventsReadResult {
+    readonly compacted?: Diagnostic;
     readonly cursor: string;
     readonly events: readonly EventRecord[];
 }
@@ -825,7 +827,7 @@ export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
-export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED"];
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED", "MOSTRA_HOST_MESSAGE_TOO_LARGE"];
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -991,6 +993,9 @@ export type ManifestDiagnosticCode = (typeof manifestDiagnosticCodes)[number];
 
 // @public
 export const manifestDiagnosticCodes: readonly ["MOSTRA_MANIFEST_NOT_LITERAL", "MOSTRA_MANIFEST_INVALID", "MOSTRA_MANIFEST_UNKNOWN_KEY"];
+
+// @public
+export const MAX_LINE_LENGTH: number;
 
 // @public
 export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26";
@@ -1228,6 +1233,8 @@ export interface Results {
         readonly at: string;
         readonly payload?: unknown;
     }[];
+    readonly signalsCompacted?: true;
+    readonly signalsOmitted?: number;
     readonly state?: Readonly<Record<string, unknown>>;
     readonly submission: {
         readonly id: string;

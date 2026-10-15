@@ -22,6 +22,7 @@ import {
   eventsUnsubscribeMethod,
   type FieldOp,
   type FieldScope,
+  type FieldState,
   type MutationResult,
   resultsGetMethod,
   type StreamSnapshot,
@@ -73,6 +74,8 @@ export interface InteractionOptions {
   readonly hosts: HostConnections & {
     /** Sends a notification on a connection; `false` when it is gone. */
     notify(session: number, method: string, params: unknown): boolean;
+    /** Settles when a full connection drained; `undefined` when it can take more now. */
+    drained(session: number): Promise<void> | undefined;
   };
   /** The hosts that always provide the submissions port (`HomeConfig.ports`, D105). */
   readonly expectedHosts: () => readonly string[];
@@ -85,6 +88,8 @@ export interface InteractionOptions {
 export interface PageIdentity {
   readonly artifactId: string;
   readonly viewerId: string;
+  /** The link the page's session came from: a page names only views its own link opened. */
+  readonly tokenId?: string;
 }
 
 /** The interaction core of one instance. */
@@ -165,6 +170,44 @@ function visibleTo(event: EventRecord, viewerId: string): boolean {
   return true;
 }
 
+/**
+ * Another viewer as a page sees them: kind and display name, never their viewer or view IDs
+ * (D104; Claude review finding 12). The name stays, so a conflict can say who changed a field.
+ */
+function actorForPage(actor: Actor, viewerId: string): Actor {
+  if (actor.kind !== "viewer" || actor.id === viewerId) return actor;
+  return { kind: "viewer", ...(actor.name !== undefined ? { name: actor.name } : {}) };
+}
+
+/** An event as a page sees it: other viewers' identities left out. */
+function eventForPage(event: EventRecord, viewerId: string): EventRecord {
+  const own = event.actor.kind !== "viewer" || event.actor.id === viewerId;
+  if (own) return event;
+  const { viewerId: _viewer, viewId: _view, ...payload } = event.payload as Record<string, unknown>;
+  const causation = event.causation
+    ? Object.fromEntries(Object.entries(event.causation).filter(([key]) => key !== "viewId"))
+    : undefined;
+  return {
+    ...event,
+    actor: actorForPage(event.actor, viewerId),
+    ...(causation ? { causation } : {}),
+    payload,
+  };
+}
+
+/** Fields as a page sees them: who last wrote each, without another viewer's ID. */
+function fieldsForPage(
+  fields: Record<string, FieldState>,
+  viewerId: string,
+): Record<string, FieldState> {
+  return Object.fromEntries(
+    Object.entries(fields).map(([id, field]) => [
+      id,
+      field.updatedBy ? { ...field, updatedBy: actorForPage(field.updatedBy, viewerId) } : field,
+    ]),
+  );
+}
+
 /** Creates the interaction core. */
 export function createInteraction(options: InteractionOptions): Interaction {
   const { ledger, log, hosts } = options;
@@ -180,6 +223,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     ledger,
     log,
     notify: (session, method, params) => hosts.notify(session, method, params),
+    drained: (session) => hosts.drained(session),
   });
 
   const pageActor = (page: PageIdentity): Actor => {
@@ -233,7 +277,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     mutate(page, input) {
       const actor = pageActor(page);
       const outcome = ledger.write((db) => {
-        viewFor(db, input.viewId, page.artifactId, page.viewerId);
+        viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
         const mutation = {
           artifactId: page.artifactId,
           scope: input.scope,
@@ -251,9 +295,17 @@ export function createInteraction(options: InteractionOptions): Interaction {
         if (input.scope === "viewer") assertDraftOpen(db, page.artifactId, page.viewerId);
         return applyMutation(db, mutation);
       });
+      const result = {
+        ...outcome.result,
+        conflicts: outcome.result.conflicts.map((conflict) =>
+          conflict.updatedBy
+            ? { ...conflict, updatedBy: actorForPage(conflict.updatedBy, page.viewerId) }
+            : conflict,
+        ),
+      };
       if (outcome.changed && input.scope === "viewer")
         outbox.mirror(page.artifactId, page.viewerId);
-      return outcome.result;
+      return result;
     },
     submit(page, input) {
       const owners = outbox.owners();
@@ -261,6 +313,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         submit(db, {
           artifactId: page.artifactId,
           viewerId: page.viewerId,
+          ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
           viewId: input.viewId,
           expectedRevision: input.expectedRevision,
           channel: input.channel,
@@ -279,7 +332,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     signal(page, input) {
       const actor = pageActor(page);
       return ledger.write((db) => {
-        viewFor(db, input.viewId, page.artifactId, page.viewerId);
+        viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
         return raiseSignal(db, {
           artifactId: page.artifactId,
           name: input.name,
@@ -291,7 +344,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       });
     },
     checkView(page, viewId) {
-      ledger.read((db) => viewFor(db, viewId, page.artifactId, page.viewerId));
+      ledger.read((db) => viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId));
     },
     pageSnapshot(page) {
       return ledger.read((db) => {
@@ -307,7 +360,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
           cursor: String(latestCursor(db)),
           viewer: viewer(db, page.viewerId),
           draft: documentSnapshot(db, page.artifactId, page.viewerId),
-          state: documentSnapshot(db, page.artifactId, null),
+          state: (() => {
+            const state = documentSnapshot(db, page.artifactId, null);
+            return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
+          })(),
           ...(latestOwn ? { submission: submissionSummary(db, latestOwn) } : {}),
         };
       });
@@ -327,7 +383,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           for (const event of read.events) {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
-            if (visibleTo(event, page.viewerId)) events.push(event);
+            if (visibleTo(event, page.viewerId)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));
           if (read.events.length < limit || events.length === limit) {
@@ -396,6 +452,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
             filter: params.filter as EventFilter | undefined,
             after: params.after === undefined ? 0 : Number(params.after),
             limit: params.limit ?? 100,
+            ...(params.acceptCompacted ? { acceptCompacted: true } : {}),
           }),
         ),
       ),

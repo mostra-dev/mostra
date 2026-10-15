@@ -10,6 +10,7 @@
 import {
   type DeliveryState,
   type DraftMirror,
+  MAX_LINE_LENGTH,
   portDraftsMirrorMethod,
   portSubmissionsDeliverMethod,
   type SubmissionEnvelope,
@@ -25,6 +26,9 @@ import { BUILT_IN_OWNER, type SubmissionRow } from "./submissions.ts";
 
 /** How long a host has to answer one port call (FAILURE_MODEL §9). */
 export const PORT_CALL_TIMEOUT_MS = 30_000;
+
+/** Room for the JSON-RPC request around an envelope (`jsonrpc`, `id`, `method`, newline). */
+const ENVELOPE_FRAME_SLACK = 1024;
 
 /** The first retry's delay; each later one doubles, up to {@link MAX_BACKOFF_MS}. */
 export const FIRST_BACKOFF_MS = 1_000;
@@ -255,6 +259,21 @@ export class Outbox {
       return envelope;
     });
     let outcome: Outcome;
+    // An envelope no host could read would be retried forever and hold back every later delivery
+    // to this host: it is undeliverable, with the reason, and never sent (Claude review finding 2).
+    const length = JSON.stringify(envelope).length + ENVELOPE_FRAME_SLACK;
+    if (length > MAX_LINE_LENGTH) {
+      log.error("outbox.too_large", { owner, deliveryId: head.id, length });
+      this.#record(
+        { ...head, attempts: attempt },
+        {
+          kind: "terminal",
+          state: "undeliverable",
+          reason: `too-large: the submission's envelope is ${length} characters; one protocol message carries ${MAX_LINE_LENGTH}`,
+        },
+      );
+      return true;
+    }
     try {
       const answer = await hosts.call(
         registrant.session,

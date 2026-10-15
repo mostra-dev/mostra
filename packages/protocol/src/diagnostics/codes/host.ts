@@ -19,6 +19,7 @@ export const hostDiagnosticCodes = [
   "MOSTRA_HOST_CURSOR_COMPACTED",
   "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN",
   "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED",
+  "MOSTRA_HOST_MESSAGE_TOO_LARGE",
   // gen:codes
 ] as const;
 
@@ -179,6 +180,17 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       explanation:
         "Mostra sends a client only the notifications it listed in `mostra/initialize` (D84). This method would send one the client didn't list, such as `events/notify` for `events/subscribe`.",
       fix: 'Reconnect and initialize with `capabilities: { notifications: ["events/notify"] }`, or poll with `events/read` instead.',
+    },
+  },
+  MOSTRA_HOST_MESSAGE_TOO_LARGE: {
+    severity: "error",
+    phase: "host",
+    title: "Message too large for the protocol",
+    hint: "Ask for less at once: a specific submission, fewer events, or smaller values.",
+    docs: {
+      explanation:
+        "One host-protocol message is one line of JSON, and a line holds at most 64 Mi characters (`MAX_LINE_LENGTH`), so neither side buffers without bound. Mostra checks every message before it writes it: an answer that would be longer is replaced by this error, and a delivery whose envelope would be longer is recorded as undeliverable instead of being sent and retried forever.",
+      fix: "Read less per request (`events/read` with a smaller `limit`, `results/get` for one submission), and keep artifacts' values within the field and document limits.",
     },
   },
   // gen:entries

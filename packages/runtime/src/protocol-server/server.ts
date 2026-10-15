@@ -97,6 +97,7 @@ export interface ProtocolServerOptions {
 interface Connection {
   readonly session: MutableSession;
   readonly peer: RpcPeer;
+  readonly output: Writable;
   close(): void;
 }
 
@@ -163,6 +164,7 @@ export class ProtocolServer {
     const connection: Connection = {
       session,
       peer,
+      output,
       close: () => {
         peer.close();
         output.end();
@@ -310,6 +312,27 @@ export class ProtocolServer {
       );
     }
     return connection.peer.request(method, params, { timeoutMs });
+  }
+
+  /**
+   * When a connection's output is full (its client reads slower than the instance writes), a
+   * promise that settles once it drained or closed; `undefined` when it can take more now. Senders
+   * of long streams of notifications wait on it, so a slow client never makes the instance buffer
+   * without bound.
+   */
+  drained(session: number): Promise<void> | undefined {
+    const connection = [...this.#connections].find((entry) => entry.session.id === session);
+    const output = connection?.output;
+    if (!output?.writableNeedDrain) return undefined;
+    return new Promise((resolve) => {
+      const done = (): void => {
+        output.off("drain", done);
+        output.off("close", done);
+        resolve();
+      };
+      output.once("drain", done);
+      output.once("close", done);
+    });
   }
 
   /**

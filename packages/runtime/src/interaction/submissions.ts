@@ -27,6 +27,18 @@ import { storedPolicy } from "./policy.ts";
 import { raiseSubmitSignal, SUBMIT_SIGNAL } from "./signals.ts";
 import { viewer as viewerById, viewFor } from "./viewers.ts";
 
+/** The most signals a snapshot keeps: the view's newest. */
+export const SNAPSHOT_SIGNALS_MAX = 100;
+
+/** The most signal payload text a snapshot keeps. */
+export const SNAPSHOT_SIGNAL_BYTES_MAX: number = 1024 * 1024;
+
+/**
+ * The longest snapshot, in characters: the two 16 MiB documents, labels and signals fit, and the
+ * results built from it stay well inside one 64 Mi-character protocol message.
+ */
+export const SNAPSHOT_MAX_LENGTH: number = 40 * 1024 * 1024;
+
 /**
  * The owner of the built-in adapter's deliveries, which accepts at once (D58, D105): empty, since
  * a client name never is, so no host can be taken for it.
@@ -73,6 +85,8 @@ export interface Snapshot {
     readonly at: string;
     readonly payload?: unknown;
   }[];
+  readonly signalsOmitted?: number;
+  readonly signalsCompacted?: true;
 }
 
 /** A `submission` row. */
@@ -226,6 +240,8 @@ export interface SubmitInput {
   readonly artifactId: string;
   /** The viewer whose session submits. */
   readonly viewerId: string;
+  /** The link the page's session came from: the view must be one it opened. */
+  readonly tokenId?: string;
   /** The view the page was opened as; its version is what the submission names (D104). */
   readonly viewId: string;
   /** The draft revision the viewer saw. */
@@ -250,7 +266,7 @@ export interface SubmitOutcome {
  */
 export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   // 1. The view, and through it the exact version the viewer saw.
-  const view = viewFor(db, input.viewId, input.artifactId, input.viewerId);
+  const view = viewFor(db, input.viewId, input.artifactId, input.viewerId, input.tokenId);
   const draft = documentFor(db, input.artifactId, input.viewerId, true);
   // A repeat of the same submit (double click, retry, a second request in flight) gets the
   // submission it made (D22), whatever has happened since.
@@ -345,21 +361,43 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   const submissionId = SubmissionId.create();
   const at = new Date().toISOString();
   const viewerRecord = viewerById(db, input.viewerId);
-  const signals = db
-    .all<{ at: string; payload_json: string }>(
-      "SELECT at, payload_json FROM event WHERE artifact_id = ? AND type = 'signal.raised' AND json_extract(payload_json, '$.viewId') = ? AND json_extract(payload_json, '$.name') != ? ORDER BY cursor",
+  // The view's signals, newest first up to the limits, so a snapshot stays bounded however many
+  // a page raised (Claude review finding 2); the count left out is recorded.
+  const signalRows = db.all<{ at: string; payload_json: string }>(
+    "SELECT at, payload_json FROM event WHERE artifact_id = ? AND type = 'signal.raised' AND json_extract(payload_json, '$.viewId') = ? AND json_extract(payload_json, '$.name') != ? ORDER BY cursor DESC LIMIT ?",
+    input.artifactId,
+    view.id,
+    SUBMIT_SIGNAL,
+    SNAPSHOT_SIGNALS_MAX,
+  );
+  const signals: { name: string; at: string; payload?: unknown }[] = [];
+  let signalBytes = 0;
+  for (const row of signalRows) {
+    signalBytes += row.payload_json.length;
+    if (signalBytes > SNAPSHOT_SIGNAL_BYTES_MAX) break;
+    const payload = JSON.parse(row.payload_json) as { name: string; payload?: unknown };
+    signals.unshift({
+      name: payload.name,
+      at: row.at,
+      ...(payload.payload !== undefined ? { payload: payload.payload } : {}),
+    });
+  }
+  const signalCount =
+    db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM event WHERE artifact_id = ? AND type = 'signal.raised' AND json_extract(payload_json, '$.viewId') = ? AND json_extract(payload_json, '$.name') != ?",
       input.artifactId,
       view.id,
       SUBMIT_SIGNAL,
-    )
-    .map((row) => {
-      const payload = JSON.parse(row.payload_json) as { name: string; payload?: unknown };
-      return {
-        name: payload.name,
-        at: row.at,
-        ...(payload.payload !== undefined ? { payload: payload.payload } : {}),
-      };
-    });
+    )?.n ?? 0;
+  const signalsOmitted = signalCount - signals.length;
+  // Compaction may have removed some of the view's signals; the snapshot says so (finding 10).
+  const signalsCompacted =
+    view.opened_cursor !== null &&
+    db.get(
+      "SELECT 1 FROM event WHERE artifact_id = ? AND type = 'artifact.compacted' AND cursor >= ? AND json_extract(payload_json, '$.types.\"signal.raised\"') > 0",
+      input.artifactId,
+      view.opened_cursor,
+    ) !== undefined;
   const snapshot: Snapshot = {
     schema: 1,
     submissionId,
@@ -391,10 +429,20 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
         fromVersion: row.orphaned_from_version as number,
       })),
     signals,
+    ...(signalsOmitted > 0 ? { signalsOmitted } : {}),
+    ...(signalsCompacted ? { signalsCompacted: true as const } : {}),
   };
 
-  // 5. The digest of the canonical snapshot.
+  // 5. The digest of the canonical snapshot, which must fit one protocol message with room to
+  // spare, or no host could ever receive it.
   const snapshotJson = canonicalJson(snapshot);
+  if (snapshotJson.length > SNAPSHOT_MAX_LENGTH) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_FIELD_TOO_LARGE", {
+        message: `This submission would be ${snapshotJson.length} characters, more than a submission may hold (${SNAPSHOT_MAX_LENGTH}).`,
+      }),
+    );
+  }
   const digest = createHash("sha256").update(snapshotJson, "utf8").digest("hex");
 
   // 8 (first, for its cursor). `submission.created`; its cursor is the submission's position,

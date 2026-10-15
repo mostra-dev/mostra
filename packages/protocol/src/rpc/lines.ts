@@ -4,6 +4,12 @@
  */
 import type { JsonRpcMessage } from "./messages.ts";
 
+/**
+ * The longest line, in UTF-16 code units, either side of a newline-delimited connection accepts:
+ * 64 Mi. Writers check it too, so a message that couldn't be read is never sent.
+ */
+export const MAX_LINE_LENGTH: number = 64 * 1024 * 1024;
+
 /** Serializes one message as a line, newline included. */
 export function encodeLine(message: JsonRpcMessage): string {
   return `${JSON.stringify(message)}\n`;
@@ -20,7 +26,7 @@ export class LineSplitter {
   #buffer = "";
 
   /** @param maxLineLength - The longest line accepted, in UTF-16 code units. Default 64 Mi. */
-  constructor(maxLineLength: number = 64 * 1024 * 1024) {
+  constructor(maxLineLength: number = MAX_LINE_LENGTH) {
     this.#maxLineLength = maxLineLength;
   }
 

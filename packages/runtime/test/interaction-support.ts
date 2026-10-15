@@ -136,6 +136,13 @@ export class FakeHosts {
     return this.answer(call);
   }
 
+  /** Set by a test to hold the connection "full" until it settles. */
+  full: Promise<void> | undefined;
+
+  drained(): Promise<void> | undefined {
+    return this.full;
+  }
+
   notify(session: number, method: string, params: unknown): boolean {
     this.notifications.push({ session, method, params });
     return true;
