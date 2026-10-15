@@ -297,8 +297,8 @@ describe("migration 6 (D108, D109, D63)", () => {
         now,
       );
       for (const [view, version] of [
-        ["vw_01J00000000000000000000001", versions[0]],
-        ["vw_01J00000000000000000000002", versions[1]],
+        ["vw_01J00000000000000000000001", versions[0] as string],
+        ["vw_01J00000000000000000000002", versions[1] as string],
       ]) {
         db.run(
           "INSERT INTO view (id, artifact_id, version_id, viewer_id, opened_at) VALUES (?, ?, ?, 'vwr_01J00000000000000000000000', ?)",
