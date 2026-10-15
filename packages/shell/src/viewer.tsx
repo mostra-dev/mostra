@@ -189,6 +189,8 @@ function Frame(props: {
   readonly ticket: FrameTicket;
   readonly handlers: FrameHandlers;
   readonly onBridge: (bridge: Bridge | undefined) => void;
+  /** Whether the frame this one replaces had the focus: the viewer keeps working in it. */
+  readonly focus: boolean;
 }): ReactElement {
   const frameElement = useRef<HTMLIFrameElement>(null);
   const handlersRef = useLatest(props.handlers);
@@ -255,12 +257,24 @@ function Frame(props: {
     <iframe
       ref={frameElement}
       className="mostra-frame"
+      data-mostra-view={ticket.viewId}
       src={ticket.src}
       title={props.title}
+      onLoad={props.focus ? (event) => event.currentTarget.focus() : undefined}
       allow={FRAME_ALLOW}
       sandbox={frameSandbox()}
     />
   );
+}
+
+/**
+ * Whether the artifact's frame has the focus. A frame replaced while it had it gives the focus to
+ * its successor once that loads; otherwise the focus would fall to the shell's page, where Firefox
+ * keeps sending keys until the viewer clicks twice.
+ */
+function frameHasFocus(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLIFrameElement && active.classList.contains("mostra-frame");
 }
 
 /** Copies a value as text. */
@@ -372,6 +386,7 @@ export function ViewerPage(props: {
 }): ReactElement {
   const { target, session } = props;
   const [ticket, setTicket] = useState(props.ticket);
+  const [focusFrame, setFocusFrame] = useState(false);
   const [state, setState] = useState<ViewState>(() => initialState(props.ticket));
   const [follow, setFollowing] = useState(props.ticket.follow);
   const [later, setLater] = useState<number | undefined>();
@@ -481,6 +496,7 @@ export function ViewerPage(props: {
         }
         const next = await frameTicket(target.apiBase, session.csrf);
         mark("", { shellSwitch: `to-${String(next.version.number)}` });
+        setFocusFrame(frameHasFocus());
         setTicket(next);
         setLater(undefined);
         setNewOrphans(undefined);
@@ -582,7 +598,10 @@ export function ViewerPage(props: {
         return;
       }
       void frameTicket(target.apiBase, session.csrf, ticket.version.number)
-        .then((next) => setTicket(next))
+        .then((next) => {
+          setFocusFrame(frameHasFocus());
+          setTicket(next);
+        })
         .catch(() => setProblem(BANNER_WORDS.movedByOtherTab));
     },
   };
@@ -773,7 +792,12 @@ export function ViewerPage(props: {
         </div>
       )}
       <main className="mostra-stage">
+        {/* One frame element per view: a switch or a re-entry loads a new browsing context instead
+            of navigating the old one, so it adds no entry to the tab's history (Back never takes
+            the frame to a spent ticket) and nothing of the old page lingers. */}
         <Frame
+          key={ticket.viewId}
+          focus={focusFrame}
           title={session.artifact.title}
           ticket={ticket}
           handlers={handlers}

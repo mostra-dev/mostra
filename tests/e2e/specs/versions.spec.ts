@@ -77,9 +77,13 @@ test.describe("a newer version in an open view (VR-04)", () => {
       // Not following: the view stays on its version until the viewer switches.
       await page.waitForTimeout(1_500);
       await expect(pageVersion(page)).toHaveText("1");
+      const history = await page.evaluate(() => history.length);
       await page.locator("[data-mostra-switch]").click();
       await expect(pageVersion(page)).toHaveText("2", { timeout: 15_000 });
       await expect(page.locator("[data-mostra-banner]")).toHaveCount(0);
+      // The switch is a new frame, not a navigation of the old one: it adds nothing to the tab's
+      // history, so Back never takes the frame to a spent ticket.
+      expect(await page.evaluate(() => history.length)).toBe(history);
       // The answer carried over by its field ID.
       await expect(page.frameLocator("iframe.mostra-frame").getByTestId("name")).toHaveValue("Ana");
     } finally {
@@ -178,6 +182,9 @@ test.describe("always follow this artifact (LL-03)", () => {
       await expect(page.frameLocator("iframe.mostra-frame").getByTestId("color")).toHaveValue(
         "blue",
       );
+      // The viewer was typing in the frame the switch replaced: its successor has the focus, so
+      // the next keys land in the artifact, not on the shell's page.
+      await expect(page.locator("iframe.mostra-frame")).toBeFocused();
       // A version that would orphan an answer waits for the viewer, with the banner's count.
       await page.frameLocator("iframe.mostra-frame").getByTestId("notes").fill("only in 4");
       await saved(page);
