@@ -692,6 +692,16 @@ describe("delivery to a host's submissions port (IN-12, IN-06, H-04)", () => {
   });
 
   it("resumes a named subscription after a restart from its acknowledged cursor, without gaps", async () => {
+    // Enough events of its own, whatever ran before it.
+    for (let index = 0; index < 6; index++) {
+      ok(
+        await gateway.client.call("state/patch", {
+          artifact: { artifactId: receipt.artifactId },
+          mutationId: MutationId.create(),
+          ops: [{ id: "counter", value: index }],
+        }),
+      );
+    }
     const host = await Host.connect(gateway, "events-host", { notifications: ["events/notify"] });
     const sub = ok<{ subscriptionId: string; cursor: string }>(
       await host.client.call("events/subscribe", {
