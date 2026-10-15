@@ -54,15 +54,9 @@ import { Subscriptions } from "./subscriptions.ts";
 import { localViewerId, openView, viewer, viewerForSpec, viewFor } from "./viewers.ts";
 import { waitFor } from "./wait.ts";
 
-export {
-  appendEvent,
-  COMPACTED,
-  compactEvents,
-  type EventActor,
-  type NewEvent,
-} from "./events.ts";
+export { appendEvent } from "./events.ts";
 export type { HostConnections } from "./outbox.ts";
-export { DEFAULT_POLICY, policyInForce } from "./policy.ts";
+export { policyInForce } from "./policy.ts";
 export { SubmitConflict } from "./submissions.ts";
 
 /** How the interaction core finds an artifact a host names. */

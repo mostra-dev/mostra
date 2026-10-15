@@ -102,25 +102,6 @@ export function latestCursor(db: LedgerDb): number {
 /** The type of the event compaction leaves behind (DATA_MODEL §4). */
 export const COMPACTED = "artifact.compacted";
 
-/** Whether `type` matches `pattern`: the same type, or a `family.*` prefix. */
-export function typeMatches(pattern: string, type: string): boolean {
-  return pattern.endsWith(".*") ? type.startsWith(pattern.slice(0, -1)) : pattern === type;
-}
-
-/** Whether an event passes a filter; `artifact.compacted` passes whatever its types say. */
-export function eventMatches(
-  filter: EventFilter | undefined,
-  event: { readonly artifactId: string | null; readonly type: string },
-): boolean {
-  if (
-    filter?.artifacts &&
-    (event.artifactId === null || !filter.artifacts.includes(event.artifactId))
-  )
-    return false;
-  if (!filter?.types || event.type === COMPACTED) return true;
-  return filter.types.some((pattern) => typeMatches(pattern, event.type));
-}
-
 /** The SQL condition and parameters of a filter, applied before any row is parsed. */
 function filterSql(filter: EventFilter | undefined): {
   where: string;

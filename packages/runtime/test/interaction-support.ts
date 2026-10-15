@@ -3,7 +3,7 @@
  * versions and views, and a fake host connection set that records port calls.
  */
 import { join } from "node:path";
-import { canonicalJson, type FieldOp, MutationId, VersionId } from "@mostra/protocol";
+import { type FieldOp, MutationId, VersionId } from "@mostra/protocol";
 import { appendEvent } from "../src/interaction/events.ts";
 import { localViewerId, openView } from "../src/interaction/viewers.ts";
 import { type Ledger, type LedgerDb, openLedger } from "../src/ledger/index.ts";
@@ -109,9 +109,6 @@ export const set = (id: string, value: unknown, extra: Partial<FieldOp> = {}): F
 
 /** A new mutation ID. */
 export const mutationId = (): string => MutationId.create();
-
-/** Canonical JSON, for comparisons. */
-export const canonical = canonicalJson;
 
 /** A port call a fake host received. */
 export interface PortCall {

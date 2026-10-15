@@ -394,7 +394,6 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
 
   it("streams a page's snapshot and then its events, resumes from Last-Event-ID, and never shows another viewer's draft", async () => {
     const ana = await page(
-      gateway,
       ok<{ url: string }>(
         await gateway.client.call("view/url", {
           artifact: { artifactId: receipt.artifactId },
@@ -403,7 +402,6 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
       ).url,
     );
     const ben = await page(
-      gateway,
       ok<{ url: string }>(
         await gateway.client.call("view/url", {
           artifact: { artifactId: receipt.artifactId },
