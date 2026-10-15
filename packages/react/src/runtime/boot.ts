@@ -23,8 +23,13 @@ import { HttpTransport } from "./transport.ts";
 /** The page's runtime: its store, where it runs, and its shell connection. */
 export interface Runtime {
   readonly store: Store;
-  /** The delivery target (D111). */
+  /** The delivery target the page was built or exported for (D111): it chooses the history. */
   readonly target: DeliveryTarget;
+  /**
+   * Where the page runs, as `useArtifact` reports it: the target, except that a live page opened
+   * outside Mostra's shell has no server features and reports `static`.
+   */
+  readonly mode: DeliveryTarget;
   /** The shell connection, inside Mostra's shell. */
   readonly shell: ShellConnection | undefined;
 }
@@ -110,7 +115,7 @@ export async function startRuntime(): Promise<Runtime> {
   if (!shell || !view) {
     const store = new Store({ mode: "local", journal: new MemoryJournal(), tab });
     store.start();
-    return { store, target: target === "live" ? "static" : target, shell: undefined };
+    return { store, target, mode: target === "live" ? "static" : target, shell: undefined };
   }
   const journal: Journal = (await IndexedDbJournal.open()) ?? new MemoryJournal();
   const store = new Store({
@@ -128,7 +133,7 @@ export async function startRuntime(): Promise<Runtime> {
   store.start();
   wireLifecycle(store);
   wireShell(store, shell);
-  return { store, target: view.target, shell };
+  return { store, target, mode: view.target, shell };
 }
 
 /** Saves on blur, and when the page is hidden or closed (IN-02). */

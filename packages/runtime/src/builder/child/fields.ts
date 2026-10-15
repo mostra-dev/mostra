@@ -293,6 +293,11 @@ class FieldScan {
   }
 
   result(): FieldCoverage {
+    // A version that declares no field through the hooks may still take answers through the
+    // browser protocol itself; the scan can't see those, so nothing is orphaned by a guess.
+    if (this.entries.length === 0 && this.openReasons.length === 0) {
+      this.open("the artifact declares no fields through @mostra/react");
+    }
     return {
       open: this.openReasons.length > 0,
       openReasons: this.openReasons,
@@ -303,6 +308,9 @@ class FieldScan {
 
 /** Mentions that make a file worth parsing for fields. */
 const MENTIONS = /@mostra\/react|storage/;
+
+/** A file that speaks the browser protocol itself writes fields the scan can't follow. */
+const RAW_PROTOCOL = /_mostra\/v\//;
 
 /** Scans the artifact's scripts and MDX pages (`files` are paths inside `sourceDir`). */
 export async function scanFields(
@@ -315,6 +323,7 @@ export async function scanFields(
     const lang = SCRIPT_LANG[ext];
     if (lang === undefined && ext !== ".mdx") continue;
     const source = await readFile(join(sourceDir, file), "utf8");
+    if (RAW_PROTOCOL.test(source)) scan.open(`${file} calls the browser protocol directly`);
     if (!MENTIONS.test(source)) continue;
     let text = source;
     let parseLang: "ts" | "tsx" | "js" | "jsx" = lang ?? "jsx";

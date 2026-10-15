@@ -8,14 +8,7 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  // React and its routers are the artifact's single copies (D91), never bundled in.
-  external: [
-    "react",
-    "react-dom",
-    "react-dom/client",
-    "react-router",
-    "react-router/dom",
-    "react-hook-form",
-  ],
+  // React, React Router and react-hook-form are peer dependencies, never bundled: an artifact
+  // has one copy of each, from the warm set (D91).
   tsconfig: "tsconfig.src.json",
 });

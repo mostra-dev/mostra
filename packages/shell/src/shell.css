@@ -1,7 +1,35 @@
-/* The shell is quiet by design (D68): the artifact is the work on show. Its final look is WP-20's. */
+/*
+ * The shell is quiet by design (D68): the artifact is the work on show. The round-4 direction: an
+ * exhibition frame with a museum label, and a trusted zone, the only place the accent appears,
+ * framed by a gilt hairline and marked by a seal, so people learn what the real Submit looks like.
+ * The final visual pass is WP-20's.
+ */
 :root {
   color-scheme: light dark;
+  --mostra-paper: #f7f5f0;
+  --mostra-ink: #1d1b18;
+  --mostra-muted: #6d675e;
+  --mostra-line: #e2ddd3;
+  --mostra-accent: #a8322a;
+  --mostra-accent-ink: #ffffff;
+  --mostra-gilt: #b89a5a;
+  --mostra-ok: #2f7d4f;
+  --mostra-wait: #b8741a;
+  --mostra-bad: #a8322a;
+  --mostra-card: #fdfcf9;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--mostra-ink);
+  background: var(--mostra-paper);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mostra-paper: #1b1a18;
+    --mostra-ink: #ece8df;
+    --mostra-muted: #a39d92;
+    --mostra-line: #34312c;
+    --mostra-accent: #c2463c;
+    --mostra-card: #24221f;
+  }
 }
 html,
 body,
@@ -13,12 +41,265 @@ body,
   height: 100%;
   display: flex;
 }
+.mostra-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.mostra-rail {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--mostra-line);
+  min-height: 2.75rem;
+}
+.mostra-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+.mostra-mark {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+.mostra-title {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mostra-subtitle {
+  font-size: 0.75rem;
+  color: var(--mostra-muted);
+}
+.mostra-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--mostra-muted);
+  white-space: nowrap;
+}
+.mostra-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--mostra-ok);
+}
+.mostra-dot-saving {
+  background: var(--mostra-muted);
+}
+.mostra-dot-offline,
+.mostra-dot-conflict {
+  background: var(--mostra-wait);
+}
+.mostra-trusted {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+  border: 1px solid var(--mostra-gilt);
+  border-radius: 0.5rem;
+}
+.mostra-seal {
+  font-size: 0.65rem;
+  line-height: 1.1;
+  color: var(--mostra-muted);
+  max-width: 5.5rem;
+  text-align: right;
+}
+.mostra-button {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--mostra-line);
+  background: var(--mostra-card);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mostra-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.mostra-primary {
+  background: var(--mostra-accent);
+  border-color: var(--mostra-accent);
+  color: var(--mostra-accent-ink);
+}
+.mostra-link {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.mostra-banner,
+.mostra-following {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--mostra-line);
+}
+.mostra-following {
+  justify-content: flex-start;
+  color: var(--mostra-muted);
+  font-size: 0.75rem;
+  padding: 0.25rem 1rem;
+}
+.mostra-warn {
+  color: var(--mostra-wait);
+}
+.mostra-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+.mostra-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
 .mostra-frame {
   flex: 1;
   width: 100%;
   height: 100%;
   border: 0;
   display: block;
+}
+.mostra-receipt,
+.mostra-problem,
+.mostra-orphans {
+  position: absolute;
+  right: 1rem;
+  max-width: 22rem;
+  background: var(--mostra-card);
+  border: 1px solid var(--mostra-line);
+  border-radius: 0.6rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.08);
+}
+.mostra-receipt {
+  bottom: 1rem;
+}
+.mostra-problem {
+  top: 1rem;
+}
+.mostra-orphans {
+  bottom: 1rem;
+  left: 1rem;
+  right: auto;
+}
+.mostra-receipt h2,
+.mostra-problem h2,
+.mostra-orphans h2 {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-weight: 400;
+  font-size: 1.05rem;
+  margin: 0 0 0.4rem;
+}
+.mostra-receipt ul,
+.mostra-problem ul,
+.mostra-orphans ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.mostra-receipt li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-left: 0.9rem;
+  position: relative;
+}
+.mostra-receipt li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.mostra-ok::before {
+  color: var(--mostra-ok);
+}
+.mostra-wait::before {
+  color: var(--mostra-wait);
+}
+.mostra-bad::before {
+  color: var(--mostra-bad);
+}
+.mostra-receipt time {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--mostra-muted);
+}
+.mostra-footnote {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  color: var(--mostra-muted);
+}
+.mostra-problem p {
+  margin: 0 0 0.4rem;
+}
+.mostra-orphans section {
+  margin-top: 0.5rem;
+  max-height: 50vh;
+  overflow: auto;
+}
+.mostra-orphan-label {
+  font-weight: 600;
+}
+.mostra-orphan-value {
+  margin: 0.2rem 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  user-select: text;
+}
+.mostra-orphan-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--mostra-muted);
+}
+.mostra-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mostra-dialog {
+  background: var(--mostra-card);
+  border: 1px solid var(--mostra-gilt);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  max-width: 26rem;
+}
+.mostra-dialog p {
+  margin: 0 0 1rem;
 }
 .mostra-notice {
   flex-direction: column;
@@ -43,12 +324,7 @@ body,
   font-size: 0.75rem;
   opacity: 0.5;
 }
-.mostra-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-.mostra-actions button {
+.mostra-notice .mostra-actions button {
   font: inherit;
   padding: 0.4rem 0.9rem;
   border-radius: 0.375rem;
@@ -56,4 +332,37 @@ body,
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+/* Phones: the trusted zone becomes a bar along the bottom, outside the frame. */
+@media (max-width: 720px) {
+  .mostra-status,
+  .mostra-subtitle {
+    display: none;
+  }
+  .mostra-trusted {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    background: var(--mostra-paper);
+    padding: 0.6rem 0.75rem;
+    justify-content: flex-end;
+    z-index: 1;
+  }
+  .mostra-page {
+    padding-bottom: 3.5rem;
+    box-sizing: border-box;
+  }
+  .mostra-receipt,
+  .mostra-orphans,
+  .mostra-problem {
+    left: 0.75rem;
+    right: 0.75rem;
+    max-width: none;
+  }
+}
+.mostra-notice .mostra-actions {
+  margin-top: 1rem;
 }

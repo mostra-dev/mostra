@@ -31,7 +31,7 @@ export function renderArtifact(runtime: Runtime, node: ReactNode): void {
   createRoot(root).render(
     createElement(
       RuntimeProvider,
-      { store: runtime.store, mode: runtime.target as ArtifactMode },
+      { store: runtime.store, mode: runtime.mode as ArtifactMode },
       node,
     ),
   );
