@@ -10,19 +10,31 @@
  * ```
  */
 import * as z from "zod";
-import { ArtifactId, Cursor, MutationId, VersionId, ViewId } from "./ids.ts";
+import { ArtifactId, Cursor, MutationId, ViewId } from "./ids.ts";
 import {
   DocumentRevision,
   EventRecord,
   FieldOp,
   FieldState,
   SubmissionSummary,
-  SubmitChannel,
-  TrustedControl,
   Viewer,
 } from "./interaction.ts";
 import { SubmissionPolicy } from "./manifest.ts";
+import {
+  REVIEW_SET_ID_PATTERN,
+  SubmitChannel,
+  TrustedControl,
+  VersionRef,
+  type ViewContext,
+} from "./view.ts";
 import { wireRegistry } from "./wire-registry.ts";
+
+export {
+  type DeliveryTarget,
+  REVIEW_SET_ID_PATTERN,
+  VersionRef,
+  ViewContext,
+} from "./view.ts";
 
 /** Every browser-protocol revision this release serves, oldest first. */
 export const BROWSER_PROTOCOL_REVISIONS: readonly ["2026-10-15"] = ["2026-10-15"];
@@ -178,72 +190,6 @@ export const PollResult: z.ZodType<PollResult> = z
   .register(wireRegistry, {
     id: "PollResult",
     description: "A long-poll answer: the cursor, the events after the asked one, and a snapshot.",
-  });
-
-// ── The view a frame shows (WP-07) ───────────────────────────────────────────────────────
-
-/** A review set's ID: letters, digits, `_` and `-` (its choice is the field `review.<id>.choice`). */
-export const REVIEW_SET_ID_PATTERN: RegExp = /^[A-Za-z0-9_-]{1,64}$/;
-
-/** Where a client runtime runs (D111): Mostra's gateway, a static export, an MCP App, or `verify`. */
-export type DeliveryTarget = "live" | "static" | "mcp-app" | "verify";
-
-/** A version by ID and number. */
-export interface VersionRef {
-  /** The version's ID. */
-  readonly id: string;
-  /** Its number, for people. */
-  readonly number: number;
-}
-
-/** The Zod schema of the `VersionRef` type. */
-export const VersionRef: z.ZodType<VersionRef> = z
-  .object({ id: VersionId.schema, number: z.int().min(1) })
-  .register(wireRegistry, {
-    id: "VersionRef",
-    description: "A version by ID and number.",
-  });
-
-/**
- * What one view is (D104, D108): the shell learns it from its frame ticket and hands it to the
- * frame in `ui/initialize`'s result, so the client runtime names the view in every request and
- * knows what the host allows.
- */
-export interface ViewContext {
-  /** The artifact. */
-  readonly artifactId: string;
-  /** The view this frame load is; every mutation and submit names it (D104). */
-  readonly viewId: string;
-  /** The version the view shows. */
-  readonly version: VersionRef;
-  /** The artifact's latest version when the view opened. */
-  readonly latest: VersionRef;
-  /** The submission policy in force (D102). */
-  readonly policy: SubmissionPolicy;
-  /** The submit channels this view accepts (D108). */
-  readonly submitChannels: readonly SubmitChannel[];
-  /** The trusted controls the shell renders for this view (D108). */
-  readonly controls: readonly TrustedControl[];
-  /** Always `live` in a frame Mostra's shell hosts. */
-  readonly target: DeliveryTarget;
-}
-
-/** The Zod schema of the `ViewContext` type. */
-export const ViewContext: z.ZodType<ViewContext> = z
-  .object({
-    artifactId: ArtifactId.schema,
-    viewId: ViewId.schema,
-    version: VersionRef,
-    latest: VersionRef,
-    policy: SubmissionPolicy,
-    submitChannels: z.array(SubmitChannel).min(1).max(2).readonly(),
-    controls: z.array(TrustedControl).max(32).readonly(),
-    target: z.enum(["live", "static", "mcp-app", "verify"]),
-  })
-  .register(wireRegistry, {
-    id: "ViewContext",
-    description:
-      "What one view is: its artifact, view ID, version, latest version, policy, channels and controls.",
   });
 
 /**

@@ -18,11 +18,11 @@
  * ```
  */
 import * as z from "zod";
-import { REVIEW_SET_ID_PATTERN, ViewContext } from "./browser.ts";
 import type { MethodDefinition } from "./method.ts";
 import { hostDiagnostic, JSON_RPC_ERROR_CODES, RpcError } from "./rpc/error.ts";
 import { classifyMessage } from "./rpc/messages.ts";
 import { RpcPeer } from "./rpc/peer.ts";
+import { REVIEW_SET_ID_PATTERN, ViewContext } from "./view.ts";
 
 /** Which end of the bridge: the trusted shell, or the artifact's frame. */
 export type BridgeSide = "shell" | "artifact";

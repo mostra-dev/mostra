@@ -68,8 +68,7 @@
     "size-limit": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   },
   "keywords": [
     "mostra",
@@ -82,16 +81,26 @@
       "name": "@mostra/react whole entry, zod included (every version embeds it)",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "30 kB"
+      "ignore": [
+        "react",
+        "react-dom",
+        "react-router",
+        "react-hook-form"
+      ],
+      "limit": "45 kB"
     },
     {
       "name": "@mostra/react whole entry, zod excluded",
       "path": "dist/index.js",
       "import": "*",
       "ignore": [
+        "react",
+        "react-dom",
+        "react-router",
+        "react-hook-form",
         "zod"
       ],
-      "limit": "7 kB"
+      "limit": "22 kB"
     }
   ],
   "peerDependencies": {

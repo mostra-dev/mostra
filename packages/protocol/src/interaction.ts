@@ -15,7 +15,10 @@ import {
   ViewId,
 } from "./ids.ts";
 import { ArtifactLink, SubmissionPolicy } from "./manifest.ts";
+import type { SubmitChannel } from "./view.ts";
 import { wireRegistry } from "./wire-registry.ts";
+
+export { ControlsPolicy, SubmitChannel, TrustedControl } from "./view.ts";
 
 // ── Viewers and actors ────────────────────────────────────────────────────────────────────
 
@@ -362,55 +365,6 @@ export const WaitCondition: z.ZodType<WaitCondition> = z
   });
 
 // ── Submissions, deliveries and results ──────────────────────────────────────────────────
-
-/** Where a submit came from (D40). */
-export type SubmitChannel = "shell" | "artifact";
-
-/** The Zod schema of the `SubmitChannel` type. */
-export const SubmitChannel: z.ZodType<SubmitChannel> = z
-  .enum(["shell", "artifact"])
-  .register(wireRegistry, {
-    id: "SubmitChannel",
-    description: "Where a submit comes from: the shell's trusted Submit, or the artifact's code.",
-  });
-
-/**
- * A trusted control the shell renders outside the artifact's frame (D06, PRODUCT vocabulary):
- * Submit, Choose (review sets) and Approve. Open for later controls on the wire.
- */
-export type TrustedControl = "submit" | "choose" | "approve" | (string & {});
-
-/** The Zod schema of the `TrustedControl` type. */
-export const TrustedControl: z.ZodType<TrustedControl> = z
-  .string()
-  .regex(/^[a-z][a-z0-9-]{0,31}$/)
-  .register(wireRegistry, {
-    id: "TrustedControl",
-    description: "A trusted control the shell renders: submit, choose, approve; open for more.",
-  });
-
-/**
- * Which submit channels a view accepts and which trusted controls its shell renders (D40, D108):
- * the `trustedControls` port's answer, or the home's `HomeConfig.submitChannels`.
- */
-export interface ControlsPolicy {
-  /** The channels submissions may come through; at least one. */
-  readonly submitChannels: readonly SubmitChannel[];
-  /** The trusted controls the shell may render; absent: every control the artifact asks for. */
-  readonly controls?: readonly TrustedControl[];
-}
-
-/** The Zod schema of the `ControlsPolicy` type. */
-export const ControlsPolicy: z.ZodType<ControlsPolicy> = z
-  .object({
-    submitChannels: z.array(SubmitChannel).min(1).max(2).readonly(),
-    controls: z.array(TrustedControl).max(32).readonly().exactOptional(),
-  })
-  .register(wireRegistry, {
-    id: "ControlsPolicy",
-    description:
-      "Which submit channels a view accepts and which trusted controls its shell renders (D108).",
-  });
 
 /** A delivery's state (FAILURE_MODEL §4). */
 export type DeliveryState = "pending" | "delivered" | "rejected" | "undeliverable";
