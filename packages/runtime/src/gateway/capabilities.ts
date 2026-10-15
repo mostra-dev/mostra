@@ -145,6 +145,8 @@ export interface Grant {
   readonly isDefault: boolean;
   /** The shell origin the link was minted for; it works only there. */
   readonly shellOrigin: string;
+  /** The viewer the link acts for (D104); absent: the home's local user. */
+  readonly viewerId?: string;
 }
 
 /** A token with its secret, just minted or derived again. */
@@ -185,6 +187,7 @@ interface TokenRow {
   is_default: number;
   pinned_version: number | null;
   shell_origin: string;
+  viewer_id: string | null;
 }
 
 interface SessionRow {
@@ -203,6 +206,7 @@ const grantOf = (row: TokenRow): Grant => ({
   ...(row.pinned_version !== null ? { pinnedVersion: row.pinned_version } : {}),
   isDefault: row.is_default === 1,
   shellOrigin: row.shell_origin,
+  ...(row.viewer_id !== null ? { viewerId: row.viewer_id } : {}),
 });
 
 /** Options for {@link Capabilities}. */
@@ -269,6 +273,7 @@ export class Capabilities {
       readonly pinnedVersion?: number | undefined;
       readonly isDefault: boolean;
       readonly tokenId?: string;
+      readonly viewerId?: string | undefined;
     },
   ): MintedToken {
     const tokenId = input.tokenId ?? TokenId.create();
@@ -276,11 +281,12 @@ export class Capabilities {
     const scopes = normalizeScopes(input.scopes);
     const shellOrigin = this.#shellOrigin();
     db.run(
-      "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, expires_at, revoked_at, created_at, is_default, pinned_version, shell_origin) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)",
+      "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, expires_at, revoked_at, created_at, is_default, pinned_version, shell_origin) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
       tokenId,
       hashSecret(secret),
       input.artifactId,
       JSON.stringify(scopes),
+      input.viewerId ?? null,
       input.expiresAt ?? null,
       this.#iso(this.#now()),
       input.isDefault ? 1 : 0,
@@ -296,6 +302,7 @@ export class Capabilities {
       ...(input.pinnedVersion !== undefined ? { pinnedVersion: input.pinnedVersion } : {}),
       isDefault: input.isDefault,
       shellOrigin,
+      ...(input.viewerId !== undefined ? { viewerId: input.viewerId } : {}),
     };
   }
 
@@ -306,6 +313,8 @@ export class Capabilities {
       readonly scopes?: readonly CapabilityScope[] | undefined;
       readonly ttlMs?: number | undefined;
       readonly pinnedVersion?: number | undefined;
+      /** The viewer the link acts for (D104). */
+      readonly viewerId?: string | undefined;
     },
     within?: LedgerDb,
   ): MintedToken {
@@ -316,6 +325,7 @@ export class Capabilities {
         expiresAt: input.ttlMs === undefined ? undefined : this.#iso(this.#now() + input.ttlMs),
         pinnedVersion: input.pinnedVersion,
         isDefault: false,
+        viewerId: input.viewerId,
       }),
     );
   }
@@ -389,7 +399,7 @@ export class Capabilities {
   }
 
   /**
-   * Replaces a live token with a new one of the same artifact, scopes, expiry and pinned version,
+   * Replaces a live token with a new one of the same artifact, scopes, expiry, pinned version and viewer,
    * in one transaction (`view/rotate`, D97 item 6). Returns `undefined` for an unknown token and
    * `"dead"` for a revoked or expired one.
    */
@@ -415,6 +425,7 @@ export class Capabilities {
         expiresAt: grant.expiresAt,
         pinnedVersion: grant.pinnedVersion,
         isDefault: grant.isDefault,
+        viewerId: grant.viewerId,
       });
       appendEvent(db, {
         artifactId: grant.artifactId,

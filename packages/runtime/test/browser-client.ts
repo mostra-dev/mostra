@@ -238,6 +238,8 @@ export interface Opened {
   readonly frameOrigin: string;
   readonly frameCsrf: string;
   readonly ticketSrc: string;
+  /** The view this frame load is (D104), from the ticket's answer. */
+  readonly viewId: string;
   readonly page: Answer;
 }
 
@@ -258,7 +260,11 @@ export async function openLink(browser: Browser, url: string, version?: number):
     csrf: shellCsrf,
   });
   if (ticket.status !== 200) throw new Error(`ticket: ${ticket.status} ${ticket.body}`);
-  const { src, artifactOrigin } = ticket.json<{ src: string; artifactOrigin: string }>();
+  const { src, artifactOrigin, viewId } = ticket.json<{
+    src: string;
+    artifactOrigin: string;
+    viewId: string;
+  }>();
   const enter = await browser.navigate(src, link.shell);
   if (enter.status !== 303) throw new Error(`enter: ${enter.status} ${enter.body}`);
   const page = await browser.navigate(`${artifactOrigin}${enter.header("location")}`, link.shell);
@@ -270,6 +276,7 @@ export async function openLink(browser: Browser, url: string, version?: number):
     frameOrigin: artifactOrigin,
     frameCsrf: session.json<{ csrf: string }>().csrf,
     ticketSrc: src,
+    viewId,
     page,
   };
 }

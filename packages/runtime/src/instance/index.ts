@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 import {
   type ClientInfo,
   type Diagnostic,
+  EVENTS_NOTIFY,
   type InstanceInfo,
+  type JsonRpcParams,
   type MostraInitializeResult,
   RpcError,
 } from "@mostra/protocol";
@@ -41,6 +43,7 @@ import {
   resolveHomePath,
   writeHomeSettings,
 } from "../home/index.ts";
+import { createInteraction, type Interaction } from "../interaction/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
 import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
@@ -228,6 +231,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       runtimeVersion: runtimeVersion(),
       log,
       faults,
+      homePolicy: () => readHomeSettings(home.path).submission,
     });
     return publisher;
   };
@@ -246,6 +250,25 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     now: () => Date.now() + clockOffset,
     shellOrigin: () => gateway.shellOrigin(),
   });
+  // The interaction core (WP-06): drafts, state, submissions, the outbox, events and waits. Its
+  // host connections are the protocol server's, built below.
+  const interaction: Interaction = createInteraction({
+    ledger: home.ledger,
+    log,
+    faults,
+    hosts: {
+      registrants: (port) => server.registrants(port),
+      call: (session, method, params, timeoutMs) =>
+        server.callSession(session, method, params as JsonRpcParams, timeoutMs),
+      notify: (session, method, params) => server.notify(session, method, params as JsonRpcParams),
+    },
+    // The hosts that always provide the submissions port (D105).
+    expectedHosts: () =>
+      Object.entries(readHomeSettings(home.path).expectedPorts ?? {})
+        .filter(([, ports]) => ports.includes("submissions"))
+        .map(([owner]) => owner),
+    artifacts: { resolve: (ref) => registry.get(canonicalRef(ref)).id },
+  });
   const shellDir = locateShell(environment);
   if (shellDir === undefined)
     log.warn("gateway.shell_missing", { code: "MOSTRA_ENV_SHELL_MISSING" });
@@ -260,6 +283,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       damage: (versionId) => versionDamage(registry.store.versionDir(versionId)),
     },
     shellDir,
+    interaction,
   });
   let gatewayStarted = false;
   const info: InstanceInfo = {
@@ -280,14 +304,33 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log,
     describe: () => info,
     servesHome: (path) => sameHome(home.path, path),
-    // A host's settings persist in the home's config.json for every later client (D95).
-    configureHome: (config) => {
-      if (config.dependencies !== undefined) {
-        writeHomeSettings(home.path, { dependencies: config.dependencies });
-        log.info("home.settings_written", { dependencies: config.dependencies });
+    // A host's settings persist in the home's config.json for every later client (D95, D102,
+    // D105).
+    configureHome: (config, client) => {
+      const current = readHomeSettings(home.path);
+      const expectedPorts = { ...(current.expectedPorts ?? {}) };
+      if (config.ports !== undefined) {
+        if (config.ports.length === 0) delete expectedPorts[client.name];
+        else expectedPorts[client.name] = [...new Set(config.ports)].sort();
       }
+      const change = {
+        ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
+        ...(config.submission !== undefined ? { submission: config.submission } : {}),
+        ...(config.ports !== undefined ? { expectedPorts } : {}),
+      };
+      if (Object.keys(change).length === 0) return;
+      writeHomeSettings(home.path, change);
+      log.info("home.settings_written", {
+        client: client.name,
+        ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
+        ...(config.submission !== undefined ? { submission: config.submission } : {}),
+        ...(config.ports !== undefined ? { ports: config.ports } : {}),
+      });
     },
-    supportedPorts: [],
+    supportedPorts: ["submissions", "drafts"],
+    notifications: [EVENTS_NOTIFY],
+    onInitialized: (session) => interaction.connected(session),
+    onClosed: (session) => interaction.disconnected(session),
     redact: (text) => home.redactor.redact(text),
     handlers: [
       ...artifactMethods({
@@ -296,6 +339,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         link: (artifactId) => gateway.defaultLink(artifactId),
       }),
       ...gateway.methods(),
+      ...interaction.methods(),
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,
@@ -313,6 +357,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
                 })),
               }
             : undefined,
+        deliveries: () => interaction.deliveries(),
         shutdown: (reason) => void instance.stop(reason, 0),
       }),
     ],
@@ -327,6 +372,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     stop(reason, exitCode = 0, diagnostic) {
       stopping ??= (async () => {
         log.info("instance.stopping", { reason, exitCode });
+        interaction.stop();
         server.close();
         await gateway.close();
         try {
@@ -350,9 +396,12 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     await gateway.start();
     gatewayStarted = true;
     await server.listen(home.socketPath, options.checkIntervalMs);
+    // Deliveries pending from before a restart go out again (FAILURE_MODEL §4).
+    interaction.start();
     home.publish(options.mode);
   } catch (error) {
     // Undo what started before the home is released, so no listener or child outlives it.
+    interaction.stop();
     server.close();
     await gateway.close();
     await manager.stopAll();

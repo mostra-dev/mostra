@@ -33,6 +33,7 @@ import {
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
+import type { Interaction } from "../interaction/index.ts";
 import {
   type Ledger,
   type LedgerDb,
@@ -43,6 +44,7 @@ import {
 } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
+import { type BrowserRoutes, browserRoutes } from "./browser.ts";
 import {
   type Capabilities,
   type Grant,
@@ -86,6 +88,8 @@ export interface GatewayOptions {
   readonly artifacts: GatewayArtifacts;
   /** The shell's built files, or `undefined` when the runtime lacks them (`MOSTRA_ENV_SHELL_MISSING`). */
   readonly shellDir: string | undefined;
+  /** The interaction core the browser protocol's routes hand their work to (WP-06). */
+  readonly interaction: Interaction;
 }
 
 /** The gateway of one instance. */
@@ -106,6 +110,8 @@ export interface Gateway {
 
 /** A frame ticket's answer to the shell. */
 interface TicketAnswer {
+  /** The view this frame load is (D104): the page names it in mutations and submits. */
+  readonly viewId: string;
   readonly src: string;
   readonly artifactOrigin: string;
   readonly version: { readonly id: string; readonly number: number };
@@ -114,8 +120,11 @@ interface TicketAnswer {
 
 const NO_STORE = { "cache-control": "no-store" };
 
-/** The browser-protocol routes of INTERFACES §4 that later packages serve (D96). */
-function laterArtifactRoutes(): RouteSpec[] {
+/**
+ * The browser-protocol routes of INTERFACES §4 (D96): WP-06 serves `fields`, `submit`, `signal`,
+ * `events` and `events/poll`; the others answer 501 until their package attaches a handler.
+ */
+function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
   const action = (params: Readonly<Record<string, string>>): CapabilityScope | "any-action" => {
     const id = params["fn"];
     return id ? (`action:${id}` as CapabilityScope) : "any-action";
@@ -128,6 +137,7 @@ function laterArtifactRoutes(): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: () => "draft",
+      handler: served.fields,
     },
     {
       method: "POST",
@@ -135,6 +145,7 @@ function laterArtifactRoutes(): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: () => "submit",
+      handler: served.submit,
     },
     {
       method: "POST",
@@ -142,6 +153,7 @@ function laterArtifactRoutes(): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: () => "signal",
+      handler: served.signal,
     },
     // A function ID may hold `/` (`lib/mail.ts#send`), so the call path takes the rest of the path.
     {
@@ -166,14 +178,27 @@ function laterArtifactRoutes(): RouteSpec[] {
       scope: () => "any-action",
     },
     { method: "POST", path: "/_mostra/v/:rev/ticket", intent: "mutation", auth: "session" },
-    { method: "GET", path: "/_mostra/v/:rev/events", intent: "stream", auth: "session" },
-    { method: "GET", path: "/_mostra/v/:rev/events/poll", intent: "stream", auth: "session" },
+    {
+      method: "GET",
+      path: "/_mostra/v/:rev/events",
+      intent: "stream",
+      auth: "session",
+      handler: served.stream,
+    },
+    {
+      method: "GET",
+      path: "/_mostra/v/:rev/events/poll",
+      intent: "stream",
+      auth: "session",
+      handler: served.poll,
+    },
   ];
 }
 
 /** Creates the gateway; nothing is bound until {@link Gateway.start}. */
 export function createGateway(options: GatewayOptions): Gateway {
-  const { addressing, capabilities, artifacts, log } = options;
+  const { addressing, capabilities, artifacts, log, interaction } = options;
+  const served = browserRoutes({ interaction, capabilities, log });
   let shellPort: number | undefined;
   const shellOrigin = (): string => {
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
@@ -203,6 +228,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     tokenId: token.tokenId,
     scopes: token.scopes,
     ...(token.expiresAt !== undefined ? { expiresAt: token.expiresAt } : {}),
+    ...(token.viewerId !== undefined ? { viewer: interaction.viewer(token.viewerId) } : {}),
   });
 
   /** The version a request names (number or ID), or the latest; `undefined` when there is none. */
@@ -427,7 +453,15 @@ export function createGateway(options: GatewayOptions): Gateway {
       shellOrigin: shellOrigin(),
       shellSessionId: session.id,
     });
+    // One frame load is one view, of exactly this version, by this link's viewer (D104).
+    const viewId = interaction.openView({
+      artifactId,
+      versionId: version.id,
+      viewerId: interaction.viewerOf(session.grant.viewerId),
+      tokenId: session.grant.tokenId,
+    });
     const answer: TicketAnswer = {
+      viewId,
       src: `${artifactOrigin}/_mostra/enter?ticket=${value}`,
       artifactOrigin,
       version,
@@ -642,7 +676,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         auth: "session",
         handler: frameSession,
       },
-      ...laterArtifactRoutes(),
+      ...laterArtifactRoutes(served),
       { method: "GET", path: "/*", intent: "read", auth: "session", handler: files },
     ];
   };
@@ -776,6 +810,10 @@ export function createGateway(options: GatewayOptions): Gateway {
               scopes: params.scopes,
               ttlMs: params.ttl === undefined ? undefined : durationMs(params.ttl),
               pinnedVersion: params.version === undefined ? undefined : version.number,
+              viewerId:
+                params.viewer === undefined
+                  ? undefined
+                  : interaction.viewerForSpec(db, params.viewer),
             },
             db,
           ),

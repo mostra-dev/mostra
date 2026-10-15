@@ -16,7 +16,7 @@ import {
   type VersionSummary,
 } from "@mostra/protocol";
 import type { Faults } from "../faults.ts";
-import { appendEvent } from "../interaction/index.ts";
+import { appendEvent, policyInForce } from "../interaction/index.ts";
 import { type Ledger, type LedgerDb, type RequestKey, recordResult } from "../ledger/index.ts";
 import { openVersionStore, type VersionStore } from "./store.ts";
 
@@ -28,6 +28,7 @@ interface ArtifactRow {
   family: string | null;
   links_json: string;
   policy_json: string | null;
+  policy_chosen_json: string | null;
   created_at: string;
   latest_version_id: string | null;
 }
@@ -58,8 +59,10 @@ export interface VersionCommit {
   /** Absent when the version already exists (a reuse). */
   readonly outputDigest: string | undefined;
   readonly manifest: ArtifactManifest;
-  /** The policy the host chose at publish, overriding the manifest's request. */
+  /** The policy this publish names; it sticks for later publishes that name none (D102). */
   readonly policy: SubmissionPolicy | undefined;
+  /** The home's policy (`HomeConfig.submission`, D102). */
+  readonly homePolicy?: SubmissionPolicy | undefined;
   readonly forcedCodes: readonly string[];
   /**
    * Whether `path` still claims `artifactId` in its manifest (D51): a moved source no longer does,
@@ -285,13 +288,21 @@ export async function openRegistry(options: {
         const manifest = existing
           ? (JSON.parse(existing.manifest_json) as ArtifactManifest)
           : input.manifest;
-        const policy = input.policy ?? manifest.submission;
+        // D102: the policy in force, resolved at each publish and stored: this publish's policy, or
+        // the one an earlier publish chose, then the home's, then the manifest's request.
+        const chosen =
+          input.policy ??
+          (artifact.policy_chosen_json === null
+            ? undefined
+            : (JSON.parse(artifact.policy_chosen_json) as SubmissionPolicy));
+        const policy = policyInForce(chosen, input.homePolicy, manifest.submission);
         db.run(
-          "UPDATE artifact SET title = ?, family = ?, links_json = ?, policy_json = ?, latest_version_id = ? WHERE id = ?",
+          "UPDATE artifact SET title = ?, family = ?, links_json = ?, policy_json = ?, policy_chosen_json = ?, latest_version_id = ? WHERE id = ?",
           manifest.title,
           manifest.family ?? null,
           JSON.stringify(manifest.links ?? []),
-          policy === undefined ? null : JSON.stringify(policy),
+          JSON.stringify(policy),
+          chosen === undefined ? null : JSON.stringify(chosen),
           input.versionId,
           input.artifactId,
         );

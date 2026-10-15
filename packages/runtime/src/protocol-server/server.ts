@@ -42,6 +42,10 @@ export interface Session {
   readonly revision: Revision | undefined;
   /** The ports this connection registered and the instance supports. */
   readonly ports: ReadonlySet<string>;
+  /** The notifications the client accepts (D84); the instance sends no others. */
+  readonly notifications: ReadonlySet<string>;
+  /** Aborts when the connection closes, so long requests (`wait`) end with it. */
+  readonly signal: AbortSignal;
 }
 
 /** A method a module serves. */
@@ -69,7 +73,7 @@ export interface ProtocolServerOptions {
    * Applies a client's home settings (`HomeConfig` without `path`), such as the dependency policy
    * (D95). Runs during `mostra/initialize`, after the home check; a throw refuses the session.
    */
-  configureHome?(home: HomeConfig): void;
+  configureHome?(home: HomeConfig, client: ClientInfo): void;
   /** Every method besides `mostra/initialize`. */
   readonly handlers: readonly MethodHandler[];
   /** The ports this instance calls when a client registers them. */
@@ -82,6 +86,12 @@ export interface ProtocolServerOptions {
    * instance (STANDARDS security). Default: the identity.
    */
   readonly redact?: (text: string) => string;
+  /** Runs after a connection initialized, with its registered ports. */
+  onInitialized?(session: Session): void;
+  /** Runs once when a connection closes. */
+  onClosed?(session: Session): void;
+  /** The notifications this instance may send, for `capabilities.notifications`. */
+  readonly notifications?: readonly string[];
 }
 
 interface Connection {
@@ -96,6 +106,8 @@ interface MutableSession {
   client: ClientInfo | undefined;
   revision: Revision | undefined;
   ports: Set<string>;
+  notifications: Set<string>;
+  readonly signal: AbortSignal;
   initialized: boolean;
 }
 
@@ -129,12 +141,15 @@ export class ProtocolServer {
    * ends.
    */
   serve(kind: ConnectionKind, input: Readable, output: Writable, onClose?: () => void): Session {
+    const closed = new AbortController();
     const session: MutableSession = {
       id: this.#nextId++,
       kind,
       client: undefined,
       revision: undefined,
       ports: new Set(),
+      notifications: new Set(),
+      signal: closed.signal,
       initialized: false,
     };
     const peer = new RpcPeer({
@@ -161,7 +176,15 @@ export class ProtocolServer {
       () => {
         peer.close();
         this.#connections.delete(connection);
+        closed.abort();
         this.#options.log.info("protocol.disconnected", { session: session.id, kind });
+        if (session.initialized) {
+          try {
+            this.#options.onClosed?.(session);
+          } catch (error) {
+            this.#options.log.error("protocol.close_hook_failed", { session: session.id, error });
+          }
+        }
         onClose?.();
       },
     );
@@ -251,6 +274,55 @@ export class ProtocolServer {
       .find((connection) => connection.session.ports.has(port));
     if (!registrant) return Promise.reject(new Error(`No connection registered the ${port} port.`));
     return registrant.peer.request(method, params, options);
+  }
+
+  /**
+   * The initialized connections that registered `port`, oldest first, with their clients' names:
+   * the hosts a port call can reach (D105).
+   */
+  registrants(port: string): { readonly session: number; readonly owner: string }[] {
+    return [...this.#connections]
+      .filter((connection) => connection.session.initialized && connection.session.ports.has(port))
+      .map((connection) => ({
+        session: connection.session.id,
+        owner: connection.session.client?.name ?? "",
+      }));
+  }
+
+  /**
+   * Calls a method on one connection (a port call, D59); rejects with `MOSTRA_HOST_CONNECTION_CLOSED`
+   * when that connection is gone, and `MOSTRA_HOST_TIMEOUT` past `timeoutMs`.
+   */
+  callSession(
+    session: number,
+    method: string,
+    params: JsonRpcParams,
+    timeoutMs: number,
+  ): Promise<unknown> {
+    const connection = [...this.#connections].find((entry) => entry.session.id === session);
+    if (!connection) {
+      return Promise.reject(
+        new RpcError(
+          createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+            message: `The connection that registered for ${method} has closed.`,
+          }),
+        ),
+      );
+    }
+    return connection.peer.request(method, params, { timeoutMs });
+  }
+
+  /**
+   * Sends a notification on one connection, if its client accepted that notification (D84).
+   * Returns `false` when the connection is gone or didn't accept it.
+   */
+  notify(session: number, method: string, params: JsonRpcParams): boolean {
+    const connection = [...this.#connections].find((entry) => entry.session.id === session);
+    if (!connection || connection.peer.closed || !connection.session.notifications.has(method)) {
+      return false;
+    }
+    connection.peer.notify(method, params);
+    return true;
   }
 
   /**
@@ -349,7 +421,7 @@ export class ProtocolServer {
         }),
       );
     }
-    if (params.home !== undefined) this.#options.configureHome?.(params.home);
+    if (params.home !== undefined) this.#options.configureHome?.(params.home, params.client);
     const supported = new Set(this.#options.supportedPorts);
     const warnings: Diagnostic[] = [];
     for (const port of new Set(params.ports)) {
@@ -369,18 +441,31 @@ export class ProtocolServer {
     session.initialized = true;
     session.client = params.client;
     session.revision = negotiation.revision;
+    const offered = new Set(this.#options.notifications ?? []);
+    for (const name of params.capabilities.notifications ?? []) {
+      if (offered.has(name)) session.notifications.add(name);
+    }
     this.#options.log.info("protocol.initialized", {
       session: session.id,
       client: params.client,
       revision: negotiation.revision,
       ports: [...session.ports],
     });
+    // After the answer is on its way: a port call it starts never precedes the response.
+    setImmediate(() => {
+      if (session.signal.aborted) return;
+      try {
+        this.#options.onInitialized?.(session);
+      } catch (error) {
+        this.#options.log.error("protocol.initialized_hook_failed", { session: session.id, error });
+      }
+    });
     return {
       revision: negotiation.revision,
       instance,
       capabilities: {
         methods: this.methods,
-        notifications: [],
+        notifications: [...(this.#options.notifications ?? [])],
         ports: [...this.#options.supportedPorts],
       },
       warnings,

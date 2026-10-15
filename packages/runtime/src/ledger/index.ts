@@ -81,6 +81,12 @@ export interface Ledger {
   write<T>(fn: (db: LedgerDb) => T): T;
   /** Runs `fn` in one read transaction, so it sees a single consistent state. */
   read<T>(fn: (db: LedgerDb) => T): T;
+  /**
+   * Calls `listener` after every write transaction that committed, so readers waiting for new
+   * events (`wait`, subscriptions, event streams) look again. Returns the unsubscribe function.
+   * A listener's exception is swallowed: it never undoes or fails the commit.
+   */
+  onCommit(listener: () => void): () => void;
   /** Runs SQLite's full integrity check: `ok`, or the problems it reports. */
   checkIntegrity(): { readonly ok: boolean; readonly problems: readonly string[] };
   /** Closes the ledger and releases the home's lock. Idempotent. */
@@ -376,6 +382,7 @@ function wrap(
 ): Ledger {
   const target = queries(db);
   let open = true;
+  const listeners = new Set<() => void>();
   // SQLite keeps writing to a ledger whose file was removed (its open descriptors outlive the
   // name), and the data would be lost on close. Every write checks that the file is still the one
   // it opened, before and after the commit, and fails closed otherwise (FAILURE_MODEL §3).
@@ -403,7 +410,20 @@ function wrap(
       assertInPlace();
       const result = guarded(() => db.transaction(() => fn(target)).immediate());
       assertInPlace();
+      // A write nested in another commits with the outer one; listeners hear of that one.
+      if (db.inTransaction) return result;
+      for (const listener of listeners) {
+        try {
+          listener();
+        } catch {
+          // A listener's failure is its own; the commit stands.
+        }
+      }
       return result;
+    },
+    onCommit(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
     read<T>(fn: (db: LedgerDb) => T): T {
       return guarded(() => db.transaction(() => fn(target)).deferred());
