@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
+  BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
   type Diagnostic,
   EVENTS_NOTIFY,
@@ -307,6 +308,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
     shellDir,
     interaction,
+    revisions: servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log),
     controls: (artifact) =>
       controlsPolicy({
         artifact,
@@ -510,4 +512,22 @@ function testClockOffset(value: string | undefined, log: Log): number {
   }
   if (offset > 0) log.warn("instance.test_clock", { offsetMs: offset });
   return offset;
+}
+
+/**
+ * The browser-protocol revisions the gateway serves: every one Mostra shipped, plus, in tests, a
+ * newer test-only revision (`MOSTRA_TEST_BROWSER_REVISION_NEXT`), so a version frozen at today's
+ * revision is proven against a gateway at the next one (VR-10, D111). A value that isn't a dated
+ * revision newer than the newest is ignored and logged.
+ */
+function servedRevisions(next: string | undefined, log: Log): readonly string[] {
+  const shipped: readonly string[] = BROWSER_PROTOCOL_REVISIONS;
+  if (next === undefined || next === "") return shipped;
+  const newest = shipped.at(-1) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next) || next <= newest) {
+    log.warn("instance.test_revision_ignored", { next });
+    return shipped;
+  }
+  log.warn("instance.test_revision", { next });
+  return [...shipped, next];
 }

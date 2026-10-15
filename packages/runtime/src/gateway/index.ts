@@ -100,6 +100,8 @@ export interface GatewayOptions {
   readonly controls: (artifact: ArtifactDetail) => Promise<ControlsPolicy>;
   /** Tells hosts with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: BrowserRoutesOptions["activated"];
+  /** The browser-protocol revisions served; `BROWSER_PROTOCOL_REVISIONS` unless a test adds one. */
+  readonly revisions?: readonly string[];
 }
 
 /** The gateway of one instance. */
@@ -210,6 +212,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       return found ? { id: found.id, number: found.number } : undefined;
     },
     activated: options.activated,
+    ...(options.revisions ? { revisions: options.revisions } : {}),
   });
   let shellPort: number | undefined;
   const shellOrigin = (): string => {

@@ -30,7 +30,8 @@
     "tests/*": {
       "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
       "project": ["**/*.ts"],
-      "ignoreDependencies": ["@mostra/runtime", "@mostra/shell"]
+      "ignoreDependencies": ["@mostra/runtime", "@mostra/shell"],
+      "ignore": ["fixtures/**"]
     },
     "packages/runtime": {
       "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],

@@ -64,6 +64,11 @@ export interface BrowserRoutesOptions {
   readonly interaction: Interaction;
   readonly capabilities: Capabilities;
   readonly log: Log;
+  /**
+   * The browser-protocol revisions served, oldest first: every revision Mostra ever shipped
+   * (`BROWSER_PROTOCOL_REVISIONS`, VR-10), and in tests a newer one the release doesn't have yet.
+   */
+  readonly revisions?: readonly string[];
   /** A version of an artifact by number, for the carry-over route. */
   readonly versionOf: (
     artifactId: string,
@@ -103,14 +108,13 @@ function failure(error: unknown): Response {
 }
 
 /** The revision a route was called at, when this gateway serves it (FAILURE_MODEL §7). */
-function knownRevision(context: RouteContext): Response | undefined {
+function revisionServed(context: RouteContext, revisions: readonly string[]): Response | undefined {
   const rev = context.params["rev"];
-  if (rev !== undefined && (BROWSER_PROTOCOL_REVISIONS as readonly string[]).includes(rev))
-    return undefined;
+  if (rev !== undefined && revisions.includes(rev)) return undefined;
   return answer(
     refusal(
       "MOSTRA_HYGIENE_NOT_SERVED",
-      `This gateway serves browser-protocol revisions ${BROWSER_PROTOCOL_REVISIONS.join(", ")}, not ${String(rev)}.`,
+      `This gateway serves browser-protocol revisions ${revisions.join(", ")}, not ${String(rev)}.`,
       404,
     ).diagnostic,
     404,
@@ -173,6 +177,9 @@ export interface BrowserRoutes {
 /** The browser protocol's interaction routes' handlers. */
 export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
   const { interaction, capabilities, log } = options;
+  const served: readonly string[] = options.revisions ?? BROWSER_PROTOCOL_REVISIONS;
+  const knownRevision = (context: RouteContext): Response | undefined =>
+    revisionServed(context, served);
 
   const pageOf = (context: RouteContext): PageIdentity => {
     const session = context.session;

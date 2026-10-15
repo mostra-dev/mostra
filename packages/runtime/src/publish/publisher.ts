@@ -261,6 +261,14 @@ async function writeScaffold(dir: string, artifactId: string, title: string): Pr
 }
 
 /**
+ * The output digest of a version directory's files (DATA_MODEL §2): what its manifest records and
+ * the integrity checks compare. Tests that freeze a version for VR-10 recompute it.
+ */
+export async function versionOutputDigest(dir: string): Promise<string> {
+  return listingDigest(await outputListing(dir));
+}
+
+/**
  * What is wrong with a stored version directory, or `undefined` when it is intact: its
  * `manifest.json` names an output digest, and its `client/`, `server/` and `registry.json` still
  * have that digest (DATA_MODEL §2).
