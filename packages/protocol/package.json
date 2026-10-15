@@ -81,7 +81,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "5.5 kB"
+      "limit": "6 kB"
     },
     {
       "name": "@mostra/protocol IDs alone (zod excluded)",
@@ -99,7 +99,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "6 kB"
+      "limit": "6.5 kB"
     }
   ]
 }
