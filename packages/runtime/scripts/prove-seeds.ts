@@ -942,8 +942,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "IN-10",
     name: "submitted under once is edge-triggered, so a late wait misses the submission",
     file: "src/interaction/wait.ts",
-    from: "      level\n        ? db.get<SubmissionRow>(",
-    to: "      false\n        ? db.get<SubmissionRow>(",
+    from: "    const row = level\n      ? db.get<SubmissionRow>(",
+    to: "    const row = false\n      ? db.get<SubmissionRow>(",
     check: integration("interaction.test.ts", "waits with still_waiting"),
   },
   {
