@@ -75,9 +75,16 @@ test.describe("a page's draft, events and submission", () => {
         },
         { V, viewId },
       );
-      await expect
-        .poll(() => frame.evaluate(() => (window as unknown as { seen: unknown[] }).seen.length))
-        .toBe(1);
+      // The snapshot comes first. Other engines write this artifact at the same time, so the page
+      // may also hear their shared state and submissions, but never their drafts (D104).
+      type Seen = {
+        snapshot?: { viewer: { id: string } };
+        type?: string;
+        payload?: { viewerId?: string };
+      }[];
+      const seen = (): Promise<Seen> =>
+        frame.evaluate(() => (window as unknown as { seen: Seen }).seen);
+      await expect.poll(async () => (await seen())[0]?.snapshot !== undefined).toBe(true);
       const saved = await post(frame, `/_mostra/v/${V}/fields`, {
         mutationId: mutationId(),
         scope: "viewer",
@@ -89,15 +96,12 @@ test.describe("a page's draft, events and submission", () => {
         status: 200,
         body: { revision: "1", applied: ["density"], conflicts: [] },
       });
-      await expect
-        .poll(() =>
-          frame.evaluate(() =>
-            (window as unknown as { seen: { type?: string }[] }).seen.map(
-              (entry) => entry.type ?? "snapshot",
-            ),
-          ),
-        )
-        .toEqual(["snapshot", "draft.changed"]);
+      const drafts = async () =>
+        (await seen())
+          .filter((entry) => entry.type?.startsWith("draft."))
+          .map((entry) => entry.payload?.viewerId);
+      await expect.poll(async () => (await drafts()).length).toBe(1);
+      expect(await drafts()).toEqual([(await seen())[0]?.snapshot?.viewer.id]);
       const submitted = await post(frame, `/_mostra/v/${V}/submit`, {
         viewId,
         expectedRevision: "1",
@@ -147,7 +151,8 @@ test.describe("a page's draft, events and submission", () => {
         viewer: { ref: `${browserName}-${info.title}-${Date.now()}` },
       });
       const { frame, viewId } = await openView(page, link.url);
-      const field = `tasks.${browserName}`;
+      // Its own field, so no other engine or repetition writes it meanwhile.
+      const field = `tasks.${browserName}${Math.random().toString(36).slice(2, 10)}`;
       const mutation = (value: unknown, baseRevision: string) => ({
         mutationId: mutationId(),
         scope: "artifact",
