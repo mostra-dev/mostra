@@ -20,4 +20,4 @@ Read the existing submission with `mostra results <artifact>`. When another roun
 
 ## Hint
 
-Submit nothing more under this policy; read what was submitted with `mostra results`.
+This artifact takes one submission, and it was made; read it with `mostra results`.

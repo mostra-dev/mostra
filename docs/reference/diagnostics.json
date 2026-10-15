@@ -248,7 +248,7 @@
       "severity": "error",
       "phase": "runtime",
       "title": "Field value too large",
-      "hint": "Store large data as a blob or split it across fields; keep each value under 1 MiB.",
+      "hint": "Split large data across fields, keeping each value under 1 MiB and the whole document under 16 MiB.",
       "explanation": "A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 MiB in all (DATA_MODEL §5). This write would pass one of those limits, so Mostra refused it whole: nothing was truncated, and the page keeps the value locally.",
       "fix": "Split the value across several fields, or store binary data as a blob and keep its reference in the field."
     },
@@ -635,7 +635,7 @@
       "severity": "error",
       "phase": "runtime",
       "title": "Already submitted",
-      "hint": "Submit nothing more under this policy; read what was submitted with `mostra results`.",
+      "hint": "This artifact takes one submission, and it was made; read it with `mostra results`.",
       "explanation": "The artifact's submission policy is `once`, and a submission already closed this draft: for scope `per-artifact` any viewer's submission closes every draft, for `per-viewer` the viewer's own. A submission is immutable and final, so Mostra refuses a second one and further edits to the closed draft. The refusal carries the existing submission. A repeated submit of the same view at the same draft revision is not refused: it returns the original submission.",
       "fix": "Read the existing submission with `mostra results <artifact>`. When another round of answers is wanted, publish a new artifact linked to this one (`links: [{ rel: \"round-of\", artifact }]`), or have the host publish with the `epochs` policy."
     },

@@ -20,4 +20,4 @@ Split the value across several fields, or store binary data as a blob and keep i
 
 ## Hint
 
-Store large data as a blob or split it across fields; keep each value under 1 MiB.
+Split large data across fields, keeping each value under 1 MiB and the whole document under 16 MiB.

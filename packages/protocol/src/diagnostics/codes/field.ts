@@ -20,7 +20,7 @@ export const fieldDiagnostics: AreaCatalog<FieldDiagnosticCode> = {
     severity: "error",
     phase: "runtime",
     title: "Field value too large",
-    hint: "Store large data as a blob or split it across fields; keep each value under 1 MiB.",
+    hint: "Split large data across fields, keeping each value under 1 MiB and the whole document under 16 MiB.",
     docs: {
       explanation:
         "A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 MiB in all (DATA_MODEL §5). This write would pass one of those limits, so Mostra refused it whole: nothing was truncated, and the page keeps the value locally.",

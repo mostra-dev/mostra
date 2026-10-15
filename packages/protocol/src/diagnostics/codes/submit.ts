@@ -23,7 +23,7 @@ export const submitDiagnostics: AreaCatalog<SubmitDiagnosticCode> = {
     severity: "error",
     phase: "runtime",
     title: "Already submitted",
-    hint: "Submit nothing more under this policy; read what was submitted with `mostra results`.",
+    hint: "This artifact takes one submission, and it was made; read it with `mostra results`.",
     docs: {
       explanation:
         "The artifact's submission policy is `once`, and a submission already closed this draft: for scope `per-artifact` any viewer's submission closes every draft, for `per-viewer` the viewer's own. A submission is immutable and final, so Mostra refuses a second one and further edits to the closed draft. The refusal carries the existing submission. A repeated submit of the same view at the same draft revision is not refused: it returns the original submission.",
