@@ -1,12 +1,13 @@
 /**
- * The artifact's end of the shell bridge (INTERFACES §5, SH-04). Every version's generated entry
- * starts it: when the page runs inside Mostra's shell, it learns the shell's exact origin from its
- * own session (`GET /_mostra/session`, readable only by this origin), then introduces itself with
- * MCP Apps' `ui/initialize` and reports `mostra/ready` once the page has rendered. Messages from
- * any other window or origin are dropped. Outside a shell (a static export, the page opened on its
- * own) it does nothing.
+ * The artifact's end of the shell bridge (INTERFACES §5, SH-04). The client runtime starts it:
+ * when the page runs inside Mostra's shell, it learns the shell's exact origin and its link's
+ * scopes from its own session (`GET /_mostra/session`, readable only by this origin), introduces
+ * itself with MCP Apps' `ui/initialize`, whose answer names the view this frame load is (D104),
+ * and reports `mostra/ready` once the page has rendered. Messages from any other window or origin
+ * are dropped. Outside a shell (a static export, the page opened on its own) it does nothing.
  */
 import {
+  type AnyBridgeMessage,
   type Bridge,
   connectBridge,
   MCP_APPS_PROTOCOL_VERSION,
@@ -22,22 +23,42 @@ import {
 export interface ShellConnection {
   /** The shell's origin. */
   readonly shellOrigin: string;
-  /** What the shell said about where the page is shown. */
+  /** What the shell said about where the page is shown, and the view (`host.mostra`). */
   readonly host: UiInitializeResult;
-  /** The bridge, for the client runtime's later messages. */
+  /** The bridge, for the client runtime's messages. */
   readonly bridge: Bridge;
+  /** The frame session's facts: its CSRF token and the link's scopes (D97, D98). */
+  readonly session: { readonly csrf: string; readonly scopes: readonly string[] };
 }
 
 interface FrameSession {
   readonly shellOrigin?: unknown;
+  readonly csrf?: unknown;
+  readonly scopes?: unknown;
 }
 
+/** Hears what the shell sends: requests answered by the first handler that returns a value. */
+export interface ShellListener {
+  readonly request?: (message: AnyBridgeMessage, params: unknown) => unknown;
+  readonly notification?: (message: AnyBridgeMessage, params: unknown) => void;
+}
+
+const listeners = new Set<ShellListener>();
 let connecting: Promise<ShellConnection | undefined> | undefined;
 
 /**
+ * Listens to the shell's requests and notifications on this page's bridge; returns the function
+ * that stops. The client runtime answers `mostra/flush` and hears `mostra/version.available`.
+ */
+export function listenShell(listener: ShellListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/**
  * Connects this page to the shell that frames it, once; later calls return the same connection.
- * Resolves `undefined` when the page isn't framed by a Mostra shell. The builder's generated entry
- * calls it; artifact code doesn't need to.
+ * Resolves `undefined` when the page isn't framed by a Mostra shell. The client runtime calls it;
+ * artifact code doesn't need to.
  */
 export function connectShell(): Promise<ShellConnection | undefined> {
   connecting ??= (async () => {
@@ -60,6 +81,16 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       receiver: window,
       peer: () => window.parent,
       peerOrigin: shellOrigin,
+      onRequest: async (message, params) => {
+        for (const listener of listeners) {
+          const answer = await listener.request?.(message, params);
+          if (answer !== undefined) return answer;
+        }
+        throw new Error(`The page doesn't answer ${message.method}.`);
+      },
+      onNotification: (message, params) => {
+        for (const listener of listeners) listener.notification?.(message, params);
+      },
     });
     const host = await bridge.call(
       uiInitialize,
@@ -71,14 +102,24 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       { timeoutMs: 10_000 },
     );
     bridge.notify(uiInitialized, {});
-    return { shellOrigin, host, bridge };
+    return {
+      shellOrigin,
+      host,
+      bridge,
+      session: {
+        csrf: typeof session.csrf === "string" ? session.csrf : "",
+        scopes: Array.isArray(session.scopes)
+          ? session.scopes.filter((scope): scope is string => typeof scope === "string")
+          : [],
+      },
+    };
   })().catch(() => undefined);
   return connecting;
 }
 
 /**
  * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints. The
- * generated entry calls it right after mounting the page.
+ * client runtime calls it right after mounting the page.
  */
 export function reportReady(): void {
   void connectShell().then((connection) => {
