@@ -495,7 +495,7 @@ Merging to `main` and publishing packages still follow acceptance (D36). Deletin
 Every work package gets an independent code review before it is presented to Mirza, and every finding is fixed or answered in the progress report:
 1. **GPT-6.1-Sol through `codex review`**, effort high, on the pull request's diff. A GPT-only live call, announced as D34 requires, with its tokens recorded.
 2. **GitHub Copilot code review** runs automatically on every push to a pull request (the `main` ruleset). Its comments are review threads, and the ruleset requires every thread resolved before merging.
-3. **Claude Opus 5.5** also reviews the truly substantial packages, at most one in five of Mostra's WPs (up to ten packages since D114). It waits for Mirza's approval like every Anthropic batch (D34).
+3. **Claude Opus 5.5** also reviews the truly substantial packages, up to ten of Mostra's packages (D114; at first at most one in five). It waits for Mirza's approval like every Anthropic batch (D34).
 
 Reviews find defects; they never replace the evidence table. The WP-01 review (13 findings, all fixed with regression tests) showed the value: a green gate suite still had false negatives. *Source:* M12.
 
