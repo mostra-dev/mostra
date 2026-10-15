@@ -2,6 +2,7 @@ import {
   ArtifactId,
   CommentId,
   Cursor,
+  DeliveryId,
   MutationId,
   RunId,
   SubmissionId,
@@ -19,6 +20,7 @@ const generatedKinds = [
   ViewId,
   ViewerId,
   SubmissionId,
+  DeliveryId,
   RunId,
   ThreadId,
   CommentId,
@@ -30,7 +32,19 @@ const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 describe("ID kinds", () => {
   it("cover every prefix in INTERFACES §1, each once", () => {
     const prefixes = [...generatedKinds, VersionId].map((kind) => kind.prefix).sort();
-    expect(prefixes).toEqual(["art", "cmt", "mut", "run", "sub", "thr", "tok", "ver", "vw", "vwr"]);
+    expect(prefixes).toEqual([
+      "art",
+      "cmt",
+      "dlv",
+      "mut",
+      "run",
+      "sub",
+      "thr",
+      "tok",
+      "ver",
+      "vw",
+      "vwr",
+    ]);
   });
 
   it.each(generatedKinds)(

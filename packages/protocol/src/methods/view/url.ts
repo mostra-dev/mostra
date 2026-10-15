@@ -2,6 +2,7 @@ import * as z from "zod";
 import { ArtifactRef } from "../../artifact.ts";
 import { CapabilityScope, Duration } from "../../capability.ts";
 import { TokenId, VersionId } from "../../ids.ts";
+import { Viewer, ViewerSpec } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 
@@ -18,6 +19,11 @@ export interface ViewUrlParams {
   readonly scopes?: readonly CapabilityScope[];
   /** How long the link works, such as `24h` or `7d`. Default: until it is revoked (D63). */
   readonly ttl?: Duration;
+  /**
+   * The person the link acts for (D104): its sessions draft, submit and sign as that viewer, so
+   * `once` per-viewer gives each person one submission. Absent: the home's local user.
+   */
+  readonly viewer?: ViewerSpec;
   /** Makes retries idempotent: a repeated `requestId` returns the same link (H-03). */
   readonly requestId?: string;
 }
@@ -32,6 +38,8 @@ export interface CapabilityLink {
   readonly scopes: readonly CapabilityScope[];
   /** When the link stops working; absent when it works until revoked. */
   readonly expiresAt?: string;
+  /** The viewer the link acts for, when it was minted with one (D104). */
+  readonly viewer?: Viewer;
 }
 
 /** The result of `view/url`. */
@@ -44,6 +52,7 @@ export const CapabilityLink: z.ZodType<CapabilityLink> = z
     tokenId: TokenId.schema,
     scopes: z.array(CapabilityScope).readonly(),
     expiresAt: z.iso.datetime().exactOptional(),
+    viewer: Viewer.exactOptional(),
   })
   .register(wireRegistry, {
     id: "CapabilityLink",
@@ -56,6 +65,7 @@ const params: z.ZodType<ViewUrlParams> = z
     version: z.union([z.int().min(1), VersionId.schema]).exactOptional(),
     scopes: z.array(CapabilityScope).min(1).readonly().exactOptional(),
     ttl: Duration.exactOptional(),
+    viewer: ViewerSpec.exactOptional(),
     requestId: z.string().min(1).exactOptional(),
   })
   .register(wireRegistry, { id: "ViewUrlParams" });

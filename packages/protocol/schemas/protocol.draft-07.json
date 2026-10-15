@@ -5,6 +5,30 @@
     "host-protocol": "2026-10-10"
   },
   "definitions": {
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "agent",
+            "host",
+            "mostra"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "description": "Who caused an event or wrote a field: a viewer, an agent, a host or Mostra."
+    },
     "AddedPackage": {
       "type": "object",
       "properties": {
@@ -548,6 +572,13 @@
           "type": "string",
           "format": "date-time",
           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "viewer": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Viewer"
+            }
+          ]
         }
       },
       "required": [
@@ -629,6 +660,92 @@
       "type": "string",
       "pattern": "^(0|[1-9][0-9]{0,18})$",
       "description": "Event cursor: the decimal string of a home-wide event position."
+    },
+    "DeliveryCounts": {
+      "type": "object",
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "delivered": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "undeliverable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "owner",
+        "connected",
+        "pending",
+        "delivered",
+        "rejected",
+        "undeliverable"
+      ],
+      "description": "One host's deliveries by state, and whether it is connected."
+    },
+    "DeliveryId": {
+      "type": "string",
+      "pattern": "^dlv_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Delivery ID: \"dlv_\" followed by a 26-character ULID."
+    },
+    "DeliveryStatus": {
+      "type": "object",
+      "properties": {
+        "deliveryId": {
+          "$ref": "#/definitions/DeliveryId"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "delivered",
+            "rejected",
+            "undeliverable"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "deliveryId",
+        "owner",
+        "state",
+        "attempts",
+        "updatedAt"
+      ],
+      "description": "One submission's delivery to one host: owner, state, attempts and reason."
     },
     "DependencyPolicy": {
       "type": "string",
@@ -867,10 +984,459 @@
       ],
       "description": "How bad it is: error only for definite failures."
     },
+    "DocumentRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,15})$",
+      "description": "A draft's or artifact state's revision: a non-negative decimal integer string."
+    },
+    "DocumentSnapshot": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/FieldState"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "epoch",
+        "fields"
+      ],
+      "description": "A document's revision, epoch and fields, as a page loads it."
+    },
+    "DraftMirror": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "draft"
+        },
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "viewerId": {
+          "$ref": "#/definitions/ViewerId"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "kind",
+        "artifactId",
+        "viewerId",
+        "epoch",
+        "revision",
+        "fields"
+      ],
+      "description": "A viewer's draft mirrored to a host: always kind draft, never a submission."
+    },
     "Duration": {
       "type": "string",
       "pattern": "^[1-9][0-9]{0,8}[smhd]$",
       "description": "A duration: a positive whole number and s, m, h or d, such as 30m, 24h or 7d."
+    },
+    "EventFilter": {
+      "type": "object",
+      "properties": {
+        "artifacts": {
+          "readOnly": true,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ArtifactId"
+          }
+        },
+        "types": {
+          "readOnly": true,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EventTypePattern"
+          }
+        }
+      },
+      "description": "Which events a reader wants: these artifacts' and these types (patterns allowed)."
+    },
+    "EventRecord": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        },
+        "artifactId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ArtifactId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "actor": {
+          "$ref": "#/definitions/Actor"
+        },
+        "causation": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "payload": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "cursor",
+        "artifactId",
+        "seq",
+        "type",
+        "at",
+        "actor",
+        "payload"
+      ],
+      "description": "One durable event: cursor, artifact, per-artifact sequence, type, time, actor, payload."
+    },
+    "EventTypePattern": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?$",
+      "description": "An event type (submission.created) or a family of them (submission.*)."
+    },
+    "EventsAckParams": {
+      "type": "object",
+      "properties": {
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "subscriptionId",
+        "cursor"
+      ]
+    },
+    "EventsAckResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "EventsNotifyParams": {
+      "type": "object",
+      "properties": {
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "events": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EventRecord"
+          }
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        }
+      },
+      "required": [
+        "subscriptionId",
+        "events",
+        "cursor"
+      ],
+      "description": "A subscription's next events, in cursor order, and the cursor examined up to."
+    },
+    "EventsReadParams": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EventFilter"
+            }
+          ]
+        },
+        "after": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Cursor"
+            }
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "EventsReadResult": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EventRecord"
+          }
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        }
+      },
+      "required": [
+        "events",
+        "cursor"
+      ]
+    },
+    "EventsSubscribeParams": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EventFilter"
+            }
+          ]
+        },
+        "after": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Cursor"
+            }
+          ]
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+        }
+      }
+    },
+    "EventsSubscribeResult": {
+      "type": "object",
+      "properties": {
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        }
+      },
+      "required": [
+        "subscriptionId",
+        "cursor"
+      ]
+    },
+    "EventsUnsubscribeParams": {
+      "type": "object",
+      "properties": {
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "subscriptionId"
+      ]
+    },
+    "EventsUnsubscribeResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "FieldConflict": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "value": {},
+        "deleted": {
+          "type": "boolean",
+          "const": true
+        },
+        "updatedBy": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Actor"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "description": "A field op not applied because the field changed after the base revision."
+    },
+    "FieldOp": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "value": {},
+        "delete": {
+          "type": "boolean",
+          "const": true
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "One change to one field: a value or a delete, with optional label, required and sensitive."
+    },
+    "FieldState": {
+      "type": "object",
+      "properties": {
+        "value": {},
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "updatedBy": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Actor"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "value",
+        "revision",
+        "updatedAt"
+      ],
+      "description": "A field's current value, the revision that wrote it, who wrote it and when."
+    },
+    "FieldsRequest": {
+      "type": "object",
+      "properties": {
+        "mutationId": {
+          "$ref": "#/definitions/MutationId"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "artifact"
+          ]
+        },
+        "baseRevision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "ops": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldOp"
+          }
+        }
+      },
+      "required": [
+        "mutationId",
+        "scope",
+        "baseRevision",
+        "viewId",
+        "ops"
+      ],
+      "description": "A browser mutation: its ID, scope, base revision, view and field ops."
     },
     "GatewayStatus": {
       "type": "object",
@@ -921,9 +1487,24 @@
               "$ref": "#/definitions/DependencyPolicy"
             }
           ]
+        },
+        "submission": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SubmissionPolicy"
+            }
+          ]
+        },
+        "ports": {
+          "readOnly": true,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PortName"
+          }
         }
       },
-      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43)."
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105)."
     },
     "InstanceCapabilities": {
       "type": "object",
@@ -1027,6 +1608,13 @@
               "$ref": "#/definitions/GatewayStatus"
             }
           ]
+        },
+        "deliveries": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeliveryCounts"
+          }
         }
       },
       "required": [
@@ -1254,10 +1842,102 @@
       "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Mutation ID: \"mut_\" followed by a 26-character ULID."
     },
+    "MutationResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "applied": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conflicts": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldConflict"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "applied",
+        "conflicts"
+      ],
+      "description": "A mutation's outcome: the revision after it, the applied field IDs, the conflicts."
+    },
+    "PollResult": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        },
+        "events": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EventRecord"
+          }
+        },
+        "snapshot": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/StreamSnapshot"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cursor",
+        "events"
+      ],
+      "description": "A long-poll answer: the cursor, the events after the asked one, and a snapshot."
+    },
     "PortName": {
       "type": "string",
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
+    },
+    "PortSubmissionsDeliverResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "accepted"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retry": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "accepted",
+            "reason",
+            "retry"
+          ]
+        }
+      ]
     },
     "PublishReceipt": {
       "type": "object",
@@ -1306,6 +1986,562 @@
       ],
       "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
     },
+    "ResultComment": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "messages": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "author": {
+                "$ref": "#/definitions/Viewer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "author",
+              "at",
+              "text"
+            ]
+          }
+        },
+        "anchor": {
+          "type": "object",
+          "properties": {
+            "reviewId": {
+              "type": "string"
+            },
+            "selectors": {
+              "readOnly": true,
+              "type": "array",
+              "items": {}
+            },
+            "rect": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ]
+            },
+            "viewport": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "dpr": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "height",
+                "dpr"
+              ]
+            },
+            "page": {
+              "type": "string"
+            },
+            "candidateId": {
+              "type": "string"
+            },
+            "terminal": {
+              "type": "object",
+              "properties": {
+                "rows": {
+                  "readOnly": true,
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "additionalItems": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "cols": {
+                  "readOnly": true,
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "additionalItems": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "t": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rows",
+                "cols"
+              ]
+            },
+            "time": {
+              "type": "number"
+            },
+            "slide": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "step": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "index",
+                "step"
+              ]
+            }
+          }
+        },
+        "crop": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "height": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "path",
+            "width",
+            "height"
+          ]
+        }
+      },
+      "required": [
+        "threadId",
+        "status",
+        "messages",
+        "anchor",
+        "crop"
+      ],
+      "description": "One comment thread in results: messages, anchor layers and the screenshot crop."
+    },
+    "Results": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/ArtifactId"
+            },
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "links": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ArtifactLink"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "links"
+          ]
+        },
+        "submission": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/SubmissionId"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "epoch": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "previous": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/SubmissionId"
+                }
+              ]
+            },
+            "policy": {
+              "$ref": "#/definitions/SubmissionPolicy"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "shell",
+                "artifact"
+              ]
+            },
+            "viewer": {
+              "$ref": "#/definitions/Viewer"
+            },
+            "versionId": {
+              "$ref": "#/definitions/VersionId"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "viewId": {
+              "$ref": "#/definitions/ViewId"
+            },
+            "staleView": {
+              "type": "boolean"
+            },
+            "latestVersion": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "draftRevision": {
+              "$ref": "#/definitions/DocumentRevision"
+            },
+            "stateRevision": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/DocumentRevision"
+                }
+              ]
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "delivered",
+                "rejected",
+                "undeliverable"
+              ]
+            },
+            "deliveries": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/DeliveryStatus"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "epoch",
+            "policy",
+            "channel",
+            "viewer",
+            "versionId",
+            "version",
+            "viewId",
+            "staleView",
+            "draftRevision",
+            "digest",
+            "delivery",
+            "deliveries"
+          ]
+        },
+        "answers": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "fields": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "sensitive": {
+                "type": "boolean"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "viewer",
+                  "artifact"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "scope"
+            ]
+          }
+        },
+        "state": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "choices": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reviewSetId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reviewSetId",
+              "candidateId"
+            ]
+          }
+        },
+        "comments": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResultComment"
+          }
+        },
+        "orphaned": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {},
+              "fromVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "value",
+              "fromVersion"
+            ]
+          }
+        },
+        "actions": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "runId",
+              "action",
+              "status",
+              "at"
+            ]
+          }
+        },
+        "signals": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "payload": {}
+            },
+            "required": [
+              "name",
+              "at"
+            ]
+          }
+        }
+      },
+      "required": [
+        "artifact",
+        "submission",
+        "answers",
+        "fields",
+        "choices",
+        "comments",
+        "orphaned",
+        "actions",
+        "signals"
+      ],
+      "description": "The complete submission: artifact, submission facts, answers, fields, state, choices, comments, orphans, actions, signals."
+    },
+    "ResultsGetParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "submission": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SubmissionId"
+            }
+          ]
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "md"
+          ]
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "ResultsGetResult": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Results"
+        },
+        {
+          "$ref": "#/definitions/ResultsMarkdown"
+        }
+      ]
+    },
+    "ResultsMarkdown": {
+      "type": "object",
+      "properties": {
+        "submissionId": {
+          "$ref": "#/definitions/SubmissionId"
+        },
+        "markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "submissionId",
+        "markdown"
+      ],
+      "description": "A submission's results as Markdown for agents."
+    },
     "Revision": {
       "type": "string",
       "format": "date",
@@ -1316,6 +2552,25 @@
       "type": "string",
       "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Action run ID: \"run_\" followed by a 26-character ULID."
+    },
+    "SignalRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "payload": {}
+      },
+      "required": [
+        "viewId",
+        "name"
+      ],
+      "description": "A browser signal: the view, the signal's name and an optional JSON payload."
     },
     "SourceRef": {
       "anyOf": [
@@ -1344,6 +2599,153 @@
         }
       ],
       "description": "Where to build an artifact from: an absolute source path, or an artifact ID (its last published source path)."
+    },
+    "StateGetParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "ids": {
+          "readOnly": true,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "StateGetResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/FieldState"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "fields"
+      ]
+    },
+    "StatePatchParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "ops": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldOp"
+          }
+        },
+        "baseRevision": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/DocumentRevision"
+            }
+          ]
+        },
+        "mutationId": {
+          "$ref": "#/definitions/MutationId"
+        },
+        "as": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "host"
+          ]
+        }
+      },
+      "required": [
+        "artifact",
+        "ops",
+        "mutationId"
+      ]
+    },
+    "StreamSnapshot": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        },
+        "viewer": {
+          "$ref": "#/definitions/Viewer"
+        },
+        "draft": {
+          "$ref": "#/definitions/DocumentSnapshot"
+        },
+        "state": {
+          "$ref": "#/definitions/DocumentSnapshot"
+        },
+        "submission": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SubmissionSummary"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cursor",
+        "viewer",
+        "draft",
+        "state"
+      ],
+      "description": "Where a page stands: cursor, viewer, draft, artifact state and its submission."
+    },
+    "SubmissionEnvelope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "submission"
+        },
+        "deliveryId": {
+          "$ref": "#/definitions/DeliveryId"
+        },
+        "submissionId": {
+          "$ref": "#/definitions/SubmissionId"
+        },
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "results": {
+          "$ref": "#/definitions/Results"
+        }
+      },
+      "required": [
+        "kind",
+        "deliveryId",
+        "submissionId",
+        "artifactId",
+        "attempt",
+        "results"
+      ],
+      "description": "One submission delivered to a host: delivery ID, attempt and the complete results."
     },
     "SubmissionId": {
       "type": "string",
@@ -1397,6 +2799,100 @@
         }
       ],
       "description": "A submission policy: once (per-artifact or per-viewer), epochs, or none."
+    },
+    "SubmissionSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/SubmissionId"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "shell",
+            "artifact"
+          ]
+        },
+        "versionId": {
+          "$ref": "#/definitions/VersionId"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "staleView": {
+          "type": "boolean"
+        },
+        "draftRevision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "delivered",
+            "rejected",
+            "undeliverable"
+          ]
+        },
+        "duplicate": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "id",
+        "at",
+        "epoch",
+        "channel",
+        "versionId",
+        "version",
+        "viewId",
+        "staleView",
+        "draftRevision",
+        "digest",
+        "delivery"
+      ],
+      "description": "A submission as a submit answers it: ID, time, epoch, version, view, digest, delivery."
+    },
+    "SubmitRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "expectedRevision": {
+          "$ref": "#/definitions/DocumentRevision"
+        },
+        "channel": {
+          "type": "string",
+          "const": "artifact"
+        }
+      },
+      "required": [
+        "viewId",
+        "expectedRevision",
+        "channel"
+      ],
+      "description": "A browser submit: the view and the draft revision the viewer saw."
     },
     "ThreadId": {
       "type": "string",
@@ -1531,6 +3027,13 @@
             }
           ]
         },
+        "viewer": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ViewerSpec"
+            }
+          ]
+        },
         "requestId": {
           "type": "string",
           "minLength": 1
@@ -1540,10 +3043,130 @@
         "artifact"
       ]
     },
+    "Viewer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/ViewerId"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local",
+            "tailnet",
+            "token",
+            "host"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "description": "A person who views an artifact: ID, kind, display name and the host's own key."
+    },
     "ViewerId": {
       "type": "string",
       "pattern": "^vwr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Viewer ID: \"vwr_\" followed by a 26-character ULID."
+    },
+    "ViewerSpec": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "description": "The person a capability link acts for: the host's stable key and a display name."
+    },
+    "WaitCondition": {
+      "type": "string",
+      "pattern": "^(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$",
+      "description": "What wait waits for: submitted, signal:<name>, state:<fieldId> or event:<type>."
+    },
+    "WaitParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "until": {
+          "$ref": "#/definitions/WaitCondition"
+        },
+        "after": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Cursor"
+            }
+          ]
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "artifact",
+        "until",
+        "timeoutMs"
+      ]
+    },
+    "WaitResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "satisfied"
+            },
+            "event": {
+              "$ref": "#/definitions/EventRecord"
+            },
+            "cursor": {
+              "$ref": "#/definitions/Cursor"
+            }
+          },
+          "required": [
+            "status",
+            "event",
+            "cursor"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "still_waiting"
+            },
+            "cursor": {
+              "$ref": "#/definitions/Cursor"
+            }
+          },
+          "required": [
+            "status",
+            "cursor"
+          ]
+        }
+      ]
     }
   }
 }

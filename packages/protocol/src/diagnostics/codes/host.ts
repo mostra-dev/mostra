@@ -16,6 +16,9 @@ export const hostDiagnosticCodes = [
   "MOSTRA_HOST_TIMEOUT",
   "MOSTRA_HOST_SHUTDOWN_REFUSED",
   "MOSTRA_HOST_REQUEST_ID_REUSED",
+  "MOSTRA_HOST_CURSOR_COMPACTED",
+  "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN",
+  "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED",
   // gen:codes
 ] as const;
 
@@ -143,6 +146,39 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       explanation:
         "A mutating method recorded its result under this `requestId` for different parameters. Replaying that result would answer a request nobody made (a link for another artifact or with other scopes, another source's publish), so the instance refuses (H-03). Retries with the same parameters still return the recorded result.",
       fix: "Generate a fresh `requestId` for every new request, and reuse one only to retry the same request after a timeout or a lost connection.",
+    },
+  },
+  MOSTRA_HOST_CURSOR_COMPACTED: {
+    severity: "error",
+    phase: "host",
+    title: "Events compacted",
+    hint: "Read from the cursor in the message to receive the compaction summary, then continue from there.",
+    docs: {
+      explanation:
+        "Events before a cursor were compacted on request (`mostra gc --compact-events`, DATA_MODEL §4): an artifact's old events were replaced by one `artifact.compacted` event that summarizes them. A reader asking for events after an earlier cursor would miss some, and Mostra never leaves a silent gap.",
+      fix: "Read again with `after` set to the cursor the message names: the next event is the `artifact.compacted` summary. Rebuild what you track from it and continue as usual.",
+    },
+  },
+  MOSTRA_HOST_SUBSCRIPTION_UNKNOWN: {
+    severity: "error",
+    phase: "host",
+    title: "Unknown subscription",
+    hint: "Subscribe again with `events/subscribe`, then use the ID it returns.",
+    docs: {
+      explanation:
+        "The subscription ID belongs to no subscription on this connection: it was never created here, was ended with `events/unsubscribe`, or belonged to a connection that closed. Subscriptions live as long as their connection; a named subscriber's acknowledged cursor outlives it.",
+      fix: "Call `events/subscribe` again on this connection. With the same `name`, delivery resumes after the last acknowledged cursor.",
+    },
+  },
+  MOSTRA_HOST_NOTIFICATION_UNSUPPORTED: {
+    severity: "error",
+    phase: "host",
+    title: "Notification not accepted",
+    hint: "List the notification in `capabilities.notifications` when you initialize.",
+    docs: {
+      explanation:
+        "Mostra sends a client only the notifications it listed in `mostra/initialize` (D84). This method would send one the client didn't list, such as `events/notify` for `events/subscribe`.",
+      fix: 'Reconnect and initialize with `capabilities: { notifications: ["events/notify"] }`, or poll with `events/read` instead.',
     },
   },
   // gen:entries

@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { Diagnostic } from "../../diagnostics/diagnostic.ts";
+import { SubmissionPolicy } from "../../manifest.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { Revision } from "../../revision.ts";
 import { wireRegistry } from "../../wire-registry.ts";
@@ -63,6 +64,16 @@ export interface HomeConfig {
    * `deps/add` adds and reports other imports as `MOSTRA_DEP_MISSING`.
    */
   readonly dependencies?: DependencyPolicy;
+  /**
+   * The home's submission policy (D102), kept in `config.json`: it applies to every artifact whose
+   * `artifact/publish` names no policy, before the manifest's request.
+   */
+  readonly submission?: SubmissionPolicy;
+  /**
+   * The ports this client always provides, kept in `config.json` under its `client.name` (D105).
+   * Submissions made while it is away wait in the outbox for it; an empty list stops that.
+   */
+  readonly ports?: readonly PortName[];
 }
 
 /** How packages enter an artifact's lockfile (D43). */
@@ -152,11 +163,13 @@ export const HomeConfig: z.ZodType<HomeConfig> = z
   .object({
     path: z.string().min(1).exactOptional(),
     dependencies: DependencyPolicy.exactOptional(),
+    submission: SubmissionPolicy.exactOptional(),
+    ports: z.array(PortName).max(32).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "HomeConfig",
     description:
-      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43).",
+      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105).",
   });
 
 /** The Zod schema of the `InstanceInfo` type. */

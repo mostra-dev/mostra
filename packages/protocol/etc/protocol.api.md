@@ -13,6 +13,16 @@ export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
 export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID"];
 
 // @public
+export interface Actor {
+    readonly id?: string;
+    readonly kind: "viewer" | "agent" | "host" | "mostra";
+    readonly name?: string;
+}
+
+// @public
+export const Actor: z.ZodType<Actor>;
+
+// @public
 export interface AddedPackage {
     readonly name: string;
     readonly version: string;
@@ -264,10 +274,19 @@ export type BridgeRejection = "wrong-source" | "wrong-origin" | "not-json-rpc" |
 export type BridgeSide = "shell" | "artifact";
 
 // @public
+export const BROWSER_PROTOCOL_REVISION = "2026-10-15";
+
+// @public
+export const BROWSER_PROTOCOL_REVISIONS: readonly ["2026-10-15"];
+
+// @public
 export type BuildDiagnosticCode = (typeof buildDiagnosticCodes)[number];
 
 // @public
 export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUILD_UNRESOLVED", "MOSTRA_BUILD_CRASHED", "MOSTRA_BUILD_TIMEOUT"];
+
+// @public
+export function canonicalJson(value: unknown): string;
 
 // @public
 export interface CapabilityLink {
@@ -275,6 +294,7 @@ export interface CapabilityLink {
     readonly scopes: readonly CapabilityScope[];
     readonly tokenId: string;
     readonly url: string;
+    readonly viewer?: Viewer;
 }
 
 // @public
@@ -378,6 +398,41 @@ export const DEFAULT_DOCS_BASE: string;
 
 // @public
 export function defineMethod<Params, Result>(definition: MethodDefinition<Params, Result>): MethodDefinition<Params, Result>;
+
+// @public
+export interface DeliveryCounts {
+    readonly connected: boolean;
+    readonly delivered: number;
+    readonly owner: string;
+    readonly pending: number;
+    readonly rejected: number;
+    readonly undeliverable: number;
+}
+
+// @public
+export const DeliveryCounts: z.ZodType<DeliveryCounts>;
+
+// @public
+export type DeliveryId = Id<"dlv">;
+
+// @public
+export const DeliveryId: GeneratedIdKind<"dlv">;
+
+// @public
+export type DeliveryState = "pending" | "delivered" | "rejected" | "undeliverable";
+
+// @public
+export interface DeliveryStatus {
+    readonly attempts: number;
+    readonly deliveryId: string;
+    readonly owner: string;
+    readonly reason?: string;
+    readonly state: DeliveryState;
+    readonly updatedAt: string;
+}
+
+// @public
+export const DeliveryStatus: z.ZodType<DeliveryStatus>;
 
 // @public
 export type DemoSpec = {
@@ -509,6 +564,38 @@ export interface DiagnosticSpec {
 export function docsUrl(code: string, docsBase?: string): string;
 
 // @public
+export type DocumentRevision = string;
+
+// @public
+export const DocumentRevision: z.ZodType<DocumentRevision>;
+
+// @public
+export interface DocumentSnapshot {
+    readonly epoch: number;
+    readonly fields: Readonly<Record<string, FieldState>>;
+    readonly revision: DocumentRevision;
+}
+
+// @public
+export const DocumentSnapshot: z.ZodType<DocumentSnapshot>;
+
+// @public
+export interface DraftMirror {
+    readonly artifactId: string;
+    readonly epoch: number;
+    readonly fields: Readonly<Record<string, unknown>>;
+    readonly kind: "draft";
+    readonly revision: DocumentRevision;
+    readonly viewerId: string;
+}
+
+// @public
+export const DraftMirror: z.ZodType<DraftMirror>;
+
+// @public
+export type DraftsMirrorResult = unknown;
+
+// @public
 export type Duration = `${number}${"s" | "m" | "h" | "d"}`;
 
 // @public
@@ -525,6 +612,172 @@ export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
 export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING"];
+
+// @public
+export interface EventFilter {
+    readonly artifacts?: readonly string[];
+    readonly types?: readonly EventTypePattern[];
+}
+
+// @public
+export const EventFilter: z.ZodType<EventFilter>;
+
+// @public
+export interface EventRecord {
+    readonly actor: Actor;
+    readonly artifactId: string | null;
+    readonly at: string;
+    readonly causation?: Readonly<Record<string, string>>;
+    readonly cursor: Cursor;
+    readonly payload: Readonly<Record<string, unknown>>;
+    readonly seq: number | null;
+    readonly type: string;
+}
+
+// @public
+export const EventRecord: z.ZodType<EventRecord>;
+
+// @public
+export const EVENTS_NOTIFY = "events/notify";
+
+// @public
+export const EVENTS_READ_MAX = 1e3;
+
+// @public
+export const eventsAckMethod: MethodDefinition<EventsAckParams, EventsAckResult>;
+
+// @public
+export interface EventsAckParams {
+    readonly cursor: string;
+    readonly requestId?: string;
+    readonly subscriptionId: string;
+}
+
+// @public
+export type EventsAckResult = Record<string, never>;
+
+// @public
+export interface EventsNotifyParams {
+    readonly cursor: string;
+    readonly events: readonly EventRecord[];
+    readonly subscriptionId: string;
+}
+
+// @public
+export const EventsNotifyParams: z.ZodType<EventsNotifyParams>;
+
+// @public
+export const eventsReadMethod: MethodDefinition<EventsReadParams, EventsReadResult>;
+
+// @public
+export interface EventsReadParams {
+    readonly after?: string;
+    readonly filter?: EventFilter;
+    readonly limit?: number;
+}
+
+// @public
+export interface EventsReadResult {
+    readonly cursor: string;
+    readonly events: readonly EventRecord[];
+}
+
+// @public
+export const eventsSubscribeMethod: MethodDefinition<EventsSubscribeParams, EventsSubscribeResult>;
+
+// @public
+export interface EventsSubscribeParams {
+    readonly after?: string;
+    readonly filter?: EventFilter;
+    readonly name?: string;
+}
+
+// @public
+export interface EventsSubscribeResult {
+    readonly cursor: string;
+    readonly subscriptionId: string;
+}
+
+// @public
+export const eventsUnsubscribeMethod: MethodDefinition<EventsUnsubscribeParams, EventsUnsubscribeResult>;
+
+// @public
+export interface EventsUnsubscribeParams {
+    readonly subscriptionId: string;
+}
+
+// @public
+export type EventsUnsubscribeResult = Record<string, never>;
+
+// @public
+export type EventTypePattern = string;
+
+// @public
+export const EventTypePattern: z.ZodType<EventTypePattern>;
+
+// @public
+export const FIELD_ID_MAX_LENGTH = 256;
+
+// @public
+export interface FieldConflict {
+    readonly deleted?: true;
+    readonly id: string;
+    readonly revision: DocumentRevision;
+    readonly updatedAt?: string;
+    readonly updatedBy?: Actor;
+    readonly value?: unknown;
+}
+
+// @public
+export const FieldConflict: z.ZodType<FieldConflict>;
+
+// @public
+export type FieldDiagnosticCode = (typeof fieldDiagnosticCodes)[number];
+
+// @public
+export const fieldDiagnosticCodes: readonly ["MOSTRA_FIELD_TOO_LARGE", "MOSTRA_FIELD_ID_INVALID", "MOSTRA_FIELD_MUTATION_ID_REUSED"];
+
+// @public
+export interface FieldOp {
+    readonly delete?: true;
+    readonly id: string;
+    readonly label?: string;
+    readonly required?: boolean;
+    readonly sensitive?: boolean;
+    readonly value?: unknown;
+}
+
+// @public
+export const FieldOp: z.ZodType<FieldOp>;
+
+// @public
+export type FieldScope = "viewer" | "artifact";
+
+// @public
+export interface FieldsRequest {
+    readonly baseRevision: DocumentRevision;
+    readonly mutationId: string;
+    readonly ops: readonly FieldOp[];
+    readonly scope: "viewer" | "artifact";
+    readonly viewId: string;
+}
+
+// @public
+export const FieldsRequest: z.ZodType<FieldsRequest>;
+
+// @public
+export interface FieldState {
+    readonly label?: string;
+    readonly required?: boolean;
+    readonly revision: DocumentRevision;
+    readonly sensitive?: boolean;
+    readonly updatedAt: string;
+    readonly updatedBy?: Actor;
+    readonly value: unknown;
+}
+
+// @public
+export const FieldState: z.ZodType<FieldState>;
 
 // @public
 export interface GatewayStatus {
@@ -551,6 +804,8 @@ export function headerValue(headers: readonly (readonly [string, string])[], nam
 export interface HomeConfig {
     readonly dependencies?: DependencyPolicy;
     readonly path?: string;
+    readonly ports?: readonly PortName[];
+    readonly submission?: SubmissionPolicy;
 }
 
 // @public
@@ -569,7 +824,7 @@ export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
-export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED"];
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED"];
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -600,7 +855,7 @@ export interface IdKind<P extends IdPrefix> {
 }
 
 // @public
-export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "run" | "thr" | "cmt" | "tok" | "mut";
+export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut";
 
 // @public
 export interface InstanceCapabilities {
@@ -633,12 +888,16 @@ export type InstanceStatusParams = Record<string, never>;
 // @public
 export interface InstanceStatusResult {
     readonly connections: number;
+    readonly deliveries?: readonly DeliveryCounts[];
     readonly gateway?: GatewayStatus;
     readonly instance: InstanceInfo;
     readonly processes: readonly ChildProcessStatus[];
     readonly socket: string;
     readonly startedAt: string;
 }
+
+// @public
+export function isFieldId(id: unknown): id is string;
 
 // @public
 export function isJsonContentType(value: string | undefined): boolean;
@@ -717,7 +976,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -786,6 +1045,16 @@ export type MutationId = Id<"mut">;
 export const MutationId: GeneratedIdKind<"mut">;
 
 // @public
+export interface MutationResult {
+    readonly applied: readonly string[];
+    readonly conflicts: readonly FieldConflict[];
+    readonly revision: DocumentRevision;
+}
+
+// @public
+export const MutationResult: z.ZodType<MutationResult>;
+
+// @public
 export function negotiateRevision(offered: readonly string[], supported?: readonly Revision[], options?: CreateDiagnosticOptions): RevisionNegotiation;
 
 // @public
@@ -804,10 +1073,26 @@ export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
 export const platformDiagnosticCodes: readonly ["MOSTRA_PLATFORM_UNSUPPORTED"];
 
 // @public
+export interface PollResult {
+    readonly cursor: string;
+    readonly events: readonly EventRecord[];
+    readonly snapshot?: StreamSnapshot;
+}
+
+// @public
+export const PollResult: z.ZodType<PollResult>;
+
+// @public
+export const portDraftsMirrorMethod: MethodDefinition<DraftMirror, DraftsMirrorResult>;
+
+// @public
 export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addressing" | "trustedControls" | "capture" | "secrets" | "pty" | "ai" | (string & {});
 
 // @public
 export const PortName: z.ZodType<PortName, string>;
+
+// @public
+export const portSubmissionsDeliverMethod: MethodDefinition<SubmissionEnvelope, SubmissionsDeliverResult>;
 
 // @public
 export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
@@ -829,6 +1114,14 @@ export interface PublishReceipt {
 
 // @public
 export const PublishReceipt: z.ZodType<PublishReceipt>;
+
+// @public
+export interface Rect {
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+}
 
 // @public
 export interface Refusal {
@@ -856,6 +1149,130 @@ export interface RequestPolicy {
     readonly hosts: readonly string[];
     readonly origin: string;
 }
+
+// @public
+export interface ResultComment {
+    readonly anchor: {
+        readonly reviewId?: string;
+        readonly selectors?: readonly unknown[];
+        readonly rect?: Rect;
+        readonly viewport?: Viewport;
+        readonly page?: string;
+        readonly candidateId?: string;
+        readonly terminal?: {
+            readonly rows: readonly [number, number];
+            readonly cols: readonly [number, number];
+            readonly t?: number;
+        };
+        readonly time?: number;
+        readonly slide?: {
+            readonly index: number;
+            readonly step: number;
+        };
+    };
+    readonly crop: {
+        readonly path: string;
+        readonly width: number;
+        readonly height: number;
+    };
+    readonly messages: readonly {
+        readonly author: Viewer;
+        readonly at: string;
+        readonly text: string;
+    }[];
+    readonly status: "open" | "resolved";
+    readonly threadId: string;
+}
+
+// @public
+export const ResultComment: z.ZodType<ResultComment>;
+
+// @public
+export interface Results {
+    readonly actions: readonly {
+        readonly runId: string;
+        readonly action: string;
+        readonly status: string;
+        readonly at: string;
+    }[];
+    readonly answers: Readonly<Record<string, unknown>>;
+    readonly artifact: {
+        readonly id: string;
+        readonly title: string;
+        readonly description?: string;
+        readonly family?: string;
+        readonly links: readonly ArtifactLink[];
+    };
+    readonly choices: readonly {
+        readonly reviewSetId: string;
+        readonly candidateId: string;
+        readonly label?: string;
+    }[];
+    readonly comments: readonly ResultComment[];
+    readonly fields: readonly {
+        readonly id: string;
+        readonly label?: string;
+        readonly required?: boolean;
+        readonly sensitive?: boolean;
+        readonly scope: FieldScope;
+    }[];
+    readonly orphaned: readonly {
+        readonly id: string;
+        readonly label?: string;
+        readonly value: unknown;
+        readonly fromVersion: number;
+    }[];
+    readonly signals: readonly {
+        readonly name: string;
+        readonly at: string;
+        readonly payload?: unknown;
+    }[];
+    readonly state?: Readonly<Record<string, unknown>>;
+    readonly submission: {
+        readonly id: string;
+        readonly at: string;
+        readonly epoch: number;
+        readonly previous?: string;
+        readonly policy: SubmissionPolicy;
+        readonly channel: SubmitChannel;
+        readonly viewer: Viewer;
+        readonly versionId: string;
+        readonly version: number;
+        readonly viewId: string;
+        readonly staleView: boolean;
+        readonly latestVersion?: number;
+        readonly draftRevision: DocumentRevision;
+        readonly stateRevision?: DocumentRevision;
+        readonly digest: string;
+        readonly delivery: DeliveryState;
+        readonly deliveries: readonly DeliveryStatus[];
+    };
+}
+
+// @public
+export const Results: z.ZodType<Results>;
+
+// @public
+export const resultsGetMethod: MethodDefinition<ResultsGetParams, ResultsGetResult>;
+
+// @public
+export interface ResultsGetParams {
+    readonly artifact: ArtifactRef;
+    readonly format?: "json" | "md";
+    readonly submission?: string;
+}
+
+// @public
+export type ResultsGetResult = Results | ResultsMarkdown;
+
+// @public
+export interface ResultsMarkdown {
+    readonly markdown: string;
+    readonly submissionId: string;
+}
+
+// @public
+export const ResultsMarkdown: z.ZodType<ResultsMarkdown>;
 
 // @public
 export type Revision = string & {
@@ -938,6 +1355,22 @@ export function safePath(target: string): string | undefined;
 export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
 
 // @public
+export const SIGNAL_NAME_PATTERN: RegExp;
+
+// @public
+export const SIGNAL_PAYLOAD_MAX_BYTES: number;
+
+// @public
+export interface SignalRequest {
+    readonly name: string;
+    readonly payload?: unknown;
+    readonly viewId: string;
+}
+
+// @public
+export const SignalRequest: z.ZodType<SignalRequest>;
+
+// @public
 export type SourceRef = {
     readonly path: string;
 } | {
@@ -946,6 +1379,61 @@ export type SourceRef = {
 
 // @public
 export const SourceRef: z.ZodType<SourceRef>;
+
+// @public
+export const stateGetMethod: MethodDefinition<StateGetParams, StateGetResult>;
+
+// @public
+export interface StateGetParams {
+    readonly artifact: ArtifactRef;
+    readonly ids?: readonly string[];
+}
+
+// @public
+export interface StateGetResult {
+    readonly fields: Readonly<Record<string, FieldState>>;
+    readonly revision: DocumentRevision;
+}
+
+// @public
+export const statePatchMethod: MethodDefinition<StatePatchParams, StatePatchResult>;
+
+// @public
+export interface StatePatchParams {
+    readonly artifact: ArtifactRef;
+    readonly as?: "agent" | "host";
+    readonly baseRevision?: DocumentRevision;
+    readonly mutationId: string;
+    readonly ops: readonly FieldOp[];
+}
+
+// @public
+export type StatePatchResult = MutationResult;
+
+// @public
+export interface StreamSnapshot {
+    readonly cursor: string;
+    readonly draft: DocumentSnapshot;
+    readonly state: DocumentSnapshot;
+    readonly submission?: SubmissionSummary;
+    readonly viewer: Viewer;
+}
+
+// @public
+export const StreamSnapshot: z.ZodType<StreamSnapshot>;
+
+// @public
+export interface SubmissionEnvelope {
+    readonly artifactId: string;
+    readonly attempt: number;
+    readonly deliveryId: string;
+    readonly kind: "submission";
+    readonly results: Results;
+    readonly submissionId: string;
+}
+
+// @public
+export const SubmissionEnvelope: z.ZodType<SubmissionEnvelope>;
 
 // @public
 export type SubmissionId = Id<"sub">;
@@ -965,6 +1453,53 @@ export type SubmissionPolicy = {
 
 // @public
 export const SubmissionPolicy: z.ZodType<SubmissionPolicy>;
+
+// @public
+export type SubmissionsDeliverResult = {
+    readonly accepted: true;
+} | {
+    readonly accepted: false;
+    readonly reason: string;
+    readonly retry: boolean;
+};
+
+// @public
+export interface SubmissionSummary {
+    readonly at: string;
+    readonly channel: SubmitChannel;
+    readonly delivery: DeliveryState;
+    readonly digest: string;
+    readonly draftRevision: DocumentRevision;
+    readonly duplicate?: true;
+    readonly epoch: number;
+    readonly id: string;
+    readonly staleView: boolean;
+    readonly version: number;
+    readonly versionId: string;
+    readonly viewId: string;
+}
+
+// @public
+export const SubmissionSummary: z.ZodType<SubmissionSummary>;
+
+// @public
+export type SubmitChannel = "shell" | "artifact";
+
+// @public
+export type SubmitDiagnosticCode = (typeof submitDiagnosticCodes)[number];
+
+// @public
+export const submitDiagnosticCodes: readonly ["MOSTRA_SUBMIT_ALREADY", "MOSTRA_SUBMIT_REVISION_MOVED", "MOSTRA_SUBMIT_POLICY_NONE", "MOSTRA_SUBMIT_NOT_FOUND", "MOSTRA_SUBMIT_VIEW_INVALID", "MOSTRA_SUBMIT_SIGNAL_INVALID"];
+
+// @public
+export interface SubmitRequest {
+    readonly channel: "artifact";
+    readonly expectedRevision: DocumentRevision;
+    readonly viewId: string;
+}
+
+// @public
+export const SubmitRequest: z.ZodType<SubmitRequest>;
 
 // @public
 export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
@@ -1055,16 +1590,46 @@ export interface VersionSummary {
 export const VersionSummary: z.ZodType<VersionSummary>;
 
 // @public
+export interface Viewer {
+    readonly id: string;
+    readonly kind: ViewerKind;
+    readonly name?: string;
+    readonly ref?: string;
+}
+
+// @public
+export const Viewer: z.ZodType<Viewer>;
+
+// @public
 export type ViewerId = Id<"vwr">;
 
 // @public
 export const ViewerId: GeneratedIdKind<"vwr">;
 
 // @public
+export type ViewerKind = "local" | "tailnet" | "token" | "host";
+
+// @public
+export interface ViewerSpec {
+    readonly name?: string;
+    readonly ref: string;
+}
+
+// @public
+export const ViewerSpec: z.ZodType<ViewerSpec>;
+
+// @public
 export type ViewId = Id<"vw">;
 
 // @public
 export const ViewId: GeneratedIdKind<"vw">;
+
+// @public
+export interface Viewport {
+    readonly dpr: number;
+    readonly height: number;
+    readonly width: number;
+}
 
 // @public
 export const viewRevokeMethod: MethodDefinition<ViewRevokeParams, ViewRevokeResult>;
@@ -1100,10 +1665,41 @@ export interface ViewUrlParams {
     readonly scopes?: readonly CapabilityScope[];
     readonly ttl?: Duration;
     readonly version?: number | string;
+    readonly viewer?: ViewerSpec;
 }
 
 // @public
 export type ViewUrlResult = CapabilityLink;
+
+// @public
+export const WAIT_MAX_MS = 2147483647;
+
+// @public
+export type WaitCondition = string;
+
+// @public
+export const WaitCondition: z.ZodType<WaitCondition>;
+
+// @public
+export const waitMethod: MethodDefinition<WaitParams, WaitResult>;
+
+// @public
+export interface WaitParams {
+    readonly after?: string;
+    readonly artifact: ArtifactRef;
+    readonly timeoutMs: number;
+    readonly until: WaitCondition;
+}
+
+// @public
+export type WaitResult = {
+    readonly status: "satisfied";
+    readonly event: EventRecord;
+    readonly cursor: string;
+} | {
+    readonly status: "still_waiting";
+    readonly cursor: string;
+};
 
 // (No @packageDocumentation comment for this package)
 
