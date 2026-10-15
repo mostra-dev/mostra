@@ -76,9 +76,8 @@ submission(id PK, position UNIQUE, artifact_id, version_id, view_id, viewer_id, 
            snapshot_json, digest, stale_view BOOLEAN, request_id NULL UNIQUE, created_at,
            UNIQUE(artifact_id, scope_key, epoch))   -- scope_key: '' for once/per-artifact, viewer_id for per-viewer and epochs;
                                                     -- epochs bump the draft's epoch; position: the cursor of submission.created
-delivery(id PK (dlv_), submission_id FK, position, port_owner, state CHECK(state IN ('pending','delivered','rejected','undeliverable')),
+delivery(id PK (dlv_), submission_id FK, position, port_owner (the host's client name; '' for the built-in adapter), state CHECK(state IN ('pending','delivered','rejected','undeliverable')),
          attempts, next_attempt_at, last_error_json, reason NULL, updated_at, UNIQUE(submission_id, port_owner))
-                                                    -- port_owner: the host's client name, or 'mostra' (D105)
 
 -- Events
 event(cursor INTEGER PK AUTOINCREMENT, artifact_id, seq INTEGER, type, actor_json, causation_json, payload_json, at,
@@ -156,7 +155,7 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 
 These are ephemeral and never stored (D47, D63): presence, live updates, action progress and log lines (the log is stored on the run, not as events), terminal output and save acknowledgments.
 
-**Compaction** (D47) is opt-in (`mostra gc --compact-events --before <cursor>`, WP-10). It replaces an artifact's events before a cursor, in one transaction, with one `artifact.compacted` event at the first replaced cursor, whose payload summarizes them (`through`, the last cursor covered; `removed`; counts per type; the latest version published). A filtered reader still receives it. Subscribers whose acknowledged cursor is earlier get `MOSTRA_HOST_CURSOR_COMPACTED` and the summary, never a silent gap.
+**Compaction** (D47) is opt-in (`mostra gc --compact-events --before <cursor>`, WP-10). It replaces an artifact's events before a cursor, in one transaction, with one `artifact.compacted` event at the last replaced cursor and sequence, so neither ever moves back. Its payload summarizes them: `from` and `through` (the first and last cursors covered; an earlier summary in the range folds in, keeping its `from`), `removed`, counts per type and the latest version published. A filtered reader still receives it, and a reader who receives it continues after it. A reader whose cursor lies inside a summary's range (`from` ≤ cursor < `through`) had events that are gone: reads answer `MOSTRA_HOST_CURSOR_COMPACTED`, and a live subscription receives the summary with that diagnostic and continues after it, never a silent gap.
 
 ## 5. Values and limits
 

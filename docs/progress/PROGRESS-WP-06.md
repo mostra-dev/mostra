@@ -34,6 +34,19 @@ Every check runs through the real interfaces: the host protocol on a real `mostr
 
 ## Reviews (D80)
 
-- **GPT-6.1-Sol through `codex review`** (codex-cli 0.162.1, 2026-10-15): announced and started on `df18f60`; refused before any model call with "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account". The model list Codex fetched for the signed-in account at 09:39 UTC offers GPT-6-Luna, GPT-5.6-Terra and GPT-5.6-Luna. No tokens were used. Waiting on Mirza: sign in the account that has GPT-6.1-Sol, or approve another model.
+- **GPT-6.1-Sol through `codex review --base origin/main`** (codex-cli 0.162.1, OpenAI, ChatGPT sign-in), effort high, on 2026-10-15 against `d3f813b`. It used 3,241,429 input tokens (3,073,408 cached) and 15,431 output tokens (8,634 reasoning). It was a GPT-only run, announced before it started (D34). A first attempt that morning was refused before any model call (the signed-in account didn't offer the model); Mirza fixed the sign-in.
 - **Copilot**: no review on the draft pull request yet.
 - **Claude Opus 5.5**: to be decided with Mirza.
+
+The GPT review's seven findings, all fixed, each with a regression test and a seed that undoes the fix (`prove-seeds.ts --only wp06-gpt-<n>`), plus one of my own from the diff review:
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 (P1) A long poll whose link was revoked while it waited answered 200 with what was written after | The poll checks the link at every commit it wakes for and again before answering; a dead link answers 410 and nothing it read | Integration: revoke during a poll, then write state: 410, the value absent; seed |
+| 2 A host named `mostra` had its deliveries marked delivered without a call | The built-in adapter's owner is empty, which no client name can be | Unit: a host named `mostra` receives its delivery; seed |
+| 3 A subscription overtaken by compaction ended silently | It receives the summary with `compacted: MOSTRA_HOST_CURSOR_COMPACTED` (new optional field of `events/notify`) and continues | Unit: notification with the summary and the diagnostic, then later events; seed |
+| 4 Count-only pages could exceed the 64 Mi-character line limit | Pages of events are bounded at about 8 MiB and continue where they stopped; the event stream reads on after a page cut short | Unit: twelve 900 KiB events page through without loss, each page under the bound; seed |
+| 5 Compacting a whole history moved the per-artifact sequence back | The summary takes the last replaced sequence | Unit: the next event's sequence follows the last one; seed |
+| 6 Compacting again with the same cutoff shrank the covered range | Summaries record `from`, and folding keeps the earliest | Unit: a reader inside the range is still refused after re-compaction; seed |
+| 7 The retry of a committed save failed after another tab's submit closed the draft | Mutation IDs replay before any other rule | Unit: the retry replays, a new write is still refused; seed |
+| Own: the summary sat at the first replaced cursor, so a reader who received it was then refused, and couldn't be told from one who had the original event there | The summary sits at the last replaced cursor (`through`); only cursors in `[from, through)` are refused | Unit: a reader of the summary continues after it; seed (wp06-gpt-5) |
