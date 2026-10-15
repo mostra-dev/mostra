@@ -437,6 +437,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               entry: source.entry,
               entryHasDefault: extracted.hasDefaultExport,
               manifest,
+              versionId,
               nodeModules: deps.nodeModules,
               outDir: out,
             });

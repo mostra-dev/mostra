@@ -60,6 +60,12 @@ export interface BuildRequest {
   readonly entryHasDefault: boolean;
   /** The artifact's manifest (with its title resolved). */
   readonly manifest: ArtifactManifest;
+  /**
+   * The version being built (D89: known from the digests before the build). The page carries it
+   * (`<meta name="mostra-version">`), so a frame tells its shell which version it loaded (D98
+   * item 5). Same digests, same ID, so the build stays a function of its inputs.
+   */
+  readonly versionId: string;
   /** The `node_modules` the build links: the warm layout, or the artifact's lock layout (D95). */
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */

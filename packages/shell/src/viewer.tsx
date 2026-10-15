@@ -78,6 +78,10 @@ const FLUSH_TIMEOUT_MS = 10_000;
 /** How long the shell waits for its own stream to see the frame's last save. */
 const CATCH_UP_MS = 5_000;
 
+/** How many times within {@link REENTRY_WINDOW_MS} the frame is loaded again at its version. */
+const REENTRY_LIMIT = 3;
+const REENTRY_WINDOW_MS = 10_000;
+
 const FRAME_ALLOW = [
   "accelerometer",
   "autoplay",
@@ -155,6 +159,8 @@ interface FrameHandlers {
   onFields(params: FieldsParams): void;
   onControl(request: ControlRequest): boolean;
   onPage(path: string): void;
+  /** The frame loaded another version than its view's (D98 item 5). */
+  onWrongVersion(): void;
 }
 
 /** The frame and its bridge. */
@@ -179,6 +185,12 @@ function Frame(props: {
       peerOrigin: ticket.artifactOrigin,
       onRequest: (message: AnyBridgeMessage, params) => {
         if (message === uiInitialize) {
+          // A frame that loaded another version than this view's (another tab moved the frame
+          // session on) is answered as usual, and loaded again at this view's version.
+          const loaded = (params as { mostra?: { versionId?: string } }).mostra?.versionId;
+          if (loaded !== undefined && loaded !== ticket.version.id) {
+            queueMicrotask(() => handlers.current.onWrongVersion());
+          }
           const result: UiInitializeResult = {
             protocolVersion: MCP_APPS_PROTOCOL_VERSION,
             hostInfo: { name: "mostra-shell", version: "0" },
@@ -240,7 +252,8 @@ function copyText(value: unknown): Promise<void> {
 
 /** The "Not carried over" panel (D42): read-only, copyable, never dropped. */
 function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactElement | null {
-  const [open, setOpen] = useState(false);
+  // Open when it appears, so the viewer sees what didn't carry over; they may fold it away.
+  const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState<string | undefined>();
   if (props.orphans.length === 0) return null;
   return (
@@ -350,6 +363,7 @@ export function ViewerPage(props: {
   const [blocked, setBlocked] = useState<readonly SubmitBlocker[]>([]);
   const [confirming, setConfirming] = useState(false);
   const bridge = useRef<Bridge | undefined>(undefined);
+  const reentries = useRef<number[]>([]);
   const latestState = useRef(state);
   latestState.current = state;
 
@@ -483,6 +497,22 @@ export function ViewerPage(props: {
     onPage: (path) => {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
+    },
+    onWrongVersion: () => {
+      // The frame session serves the version it last entered, which another tab may have moved
+      // on (D98 item 5): this view's version is entered again. Several in a row mean two tabs
+      // keep moving it, and the viewer is told instead of the frame reloading without end.
+      const now = Date.now();
+      reentries.current = reentries.current.filter((at) => now - at < REENTRY_WINDOW_MS);
+      reentries.current.push(now);
+      mark("", { frameReentries: String(reentries.current.length) });
+      if (reentries.current.length > REENTRY_LIMIT) {
+        setProblem(BANNER_WORDS.movedByOtherTab);
+        return;
+      }
+      void frameTicket(target.apiBase, session.csrf, ticket.version.number)
+        .then((next) => setTicket(next))
+        .catch(() => setProblem(BANNER_WORDS.movedByOtherTab));
     },
   };
 

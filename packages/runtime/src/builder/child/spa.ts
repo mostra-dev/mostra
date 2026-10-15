@@ -34,12 +34,13 @@ import { type ScanResult, scanArtifact } from "./scan.ts";
 /** Where generated build files live inside the staging directory (never in the snapshot). */
 const GENERATED = ".mostra-build";
 
-const html = (title: string): string =>
+const html = (title: string, versionId: string): string =>
   `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="mostra-version" content="${versionId}" />
     <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
   </head>
   <body>
@@ -250,7 +251,10 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   };
   await rm(join(request.stagingDir, "node_modules"), { force: true, recursive: true });
   await symlink(request.nodeModules, join(request.stagingDir, "node_modules"), "dir");
-  await writeFile(join(request.stagingDir, "index.html"), html(request.manifest.title));
+  await writeFile(
+    join(request.stagingDir, "index.html"),
+    html(request.manifest.title, request.versionId),
+  );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
   await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
 

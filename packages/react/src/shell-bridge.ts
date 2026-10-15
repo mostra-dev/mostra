@@ -19,6 +19,22 @@ import {
   uiOpenLink,
 } from "@mostra/protocol";
 
+/**
+ * The version this page's build belongs to: its `<meta name="mostra-version">`, which Mostra's
+ * builder writes (WP-07). `undefined` for a build that has none. @internal
+ */
+export function builtVersion(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const content = document.querySelector('meta[name="mostra-version"]')?.getAttribute("content");
+  return content ? content : undefined;
+}
+
+/** `ui/initialize`'s `mostra` params: the page's version, when the build names it. */
+function versionParams(): { mostra?: { versionId: string } } {
+  const versionId = builtVersion();
+  return versionId === undefined ? {} : { mostra: { versionId } };
+}
+
 /** The shell connection of this page, once it is established. */
 export interface ShellConnection {
   /** The shell's origin. */
@@ -98,6 +114,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
         appInfo: { name: "mostra-artifact", version: "0" },
         appCapabilities: {},
         protocolVersion: MCP_APPS_PROTOCOL_VERSION,
+        ...versionParams(),
       },
       { timeoutMs: 10_000 },
     );

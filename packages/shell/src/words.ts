@@ -97,6 +97,8 @@ export const BANNER_WORDS = {
   later: "Later",
   heldUnsaved: "Not switched yet: some answers aren't saved.",
   heldOrphans: "Not switched by itself: some answers wouldn't carry over.",
+  movedByOtherTab:
+    "Another tab of this artifact keeps opening a different version. Close one of them, then reload this page.",
 } as const;
 
 /** The "Not carried over" panel (D42). */

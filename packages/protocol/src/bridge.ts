@@ -71,6 +71,12 @@ export interface UiInitializeParams {
   readonly appCapabilities: Readonly<Record<string, unknown>>;
   /** The MCP Apps revision the artifact speaks, {@link MCP_APPS_PROTOCOL_VERSION}. */
   readonly protocolVersion: string;
+  /**
+   * What the page is (WP-07): the version whose build the frame loaded. An artifact origin serves
+   * the version its frame session last entered (D98 item 5), so a frame reloaded after another
+   * tab switched versions may hold another version than its view; the shell re-enters its own.
+   */
+  readonly mostra?: { readonly versionId: string };
 }
 
 /** What the shell tells the artifact about where it is shown (MCP Apps' `HostContext`). */
@@ -114,6 +120,7 @@ export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>
     appInfo: Implementation,
     appCapabilities: z.record(z.string(), z.unknown()),
     protocolVersion: z.string().min(1),
+    mostra: z.looseObject({ versionId: z.string().min(1).max(64) }).exactOptional(),
   }),
   result: z.looseObject({
     protocolVersion: z.string().min(1),

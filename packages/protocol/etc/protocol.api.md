@@ -1745,6 +1745,9 @@ export const uiInitialized: BridgeMessage<Readonly<Record<string, unknown>>, und
 export interface UiInitializeParams {
     readonly appCapabilities: Readonly<Record<string, unknown>>;
     readonly appInfo: BridgeImplementation;
+    readonly mostra?: {
+        readonly versionId: string;
+    };
     readonly protocolVersion: string;
 }
 

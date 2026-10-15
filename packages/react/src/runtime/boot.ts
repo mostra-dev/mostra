@@ -15,7 +15,7 @@ import {
   type VersionAvailableParams,
   type ViewContext,
 } from "@mostra/protocol";
-import { connectShell, listenShell, type ShellConnection } from "../shell-bridge.ts";
+import { builtVersion, connectShell, listenShell, type ShellConnection } from "../shell-bridge.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
 import { Store } from "./store.ts";
 import { HttpTransport } from "./transport.ts";
@@ -112,6 +112,25 @@ export async function startRuntime(): Promise<Runtime> {
         ])
       : undefined;
   const view: ViewContext | undefined = shell?.host.mostra;
+  const built = builtVersion();
+  if (shell && view && built !== undefined && built !== view.version.id) {
+    // This page is another version than the view the shell opened: another tab moved the frame
+    // session on (D98 item 5). Nothing it shows may be saved as this view, nor kept: the shell,
+    // told the page's version in `ui/initialize`, loads the frame again at its own version.
+    const scratch = new Map<string, string>();
+    const store = new Store({
+      mode: "local",
+      journal: new MemoryJournal(),
+      tab,
+      local: {
+        getItem: (key) => scratch.get(key) ?? null,
+        setItem: (key, value) => void scratch.set(key, value),
+        removeItem: (key) => void scratch.delete(key),
+      },
+    });
+    store.start();
+    return { store, target, mode: view.target, shell };
+  }
   if (!shell || !view) {
     const store = new Store({ mode: "local", journal: new MemoryJournal(), tab });
     store.start();
