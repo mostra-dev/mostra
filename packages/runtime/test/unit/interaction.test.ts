@@ -19,7 +19,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
-import { compactEvents, READ_MAX_BYTES, readEvents } from "../../src/interaction/events.ts";
+import { compactEvents, readEvents } from "../../src/interaction/events.ts";
 import { applyMutation, documentFor, liveFields } from "../../src/interaction/fields.ts";
 import { createInteraction } from "../../src/interaction/index.ts";
 import { backoffMs } from "../../src/interaction/outbox.ts";
@@ -424,8 +424,14 @@ describe("events: order, filters and compaction (IN-08)", () => {
       readEvents(db, { filter: { types: ["submission.created"] }, after: 0, limit: 10 }),
     );
     expect(filtered.events.map((event) => event.type)).toEqual(["artifact.compacted"]);
-    // Compacting again with the same cutoff keeps everything the summary covered (finding 6).
+    // Compacting again over the summary and later events keeps everything the summary covered
+    // (finding 6): a reader inside the first range is still refused.
     ledger.write((db) => compactEvents(db, artifactId, cut));
+    ledger.write((db) => compactEvents(db, artifactId, Number(before[4]?.cursor) + 1));
+    expect(events(ledger, artifactId)[0]).toMatchObject({
+      type: "artifact.compacted",
+      payload: { from: Number(before[0]?.cursor), through: Number(before[4]?.cursor), removed: 5 },
+    });
     expect(codeOf(() => read(Number(before[1]?.cursor)))).toBe("MOSTRA_HOST_CURSOR_COMPACTED");
     // Compacting everything keeps the sequence going up (finding 5).
     const last = events(ledger, artifactId).at(-1);
@@ -452,7 +458,8 @@ describe("events: order, filters and compaction (IN-08)", () => {
           limit: 100,
         }),
       );
-      expect(JSON.stringify(page.events).length).toBeLessThan(READ_MAX_BYTES + 1024 * 1024);
+      // An absolute bound: about 8 MiB and one event's slack, whatever the constant says.
+      expect(JSON.stringify(page.events).length).toBeLessThan(9 * 1024 * 1024);
       seen.push(...page.events.map((event) => event.cursor));
       if (Number(page.cursor) === after) break;
       after = Number(page.cursor);
