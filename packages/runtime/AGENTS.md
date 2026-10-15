@@ -75,6 +75,23 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **Viewers reach only published client builds (VR-03).** Artifact origins serve files only from
   a version's `client/` directory, through `serve.ts`, which refuses anything whose real path
   leaves that root. Serving a version starts no process (RT-05).
+- **Every interaction change is one transaction with its events (IN-08, ARCHITECTURE §6).**
+  Mutations, submits, signals, deliveries and views go through `interaction`, which appends their
+  events with `appendEvent` inside the same `Ledger.write`; never append an event outside the
+  transaction of its change. Readers learn of commits through `Ledger.onCommit`, never by polling.
+- **Submissions are immutable and made only from the ledger (IN-05, IN-06).** The submit
+  transaction reads the canonical draft and state; nothing a page sends becomes a submission. A
+  trigger refuses any `UPDATE` or `DELETE` of `submission`, and a terminal `delivery` never
+  changes. The submissions port is called only from `interaction/outbox.ts`, with an envelope built
+  from the submission row; drafts leave only through `port/drafts.mirror`, as `kind: "draft"`.
+- **A submission is durable before any delivery (IN-12).** Deliveries are rows in the submit
+  transaction; the outbox only reads them, delivers one at a time per host in submission order,
+  and records each answer. A crash between a host's answer and its record redelivers the same
+  `deliveryId`.
+- **Mostra wakes nobody (IN-09, D10).** A signal is one `signal.raised` event. No code path calls a
+  host or notifies anyone because of a signal; hosts subscribe and decide.
+- **Pages see only their own viewer's draft (D104).** `pageEvents` filters every stream and poll;
+  a view belongs to one artifact and one viewer, checked on every request that names it.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -94,9 +111,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 installer, offline answers, `deps/add`; `child/install.ts` is the install child, which connects to the supervisor and runs pnpm in its process group |
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
-| `interaction` | The event log's append path (WP-06 adds drafts, submissions and reading) |
+| `interaction` | Viewers and views; documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction (`submissions.ts`); signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` (`browser.ts`); the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -104,7 +121,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
-(token expiry, session age) without waiting. These are for tests only. `MOSTRA_OFFLINE` (not a
+(token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls. These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
 `MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
 `shell/dist` beside the runtime package); without one the shell's pages answer
@@ -126,7 +143,9 @@ first module outside `protocol-server` needs it.
   (`pnpm --filter @mostra/runtime exec playwright install --only-shell chromium` once), and
   on-demand installs against the local registry in `test/registry.ts` (`deps.test.ts`), and the
   gateway through a real daemon (`gateway.test.ts`: serving with no process, route
-  enumeration, restarts, a week of simulated time, binds, leases). CI runs them on macOS and
+  enumeration, restarts, a week of simulated time, binds, leases), and the interaction ledger through
+  a daemon, real pages and hosts on their own connections (`interaction.test.ts`: conflicts, waits,
+  results, deliveries while a host is away, redelivery after a crash, resumed subscriptions). CI runs them on macOS and
   Linux (`integration` job, D86).
 - `pnpm --filter @mostra/runtime test:hygiene`: the hygiene checklist (ARCHITECTURE §10) as
   negative tests against a real gateway, through `test/browser-client.ts`, a cookie-jar HTTP
