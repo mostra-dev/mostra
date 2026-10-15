@@ -111,11 +111,12 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
   // Registered on the first render that names a field, updated only when a rule, label or error
   // changes, and released on unmount: re-registering on every render would never settle.
   const mounted = useRef(new Map<string, { release: () => void; signature: string }>());
-  useEffect(() => {
+  const sync = useRef<(errorOf: (name: string) => unknown) => void>(() => undefined);
+  sync.current = (errorOf) => {
     for (const [name, required] of rules.current) {
       const fieldId = `${prefix}${name}`;
       const label = labels?.[name as FieldPath<TFieldValues>];
-      const failure = get(errors, name) as { message?: unknown } | undefined;
+      const failure = errorOf(name) as { message?: unknown } | undefined;
       const message =
         failure === undefined
           ? undefined
@@ -141,7 +142,19 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
         store.updateRegistration(registration);
       }
     }
-  });
+  };
+  useEffect(() => sync.current((name) => get(errors, name)));
+  // react-hook-form validates on submit unless told otherwise; before either channel's submit
+  // it validates now, so its errors are the submit's blockers (D106: the client checks).
+  const { trigger, getFieldState } = form;
+  useEffect(
+    () =>
+      store.beforeSubmit(async () => {
+        await trigger();
+        sync.current((name) => getFieldState(name as FieldPath<TFieldValues>).error);
+      }),
+    [store, trigger, getFieldState],
+  );
   useEffect(
     () => () => {
       for (const entry of mounted.current.values()) entry.release();

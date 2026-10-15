@@ -155,7 +155,9 @@ const warned = new Set<string>();
 export function useField<T>(
   id: string,
   initial: T,
-  options: FieldOptions<T> = {},
+  // `NoInfer`: the type comes from `initial`, as `useState`'s does; a validator annotated
+  // `(value: number)` must not narrow `useField("count", 1)` to the literal type `1`.
+  options: FieldOptions<NoInfer<T>> = {},
 ): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>] {
   const { store } = useRuntime();
   const scope = options.scope ?? "viewer";

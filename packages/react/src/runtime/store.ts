@@ -209,6 +209,7 @@ export class Store {
   #broadcast: BroadcastChannel | undefined;
   #submitState: SubmitState = "open";
   #catchUp: (() => void)[] = [];
+  readonly #beforeSubmit = new Set<() => Promise<void>>();
   #stopStream: (() => void) | undefined;
 
   constructor(options: StoreOptions) {
@@ -1122,6 +1123,17 @@ export class Store {
    * fields the gateway never stored, saves everything, waits until the event stream reached the
    * page's own last save, and reports what still blocks.
    */
+  /**
+   * Adds a check that runs before every submit, either channel's: an adapter whose library
+   * validates on its own schedule (react-hook-form validates on submit by default) runs its
+   * validation here and updates its registrations, so the blockers are current. Returns the
+   * function that removes it.
+   */
+  beforeSubmit(check: () => Promise<void>): () => void {
+    this.#beforeSubmit.add(check);
+    return () => this.#beforeSubmit.delete(check);
+  }
+
   async prepareSubmit(): Promise<{
     readonly revision: number;
     readonly unsaved: boolean;
@@ -1129,6 +1141,9 @@ export class Store {
   }> {
     if (this.mode === "local") throw targetUnavailable("Submitting");
     await this.whenReady(CATCH_UP_MS);
+    // A check that fails can't stop the viewer's submit: it is the adapter's, and its own
+    // errors stay visible on its fields.
+    await Promise.allSettled([...this.#beforeSubmit].map((check) => check()));
     for (const [key, { registration }] of this.#registrations) {
       if (registration.scope !== "viewer" || !this.writable(key)) continue;
       if (this.stored(key) || this.#pending.has(key) || this.#sending.has(key)) continue;
@@ -1210,6 +1225,8 @@ export class Store {
         channel: "artifact",
       });
       this.#adoptSubmission(submission, false);
+      // The page sees the submission, and a closed draft, at once (IN-13).
+      this.#changed(this.#allKeys());
       return submission;
     } catch (error) {
       if (error instanceof MostraError && error.code === "MOSTRA_SUBMIT_ALREADY") {

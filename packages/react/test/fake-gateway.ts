@@ -41,6 +41,8 @@ export class FakeGateway {
   offline = false;
   /** Refuses the next mutations with this code. */
   refuseWith: string | undefined;
+  /** The largest field value in UTF-8 bytes, like the gateway's 1 MiB (DATA_MODEL §5). */
+  maxValueBytes = Number.POSITIVE_INFINITY;
   /** View IDs the gateway accepts. */
   views = new Set<string>(["vw_01J00000000000000000000000"]);
   readonly #subscribers = new Set<StreamHandlers>();
@@ -90,13 +92,21 @@ export class FakeGateway {
     };
   }
 
-  /** Another writer (an agent, another device) changes fields directly. */
-  write(scope: "viewer" | "artifact", values: Record<string, unknown>): number {
+  /**
+   * Another writer (an agent, another device) changes fields directly. `quiet`: the page hears
+   * nothing of it yet, as when the event is still on its way.
+   */
+  write(
+    scope: "viewer" | "artifact",
+    values: Record<string, unknown>,
+    options: { readonly quiet?: boolean } = {},
+  ): number {
     const doc = this.docs[scope];
     doc.revision += 1;
     for (const [id, value] of Object.entries(values)) {
       doc.fields.set(id, { value, revision: doc.revision });
     }
+    if (options.quiet) return doc.revision;
     this.#emit(
       scope,
       doc.revision,
@@ -140,6 +150,11 @@ export class FakeGateway {
     }
     if (!this.views.has(request.viewId)) {
       throw new MostraError("MOSTRA_SUBMIT_VIEW_INVALID", "Another link's view.", { status: 403 });
+    }
+    for (const op of request.ops) {
+      if (new TextEncoder().encode(JSON.stringify(op.value ?? null)).length > this.maxValueBytes) {
+        throw new MostraError("MOSTRA_FIELD_TOO_LARGE", `${op.id} is too large.`, { status: 413 });
+      }
     }
     const digest = JSON.stringify([request.scope, request.baseRevision, request.ops]);
     const recorded = this.mutations.get(request.mutationId);
