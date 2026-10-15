@@ -12,7 +12,7 @@
 | `pnpm check` | green: format-lint, types, unit, integration, hygiene, e2e, build, boundaries, api, licenses, rust, docs and commits all pass, uncached (`TURBO_FORCE=true`, 3 min 23 s, macOS arm64) |
 | Predecessors | WP-05 done ([PROGRESS-WP-05](PROGRESS-WP-05.md) on `origin/main`); no `RECOVERY-WP-06-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64 |
-| Pull request | draft, opened with this report |
+| Pull request | [#16](https://github.com/mostra-dev/mostra/pull/16), draft |
 
 ## Evidence
 
