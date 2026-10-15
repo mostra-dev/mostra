@@ -1,6 +1,6 @@
 # WP-06 progress: interaction ledger
 
-**Status:** In progress. The report grows during the session and is finalized after acceptance (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-15 ("accepted & approved 100%!"), merged to `main` as `4aa78c2`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,27 @@
 | `pnpm check` | green: format-lint, types, unit, integration, hygiene, e2e, build, boundaries, api, licenses, rust, docs and commits all pass, uncached (`TURBO_FORCE=true`, 3 min 23 s, macOS arm64) |
 | Predecessors | WP-05 done ([PROGRESS-WP-05](PROGRESS-WP-05.md) on `origin/main`); no `RECOVERY-WP-06-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64 |
-| Pull request | [#16](https://github.com/mostra-dev/mostra/pull/16), draft |
+| Pull request | [#16](https://github.com/mostra-dev/mostra/pull/16), merged |
+
+## What was built
+
+- **`@mostra/protocol`:**
+  - the host methods `state/get`, `state/patch`, `results/get`, `wait`, `events/read` (with `acceptCompacted`), `events/subscribe` with the `events/notify` notification, `events/unsubscribe` and `events/ack`; the port methods `port/submissions.deliver` (`SubmissionEnvelope`) and `port/drafts.mirror` (`DraftMirror`);
+  - the wire types of fields, events, submissions, deliveries and `Results`; `DeliveryId` (`dlv_`); `canonicalJson` (RFC 8785); `MAX_LINE_LENGTH`;
+  - browser-protocol revision `2026-10-15`: the `fields`, `submit`, `signal`, `events` and `events/poll` payloads;
+  - `HomeConfig.submission` and `HomeConfig.ports`, `view/url`'s `viewer`, `instance/status`'s `deliveries`;
+  - the SUBMIT and FIELD diagnostic areas and four HOST codes (13 new codes in all, each with its docs page).
+- **`@mostra/runtime`:**
+  - migration 5: viewers, views, documents, fields, mutations, write-once submissions and deliveries, durable subscribers, with triggers that refuse updates, deletes and `INSERT OR REPLACE` over write-once rows;
+  - the `interaction` module: per-field compare-and-set with partial rebase, conflicts and replayable mutation IDs (`fields.ts`); the submit transaction under `once` (per-artifact, per-viewer), `epochs` and `none`, with canonical snapshots and digests (`submissions.ts`); the outbox, one delivery at a time per host in submission order, with backoff, timeouts, terminal answers and redelivery by `deliveryId`, and best-effort draft mirrors (`outbox.ts`); events with filters, size-bounded pages and compaction (`events.ts`); durable, flow-controlled subscriptions (`subscriptions.ts`); signals (`signals.ts`); `wait` (`wait.ts`); results as JSON and Markdown (`results.ts`); views and viewers (`viewers.ts`); the policy in force (`policy.ts`);
+  - the gateway's browser routes (`gateway/browser.ts`): fields, submit, signal, a pull-based SSE stream and long polling, behind WP-05's scope and CSRF checks;
+  - `Ledger.onCommit`, `ProtocolServer` notifications, port calls to one session, `drained`, and a line-length guard on every write.
+- **Tests:** property tests for compare-and-set and for event order across restarts; 52 unit tests in `interaction.test.ts` and `interaction-review.test.ts`; 11 integration tests through a real daemon; 9 browser tests in Chromium, Firefox and WebKit; 41 seeded violations.
+
+## Decisions taken in the package
+
+- **D101** check boundaries and prose; **D102** the policy in force, refined in the session (an explicitly chosen policy sticks); **D103** epochs and `wait`; **D104** views and viewers; **D105** delivery owners, the outbox and mirrors; **D106** fields, the `submit` signal and browser revision `2026-10-15`. Mirza delegated all of them at M18.
+- **D107** (after the Claude review): `once` per-viewer waits for the next respondent after an explicit cursor. Shown to Mirza at the candidate and accepted with the package.
 
 ## Evidence
 
@@ -76,3 +96,30 @@ Answered without a change: the stored `subscriber.filter_json` isn't used to res
 - **D102** gained a rule while it was built: a policy a publish names stays until another publish names one, so an agent's plain republish can't undo a host's choice (recorded in DECISIONS.md).
 - **D107** amends D103 after the Claude review: under `once` per-viewer, `wait --until submitted` is edge-triggered after an explicit cursor.
 - **Size budgets** of `@mostra/protocol` rose for the new schemas and HOST codes: the whole entry from 24 to 28 kB (26.54 kB), the JSON-RPC core from 5 to 6 kB (5.49 kB) and the bridge from 6 to 6.5 kB (6.14 kB). The core and the bridge carry the whole HOST catalog's text; [#17](https://github.com/mostra-dev/mostra/issues/17) proposes giving the core a catalog of its own codes.
+
+## Agent-facing prose (D74)
+
+Delegated by D101. Mirza saw the two texts I wasn't confident in, `MOSTRA_FIELD_TOO_LARGE`'s and `MOSTRA_SUBMIT_ALREADY`'s hints, and they were reworded as proposed; `MOSTRA_HOST_MESSAGE_TOO_LARGE`'s hint was shown with the candidate. `packages/runtime/AGENTS.md` gained the interaction invariants.
+
+## Untested boundaries
+
+- The CLI's `wait` (WP-10), the SDK's (WP-11) and the conformance scenarios for IN-06 to IN-10, IN-12 and LL-02 (WP-12) come later (D101); the shell's Submit control, the shell channel and required-field checks are WP-07's, action-raised signals WP-08's, comments in results WP-20's.
+- Compaction runs only through the module until WP-10 adds `mostra gc --compact-events`; its tests are unit tests against a real ledger.
+- The outbox's too-large branch can't be reached once snapshots are bounded; it is a last defense, inspected. So is the long poll's timer error path (finding 8 of the Claude review).
+- The stream's memory bound comes from its construction (one page per pull, the Node adapter waiting for `drain`); it is not measured.
+- Draft mirrors are best-effort: a host that isn't connected misses them, by design (D105).
+- A link minted without `viewer` is shared: everyone holding it shares one draft and one `once` slot (D104). WP-14's Skill and WP-15's tool descriptions say so.
+- Open issues: [#17](https://github.com/mostra-dev/mostra/issues/17) (the JSON-RPC core carries the whole HOST catalog), [#18](https://github.com/mostra-dev/mostra/issues/18) (WP-03's hung-builder test races a fast build; seen once on macOS CI, passed on rerun).
+
+## Commits and publication
+
+- **Range:** `f5dd783..4aa78c2` on `main`: 26 signed-off commits on `wp/06-interaction` (`fc12369` to `a6d1ef7`) and the merge commit `4aa78c2` of [#16](https://github.com/mostra-dev/mostra/pull/16). This report lands through its own pull request (D79).
+- **On `main` after the merge:** CI [38731069549](https://github.com/mostra-dev/mostra/actions/runs/38731069549), CodeQL [38731069605](https://github.com/mostra-dev/mostra/actions/runs/38731069605) and Scorecard [38731069548](https://github.com/mostra-dev/mostra/actions/runs/38731069548), all green.
+- **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol` and `@mostra/runtime`. The release pipeline is WP-11's (EN-05).
+- **Docs:** generated pages for the 13 new diagnostic codes in `docs/reference/`; the docs site is WP-26's.
+- **Follow-ups for later packages** are in their specifications (D101): WP-07, WP-08, WP-10, WP-11, WP-12, WP-14, WP-15 and WP-20.
+- **Remaining dirty paths:** none in the repository. Outside it: edit scripts, seed and check logs, and the GPT and Claude review transcripts in `$JCODE_SCRATCH_DIR/wp06`.
+
+## Next
+
+WP-07, client runtime and shell controls (`docs/design/work-packages/WP-07.md`).
