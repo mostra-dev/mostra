@@ -296,10 +296,11 @@ describe("migration 6 (D108, D109, D63)", () => {
         "INSERT INTO viewer (id, kind, external_ref, created_at) VALUES ('vwr_01J00000000000000000000000', 'local', 'local', ?)",
         now,
       );
-      for (const [view, version] of [
+      const views: readonly (readonly [string, string])[] = [
         ["vw_01J00000000000000000000001", versions[0] as string],
         ["vw_01J00000000000000000000002", versions[1] as string],
-      ]) {
+      ];
+      for (const [view, version] of views) {
         db.run(
           "INSERT INTO view (id, artifact_id, version_id, viewer_id, opened_at) VALUES (?, ?, ?, 'vwr_01J00000000000000000000000', ?)",
           view,
