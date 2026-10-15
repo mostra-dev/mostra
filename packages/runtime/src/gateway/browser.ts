@@ -285,7 +285,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
                 send(`id: ${event.cursor}\nevent: mostra\ndata: ${JSON.stringify(event)}\n\n`);
               }
               cursor = read.cursor;
-              if (read.events.length < BATCH) return;
+              // A page cut short by size is not the end: read on until nothing is left.
+              if (read.events.length === 0) return;
             }
           } catch (error) {
             log.error("gateway.stream_failed", { error });
@@ -332,6 +333,15 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
       const snapshot = interaction.pageSnapshot(page);
       return jsonResponse({ cursor: snapshot.cursor, events: [], snapshot });
     }
+    const revoked = (): Response =>
+      answer(
+        refusal(
+          "MOSTRA_HYGIENE_TOKEN_REVOKED",
+          "The link this page came from was revoked or has expired.",
+          410,
+        ).diagnostic,
+        410,
+      );
     const once = () => {
       const read = next(page, resume);
       return "snapshot" in read
@@ -341,6 +351,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     try {
       const first = once();
       if (first.events.length > 0 || "snapshot" in first || waitS === 0) return jsonResponse(first);
+      let ended = false;
       const result = await new Promise<ReturnType<typeof once>>((resolve, reject) => {
         let done = false;
         const finish = (value?: ReturnType<typeof once>): void => {
@@ -355,6 +366,12 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
         const unsubscribe = interaction.onCommit(() =>
           setImmediate(() => {
             if (done) return;
+            // A revoked or expired link ends the poll before it reads anything more.
+            if (!live(context)) {
+              ended = true;
+              finish(first);
+              return;
+            }
             try {
               const value = once();
               if (value.events.length > 0 || "snapshot" in value) finish(value);
@@ -369,6 +386,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
         const timer = setTimeout(() => finish(), waitS * 1000);
         context.request.signal.addEventListener("abort", aborted, { once: true });
       });
+      // The link is checked again at the end: nothing read after it died leaves (HY-03).
+      if (ended || !live(context)) return revoked();
       return jsonResponse(result);
     } catch (error) {
       return failure(error);

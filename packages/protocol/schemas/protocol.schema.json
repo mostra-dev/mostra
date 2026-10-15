@@ -1155,6 +1155,9 @@
         },
         "cursor": {
           "$ref": "#/$defs/Cursor"
+        },
+        "compacted": {
+          "$ref": "#/$defs/Diagnostic"
         }
       },
       "required": [

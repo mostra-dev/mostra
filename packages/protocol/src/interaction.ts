@@ -373,7 +373,10 @@ export type DeliveryState = "pending" | "delivered" | "rejected" | "undeliverabl
 export interface DeliveryStatus {
   /** The delivery's stable ID (`dlv_`), repeated by every redelivery. */
   readonly deliveryId: string;
-  /** The host: its client name, or `mostra` for the built-in adapter. */
+  /**
+   * The host: its client name. Empty for Mostra's built-in adapter, which takes submissions when no
+   * host does; client names are never empty, so no host can be mistaken for it (D105).
+   */
   readonly owner: string;
   /** Where the delivery stands. */
   readonly state: DeliveryState;

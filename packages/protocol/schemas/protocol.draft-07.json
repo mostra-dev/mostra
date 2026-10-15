@@ -1195,6 +1195,13 @@
         },
         "cursor": {
           "$ref": "#/definitions/Cursor"
+        },
+        "compacted": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Diagnostic"
+            }
+          ]
         }
       },
       "required": [

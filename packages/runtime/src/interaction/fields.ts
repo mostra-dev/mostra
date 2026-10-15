@@ -224,6 +224,27 @@ function conflictOf(row: FieldRow): FieldConflict {
 }
 
 /**
+ * The result a mutation ID recorded, when this exact mutation was applied before, or `undefined`
+ * for a new one; the same ID with other contents is `MOSTRA_FIELD_MUTATION_ID_REUSED` (D106).
+ * Callers check it before any other rule, so a retry of a committed mutation always replays.
+ */
+export function replayedMutation(db: LedgerDb, input: MutationInput): MutationResult | undefined {
+  const recorded = db.get<{ params_digest: string; result_json: string }>(
+    "SELECT params_digest, result_json FROM mutation WHERE id = ?",
+    input.mutationId,
+  );
+  if (!recorded) return undefined;
+  if (recorded.params_digest !== mutationDigest(input)) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_FIELD_MUTATION_ID_REUSED", {
+        message: `The mutation ID ${input.mutationId} was used for another change.`,
+      }),
+    );
+  }
+  return JSON.parse(recorded.result_json) as MutationResult;
+}
+
+/**
  * Applies a mutation inside the caller's write transaction (D22, IN-01, LL-01). The mutation ID
  * replays its recorded result; the same ID with other contents is
  * `MOSTRA_FIELD_MUTATION_ID_REUSED`. Each changed field takes the new revision; each conflict
@@ -236,24 +257,8 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
   }
   const encoded = checkOps(input.ops);
   const digest = mutationDigest(input);
-  const recorded = db.get<{ params_digest: string; result_json: string }>(
-    "SELECT params_digest, result_json FROM mutation WHERE id = ?",
-    input.mutationId,
-  );
-  if (recorded) {
-    if (recorded.params_digest !== digest) {
-      throw new RpcError(
-        createDiagnostic("MOSTRA_FIELD_MUTATION_ID_REUSED", {
-          message: `The mutation ID ${input.mutationId} was used for another change.`,
-        }),
-      );
-    }
-    return {
-      result: JSON.parse(recorded.result_json) as MutationResult,
-      changed: false,
-      replayed: true,
-    };
-  }
+  const replay = replayedMutation(db, input);
+  if (replay) return { result: replay, changed: false, replayed: true };
 
   const document = documentFor(db, input.artifactId, input.viewerId ?? null, true);
   const revision = document.revision + 1;

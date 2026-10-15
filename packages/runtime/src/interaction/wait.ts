@@ -25,12 +25,12 @@ export function defaultWaitCursor(db: LedgerDb, artifactId: string): number {
       "SELECT MAX(cursor) AS cursor FROM event WHERE artifact_id = ? AND type = 'version.published'",
       artifactId,
     )?.cursor ?? 0;
-  // A publish that was compacted away is inside the summary's range; wait after the range.
+  // A publish that was compacted away is inside a summary's range; wait after the summary.
   const compacted =
-    db.get<{ through: number | null }>(
-      `SELECT MAX(json_extract(payload_json, '$.through')) AS through FROM event WHERE artifact_id = ? AND type = '${COMPACTED}'`,
+    db.get<{ cursor: number | null }>(
+      `SELECT MAX(cursor) AS cursor FROM event WHERE artifact_id = ? AND type = '${COMPACTED}'`,
       artifactId,
-    )?.through ?? 0;
+    )?.cursor ?? 0;
   return Math.max(published, compacted);
 }
 

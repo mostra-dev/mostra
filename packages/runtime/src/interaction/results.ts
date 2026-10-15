@@ -223,7 +223,7 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
     `- View: ${submission.viewId}, channel ${submission.channel}, viewer ${viewer} (${submission.viewer.id})`,
     `- Submitted: ${submission.at}, epoch ${submission.epoch}${submission.previous ? ` (after ${submission.previous})` : ""}, policy ${submission.policy.policy}${submission.policy.policy === "once" ? ` ${submission.policy.scope ?? "per-artifact"}` : ""}`,
     `- Draft revision ${submission.draftRevision}${submission.stateRevision !== undefined ? `, artifact state revision ${submission.stateRevision}` : ""}, digest ${submission.digest}`,
-    `- Delivery: ${submission.delivery}${submission.deliveries.length > 0 ? ` (${submission.deliveries.map((delivery) => `${delivery.owner}: ${delivery.state}${delivery.reason ? `, ${delivery.reason}` : ""}`).join("; ")})` : ""}`,
+    `- Delivery: ${submission.delivery}${submission.deliveries.length > 0 ? ` (${submission.deliveries.map((delivery) => `${delivery.owner === "" ? "built-in" : delivery.owner}: ${delivery.state}${delivery.reason ? `, ${delivery.reason}` : ""}`).join("; ")})` : ""}`,
     ...(results.artifact.links.length > 0
       ? [
           `- Links: ${results.artifact.links.map((link) => `${link.rel} ${link.artifact}`).join(", ")}`,

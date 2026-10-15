@@ -132,30 +132,44 @@ function filterSql(filter: EventFilter | undefined): {
 }
 
 /**
- * Refuses a read whose cursor falls inside a compacted range of an artifact the filter covers
- * (DATA_MODEL §4): the reader already had events there, and the ones after it are gone. A reader
- * before the range gets the `artifact.compacted` summary in its place, in order.
+ * The compaction summary whose range holds `after` for an artifact the filter covers: the reader
+ * already had events of that range (`from <= after`), and the ones after its cursor are gone
+ * (`after < through`, the summary's own cursor). A reader before the range receives the summary in
+ * its place, in order, and continues after it (DATA_MODEL §4).
  */
+export function compactionCovering(
+  db: LedgerDb,
+  filter: EventFilter | undefined,
+  after: number,
+): EventRow | undefined {
+  const { where, params } = filterSql(filter?.artifacts ? { artifacts: filter.artifacts } : {});
+  return db.get<EventRow>(
+    `SELECT * FROM event WHERE type = '${COMPACTED}' AND ${where} AND json_extract(payload_json, '$.from') <= ? AND cursor > ? ORDER BY cursor LIMIT 1`,
+    ...params,
+    after,
+    after,
+  );
+}
+
+/** Refuses a read whose cursor falls inside a compacted range (`MOSTRA_HOST_CURSOR_COMPACTED`). */
 export function checkCompaction(
   db: LedgerDb,
   filter: EventFilter | undefined,
   after: number,
 ): void {
-  const { where, params } = filterSql(filter?.artifacts ? { artifacts: filter.artifacts } : {});
-  const hit = db.get<{ cursor: number }>(
-    `SELECT cursor FROM event WHERE type = '${COMPACTED}' AND ${where} AND cursor <= ? AND json_extract(payload_json, '$.through') > ? ORDER BY cursor LIMIT 1`,
-    ...params,
-    after,
-    after,
-  );
+  const hit = compactionCovering(db, filter, after);
   if (hit) {
+    const from = (JSON.parse(hit.payload_json) as CompactionSummary).from;
     throw new RpcError(
       createDiagnostic("MOSTRA_HOST_CURSOR_COMPACTED", {
-        message: `Events after cursor ${after} were compacted; read again after cursor ${hit.cursor - 1} to receive the summary (events from other artifacts may repeat).`,
+        message: `Events after cursor ${after} were compacted into a summary at cursor ${hit.cursor}; read again after cursor ${from - 1} to receive it (events of other artifacts in between may repeat).`,
       }),
     );
   }
 }
+
+/** The most a page of events carries, as JSON: well inside every framing limit (D83). */
+export const READ_MAX_BYTES: number = 8 * 1024 * 1024;
 
 /** Options for {@link readEvents}. */
 export interface ReadOptions {
@@ -164,12 +178,15 @@ export interface ReadOptions {
   readonly after: number;
   /** At most this many events. */
   readonly limit: number;
+  /** At most about this many bytes of events; one event always fits. Default {@link READ_MAX_BYTES}. */
+  readonly maxBytes?: number;
 }
 
 /**
  * Reads matching events after a cursor, in order, inside the caller's read transaction. The
- * returned cursor is where the next read continues: the last event returned when the page is full,
- * else the newest cursor examined, so non-matching events are never examined twice.
+ * returned cursor is where the next read continues: the last event returned when the page is full
+ * (by count or by size), else the newest cursor examined, so non-matching events are never
+ * examined twice and an event left out is never skipped.
  */
 export function readEvents(
   db: LedgerDb,
@@ -185,16 +202,30 @@ export function readEvents(
     ...params,
     options.limit,
   );
-  const events = rows.map(eventRecord);
-  const last = rows.at(-1)?.cursor;
-  const cursor =
-    rows.length === options.limit && last !== undefined ? last : Math.max(upTo, options.after);
+  const maxBytes = options.maxBytes ?? READ_MAX_BYTES;
+  const events: EventRecord[] = [];
+  let bytes = 0;
+  let full = rows.length === options.limit;
+  for (const row of rows) {
+    const size =
+      row.payload_json.length + row.actor_json.length + (row.causation_json?.length ?? 0) + 256;
+    if (events.length > 0 && bytes + size > maxBytes) {
+      full = true;
+      break;
+    }
+    bytes += size;
+    events.push(eventRecord(row));
+  }
+  const last = events.at(-1)?.cursor;
+  const cursor = full && last !== undefined ? Number(last) : Math.max(upTo, options.after);
   return { events, cursor: String(cursor) };
 }
 
 /** What compaction left behind: the `artifact.compacted` event's payload (DATA_MODEL §4). */
 export interface CompactionSummary {
-  /** The last cursor the summary covers: the artifact's events up to it were replaced. */
+  /** The first cursor the summary covers. */
+  readonly from: number;
+  /** The last cursor it covers, which is its own: the artifact's events in between were replaced. */
   readonly through: number;
   /** How many events it replaced. */
   readonly removed: number;
@@ -210,8 +241,10 @@ export interface CompactionSummary {
 
 /**
  * Compacts an artifact's events before `before` (`mostra gc --compact-events`, D47): they are
- * replaced, in this transaction, by one `artifact.compacted` event at the first replaced cursor,
- * whose payload summarizes them. Returns the summary, or `undefined` when nothing was there.
+ * replaced, in this transaction, by one `artifact.compacted` event at the last replaced cursor and
+ * sequence, whose payload summarizes them (an earlier summary in the range folds in). Cursors and
+ * per-artifact sequences therefore never move back, and a reader who receives the summary
+ * continues after it. Returns the summary, or `undefined` when there was nothing to replace.
  */
 export function compactEvents(
   db: LedgerDb,
@@ -226,13 +259,16 @@ export function compactEvents(
   const first = rows[0];
   const last = rows.at(-1);
   if (!first || !last) return undefined;
+  if (rows.length === 1 && first.type === COMPACTED) return undefined;
   const types: Record<string, number> = {};
   let removed = 0;
+  let from = first.cursor;
   let latestVersion: CompactionSummary["latestVersion"];
   for (const row of rows) {
     if (row.type === COMPACTED) {
-      // An earlier summary folds into this one.
+      // An earlier summary folds into this one, with everything it covered.
       const earlier = JSON.parse(row.payload_json) as CompactionSummary;
+      from = Math.min(from, earlier.from);
       removed += earlier.removed;
       for (const [type, count] of Object.entries(earlier.types))
         types[type] = (types[type] ?? 0) + count;
@@ -247,6 +283,7 @@ export function compactEvents(
     }
   }
   const summary: CompactionSummary = {
+    from,
     through: last.cursor,
     removed,
     types,
@@ -255,9 +292,9 @@ export function compactEvents(
   db.run("DELETE FROM event WHERE artifact_id = ? AND cursor < ?", artifactId, before);
   db.run(
     "INSERT INTO event (cursor, artifact_id, seq, type, actor_json, causation_json, payload_json, at) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)",
-    first.cursor,
+    last.cursor,
     artifactId,
-    first.seq,
+    last.seq,
     COMPACTED,
     JSON.stringify({ kind: "mostra" }),
     JSON.stringify(summary),

@@ -19,7 +19,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
-import { compactEvents, readEvents } from "../../src/interaction/events.ts";
+import { compactEvents, READ_MAX_BYTES, readEvents } from "../../src/interaction/events.ts";
 import { applyMutation, documentFor, liveFields } from "../../src/interaction/fields.ts";
 import { createInteraction } from "../../src/interaction/index.ts";
 import { backoffMs } from "../../src/interaction/outbox.ts";
@@ -87,6 +87,7 @@ function events(ledger: Ledger, artifactId?: string): EventRecord[] {
         filter: artifactId ? { artifacts: [artifactId] } : undefined,
         after: 0,
         limit: 1000,
+        maxBytes: Number.POSITIVE_INFINITY,
       }).events,
   );
 }
@@ -379,7 +380,7 @@ describe("events: order, filters and compaction (IN-08)", () => {
     );
   });
 
-  it("replaces compacted events with one summary, and refuses a cursor inside the compacted range", () => {
+  it("replaces compacted events with one summary at the last replaced cursor, refuses a cursor inside the range, and lets a reader of the summary continue (GPT review findings 5, 6)", () => {
     const { ledger } = freshLedger();
     const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
     for (let index = 0; index < 5; index++) mutate(ledger, artifactId, [set("a", index)]);
@@ -387,31 +388,76 @@ describe("events: order, filters and compaction (IN-08)", () => {
     const cut = Number(before[4]?.cursor);
     const summary = ledger.write((db) => compactEvents(db, artifactId, cut));
     expect(summary).toMatchObject({
+      from: Number(before[0]?.cursor),
+      through: Number(before[3]?.cursor),
       removed: 4,
       types: { "artifact.created": 1, "version.published": 1, "state.changed": 2 },
     });
     const after = events(ledger, artifactId);
-    expect(after[0]).toMatchObject({ type: "artifact.compacted", cursor: before[0]?.cursor });
+    // The summary takes the last replaced cursor and sequence, so neither ever moves back.
+    expect(after[0]).toMatchObject({
+      type: "artifact.compacted",
+      cursor: before[3]?.cursor,
+      seq: before[3]?.seq,
+    });
     expect(after.slice(1).map((event) => event.cursor)).toEqual(
       before.slice(4).map((event) => event.cursor),
     );
-    // A reader that had the second event can't continue silently.
-    expect(
-      codeOf(() =>
-        ledger.read((db) =>
-          readEvents(db, {
-            filter: { artifacts: [artifactId] },
-            after: Number(before[1]?.cursor),
-            limit: 10,
-          }),
-        ),
-      ),
-    ).toBe("MOSTRA_HOST_CURSOR_COMPACTED");
+    const read = (from: number) =>
+      ledger.read((db) =>
+        readEvents(db, { filter: { artifacts: [artifactId] }, after: from, limit: 10 }),
+      );
+    // A reader that had an event inside the range can't continue silently.
+    for (const index of [0, 1, 2]) {
+      expect(codeOf(() => read(Number(before[index]?.cursor)))).toBe(
+        "MOSTRA_HOST_CURSOR_COMPACTED",
+      );
+    }
+    // A reader before the range gets the summary, and continues after it without a refusal.
+    const fresh = read(0);
+    expect(fresh.events[0]?.type).toBe("artifact.compacted");
+    expect(read(Number(fresh.events[0]?.cursor)).events.map((event) => event.cursor)).toEqual(
+      before.slice(4).map((event) => event.cursor),
+    );
     // A filtered reader still sees the summary.
     const filtered = ledger.read((db) =>
       readEvents(db, { filter: { types: ["submission.created"] }, after: 0, limit: 10 }),
     );
     expect(filtered.events.map((event) => event.type)).toEqual(["artifact.compacted"]);
+    // Compacting again with the same cutoff keeps everything the summary covered (finding 6).
+    ledger.write((db) => compactEvents(db, artifactId, cut));
+    expect(codeOf(() => read(Number(before[1]?.cursor)))).toBe("MOSTRA_HOST_CURSOR_COMPACTED");
+    // Compacting everything keeps the sequence going up (finding 5).
+    const last = events(ledger, artifactId).at(-1);
+    ledger.write((db) => compactEvents(db, artifactId, Number(last?.cursor) + 1));
+    mutate(ledger, artifactId, [set("a", "next")]);
+    const next = events(ledger, artifactId).at(-1);
+    expect(next?.seq).toBe((last?.seq ?? 0) + 1);
+    expect(Number(next?.cursor)).toBeGreaterThan(Number(last?.cursor));
+  });
+
+  it("bounds a page of events by size and continues where it stopped, so no notification outgrows the framing (GPT review finding 4)", () => {
+    const { ledger } = freshLedger();
+    const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
+    const big = "x".repeat(900 * 1024);
+    for (let index = 0; index < 12; index++) mutate(ledger, artifactId, [set(`f${index}`, big)]);
+    const all = events(ledger, artifactId).filter((event) => event.type === "state.changed");
+    const seen: string[] = [];
+    let after = 0;
+    for (let guard = 0; guard < 50; guard++) {
+      const page = ledger.read((db) =>
+        readEvents(db, {
+          filter: { artifacts: [artifactId], types: ["state.changed"] },
+          after,
+          limit: 100,
+        }),
+      );
+      expect(JSON.stringify(page.events).length).toBeLessThan(READ_MAX_BYTES + 1024 * 1024);
+      seen.push(...page.events.map((event) => event.cursor));
+      if (Number(page.cursor) === after) break;
+      after = Number(page.cursor);
+    }
+    expect(seen).toEqual(all.map((event) => event.cursor));
   });
 });
 
@@ -1154,7 +1200,8 @@ describe("the outbox (IN-12, IN-06)", () => {
       { viewId: latest.viewId, expectedRevision: 1, channel: "artifact" },
     );
     await until(() => interaction.deliveries()[0]?.delivered === 1);
-    expect(interaction.deliveries()[0]?.owner).toBe("mostra");
+    // The built-in adapter is the empty owner: no host name can be taken for it (GPT review finding 2).
+    expect(interaction.deliveries()[0]?.owner).toBe("");
     expect(hosts.calls).toHaveLength(0);
     interaction.stop();
   });
@@ -1206,6 +1253,116 @@ describe("no path delivers a draft as a submission (IN-06)", () => {
     expect(outbox).toMatch(/SELECT \* FROM submission WHERE id = \?/);
     // Drafts leave only through the drafts port, labelled as drafts.
     expect(outbox).toMatch(/kind: "draft"/);
+  });
+});
+
+describe("findings of the GPT-6.1-Sol review", () => {
+  it("delivers to a host named like the built-in adapter, never marking its deliveries done unseen (finding 2)", async () => {
+    const { artifactId, latest, draft, ledger } = submitting(undefined);
+    const hosts = new FakeHosts();
+    hosts.registered = [{ session: 1, owner: "mostra", ports: ["submissions"] }];
+    const interaction = createInteraction({
+      ledger,
+      log: silentLog,
+      faults: noFaults,
+      hosts,
+      expectedHosts: () => [],
+      artifacts: { resolve: () => artifactId },
+    });
+    interaction.start();
+    draft([set("a", 1)]);
+    interaction.submit(
+      { artifactId, viewerId: latest.viewerId },
+      { viewId: latest.viewId, expectedRevision: 1, channel: "artifact" },
+    );
+    await until(() => hosts.calls.length === 1);
+    expect(hosts.calls[0]?.method).toBe("port/submissions.deliver");
+    await until(() => interaction.deliveries()[0]?.delivered === 1);
+    expect(interaction.deliveries()).toEqual([
+      expect.objectContaining({ owner: "mostra", delivered: 1 }),
+    ]);
+    interaction.stop();
+  });
+
+  it("tells a subscription that compaction overtook it, with the summary, and keeps delivering (finding 3)", async () => {
+    const { ledger } = freshLedger();
+    const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
+    const hosts = new FakeHosts();
+    const interaction = createInteraction({
+      ledger,
+      log: silentLog,
+      faults: noFaults,
+      hosts,
+      expectedHosts: () => [],
+      artifacts: { resolve: () => artifactId },
+    });
+    interaction.start();
+    const subscriber = {
+      ...session(9, "host", []),
+      notifications: new Set(["events/notify"]),
+    } as Session;
+    const subscribe = interaction
+      .methods()
+      .find((entry) => entry.definition.method === "events/subscribe");
+    // Subscribed at cursor 1; the next events are compacted before the pump reaches them.
+    const answer = (await subscribe?.handle(
+      { after: "1", filter: { artifacts: [artifactId] } },
+      subscriber,
+    )) as {
+      subscriptionId: string;
+    };
+    for (let index = 0; index < 4; index++) mutate(ledger, artifactId, [set("a", index)]);
+    ledger.write((db) =>
+      compactEvents(db, artifactId, Number(events(ledger, artifactId).at(-1)?.cursor)),
+    );
+    await until(() => hosts.notifications.length > 0);
+    const first = hosts.notifications[0]?.params as {
+      subscriptionId: string;
+      events: EventRecord[];
+      compacted?: { code: string };
+    };
+    expect(first.subscriptionId).toBe(answer.subscriptionId);
+    expect(first.compacted?.code).toBe("MOSTRA_HOST_CURSOR_COMPACTED");
+    expect(first.events.map((event) => event.type)).toEqual(["artifact.compacted"]);
+    // It goes on: the event after the summary, and later commits, still arrive.
+    mutate(ledger, artifactId, [set("a", "later")]);
+    await until(() =>
+      hosts.notifications.some((note) =>
+        (note.params as { events: EventRecord[] }).events.some(
+          (event) => event.payload["revision"] === "5",
+        ),
+      ),
+    );
+    interaction.stop();
+  });
+
+  it("replays a committed save after a submission closed the draft, instead of refusing it (finding 7)", () => {
+    const { ledger, artifactId, versions, latest } = submitting(undefined);
+    const interaction = createInteraction({
+      ledger,
+      log: silentLog,
+      faults: noFaults,
+      hosts: new FakeHosts(),
+      expectedHosts: () => [],
+      artifacts: { resolve: () => artifactId },
+    });
+    const page = { artifactId, viewerId: latest.viewerId };
+    const save = {
+      viewId: latest.viewId,
+      scope: "viewer" as const,
+      mutationId: mutationId(),
+      baseRevision: 0,
+      ops: [set("a", 1)],
+    };
+    const first = interaction.mutate(page, save);
+    // Another tab submits before the first tab's retry of that save arrives.
+    const tab = viewOf(ledger, artifactId, versions[1] as string, latest.viewerId);
+    interaction.submit(page, { viewId: tab.viewId, expectedRevision: 1, channel: "artifact" });
+    expect(interaction.mutate(page, save)).toEqual(first);
+    // A new write is still refused.
+    expect(codeOf(() => interaction.mutate(page, { ...save, mutationId: mutationId() }))).toBe(
+      "MOSTRA_SUBMIT_ALREADY",
+    );
   });
 });
 

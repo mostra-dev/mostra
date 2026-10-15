@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { Diagnostic } from "../../diagnostics/diagnostic.ts";
 import { Cursor } from "../../ids.ts";
 import { EventFilter, EventRecord } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
@@ -39,6 +40,12 @@ export interface EventsNotifyParams {
   readonly events: readonly EventRecord[];
   /** Everything up to this cursor was examined; acknowledge it once the events are handled. */
   readonly cursor: string;
+  /**
+   * Set when compaction removed events after this subscription's cursor (DATA_MODEL §4):
+   * `MOSTRA_HOST_CURSOR_COMPACTED`, never a silent gap. `events` then holds the `artifact.compacted`
+   * summary, and the subscription continues after it.
+   */
+  readonly compacted?: Diagnostic;
 }
 
 const params: z.ZodType<EventsSubscribeParams> = z
@@ -62,6 +69,7 @@ export const EventsNotifyParams: z.ZodType<EventsNotifyParams> = z
     subscriptionId: z.string().min(1),
     events: z.array(EventRecord).readonly(),
     cursor: Cursor.schema,
+    compacted: Diagnostic.exactOptional(),
   })
   .register(wireRegistry, {
     id: "EventsNotifyParams",

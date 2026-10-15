@@ -15,7 +15,7 @@ import {
 } from "@mostra/protocol";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
-import { latestCursor, readEvents } from "./events.ts";
+import { compactionCovering, eventRecord, latestCursor, readEvents } from "./events.ts";
 
 /** Events per notification. */
 const PAGE = 100;
@@ -175,14 +175,38 @@ export class Subscriptions {
           readEvents(db, { filter: subscription.filter, after: subscription.cursor, limit: PAGE }),
         );
       } catch (error) {
-        // Compaction removed events this subscription hadn't reached: it ends, and the host
-        // subscribes again from the summary (MOSTRA_HOST_CURSOR_COMPACTED).
-        log.warn("events.subscription_ended", {
+        if (
+          !(error instanceof RpcError) ||
+          error.diagnostic.code !== "MOSTRA_HOST_CURSOR_COMPACTED"
+        ) {
+          log.error("events.subscription_failed", { subscriptionId: subscription.id, error });
+          this.#all.delete(subscription.id);
+          return;
+        }
+        // Compaction removed events after this subscription's cursor: the host gets the summary
+        // with the diagnostic, never a silent gap, and the subscription continues after it
+        // (DATA_MODEL §4).
+        const summary = ledger.read((db) =>
+          compactionCovering(db, subscription.filter, subscription.cursor),
+        );
+        if (!summary) continue;
+        log.warn("events.subscription_compacted", {
           subscriptionId: subscription.id,
-          error: (error as Error).message,
+          after: subscription.cursor,
+          summary: summary.cursor,
         });
-        this.#all.delete(subscription.id);
-        return;
+        const sent = notify(subscription.session, EVENTS_NOTIFY, {
+          subscriptionId: subscription.id,
+          events: [eventRecord(summary)],
+          cursor: String(summary.cursor),
+          compacted: error.diagnostic,
+        });
+        if (!sent) {
+          this.#all.delete(subscription.id);
+          return;
+        }
+        subscription.cursor = summary.cursor;
+        continue;
       }
       const next = Number(read.cursor);
       if (read.events.length > 0) {
@@ -197,7 +221,8 @@ export class Subscriptions {
         }
       }
       subscription.cursor = next;
-      if (read.events.length < PAGE) return;
+      // A page cut short by size (READ_MAX_BYTES) ends before the newest cursor: read on.
+      if (read.events.length < PAGE && next >= ledger.read((db) => latestCursor(db))) return;
     }
     setImmediate(() => this.#pump(subscription));
   }

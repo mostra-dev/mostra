@@ -437,6 +437,38 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
   });
 });
 
+describe("a long poll after its link died (GPT review finding 1)", () => {
+  const gateway = new GatewayHome();
+  let receipt: Receipt & { dir: string; entry: string };
+
+  beforeAll(async () => {
+    await gateway.start();
+    receipt = await publish(gateway, "single-tsx", { policy: "none" });
+  }, 180_000);
+  afterAll(() => gateway.stop());
+
+  it("answers 410 and none of what was written after the link was revoked", async () => {
+    const link = ok<{ url: string; tokenId: string }>(
+      await gateway.client.call("view/url", { artifact: { artifactId: receipt.artifactId } }),
+    );
+    const viewer = await page(link.url);
+    const snapshot = (await viewer.poll()).json<{ cursor: string }>();
+    const waiting = viewer.poll(snapshot.cursor, 10);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    ok(await gateway.client.call("view/revoke", { tokenId: link.tokenId }));
+    ok(
+      await gateway.client.call("state/patch", {
+        artifact: { artifactId: receipt.artifactId },
+        mutationId: MutationId.create(),
+        ops: [{ id: "private", value: "after-revocation" }],
+      }),
+    );
+    const answer = await waiting;
+    expect(answer.status).toBe(410);
+    expect(answer.body).not.toContain("after-revocation");
+  });
+});
+
 describe("submissions, wait and results through the protocol (IN-05, IN-07, IN-09, IN-10, IN-11)", () => {
   const gateway = new GatewayHome();
   let receipt: Receipt & { dir: string; entry: string };

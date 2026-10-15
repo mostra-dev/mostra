@@ -51,7 +51,7 @@ export interface InstanceStatusResult {
 
 /** One host's deliveries by state (D105). */
 export interface DeliveryCounts {
-  /** The host's client name, or `mostra` for the built-in adapter. */
+  /** The host's client name; empty for Mostra's built-in adapter (D105). */
   readonly owner: string;
   /** Whether a connection of this host has the submissions port registered now. */
   readonly connected: boolean;

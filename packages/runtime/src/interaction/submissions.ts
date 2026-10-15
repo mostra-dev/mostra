@@ -27,8 +27,11 @@ import { storedPolicy } from "./policy.ts";
 import { raiseSubmitSignal, SUBMIT_SIGNAL } from "./signals.ts";
 import { viewer as viewerById, viewFor } from "./viewers.ts";
 
-/** The owner of the built-in adapter's deliveries, which accepts at once (D58, D105). */
-export const BUILT_IN_OWNER = "mostra";
+/**
+ * The owner of the built-in adapter's deliveries, which accepts at once (D58, D105): empty, since
+ * a client name never is, so no host can be taken for it.
+ */
+export const BUILT_IN_OWNER = "";
 
 /** One field as a snapshot keeps it. */
 export interface SnapshotField {

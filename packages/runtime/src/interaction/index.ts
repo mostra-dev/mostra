@@ -38,7 +38,7 @@ import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
 import { latestCursor, readEvents } from "./events.ts";
-import { applyMutation, documentFor, liveFields } from "./fields.ts";
+import { applyMutation, documentFor, liveFields, replayedMutation } from "./fields.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { buildResults, resultsMarkdown, submissionFor } from "./results.ts";
 import { raiseSignal } from "./signals.ts";
@@ -234,8 +234,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       const actor = pageActor(page);
       const outcome = ledger.write((db) => {
         viewFor(db, input.viewId, page.artifactId, page.viewerId);
-        if (input.scope === "viewer") assertDraftOpen(db, page.artifactId, page.viewerId);
-        return applyMutation(db, {
+        const mutation = {
           artifactId: page.artifactId,
           scope: input.scope,
           ...(input.scope === "viewer" ? { viewerId: page.viewerId } : {}),
@@ -244,7 +243,13 @@ export function createInteraction(options: InteractionOptions): Interaction {
           ops: input.ops,
           actor,
           viewId: input.viewId,
-        });
+        };
+        // A committed mutation replays its result even after a submission closed the draft (D106):
+        // the retry of a save whose answer was lost must not turn into a failure.
+        const replay = replayedMutation(db, mutation);
+        if (replay) return { result: replay, changed: false, replayed: true };
+        if (input.scope === "viewer") assertDraftOpen(db, page.artifactId, page.viewerId);
+        return applyMutation(db, mutation);
       });
       if (outcome.changed && input.scope === "viewer")
         outbox.mirror(page.artifactId, page.viewerId);

@@ -832,8 +832,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "IN-01",
     name: "a retried mutation ID applies again instead of replaying its result",
     file: "src/interaction/fields.ts",
-    from: "  if (recorded) {",
-    to: "  if (false) {",
+    from: "  if (!recorded) return undefined;",
+    to: "  return undefined;",
     also: [
       {
         file: "src/interaction/fields.ts",
@@ -910,8 +910,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "IN-08",
     name: "a full page of events moves the cursor past events it didn't return",
     file: "src/interaction/events.ts",
-    from: "  const cursor =\n    rows.length === options.limit && last !== undefined ? last : Math.max(upTo, options.after);",
-    to: "  const cursor = Math.max(upTo, options.after, last ?? 0);",
+    from: "  const cursor = full && last !== undefined ? Number(last) : Math.max(upTo, options.after);",
+    to: "  const cursor = Math.max(upTo, options.after);",
     check: unit("interaction.test.ts", "orders every event"),
   },
   {
@@ -1014,6 +1014,70 @@ const SEEDS: readonly Seed[] = [
     from: '  if (event.type.startsWith("draft.")) return event.payload["viewerId"] === viewerId;',
     to: "",
     check: integration("interaction.test.ts", "never shows another viewer's draft"),
+  },
+  // The GPT-6.1-Sol review of WP-06 (D80): each fix, undone.
+  {
+    requirement: "wp06-gpt-1",
+    name: "a long poll answers with what it read after its link died",
+    file: "src/gateway/browser.ts",
+    from: "      if (ended || !live(context)) return revoked();\n",
+    to: "",
+    also: [
+      {
+        file: "src/gateway/browser.ts",
+        from: "            if (!live(context)) {\n              ended = true;",
+        to: "            if (false) {\n              ended = true;",
+      },
+    ],
+    check: integration("interaction.test.ts", "after the link was revoked"),
+  },
+  {
+    requirement: "wp06-gpt-2",
+    name: "a host named like the built-in adapter gets its deliveries marked done unseen",
+    file: "src/interaction/submissions.ts",
+    from: 'export const BUILT_IN_OWNER = "";',
+    to: 'export const BUILT_IN_OWNER = "mostra";',
+    check: unit("interaction.test.ts", "named like the built-in adapter"),
+  },
+  {
+    requirement: "wp06-gpt-3",
+    name: "a subscription overtaken by compaction ends silently",
+    file: "src/interaction/subscriptions.ts",
+    from: "        if (!summary) continue;",
+    to: "        this.#all.delete(subscription.id);\n        return;",
+    check: unit("interaction.test.ts", "compaction overtook it"),
+  },
+  {
+    requirement: "wp06-gpt-4",
+    name: "a page of events has no size bound",
+    file: "src/interaction/events.ts",
+    from: "export const READ_MAX_BYTES: number = 8 * 1024 * 1024;",
+    to: "export const READ_MAX_BYTES: number = 1024 * 1024 * 1024;",
+    check: unit("interaction.test.ts", "bounds a page of events by size"),
+  },
+  {
+    requirement: "wp06-gpt-5",
+    name: "the compaction summary takes the first replaced sequence and cursor",
+    file: "src/interaction/events.ts",
+    from: "    last.cursor,\n    artifactId,\n    last.seq,",
+    to: "    first.cursor,\n    artifactId,\n    first.seq,",
+    check: unit("interaction.test.ts", "at the last replaced cursor"),
+  },
+  {
+    requirement: "wp06-gpt-6",
+    name: "compacting again forgets what an earlier summary covered",
+    file: "src/interaction/events.ts",
+    from: "      from = Math.min(from, earlier.from);\n",
+    to: "",
+    check: unit("interaction.test.ts", "at the last replaced cursor"),
+  },
+  {
+    requirement: "wp06-gpt-7",
+    name: "a committed save's retry is refused once a submission closed the draft",
+    file: "src/interaction/index.ts",
+    from: "        if (replay) return { result: replay, changed: false, replayed: true };\n        if (input.scope",
+    to: "        if (input.scope",
+    check: unit("interaction.test.ts", "replays a committed save"),
   },
 ];
 
