@@ -462,6 +462,66 @@ describe("item 9: per-scope tokens (HY-03)", () => {
     expect(review.status).toBe(501);
   });
 
+  it("puts the shell's trusted controls behind their scopes and the shell's own origin (WP-07, D108)", async () => {
+    const link = await gateway.link(receipt.artifactId, { scopes: ["review"] });
+    secrets.push(parseLink(link.url).secret);
+    const browser = new Browser();
+    const viewer = await openLink(browser, link.url);
+    const shell = (path: string, body: unknown) =>
+      browser.fetchJson(viewer.link.shell, `${api()}/v/2026-10-15/${path}`, {
+        body,
+        csrf: viewer.shellCsrf,
+      });
+    // The trusted Submit needs the submit scope; Choose needs review, which this link has.
+    expect(code(await shell("submit", { viewId: viewer.viewId, expectedRevision: "0" }))).toBe(
+      "403 MOSTRA_HYGIENE_SCOPE_DENIED",
+    );
+    expect(code(await shell("review/choose", {}))).toBe("400 MOSTRA_HYGIENE_REQUEST_MALFORMED");
+    expect(code(await shell("follow", {}))).toBe("400 MOSTRA_HYGIENE_REQUEST_MALFORMED");
+    // The ticket offers this link no trusted Submit (D97): its scopes can't use one.
+    const ticket = await browser.fetchJson(viewer.link.shell, `${api()}/ticket`, {
+      body: {},
+      csrf: viewer.shellCsrf,
+    });
+    expect(ticket.json<{ controls: string[] }>().controls).not.toContain("submit");
+    expect(ticket.json<{ controls: string[] }>().controls).toContain("choose");
+  });
+
+  it("refuses the shell's trusted routes to the artifact's origin and without the shell's CSRF token (SH-02)", async () => {
+    const path = `${opened.link.shell}${api()}/v/2026-10-15/submit`;
+    const body = JSON.stringify({ viewId: opened.viewId, expectedRevision: "0" });
+    // From the artifact's own page: another origin.
+    const fromFrame = await holder.ask({
+      method: "POST",
+      url: path,
+      headers: {
+        origin: opened.frameOrigin,
+        "content-type": "application/json",
+        "sec-fetch-site": "same-site",
+        "x-mostra-csrf": opened.frameCsrf,
+      },
+      body,
+    });
+    expect(code(fromFrame)).toBe("403 MOSTRA_HYGIENE_ORIGIN_REFUSED");
+    // The shell's origin with the frame's CSRF token, which is all artifact code can read.
+    const frameToken = await holder.fetchJson(opened.link.shell, `${api()}/v/2026-10-15/submit`, {
+      body: { viewId: opened.viewId, expectedRevision: "0" },
+      csrf: opened.frameCsrf,
+    });
+    expect(code(frameToken)).toBe("403 MOSTRA_HYGIENE_CSRF_MISSING");
+  });
+
+  it("lets a link that names a version learn nothing of another version's carry-over (D97 item 9)", async () => {
+    const link = await gateway.link(receipt.artifactId, { version: 1 });
+    secrets.push(parseLink(link.url).secret);
+    const browser = new Browser();
+    const viewer = await openLink(browser, link.url);
+    const carry = (version: number) =>
+      browser.fetchJson(viewer.link.shell, `${api()}/v/2026-10-15/carry?version=${version}`);
+    expect((await carry(1)).status).toBe(200);
+    expect(code(await carry(2))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
+  });
+
   it("grants one action by its export name or its function ID, and no other", async () => {
     const link = await gateway.link(receipt.artifactId, { scopes: ["action:sendReply"] });
     secrets.push(parseLink(link.url).secret);

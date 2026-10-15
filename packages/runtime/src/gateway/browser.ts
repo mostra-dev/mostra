@@ -562,6 +562,15 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (!Number.isSafeInteger(wanted) || wanted < 1) {
       return malformed("`version` must be a version number.");
     }
+    // A link that names a version learns nothing of another (D97 item 9).
+    const pinned = context.session?.grant.pinnedVersion;
+    if (pinned !== undefined && wanted !== pinned) {
+      return answer(
+        refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`)
+          .diagnostic,
+        403,
+      );
+    }
     const version = options.versionOf(page.artifactId, wanted);
     if (!version) {
       return answer(
