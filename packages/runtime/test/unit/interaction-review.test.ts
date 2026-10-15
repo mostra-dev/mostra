@@ -40,6 +40,7 @@ const viewerOf = (ledger: Ledger, ref: string): string =>
 
 function interactionFor(ledger: Ledger, artifactId: string, hosts = new FakeHosts()): Interaction {
   return createInteraction({
+    coverage: () => () => true,
     ledger,
     log: silentLog,
     faults: noFaults,
@@ -98,6 +99,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     });
     const { submission } = ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: page.viewerId,
         viewId: page.viewId,
@@ -202,6 +204,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     const submitAs = (who: { viewerId: string; viewId: string }) =>
       ledger.write((db) =>
         submit(db, {
+          covers: () => () => true,
           artifactId,
           viewerId: who.viewerId,
           viewId: who.viewId,
@@ -233,6 +236,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     const view = viewOf(other, single.artifactId, single.versions[0] as string);
     other.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId: single.artifactId,
         viewerId: view.viewerId,
         viewId: view.viewId,
@@ -299,6 +303,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     const page = viewOf(ledger, artifactId, versions[0] as string);
     const { submission } = ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: page.viewerId,
         viewId: page.viewId,
@@ -367,6 +372,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     const page = viewOf(ledger, artifactId, versions[0] as string);
     const { submission } = ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: page.viewerId,
         viewId: page.viewId,
@@ -408,6 +414,7 @@ describe("findings of the Claude Opus 5.5 review", () => {
     ledger.write((db) => compactEvents(db, artifactId, last + 1));
     const { submission } = ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: page.viewerId,
         viewId: page.viewId,

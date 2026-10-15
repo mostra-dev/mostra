@@ -17,7 +17,7 @@ import {
   type SubmissionsDeliverResult,
 } from "@mostra/protocol";
 import type { Faults } from "../faults.ts";
-import type { Ledger } from "../ledger/index.ts";
+import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { appendEvent } from "./events.ts";
 import { documentFor, liveFields } from "./fields.ts";
@@ -71,6 +71,7 @@ interface DeliveryRow {
   readonly state: DeliveryState;
   readonly attempts: number;
   readonly next_attempt_at: string | null;
+  readonly last_error_json: string | null;
 }
 
 type Outcome =
@@ -234,8 +235,12 @@ export class Outbox {
       .registrants("submissions")
       .filter((entry) => entry.owner === owner)
       .at(-1);
-    // Not connected: its deliveries wait for it to register again.
-    if (!registrant) return false;
+    // Not connected: its deliveries wait for it to register again, and the viewer learns that
+    // the submission is waiting (IN-13).
+    if (!registrant) {
+      if (head.last_error_json === null) this.#waiting(head, "The host isn't connected.");
+      return false;
+    }
     const attempt = head.attempts + 1;
     const envelope = ledger.write((db) => {
       db.run(
@@ -326,6 +331,10 @@ export class Outbox {
         head.submission_id,
       ) as { artifact_id: string };
       if (outcome.kind === "retry") {
+        const first = db.get<{ last_error_json: string | null }>(
+          "SELECT last_error_json FROM delivery WHERE id = ?",
+          head.id,
+        );
         db.run(
           "UPDATE delivery SET next_attempt_at = ?, last_error_json = ?, updated_at = ? WHERE id = ?",
           new Date(this.#now() + backoffMs(head.attempts)).toISOString(),
@@ -333,6 +342,9 @@ export class Outbox {
           now,
           head.id,
         );
+        if (first?.last_error_json === null) {
+          appendRetrying(db, submission.artifact_id, head, outcome.error);
+        }
         return;
       }
       const state = outcome.kind === "delivered" ? "delivered" : outcome.state;
@@ -360,6 +372,32 @@ export class Outbox {
           ...(reason !== null ? { reason } : {}),
         },
       });
+    });
+  }
+
+  /**
+   * Records that a delivery waits for a host that isn't connected, once: the viewer sees "Pending
+   * delivery" instead of a submission that looks merely slow (IN-13, D47).
+   */
+  #waiting(head: DeliveryRow, reason: string): void {
+    const now = new Date(this.#now()).toISOString();
+    this.#options.ledger.write((db) => {
+      const current = db.get<{ state: DeliveryState; last_error_json: string | null }>(
+        "SELECT state, last_error_json FROM delivery WHERE id = ?",
+        head.id,
+      );
+      if (current?.state !== "pending" || current.last_error_json !== null) return;
+      db.run(
+        "UPDATE delivery SET last_error_json = ?, updated_at = ? WHERE id = ?",
+        JSON.stringify({ message: reason, at: now }),
+        now,
+        head.id,
+      );
+      const submission = db.get<{ artifact_id: string }>(
+        "SELECT artifact_id FROM submission WHERE id = ?",
+        head.submission_id,
+      ) as { artifact_id: string };
+      appendRetrying(db, submission.artifact_id, head, reason);
     });
   }
 
@@ -419,6 +457,27 @@ export class Outbox {
       })();
     }
   }
+}
+
+/**
+ * `submission.retrying`: a delivery is waiting, its host away or its first attempt failed (D47's
+ * "Pending delivery"). Appended once per delivery, so a long outage never fills the event log;
+ * `submission.delivered` and the terminal events end it.
+ */
+function appendRetrying(db: LedgerDb, artifactId: string, head: DeliveryRow, reason: string): void {
+  appendEvent(db, {
+    artifactId,
+    type: "submission.retrying",
+    actor: { kind: "mostra" },
+    causation: { submissionId: head.submission_id },
+    payload: {
+      submissionId: head.submission_id,
+      deliveryId: head.id,
+      owner: head.port_owner,
+      attempts: head.attempts,
+      reason: reason.slice(0, 500),
+    },
+  });
 }
 
 /** What a host's answer means (D105). */

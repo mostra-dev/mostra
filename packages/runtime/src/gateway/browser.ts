@@ -6,13 +6,17 @@
  */
 import {
   BROWSER_PROTOCOL_REVISIONS,
+  ChooseRequest,
   type Diagnostic,
   type EventRecord,
   FieldsRequest,
+  FollowRequest,
   RpcError,
   refusal,
+  ShellSubmitRequest,
   SignalRequest,
   type StreamSnapshot,
+  type SubmissionSummary,
   SubmitRequest,
   ViewId,
 } from "@mostra/protocol";
@@ -48,6 +52,7 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_SUBMIT_ALREADY: 409,
   MOSTRA_SUBMIT_REVISION_MOVED: 409,
   MOSTRA_SUBMIT_POLICY_NONE: 409,
+  MOSTRA_SUBMIT_CHANNEL_DENIED: 403,
   MOSTRA_FIELD_MUTATION_ID_REUSED: 409,
   MOSTRA_HOST_CURSOR_COMPACTED: 410,
   MOSTRA_HOME_DISK_FULL: 507,
@@ -59,6 +64,19 @@ export interface BrowserRoutesOptions {
   readonly interaction: Interaction;
   readonly capabilities: Capabilities;
   readonly log: Log;
+  /** A version of an artifact by number, for the carry-over route. */
+  readonly versionOf: (
+    artifactId: string,
+    number: number,
+  ) => { readonly id: string; readonly number: number } | undefined;
+  /** Tells a host with a `trustedControls` port that a trusted control was used (D108). */
+  readonly activated: (event: {
+    readonly artifactId: string;
+    readonly control: "submit" | "choose";
+    readonly viewerId: string;
+    readonly viewId: string;
+    readonly detail: Readonly<Record<string, string>>;
+  }) => void;
 }
 
 /** A refusal or a diagnostic as the browser gets it. */
@@ -142,6 +160,14 @@ export interface BrowserRoutes {
   readonly signal: Handler;
   readonly stream: Handler;
   readonly poll: Handler;
+  /** The shell's trusted Submit (the `shell` channel, D40), on the shell origin. */
+  readonly shellSubmit: Handler;
+  /** The shell's trusted Choose (D65, D113), on the shell origin. */
+  readonly choose: Handler;
+  /** "Always follow this artifact" (D63), on the shell origin. */
+  readonly follow: Handler;
+  /** The viewer's answers a version doesn't carry over (D42, D109), on the shell origin. */
+  readonly carry: Handler;
 }
 
 /** The browser protocol's interaction routes' handlers. */
@@ -446,5 +472,103 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     }
   };
 
-  return { fields, submit, signal, stream, poll };
+  // ── The shell's own routes (WP-07) ─────────────────────────────────────────────────────
+  // They run on the shell origin behind the shell's session, its exact Origin and its CSRF
+  // token, none of which an artifact's page holds: only the trusted page can call them (SH-02).
+
+  const shellSubmit = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, ShellSubmitRequest);
+    if (request instanceof Response) return request;
+    const page = pageOf(context);
+    let submission: SubmissionSummary & { readonly duplicate?: true };
+    try {
+      submission = interaction.submit(page, {
+        viewId: request.viewId,
+        expectedRevision: Number(request.expectedRevision),
+        channel: "shell",
+      });
+    } catch (error) {
+      return failure(error);
+    }
+    if (submission.duplicate !== true) {
+      options.activated({
+        artifactId: page.artifactId,
+        control: "submit",
+        viewerId: page.viewerId,
+        viewId: request.viewId,
+        detail: { submissionId: submission.id },
+      });
+    }
+    return jsonResponse(submission);
+  };
+
+  const choose = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, ChooseRequest);
+    if (request instanceof Response) return request;
+    const page = pageOf(context);
+    try {
+      const result = interaction.choose(page, {
+        viewId: request.viewId,
+        mutationId: request.mutationId,
+        baseRevision: Number(request.baseRevision),
+        reviewSetId: request.reviewSetId,
+        candidateId: request.candidateId,
+        ...(request.label !== undefined ? { label: request.label } : {}),
+      });
+      if (result.applied.length > 0) {
+        options.activated({
+          artifactId: page.artifactId,
+          control: "choose",
+          viewerId: page.viewerId,
+          viewId: request.viewId,
+          detail: { reviewSetId: request.reviewSetId, candidateId: request.candidateId },
+        });
+      }
+      return jsonResponse(result);
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  const follow = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, FollowRequest);
+    if (request instanceof Response) return request;
+    try {
+      interaction.setFollowing(pageOf(context), request.follow);
+      return jsonResponse({ follow: request.follow });
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  const carry = (context: RouteContext): Response => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const page = pageOf(context);
+    const wanted = Number(new URL(context.request.url).searchParams.get("version"));
+    if (!Number.isSafeInteger(wanted) || wanted < 1) {
+      return malformed("`version` must be a version number.");
+    }
+    const version = options.versionOf(page.artifactId, wanted);
+    if (!version) {
+      return answer(
+        refusal("MOSTRA_HYGIENE_NOT_SERVED", `This artifact has no version ${wanted}.`, 404)
+          .diagnostic,
+        404,
+      );
+    }
+    try {
+      return jsonResponse(interaction.carryOver(page, version));
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  return { fields, submit, signal, stream, poll, shellSubmit, choose, follow, carry };
 }

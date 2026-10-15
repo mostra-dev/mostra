@@ -38,6 +38,7 @@ import {
   ArtifactId,
   type ArtifactManifest,
   type ArtifactPublishParams,
+  BROWSER_PROTOCOL_REVISION,
   createDiagnostic,
   type DepsAddParams,
   type DepsAddResult,
@@ -409,7 +410,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
             mode: manifest.mode ?? "spa",
             lockDigest: deps.lockDigest,
             buildConfigDigest,
-            browserProtocolRevision: null,
+            // The browser protocol the version's client runtime speaks (VR-10, D106).
+            browserProtocolRevision: BROWSER_PROTOCOL_REVISION,
           };
           const envDigest = environmentDigest(environment);
           const versionId = versionIdFor(artifactId, sourceDigest, envDigest);

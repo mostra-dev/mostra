@@ -3,6 +3,7 @@
  * (`child/`). Nothing here imports the bundler, so the supervisor can use them.
  */
 import type { ArtifactManifest, Diagnostic } from "@mostra/protocol";
+import type { FieldCoverage } from "./coverage.ts";
 
 /** One `"use server"` export (D54, D55): what the client stub calls and the worker runs. */
 export interface ServerFunctionEntry {
@@ -42,6 +43,11 @@ export interface VersionRegistry {
   readonly terminals: readonly string[];
   /** The web demos the manifest declares, by name. */
   readonly demos: readonly string[];
+  /**
+   * The field IDs the version's code can use (D109). Absent in versions built before WP-07, which
+   * cover every field ID.
+   */
+  readonly fields?: FieldCoverage;
 }
 
 /** What the supervisor asks the builder child to build (`builder/build`). */

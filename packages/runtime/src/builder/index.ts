@@ -16,9 +16,16 @@ import { fileURLToPath } from "node:url";
 import { createDiagnostic } from "@mostra/protocol";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
+import type { FieldCoverage } from "./coverage.ts";
 import { BUILD_METHOD, type BuildRequest, type BuildResponse, STAGING_FILES } from "./types.ts";
 
-export type { BuildRequest, BuildResponse } from "./types.ts";
+export {
+  coverageMatcher,
+  type FieldCoverage,
+  type FieldEntry,
+  type FieldHook,
+} from "./coverage.ts";
+export type { BuildRequest, BuildResponse, VersionRegistry } from "./types.ts";
 
 /** How long one build may take (FAILURE_MODEL §9). */
 export const BUILD_TIMEOUT_MS = 180_000;
@@ -35,7 +42,7 @@ const BUILD_PACKAGES = [
 ] as const;
 
 /** Bumped whenever the SPA build's settings change, so older versions aren't reused. */
-const SPA_CONFIG_REVISION = 3;
+const SPA_CONFIG_REVISION = 4;
 
 /** What a render mode can deliver for a manifest (ROUND-3 §7). */
 export interface RenderCapabilities {
@@ -219,4 +226,23 @@ function failed(
   message: string,
 ): BuildResponse {
   return { ok: false, diagnostics: [createDiagnostic(code, { message })] };
+}
+
+/**
+ * The field coverage a published version recorded in its `registry.json` (D109), or `undefined`
+ * for a version built before WP-07 or one whose registry can't be read: such a version covers
+ * every field ID, so nothing is orphaned by a guess.
+ */
+export function readFieldCoverage(versionDir: string): FieldCoverage | undefined {
+  try {
+    const registry = JSON.parse(readFileSync(join(versionDir, "registry.json"), "utf8")) as {
+      readonly fields?: FieldCoverage;
+    };
+    const fields = registry.fields;
+    if (fields === undefined || typeof fields.open !== "boolean" || !Array.isArray(fields.entries))
+      return undefined;
+    return fields;
+  } catch {
+    return undefined;
+  }
 }

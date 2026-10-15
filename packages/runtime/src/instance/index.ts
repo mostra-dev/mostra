@@ -20,15 +20,20 @@ import {
   type InstanceInfo,
   type JsonRpcParams,
   type MostraInitializeResult,
+  type PortTrustedControlsActivatedParams,
+  portTrustedControlsActivatedMethod,
+  portTrustedControlsPolicyMethod,
   RpcError,
 } from "@mostra/protocol";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
-import { createSpaRenderMode } from "../builder/index.ts";
+import { coverageMatcher, createSpaRenderMode, readFieldCoverage } from "../builder/index.ts";
 import { createDependencies, locateWarmSet, recoverDependencies } from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
 import {
   Capabilities,
+  CONTROLS_POLICY_TIMEOUT_MS,
   capabilityKey,
+  controlsPolicy,
   createGateway,
   type Gateway,
   locateShell,
@@ -269,6 +274,19 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         .filter(([, ports]) => ports.includes("submissions"))
         .map(([owner]) => owner),
     artifacts: { resolve: (ref) => registry.get(canonicalRef(ref)).id },
+    // Which field IDs each version covers (D109); versions are immutable, so it is read once.
+    coverage: (() => {
+      const cache = new Map<string, (fieldId: string) => boolean>();
+      return (versionId: string) => {
+        let matcher = cache.get(versionId);
+        if (!matcher) {
+          matcher = coverageMatcher(readFieldCoverage(registry.store.versionDir(versionId)));
+          if (cache.size >= 512) cache.delete(cache.keys().next().value as string);
+          cache.set(versionId, matcher);
+        }
+        return matcher;
+      };
+    })(),
     // Tests shorten the 30 s port-call limit to exercise a host that never answers.
     ...(Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) > 0
       ? { portTimeoutMs: Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) }
@@ -289,6 +307,45 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
     shellDir,
     interaction,
+    controls: (artifact) =>
+      controlsPolicy({
+        artifact,
+        log,
+        home: () => readHomeSettings(home.path).submitChannels,
+        registrant: () => server.registrants("trustedControls").at(-1),
+        call: (session, params) =>
+          server.callSession(
+            session,
+            portTrustedControlsPolicyMethod.method,
+            params as unknown as JsonRpcParams,
+            CONTROLS_POLICY_TIMEOUT_MS,
+          ),
+      }),
+    activated: (event) => {
+      // Best effort and never retried, like draft mirrors (D105, D108): the change is durable.
+      for (const registrant of server.registrants("trustedControls")) {
+        const params: PortTrustedControlsActivatedParams = {
+          artifactId: event.artifactId,
+          control: event.control,
+          viewer: interaction.viewer(event.viewerId),
+          viewId: event.viewId,
+          detail: event.detail,
+        };
+        server
+          .callSession(
+            registrant.session,
+            portTrustedControlsActivatedMethod.method,
+            params as unknown as JsonRpcParams,
+            CONTROLS_POLICY_TIMEOUT_MS,
+          )
+          .catch((error: unknown) =>
+            log.warn("gateway.activated_failed", {
+              owner: registrant.owner,
+              error: (error as Error).message,
+            }),
+          );
+      }
+    },
   });
   let gatewayStarted = false;
   const info: InstanceInfo = {
@@ -322,6 +379,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
         ...(config.submission !== undefined ? { submission: config.submission } : {}),
         ...(config.ports !== undefined ? { expectedPorts } : {}),
+        ...(config.submitChannels !== undefined
+          ? { submitChannels: [...new Set(config.submitChannels)].sort() }
+          : {}),
       };
       if (Object.keys(change).length === 0) return;
       writeHomeSettings(home.path, change);
@@ -330,9 +390,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
         ...(config.submission !== undefined ? { submission: config.submission } : {}),
         ...(config.ports !== undefined ? { ports: config.ports } : {}),
+        ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
       });
     },
-    supportedPorts: ["submissions", "drafts"],
+    supportedPorts: ["submissions", "drafts", "trustedControls"],
     notifications: [EVENTS_NOTIFY],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),

@@ -497,7 +497,15 @@ function submitting(policy: unknown) {
     owners: string[] = [],
   ) =>
     ledger.write((db) =>
-      submit(db, { artifactId, viewerId, viewId, expectedRevision, channel: "shell", owners }),
+      submit(db, {
+        artifactId,
+        viewerId,
+        viewId,
+        expectedRevision,
+        channel: "shell",
+        owners,
+        covers: () => () => true,
+      }),
     );
   return { ledger, artifactId, versions, latest, stale, draft, doSubmit };
 }
@@ -586,6 +594,7 @@ describe("submit (IN-05, IN-06, IN-07, LL-02)", () => {
     const tab = viewOf(ledger, artifactId, versions[1] as string, latest.viewerId);
     expect(codeOf(() => doSubmit(tab.viewId, 1))).toBe("MOSTRA_SUBMIT_ALREADY");
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -753,6 +762,7 @@ describe("Mostra decides nothing on a signal's behalf (IN-09, D10)", () => {
     const hosts = new FakeHosts();
     hosts.registered = [{ session: 1, owner: "host", ports: ["drafts"] }];
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -776,6 +786,7 @@ describe("Mostra decides nothing on a signal's behalf (IN-09, D10)", () => {
     draft([set("a", 1)]);
     ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: latest.viewerId,
         viewId: latest.viewId,
@@ -1089,6 +1100,7 @@ describe("the outbox (IN-12, IN-06)", () => {
     const setup = submitting(undefined);
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger: setup.ledger,
       log: silentLog,
       faults: noFaults,
@@ -1269,6 +1281,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const hosts = new FakeHosts();
     hosts.registered = [{ session: 1, owner: "mostra", ports: ["submissions"] }];
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1296,6 +1309,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1349,6 +1363,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const y = addArtifact(ledger, { id: ArtifactId.create() }).artifactId;
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1408,6 +1423,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
   it("replays a committed save after a submission closed the draft, instead of refusing it (finding 7)", () => {
     const { ledger, artifactId, versions, latest } = submitting(undefined);
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
