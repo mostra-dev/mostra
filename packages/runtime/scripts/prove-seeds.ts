@@ -942,7 +942,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "IN-10",
     name: "submitted under once is edge-triggered, so a late wait misses the submission",
     file: "src/interaction/wait.ts",
-    from: '      policy.policy === "once"\n        ? db.get<SubmissionRow>(',
+    from: "      level\n        ? db.get<SubmissionRow>(",
     to: "      false\n        ? db.get<SubmissionRow>(",
     check: integration("interaction.test.ts", "waits with still_waiting"),
   },
@@ -962,8 +962,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "IN-11",
     name: "Markdown results drop the answers' labels",
     file: "src/interaction/results.ts",
-    from: "    const name = field.label !== undefined ? `${field.label} (\\`${id}\\`)` : `\\`${id}\\``;",
-    to: "    const name = `\\`${id}\\``;",
+    from: "  return label !== undefined ? `${quoted(label)} (${code(id)})` : code(id);",
+    to: "  return code(id);",
     check: unit("interaction.test.ts", "Markdown"),
   },
   {
@@ -1041,10 +1041,10 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "wp06-gpt-3",
-    name: "a subscription overtaken by compaction ends silently",
+    name: "a subscription overtaken by compaction isn't told",
     file: "src/interaction/subscriptions.ts",
-    from: "        if (!summary) continue;",
-    to: "        this.#all.delete(subscription.id);\n        return;",
+    from: "          ...(read.compacted ? { compacted: read.compacted } : {}),\n",
+    to: "",
     check: unit("interaction.test.ts", "compaction overtook it"),
   },
   {
