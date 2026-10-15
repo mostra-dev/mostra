@@ -5,9 +5,13 @@
 
 /** A diagnostic as the gateway sends it; only the fields the runtime reads. */
 export interface DiagnosticLike {
+  /** The stable diagnostic code, such as `MOSTRA_FIELD_TOO_LARGE`. */
   readonly code: string;
+  /** What is wrong. */
   readonly message: string;
+  /** What to do about it. */
   readonly hint?: string;
+  /** The code's documentation page. */
   readonly docs?: string;
 }
 

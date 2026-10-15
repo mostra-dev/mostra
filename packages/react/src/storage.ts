@@ -14,8 +14,11 @@ import { fieldKey, type Store } from "./runtime/store.ts";
 
 /** What `get` and `set` resolve with. */
 export interface StorageEntry {
+  /** The key. */
   readonly key: string;
+  /** Its value: any JSON value. */
   readonly value: unknown;
+  /** Whether it is shared by every viewer (artifact state) or the viewer's own. */
   readonly shared: boolean;
 }
 

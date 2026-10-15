@@ -80,14 +80,20 @@ function useStoreVersion(store: Store): number {
 
 // ── useField ────────────────────────────────────────────────────────────────────────────
 
-/** A Standard Schema validator, such as a Zod 4 schema (`~standard`). */
-interface StandardSchema<T> {
+/**
+ * A Standard Schema validator (`~standard`), such as a Zod 4 schema: what `validate` takes besides
+ * a function.
+ */
+export interface StandardSchema<T> {
+  /** The Standard Schema interface (version 1). */
   readonly "~standard": {
+    /** Checks a value: issues when it is invalid. */
     validate(
       value: unknown,
     ): { readonly issues?: readonly { readonly message: string }[] } | Promise<unknown>;
+    /** The type the schema accepts. */
+    readonly types?: { readonly input: T; readonly output: T } | undefined;
   };
-  readonly __mostraValue?: T;
 }
 
 /** Options of {@link useField} (D52). */
@@ -349,7 +355,9 @@ export function useSignal(name: string): { send(payload?: unknown): Promise<void
 
 /** A review set's candidate, as the trusted Choose names it. */
 export interface ChoiceCandidate {
+  /** The candidate's ID: the choice's value. */
   readonly id: string;
+  /** The name the trusted Choose shows ("Choose Dense"), and results label it with. */
   readonly label?: string;
 }
 

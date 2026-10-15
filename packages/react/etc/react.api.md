@@ -19,9 +19,7 @@ export type ArtifactMode = "live" | "static" | "mcp-app" | "verify";
 
 // @public
 export interface ChoiceCandidate {
-    // (undocumented)
     readonly id: string;
-    // (undocumented)
     readonly label?: string;
 }
 
@@ -52,13 +50,9 @@ export function defineArtifact<const M extends ArtifactManifest>(manifest: M): M
 
 // @public
 export interface DiagnosticLike {
-    // (undocumented)
     readonly code: string;
-    // (undocumented)
     readonly docs?: string;
-    // (undocumented)
     readonly hint?: string;
-    // (undocumented)
     readonly message: string;
 }
 
@@ -128,12 +122,24 @@ export interface ShellConnection {
 }
 
 // @public
+export interface StandardSchema<T> {
+    readonly "~standard": {
+        validate(value: unknown): {
+            readonly issues?: readonly {
+                readonly message: string;
+            }[];
+        } | Promise<unknown>;
+        readonly types?: {
+            readonly input: T;
+            readonly output: T;
+        } | undefined;
+    };
+}
+
+// @public
 export interface StorageEntry {
-    // (undocumented)
     readonly key: string;
-    // (undocumented)
     readonly shared: boolean;
-    // (undocumented)
     readonly value: unknown;
 }
 

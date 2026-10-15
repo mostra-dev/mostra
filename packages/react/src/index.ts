@@ -27,6 +27,7 @@ export {
   type ChoiceCandidate,
   type FieldMeta,
   type FieldOptions,
+  type StandardSchema,
   type SubmitHandle,
   useArtifact,
   useChoice,
