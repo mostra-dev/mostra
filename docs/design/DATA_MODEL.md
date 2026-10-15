@@ -53,10 +53,12 @@ version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest,
         forced_codes_json, published_at, UNIQUE(artifact_id, number))
 viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
                                                     -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104)
-view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json)
+view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json,
+     controls_json NULL)                                  -- the submit channels and controls in force for this view (D108);
+                                                          -- NULL (views before WP-07): both channels
                                                           -- token_id: the link that opened it; a page names only its own link's views
                                                     -- one frame load of one version (D104)
-follow(viewer_id, artifact_id, PRIMARY KEY(viewer_id, artifact_id))          -- D63
+follow(viewer_id, artifact_id, followed_at, PRIMARY KEY(viewer_id, artifact_id))   -- D63: "Always follow this artifact"
 
 -- Fields: one document per scope (viewer draft, or artifact state)
 document(id PK, artifact_id, scope CHECK(scope IN ('viewer','artifact')), viewer_id NULL,
@@ -66,8 +68,10 @@ document(id PK, artifact_id, scope CHECK(scope IN ('viewer','artifact')), viewer
                                                     -- makes the artifact-state document (viewer_id NULL) unique too;
                                                     -- a trigger refuses revision or epoch going back
 field(document_id FK, field_id, value_json, deleted BOOLEAN, field_rev INTEGER, updated_by_json, updated_at,
-      sensitive BOOLEAN, label NULL, required NULL, orphaned_from_version INTEGER NULL, PRIMARY KEY(document_id, field_id))
-                                                    -- a deleted field keeps its row and revision, so a stale write conflicts
+      sensitive BOOLEAN, label NULL, required NULL, version_number INTEGER NULL, PRIMARY KEY(document_id, field_id))
+                                                    -- a deleted field keeps its row and revision, so a stale write conflicts;
+                                                    -- version_number: the version whose view last wrote it, an orphan's
+                                                    -- fromVersion (D109; migration 6 renamed orphaned_from_version)
 mutation(id PK, document_id, params_digest, result_json, applied_at)      -- idempotency: mutation IDs replay their result,
                                                                           -- only for the same contents (D106)
 
@@ -145,6 +149,7 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `state.changed` | revision, changes as for `draft.changed` (D63) |
 | `state.conflict` | revision, base, field IDs with their revisions |
 | `submission.created` | submissionId, versionId, version, viewId, viewerId, channel, epoch, staleView, digest |
+| `submission.retrying` | submissionId, deliveryId, owner, attempts, reason: once per delivery, when its host is away or its first attempt failed, so the viewer sees "Pending delivery" (IN-13) |
 | `submission.delivered` / `submission.rejected` / `submission.undeliverable` | submissionId, deliveryId, owner, attempts, reason |
 | `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106) |
 | `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |

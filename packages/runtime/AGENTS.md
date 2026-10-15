@@ -92,6 +92,14 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   host or notifies anyone because of a signal; hosts subscribe and decide.
 - **Pages see only their own viewer's draft (D104).** `pageEvents` filters every stream and poll;
   a view belongs to one artifact and one viewer, checked on every request that names it.
+- **One channel policy per view (D108).** The ticket resolves the policy once (`gateway/controls.ts`:
+  a registered `trustedControls` port, else the home's `submitChannels`, else both) and stores it
+  on the view; the submit transaction and the artifact's writes to `review.<set>.choice` check that
+  record, before anything else, including a repeat of an earlier submit. A port that fails or
+  doesn't answer within 5 s narrows the view to the shell channel; it never widens it.
+- **Orphans are derived, never stored (D109).** A field is an orphan of a view when the view's
+  version's `fields` coverage (`builder/coverage.ts`) doesn't cover it; nothing moves or drops a
+  field. Coverage that can't be known is open: a version never orphans an answer by a guess.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -107,13 +115,13 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `ledger` | The SQLite ledger: lock, pragmas, migrations with backup, integrity, error mapping |
 | `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC, the artifact environment children of artifacts get |
 | `protocol-server` | The JSON-RPC dispatcher for stdio and the socket, session rules, the session methods |
-| `builder` | The `RenderMode` contract and its SPA implementation; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources and pages, and the confinement of imports to the build's packages) |
+| `builder` | The `RenderMode` contract and its SPA implementation; `child/` is the builder process (Vite, MDX, Tailwind, the `"use server"` stubs, the scan of actions, live sources, pages and field coverage (`child/fields.ts`, D109), and the confinement of imports to the build's packages); `coverage.ts` matches a version's coverage (`coverageMatcher`), which `readFieldCoverage` in `index.ts` reads back from `registry.json` |
 | `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 installer, offline answers, `deps/add`; `child/install.ts` is the install child, which connects to the supervisor and runs pnpm in its process group |
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
-| `interaction` | Viewers and views; documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction (`submissions.ts`); signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
+| `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` (`browser.ts`); the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -121,7 +129,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
-(token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls. These are for tests only. `MOSTRA_OFFLINE` (not a
+(token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10). These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
 `MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
 `shell/dist` beside the runtime package); without one the shell's pages answer
@@ -145,14 +153,20 @@ first module outside `protocol-server` needs it.
   gateway through a real daemon (`gateway.test.ts`: serving with no process, route
   enumeration, restarts, a week of simulated time, binds, leases), and the interaction ledger through
   a daemon, real pages and hosts on their own connections (`interaction.test.ts`: conflicts, waits,
-  results, deliveries while a host is away, redelivery after a crash, resumed subscriptions). CI runs them on macOS and
+  results, deliveries while a host is away, redelivery after a crash, resumed subscriptions), and
+  the versions frozen at every browser-protocol revision against today's gateway and the next
+  (`browser-revisions.test.ts`, VR-10). CI runs them on macOS and
   Linux (`integration` job, D86).
 - `pnpm --filter @mostra/runtime test:hygiene`: the hygiene checklist (ARCHITECTURE §10) as
   negative tests against a real gateway, through `test/browser-client.ts`, a cookie-jar HTTP
   client that behaves like a browser (`hygiene` job).
 - `pnpm check --job e2e`: capability links in Chromium, Firefox and WebKit
-  (`tests/e2e/specs/gateway.spec.ts`); `node scripts/safari-smoke.ts` opens one in real Safari on
-  macOS (external evidence, run by hand).
+  (`tests/e2e/specs/gateway.spec.ts`), and the client runtime with the shell's trusted controls
+  (`client`, `controls`, `versions` and `pages` specs); `node scripts/safari-smoke.ts` opens one in
+  real Safari on macOS (external evidence, run by hand).
+- `node --conditions=@mostra/source scripts/freeze-browser-revision.ts` freezes a version built at
+  the current browser-protocol revision into `test/fixtures/browser-revisions/<revision>/`, once
+  per revision; it refuses to overwrite one (D111).
 - `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
   violations: red with the seed, green without it.
 

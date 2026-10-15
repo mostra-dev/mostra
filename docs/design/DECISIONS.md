@@ -686,6 +686,7 @@ Fills D42 and DATA_MODEL §3, which left open how Mostra knows which fields a ve
 - **Coverage is static.** The builder records in `registry.json` every field ID the version's code can use: literal IDs of `useField`, `useChoice` (`review.<set>.choice`) and the form adapter; template IDs as patterns; `storage.*` where the code uses `window.storage`. A field ID the scan can't know (a computed one, or one an MDX page or a package passes) makes the version *open*: it covers every ID, so nothing is ever orphaned by a guess. A version built before WP-07 has no `fields` and is open too. WP-18 and WP-20 extend the scan to kit inputs and review sets.
 - **Orphans are derived, never stored.** A draft field is an orphan of a view when the view's version doesn't cover it. A submission computes its `orphaned` section in the submit transaction against the submitting view's version; the banner counts orphans against the newer version; the "Not carried over" panel lists them against the view's own. Nothing moves or is dropped: the field stays in the draft, a version that covers it shows it again, and every orphan is delivered (D42).
 - **`fromVersion`.** Migration 6 renames DATA_MODEL's unused `field.orphaned_from_version` to `field.version_number`: the number of the version whose view last wrote the field, which is an orphan's `fromVersion`.
+- **No fields declared.** A version whose code uses none of these (it writes the browser protocol itself, or keeps no fields) is open too: found while building, when such a version orphaned every answer it saved.
 
 ### D110. A submission contains what the viewer saw (delegated, M19)
 `useField(id, initial)` stores nothing until the value changes, as `useState` would. Before any submit, through either channel, the client runtime writes the initial value of every mounted viewer field the draft has never stored, then flushes every pending save. A submission therefore holds the defaults the viewer saw and accepted, and the shell's required-field check, which reads the server's draft, agrees with the page. Fields that aren't mounted (another page, a closed section) were never seen and stay out.
@@ -698,13 +699,21 @@ Each split leaves the later package free and gives it a baseline, as D93, D96 an
 - **Prose** is delegated as in WP-03 to WP-06: Mirza sees only the texts the agent isn't confident in, before the merge.
 
 ### D112. `window.storage` compatibility details (delegated, M19)
-D53's `window.storage` follows Claude's documented API (`get`, `set`, `delete` and `list`, each with `shared`; VERIFIED_FACTS, WP-07) over Mostra fields. Two documented differences: a missing key resolves `null` rather than throwing, which code written for either behavior handles; and a value is limited to DATA_MODEL's 1 MiB per field where Claude allows 5 MB per key, refused with `MOSTRA_FIELD_TOO_LARGE`, never truncated. Writes are last-write-wins, as in Claude: a conflict on a storage key is resolved by writing again on the newer revision.
+D53's `window.storage` follows the API Claude-written artifacts use (`get`, `set`, `delete` and `list`, each with `shared`, answering `{ key, value, shared }`) over Mostra fields. Anthropic's help center documents personal and shared storage and a 20 MB limit per artifact, but not the signatures (VERIFIED_FACTS, WP-07), so Mostra's choices are stated here. A missing key resolves `null`, which code written to expect a thrown error or `null` handles alike. A value is limited to DATA_MODEL's 1 MiB per field, refused with `MOSTRA_FIELD_TOO_LARGE`, never truncated; a larger value belongs in a blob. Writes are last-write-wins, as in Claude: a conflict on a storage key is resolved by writing again on the newer revision.
 
 ### D113. `useChoice` names its candidates (delegated, M19)
 `useChoice(reviewSetId, options?)` takes an optional `{ candidates: { id, label? }[]; current?: string }`, an additive extension of INTERFACES §2.3. With candidates it asks the shell for the trusted Choose control of that review set, which the shell renders outside the frame ("Choose Airy"). WP-20's `ReviewSet` passes them.
 
 ### D114. Claude reviews for up to ten packages (M19)
 Amends D80 item 3: Claude Opus 5.5 may review up to ten of Mostra's packages, still chosen for substance and still waiting for Mirza's approval of each run (D34).
+
+### D115. A frame always shows its own view's version (delegated, M19)
+D98 item 5 lets an artifact origin serve the version its frame session last entered, so a tab whose frame reloads after another tab switched versions gets the other version's page. WP-07 makes that page unable to act as the wrong view, rather than only telling the viewer:
+- **The page names its build.** The builder writes `<meta name="mostra-version" content="<versionId>">` into every version's `index.html` (the version ID is known from the digests before the build, D89, so builds stay a function of their inputs), and the client runtime sends it in `ui/initialize` (`mostra.versionId`, an additive parameter).
+- **A mismatch saves nothing.** A page whose build isn't its view's version runs detached: nothing it shows is saved, journaled or submitted as that view.
+- **The shell enters its version again.** The shell answers, then gets a ticket for its own view's version, so the frame reloads at that version. More than three re-entries within ten seconds mean two tabs keep moving the frame session, and the shell says so instead of reloading without end.
+
+The version banner is unchanged: it tells a view about versions newer than its own (VR-04).
 
 ## Research consensus adopted
 

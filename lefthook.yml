@@ -6,6 +6,11 @@ pre-commit:
       glob: "*.{js,mjs,cjs,ts,tsx,json,jsonc,css}"
       run: node_modules/.bin/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
       stage_fixed: true
+    # The React hooks rules (REPO_STANDARDS §4): Biome doesn't check them, and the pre-push check
+    # leaves the format-lint job to CI.
+    - name: eslint
+      glob: "*.{ts,tsx}"
+      run: tools/ts6/node_modules/.bin/eslint --config tools/ts6/eslint.config.mjs --max-warnings 0 --no-warn-ignored {staged_files}
     - name: cargo fmt
       glob: "*.rs"
       run: cargo fmt --all
