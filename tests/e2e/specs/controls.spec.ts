@@ -303,11 +303,14 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
       const seen: string[] = [];
       await page.exposeFunction("mostraSeen", (state: string) => seen.push(state));
       await page.evaluate(() => {
+        // Each change of the receipt: its state, and whether it states the durable fact,
+        // "Saved by Mostra" with the time (Submitted, D47).
         const record = (): void => {
-          const state = document
-            .querySelector("[data-mostra-receipt]")
-            ?.getAttribute("data-mostra-receipt");
-          if (state) (window as unknown as { mostraSeen(s: string): void }).mostraSeen(state);
+          const receipt = document.querySelector("[data-mostra-receipt]");
+          const state = receipt?.getAttribute("data-mostra-receipt");
+          if (!state) return;
+          const saved = receipt?.querySelector("li.mostra-ok time") ? "saved" : "unsaid";
+          (window as unknown as { mostraSeen(s: string): void }).mostraSeen(`${state}/${saved}`);
         };
         new MutationObserver(record).observe(document.body, {
           subtree: true,
@@ -329,10 +332,14 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
         timeout: 15_000,
       });
       await expect(page.locator("[data-mostra-delivery=delivered]")).toContainText("jcode-like");
-      const order = seen.filter((state, index) => state !== seen[index - 1]);
-      expect(order[0]).toBe("submitted");
-      expect(order.indexOf("pending")).toBeGreaterThan(0);
-      expect(order.at(-1)).toBe("delivered");
+      // Every state the viewer saw says the submission is saved in Mostra; the delivery then
+      // went Pending, then Delivered, never back. "Submitted" alone shows only until Mostra knows
+      // the host is away; here it may know that already when the receipt first appears, since
+      // the host left before the submit.
+      expect(seen.every((entry) => entry.endsWith("/saved"))).toBe(true);
+      const states = seen.map((entry) => entry.split("/")[0] as string);
+      const order = states.filter((state, index) => state !== states[index - 1]);
+      expect(["submitted,pending,delivered", "pending,delivered"]).toContain(order.join(","));
       host.close();
       // A host that can't take a submission says so, and the viewer sees it.
       host = await Client.connect(daemon.socket, {

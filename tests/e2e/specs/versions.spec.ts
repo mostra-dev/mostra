@@ -23,6 +23,11 @@ import { Client, readRun } from "../support/mostra.ts";
 
 const run = readRun();
 
+// Every test here publishes a version and then at least one more: each is a real build, which a
+// busy machine running three engines in parallel takes many seconds over. A test's time budget
+// covers its builds; the waits inside it stay strict.
+test.slow();
+
 /** A version whose page has no "notes" field any more: an answer to it can't carry over. */
 const withoutNotes = (text: string): string =>
   text
@@ -183,6 +188,14 @@ test.describe("always follow this artifact (LL-03)", () => {
       await expect(page.locator("[data-mostra-banner]")).toContainText("wouldn't carry over");
       await page.waitForTimeout(1_500);
       await expect(pageVersion(page)).toHaveText("4");
+      // The viewer switches anyway; the answer stays in the panel. An answer already not carried
+      // over doesn't hold the next version back: following goes on by itself.
+      await page.locator("[data-mostra-switch]").click();
+      await expect(pageVersion(page)).toHaveText("5", { timeout: 15_000 });
+      await expect(page.locator("[data-mostra-orphan=notes]")).toBeVisible();
+      await republish(client, own, (text) => retitled(6)(withoutNotes(text)));
+      await expect(pageVersion(page)).toHaveText("6", { timeout: 15_000 });
+      await expect(page.locator("[data-mostra-orphan=notes]")).toBeVisible();
     } finally {
       client.close();
     }

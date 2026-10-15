@@ -12,7 +12,7 @@
  * <input {...form.register("name", { required: true })} />
  * ```
  */
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   type FieldPath,
   type FieldValues,
@@ -53,25 +53,34 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
 
   // The form's values as Mostra has them, over its defaults: react-hook-form takes them as
   // `values`, keeping what the viewer is editing (`keepDirtyValues`).
-  const defaults = useRef(hookOptions.defaultValues);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the version stands for the store's state.
+  const [defaults] = useState(() => hookOptions.defaultValues);
+  // `version` stands for the store's state, which the memo reads through `store`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: as above.
   const stored = useMemo(() => {
     const base =
-      typeof defaults.current === "object" && defaults.current !== null
-        ? structuredClone(defaults.current as TFieldValues)
+      typeof defaults === "object" && defaults !== null
+        ? structuredClone(defaults as TFieldValues)
         : ({} as TFieldValues);
     for (const fieldId of store.ids(scope)) {
       if (!fieldId.startsWith(prefix)) continue;
       setPath(base, fieldId.slice(prefix.length), store.value(fieldKey(scope, fieldId), undefined));
     }
     return base;
-  }, [store, scope, prefix, version]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` stands for the store's state.
+  }, [store, scope, prefix, version, defaults]);
 
   const form = useHookForm<TFieldValues>({
     ...hookOptions,
     values: stored,
     resetOptions: { keepDirtyValues: true, ...hookOptions.resetOptions },
   });
+
+  // Labels usually come as an object literal: the same labels are the same registration.
+  const labelsKey = JSON.stringify(labels ?? {});
+  const stableLabels = useMemo(
+    () => JSON.parse(labelsKey) as MostraFormOptions<TFieldValues>["labels"],
+    [labelsKey],
+  );
 
   // Every change the viewer makes is saved as its field.
   const sensitiveNames = useMemo(() => new Set<string>(sensitive ?? []), [sensitive]);
@@ -83,14 +92,14 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
           if (name === undefined) return; // A reset from Mostra's own values: nothing to save.
           const fieldId = `${prefix}${name}`;
           if (!store.writable(fieldKey(scope, fieldId))) return;
-          const label = labels?.[name as FieldPath<TFieldValues>];
+          const label = stableLabels?.[name as FieldPath<TFieldValues>];
           store.set(scope, fieldId, get(values, name), {
             ...(label !== undefined ? { label } : {}),
             ...(sensitiveNames.has(name) ? { sensitive: true } : {}),
           });
         },
       }),
-    [form, store, scope, prefix, labels, sensitiveNames],
+    [form, store, scope, prefix, stableLabels, sensitiveNames],
   );
 
   // Registered fields become Mostra registrations, so the shell lists their blockers.
@@ -111,39 +120,41 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
   // Registered on the first render that names a field, updated only when a rule, label or error
   // changes, and released on unmount: re-registering on every render would never settle.
   const mounted = useRef(new Map<string, { release: () => void; signature: string }>());
-  const sync = useRef<(errorOf: (name: string) => unknown) => void>(() => undefined);
-  sync.current = (errorOf) => {
-    for (const [name, required] of rules.current) {
-      const fieldId = `${prefix}${name}`;
-      const label = labels?.[name as FieldPath<TFieldValues>];
-      const failure = errorOf(name) as { message?: unknown } | undefined;
-      const message =
-        failure === undefined
-          ? undefined
-          : typeof failure.message === "string" && failure.message !== ""
-            ? failure.message
-            : "Invalid value.";
-      const registration = {
-        id: fieldId,
-        scope,
-        initial: get(defaults.current ?? {}, name),
-        ...(label !== undefined ? { label } : {}),
-        ...(required ? { required } : {}),
-        ...(sensitiveNames.has(name) ? { sensitive: true } : {}),
-        ...(message !== undefined ? { error: message } : {}),
-      };
-      const signature = JSON.stringify([label, required, sensitiveNames.has(name), message]);
-      const current = mounted.current.get(fieldId);
-      if (!current) {
-        mounted.current.set(fieldId, { release: store.register(registration), signature });
-        if (message !== undefined) store.updateRegistration(registration);
-      } else if (current.signature !== signature) {
-        current.signature = signature;
-        store.updateRegistration(registration);
+  const sync = useCallback(
+    (errorOf: (name: string) => unknown): void => {
+      for (const [name, required] of rules.current) {
+        const fieldId = `${prefix}${name}`;
+        const label = stableLabels?.[name as FieldPath<TFieldValues>];
+        const failure = errorOf(name) as { message?: unknown } | undefined;
+        const message =
+          failure === undefined
+            ? undefined
+            : typeof failure.message === "string" && failure.message !== ""
+              ? failure.message
+              : "Invalid value.";
+        const registration = {
+          id: fieldId,
+          scope,
+          initial: get(defaults ?? {}, name),
+          ...(label !== undefined ? { label } : {}),
+          ...(required ? { required } : {}),
+          ...(sensitiveNames.has(name) ? { sensitive: true } : {}),
+          ...(message !== undefined ? { error: message } : {}),
+        };
+        const signature = JSON.stringify([label, required, sensitiveNames.has(name), message]);
+        const current = mounted.current.get(fieldId);
+        if (!current) {
+          mounted.current.set(fieldId, { release: store.register(registration), signature });
+          if (message !== undefined) store.updateRegistration(registration);
+        } else if (current.signature !== signature) {
+          current.signature = signature;
+          store.updateRegistration(registration);
+        }
       }
-    }
-  };
-  useEffect(() => sync.current((name) => get(errors, name)));
+    },
+    [prefix, scope, stableLabels, sensitiveNames, store, defaults],
+  );
+  useEffect(() => sync((name) => get(errors, name)));
   // react-hook-form validates on submit unless told otherwise; before either channel's submit
   // it validates now, so its errors are the submit's blockers (D106: the client checks).
   const { trigger, getFieldState } = form;
@@ -151,9 +162,9 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
     () =>
       store.beforeSubmit(async () => {
         await trigger();
-        sync.current((name) => getFieldState(name as FieldPath<TFieldValues>).error);
+        sync((name) => getFieldState(name as FieldPath<TFieldValues>).error);
       }),
-    [store, trigger, getFieldState],
+    [store, trigger, getFieldState, sync],
   );
   useEffect(
     () => () => {

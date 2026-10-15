@@ -68,13 +68,44 @@ function locks(): Locks | undefined {
 
 const TAB_LOCK = "mostra-tab:";
 
+/** How long a tab waits for other tabs to say they are open, where Web Locks are missing. */
+const PRESENCE_WAIT_MS = 300;
+
+/**
+ * Where Web Locks are missing (they need a secure context, and an artifact served over plain
+ * HTTP on a LAN address isn't one), open tabs answer a roll call on a BroadcastChannel, which
+ * works everywhere: a tab that doesn't answer within {@link PRESENCE_WAIT_MS} is gone.
+ */
+function rollCall(
+  tab: string,
+): ((tabs: readonly string[]) => Promise<ReadonlySet<string>>) | undefined {
+  if (typeof BroadcastChannel === "undefined") return undefined;
+  const channel = new BroadcastChannel("mostra-tabs");
+  channel.onmessage = (event: MessageEvent<{ who?: true; here?: string }>) => {
+    if (event.data?.who) channel.postMessage({ here: tab });
+  };
+  return (tabs) =>
+    new Promise((resolve) => {
+      const open = new Set<string>();
+      const listen = new BroadcastChannel("mostra-tabs");
+      listen.onmessage = (event: MessageEvent<{ here?: string }>) => {
+        if (typeof event.data?.here === "string") open.add(event.data.here);
+      };
+      listen.postMessage({ who: true });
+      setTimeout(() => {
+        listen.close();
+        resolve(new Set(tabs.filter((other) => !open.has(other))));
+      }, PRESENCE_WAIT_MS);
+    });
+}
+
 /**
  * Holds this tab's lock for as long as the page lives, so other pages know its journal entries
  * belong to an open tab (Web Locks). Returns which of some tabs hold no lock: they are gone.
  */
 function tabPresence(tab: string): (tabs: readonly string[]) => Promise<ReadonlySet<string>> {
   const api = locks();
-  if (!api) return async (tabs) => new Set(tabs);
+  if (!api) return rollCall(tab) ?? (async (tabs) => new Set(tabs));
   void api.request(`${TAB_LOCK}${tab}`, () => new Promise<never>(() => undefined));
   return async (tabs) => {
     const held = new Set(

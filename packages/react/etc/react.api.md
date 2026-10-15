@@ -181,7 +181,7 @@ export function useChoice(reviewSetId: string, options?: {
 };
 
 // @public
-export function useField<T>(id: string, initial: T, options?: FieldOptions<T>): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>];
+export function useField<T>(id: string, initial: T, options?: FieldOptions<NoInfer<T>>): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>];
 
 // @public
 export function useSignal(name: string): {

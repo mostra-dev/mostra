@@ -42,6 +42,9 @@ export const SAVE_DEBOUNCE_MS = 400;
 /** How long a submit waits for the event stream to reach the page's own last save. */
 const CATCH_UP_MS = 5_000;
 
+/** How soon waiting saves try again once the event stream shows the gateway answers. */
+const RETRY_SOON_MS = 250;
+
 /** The most ops one mutation carries (the browser protocol's limit). */
 const OPS_PER_MUTATION = 1000;
 
@@ -314,6 +317,7 @@ export class Store {
   // ── What the gateway says ──────────────────────────────────────────────────────────────
 
   #applySnapshot(snapshot: StreamSnapshot): void {
+    this.#gatewayHeard();
     const first = this.#viewer === undefined;
     this.#viewer = snapshot.viewer;
     const touched = new Set<FieldKey>(this.#allKeys());
@@ -345,6 +349,7 @@ export class Store {
   }
 
   #applyEvents(events: readonly EventRecord[]): void {
+    this.#gatewayHeard();
     const touched = new Set<FieldKey>();
     let resync = false;
     for (const event of events) {
@@ -799,6 +804,21 @@ export class Store {
     } finally {
       this.#sendingQueue = false;
     }
+  }
+
+  /**
+   * The event stream just brought something, so the gateway is reachable: saves waiting out a
+   * backoff after a network failure try again soon instead of after up to 30 s (FAILURE_MODEL
+   * §5, "on reconnect the journal replays"). The backoff itself isn't reset, so a path that keeps
+   * failing while the stream works (a proxy refusing POSTs) is tried at most once per message.
+   */
+  #gatewayHeard(): void {
+    if (this.#retry === undefined) return;
+    this.#timers.clearTimeout(this.#retry);
+    this.#retry = this.#timers.setTimeout(() => {
+      this.#retry = undefined;
+      void this.#drain(false);
+    }, RETRY_SOON_MS);
   }
 
   #scheduleRetry(): void {

@@ -29,7 +29,15 @@ import {
   uiOpenLink,
   type ViewContext,
 } from "@mostra/protocol";
-import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   carryOver,
   choose,
@@ -163,6 +171,18 @@ interface FrameHandlers {
   onWrongVersion(): void;
 }
 
+/**
+ * A ref that always holds the latest `value`, for callbacks and effects that must read it without
+ * re-subscribing. It is written after each render commits, never during render.
+ */
+function useLatest<T>(value: T): RefObject<T> {
+  const ref = useRef(value);
+  useLayoutEffect(() => {
+    ref.current = value;
+  });
+  return ref;
+}
+
 /** The frame and its bridge. */
 function Frame(props: {
   readonly title: string;
@@ -171,8 +191,7 @@ function Frame(props: {
   readonly onBridge: (bridge: Bridge | undefined) => void;
 }): ReactElement {
   const frameElement = useRef<HTMLIFrameElement>(null);
-  const handlers = useRef(props.handlers);
-  handlers.current = props.handlers;
+  const handlersRef = useLatest(props.handlers);
   const { ticket, onBridge } = props;
   useEffect(() => {
     let rejections = 0;
@@ -189,7 +208,7 @@ function Frame(props: {
           // session on) is answered as usual, and loaded again at this view's version.
           const loaded = (params as { mostra?: { versionId?: string } }).mostra?.versionId;
           if (loaded !== undefined && loaded !== ticket.version.id) {
-            queueMicrotask(() => handlers.current.onWrongVersion());
+            queueMicrotask(() => handlersRef.current.onWrongVersion());
           }
           const result: UiInitializeResult = {
             protocolVersion: MCP_APPS_PROTOCOL_VERSION,
@@ -211,15 +230,15 @@ function Frame(props: {
           return result;
         }
         if (message === mostraControlsRequest) {
-          return { shown: handlers.current.onControl(params as ControlRequest) };
+          return { shown: handlersRef.current.onControl(params as ControlRequest) };
         }
         return undefined;
       },
       onNotification: (message, params) => {
         if (message === uiInitialized) mark("initialized");
         if (message === mostraReady) mark("ready");
-        if (message === mostraFields) handlers.current.onFields(params as FieldsParams);
-        if (message === mostraPage) handlers.current.onPage((params as { path: string }).path);
+        if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
+        if (message === mostraPage) handlersRef.current.onPage((params as { path: string }).path);
       },
       onRejected: () => {
         rejections += 1;
@@ -231,7 +250,7 @@ function Frame(props: {
       onBridge(undefined);
       bridge.close();
     };
-  }, [ticket, onBridge]);
+  }, [ticket, onBridge, handlersRef]);
   return (
     <iframe
       ref={frameElement}
@@ -364,18 +383,24 @@ export function ViewerPage(props: {
   const [confirming, setConfirming] = useState(false);
   const bridge = useRef<Bridge | undefined>(undefined);
   const reentries = useRef<number[]>([]);
-  const latestState = useRef(state);
-  latestState.current = state;
+  const latestStateRef = useLatest(state);
 
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
   }, []);
 
-  // A new view (the first, or after a switch): its own state, stream and orphans.
-  useEffect(() => {
+  // A new view (the first, or after a switch) starts from its own state: reset while rendering,
+  // as React advises for state that follows a prop, so no render shows the old view's state.
+  const [stateView, setStateView] = useState(ticket.viewId);
+  if (stateView !== ticket.viewId) {
+    setStateView(ticket.viewId);
     setState(initialState(ticket));
     setBlocked([]);
     setProblem(undefined);
+  }
+
+  // Its stream and orphans.
+  useEffect(() => {
     mark("", { shellVersion: String(ticket.version.number), shellView: ticket.viewId });
     const close = openStream(target.apiBase, ticket.viewId, {
       onSnapshot: (snapshot) => setState((current) => withSnapshot(current, snapshot)),
@@ -419,46 +444,97 @@ export function ViewerPage(props: {
   /** Waits until the shell's own stream reached `revision` of the draft. */
   const caughtUp = async (revision: number): Promise<void> => {
     const until = Date.now() + CATCH_UP_MS;
-    while (latestState.current.revision < revision && Date.now() < until) {
+    while (latestStateRef.current.revision < revision && Date.now() < until) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   };
 
-  const switchVersion = useCallback(async (): Promise<void> => {
-    setBusy("switch");
-    try {
-      await flushFrame("switch");
-      const next = await frameTicket(target.apiBase, session.csrf);
-      setTicket(next);
-      setLater(undefined);
-      setNewOrphans(undefined);
-    } catch (error) {
-      setProblem(submitProblem(error instanceof ShellError ? error.code : "NETWORK"));
-    } finally {
-      setBusy(undefined);
-    }
-  }, [target.apiBase, session.csrf]);
+  // Answers a newer version would leave behind that this view carries (D42).
+  const shownOrphansRef = useLatest<ReadonlySet<string>>(
+    new Set(orphans.map((orphan) => orphan.id)),
+  );
+  const countNewOrphans = useCallback(
+    async (latest: number): Promise<number> => {
+      const carry = await carryOver(target.apiBase, latest);
+      return carry.orphans.filter((orphan) => !shownOrphansRef.current.has(orphan.id)).length;
+    },
+    [target.apiBase, shownOrphansRef],
+  );
+
+  const switchVersion = useCallback(
+    async (options: { readonly follow?: boolean } = {}): Promise<void> => {
+      setBusy("switch");
+      mark("", { shellSwitch: options.follow ? "following" : "switching" });
+      try {
+        const flushed = await flushFrame("switch");
+        if (options.follow) {
+          // Following switches by itself only when nothing would be lost from view: checked again
+          // after the frame saved everything, since an answer may have changed since the count
+          // (LL-03, D63). Otherwise the banner stays, with the count, for the viewer to decide.
+          const latest = latestStateRef.current.latest.number;
+          const count = await countNewOrphans(latest);
+          if (flushed?.unsaved === true || count > 0) {
+            mark("", { shellSwitch: flushed?.unsaved === true ? "held-unsaved" : "held-orphans" });
+            setNewOrphans(count);
+            return;
+          }
+        }
+        const next = await frameTicket(target.apiBase, session.csrf);
+        mark("", { shellSwitch: `to-${String(next.version.number)}` });
+        setTicket(next);
+        setLater(undefined);
+        setNewOrphans(undefined);
+      } catch (error) {
+        mark("", { shellSwitch: "failed" });
+        setProblem(submitProblem(error instanceof ShellError ? error.code : "NETWORK"));
+      } finally {
+        setBusy(undefined);
+      }
+    },
+    [target.apiBase, session.csrf, countNewOrphans, latestStateRef],
+  );
 
   // A newer version: its orphan count for the banner, the frame's notice, and following (D63).
+  // The count is of answers the newer version would leave behind that this one carries: those
+  // already not carried over stay in the panel either way (D42). It is counted again whenever the
+  // draft changes, so an answer given after the banner appeared counts too.
   const newer = !ticket.pinned && state.latest.number > ticket.version.number;
+  // A following viewer moves on by itself once the count says nothing would be left behind and
+  // nothing is unsaved (LL-03); the count runs again when either changes, or a switch ends.
+  const busyRef = useLatest(busy);
   useEffect(() => {
     if (!newer) return;
     let active = true;
-    void carryOver(target.apiBase, state.latest.number)
-      .then((carry) => {
+    void countNewOrphans(state.latest.number)
+      .then((count) => {
         if (!active) return;
-        setNewOrphans(carry.orphans.length);
+        setNewOrphans(count);
         bridge.current?.notify(mostraVersionAvailable, {
           versionId: state.latest.id,
           version: state.latest.number,
-          orphans: carry.orphans.length,
+          orphans: count,
         });
+        if (follow && count === 0 && !state.unsaved && busyRef.current === undefined) {
+          void switchVersion({ follow: true });
+        }
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [newer, state.latest.id, state.latest.number, target.apiBase]);
+  }, [
+    newer,
+    state.latest.id,
+    state.latest.number,
+    state.revision,
+    state.unsaved,
+    orphans,
+    follow,
+    busy,
+    countNewOrphans,
+    switchVersion,
+    busyRef,
+  ]);
 
   const heldBy: "unsaved" | "orphans" | undefined =
     !newer || !follow || newOrphans === undefined
@@ -468,11 +544,6 @@ export function ViewerPage(props: {
         : newOrphans > 0
           ? "orphans"
           : undefined;
-  useEffect(() => {
-    if (newer && follow && newOrphans === 0 && !state.unsaved && busy === undefined) {
-      void switchVersion();
-    }
-  }, [newer, follow, newOrphans, state.unsaved, busy, switchVersion]);
 
   const toggleFollow = (): void => {
     const next = !follow;
@@ -489,8 +560,8 @@ export function ViewerPage(props: {
         unsaved: params.unsaved,
       })),
     onControl: (request) => {
-      const outcome = withControlRequest(latestState.current, request);
-      latestState.current = outcome.state;
+      const outcome = withControlRequest(latestStateRef.current, request);
+      latestStateRef.current = outcome.state;
       setState(outcome.state);
       return outcome.shown;
     },
@@ -523,7 +594,7 @@ export function ViewerPage(props: {
     try {
       const flushed = await flushFrame("submit");
       if (flushed) await caughtUp(Number(flushed.revision));
-      const current = latestState.current;
+      const current = latestStateRef.current;
       const found = blockersOf(current, flushed?.blockers ?? []);
       if (found.length > 0) {
         setBlocked(found);
@@ -563,7 +634,7 @@ export function ViewerPage(props: {
     setBusy("choose");
     setProblem(undefined);
     try {
-      let base = String(latestState.current.revision);
+      let base = String(latestStateRef.current.revision);
       // The viewer's explicit choice wins over a change they hadn't seen: retried on its revision.
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const result = await choose(target.apiBase, session.csrf, {

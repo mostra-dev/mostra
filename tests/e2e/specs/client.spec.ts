@@ -9,7 +9,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, expect, firefox, test, webkit } from "@playwright/test";
-import { linkFor, openInShell, publishOwn, results, saved, viewerName } from "../support/client.ts";
+import {
+  linkFor,
+  openInShell,
+  publishOwn,
+  republish,
+  results,
+  saved,
+  viewerName,
+} from "../support/client.ts";
 import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
 const run = readRun();
@@ -249,6 +257,58 @@ test.describe("offline edits (IN-04)", () => {
       const again = page.frameLocator("iframe.mostra-frame");
       await expect(again.getByTestId("name")).toHaveValue("third");
       await expect(again.getByTestId("color")).toHaveValue("second");
+    } finally {
+      client.close();
+    }
+  });
+
+  test("edits made offline against a version since replaced replay as that version's, then map by ID or become orphans", async ({
+    page,
+  }, info) => {
+    // Two publishes, each a real build (see versions.spec.ts).
+    test.slow();
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info)),
+      );
+      await page.route("**/_mostra/v/*/fields", (route) => route.abort());
+      await frame.getByTestId("name").fill("Ana offline");
+      await frame.getByTestId("notes").fill("a note for version 1");
+      await frame.getByTestId("notes").blur();
+      await expect(frame.getByTestId("notes-save")).toHaveText("offline");
+      // Version 2 has no "notes" field; it is published while the edits wait.
+      await republish(client, own, (text) =>
+        text.replace(
+          'const [notes, setNotes, notesMeta] = useField("notes", "", { label: "Notes" });',
+          'const [notes, setNotes] = useState(""); const notesMeta = { save: "saved" };',
+        ),
+      );
+      await expect(page.locator('[data-mostra-banner="2"]')).toBeVisible({ timeout: 10_000 });
+      // Back online: the journal replays as version 1's view, which had both fields.
+      await page.unroute("**/_mostra/v/*/fields");
+      await saved(page);
+      // Switching maps "name" by its ID; "notes" is kept as an orphan, never mapped by position.
+      await expect(page.locator('[data-mostra-banner-orphans="1"]')).toBeVisible();
+      await page.locator("[data-mostra-switch]").click();
+      const v2 = page.frameLocator("iframe.mostra-frame");
+      await expect(v2.getByTestId("version")).toHaveText("2", { timeout: 15_000 });
+      await expect(v2.getByTestId("name")).toHaveValue("Ana offline");
+      await expect(page.locator("[data-mostra-orphan=notes]")).toContainText(
+        "a note for version 1",
+      );
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as {
+        answers: Record<string, unknown>;
+        orphaned: { id: string; value: unknown; fromVersion: number }[];
+      };
+      expect(done.answers).toMatchObject({ name: "Ana offline" });
+      expect(done.orphaned).toEqual([
+        expect.objectContaining({ id: "notes", value: "a note for version 1", fromVersion: 1 }),
+      ]);
     } finally {
       client.close();
     }

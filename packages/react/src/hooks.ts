@@ -21,7 +21,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import { MostraError } from "./runtime/errors.ts";
@@ -162,13 +162,14 @@ export function useField<T>(
   const { store } = useRuntime();
   const scope = options.scope ?? "viewer";
   const key = fieldKey(scope, id);
-  const initialRef = useRef(initial);
+  // The first render's initial value, as `useState` keeps it.
+  const [first] = useState(() => initial);
   useSyncExternalStore(
     store.subscribe,
     () => store.keyVersion(key),
     () => store.keyVersion(key),
   );
-  const value = store.value(key, initialRef.current) as T;
+  const value = store.value(key, first) as T;
   const error = validationError(options.validate, value);
   const { label, required, sensitive } = options;
 
@@ -179,18 +180,19 @@ export function useField<T>(
       store.register({
         id,
         scope,
-        initial: initialRef.current,
+        initial: first,
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
       }),
-    [store, id, scope],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the next effect keeps the options current.
+    [store, id, scope, first],
   );
   useEffect(() => {
     store.updateRegistration({
       id,
       scope,
-      initial: initialRef.current,
+      initial: first,
       ...(label !== undefined ? { label } : {}),
       ...(required !== undefined ? { required } : {}),
       ...(sensitive !== undefined ? { sensitive } : {}),
@@ -209,7 +211,7 @@ export function useField<T>(
         }
         return;
       }
-      const previous = store.value(key, initialRef.current) as T;
+      const previous = store.value(key, first) as T;
       const resolved =
         typeof next === "function" ? (next as (previous: T) => T)(previous) : (next as T);
       store.set(scope, id, resolved, {
@@ -218,7 +220,7 @@ export function useField<T>(
         ...(sensitive !== undefined ? { sensitive } : {}),
       });
     },
-    [store, key, scope, id, label, required, sensitive],
+    [store, key, scope, id, label, required, sensitive, first],
   );
 
   const conflict = store.conflict(key);
@@ -239,7 +241,7 @@ export function useField<T>(
       ...(conflict
         ? {
             conflict: {
-              theirs: (conflict.deleted ? initialRef.current : conflict.theirs) as T,
+              theirs: (conflict.deleted ? first : conflict.theirs) as T,
               keepMine: () => store.keepMine(key),
               takeTheirs: () => store.takeTheirs(key),
             },
@@ -247,7 +249,7 @@ export function useField<T>(
         : {}),
       ...(scope === "artifact" && updatedBy ? { updatedBy } : {}),
     };
-  }, [save, error, refusal, conflict, writerKind, writerName, store, key, scope]);
+  }, [save, error, refusal, conflict, writerKind, writerName, store, key, scope, first]);
   return [value, set, meta];
 }
 
@@ -296,6 +298,7 @@ export function useSubmit(): SubmitHandle {
       state,
       ...(submission ? { submission: { id: submission.id, at: submission.at } } : {}),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` stands for the store's state.
   }, [store, version]);
 }
 

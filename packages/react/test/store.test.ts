@@ -207,6 +207,28 @@ describe("offline and the journal (IN-02, IN-04)", () => {
     expect(store.save(v("a"))).toBe("saved");
   });
 
+  it("sends waiting saves soon after the event stream shows the gateway is back, not after the whole backoff", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    gateway.offline = true;
+    // Several failures: the backoff grows to seconds.
+    for (const value of [1, 2, 3, 4]) {
+      store.set("viewer", "a", value);
+      await store.flush();
+    }
+    expect(store.save(v("a"))).toBe("offline");
+    gateway.offline = false;
+    // Another writer's change reaches the page on its stream: the gateway answers again.
+    gateway.write("artifact", { team: "x" });
+    // Well inside the 2 s the backoff had grown to: the queued save, then the edit made after it
+    // (sent once that one's answer gave it its base, after the usual debounce).
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    await settle();
+    expect(gateway.docs.viewer.fields.get("a")?.value).toBe(4);
+    expect(store.save(v("a"))).toBe("saved");
+  });
+
   it("lets the next page adopt a closed tab's unsent edits and in-flight mutations, replaying each once", async () => {
     const gateway = new FakeGateway();
     const journal = new MemoryJournal();
