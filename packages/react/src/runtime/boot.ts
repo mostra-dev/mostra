@@ -120,7 +120,9 @@ export async function startRuntime(): Promise<Runtime> {
   const journal: Journal = (await IndexedDbJournal.open()) ?? new MemoryJournal();
   const store = new Store({
     mode: "live",
-    transport: new HttpTransport(view.viewId),
+    transport: new HttpTransport(view.viewId, {
+      ...(shell.session.csrf !== "" ? { csrf: shell.session.csrf } : {}),
+    }),
     journal,
     view,
     scopes: shell.session.scopes,

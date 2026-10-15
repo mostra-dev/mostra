@@ -393,17 +393,16 @@ export class Store {
         this.#seen[scope] = Math.max(this.#seen[scope], revision);
       } else if (event.type === "submission.created") {
         const payload = event.payload as { submissionId: string; viewerId?: string };
-        const policy = this.view?.policy;
-        // Under `once` for the whole artifact, anyone's submission closes the draft (D106); per
-        // viewer, only the viewer's own.
-        if (policy?.policy === "once") {
-          const perViewer = policy.scope === "per-viewer";
-          const own = payload.viewerId !== undefined && payload.viewerId === this.#viewer?.id;
-          if (!perViewer || own) {
+        const own = payload.viewerId !== undefined && payload.viewerId === this.#viewer?.id;
+        if (own && this.#submission?.id !== payload.submissionId) {
+          // The viewer's own submission, made in another tab or by the shell's trusted Submit:
+          // the snapshot carries it whole, with its deliveries.
+          resync = true;
+        } else if (!own && this.view?.policy.policy === "once") {
+          // Under `once` for the whole artifact anyone's submission closes the draft (D106).
+          if (this.view.policy.scope !== "per-viewer") {
             this.#closed = true;
-            if (!this.#submission || this.#submission.id !== payload.submissionId) {
-              if (!own) this.#submitState = "closed";
-            }
+            this.#submitState = "closed";
             for (const key of this.#allKeys()) touched.add(key);
           }
         }
@@ -792,6 +791,8 @@ export class Store {
           return;
         }
         this.#queue.shift();
+        // The page's save state changes only now that the mutation left the queue.
+        this.#changed(head.ops.map((op) => fieldKey(head.scope, op.id)));
       }
       this.#retryMs = 1_000;
     } finally {

@@ -70,6 +70,17 @@ describe("saving (IN-01, IN-02)", () => {
     expect(store.pageSave()).toBe("saved");
   });
 
+  it("tells its subscribers when the last save landed, so the page and the shell say saved", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    const seen: string[] = [];
+    store.subscribe(() => seen.push(store.pageSave()));
+    store.set("viewer", "name", "Ana");
+    await store.flush();
+    expect(seen.at(-1)).toBe("saved");
+  });
+
   it("bases an edit made while the previous one is in flight on that one's answer, never on itself", async () => {
     const gateway = new FakeGateway();
     const store = open(gateway);

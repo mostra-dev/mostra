@@ -68,9 +68,14 @@ export class HttpTransport implements Transport {
   readonly #base: string;
   #csrf: Promise<string> | undefined;
 
-  constructor(viewId: string, base = `/_mostra/v/${BROWSER_PROTOCOL_REVISION}`) {
+  /**
+   * `csrf` is the session's token when the caller already read it (the bridge does): a save made
+   * as the page closes must not wait for a request the closing page would cancel (IN-02).
+   */
+  constructor(viewId: string, options: { readonly csrf?: string; readonly base?: string } = {}) {
     this.#viewId = viewId;
-    this.#base = base;
+    this.#base = options.base ?? `/_mostra/v/${BROWSER_PROTOCOL_REVISION}`;
+    if (options.csrf) this.#csrf = Promise.resolve(options.csrf);
   }
 
   #token(): Promise<string> {

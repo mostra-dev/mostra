@@ -136,8 +136,11 @@ export function removeTree(root: string): void {
   rmSync(root, { recursive: true, force: true });
 }
 
-/** Starts a daemon on a fresh home; resolves with its status line and the process. */
-export async function startDaemon(): Promise<{
+/**
+ * Starts a daemon on a fresh home, or again on the home of an earlier one (`root`); resolves with
+ * its status line and the process.
+ */
+export async function startDaemon(options: { readonly root?: string } = {}): Promise<{
   child: ChildProcess;
   root: string;
   home: string;
@@ -148,7 +151,7 @@ export async function startDaemon(): Promise<{
       throw new Error(`${file} is missing: build @mostra/runtime and @mostra/shell first.`);
   }
   // Short paths: macOS limits socket paths to 103 bytes.
-  const root = realpathSync(mkdtempSync("/tmp/mostra-e2e-"));
+  const root = options.root ?? realpathSync(mkdtempSync("/tmp/mostra-e2e-"));
   const home = join(root, "home");
   const { MOSTRA_HOME: _home, ...inherited } = process.env;
   const env = Object.fromEntries(
