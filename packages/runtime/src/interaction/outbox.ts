@@ -55,6 +55,8 @@ export interface OutboxOptions {
   readonly faults: Faults;
   /** The clock (tests move it). */
   readonly now?: () => number;
+  /** How long a host has to answer a port call; default {@link PORT_CALL_TIMEOUT_MS}. */
+  readonly portTimeoutMs?: number;
 }
 
 interface DeliveryRow {
@@ -258,7 +260,7 @@ export class Outbox {
         registrant.session,
         portSubmissionsDeliverMethod.method,
         envelope,
-        PORT_CALL_TIMEOUT_MS,
+        this.#options.portTimeoutMs ?? PORT_CALL_TIMEOUT_MS,
       );
       const parsed = portSubmissionsDeliverMethod.result.safeParse(answer);
       outcome = parsed.success
@@ -382,7 +384,7 @@ export class Outbox {
                 registrant.session,
                 portDraftsMirrorMethod.method,
                 mirror,
-                PORT_CALL_TIMEOUT_MS,
+                this.#options.portTimeoutMs ?? PORT_CALL_TIMEOUT_MS,
               );
             } catch (error) {
               this.#options.log.warn("outbox.mirror_failed", {

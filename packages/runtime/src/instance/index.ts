@@ -268,6 +268,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         .filter(([, ports]) => ports.includes("submissions"))
         .map(([owner]) => owner),
     artifacts: { resolve: (ref) => registry.get(canonicalRef(ref)).id },
+    // Tests shorten the 30 s port-call limit to exercise a host that never answers.
+    ...(Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) > 0
+      ? { portTimeoutMs: Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) }
+      : {}),
   });
   const shellDir = locateShell(environment);
   if (shellDir === undefined)

@@ -735,3 +735,33 @@ describe("delivery to a host's submissions port (IN-12, IN-06, H-04)", () => {
     back.client.close();
   });
 });
+
+describe("a host that never answers (FAILURE_MODEL §4, §9)", () => {
+  const gateway = new GatewayHome();
+  let receipt: Receipt & { dir: string; entry: string };
+
+  beforeAll(async () => {
+    // The 30 s port-call limit, shortened so the test sees it pass.
+    await gateway.start({ env: { MOSTRA_TEST_PORT_TIMEOUT_MS: "500" } });
+    receipt = await publish(gateway, "single-tsx");
+  }, 180_000);
+  afterAll(() => gateway.stop());
+
+  it("counts a port call past its time limit as a retryable failure and delivers the same delivery again", async () => {
+    const host = await Host.connect(gateway, "slow-host", { ports: ["submissions"] });
+    const viewer = await page(receipt.url);
+    expect((await viewer.submit("0")).status).toBe(200);
+    const ignored = await host.next("port/submissions.deliver");
+    // No answer: after the limit and the first backoff, the same delivery comes again.
+    const retried = await host.next("port/submissions.deliver", 10_000);
+    expect(retried.params["deliveryId"]).toBe(ignored.params["deliveryId"]);
+    expect(retried.params["attempt"]).toBe(2);
+    host.answer(retried, { accepted: true });
+    await eventually(async () =>
+      ok<{ deliveries: { owner: string; delivered: number }[] }>(
+        await gateway.client.call("instance/status", {}),
+      ).deliveries.some((entry) => entry.owner === "slow-host" && entry.delivered === 1),
+    );
+    host.client.close();
+  });
+});

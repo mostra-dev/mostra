@@ -77,6 +77,8 @@ export interface InteractionOptions {
   /** The hosts that always provide the submissions port (`HomeConfig.ports`, D105). */
   readonly expectedHosts: () => readonly string[];
   readonly artifacts: InteractionArtifacts;
+  /** How long a host has to answer a port call (30 s; tests shorten it). */
+  readonly portTimeoutMs?: number;
 }
 
 /** A browser session as the interaction core sees it: who it acts as. */
@@ -172,6 +174,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     hosts,
     expected: options.expectedHosts,
     faults: options.faults,
+    ...(options.portTimeoutMs !== undefined ? { portTimeoutMs: options.portTimeoutMs } : {}),
   });
   const subscriptions = new Subscriptions({
     ledger,

@@ -694,6 +694,57 @@ describe("signals (IN-09)", () => {
   });
 });
 
+describe("Mostra decides nothing on a signal's behalf (IN-09, D10)", () => {
+  it("records signals from the artifact, the shell (submit) and an action as signal.raised, and calls no host for any of them", async () => {
+    const { ledger, artifactId, latest, draft } = submitting(undefined);
+    const hosts = new FakeHosts();
+    hosts.registered = [{ session: 1, owner: "host", ports: ["drafts"] }];
+    const interaction = createInteraction({
+      ledger,
+      log: silentLog,
+      faults: noFaults,
+      hosts,
+      expectedHosts: () => [],
+      artifacts: { resolve: () => artifactId },
+    });
+    interaction.start();
+    const page = { artifactId, viewerId: latest.viewerId };
+    interaction.signal(page, { viewId: latest.viewId, name: "ping-agent", payload: { n: 1 } });
+    // A server function's signal (WP-08 calls this through @mostra/server's `signal()`).
+    ledger.write((db) =>
+      raiseSignal(db, {
+        artifactId,
+        name: "reply-sent",
+        source: "action",
+        actor: { kind: "agent" },
+        causation: { runId: "run_01JB8Z3QF6S7W3N8D5K2C4V9XG" },
+      }),
+    );
+    draft([set("a", 1)]);
+    ledger.write((db) =>
+      submit(db, {
+        artifactId,
+        viewerId: latest.viewerId,
+        viewId: latest.viewId,
+        expectedRevision: 1,
+        channel: "shell",
+        owners: [],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const signals = events(ledger, artifactId).filter((event) => event.type === "signal.raised");
+    expect(signals.map((event) => [event.payload["name"], event.payload["source"]])).toEqual([
+      ["ping-agent", "artifact"],
+      ["reply-sent", "action"],
+      ["submit", "shell"],
+    ]);
+    // No port call, no notification: what a signal wakes is the host's own decision.
+    expect(hosts.calls).toEqual([]);
+    expect(hosts.notifications).toEqual([]);
+    interaction.stop();
+  });
+});
+
 describe("wait (IN-10)", () => {
   it("is level-triggered for submitted under once and edge-triggered after the cursor otherwise", () => {
     const { ledger, artifactId, latest, draft, doSubmit } = submitting(undefined);
@@ -1132,6 +1183,29 @@ describe("the outbox (IN-12, IN-06)", () => {
       viewerId: latest.viewerId,
     });
     interaction.stop();
+  });
+});
+
+describe("no path delivers a draft as a submission (IN-06)", () => {
+  it("calls the submissions port only from the outbox, with an envelope built from a submission row", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = join(import.meta.dirname, "../../src");
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" }).filter((file) =>
+      file.endsWith(".ts"),
+    );
+    const callers = files.filter((file) =>
+      /portSubmissionsDeliverMethod|port\/submissions\.deliver/.test(
+        readFileSync(join(root, file), "utf8"),
+      ),
+    );
+    expect(callers).toEqual(["interaction/outbox.ts"]);
+    const outbox = readFileSync(join(root, "interaction/outbox.ts"), "utf8");
+    // The envelope's results come from the immutable submission row, never a document.
+    expect(outbox).toMatch(/kind: "submission",[\s\S]*results: buildResults\(db, submission\)/);
+    expect(outbox).toMatch(/SELECT \* FROM submission WHERE id = \?/);
+    // Drafts leave only through the drafts port, labelled as drafts.
+    expect(outbox).toMatch(/kind: "draft"/);
   });
 });
 
