@@ -70,3 +70,9 @@ The Claude Opus 5.5 review's 13 findings, all fixed or answered. Each fix has a 
 | 13 The docs said hosts could recompute the digest | Corrected: results carry the digest as the snapshot's identity, to compare, not to recompute (INTERFACES §8, `canonicalJson`'s TSDoc) | Documentation |
 
 Answered without a change: the stored `subscriber.filter_json` isn't used to resume, by design: a name's acknowledged cursor counts for the filter its latest subscription gives (INTERFACES §6 says so now). Each delivery attempt rebuilds `Results` with the deliveries' current states: the answers come from the immutable snapshot, and the delivery states are the delivery's own facts, current at each attempt. Every link minted without `viewer` acts as the home's one local viewer (D104), which hosts that share one link with several people need to know; WP-14's Skill and WP-15's tool descriptions say it.
+
+## Deviations
+
+- **D102** gained a rule while it was built: a policy a publish names stays until another publish names one, so an agent's plain republish can't undo a host's choice (recorded in DECISIONS.md).
+- **D107** amends D103 after the Claude review: under `once` per-viewer, `wait --until submitted` is edge-triggered after an explicit cursor.
+- **Size budgets** of `@mostra/protocol` rose for the new schemas and HOST codes: the whole entry from 24 to 28 kB (26.54 kB), the JSON-RPC core from 5 to 6 kB (5.49 kB) and the bridge from 6 to 6.5 kB (6.14 kB). The core and the bridge carry the whole HOST catalog's text; [#17](https://github.com/mostra-dev/mostra/issues/17) proposes giving the core a catalog of its own codes.
