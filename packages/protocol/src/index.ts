@@ -39,6 +39,18 @@ export {
   uiSizeChanged,
 } from "./bridge.ts";
 export {
+  BROWSER_PROTOCOL_REVISION,
+  BROWSER_PROTOCOL_REVISIONS,
+  DocumentSnapshot,
+  FieldsRequest,
+  PollResult,
+  SIGNAL_PAYLOAD_MAX_BYTES,
+  SignalRequest,
+  StreamSnapshot,
+  SubmitRequest,
+} from "./browser.ts";
+export { canonicalJson } from "./canonical.ts";
+export {
   ALL_SCOPES,
   CapabilityScope,
   Duration,
@@ -60,6 +72,8 @@ export {
   diagnosticCatalog,
   type EnvDiagnosticCode,
   envDiagnosticCodes,
+  type FieldDiagnosticCode,
+  fieldDiagnosticCodes,
   type HomeDiagnosticCode,
   type HostDiagnosticCode,
   type HygieneDiagnosticCode,
@@ -73,6 +87,8 @@ export {
   type PublishDiagnosticCode,
   platformDiagnosticCodes,
   publishDiagnosticCodes,
+  type SubmitDiagnosticCode,
+  submitDiagnosticCodes,
   type TargetDiagnosticCode,
   targetDiagnosticCodes,
 } from "./diagnostics/codes/index.ts";
@@ -111,6 +127,7 @@ export {
   ArtifactId,
   CommentId,
   Cursor,
+  DeliveryId,
   type GeneratedIdKind,
   type Id,
   type IdBody,
@@ -126,6 +143,33 @@ export {
   ViewerId,
   ViewId,
 } from "./ids.ts";
+export {
+  Actor,
+  type DeliveryState,
+  DeliveryStatus,
+  DocumentRevision,
+  EventFilter,
+  EventRecord,
+  EventTypePattern,
+  FIELD_ID_MAX_LENGTH,
+  FieldConflict,
+  FieldOp,
+  type FieldScope,
+  FieldState,
+  isFieldId,
+  MutationResult,
+  type Rect,
+  ResultComment,
+  Results,
+  SIGNAL_NAME_PATTERN,
+  SubmissionSummary,
+  type SubmitChannel,
+  Viewer,
+  type ViewerKind,
+  ViewerSpec,
+  type Viewport,
+  WaitCondition,
+} from "./interaction.ts";
 export {
   ARTIFACT_MANIFEST_KEYS,
   type ArtifactFamily,
@@ -168,9 +212,33 @@ export {
   type DepsAddResult,
   depsAddMethod,
 } from "./methods/deps/add.ts";
+export {
+  type EventsAckParams,
+  type EventsAckResult,
+  eventsAckMethod,
+} from "./methods/events/ack.ts";
+export {
+  EVENTS_READ_MAX,
+  type EventsReadParams,
+  type EventsReadResult,
+  eventsReadMethod,
+} from "./methods/events/read.ts";
+export {
+  EVENTS_NOTIFY,
+  EventsNotifyParams,
+  type EventsSubscribeParams,
+  type EventsSubscribeResult,
+  eventsSubscribeMethod,
+} from "./methods/events/subscribe.ts";
+export {
+  type EventsUnsubscribeParams,
+  type EventsUnsubscribeResult,
+  eventsUnsubscribeMethod,
+} from "./methods/events/unsubscribe.ts";
 export { hostMethods } from "./methods/index.ts";
 export {
   ChildProcessStatus,
+  DeliveryCounts,
   GatewayStatus,
   type InstanceStatusParams,
   type InstanceStatusResult,
@@ -194,6 +262,28 @@ export {
   mostraShutdownMethod,
 } from "./methods/mostra/shutdown.ts";
 export {
+  DraftMirror,
+  type DraftsMirrorResult,
+  portDraftsMirrorMethod,
+} from "./methods/port/drafts-mirror.ts";
+export {
+  portSubmissionsDeliverMethod,
+  SubmissionEnvelope,
+  type SubmissionsDeliverResult,
+} from "./methods/port/submissions-deliver.ts";
+export {
+  type ResultsGetParams,
+  type ResultsGetResult,
+  ResultsMarkdown,
+  resultsGetMethod,
+} from "./methods/results/get.ts";
+export { type StateGetParams, type StateGetResult, stateGetMethod } from "./methods/state/get.ts";
+export {
+  type StatePatchParams,
+  type StatePatchResult,
+  statePatchMethod,
+} from "./methods/state/patch.ts";
+export {
   type ViewRevokeParams,
   type ViewRevokeResult,
   viewRevokeMethod,
@@ -210,6 +300,12 @@ export {
   viewUrlMethod,
 } from "./methods/view/url.ts";
 export {
+  WAIT_MAX_MS,
+  type WaitParams,
+  type WaitResult,
+  waitMethod,
+} from "./methods/wait/wait.ts";
+export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,
   Revision,
@@ -217,7 +313,7 @@ export {
 } from "./revision.ts";
 // gen:method-exports
 export { JSON_RPC_ERROR_CODES, RpcError } from "./rpc/error.ts";
-export { encodeLine, LineSplitter } from "./rpc/lines.ts";
+export { encodeLine, LineSplitter, MAX_LINE_LENGTH } from "./rpc/lines.ts";
 export {
   type ClassifiedMessage,
   classifyMessage,

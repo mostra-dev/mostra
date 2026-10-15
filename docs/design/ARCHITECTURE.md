@@ -162,23 +162,24 @@ The supervisor's interaction module owns drafts, artifact state, submissions, si
 
 **Fields and documents.** A draft is the viewer-scoped document for (artifact, viewer). Artifact state is the artifact-scoped document. Both are maps from field ID to value with a per-field revision, under a monotonically increasing document revision.
 - **Mutations** carry a client-generated mutation ID, the base revision and the viewed version.
-- **Concurrency.** Non-overlapping field edits rebase automatically. A field edited elsewhere since the mutation's base becomes a conflict, returned to the writer and shown in the field's `meta`.
-- **Idempotency.** Mutation IDs are idempotent.
+- **Concurrency.** Non-overlapping field edits rebase automatically. A field edited elsewhere since the mutation's base becomes a conflict, returned to the writer with what the field holds now and shown in the field's `meta`; the rest of the mutation applies under one new revision (D106).
+- **Idempotency.** Mutation IDs replay their recorded result; the same ID with other contents is refused (D106).
+- **Views and viewers** (D104). Each frame load is a view of one exact version by one viewer: the home's local user, or the viewer a link was minted for. Mutations and submits name the view.
 
 **Submit** is one transaction (IN-05):
 1. Resolve the view to its exact version.
-2. Check the policy (`none` refuses; `once` checks uniqueness for its scope; `epochs` links to the previous epoch).
+2. Check the policy in force (D102: `none` refuses; `once` checks uniqueness for its scope; `epochs` links to the viewer's previous submission, D103).
 3. Check the expected draft revision.
 4. Read the canonical persisted draft, plus artifact state at its current revision.
 5. Compute the snapshot digest.
 6. Insert the immutable submission with its channel, viewer and stale-view flag.
-7. Enqueue one outbox delivery per registered submissions port.
-8. Append `submission.created`.
+7. Enqueue one outbox delivery per host registered or expected for the submissions port, or one for the built-in adapter (D105).
+8. Append `submission.created` and the `submit` signal (D106).
 
 A duplicate submit returns the existing submission (D22). A second submit under `once` returns a typed conflict carrying the existing submission (H-02). A submission is durable before any delivery attempt (IN-12, invariant 6).
 
 **Delivery and the outbox** (IN-12, H-04):
-- The dispatcher delivers each submission to each registered submissions port in order, idempotently by submission ID.
+- The dispatcher delivers each submission to each host's submissions port in submission order, one at a time per host, idempotently by delivery ID (D105).
 - Results: `accepted`, `rejected` (with a reason) or a transport failure. Failures retry with backoff, indefinitely while the host is registered as expecting deliveries.
 - A host's rejection with reason `undeliverable` is terminal, and the viewer sees it.
 
@@ -190,7 +191,7 @@ The viewer sees `Submitted` (durable in Mostra), then `Delivered` or `Pending de
 
 **Wait and results** (IN-10, IN-11):
 - `wait` blocks until a condition holds or the timeout passes. Its conditions are `submitted`, `signal:<name>`, `state:<field>` and `event:<type>`.
-- `submitted` is level-triggered: satisfied by any existing submission in the current epoch. The others are edge-triggered after a cursor, defaulting to the cursor of the artifact's latest publish.
+- `submitted` is level-triggered under `once` (any existing submission satisfies it; under `per-viewer` only while no cursor is given, D107) and edge-triggered under `epochs`; it is refused under `none` (D103). The others are edge-triggered after a cursor, defaulting to the cursor of the artifact's latest publish.
 - On timeout it returns `still_waiting` with a cursor and loses nothing.
 - `results` assembles the complete submission (INTERFACES §8) as JSON and as Markdown for agents.
 

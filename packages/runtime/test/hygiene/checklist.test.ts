@@ -419,8 +419,33 @@ describe("item 9: per-scope tokens (HY-03)", () => {
     const browser = new Browser();
     const viewer = await openLink(browser, link.url);
     expect(viewer.page.status).toBe(200);
-    const post = (path: string) =>
-      browser.fetchJson(viewer.frameOrigin, path, { body: {}, csrf: viewer.frameCsrf });
+    const post = (path: string, body: unknown = {}) =>
+      browser.fetchJson(viewer.frameOrigin, path, { body, csrf: viewer.frameCsrf });
+    // Well-formed requests to WP-06's real handlers: the scope refuses them first (D96).
+    const rev = "/_mostra/v/2026-10-15";
+    expect(
+      code(
+        await post(`${rev}/fields`, {
+          mutationId: "mut_01JB8Z3QF6S7W3N8D5K2C4V9XG",
+          scope: "viewer",
+          baseRevision: "0",
+          viewId: viewer.viewId,
+          ops: [{ id: "a", value: 1 }],
+        }),
+      ),
+    ).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
+    expect(
+      code(
+        await post(`${rev}/submit`, {
+          viewId: viewer.viewId,
+          expectedRevision: "0",
+          channel: "artifact",
+        }),
+      ),
+    ).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
+    expect(code(await post(`${rev}/signal`, { viewId: viewer.viewId, name: "ping" }))).toBe(
+      "403 MOSTRA_HYGIENE_SCOPE_DENIED",
+    );
     expect(code(await post("/_mostra/v/1/fields"))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
     expect(code(await post("/_mostra/v/1/submit"))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
     expect(code(await post("/_mostra/v/1/call/actions.ts%23sendReply"))).toBe(
@@ -460,14 +485,26 @@ describe("item 9: per-scope tokens (HY-03)", () => {
     ).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
   });
 
-  it("lets the full link through every declared route's checks (they answer 501 until their package)", async () => {
+  it("lets the full link through every declared route's checks to its handler (WP-06 serves fields, submit and signal; actions answer 501 until WP-08)", async () => {
+    // Behind the checks, WP-06's handlers read the body: an empty one is malformed (D96).
     for (const path of [
-      "/_mostra/v/1/fields",
-      "/_mostra/v/1/submit",
-      "/_mostra/v/1/signal",
-      "/_mostra/v/1/runs",
-      "/_mostra/v/1/call/a.ts%23b",
+      "/_mostra/v/2026-10-15/fields",
+      "/_mostra/v/2026-10-15/submit",
+      "/_mostra/v/2026-10-15/signal",
     ]) {
+      const answer = await holder.fetchJson(opened.frameOrigin, path, {
+        body: {},
+        csrf: opened.frameCsrf,
+      });
+      expect(code(answer), path).toBe("400 MOSTRA_HYGIENE_REQUEST_MALFORMED");
+    }
+    // A browser-protocol revision this gateway never shipped isn't served (FAILURE_MODEL §7).
+    const unknown = await holder.fetchJson(opened.frameOrigin, "/_mostra/v/1/fields", {
+      body: {},
+      csrf: opened.frameCsrf,
+    });
+    expect(code(unknown)).toBe("404 MOSTRA_HYGIENE_NOT_SERVED");
+    for (const path of ["/_mostra/v/2026-10-15/runs", "/_mostra/v/2026-10-15/call/a.ts%23b"]) {
       const answer = await holder.fetchJson(opened.frameOrigin, path, {
         body: {},
         csrf: opened.frameCsrf,

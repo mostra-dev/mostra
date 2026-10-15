@@ -72,7 +72,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "24 kB"
+      "limit": "28 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",
@@ -81,7 +81,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "5 kB"
+      "limit": "6 kB"
     },
     {
       "name": "@mostra/protocol IDs alone (zod excluded)",
@@ -99,7 +99,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "6 kB"
+      "limit": "6.5 kB"
     }
   ]
 }

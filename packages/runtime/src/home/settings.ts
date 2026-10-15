@@ -1,20 +1,34 @@
 /**
  * The home's settings (`config.json`, DATA_MODEL §1): what hosts set through `HomeConfig` and
- * what every later client of the home then shares, such as the dependency policy (D43, D95).
+ * what every later client of the home then shares: the dependency policy (D43, D95), the home's
+ * submission policy (D102) and the ports each host always provides (D105).
  * Written atomically (a temporary file, then a rename); read fresh by whoever needs a setting, so
  * a host's change applies to the next request.
  */
 import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createDiagnostic, type DependencyPolicy, RpcError } from "@mostra/protocol";
+import {
+  createDiagnostic,
+  type DependencyPolicy,
+  RpcError,
+  SubmissionPolicy,
+} from "@mostra/protocol";
 import * as z from "zod";
 
 /** The settings `config.json` holds. Unknown keys are kept, so newer settings survive. */
 export interface HomeSettings {
   readonly dependencies?: DependencyPolicy;
+  /** The policy for artifacts whose publish names none, before the manifest's (D102). */
+  readonly submission?: SubmissionPolicy;
+  /** The ports each host always provides, by its client name (D105). */
+  readonly expectedPorts?: Readonly<Record<string, readonly string[]>>;
 }
 
-const Settings = z.looseObject({ dependencies: z.enum(["auto", "explicit"]).optional() });
+const Settings = z.looseObject({
+  dependencies: z.enum(["auto", "explicit"]).optional(),
+  submission: SubmissionPolicy.optional(),
+  expectedPorts: z.record(z.string(), z.array(z.string())).optional(),
+});
 
 /** The settings file of a home. */
 export const SETTINGS_FILE = "config.json";

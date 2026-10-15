@@ -46,34 +46,44 @@
 
 ```sql
 -- Artifacts, versions, views
-artifact(id PK, title, family, links_json, policy_json, created_at, latest_version_id)
+artifact(id PK, title, family, links_json, policy_json, policy_chosen_json NULL, created_at, latest_version_id)
+                                                    -- policy_json: the policy in force; policy_chosen_json: one a publish named (D102)
 source_binding(path PK, artifact_id FK, bound_at)
 version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest, manifest_json,
         forced_codes_json, published_at, UNIQUE(artifact_id, number))
-viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, UNIQUE(kind, external_ref))
-view(id PK, artifact_id, version_id FK, viewer_id FK, opened_at, closed_at, live_cursor_json)
+viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
+                                                    -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104)
+view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json)
+                                                          -- token_id: the link that opened it; a page names only its own link's views
+                                                    -- one frame load of one version (D104)
 follow(viewer_id, artifact_id, PRIMARY KEY(viewer_id, artifact_id))          -- D63
 
 -- Fields: one document per scope (viewer draft, or artifact state)
 document(id PK, artifact_id, scope CHECK(scope IN ('viewer','artifact')), viewer_id NULL,
-         revision INTEGER NOT NULL, epoch INTEGER NOT NULL DEFAULT 1,
-         UNIQUE(artifact_id, scope, viewer_id, epoch))
-field(document_id FK, field_id, value_json, field_rev INTEGER, updated_by_json, updated_at,
-      sensitive BOOLEAN, orphaned_from_version INTEGER NULL, PRIMARY KEY(document_id, field_id))
-mutation(id PK, document_id, result_json, applied_at)                     -- idempotency: mutation IDs replay their result
+         revision INTEGER NOT NULL, epoch INTEGER NOT NULL DEFAULT 1, size INTEGER,
+         CHECK((scope = 'viewer') = (viewer_id IS NOT NULL)), UNIQUE(artifact_id, scope, viewer_id))
+                                                    -- one draft per viewer, its epoch growing (D103); a partial unique index
+                                                    -- makes the artifact-state document (viewer_id NULL) unique too;
+                                                    -- a trigger refuses revision or epoch going back
+field(document_id FK, field_id, value_json, deleted BOOLEAN, field_rev INTEGER, updated_by_json, updated_at,
+      sensitive BOOLEAN, label NULL, required NULL, orphaned_from_version INTEGER NULL, PRIMARY KEY(document_id, field_id))
+                                                    -- a deleted field keeps its row and revision, so a stale write conflicts
+mutation(id PK, document_id, params_digest, result_json, applied_at)      -- idempotency: mutation IDs replay their result,
+                                                                          -- only for the same contents (D106)
 
 -- Submissions and delivery
-submission(id PK, artifact_id, version_id, view_id, viewer_id, channel, epoch, scope_key,
-           draft_document_id, draft_revision, state_revision NULL, snapshot_json, digest, stale_view BOOLEAN,
-           request_id NULL UNIQUE, created_at,
-           UNIQUE(artifact_id, scope_key, epoch))   -- scope_key: '' for once/per-artifact, viewer_id for per-viewer; epochs bump epoch
-delivery(id PK, submission_id FK, port_owner, state CHECK(state IN ('pending','delivered','rejected','undeliverable')),
-         attempts, next_attempt_at, last_error_json, updated_at, UNIQUE(submission_id, port_owner))
+submission(id PK, position UNIQUE, artifact_id, version_id, view_id, viewer_id, channel, policy_json, epoch, scope_key,
+           previous_id NULL, draft_document_id, draft_revision, state_revision NULL, latest_version_number NULL,
+           snapshot_json, digest, stale_view BOOLEAN, request_id NULL UNIQUE, created_at,
+           UNIQUE(artifact_id, scope_key, epoch))   -- scope_key: '' for once/per-artifact, viewer_id for per-viewer and epochs;
+                                                    -- epochs bump the draft's epoch; position: the cursor of submission.created
+delivery(id PK (dlv_), submission_id FK, position, port_owner (the host's client name; '' for the built-in adapter), state CHECK(state IN ('pending','delivered','rejected','undeliverable')),
+         attempts, next_attempt_at, last_error_json, reason NULL, updated_at, UNIQUE(submission_id, port_owner))
 
 -- Events
 event(cursor INTEGER PK AUTOINCREMENT, artifact_id, seq INTEGER, type, actor_json, causation_json, payload_json, at,
       UNIQUE(artifact_id, seq))
-subscriber(name PK, filter_json, acked_cursor)                           -- durable host subscriptions
+subscriber(name PK, filter_json, acked_cursor, updated_at)               -- durable host subscriptions
 
 -- Review
 thread(id PK, artifact_id, version_id, view_id, anchor_json, crop_blob, status, created_by, created_at)
@@ -114,12 +124,12 @@ Invariants carried by constraints:
 - **`epochs`:** each submit bumps `document.epoch` and links to the previous epoch through the snapshot.
 - **One run per explicit key** per artifact and action (AC-03).
 - **One durable result per mutation ID** (IN-01).
-- **One delivery row per submission and port owner**, which makes the outbox idempotent (IN-12).
+- **One delivery row per submission and port owner**, which makes the outbox idempotent (IN-12). A trigger refuses any change to a delivery once its state is terminal.
 - **Event order:** the home-wide cursor gives total order, and the per-artifact sequence gives each artifact's order (IN-08).
 - **Leases:** each port has exactly one lease holder.
 - **Capabilities:** the ledger holds no secret. A token's secret, a session's cookie and its CSRF token are stored only as SHA-256 hashes. A trigger refuses any change to a revoked token and any change to a token's secret, artifact, grant, expiry, version or shell origin, and a default token can't expire (D97, D98).
 
-`snapshot_json` is the canonical answer document. Its digest is SHA-256 over RFC 8785 (JCS) canonical JSON. Submissions are write-once: no `UPDATE` touches `submission` after insert. A test in the interaction WP enforces this with a trigger (invariant 4). Versions are write-once the same way: a trigger refuses any `UPDATE` of `version` (invariant 3), and `event` is append-only.
+`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
 
 ## 4. Event catalog
 
@@ -130,12 +140,13 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `artifact.created` | title, family |
 | `version.published` | versionId, number, forced codes |
 | `view.opened` / `view.closed` | viewId, versionId, viewer |
-| `draft.changed` | documentId, revision, field IDs (sensitive values redacted, other values included) |
-| `draft.conflict` | field IDs, revisions |
-| `state.changed` | revision, field IDs and values (D63) |
-| `submission.created` | submissionId, versionId, viewId, channel, epoch, staleView |
-| `submission.delivered` / `submission.rejected` / `submission.undeliverable` | submissionId, port owner, reason |
-| `signal.raised` | name, payload, source (`shell`, `artifact`, `action`) |
+| `draft.changed` | viewerId, epoch, revision, changes (`{ id, value }`, `{ id, deleted }`, or `{ id, sensitive: true }` without the value) |
+| `draft.conflict` | viewerId, epoch, revision, base, field IDs with their revisions |
+| `state.changed` | revision, changes as for `draft.changed` (D63) |
+| `state.conflict` | revision, base, field IDs with their revisions |
+| `submission.created` | submissionId, versionId, version, viewId, viewerId, channel, epoch, staleView, digest |
+| `submission.delivered` / `submission.rejected` / `submission.undeliverable` | submissionId, deliveryId, owner, attempts, reason |
+| `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106) |
 | `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
 | `host.<name>` | any payload, emitted by server code (AC-05) |
@@ -145,7 +156,7 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 
 These are ephemeral and never stored (D47, D63): presence, live updates, action progress and log lines (the log is stored on the run, not as events), terminal output and save acknowledgments.
 
-**Compaction** (D47) is opt-in (`mostra gc --compact-events --before <cursor>`). It replaces an artifact's events before a cursor with one `artifact.compacted` event that holds a state summary. Subscribers whose acknowledged cursor is earlier get `MOSTRA_HOST_CURSOR_COMPACTED` and the summary, never a silent gap.
+**Compaction** (D47) is opt-in (`mostra gc --compact-events --before <cursor>`, WP-10). It replaces an artifact's events before a cursor, in one transaction, with one `artifact.compacted` event at the last replaced cursor and sequence, so neither ever moves back. Its payload summarizes them: `from` and `through` (the first and last cursors covered; an earlier summary in the range folds in, keeping its `from`), `removed`, counts per type and the latest version published. A filtered reader still receives it, and a reader who receives it continues after it. A reader whose cursor lies inside a summary's range (`from` ≤ cursor < `through`) had events that are gone: reads answer `MOSTRA_HOST_CURSOR_COMPACTED`, and a live subscription receives the summary with that diagnostic and continues after it, never a silent gap.
 
 ## 5. Values and limits
 

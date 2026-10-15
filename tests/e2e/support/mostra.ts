@@ -39,7 +39,10 @@ export interface Run {
   readonly home: string;
   readonly socket: string;
   readonly receipts: Readonly<
-    Record<"tsx" | "mdx" | "directory", { readonly artifactId: string; readonly url: string }>
+    Record<
+      "tsx" | "mdx" | "directory" | "survey",
+      { readonly artifactId: string; readonly url: string }
+    >
   >;
 }
 
@@ -179,8 +182,13 @@ export async function publishFixture(
   home: string,
   fixture: string,
   entry = "",
+  options: { readonly copy?: string; readonly policy?: unknown } = {},
 ): Promise<{ artifactId: string; url: string }> {
-  const dir = join(dirname(home), "sources", fixture);
+  const dir = join(dirname(home), "sources", options.copy ?? fixture);
   cpSync(join(FIXTURES, fixture), dir, { recursive: true });
-  return client.call("artifact/publish", { source: { path: entry ? join(dir, entry) : dir } });
+  const source = { path: entry ? join(dir, entry) : dir };
+  return client.call("artifact/publish", {
+    source,
+    ...(options.policy !== undefined ? { policy: options.policy } : {}),
+  });
 }

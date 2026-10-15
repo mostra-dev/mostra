@@ -44,6 +44,7 @@ import {
   type PublishReceipt,
   RpcError,
   type SourceRef,
+  type SubmissionPolicy,
 } from "@mostra/protocol";
 import type { RenderMode } from "../builder/index.ts";
 import { type Dependencies, lockKey } from "../deps/index.ts";
@@ -89,6 +90,8 @@ export interface PublisherOptions {
   readonly log: Log;
   /** Test fault points `publish:*` (VR-02). */
   readonly faults?: Faults;
+  /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
+  readonly homePolicy?: () => SubmissionPolicy | undefined;
 }
 
 /** Publishes and creates artifacts. */
@@ -492,7 +495,10 @@ export function createPublisher(options: PublisherOptions): Publisher {
             envDigest,
             outputDigest,
             manifest,
+            // D102: the registry resolves the policy in force from these, the earlier publishes'
+            // choice and the manifest's request.
             policy: params.policy,
+            homePolicy: options.homePolicy?.(),
             forcedCodes,
             stillClaims,
             faults,

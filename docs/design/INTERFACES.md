@@ -13,6 +13,7 @@
   | `vw_` | view | ULID |
   | `vwr_` | viewer | ULID |
   | `sub_` | submission | ULID |
+  | `dlv_` | delivery (one submission to one host, D105) | ULID |
   | `run_` | action run | ULID |
   | `thr_`, `cmt_` | thread, comment | ULID |
   | `tok_` | capability token | ULID (the secret is separate) |
@@ -163,7 +164,7 @@ Internal to Mostra, but immutable versions embed the client runtime, so this is 
 | `GET /_mostra/session` | The frame session's facts for same-origin code: `{ csrf, artifactId, shellOrigin, scopes, version? }`; the client runtime learns the shell's exact origin for the bridge here (WP-05) | session |
 | `GET /*` | The version's client build: the version the frame session last entered, `/assets/*` of any version of the artifact, and `index.html` for a navigation to any other path (D57, D98) | session |
 | `GET /_mostra/sw.js` | Worker-mode service worker (`Service-Worker-Allowed: /`) | none |
-| `POST /_mostra/v/{rev}/fields` | Mutations: `{ mutationId, scope, baseRevision, viewId, ops[] }` → `{ revision, applied[], conflicts[] }` | session, CSRF, Origin |
+| `POST /_mostra/v/{rev}/fields` | Mutations: `{ mutationId, scope, baseRevision, viewId, ops[] }` → `{ revision, applied[], conflicts[] }` | session, CSRF, Origin, `draft` scope |
 | `POST /_mostra/v/{rev}/submit` | `{ viewId, expectedRevision, channel: "artifact" }` → submission or typed conflict | session, `submit` scope |
 | `POST /_mostra/v/{rev}/signal` | `{ viewId, name, payload }` | session, `signal` scope (D97) |
 | `POST /_mostra/v/{rev}/call/{fnId}` | Plain server-function call (Mostra serializer; streamed body for `AsyncIterable`) | session, `action:<name>` scope |
@@ -171,9 +172,17 @@ Internal to Mostra, but immutable versions embed the client runtime, so this is 
 | `POST /_mostra/v/{rev}/runs/{id}/cancel` | Cancel | as above |
 | `POST /_mostra/v/{rev}/ticket` | Single-use stream or WebSocket ticket (worker mode, terminals) | session |
 | `GET /_mostra/v/{rev}/events?view=…&cursor=…` | SSE: field changes, state, runs, live, version notices, delivery states | session or ticket |
-| `GET /_mostra/v/{rev}/events/poll?…&wait=25` | Long-poll on the same cursor (D47) | same |
+| `GET /_mostra/v/{rev}/events/poll?view=…&cursor=…&wait=25` | Long-poll on the same cursor (D47) | same |
 | `POST /a/{artifactId}/_mostra/v/{rev}/review/*` (on the shell origin) | Shell only: comments, crops, choices | shell session, `review` scope |
 | `GET /_mostra/v/{rev}/term/{session}` (WebSocket) | Live terminal frames: `data`, `resize`, `input`, `ack`, `exit` | ticket |
+
+**The first revision, `2026-10-15`** (WP-06, D106; `BROWSER_PROTOCOL_REVISIONS` in `@mostra/protocol`). Its payloads are the Zod schemas `FieldsRequest`, `SubmitRequest`, `SignalRequest`, `StreamSnapshot` and `PollResult`; a revision the gateway never shipped answers 404 `MOSTRA_HYGIENE_NOT_SERVED`. Every request names the page's `viewId`, the view the shell's ticket recorded (D104), and acts as the link's viewer.
+- **`fields`.** `scope: "viewer"` writes the session viewer's draft, `"artifact"` the artifact state; ops whose field changed after `baseRevision` come back in `conflicts` with what the field holds now, the others apply under one new revision. A body may be up to 17 MiB (a document's 16 MiB and the envelope).
+- **`submit`** answers the `SubmissionSummary`, with `duplicate: true` when it repeats an earlier submit of the same view and revision. Under a closed `once` it is 409 `MOSTRA_SUBMIT_ALREADY` with the existing `submission` beside the diagnostic (H-02); a moved draft is 409 `MOSTRA_SUBMIT_REVISION_MOVED`; policy `none` is 409 `MOSTRA_SUBMIT_POLICY_NONE`. A draft a `once` submission closed refuses `fields` writes the same way; artifact state stays writable.
+- **`signal`** takes a name of letters, digits, `.`, `_` and `-` (`submit` is reserved) and a JSON payload of at most 64 KiB; it answers `{ cursor }`.
+- **`events`** is `text/event-stream`. Without a cursor its first message is `event: snapshot` (a `StreamSnapshot`: cursor, viewer, draft, artifact state, and the submission that closed or last ended the viewer's draft); then each durable event the page may see is `event: mostra` with `id: <cursor>` and the `EventRecord` as data. A reconnect sends `Last-Event-ID` (or `?cursor=`) and gets every event after it; a cursor inside a compacted range gets a fresh snapshot instead. A page never sees another viewer's draft events, signals or views (D104). Idle streams send a comment every 15 s, and a stream ends when its link is revoked.
+- **`events/poll`** answers `PollResult` on the same cursor, waiting up to `wait` seconds (0 to 25) for an event; without a cursor it answers the snapshot. A poll whose link is revoked or expires while it waits answers 410 `MOSTRA_HYGIENE_TOKEN_REVOKED` and nothing it read. Both resume from the newer of `?cursor=` and `Last-Event-ID`, since an `EventSource` reconnects to the URL it opened with the last ID it received. The stream reads a page of events only when the client took the last one. Pages see other viewers' changes with their display name but without their viewer and view IDs, and a page names only views its own link opened (`MOSTRA_SUBMIT_VIEW_INVALID`).
+- Refusals are the diagnostics as JSON: 400 for a malformed body or an invalid field ID or signal, 403 `MOSTRA_SUBMIT_VIEW_INVALID` for a view of another viewer or artifact, 409 as above and for `MOSTRA_FIELD_MUTATION_ID_REUSED`, 413 `MOSTRA_FIELD_TOO_LARGE`.
 
 The shell origin has its own endpoints for capability exchange, trusted-control activation, the banner, follow preferences and review, all with the same checks. Mutations require JSON content types and the CSRF header (seed hygiene items 5 and 11). WP-05 serves these on the shell origin, each artifact under `/a/{artifactId}`, so each has its own shell session (D97, D98):
 
@@ -183,7 +192,7 @@ The shell origin has its own endpoints for capability exchange, trusted-control 
 | `GET /_mostra/shell/assets/*` | The shell's built files | none |
 | `POST /a/{artifactId}/_mostra/session` | Exchange `{ token, replace? }` for the shell session → `{ csrf, artifact: { id, title }, scopes, expiresAt?, version? }`. While a live session from another link exists, 409 `MOSTRA_HYGIENE_SESSION_CONFLICT` with `current` and `offered` (`{ scopes, expiresAt?, version? }` each) unless `replace` is `true`; the same link again reuses its session (D98 item 8) | token, Origin |
 | `GET /a/{artifactId}/_mostra/session` | The same facts for an existing session | shell session |
-| `POST /a/{artifactId}/_mostra/ticket` | `{ version? }` → `{ src, artifactOrigin, version: { id, number }, latest: { number } }`: a single-use frame ticket (60 s, valid while this shell session exists) for the link's version, the asked one or the latest; a link that names a version gets 403 for any other (D97 item 9); a damaged version is 500 `MOSTRA_HOME_INTEGRITY` | shell session, CSRF |
+| `POST /a/{artifactId}/_mostra/ticket` | `{ version? }` → `{ viewId, src, artifactOrigin, version: { id, number }, latest: { number } }`: a single-use frame ticket, and the view this frame load is (D104, WP-06) (60 s, valid while this shell session exists) for the link's version, the asked one or the latest; a link that names a version gets 403 for any other (D97 item 9); a damaged version is 500 `MOSTRA_HOME_INTEGRITY` | shell session, CSRF |
 
 Every route declares its intent (read, stream, upgrade, exchange or mutation), its session and its scope, and one runner applies the checks in one order: Host, request target and headers; Origin and content type; the rate limit on token paths; the session (bound to the origin it was issued for, with a live token); the CSRF token; the scope (D96). A route a later package serves answers 501 `MOSTRA_HYGIENE_NOT_SERVED` once every check has passed. Refusals are the HYGIENE diagnostics as JSON, or a plain page for a navigation: 421 for a Host outside the allowlist, 400 for a malformed request, 401 without a session or with an unknown token, 410 for a revoked or expired one, 403 for another Origin, a missing or wrong CSRF token or a scope the link lacks, 415 for a body not declared as JSON, 429 with `Retry-After` while guessing for the artifact is limited, 409 when another link's session is open, 431 with `Clear-Site-Data: "cookies"` for headers past 1 MiB, and 404 or 405 for what isn't served. Every response carries `Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`; none carries an `Access-Control-*` header. The shell page sends `frame-ancestors 'none'`, `X-Frame-Options: DENY` and `Cross-Origin-Opener-Policy: same-origin`, and artifact documents `frame-ancestors <shell origin>`; the shell sandboxes the frame with every capability but navigating the viewer's tab (D98 item 7).
 
@@ -221,35 +230,36 @@ Authoring
   deps/add         { artifact: SourceRef, packages: string[] } → { packages: AddedPackage[], lockDigest }   (D95; `mostra add`)
 
 Viewing and sharing
-  view/url        { artifact, version?, scopes?, ttl?, requestId? } → CapabilityLink { url, tokenId, scopes, expiresAt? }   (D97; `viewer?` arrives with WP-06)
+  view/url        { artifact, version?, scopes?, ttl?, viewer?: { ref, name? }, requestId? } → CapabilityLink { url, tokenId, scopes, expiresAt?, viewer? }   (D97, D104)
   view/rotate     { tokenId, requestId? }            → CapabilityLink   (D97; same artifact, scopes, expiry and pinned version; the old token answers 410)
   view/revoke     { tokenId, requestId? }            → {}   (revoking a revoked token succeeds; an unknown one is MOSTRA_HYGIENE_TOKEN_INVALID)
   share/start     { artifact, via: "tailnet" | "funnel" | "cloudflare", ttl? } → { url, hostname, mode: "cookie" | "worker" }
   share/stop      { artifact | shareId }             → {}
 
 Interaction
-  results/get     { artifact, submission?: string, format?: "json" | "md" } → Results (§8)
+  results/get     { artifact, submission?: string, format?: "json" | "md" } → Results (§8), or { submissionId, markdown } for "md"
   wait            { artifact, until: WaitCondition, after?: Cursor, timeoutMs } → { status: "satisfied", event, cursor } | { status: "still_waiting", cursor }
   state/get       { artifact, ids? }                 → { revision, fields }
-  state/patch     { artifact, ops, baseRevision?, mutationId } → { revision, conflicts }
+  state/patch     { artifact, ops, baseRevision?, mutationId, as?: "agent" | "host" } → { revision, applied, conflicts }
   live/push       { artifact, key, value, mode?: "replace" | "append" } → { revision }
   review/export   { artifact, submission?, format: "md" | "json", out? } → { path | content }
 
 Events
-  events/subscribe   { filter: EventFilter, after?: Cursor } → { subscriptionId }; then notifications events/notify { events[], cursor }
+  events/subscribe   { filter?: EventFilter, after?: Cursor, name? } → { subscriptionId, cursor }; then notifications events/notify { subscriptionId, events[], cursor }
+  events/unsubscribe { subscriptionId }              → {}
   events/ack         { subscriptionId, cursor }     → {}   (durable per subscriber name)
-  events/read        { filter, after, limit }       → { events[], cursor }
+  events/read        { filter?, after?, limit? }    → { events[], cursor }
 
 Administration
   secret/set | secret/list | secret/delete         (value only via set; never returned)
-  instance/status    {}                              → { instance, startedAt, socket, connections, processes, gateway? } (WP-02; `gateway: { bind, shell, artifacts: { artifactId, origin }[] }`, WP-05); ports, pending deliveries, shares and versions in use are added by the packages that own them
+  instance/status    {}                              → { instance, startedAt, socket, connections, processes, gateway? } (WP-02; `gateway: { bind, shell, artifacts: { artifactId, origin }[] }`, WP-05; `deliveries: { owner, connected, pending, delivered, rejected, undeliverable }[]`, WP-06); ports, shares and versions in use are added by the packages that own them
   gc/run             { dryRun? }                     → reclaimed
 
 Mostra → host (only to the connection that registered the port)
   port/<name>.<method>   see §7
 ```
 
-`SourceRef` is `{ path }` (an absolute path; clients resolve relative ones) or `{ artifactId }` (the path it was last published from). `ArtifactRef` has the same two forms and names an existing artifact; a path is matched by its real path, so a deleted source's path still names its artifact. `ArtifactSummary` is `{ id, title, description?, family?, links, mode, policy?, source?, createdAt, latestVersion? }`, with metadata from the latest version's manifest; `ArtifactDetail` adds the latest `manifest` and every `VersionSummary` (`{ id, number, publishedAt, sourceDigest, envDigest, outputDigest, forcedDiagnostics? }`), newest first. `artifact/list` takes `filter: { family? }`. `artifact/create` writes a minimal entry with a generated `id` into an empty directory and returns `{ artifactId, dir, files }`; the artifact appears in `artifact/list` once published, and templates arrive with WP-26. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>`, with the semantics in ARCHITECTURE §6. `PublishReceipt` is `{ artifactId, versionId, version, url?, tokenId?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the artifact's default capability link (D97 item 3): the same across publishes and `requestId` replays until it is rotated or revoked, with `tokenId` to do either. Both are optional on the wire because instances without the gateway (WP-03, before WP-05) have none; WP-05 sets them on every publish (D90). A recorded receipt that a `requestId` replays never holds the link's secret: the link joins every answer from the token. `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (`dependencies: "auto" | "explicit"`, D43, D95, kept in the home's `config.json` for every later client), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
+`SourceRef` is `{ path }` (an absolute path; clients resolve relative ones) or `{ artifactId }` (the path it was last published from). `ArtifactRef` has the same two forms and names an existing artifact; a path is matched by its real path, so a deleted source's path still names its artifact. `ArtifactSummary` is `{ id, title, description?, family?, links, mode, policy?, source?, createdAt, latestVersion? }`, with metadata from the latest version's manifest; `ArtifactDetail` adds the latest `manifest` and every `VersionSummary` (`{ id, number, publishedAt, sourceDigest, envDigest, outputDigest, forcedDiagnostics? }`), newest first. `artifact/list` takes `filter: { family? }`. `artifact/create` writes a minimal entry with a generated `id` into an empty directory and returns `{ artifactId, dir, files }`; the artifact appears in `artifact/list` once published, and templates arrive with WP-26. `WaitCondition` is one of `submitted`, `signal:<name>`, `state:<fieldId>` and `event:<type>` (`event:submission.*` matches a family), with the semantics in ARCHITECTURE §6 and D103: `submitted` is level-triggered under `once` (under `per-viewer` only without an explicit `after`, so an agent can wait for the next respondent, D107) and edge-triggered after the cursor under `epochs`, and refused with `MOSTRA_SUBMIT_POLICY_NONE` under `none`; `after` defaults to the artifact's latest publish; `timeoutMs` is 0 (check once) to 2^31 − 1; `still_waiting` carries the newest cursor examined, and a wait ends `still_waiting` when its connection closes. `events/subscribe` needs the client to accept `events/notify` in `mostra/initialize` (`MOSTRA_HOST_NOTIFICATION_UNSUPPORTED` otherwise); without `after` a named subscriber resumes after its acknowledged cursor, and a new name, like an unnamed subscription, starts now (the history stays readable through `events/read`); a name's filter is the one its latest subscription gave, and its acknowledged cursor counts for that filter. A subscription waits while its connection's output is full, so a slow host never makes the instance buffer without bound. Every events filter takes `artifacts` and `types` (patterns such as `submission.*`), and `artifact.compacted` passes any types filter; a cursor inside a compacted range is `MOSTRA_HOST_CURSOR_COMPACTED` for `events/read`, unless it passes `acceptCompacted: true`: the read then continues through the range, the summary arrives in cursor order among other artifacts' events, and the page that carries it has `compacted` set. Events are delivered in cursor order, a page of at most 100 events and about 8 MiB per notification or `events/read` answer (well inside the 64 Mi-character line limit), continuing exactly where a page stopped. A subscription overtaken by compaction reads through the range the same way: the notification carrying the summary has `compacted: MOSTRA_HOST_CURSOR_COMPACTED`, and other artifacts' events around it arrive without a gap or a repeat. No message of the host protocol is longer than one line may be (64 Mi characters, `MAX_LINE_LENGTH`): an answer that would be is replaced by `MOSTRA_HOST_MESSAGE_TOO_LARGE`. `PublishReceipt` is `{ artifactId, versionId, version, url?, tokenId?, cursor, reused: boolean, forcedDiagnostics?: string[] }`. It is durable before the response (H-07). `url` is the artifact's default capability link (D97 item 3): the same across publishes and `requestId` replays until it is rotated or revoked, with `tokenId` to do either. Both are optional on the wire because instances without the gateway (WP-03, before WP-05) have none; WP-05 sets them on every publish (D90). A recorded receipt that a `requestId` replays never holds the link's secret: the link joins every answer from the token. `HomeConfig` lets a spawning host set the submission policy defaults, the allowed submit channels, the dependency policy (`dependencies: "auto" | "explicit"`, D43, D95, kept in the home's `config.json` for every later client), and the ports it will always provide (so deliveries wait for it, FAILURE_MODEL §4); each field arrives with the package that implements it. WP-06 adds `submission` (the home's submission policy, D102) and `ports` (the ports this client always provides, kept per client name; an empty list clears them, D105). Its `path` is a check, not a setting (D84): the supervisor resolved and locked its home at process start (`--home`, then `MOSTRA_HOME`, then the platform default; an SDK passes its `home` option as `--home`), and a `path` that names a different home is refused with `MOSTRA_HOME_MISMATCH`.
 
 `deps/add` (D95) takes npm registry specs (`name`, `name@version`, `name@range`, `name@tag`) and records each package at an exact version in the artifact's working lockfile, installing it into the home's store. A package of the warm set is answered with its warm version (`warm: true`), and a version of it the warm one doesn't satisfy is `MOSTRA_DEP_WARM_CONFLICT`. `AddedPackage` is `{ name, version, warm }`; `lockDigest` is the lockfile's digest after the change, which the artifact's next publish uses. Packages added this way stay in the lockfile whether or not the source imports them. The supervisor treats itself as offline when its environment sets `MOSTRA_OFFLINE` (any value but `0`, `false` or `no`) or no network interface has a routable address; offline, packages resolve only from the home's store.
 
@@ -292,8 +302,9 @@ interface Ports {
 }
 ```
 
-- **`SubmissionEnvelope`** carries the full submission (§8 JSON) and a stable `deliveryId`. A host may store it as an opaque payload (H-01).
-- **`deliver` results.** `retry: true` keeps the delivery in the outbox. `undeliverable` is terminal and shown to the viewer.
+- **`SubmissionEnvelope`** is `{ kind: "submission", deliveryId, submissionId, artifactId, attempt, results }`: the full submission (§8 JSON) built from the immutable submission alone, and a stable `deliveryId` that a redelivery repeats (H-03). A host may store it as an opaque payload (H-01). Port calls are `port/submissions.deliver` and `port/drafts.mirror` on the registering connection, each with 30 s to answer.
+- **`deliver` results** (D105). Deliveries' `owner` is the host's client name, and empty for Mostra's built-in adapter, which accepts at once when no host takes submissions. `accepted: true` is delivered; `retry: true` keeps the delivery pending with backoff (1 s doubling to 5 min), as does a transport failure or a late answer; `accepted: false, retry: false` is terminal: `duplicate` counts as delivered, `undeliverable` is shown to the viewer, any other reason is `rejected`. Each host's deliveries go out one at a time in submission order, and a host that is away gets them when it registers again.
+- **`drafts.mirror`** receives `{ kind: "draft", artifactId, viewerId, epoch, revision, fields }`, the latest revision only, best effort and never retried (IN-06).
 - **The Rust crate** exposes the same ports as async traits.
 - **`WorkerLauncher`** (internal in v1, the seam for v1.x `SandboxPort`) is `{ launch(spec: { versionDir, env, limits }): Promise<WorkerChannel> }`. Its local implementation forks a child process.
 
@@ -303,12 +314,13 @@ interface Ports {
 
 ```ts
 interface Results {
-  artifact: { id: string; title: string; family?: string; links: Link[] };
-  submission: { id: string; at: string; epoch?: number; policy: SubmissionPolicy; channel: "shell" | "artifact";
-                viewer: Viewer; versionId: string; version: number; viewId: string; staleView: boolean;
-                draftRevision: string; stateRevision?: string; digest: string; delivery: "pending" | "delivered" | "undeliverable" };
+  artifact: { id: string; title: string; description?: string; family?: string; links: Link[] };   // from the version the viewer saw
+  submission: { id: string; at: string; epoch: number; previous?: string; policy: SubmissionPolicy; channel: "shell" | "artifact";
+                viewer: Viewer; versionId: string; version: number; viewId: string; staleView: boolean; latestVersion?: number;
+                draftRevision: string; stateRevision?: string; digest: string;
+                delivery: "pending" | "delivered" | "rejected" | "undeliverable"; deliveries: DeliveryStatus[] };
   answers: Record<string, unknown>;         // dotted field IDs nested; labels in `fields`
-  fields: { id: string; label?: string; required?: boolean; scope: "viewer" | "artifact" }[];
+  fields: { id: string; label?: string; required?: boolean; sensitive?: boolean; scope: "viewer" | "artifact" }[];
   state?: Record<string, unknown>;          // artifact-scoped fields at stateRevision
   choices: { reviewSetId: string; candidateId: string; label?: string }[];
   comments: { threadId: string; status: "open" | "resolved"; messages: { author: Viewer; at: string; text: string }[];
@@ -318,11 +330,12 @@ interface Results {
               crop: { path: string; width: number; height: number } }[];
   orphaned: { id: string; label?: string; value: unknown; fromVersion: number }[];   // D42
   actions: { runId: string; action: string; status: string; at: string }[];         // runs started in this view
-  signals: { name: string; at: string; payload?: unknown }[];
+  signals: { name: string; at: string; payload?: unknown }[];   // the newest 100, within 1 MiB of payloads
+  signalsOmitted?: number; signalsCompacted?: true;                // older signals left out; some removed by compaction
 }
 ```
 
-The Markdown rendering follows ROUND-2 §1.1: a header with IDs, then answers by label, choices, comments with crop paths, actions, then "Not carried over". Sensitive fields appear in results and are redacted from events and logs (D52).
+The Markdown rendering follows ROUND-2 §1.1: a header with IDs, then answers by label, the artifact state, choices, comments with crop paths, actions, signals, then "Not carried over"; every section appears, with "(none)" when empty. `digest` is the SHA-256 of the stored snapshot's RFC 8785 form (`canonicalJson`), the snapshot's identity: results don't carry the snapshot's own text, so a host compares digests rather than recomputing one, `delivery` the worst state among `deliveries`, and dotted IDs nest unless a value already sits at a prefix, where the dotted ID stays a key of its own. Sensitive fields appear in results and are redacted from events and logs (D52).
 
 ## 9. CLI
 

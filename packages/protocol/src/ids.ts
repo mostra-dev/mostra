@@ -17,7 +17,18 @@ import * as z from "zod";
 import { wireRegistry } from "./wire-registry.ts";
 
 /** The prefixes INTERFACES §1 assigns, one per entity. */
-export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "run" | "thr" | "cmt" | "tok" | "mut";
+export type IdPrefix =
+  | "art"
+  | "ver"
+  | "vw"
+  | "vwr"
+  | "sub"
+  | "dlv"
+  | "run"
+  | "thr"
+  | "cmt"
+  | "tok"
+  | "mut";
 
 /**
  * A branded ID string. The brand exists only at the type level, so an `Id<"art">` is a plain
@@ -184,6 +195,16 @@ export type SubmissionId = Id<"sub">;
 /** Submission IDs. */
 export const SubmissionId: GeneratedIdKind<"sub"> = generated(
   defineKind("sub", "submission", "ulid", "SubmissionId"),
+);
+
+/**
+ * A delivery ID (`dlv_` + ULID): one submission's delivery to one host (D105). A redelivery after a
+ * crash repeats it, so a host can treat deliveries idempotently.
+ */
+export type DeliveryId = Id<"dlv">;
+/** Delivery IDs. */
+export const DeliveryId: GeneratedIdKind<"dlv"> = generated(
+  defineKind("dlv", "delivery", "ulid", "DeliveryId"),
 );
 
 /** An action run ID (`run_` + ULID). */

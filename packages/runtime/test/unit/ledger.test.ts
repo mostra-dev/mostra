@@ -262,7 +262,9 @@ describe("write-once rows (invariant 3, IN-08)", () => {
   it("refuses to change a published version or an event, and keeps them as they were", () => {
     const ledger = open(storeDir());
     ledger.write((db) => {
-      db.run("INSERT INTO artifact VALUES ('art_1', 'A', NULL, '[]', NULL, 'now', NULL)");
+      db.run(
+        "INSERT INTO artifact (id, title, family, links_json, policy_json, created_at, latest_version_id) VALUES ('art_1', 'A', NULL, '[]', NULL, 'now', NULL)",
+      );
       db.run(
         "INSERT INTO version VALUES ('ver_1', 'art_1', 1, 's', 'e', 'o', '{\"title\":\"A\"}', NULL, 'now')",
       );

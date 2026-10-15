@@ -580,6 +580,9 @@ importers:
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.10.2
       playwright:
         specifier: 'catalog:'
         version: 1.64.0

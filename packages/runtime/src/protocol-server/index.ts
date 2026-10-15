@@ -5,6 +5,7 @@
 import {
   type ChildProcessStatus,
   createDiagnostic,
+  type DeliveryCounts,
   type GatewayStatus,
   type InstanceInfo,
   type InstanceStatusResult,
@@ -15,7 +16,7 @@ import {
 import { handler, type MethodHandler } from "./server.ts";
 
 export { attach, type SocketClient } from "./client.ts";
-export { handler, type MethodHandler, ProtocolServer } from "./server.ts";
+export { handler, type MethodHandler, ProtocolServer, type Session } from "./server.ts";
 
 /** What the session methods need from the instance. */
 export interface SessionMethodsOptions {
@@ -27,6 +28,8 @@ export interface SessionMethodsOptions {
   processes(): readonly ChildProcessStatus[];
   /** Where the gateway listens, once it has started. */
   gateway?(): GatewayStatus | undefined;
+  /** The outbox per host (WP-06). */
+  deliveries?(): readonly DeliveryCounts[];
   /**
    * Stops the instance. Called after the `mostra/shutdown` response is on its way (D87).
    */
@@ -45,6 +48,7 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         connections: options.connections(),
         processes: [...options.processes()],
         ...(gateway ? { gateway } : {}),
+        ...(options.deliveries ? { deliveries: [...options.deliveries()] } : {}),
       };
     }),
     handler(mostraShutdownMethod, (_params, session) => {

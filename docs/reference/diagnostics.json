@@ -226,6 +226,33 @@
       "fix": "Reinstall Mostra so the runtime bundle is complete. A custom layout can point the runtime at the warm set's directory with `MOSTRA_WARM_DIR`."
     },
     {
+      "code": "MOSTRA_FIELD_ID_INVALID",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Invalid field ID",
+      "hint": "Use a stable field ID of 1 to 256 characters: dot-separated parts, none empty.",
+      "explanation": "Every persisted value has an explicit, stable field ID (D52). An ID is 1 to 256 characters with no control characters; dots separate the parts that nest in results (`reply.m1`), so it can't start or end with a dot or hold two in a row.",
+      "fix": "Give the field a fixed ID such as `layout` or `reply.m1` (one per message, from its ID), and keep it the same across renders and versions so drafts carry over."
+    },
+    {
+      "code": "MOSTRA_FIELD_MUTATION_ID_REUSED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Mutation ID reused",
+      "hint": "Generate a new mutation ID for every new change.",
+      "explanation": "A mutation ID identifies one change, so a retry after a timeout replays its recorded result (IN-01). This ID was already used for a change with other contents or another target. Mostra refuses it rather than answer with the result of a change nobody sent now.",
+      "fix": "Create a fresh `mut_` ID for each change and reuse an ID only to retry exactly the same change."
+    },
+    {
+      "code": "MOSTRA_FIELD_TOO_LARGE",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Field value too large",
+      "hint": "Split large data across fields, keeping each value under 1 MiB and the whole document under 16 MiB.",
+      "explanation": "A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 MiB in all (DATA_MODEL §5). This write would pass one of those limits, so Mostra refused it whole: nothing was truncated, and the page keeps the value locally.",
+      "fix": "Split the value across several fields under one dotted prefix (`report.part1`, `report.part2`); they nest again in results."
+    },
+    {
       "code": "MOSTRA_HOME_DISK_FULL",
       "severity": "error",
       "phase": "host",
@@ -316,6 +343,15 @@
       "fix": "Reconnect and send `mostra/initialize` again, then retry the request with the same request ID. Mutating methods are idempotent by request ID, so a retry never applies twice."
     },
     {
+      "code": "MOSTRA_HOST_CURSOR_COMPACTED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Events compacted",
+      "hint": "Read from the cursor in the message to receive the compaction summary, then continue from there.",
+      "explanation": "Events before a cursor were compacted on request (`mostra gc --compact-events`, DATA_MODEL §4): an artifact's old events were replaced by one `artifact.compacted` event that summarizes them. A reader asking for events after an earlier cursor would miss some, and Mostra never leaves a silent gap.",
+      "fix": "Read again with `after` set to the cursor the message names: the next event is the `artifact.compacted` summary. Rebuild what you track from it and continue as usual."
+    },
+    {
       "code": "MOSTRA_HOST_INITIALIZE_ORDER",
       "severity": "error",
       "phase": "host",
@@ -352,6 +388,15 @@
       "fix": "Encode one request per line with `\"jsonrpc\": \"2.0\"`, a `method`, an `id` for requests, and `params` as an object. Send several requests as separate lines instead of a batch."
     },
     {
+      "code": "MOSTRA_HOST_MESSAGE_TOO_LARGE",
+      "severity": "error",
+      "phase": "host",
+      "title": "Message too large for the protocol",
+      "hint": "Ask for less at once: a specific submission, fewer events, or smaller values.",
+      "explanation": "One host-protocol message is one line of JSON, and a line holds at most 64 Mi characters (`MAX_LINE_LENGTH`), so neither side buffers without bound. Mostra checks every message before it writes it: an answer that would be longer is replaced by this error, and a delivery whose envelope would be longer is recorded as undeliverable instead of being sent and retried forever.",
+      "fix": "Read less per request (`events/read` with a smaller `limit`, `results/get` for one submission), and keep artifacts' values within the field and document limits."
+    },
+    {
       "code": "MOSTRA_HOST_METHOD_UNKNOWN",
       "severity": "error",
       "phase": "host",
@@ -359,6 +404,15 @@
       "hint": "Call only the methods listed in `capabilities.methods` of the `mostra/initialize` result.",
       "explanation": "The instance doesn't serve the method that was called. Either the name is misspelled, or the client is newer than the instance and calls a method the instance's release doesn't have.",
       "fix": "Check the method name against INTERFACES §6, and against `capabilities.methods` in the `mostra/initialize` result, which lists every method this instance serves. Upgrade the instance if the client needs a newer method."
+    },
+    {
+      "code": "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Notification not accepted",
+      "hint": "List the notification in `capabilities.notifications` when you initialize.",
+      "explanation": "Mostra sends a client only the notifications it listed in `mostra/initialize` (D84). This method would send one the client didn't list, such as `events/notify` for `events/subscribe`.",
+      "fix": "Reconnect and initialize with `capabilities: { notifications: [\"events/notify\"] }`, or poll with `events/read` instead."
     },
     {
       "code": "MOSTRA_HOST_PORT_UNSUPPORTED",
@@ -395,6 +449,15 @@
       "hint": "Ask the host that started this instance to stop it, or end the connection you opened instead.",
       "explanation": "An instance started by a host over stdio (`mostra host`) lives as long as that host's connection, so only the host may stop it with `mostra/shutdown`. A client that attached through the home's socket asked it to stop. A daemon (`mostra daemon`) accepts `mostra/shutdown` from every attached client (D87).",
       "fix": "Close your own connection when you are done. To stop the instance, stop the host that spawned it, or have the host send `mostra/shutdown` or close its stdio."
+    },
+    {
+      "code": "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN",
+      "severity": "error",
+      "phase": "host",
+      "title": "Unknown subscription",
+      "hint": "Subscribe again with `events/subscribe`, then use the ID it returns.",
+      "explanation": "The subscription ID belongs to no subscription on this connection: it was never created here, was ended with `events/unsubscribe`, or belonged to a connection that closed. Subscriptions live as long as their connection; a named subscriber's acknowledged cursor outlives it.",
+      "fix": "Call `events/subscribe` again on this connection. With the same `name`, delivery resumes after the last acknowledged cursor."
     },
     {
       "code": "MOSTRA_HOST_TIMEOUT",
@@ -575,6 +638,60 @@
       "hint": "Publish again once the artifact's files have stopped changing.",
       "explanation": "Publishing reads the entry's manifest twice: once to find the artifact, and again from the snapshot it builds. Mostra reports this code when the two disagree about which artifact the source is, because the manifest `id` or the source's binding changed while the publish ran, for example when an editor saved the entry mid-publish or another publish rebound the path. Nothing was published.",
       "fix": "Wait until the files are saved and nothing else is publishing the same source, then publish again. If the manifest `id` was changed on purpose, the next publish uses the new one."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_ALREADY",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Already submitted",
+      "hint": "This artifact takes one submission, and it was made; read it with `mostra results`.",
+      "explanation": "The artifact's submission policy is `once`, and a submission already closed this draft: for scope `per-artifact` any viewer's submission closes every draft, for `per-viewer` the viewer's own. A submission is immutable and final, so Mostra refuses a second one and further edits to the closed draft. The refusal carries the existing submission. A repeated submit of the same view at the same draft revision is not refused: it returns the original submission.",
+      "fix": "Read the existing submission with `mostra results <artifact>`. When another round of answers is wanted, publish a new artifact linked to this one (`links: [{ rel: \"round-of\", artifact }]`), or have the host publish with the `epochs` policy."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_NOT_FOUND",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "No such submission",
+      "hint": "Wait for a submission with `mostra wait --until submitted`, or name one that exists.",
+      "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",
+      "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_POLICY_NONE",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Artifact takes no submissions",
+      "hint": "Exchange data through artifact state, actions and signals; this artifact has no submissions.",
+      "explanation": "The artifact's submission policy is `none` (D63): long-lived artifacts such as dashboards and task managers talk to agents through artifact state, actions, signals and events, and the shell shows no Submit control. Mostra refuses a submit, and a `wait --until submitted`, on such an artifact.",
+      "fix": "Wait for a signal (`--until signal:<name>`), a state change (`--until state:<field>`) or an event instead, and read state with `mostra state get`. To collect submissions, publish with policy `once` or `epochs`."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_REVISION_MOVED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Draft changed before submit",
+      "hint": "Reload the draft, check what changed, and submit again with its current revision.",
+      "explanation": "A submit names the draft revision the viewer saw (`expectedRevision`), and the draft has changed since: another tab, device or writer saved an edit. Mostra never makes a submission from content the viewer didn't see (FAILURE_MODEL §4), so it refuses. The message names the draft's current revision.",
+      "fix": "Let the page reload the draft so the viewer sees exactly what will be sent, then submit with the new revision. The shell and the client runtime flush pending saves before they submit, which makes this rare."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_SIGNAL_INVALID",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Invalid signal",
+      "hint": "Name signals with letters, digits, `.`, `_` and `-`, and keep their payload under 64 KiB of JSON.",
+      "explanation": "A signal names something the artifact wants a host's attention for, such as `ping-agent`. Its name is 1 to 64 characters of letters, digits, `.`, `_` and `-`, starting with a letter or digit, and its payload is JSON of at most 64 KiB. This one broke one of those rules. The name `submit` is reserved for submissions.",
+      "fix": "Rename the signal or shrink its payload; put large data into a field or artifact state and send its ID in the payload."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_VIEW_INVALID",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Unknown view",
+      "hint": "Send the view ID this page was opened with.",
+      "explanation": "Mutations and submits name the view they come from, the one the shell created when it opened this frame. The view named doesn't exist, belongs to another artifact, or belongs to another viewer. Mostra binds every submission to the exact version its view showed, so it refuses a view it can't place.",
+      "fix": "Use the `viewId` the shell handed this frame. A page opened outside Mostra's shell has no view and can't submit."
     },
     {
       "code": "MOSTRA_TARGET_UNAVAILABLE",

@@ -105,9 +105,22 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
     expect(result.instance).toMatchObject({ home: opened.home, mode: opened.mode });
     expect(result.instance.platform).toBe(`${process.platform}-${process.arch}`);
     expect(result.capabilities.methods).toEqual(
-      expect.arrayContaining(["mostra/initialize", "mostra/shutdown", "instance/status"]),
+      expect.arrayContaining([
+        "mostra/initialize",
+        "mostra/shutdown",
+        "instance/status",
+        "state/get",
+        "state/patch",
+        "results/get",
+        "wait",
+        "events/read",
+        "events/subscribe",
+        "events/ack",
+      ]),
     );
-    expect(result.capabilities.ports).toEqual([]);
+    // The ports the interaction ledger calls (WP-06, D105) and the notification it sends.
+    expect(result.capabilities.ports).toEqual(["submissions", "drafts"]);
+    expect(result.capabilities.notifications).toEqual(["events/notify"]);
     // Unimplemented ports, the reserved `ai` included, are warnings, never silent (D84, D46).
     expect(result.warnings.map((warning) => [warning.code, warning.severity])).toEqual([
       ["MOSTRA_HOST_PORT_UNSUPPORTED", "warning"],

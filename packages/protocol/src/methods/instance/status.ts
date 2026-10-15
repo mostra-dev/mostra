@@ -45,7 +45,40 @@ export interface InstanceStatusResult {
   readonly processes: readonly ChildProcessStatus[];
   /** Where the gateway listens, once it has started (WP-05). */
   readonly gateway?: GatewayStatus;
+  /** The outbox per host (WP-06, D105): how many deliveries are in each state. */
+  readonly deliveries?: readonly DeliveryCounts[];
 }
+
+/** One host's deliveries by state (D105). */
+export interface DeliveryCounts {
+  /** The host's client name; empty for Mostra's built-in adapter (D105). */
+  readonly owner: string;
+  /** Whether a connection of this host has the submissions port registered now. */
+  readonly connected: boolean;
+  /** Deliveries not yet answered terminally. */
+  readonly pending: number;
+  /** Deliveries the host accepted. */
+  readonly delivered: number;
+  /** Deliveries the host rejected terminally. */
+  readonly rejected: number;
+  /** Deliveries the host declared undeliverable. */
+  readonly undeliverable: number;
+}
+
+/** The Zod schema of the `DeliveryCounts` type. */
+export const DeliveryCounts: z.ZodType<DeliveryCounts> = z
+  .object({
+    owner: z.string(),
+    connected: z.boolean(),
+    pending: z.int().min(0),
+    delivered: z.int().min(0),
+    rejected: z.int().min(0),
+    undeliverable: z.int().min(0),
+  })
+  .register(wireRegistry, {
+    id: "DeliveryCounts",
+    description: "One host's deliveries by state, and whether it is connected.",
+  });
 
 /** The Zod schema of the `GatewayStatus` type. */
 export const GatewayStatus: z.ZodType<GatewayStatus> = z
@@ -81,6 +114,7 @@ const result: z.ZodType<InstanceStatusResult> = z
     connections: z.int().min(0),
     processes: z.array(ChildProcessStatus).readonly(),
     gateway: GatewayStatus.exactOptional(),
+    deliveries: z.array(DeliveryCounts).readonly().exactOptional(),
   })
   .register(wireRegistry, { id: "InstanceStatusResult" });
 

@@ -206,4 +206,181 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: "interaction ledger",
+    up(db) {
+      // DATA_MODEL §3, D101 to D106. Viewers are people (one `local`, one `token` viewer per host
+      // key); a view is one frame load of one version. A document is a viewer's draft or the
+      // artifact's state: its revision and epoch only grow (trigger), and each field keeps the
+      // revision that last wrote it, deletions included, so conflicts are exact. A mutation ID
+      // replays its recorded result. Submissions are write-once (trigger); `position` is the
+      // cursor of their `submission.created` event, the order deliveries replay in. A terminal
+      // delivery never changes again (trigger). `subscriber` keeps durable acknowledged cursors.
+      // A token's viewer joins its immutable grant. INSERT OR REPLACE would delete a row without
+      // the DELETE and UPDATE triggers, so write-once tables also refuse an insert over an
+      // existing row (Claude review finding 7). `artifact.policy_chosen_json` keeps the policy a
+      // publish named explicitly, which later publishes keep until another names one (D102).
+      db.exec(`
+        CREATE TABLE viewer (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK (kind IN ('local', 'tailnet', 'token', 'host')),
+          external_ref TEXT NOT NULL,
+          name TEXT,
+          created_at TEXT NOT NULL,
+          UNIQUE (kind, external_ref)
+        );
+        CREATE TABLE view (
+          id TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          token_id TEXT REFERENCES token(id),
+          opened_cursor INTEGER,
+          opened_at TEXT NOT NULL,
+          closed_at TEXT,
+          live_cursor_json TEXT
+        );
+        CREATE INDEX view_artifact ON view (artifact_id, viewer_id);
+        CREATE TABLE document (
+          id INTEGER PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          scope TEXT NOT NULL CHECK (scope IN ('viewer', 'artifact')),
+          viewer_id TEXT REFERENCES viewer(id),
+          revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+          epoch INTEGER NOT NULL DEFAULT 1 CHECK (epoch >= 1),
+          size INTEGER NOT NULL DEFAULT 0 CHECK (size >= 0),
+          CHECK ((scope = 'viewer') = (viewer_id IS NOT NULL)),
+          UNIQUE (artifact_id, scope, viewer_id)
+        );
+        CREATE UNIQUE INDEX document_state ON document (artifact_id) WHERE scope = 'artifact';
+        CREATE TRIGGER document_monotonic BEFORE UPDATE ON document
+        WHEN NEW.revision < OLD.revision OR NEW.epoch < OLD.epoch
+          OR NEW.artifact_id IS NOT OLD.artifact_id OR NEW.scope IS NOT OLD.scope
+          OR NEW.viewer_id IS NOT OLD.viewer_id
+        BEGIN
+          SELECT RAISE(ABORT, 'a document''s revision and epoch only grow');
+        END;
+        CREATE TABLE field (
+          document_id INTEGER NOT NULL REFERENCES document(id),
+          field_id TEXT NOT NULL,
+          value_json TEXT NOT NULL,
+          deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+          field_rev INTEGER NOT NULL CHECK (field_rev >= 1),
+          updated_by_json TEXT,
+          updated_at TEXT NOT NULL,
+          sensitive INTEGER NOT NULL DEFAULT 0 CHECK (sensitive IN (0, 1)),
+          label TEXT,
+          required INTEGER CHECK (required IN (0, 1)),
+          orphaned_from_version INTEGER,
+          PRIMARY KEY (document_id, field_id)
+        );
+        CREATE TABLE mutation (
+          id TEXT PRIMARY KEY,
+          document_id INTEGER NOT NULL REFERENCES document(id),
+          params_digest TEXT NOT NULL,
+          result_json TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE submission (
+          id TEXT PRIMARY KEY,
+          position INTEGER NOT NULL UNIQUE,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          view_id TEXT NOT NULL REFERENCES view(id),
+          viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          channel TEXT NOT NULL CHECK (channel IN ('shell', 'artifact')),
+          policy_json TEXT NOT NULL,
+          epoch INTEGER NOT NULL CHECK (epoch >= 1),
+          scope_key TEXT NOT NULL,
+          previous_id TEXT REFERENCES submission(id),
+          draft_document_id INTEGER NOT NULL REFERENCES document(id),
+          draft_revision INTEGER NOT NULL,
+          state_revision INTEGER,
+          latest_version_number INTEGER,
+          snapshot_json TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          stale_view INTEGER NOT NULL CHECK (stale_view IN (0, 1)),
+          request_id TEXT UNIQUE,
+          created_at TEXT NOT NULL,
+          UNIQUE (artifact_id, scope_key, epoch)
+        );
+        CREATE INDEX submission_artifact ON submission (artifact_id, position);
+        CREATE TRIGGER submission_write_once BEFORE UPDATE ON submission
+        BEGIN
+          SELECT RAISE(ABORT, 'submissions are immutable');
+        END;
+        CREATE TRIGGER submission_kept BEFORE DELETE ON submission
+        BEGIN
+          SELECT RAISE(ABORT, 'submissions are immutable');
+        END;
+        -- INSERT OR REPLACE deletes the old row without the DELETE trigger: refuse it at insert.
+        CREATE TRIGGER submission_not_replaced BEFORE INSERT ON submission
+        WHEN EXISTS (SELECT 1 FROM submission WHERE id = NEW.id OR position = NEW.position
+          OR (artifact_id = NEW.artifact_id AND scope_key = NEW.scope_key AND epoch = NEW.epoch))
+        BEGIN
+          SELECT RAISE(ABORT, 'submissions are immutable');
+        END;
+        CREATE TABLE delivery (
+          id TEXT PRIMARY KEY,
+          submission_id TEXT NOT NULL REFERENCES submission(id),
+          position INTEGER NOT NULL,
+          port_owner TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('pending', 'delivered', 'rejected', 'undeliverable')),
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+          next_attempt_at TEXT,
+          last_error_json TEXT,
+          reason TEXT,
+          updated_at TEXT NOT NULL,
+          UNIQUE (submission_id, port_owner)
+        );
+        CREATE INDEX delivery_owner ON delivery (port_owner, state, position);
+        CREATE TRIGGER delivery_terminal BEFORE UPDATE ON delivery
+        WHEN OLD.state <> 'pending' OR NEW.submission_id IS NOT OLD.submission_id
+          OR NEW.port_owner IS NOT OLD.port_owner OR NEW.position IS NOT OLD.position
+        BEGIN
+          SELECT RAISE(ABORT, 'a delivery''s terminal state never changes');
+        END;
+        CREATE TRIGGER delivery_kept BEFORE DELETE ON delivery
+        BEGIN
+          SELECT RAISE(ABORT, 'deliveries are kept with their submissions');
+        END;
+        CREATE TRIGGER delivery_not_replaced BEFORE INSERT ON delivery
+        WHEN EXISTS (SELECT 1 FROM delivery WHERE id = NEW.id
+          OR (submission_id = NEW.submission_id AND port_owner = NEW.port_owner))
+        BEGIN
+          SELECT RAISE(ABORT, 'a delivery''s terminal state never changes');
+        END;
+        CREATE TRIGGER version_not_replaced BEFORE INSERT ON version
+        WHEN EXISTS (SELECT 1 FROM version WHERE id = NEW.id
+          OR (artifact_id = NEW.artifact_id AND number = NEW.number))
+        BEGIN
+          SELECT RAISE(ABORT, 'published versions are immutable');
+        END;
+        CREATE TRIGGER token_not_replaced BEFORE INSERT ON token
+        WHEN EXISTS (SELECT 1 FROM token WHERE id = NEW.id OR secret_hash = NEW.secret_hash)
+        BEGIN
+          SELECT RAISE(ABORT, 'a token never changes its grant, and a revoked token stays revoked');
+        END;
+        CREATE TABLE subscriber (
+          name TEXT PRIMARY KEY,
+          filter_json TEXT NOT NULL,
+          acked_cursor INTEGER NOT NULL DEFAULT 0 CHECK (acked_cursor >= 0),
+          updated_at TEXT NOT NULL
+        );
+        ALTER TABLE artifact ADD COLUMN policy_chosen_json TEXT;
+        CREATE INDEX event_artifact ON event (artifact_id, cursor);
+        CREATE INDEX event_artifact_type ON event (artifact_id, type, cursor);
+        DROP TRIGGER token_revocation_final;
+        CREATE TRIGGER token_revocation_final BEFORE UPDATE ON token
+        WHEN OLD.revoked_at IS NOT NULL OR NEW.secret_hash IS NOT OLD.secret_hash
+          OR NEW.artifact_id IS NOT OLD.artifact_id OR NEW.scopes_json IS NOT OLD.scopes_json
+          OR NEW.expires_at IS NOT OLD.expires_at OR NEW.pinned_version IS NOT OLD.pinned_version
+          OR NEW.shell_origin IS NOT OLD.shell_origin OR NEW.viewer_id IS NOT OLD.viewer_id
+        BEGIN
+          SELECT RAISE(ABORT, 'a token never changes its grant, and a revoked token stays revoked');
+        END;
+      `);
+    },
+  },
 ];

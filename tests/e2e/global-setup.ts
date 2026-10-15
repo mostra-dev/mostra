@@ -25,6 +25,12 @@ export default async function setup(): Promise<() => Promise<void>> {
       tsx: await publishFixture(client, daemon.home, "single-tsx", "page.tsx"),
       mdx: await publishFixture(client, daemon.home, "single-mdx", "page.mdx"),
       directory: await publishFixture(client, daemon.home, "directory"),
+      // WP-06: a copy of the TSX page taking one submission per viewer, so each test's own viewer
+      // submits once whatever the other engines do at the same time.
+      survey: await publishFixture(client, daemon.home, "single-tsx", "page.tsx", {
+        copy: "survey",
+        policy: { policy: "once", scope: "per-viewer" },
+      }),
     },
   };
   client.close();

@@ -33,18 +33,18 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | DP-04 | WP-04 | I | Offline missing package returns MOSTRA_DEP_OFFLINE within 1 s (timer assertion), no hang | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-05 | WP-04 | I | Lifecycle script records its PID, cwd and environment; they belong to the install child in the artifact context | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-06 | WP-01 | M (license audit) | License audit in CI fails on a seeded PolyForm or non-OSI dependency in the core and passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| IN-01 | WP-06 | M, I | Property tests for CAS, monotonic revisions and mutation-ID replay (unit + integration) | unverified |
+| IN-01 | WP-06 | M, I | Property tests for CAS, monotonic revisions and mutation-ID replay (unit + integration) | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-02 | WP-07 | B | Close the tab mid-debounce in three browsers; reopen shows the value (pagehide and journal paths) | unverified |
 | IN-03 | WP-07 | B | Two tabs and two contexts converge on different fields; same-field edit surfaces a conflict with both choices | unverified |
 | IN-04 | WP-07 | B | Offline edits journal and replay in order; edits against a replaced version map by ID or become orphans | unverified |
-| IN-05 | WP-06 | M, I, B | Submit transaction tests: snapshot from canonical draft, digest, version and view binding, stale flag, duplicate returns original; write-once trigger | unverified |
-| IN-06 | WP-06 | M, C | Grep and API tests: no path delivers a draft as a submission; mirrors are labelled drafts; conformance scenario | unverified |
-| IN-07 | WP-06 | M, C | Policy matrix tests: once per-artifact, once per-viewer, epochs linkage, none; conformance per policy | unverified |
-| IN-08 | WP-06 | M, C | Event cursor property test (total order, no gaps across restart and reconnect); filtered subscribe and ack resume | unverified |
-| IN-09 | WP-06 | M, C | Signals from shell, artifact and action appear as signal.raised; a test asserts Mostra performs no wake-up action of its own | unverified |
-| IN-10 | WP-06 | I, C | wait level and edge semantics; timeout returns still_waiting with a cursor and later wait returns the event (CLI, protocol, SDK) | unverified |
-| IN-11 | WP-06 | I | Results JSON validates against the schema; Markdown golden includes answers, choices, comments with crop paths, versions, runs | unverified |
-| IN-12 | WP-06 | I, C | Host down during submit: submission durable, delivery pending, replay in order on reconnect; crash after host ack redelivers same deliveryId | unverified |
+| IN-05 | WP-06 | M, I, B | Submit transaction tests: snapshot from canonical draft, digest, version and view binding, stale flag, duplicate returns original; write-once trigger | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-06 | WP-06 | M, C | Grep and API tests: no path delivers a draft as a submission; mirrors are labelled drafts; conformance scenario | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-07 | WP-06 | M, C | Policy matrix tests: once per-artifact, once per-viewer, epochs linkage, none; conformance per policy | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-08 | WP-06 | M, C | Event cursor property test (total order, no gaps across restart and reconnect); filtered subscribe and ack resume | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-09 | WP-06 | M, C | Signals from shell, artifact and action appear as signal.raised; a test asserts Mostra performs no wake-up action of its own | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-10 | WP-06 | I, C | wait level and edge semantics; timeout returns still_waiting with a cursor and later wait returns the event (CLI, protocol, SDK) | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-11 | WP-06 | I | Results JSON validates against the schema; Markdown golden includes answers, choices, comments with crop paths, versions, runs | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| IN-12 | WP-06 | I, C | Host down during submit: submission durable, delivery pending, replay in order on reconnect; crash after host ack redelivers same deliveryId | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | unverified |
 | AC-01 | WP-08 | I | Fixture action reads a file, spawns a process and calls the network with no Mostra restriction (integration) | unverified |
 | AC-02 | WP-08 | I, B | Run streams progress, log and partial results; survives tab reload and re-attaches; final event recorded | unverified |
@@ -129,8 +129,8 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
 | VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | unverified |
 | VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
-| LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | unverified |
-| LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | unverified |
+| LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
+| LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | unverified |
 | LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | unverified |
 | LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |

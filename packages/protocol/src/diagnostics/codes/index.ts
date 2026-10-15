@@ -9,13 +9,15 @@ import { type ArtifactDiagnosticCode, artifactDiagnostics } from "./artifact.ts"
 import { type BuildDiagnosticCode, buildDiagnostics } from "./build.ts";
 import { type DepDiagnosticCode, depDiagnostics } from "./dep.ts";
 import { type EnvDiagnosticCode, envDiagnostics } from "./env.ts";
+// gen:area-imports
+import { type FieldDiagnosticCode, fieldDiagnostics } from "./field.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
-// gen:area-imports
 import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
+import { type SubmitDiagnosticCode, submitDiagnostics } from "./submit.ts";
 import { type TargetDiagnosticCode, targetDiagnostics } from "./target.ts";
 
 export { type ActionDiagnosticCode, actionDiagnosticCodes } from "./action.ts";
@@ -23,18 +25,22 @@ export { type ArtifactDiagnosticCode, artifactDiagnosticCodes } from "./artifact
 export { type BuildDiagnosticCode, buildDiagnosticCodes } from "./build.ts";
 export { type DepDiagnosticCode, depDiagnosticCodes } from "./dep.ts";
 export { type EnvDiagnosticCode, envDiagnosticCodes } from "./env.ts";
+// gen:area-exports
+export { type FieldDiagnosticCode, fieldDiagnosticCodes } from "./field.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
-// gen:area-exports
 export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
+export { type SubmitDiagnosticCode, submitDiagnosticCodes } from "./submit.ts";
 export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
 
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | FieldDiagnosticCode
+  | SubmitDiagnosticCode
   | HygieneDiagnosticCode
   | DepDiagnosticCode
   | EnvDiagnosticCode
@@ -51,6 +57,8 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...fieldDiagnostics,
+  ...submitDiagnostics,
   ...hygieneDiagnostics,
   ...depDiagnostics,
   ...envDiagnostics,

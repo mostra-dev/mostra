@@ -1,0 +1,89 @@
+/**
+ * Diagnostic codes of the SUBMIT area.
+ */
+import type { AreaCatalog } from "../spec.ts";
+
+/** The codes of the SUBMIT area, in the order they were added. */
+export const submitDiagnosticCodes = [
+  "MOSTRA_SUBMIT_ALREADY",
+  "MOSTRA_SUBMIT_REVISION_MOVED",
+  "MOSTRA_SUBMIT_POLICY_NONE",
+  "MOSTRA_SUBMIT_NOT_FOUND",
+  "MOSTRA_SUBMIT_VIEW_INVALID",
+  "MOSTRA_SUBMIT_SIGNAL_INVALID",
+  // gen:codes
+] as const;
+
+/** The codes of the SUBMIT area. */
+export type SubmitDiagnosticCode = (typeof submitDiagnosticCodes)[number];
+
+/** The SUBMIT area's catalog entries. */
+export const submitDiagnostics: AreaCatalog<SubmitDiagnosticCode> = {
+  MOSTRA_SUBMIT_ALREADY: {
+    severity: "error",
+    phase: "runtime",
+    title: "Already submitted",
+    hint: "This artifact takes one submission, and it was made; read it with `mostra results`.",
+    docs: {
+      explanation:
+        "The artifact's submission policy is `once`, and a submission already closed this draft: for scope `per-artifact` any viewer's submission closes every draft, for `per-viewer` the viewer's own. A submission is immutable and final, so Mostra refuses a second one and further edits to the closed draft. The refusal carries the existing submission. A repeated submit of the same view at the same draft revision is not refused: it returns the original submission.",
+      fix: 'Read the existing submission with `mostra results <artifact>`. When another round of answers is wanted, publish a new artifact linked to this one (`links: [{ rel: "round-of", artifact }]`), or have the host publish with the `epochs` policy.',
+    },
+  },
+  MOSTRA_SUBMIT_REVISION_MOVED: {
+    severity: "error",
+    phase: "runtime",
+    title: "Draft changed before submit",
+    hint: "Reload the draft, check what changed, and submit again with its current revision.",
+    docs: {
+      explanation:
+        "A submit names the draft revision the viewer saw (`expectedRevision`), and the draft has changed since: another tab, device or writer saved an edit. Mostra never makes a submission from content the viewer didn't see (FAILURE_MODEL §4), so it refuses. The message names the draft's current revision.",
+      fix: "Let the page reload the draft so the viewer sees exactly what will be sent, then submit with the new revision. The shell and the client runtime flush pending saves before they submit, which makes this rare.",
+    },
+  },
+  MOSTRA_SUBMIT_POLICY_NONE: {
+    severity: "error",
+    phase: "runtime",
+    title: "Artifact takes no submissions",
+    hint: "Exchange data through artifact state, actions and signals; this artifact has no submissions.",
+    docs: {
+      explanation:
+        "The artifact's submission policy is `none` (D63): long-lived artifacts such as dashboards and task managers talk to agents through artifact state, actions, signals and events, and the shell shows no Submit control. Mostra refuses a submit, and a `wait --until submitted`, on such an artifact.",
+      fix: "Wait for a signal (`--until signal:<name>`), a state change (`--until state:<field>`) or an event instead, and read state with `mostra state get`. To collect submissions, publish with policy `once` or `epochs`.",
+    },
+  },
+  MOSTRA_SUBMIT_NOT_FOUND: {
+    severity: "error",
+    phase: "runtime",
+    title: "No such submission",
+    hint: "Wait for a submission with `mostra wait --until submitted`, or name one that exists.",
+    docs: {
+      explanation:
+        "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",
+      fix: "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events.",
+    },
+  },
+  MOSTRA_SUBMIT_VIEW_INVALID: {
+    severity: "error",
+    phase: "runtime",
+    title: "Unknown view",
+    hint: "Send the view ID this page was opened with.",
+    docs: {
+      explanation:
+        "Mutations and submits name the view they come from, the one the shell created when it opened this frame. The view named doesn't exist, belongs to another artifact, or belongs to another viewer. Mostra binds every submission to the exact version its view showed, so it refuses a view it can't place.",
+      fix: "Use the `viewId` the shell handed this frame. A page opened outside Mostra's shell has no view and can't submit.",
+    },
+  },
+  MOSTRA_SUBMIT_SIGNAL_INVALID: {
+    severity: "error",
+    phase: "runtime",
+    title: "Invalid signal",
+    hint: "Name signals with letters, digits, `.`, `_` and `-`, and keep their payload under 64 KiB of JSON.",
+    docs: {
+      explanation:
+        "A signal names something the artifact wants a host's attention for, such as `ping-agent`. Its name is 1 to 64 characters of letters, digits, `.`, `_` and `-`, starting with a letter or digit, and its payload is JSON of at most 64 KiB. This one broke one of those rules. The name `submit` is reserved for submissions.",
+      fix: "Rename the signal or shrink its payload; put large data into a field or artifact state and send its ID in the payload.",
+    },
+  },
+  // gen:entries
+};

@@ -163,12 +163,15 @@ export function sessionCookie(
 }
 
 /**
- * Reads a JSON object body of at most {@link MAX_JSON_BODY} bytes; a larger, unreadable or
- * non-object body is `MOSTRA_HYGIENE_REQUEST_MALFORMED`.
+ * Reads a JSON object body of at most `maxBytes` (default {@link MAX_JSON_BODY}) bytes; a larger,
+ * unreadable or non-object body is `MOSTRA_HYGIENE_REQUEST_MALFORMED`.
  */
-export async function readJsonObject(request: Request): Promise<Record<string, unknown> | Refusal> {
+export async function readJsonObject(
+  request: Request,
+  maxBytes: number = MAX_JSON_BODY,
+): Promise<Record<string, unknown> | Refusal> {
   const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > MAX_JSON_BODY) {
+  if (length > maxBytes) {
     return refusal(
       "MOSTRA_HYGIENE_REQUEST_MALFORMED",
       "The request body is larger than this endpoint reads.",
@@ -186,7 +189,7 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
       if (done) break;
       size += value.byteLength;
       // A body sent without Content-Length is cut off as soon as it passes the limit.
-      if (size > MAX_JSON_BODY) {
+      if (size > maxBytes) {
         await reader.cancel();
         return refusal(
           "MOSTRA_HYGIENE_REQUEST_MALFORMED",
