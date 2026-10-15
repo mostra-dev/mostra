@@ -24,7 +24,7 @@ export const fieldDiagnostics: AreaCatalog<FieldDiagnosticCode> = {
     docs: {
       explanation:
         "A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 MiB in all (DATA_MODEL §5). This write would pass one of those limits, so Mostra refused it whole: nothing was truncated, and the page keeps the value locally.",
-      fix: "Split the value across several fields, or store binary data as a blob and keep its reference in the field.",
+      fix: "Split the value across several fields under one dotted prefix (`report.part1`, `report.part2`); they nest again in results.",
     },
   },
   MOSTRA_FIELD_ID_INVALID: {

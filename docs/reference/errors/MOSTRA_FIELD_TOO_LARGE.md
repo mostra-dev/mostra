@@ -16,7 +16,7 @@ A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 
 
 ## How to fix it
 
-Split the value across several fields, or store binary data as a blob and keep its reference in the field.
+Split the value across several fields under one dotted prefix (`report.part1`, `report.part2`); they nest again in results.
 
 ## Hint
 
