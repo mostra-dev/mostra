@@ -289,6 +289,7 @@ export function useSubmit(): SubmitHandle {
       view !== undefined &&
       view.submitChannels.includes("artifact") &&
       view.policy.policy !== "none" &&
+      store.canSubmit() &&
       !store.closed &&
       openState;
     return {

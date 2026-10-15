@@ -1359,6 +1359,22 @@ const SEEDS: readonly Seed[] = [
     check: e2e("a following viewer gets new versions by themselves"),
     e2e: true,
   },
+  {
+    requirement: "wp07-scope-controls",
+    name: "a link without the submit scope is offered the trusted Submit",
+    file: "src/gateway/index.ts",
+    from: '          ? scopeAllows(session.grant.scopes, "submit")',
+    to: "          ? true",
+    also: [
+      {
+        file: "../react/src/hooks.ts",
+        from: "      store.canSubmit() &&",
+        to: "      true &&",
+      },
+    ],
+    check: e2e("a link without submit shows no trusted Submit"),
+    e2e: true,
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

@@ -323,6 +323,15 @@ describe("submitting (IN-02, D110, D40)", () => {
     expect(store.save(v("x"))).toBe("readonly");
     expect(() => store.set("viewer", "x", 1)).toThrow(MostraError);
   });
+
+  it("doesn't submit for a link without the submit scope", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway, { scopes: ["view", "draft"] });
+    await store.whenReady();
+    expect(store.canSubmit()).toBe(false);
+    await expect(store.submit()).rejects.toMatchObject({ code: "MOSTRA_HYGIENE_SCOPE_DENIED" });
+    expect(gateway.submits).toHaveLength(0);
+  });
 });
 
 describe("local mode (D111)", () => {

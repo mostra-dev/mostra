@@ -477,6 +477,11 @@ export class Store {
     return scope === "artifact" || !this.#closed;
   }
 
+  /** Whether the link may submit (D97): its `submit` scope. */
+  canSubmit(): boolean {
+    return this.#options.scopes === undefined || this.#options.scopes.includes("submit");
+  }
+
   #canSave(): boolean {
     return this.#options.scopes === undefined || this.#options.scopes.includes("draft");
   }
@@ -1218,6 +1223,12 @@ export class Store {
       throw new MostraError(
         "MOSTRA_SUBMIT_POLICY_NONE",
         "This artifact's submission policy is none: it takes no submissions.",
+      );
+    }
+    if (!this.canSubmit()) {
+      throw new MostraError(
+        "MOSTRA_HYGIENE_SCOPE_DENIED",
+        "This link doesn't carry the submit scope.",
       );
     }
     const previous = this.#submitState;

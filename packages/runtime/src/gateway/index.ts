@@ -29,6 +29,7 @@ import {
   RpcError,
   refusal,
   safePath,
+  scopeAllows,
   viewRevokeMethod,
   viewRotateMethod,
   viewUrlMethod,
@@ -488,7 +489,14 @@ export function createGateway(options: GatewayOptions): Gateway {
       latest,
       policy: detail.policy ?? { policy: "once", scope: "per-artifact" },
       submitChannels: controls.submitChannels,
-      controls: controls.controls ?? ["submit", "choose", "approve"],
+      // What the shell offers this link: a control its scopes can't use isn't shown (D97).
+      controls: (controls.controls ?? ["submit", "choose", "approve"]).filter((control) =>
+        control === "submit"
+          ? scopeAllows(session.grant.scopes, "submit")
+          : control === "choose"
+            ? scopeAllows(session.grant.scopes, "review")
+            : true,
+      ),
       target: "live",
       follow: interaction.following({ artifactId, viewerId }),
       pinned: pinned !== undefined,

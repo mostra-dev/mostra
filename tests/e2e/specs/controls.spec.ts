@@ -278,6 +278,33 @@ test.describe("hosts choose the submit channels (SH-02, D40, D108)", () => {
   });
 });
 
+test.describe("a link shows only the controls its scopes can use (D97, SH-02)", () => {
+  test("a link without submit shows no trusted Submit, and the page can't submit either", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info), { scopes: ["view", "draft"] }),
+      );
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await expect(page.locator("#mostra-submit")).toHaveCount(0);
+      // No review scope: no trusted Choose either.
+      await frame.getByTestId("show-dense").click();
+      await expect(page.locator("[data-mostra-choose]")).toHaveCount(0);
+      await expect(frame.getByTestId("submit-allowed")).toHaveText("false");
+      await frame.getByTestId("artifact-submit").click();
+      await expect(frame.getByTestId("result")).toHaveText("error:MOSTRA_HYGIENE_SCOPE_DENIED");
+      expect(await hasSubmission(client, own.artifactId)).toBe(false);
+    } finally {
+      client.close();
+    }
+  });
+});
+
 test.describe("the viewer sees where the submission stands (IN-13)", () => {
   test("Submitted, then Pending delivery while the host is away, then Delivered; and Undeliverable", async ({
     page,
