@@ -35,7 +35,7 @@ Every check runs through the real interfaces: the host protocol on a real `mostr
 ## Reviews (D80)
 
 - **GPT-6.1-Sol through `codex review --base origin/main`** (codex-cli 0.162.1, OpenAI, ChatGPT sign-in), effort high, on 2026-10-15 against `d3f813b`. It used 3,241,429 input tokens (3,073,408 cached) and 15,431 output tokens (8,634 reasoning). It was a GPT-only run, announced before it started (D34). A first attempt that morning was refused before any model call (the signed-in account didn't offer the model); Mirza fixed the sign-in.
-- **Copilot**: no review on the draft pull request yet.
+- **Copilot**: requested when the pull request left draft; it answered that the requester's quota is used up (as on WP-01), so it reviewed nothing.
 - **Claude Opus 5.5**: to be decided with Mirza.
 
 The GPT review's seven findings, all fixed, each with a regression test and a seed that undoes the fix (`prove-seeds.ts --only wp06-gpt-<n>`), plus one of my own from the diff review:
