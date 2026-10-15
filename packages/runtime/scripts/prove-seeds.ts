@@ -1233,10 +1233,17 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "IN-02",
-    name: "a closing tab doesn't flush",
+    name: "a closing tab doesn't flush: neither visibilitychange nor pagehide sends its edit",
     file: "../react/src/runtime/boot.ts",
     from: '  window.addEventListener("pagehide", () => void store.flush({ keepalive: true }));',
     to: "  void 0;",
+    also: [
+      {
+        file: "../react/src/runtime/boot.ts",
+        from: '    if (document.visibilityState === "hidden") void store.flush({ keepalive: true });',
+        to: "    void 0;",
+      },
+    ],
     check: e2e("when the tab closes"),
     e2e: true,
   },
@@ -1251,10 +1258,17 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "IN-04",
-    name: "the journal keeps nothing of an unsent edit",
+    name: "the journal keeps nothing of an unsent edit or an unanswered mutation",
     file: "../react/src/runtime/journal.ts",
     from: "    return this.#write((store) => store.put(entry, pendingKey(entry)));",
     to: "    return Promise.resolve(entry && undefined);",
+    also: [
+      {
+        file: "../react/src/runtime/journal.ts",
+        from: "      store.put(mutation, mutationKey(mutation.mutationId));",
+        to: "      void mutation;",
+      },
+    ],
     check: e2e("journaled and sent when the browser opens"),
     e2e: true,
   },
@@ -1280,8 +1294,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "SH-02",
     name: "the trusted Submit is recorded on the artifact channel",
     file: "src/gateway/browser.ts",
-    from: '          channel: "shell",',
-    to: '          channel: "artifact",',
+    from: '        channel: "shell",',
+    to: '        channel: "artifact",',
     check: e2e("a field saves as the viewer types"),
     e2e: true,
   },

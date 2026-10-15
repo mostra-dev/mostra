@@ -77,7 +77,7 @@ async function valueElsewhere(
 }
 
 test.describe("a closed tab loses nothing (IN-02)", () => {
-  test("an edit still inside the debounce is sent when the tab closes (pagehide)", async ({
+  test("an edit still inside the debounce is sent when the tab closes (visibilitychange, pagehide)", async ({
     browser,
   }, info) => {
     const client = await Client.connect(run.socket);
