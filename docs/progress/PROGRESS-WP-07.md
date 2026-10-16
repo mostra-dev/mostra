@@ -120,10 +120,12 @@ Diagnostic hints and `AGENTS.md` additions are delegated as in WP-03 to WP-06 (D
 
 `main`'s CI on the merge commit failed once, in the new IN-04 adoption test on Linux Chromium; it had passed in both legs of the branch's CI. It reproduced locally (3 of 24 runs, Chromium and Firefox), and an instrumented copy showed the cause, a defect in the shell rather than in the test: the shell built the state for a page's control request from a copy that follows renders (`latestStateRef`), so a request arriving just after a stream event (the page's `useSubmitControl` and `useChoice` on mount) put the draft's revision back, and the "Not carried over" panel stayed stale. [#21](https://github.com/mostra-dev/mostra/pull/21) applies every control request to the newest state (`applyControlRequests`); the adoption test then passed 48 of 48 runs in three engines, with a shell model test beside it.
 
+#21's own first CI run found a second, older gap: `@mostra/runtime`'s tests build artifacts against the warm set, which links `@mostra/react`, but runtime didn't declare it, so for a change that touched neither the protocol nor the client runtime Turbo never built `@mostra/react`, and every job that publishes failed with `MOSTRA_BUILD_UNRESOLVED`. Earlier packages always changed one of the two, which hid it. Runtime now dev-depends on `@mostra/warm`; with `packages/react/dist` deleted, `pnpm check --job hygiene` builds it and passes. #21 merged as `4da2397` with CI green.
+
 ## Commits and publication
 
-- **Range:** `f7b41b6..b9a8422` on `main`: 32 signed-off commits on `wp/07-client-runtime` (`5724096` to `5325ae4`) and the merge commit `b9a8422` of [#20](https://github.com/mostra-dev/mostra/pull/20); then [#21](https://github.com/mostra-dev/mostra/pull/21), the fix above. This report lands through its own pull request (D79).
-- **On `main` after the merge:** CodeQL and Scorecard green; CI red only for the e2e test above, which #21 fixes.
+- **Range:** `f7b41b6..b9a8422` on `main`: 32 signed-off commits on `wp/07-client-runtime` (`5724096` to `5325ae4`) and the merge commit `b9a8422` of [#20](https://github.com/mostra-dev/mostra/pull/20); then [#21](https://github.com/mostra-dev/mostra/pull/21) (`74814fe` to `f97e135`, merged as `4da2397`), the fixes above. This report lands through its own pull request (D79).
+- **On `main`:** after #20, CodeQL and Scorecard green and CI red only for the e2e test above; #21 fixed it, with its CI green on macOS and Linux.
 - **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol`, `@mostra/react`, `@mostra/runtime` and `@mostra/shell`; the release pipeline is WP-11's (EN-05).
 - **Docs:** generated pages for the new diagnostic codes in `docs/reference/`; the docs site is WP-26's.
 - **Follow-ups for later packages** are in their specifications ("From WP-07"): WP-08, WP-09, WP-12, WP-13, WP-17, WP-18 and WP-20.
