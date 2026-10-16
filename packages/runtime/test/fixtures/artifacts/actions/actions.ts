@@ -119,3 +119,13 @@ export async function chatty() {
 export async function reveal() {
   return { token: secret("MAIL_TOKEN") };
 }
+
+/** Whether the secret `name` holds `expected`, without returning it. */
+export async function holds(name: string, expected: string) {
+  return secret(name) === expected;
+}
+
+/** Returns the secret `name`: Mostra redacts it from what it sends and keeps. */
+export async function named(name: string) {
+  return secret(name);
+}

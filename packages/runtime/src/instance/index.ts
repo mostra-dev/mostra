@@ -354,7 +354,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       };
     },
   });
-  const bus = createEphemeralBus();
+  // Tests shorten the one-minute lease a page's interest in a run or live source holds.
+  const testLease = Number(environment["MOSTRA_TEST_INTEREST_LEASE_MS"]);
+  const bus = createEphemeralBus(testLease > 0 ? { leaseMs: testLease } : {});
   // The local launcher forks workers from this home's versions; tests prove the seam with a worker
   // host started on its own, reached over a socket (D124).
   const workerSocket = environment["MOSTRA_TEST_WORKER_HOST"];
@@ -453,6 +455,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         (artifactId) => latestLive(artifactId) !== undefined,
       ),
     version: workerVersion,
+    ...(testLease > 0 ? { reconcileMs: Math.max(100, testLease / 4) } : {}),
   });
   // A new latest version moves its artifact's producers to it (ARCHITECTURE §7).
   const stopWatchingPublishes = interaction.onPublished(() => live.reconcile());

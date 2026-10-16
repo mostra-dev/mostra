@@ -2,14 +2,17 @@
  * The supervisor never loads artifact code (RT-02, AU-07): a real `mostra-runtime daemon`, with
  * every module it loads recorded, hosts several artifacts through create, publish, list and get;
  * afterwards its module list holds no artifact file and no bundler, and side effects written into
- * the artifacts never ran. Verify runs (WP-09) and action calls (WP-08) extend this audit (D93).
+ * the artifacts never ran in it. Action calls and live producers (WP-08) run the artifact's server
+ * code, and only ever in its worker; verify runs (WP-09) extend this audit too (D93).
  */
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import { openPage, type RunState } from "../action-page.ts";
 import {
   connectTo,
+  eventually,
   initializeParams,
   type Message,
   startDaemon,
@@ -28,7 +31,8 @@ function trap(marker: string): string {
   const dir = join(tempDir("trap"), "trap");
   cpSync(join(fixtures, "artifacts/directory"), dir, { recursive: true });
   // Bundles for the browser unchanged, and writes the marker if Node ever executes the module.
-  const effect = `(globalThis as any).process?.getBuiltinModule?.("node:fs")?.appendFileSync(${JSON.stringify(marker)}, "ran\\n");\n`;
+  // Each line names the process that ran it: its PID and its entry script.
+  const effect = `{ const p = (globalThis as any).process; p?.getBuiltinModule?.("node:fs")?.appendFileSync(${JSON.stringify(marker)}, \`\${p.pid} \${p.argv[1]}\\n\`); }\n`;
   for (const file of ["index.tsx", "pages/index.tsx", "components/greeting.tsx", "live.ts"]) {
     writeFileSync(join(dir, file), effect + readFileSync(join(dir, file), "utf8"));
   }
@@ -40,7 +44,7 @@ function trap(marker: string): string {
   return dir;
 }
 
-it("loads no artifact module and no bundler in the supervisor across create, publish, list and get (RT-02)", async () => {
+it("loads no artifact module and no bundler in the supervisor across create, publish, list, get, action calls and live sources (RT-02)", async () => {
   const home = testHome();
   const audit = join(tempDir("audit"), "modules.json");
   const marker = join(tempDir("marker"), "executed.txt");
@@ -67,7 +71,10 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
   const receipts = [];
   for (const path of [trapped, join(mdx, "page.mdx"), created.dir, trapped]) {
     receipts.push(
-      result(await client.call("artifact/publish", { source: { path } })) as { artifactId: string },
+      result(await client.call("artifact/publish", { source: { path } })) as {
+        artifactId: string;
+        url: string;
+      },
     );
   }
   const failing = join(tempDir("failing"), "x");
@@ -87,6 +94,29 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
   expect(listed.artifacts).toHaveLength(3);
   for (const receipt of receipts)
     result(await client.call("artifact/get", { artifact: { artifactId: receipt.artifactId } }));
+  // Building, publishing and reading ran no artifact code anywhere.
+  expect(existsSync(marker)).toBe(false);
+
+  // A page calls an action and reads a live source (WP-08): the server code runs, in a worker.
+  const page = await openPage(receipts[3]?.url ?? "");
+  const archived = await page.call("actions.ts#archive", ["a1"]);
+  expect(archived.value).toEqual({ id: "a1", archived: true });
+  const run = (await page.run("actions.ts#notify", ["hi"])).json<RunState>();
+  expect((await page.settled(run.runId)).status).toBe("succeeded");
+  expect((await page.live([{ key: "openWork" }])).status).toBe(200);
+  await eventually(async () => {
+    const live = (await page.live([{ key: "openWork" }])).json<{
+      sources: { revision?: string }[];
+    }>();
+    return live.sources[0]?.revision !== undefined;
+  }, 15_000);
+  const ran = readFileSync(marker, "utf8").trim().split("\n");
+  expect(ran.length).toBeGreaterThan(0);
+  for (const line of ran) {
+    const [pid, entry] = line.split(" ");
+    expect(Number(pid)).not.toBe(daemon.status.pid);
+    expect(entry).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+  }
 
   await client.call("mostra/shutdown", {});
   await daemon.exited;
@@ -106,8 +136,6 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
       /node_modules\/(vite|rolldown|@vitejs|@tailwindcss|@mdx-js)\//.test(path),
     ),
   ).toEqual([]);
-  // No artifact code ran anywhere: not in the supervisor, not in the builder.
-  expect(existsSync(marker)).toBe(false);
   // The trap works: the same statement, run by Node, writes the marker.
   const control = join(tempDir("control"), "executed.txt");
   new Function(

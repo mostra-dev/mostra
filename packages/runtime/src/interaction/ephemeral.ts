@@ -66,8 +66,11 @@ export interface EphemeralBus {
 }
 
 /** Creates the bus. */
-export function createEphemeralBus(options: { readonly now?: () => number } = {}): EphemeralBus {
+export function createEphemeralBus(
+  options: { readonly now?: () => number; readonly leaseMs?: number } = {},
+): EphemeralBus {
   const now = options.now ?? Date.now;
+  const lease = options.leaseMs ?? INTEREST_LEASE_MS;
   const views = new Map<string, ViewInterest>();
   const interestListeners = new Set<() => void>();
   let lastInterest = "";
@@ -115,37 +118,40 @@ export function createEphemeralBus(options: { readonly now?: () => number } = {}
   };
 
   // Expired leases end; views with nothing left are forgotten.
-  const sweep = setInterval(() => {
-    const at = now();
-    for (const [viewId, view] of views) {
-      for (const [runId, until] of view.runs) if (until <= at) view.runs.delete(runId);
-      for (const [key, lease] of view.live) if (lease.until <= at) view.live.delete(key);
-      if (view.queue && (view.queueUntil ?? 0) <= at) {
-        delete view.queue;
-        delete view.queueUntil;
+  const sweep = setInterval(
+    () => {
+      const at = now();
+      for (const [viewId, view] of views) {
+        for (const [runId, until] of view.runs) if (until <= at) view.runs.delete(runId);
+        for (const [key, lease] of view.live) if (lease.until <= at) view.live.delete(key);
+        if (view.queue && (view.queueUntil ?? 0) <= at) {
+          delete view.queue;
+          delete view.queueUntil;
+        }
+        if (
+          view.runs.size === 0 &&
+          view.live.size === 0 &&
+          view.listeners.size === 0 &&
+          !view.queue
+        ) {
+          views.delete(viewId);
+        }
       }
-      if (
-        view.runs.size === 0 &&
-        view.live.size === 0 &&
-        view.listeners.size === 0 &&
-        !view.queue
-      ) {
-        views.delete(viewId);
-      }
-    }
-    interestChanged();
-  }, 5_000);
+      interestChanged();
+    },
+    Math.min(5_000, Math.max(100, lease / 4)),
+  );
   sweep.unref?.();
 
   return {
     attachRuns(artifactId, viewId, runIds) {
       const view = viewOf(artifactId, viewId);
-      const until = now() + INTEREST_LEASE_MS;
+      const until = now() + lease;
       for (const runId of runIds) view.runs.set(runId, until);
     },
     watchLive(artifactId, viewId, keys) {
       const view = viewOf(artifactId, viewId);
-      const until = now() + INTEREST_LEASE_MS;
+      const until = now() + lease;
       for (const entry of keys) {
         view.live.set(entry.key, {
           until,
@@ -179,7 +185,7 @@ export function createEphemeralBus(options: { readonly now?: () => number } = {}
       const view = viewOf(artifactId, viewId);
       const taken = view.queue ?? [];
       view.queue = [];
-      view.queueUntil = now() + INTEREST_LEASE_MS;
+      view.queueUntil = now() + lease;
       return taken;
     },
     wait(artifactId, viewId, ms, signal) {
