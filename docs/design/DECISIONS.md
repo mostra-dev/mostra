@@ -27,6 +27,7 @@
 | M17 | 2026-10-14T19:33:32.530Z | WP-05's Claude Opus review (13 findings). Delegated all three questions with the same words: a link that names a version opens only that version; the frame can't navigate the viewer's tab, with `ui/open-link` instead; signals need a scope of their own. Asked for the balance between robustness, quality, capability and good code on one side and security on the other. |
 | M18 | 2026-10-15T08:07:02.531Z | WP-06 questions. Delegated all eight (check boundaries, the policy in force, epochs, views, the `viewer` parameter, delivery owners and mirrors, prose, the first browser-protocol revision) with "I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering decision", and asked that each be brainstormed meticulously. |
 | M19 | 2026-10-15T12:39:18.647Z | WP-07 questions. Delegated all eight (the channel policy's source, the orphan model, defaults the viewer saw, check boundaries, prose, the Claude review, `window.storage` limits, Choose's candidates) with "I trust you to make the most robust … optimal decision", asking for the most robust, highest-capability choice in each. Raised the Claude Opus review limit to ten of Mostra's packages. Rules aren't frozen: one that is unnecessary or significantly limits capability can be discussed. Work that later packages build on is done so it helps them as a baseline and never limits them. |
+| M20 | 2026-10-16T14:50:33.927Z | Handed over the plan update he approved in his planning work of 2026-10-16, for one documentation session before WP-08. v1 gains a remote server and a relay, with a managed service's operating layer kept outside this repository; license layers (an Apache-2.0 core, a source-available `ee/` folder, a proprietary operating layer); anonymous telemetry in the standalone CLI, never in embedded use; team features; Windows and the terminal packages follow the first release as `v1.1`; new package specifications fix the surface and the options, and implementing sessions settle the details; new packages WP-28 to WP-32; Mostra's business context lives in a private repository, Mostra HQ. Recorded as D116 to D127. |
 
 ## Program-level decisions
 
@@ -93,13 +94,13 @@ Every interface supports waiting for a submission: the CLI (`mostra wait <id> --
 - **v1.x, remote mode.** A self-hostable remote server for agents without a filesystem. It provides a remote MCP server over Streamable HTTP with OAuth (CIMD, DCR and refresh tokens), revisioned file-push and patch authoring, server-side build and verify jobs, a `SandboxPort` and wildcard per-artifact origins.
 - **Later: a managed cloud service.** A separate product and the revenue path. It may run on proprietary control-plane code (D14) and owns the operator duties of public hosting: abuse handling, a separate user-content domain and free-tier limits.
 
-*Source:* M3 answer 3 and remote-agent comments, M4 answer 5.
+*Source:* M3 answer 3 and remote-agent comments, M4 answer 5. *Amended by D116:* the remote server, the relay and the remote MCP server move into v1; sandboxed remote execution stays v1.x; the managed service's operating layer lives outside this repository.
 
 ### D13. Public repository
 The Mostra repository is public. *Source:* M3 answer 2. *Note:* creating the public repository, organizations and domains are account actions that Mirza performs or approves (see [STANDARDS.md](STANDARDS.md#consequential-actions)).
 
 ### D14. License
-Apache-2.0 for everything users install, embed or self-host: libraries, runtime, CLI, MCP server, self-host server, plugin contracts and first-party plugins. Contributions use the DCO (sign-off), not a CLA. Only a future managed cloud's multi-tenant control plane may be proprietary. The business is protected by trademark, hosting quality and network effects, not by license terms. *Source:* M4 answer 6 (delegated), research briefs 1, 6 and 7. *Rejected:* MIT (no explicit patent grant), FSL, BSL, ELv2 and AGPL for the core (they hurt adoption and embedding; tldraw and Remotion are the cautionary examples). *Overturn condition:* a well-funded clone of the hosted service could justify FSL-1.1-ALv2 for new cloud-only modules, never for the core.
+Apache-2.0 for everything users install, embed or self-host: libraries, runtime, CLI, MCP server, self-host server, plugin contracts and first-party plugins. Contributions use the DCO (sign-off), not a CLA. Only a future managed cloud's multi-tenant control plane may be proprietary. The business is protected by trademark, hosting quality and network effects, not by license terms. *Source:* M4 answer 6 (delegated), research briefs 1, 6 and 7. *Rejected:* MIT (no explicit patent grant), FSL, BSL, ELv2 and AGPL for the core (they hurt adoption and embedding; tldraw and Remotion are the cautionary examples). *Overturn condition:* a well-funded clone of the hosted service could justify FSL-1.1-ALv2 for new cloud-only modules, never for the core. *Amended by D118:* three license layers (the Apache-2.0 core, a source-available `ee/` folder, the proprietary operating layer of the managed service), with the overturn condition restated.
 
 ### D15. Name: Mostra
 **Mostra** is Italian for "exhibition" (the Venice Film Festival is the *Mostra*). In Italian and Portuguese it is also the imperative "show!". Packages are `@mostra/*`, and the CLI is `mostra` (`mostra new`, `mostra verify`, `mostra wait`, `mostra results`). *Source:* M4 answer 9 (delegated), M5. *Availability observed 2026-10-10:* no software project on GitHub with the name; npm org `@mostra` and GitHub orgs `mostra-dev` and `mostrajs` looked free; `mostra.dev` and `mostra.sh` looked unregistered. The bare npm name `mostra` is an empty 2022 placeholder, which can be disputed later; until then use `npm create mostra` and `@mostra/cli`. *Actions for Mirza:* register `mostra.dev`, npm org `@mostra` and GitHub org `mostra-dev`, and run a trademark search before public launch. *Fallback:* `mostrakit`. *Rejected:* `atk` (clashes with GNOME's Accessibility Toolkit and is unsearchable), Plinth (an existing AI engineering toolkit and Cardano's smart-contract language), Easel (EaselJS), Maquette (a virtual-DOM library), Voilà (Jupyter dashboards), Curio (Python async), and many common words already taken on npm.
@@ -118,10 +119,10 @@ Apache-2.0 for everything users install, embed or self-host: libraries, runtime,
 - **v1.x:** remote mode (D12), the read-only plugin registry and its agent tools, RSC render mode once its triggers are met (D19), a Yjs collaboration plugin, and PDF and video exporters.
 - **Later:** the managed cloud service and the marketplace web interface.
 
-*Source:* M5. *Note:* v1 is large. C03-A splits it into work packages without shrinking it, under [STANDARDS.md](STANDARDS.md#completion).
+*Source:* M5. *Note:* v1 is large. C03-A splits it into work packages without shrinking it, under [STANDARDS.md](STANDARDS.md#completion). *Amended by D116, D121 and D122:* v1 gains the remote server, relay, remote MCP server and team features; the terminal modes move to the `v1.1` follow-up release.
 
 ### D17. Interface priority
-In order: (1) the CLI, Skill and `verify`, built together with the host protocol and Rust host crate because Jcode needs them; (2) the local MCP server; (3) MCP Apps export. *Source:* M4 answer 7.
+In order: (1) the CLI, Skill and `verify`, built together with the host protocol and Rust host crate because Jcode needs them; (2) the local MCP server; (3) MCP Apps export. *Source:* M4 answer 7. *See* D125: the remote server and team packages join the order right after the local MCP server.
 
 ## Architecture decisions
 
@@ -230,7 +231,7 @@ The design system ships as shadcn-registry items with base variants: Base UI and
 - **Agent checks:** text, cell and screenshot dumps let agents verify terminal output without vision.
 - **Web demos:** run the demo's own dev server and proxy it into an iframe on its own origin, with WebSocket passthrough, viewport switching and device frames. In-browser bundling is only an optional snippet mode.
 
-*Source:* M2 ("render TUI in React ... precisely"), research brief 4, M5.
+*Source:* M2 ("render TUI in React ... precisely"), research brief 4, M5. *Amended by D122:* the terminal modes ship in `v1.1`, after the first release; web demos stay in v1.
 
 ### D29. Agent experience
 - **`verify` is the decisive feature.** It builds and type-checks the artifact, renders it headlessly with Playwright, and captures console, network and accessibility findings, an ARIA snapshot and multi-viewport screenshots. It also runs a synthetic smoke test with actions in dry-run mode, and regression checks against the last passing version.
@@ -273,7 +274,7 @@ D33 is confirmed. Rules for every run that makes real model requests:
 *Source:* M6 Q1. *Supersedes* the "budget Mirza approves" wording in STANDARDS with the ask-first rule.
 
 ### D35. Windows is out of v1.0
-v1.0 explicitly does not support Windows. Windows stays on the roadmap for a later release. The v1 design need not constrain itself for Windows. On an unsupported platform every Mostra entry point fails closed with a clear diagnostic. *Source:* M6 Q2. *Resolves* RT-07.
+v1.0 explicitly does not support Windows. Windows stays on the roadmap for a later release. The v1 design need not constrain itself for Windows. On an unsupported platform every Mostra entry point fails closed with a clear diagnostic. *Source:* M6 Q2. *Resolves* RT-07. *Amended by D120:* Windows support follows in v1.1 (WP-32); the fail-closed rule stands for anything still unsupported.
 
 ### D36. Approving a work package approves its publication
 When Mirza accepts a work package, that acceptance authorizes every publication step for it: pushing to the public repository, publishing to npm and crates.io, creating releases and deploying the docs site. Agents ask only when something is uncertain or a real dilemma arises. *Source:* M6 Q3. *Changes* STANDARDS, Consequential actions.
@@ -282,7 +283,7 @@ When Mirza accepts a work package, that acceptance authorizes every publication 
 Mostra postpones buying a domain. The docs site is hosted for free on GitHub Pages under the `mostra-dev` GitHub organization, which Mirza created. Docs links in diagnostics and tools use one configurable base URL, so a later domain only changes that base (GitHub Pages redirects to a custom domain once one is configured). If a domain is bought later, `mostrakit.dev` and `mostradev.com` fit the budget. Mirza is creating the npm organization `@mostra`. *Source:* M6 Q4. *Amends* D15's action list.
 
 ### D38. Addressing: port-per-artifact origins with cookie sessions (delegated)
-In v1, the shell and every artifact share one host and differ by port: the shell on the instance's gateway port, each artifact on its own leased port. The two are the same **site** and different **origins**, so D06's mechanism holds as written: the capability token is exchanged for an `HttpOnly; SameSite=Strict` session cookie. Ports are leased stably per instance and artifact, so capability URLs and per-origin browser storage survive restarts. The gateway strips Mostra session cookies before proxying to workers, foreign apps or terminals, and binds each session to the one origin it was issued for. Tunnel modes map onto ports of the tunnel hostname the same way. Hosted remote mode (v1.x) is cross-site by nature and gets its own frame-credential design behind the addressing port.
+In v1, the shell and every artifact share one host and differ by port: the shell on the instance's gateway port, each artifact on its own leased port. The two are the same **site** and different **origins**, so D06's mechanism holds as written: the capability token is exchanged for an `HttpOnly; SameSite=Strict` session cookie. Ports are leased stably per instance and artifact, so capability URLs and per-origin browser storage survive restarts. The gateway strips Mostra session cookies before proxying to workers, foreign apps or terminals, and binds each session to the one origin it was issued for. Tunnel modes map onto ports of the tunnel hostname the same way. Hosted remote mode (v1.x) is cross-site by nature and gets its own frame-credential design behind the addressing port (*moved into v1 by D116*, designed in WP-28).
 
 *Evidence:* [VERIFIED_FACTS.md](VERIFIED_FACTS.md#browser-addressing-and-cookies-prototype-evidence). Artifact iframes on `*.localhost` subdomains are third-party contexts: Chromium and Firefox drop Strict and Lax cookies there, and Safari 26.2 drops every cookie. Same-host port origins carry Strict cookies in all four engines tested. Tailscale gives one hostname per device, and Funnel allows ports 443, 8443 and 10000. *Rejected:* capability-bearing subdomains (unusual, and tunnels still need ports) and path-prefix capabilities (absolute paths in agent code break). *Source:* M6 Q5 (delegated). *Amends* D21.
 
@@ -381,7 +382,7 @@ The CLI, the local MCP server, the TypeScript SDK and the Rust crate all speak o
 `new`, `dev`, `verify`, `publish`, `open`, `share`, `wait`, `results`, `review export`, `push`, `state` (D63), `term dump`, `add`, `export`, `secret`, `list`, `status`, `daemon`, `host`, `mcp`, `plugin`, `docs`, `doctor` and `gc`, as specified in [rounds/ROUND-2.md](rounds/ROUND-2.md#31-cli-command-set-cl1). Artifacts are addressed by source path or ID. Help text is drafted with Mirza. *Source:* M7 Q12.
 
 ### D61. MCP tools and MCP Apps persistence
-The local MCP server has about twelve tools under an `artifact_` prefix (create, write, patch, verify, publish, open as the render tool, wait, results, list), plus `live_push`, `docs_search` and app-only tools for exported MCP Apps. In v1, inline MCP Apps persist drafts, submissions, actions and events through the local MCP server. Cloud chat hosts need remote mode (v1.x). Until then the exported page states that answers can't be saved there and offers the full-page URL. Tool descriptions are drafted with Mirza. *Source:* M7 Q13.
+The local MCP server has about twelve tools under an `artifact_` prefix (create, write, patch, verify, publish, open as the render tool, wait, results, list), plus `live_push`, `docs_search` and app-only tools for exported MCP Apps. In v1, inline MCP Apps persist drafts, submissions, actions and events through the local MCP server. Cloud chat hosts need remote mode (v1.x). Until then the exported page states that answers can't be saved there and offers the full-page URL. Tool descriptions are drafted with Mirza. *Source:* M7 Q13. *Amended by D116:* in v1, MCP Apps in cloud chat hosts persist through the remote MCP server (WP-30), so the "until then" message is replaced; local hosts are unchanged.
 
 ### D62. Process details
 - **Home layout:** `registry/`, `versions/`, `store/` (SQLite), `deps/`, `secrets/` (0600), `cache/`. The control socket lives in a short per-user runtime directory.
@@ -403,7 +404,7 @@ One-off artifacts (approve a report, choose a prototype, answer questions) and l
 7. **Growth over months.** Versions share content-addressed assets. Event compaction (D47) and `mostra gc` keep a long-running home bounded, on request.
 8. **Coverage.** PRODUCT gains journeys J11 (personal dashboard) and J12 (team task manager). Templates, the conformance kit and agent evaluations include long-lived scenarios.
 
-*Source:* M7 note (direction approved by Mirza). The details are C03-A's design, to be confirmed in round 3.
+*Source:* M7 note (direction approved by Mirza). The details are C03-A's design, to be confirmed in round 3. *Extended by D121:* expected respondents, respondent status, presence and attribution.
 
 ### D64. Running evaluations in small batches
 Evaluation runs never fire as one big batch. The first run of a new harness is a single call, to find bottlenecks and calibrate token use. Later runs go two or four at a time, so a shared five-hour usage limit is used steadily rather than exhausted part-way through. A second account may be used if available. Runs with Claude models are planned with Mirza first (D34). The v1 evaluations drive the **Codex CLI** (`codex exec --json`, ChatGPT OAuth). That choice is deliberate:
@@ -443,7 +444,7 @@ The Agent Skill's description triggers on one branch: **the agent wants to commu
 
 ### D70. Two frame-session modes behind the addressing port (delegated, extends D38)
 - **Cookie mode** (D38) applies wherever the shell and the artifact are same-site: loopback ports, Tailscale Serve and Funnel (one device hostname, different ports).
-- **Worker mode** applies wherever they are cross-site. In v1 that means Cloudflare quick tunnels, because `trycloudflare.com` is a public suffix and each tunnel is its own site. Hosted mode (v1.x) uses the same mechanism. The flow:
+- **Worker mode** applies wherever they are cross-site. In v1 that means Cloudflare quick tunnels, because `trycloudflare.com` is a public suffix and each tunnel is its own site. Hosted mode (v1.x; *in v1 by D116*) uses the same mechanism. The flow:
   1. The shell loads the frame at `/_mostra/enter#t=<frame token>`.
   2. The bootstrap page registers Mostra's service worker at scope `/`.
   3. The worker attaches the frame session header to every same-origin request.
@@ -656,6 +657,8 @@ The manifest requests a policy and the host decides (D39, D63). At every publish
 - **`submitted`** is level-triggered under `once`: any submission of the artifact satisfies it, whatever the cursor, so a wait after the human already submitted returns at once (D11). Under `epochs` it is satisfied by the first submission after the cursor, which defaults to the artifact's latest publish, so a waiting agent is never handed a round it already read. Under `none` it is refused with `MOSTRA_SUBMIT_POLICY_NONE`.
 - **The others** (`signal:<name>`, `state:<fieldId>`, `event:<type>`) are edge-triggered after the cursor (ARCHITECTURE §6). `still_waiting` returns the newest cursor the wait examined, so the next wait misses nothing.
 
+*Extended by D121:* wait conditions for every expected respondent and for N submissions (WP-31).
+
 ### D104. Views and viewers (delegated, M18)
 - **A view is one frame load.** The gateway records a view each time a shell asks for a frame ticket: the artifact, the exact version the ticket opens and the viewer, with `view.opened`. The ticket answer carries its `viewId`, which the shell hands its frame over the bridge (WP-07). Mutations and submits name their view, and the server takes the version from the view, never from the frame's session (which another tab may have moved), so a submission names exactly what its tab showed (IN-05, H-10). A view of another viewer or artifact is `MOSTRA_SUBMIT_VIEW_INVALID`.
 - **`view/url`'s `viewer`** (D97 item 7) is `{ ref, name? }`: `ref` is the host's own stable key for a person (an email, an account ID), mapped idempotently to one viewer of kind `token`, and `name` its display name, updated when given. The link's sessions act as that viewer; rotation keeps it, and a token's viewer never changes (the token trigger). Without `viewer`, sessions act as the home's local user, one viewer of kind `local`. `once` per-viewer surveys mint one link per person.
@@ -672,7 +675,7 @@ The manifest requests a policy and the host decides (D39, D63). At every publish
 - **The browser protocol.** WP-06 defines revision `2026-10-15` of the browser protocol: the payloads of `fields`, `submit`, `signal`, `events` and `events/poll`, as Zod schemas in `@mostra/protocol`. The gateway serves only revisions it knows. WP-07 builds the client runtime on it and records it in `envDigest`; WP-13 adds the long-poll fallback over tunnels on the same handler.
 
 ### D107. Waiting for the next respondent under `once` per-viewer (delegated under M18; found by the Claude review)
-Amends D103. Under `once` with scope `per-viewer` (a survey: one submission per person), `wait --until submitted` is level-triggered only when the caller gives no cursor, so "has anyone answered?" returns at once. After an explicit `after` cursor it is edge-triggered, as under `epochs`: the first submission after the cursor satisfies it, so an agent can wait for each next respondent without being handed the first one forever. `once` per-artifact stays level-triggered whatever the cursor (exactly one submission exists or will). *Source:* finding 5 of WP-06's Claude Opus review; Mirza delegated WP-06's interaction semantics at M18, and the choice is shown to him at the candidate.
+Amends D103. Under `once` with scope `per-viewer` (a survey: one submission per person), `wait --until submitted` is level-triggered only when the caller gives no cursor, so "has anyone answered?" returns at once. After an explicit `after` cursor it is edge-triggered, as under `epochs`: the first submission after the cursor satisfies it, so an agent can wait for each next respondent without being handed the first one forever. `once` per-artifact stays level-triggered whatever the cursor (exactly one submission exists or will). *Source:* finding 5 of WP-06's Claude Opus review; Mirza delegated WP-06's interaction semantics at M18, and the choice is shown to him at the candidate. *Extended by D121:* waiting for the whole roster of expected respondents (WP-31).
 
 ### D108. The submit channel policy in force (delegated, M19)
 Fills D40 and INTERFACES §6 and §7, which name both a home setting and the `trustedControls` port:
@@ -715,6 +718,78 @@ D98 item 5 lets an artifact origin serve the version its frame session last ente
 
 The version banner is unchanged: it tells a view about versions newer than its own (VR-04).
 
+## Plan update of 2026-10-16
+
+Mirza approved these in his planning work of 2026-10-16 and handed them over at M20. They change the plan of the packages from WP-08 on; nothing already built changes. Each is an **approved decision**. Where one leaves a choice open, it names the package that settles it as a **deferred decision** (D123).
+
+### D116. The remote server and relay are in v1; the managed service's operating layer is separate
+- **v1 adds** a remote transport for the host protocol, a relay (D117), a self-hostable remote server that hosts many homes behind one gateway on a separate user-content domain, viewer sign-in, operator ports, and a remote MCP server over Streamable HTTP with OAuth. These were v1.x (D12).
+- **The managed cloud** runs this open remote server. Its multi-tenant operating layer (accounts, billing, quotas, metering, abuse handling, fleet operation) is proprietary and lives outside this repository (D118). The operating layer reaches the remote server only through the operator ports, as hosts reach Mostra only through public ports (invariant 11); nothing in the core depends on it.
+- **v1.x keeps** sandboxed remote execution (actions and builds that run on a remote server without the owner's instance, through `SandboxPort`), the plugin registry, RSC, Yjs and the exporters.
+
+*Why:* sharing a link that works without a tunnel and while the author's machine is asleep is central to how people use artifacts; inline MCP Apps in cloud chat hosts can only persist answers through a remote MCP server (D61); the v1 seams (RM-01) make it a bounded addition. *Source:* M20. *Amends* D12 (release ladder), D16 (scope), D61 (cloud chat hosts no longer wait for v1.x), and PRODUCT's non-goal "A managed public hosting service in v1". *Rejected:* keeping remote mode in v1.x; building the operating layer into the open repository.
+
+### D117. Relay: hosted artifacts run their server code on the owner's instance
+A remote server forwards a hosted artifact's action calls and live producers to the owning Mostra instance over that instance's outbound connection. The remote server runs no artifact code in v1.
+- **Authoring from chat hosts** (an agent in claude.ai or ChatGPT creating, building, verifying and publishing through the remote MCP server): *Deferred decision* for WP-28. Recommendation: relay these operations to the owner's instance in v1, so builds and `verify` run there; cloud-side builds come with RM-06 (v1.x).
+- **Secrets** never leave the owner's instance. Capability URLs and scopes authorize exactly as for a tunnel share (D06, D97).
+- **When the owner is offline,** hosted pages, drafts, submissions and comments keep working; action runs wait or fail according to the artifact's offline policy; live sources show their last value with its time. The exact states, timeouts and ordering are a *Deferred decision* for WP-28.
+
+*Why:* no user code on shared infrastructure, a small attack surface, low cost, and identical semantics to local use. *Source:* M20. *Overturn:* sandboxed remote execution (v1.x) adds a second path, never replacing the relay.
+
+### D118. License layers
+- **Core:** everything users install, embed or self-host outside `ee/` stays Apache-2.0 with NOTICE and DCO, including the remote server (D116).
+- **`ee/`:** a top-level folder for enterprise features of self-hosted servers, source-available under a commercial license whose text Mirza supplies before the first `ee/` code. The core never imports `ee/` (a boundary rule); the license audit treats `ee/` separately; contributions to `ee/` come only from the core team unless a CLA is introduced later. Which features go there (for example SSO, SCIM, audit log, retention, admin console) is a *Deferred decision* for the package that first builds `ee/` code, with Mirza.
+- **The operating layer of the managed service:** proprietary, in a separate private repository (D116).
+
+*Source:* M20. *Amends* D14 and invariant 9. D14's overturn condition is restated: if a well-funded competitor runs the Apache remote server as a competing managed service and takes significant share, new server-side modules may move to FSL-1.1-ALv2; the core runtime stays Apache. *Rejected:* closing the repository; FSL or BSL for the core; a proprietary remote server (self-hosters and embedding hosts need it open, and D14 already promised it).
+
+### D119. Telemetry in the standalone CLI
+- The standalone CLI sends anonymous usage telemetry by default, announced on first run, and turned off by a setting, an environment variable or `DO_NOT_TRACK=1`.
+- **Never from embedded use:** the SDK, the Rust crate, host-spawned instances and any home a host configures send nothing. This keeps the approved H-16 rule for Jcode and every host unchanged.
+- Events are listed publicly in the docs. They carry no artifact content, paths, tokens, identities or IP addresses (the collector stores none). The most useful fields are the command, its outcome and duration, the Mostra version, the platform, and the agent or harness that ran it (from MCP `clientInfo` or known environment markers).
+- The collector belongs to the managed service's operating layer; the endpoint is configurable and disabled in development builds. The event list and detection rules are a *Deferred decision* for WP-10 with Mirza (the first-run notice is agent-facing prose, D74).
+
+*Source:* M20. *Amends* STANDARDS ("No telemetry"), REPO_STANDARDS, the root AGENTS.md, the work-package protocol and the assignment prompt. H-16 keeps its meaning for hosts.
+
+### D120. Windows in v1.1
+v1.0 remains macOS and Linux, failing closed elsewhere (D35, RT-07). Windows support follows in v1.1, shortly after the first release, as a new package WP-32 under "After the first release". *Source:* M20. *Amends* D35 (adds the target; the fail-closed rule stands for anything still unsupported).
+
+### D121. Team features in v1
+- **Expected respondents:** an artifact or share names the people who should answer, by the host's stable viewer reference and display name (or email on a remote server that sends invitations); locally Mostra issues one personal link per respondent.
+- **Waiting for everyone:** wait conditions for "every expected respondent has submitted" and "N submissions", defined under `once` per-viewer and `epochs`, and an event when the roster completes.
+- **Respondent status as data:** each respondent's state (not opened, drafting, submitted) through a client hook, the host protocol and the CLI, so the agent's page shows it in any design.
+- **Presence as data:** who is viewing, with opt-in sharing of cursor and selection, delivered as ephemeral traffic (never stored, rate-limited and coalesced). The shell imposes no presence UI.
+- **Attribution:** who last changed each artifact-scoped field, and when.
+- **Mentions:** `@mention` in review comments raises an event hosts can route (WP-20).
+- **Visibility:** owners, agents and hosts always see respondent status. What viewers see of each other by default is a *Deferred decision* for WP-31 with Mirza; recommendation: private unless the artifact opts in.
+- Real-time co-editing of text stays the v1.x Yjs plugin.
+
+API names and exact semantics are a *Deferred decision* for WP-31. *Source:* M20. *Extends* D63, D103 and D107.
+
+### D122. Terminals after the first release
+WP-22 and WP-23 (TUI frames, renderer, recordings, capture, live PTY, WASM and compare) move to a follow-up release after v1.0, unchanged in content. TM-01 to TM-07 take the release label `v1.1`; J4 and the TUI launch demo wait for them. From WP-25 they take `mostra term record` and the contract proof of their xterm.js engine; WP-25 no longer depends on WP-23. Web demos (TM-08, WP-24) stay in v1. *Source:* M20. *Amends* D16 and D28.
+
+### D123. Specification depth for new packages
+From WP-28 on, a package specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation. The implementing session settles finer details and records them as delegated decisions, as M13 to M19 already practise. Choices a specification leaves open are labelled *Deferred decision* with the owning package. *Source:* M20.
+
+### D124. `WorkerLauncher` takes a version reference
+`WorkerLauncher.launch` takes a version reference (the version's digest and a locator for its portable bundle) instead of a directory path; the local launcher resolves it to a path. `WorkerChannel` carries only serializable messages, and secrets reach a worker through the secrets port, never through inherited environment. *Why:* the seam must fit a remote launcher (D116, v1.x `SandboxPort`) without a migration. *Source:* M20. *Amends* INTERFACES §7. Lands in WP-08.
+
+### D125. New packages and their order
+- New packages take the next numbers, WP-28 to WP-32, because the generators require two-digit IDs and renumbering would break history.
+- Execution order is the order of WORK_PACKAGES.md: WP-08 to WP-15, then WP-28, WP-29, WP-30, WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26, WP-27. Under a heading "After the first release" follow WP-32 (Windows, D120), WP-22 and WP-23 (D122).
+- D17's interface priority still explains the first part of the order. The remote server comes right after the local MCP server because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package needs its viewer identity.
+- The C03-B threshold (WP-14, D73) is unchanged. The phase closeout still follows WP-27.
+
+*Source:* M20.
+
+### D126. Embedding in host applications later
+A chrome-less embed mode with host theming, host identity and host-rendered trusted controls (the `trustedControls` port already allows the last) is a `later` item (EX-08), so applications such as desktop GUIs for coding agents can render Mostra views natively. *Source:* M20.
+
+### D127. Business context from Mostra HQ
+Mirza keeps Mostra's business context (strategy, decisions, roadmap, product definitions for the managed service and team features) in a private repository, Mostra HQ, cloned at `~/src/mostra-hq`. Every session reads its README, decision log and roadmap for orientation, and the parts its package touches, as HQ's own AGENTS.md lists. The dossier stays the contract: HQ is context, never a reason to deviate without Mirza. Sessions write to HQ only with Mirza's approval. Nothing from HQ enters this public repository (files, issues, pull requests, commit messages, release notes); a product decision it informs is recorded here with product reasons only. *Source:* M20.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.
@@ -730,5 +805,5 @@ These points were presented as the converged research findings and approved as a
 | Kit | Brief 3 defaults; non-OSI engines plugin-only | D26 |
 | TUI | Frame model + owned renderer, xterm.js live, asciicast v3, Ratzilla, capture crate | D28 |
 | Agent loop | `verify`, JSON diagnostics, Skill + AGENTS.md, regression across turns | D29 |
-| Remote | Stateless dual-version remote MCP, sandbox port, PSL user-content domain (v1.x and later) | D12 |
+| Remote | Stateless dual-version remote MCP, sandbox port, PSL user-content domain (v1.x and later) | D12; the remote server moved into v1 by D116 |
 | Extensions | Hybrid npm plugins + copy-source packs, metadata registry | D30 |
