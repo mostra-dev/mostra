@@ -22,8 +22,8 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | VR-01 | WP-03 | M, I | Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | VR-02 | WP-03 | I | Fault injection at each publish step leaves no visible version and cleans staging on next start | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
-| VR-04 | WP-07 | B | Open view shows the banner within one event after a publish (browser, three engines) | unverified |
-| VR-05 | WP-07 | I, B | Version with removed field: banner counts orphans, panel shows values read-only, results include `orphaned` (browser + integration) | unverified |
+| VR-04 | WP-07 | B | Open view shows the banner within one event after a publish (browser, three engines) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
+| VR-05 | WP-07 | I, B | Version with removed field: banner counts orphans, panel shows values read-only, results include `orphaned` (browser + integration) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | VR-06 | WP-10 | I | gc property test never removes a version referenced by a submission, view, review set or follow; dry run lists candidates | unverified |
 | VR-07 | WP-24 | I, B | Each export class produced from fixtures; static and html open from disk; snapshot marks actions unavailable; bundle runs via `mostra run` | unverified |
 | VR-08 | WP-10 | I | `mostra dev` hot-reloads on a separate port and is unreachable through capability URLs | unverified |
@@ -34,9 +34,9 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | DP-05 | WP-04 | I | Lifecycle script records its PID, cwd and environment; they belong to the install child in the artifact context | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-06 | WP-01 | M (license audit) | License audit in CI fails on a seeded PolyForm or non-OSI dependency in the core and passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | IN-01 | WP-06 | M, I | Property tests for CAS, monotonic revisions and mutation-ID replay (unit + integration) | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
-| IN-02 | WP-07 | B | Close the tab mid-debounce in three browsers; reopen shows the value (pagehide and journal paths) | unverified |
-| IN-03 | WP-07 | B | Two tabs and two contexts converge on different fields; same-field edit surfaces a conflict with both choices | unverified |
-| IN-04 | WP-07 | B | Offline edits journal and replay in order; edits against a replaced version map by ID or become orphans | unverified |
+| IN-02 | WP-07 | B | Close the tab mid-debounce in three browsers; reopen shows the value (pagehide and journal paths) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
+| IN-03 | WP-07 | B | Two tabs and two contexts converge on different fields; same-field edit surfaces a conflict with both choices | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
+| IN-04 | WP-07 | B | Offline edits journal and replay in order; edits against a replaced version map by ID or become orphans | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | IN-05 | WP-06 | M, I, B | Submit transaction tests: snapshot from canonical draft, digest, version and view binding, stale flag, duplicate returns original; write-once trigger | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-06 | WP-06 | M, C | Grep and API tests: no path delivers a draft as a submission; mirrors are labelled drafts; conformance scenario | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-07 | WP-06 | M, C | Policy matrix tests: once per-artifact, once per-viewer, epochs linkage, none; conformance per policy | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
@@ -45,7 +45,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | IN-10 | WP-06 | I, C | wait level and edge semantics; timeout returns still_waiting with a cursor and later wait returns the event (CLI, protocol, SDK) | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-11 | WP-06 | I | Results JSON validates against the schema; Markdown golden includes answers, choices, comments with crop paths, versions, runs | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-12 | WP-06 | I, C | Host down during submit: submission durable, delivery pending, replay in order on reconnect; crash after host ack redelivers same deliveryId | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
-| IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | unverified |
+| IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | AC-01 | WP-08 | I | Fixture action reads a file, spawns a process and calls the network with no Mostra restriction (integration) | unverified |
 | AC-02 | WP-08 | I, B | Run streams progress, log and partial results; survives tab reload and re-attaches; final event recorded | unverified |
 | AC-03 | WP-08 | I, B | Double click and two tabs with an explicit key send once to a counting fake server | unverified |
@@ -60,7 +60,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | RV-04 | WP-20 | B | Artifact attempts to hide, cover or forge the overlay and its controls fail (browser tests) | unverified |
 | RV-05 | WP-20 | I | `mostra review export` Markdown and JSON goldens with crop paths that exist | unverified |
 | SH-01 | WP-05 | B | Shell and artifact are different origins; trusted controls exist only in the shell DOM (browser assertion) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
-| SH-02 | WP-07 | B, C | Artifact requests a label; it cannot click or spoof the control; host shell-only policy denies artifact submit with the code; channel recorded | unverified |
+| SH-02 | WP-07 | B, C | Artifact requests a label; it cannot click or spoof the control; host shell-only policy denies artifact submit with the code; channel recorded | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | SH-03 | WP-05 | B | Cookie mode in Chromium, Firefox, WebKit and real Safari; leases stable across restart; cross-site fixtures select worker mode | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-04 | WP-05 | M, B | Bridge rejects wrong origin and malformed messages (unit); message names match MCP Apps where shared | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-05 | WP-20 | R | Mirza's review of the final shell design (D68) | unverified |
@@ -122,16 +122,16 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
 | EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
-| AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | unverified |
-| AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | unverified |
+| AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
+| AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | unverified |
 | RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
-| VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | unverified |
+| VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
-| LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | unverified |
+| LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | unverified |
 | LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
