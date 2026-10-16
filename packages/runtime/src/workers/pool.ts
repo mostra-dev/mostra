@@ -125,6 +125,8 @@ export interface WorkerPoolOptions {
   readonly idleMsOverride?: number;
   /** The crash window and its limit (FAILURE_MODEL §2: 5 in 10 minutes). */
   readonly parkAfter?: { readonly crashes: number; readonly windowMs: number };
+  /** The first backoff after a crash, doubling to 60 s (FAILURE_MODEL §2: 1 s; tests shorten it). */
+  readonly backoffMinMs?: number;
   readonly now?: () => number;
 }
 
@@ -187,6 +189,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
   const now = options.now ?? Date.now;
   const park = options.parkAfter ?? CRASH_LIMIT;
   const watchdogEvery = options.watchdogIntervalMs ?? 1000;
+  const backoffMin = options.backoffMinMs ?? BACKOFF_MIN_MS;
   let stopped = false;
 
   const idleMs = (version: WorkerVersion): number =>
@@ -233,7 +236,15 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     ) {
       return { kind: "oom", cause: `it ran out of memory (heap limit ${limits.heapMb} MiB)` };
     }
-    const last = exit.stderrTail.filter((line) => line.trim() !== "").at(-1);
+    // Node ends an uncaught exception's report with its version; the error line says what
+    // happened (`Error: …`, `TypeError: …`), so it is the cause, else the last line written.
+    const lines = exit.stderrTail.filter(
+      (line) => line.trim() !== "" && !/^Node\.js v\d/.test(line.trim()),
+    );
+    const last =
+      lines.findLast((line) => /^[A-Za-z_$][\w$.]*(?:Error|Exception)\b.*:/.test(line.trim())) ??
+      lines.findLast((line) => !/^\s+at\s/.test(line)) ??
+      lines.at(-1);
     const how =
       exit.signal !== null
         ? `it was ended by ${exit.signal}`
@@ -255,7 +266,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     const parked = slot.crashes.length > park.crashes;
     const backoffMs = parked
       ? 0
-      : Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** (slot.crashes.length - 1));
+      : Math.min(BACKOFF_MAX_MS, backoffMin * 2 ** (slot.crashes.length - 1));
     slot.state = parked ? "parked" : "backoff";
     if (parked) delete slot.retryAt;
     else slot.retryAt = at + backoffMs;

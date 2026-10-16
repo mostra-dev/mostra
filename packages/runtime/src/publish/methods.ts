@@ -52,12 +52,18 @@ export function artifactMethods(options: {
    * included. Recorded receipts never hold it: the ledger keeps no link's secret.
    */
   readonly link?: (artifactId: string) => { readonly url: string; readonly tokenId: string };
+  /**
+   * Hears every publish that succeeded, a reused version too: a publish clears the artifact's
+   * parked workers (FAILURE_MODEL §2).
+   */
+  readonly published?: (artifactId: string) => void;
 }): MethodHandler[] {
   const { registry } = options;
   return [
     handler(artifactCreateMethod, (params) => options.publisher().create(params)),
     handler(artifactPublishMethod, async (params) => {
       const receipt = await options.publisher().publish(params);
+      options.published?.(receipt.artifactId);
       return options.link ? { ...receipt, ...options.link(receipt.artifactId) } : receipt;
     }),
     handler(depsAddMethod, (params) => options.publisher().addDependencies(params)),

@@ -414,6 +414,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       }
     },
     ...(testIdleMs > 0 ? { idleMsOverride: testIdleMs } : {}),
+    // Tests shorten the 1 s first backoff to crash a worker into its park quickly.
+    ...(Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) > 0
+      ? { backoffMinMs: Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) }
+      : {}),
   });
   const actions = createActions({
     interaction,
@@ -450,12 +454,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ),
     version: workerVersion,
   });
-  // A publish clears its artifact's parked workers (FAILURE_MODEL §2) and moves its producers to
-  // the new version (ARCHITECTURE §7).
-  const stopWatchingPublishes = interaction.onPublished((artifactId) => {
-    pool.clear(artifactId);
-    live.reconcile();
-  });
+  // A new latest version moves its artifact's producers to it (ARCHITECTURE §7).
+  const stopWatchingPublishes = interaction.onPublished(() => live.reconcile());
   // Runs a stopped instance left open end now (D24: never retried).
   actions.recover();
 
@@ -579,6 +579,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         registry,
         publisher: getPublisher,
         link: (artifactId) => gateway.defaultLink(artifactId),
+        published: (artifactId) => pool.clear(artifactId),
       }),
       ...gateway.methods(),
       ...interaction.methods(),
