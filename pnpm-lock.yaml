@@ -865,6 +865,9 @@ importers:
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@mostra/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@mostra/shell':
         specifier: workspace:*
         version: link:../../packages/shell
