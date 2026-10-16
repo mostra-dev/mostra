@@ -28,6 +28,7 @@ declare global {
     entries(): IterableIterator<[string, string | File]>;
   }
   var FormData: { prototype: FormData; new (): FormData };
+  var TextEncoder: { new (): { encode(text: string): Uint8Array } };
   function queueMicrotask(callback: () => void): void;
 }
 

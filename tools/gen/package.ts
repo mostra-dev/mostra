@@ -105,6 +105,8 @@ export function packageFiles(rule: PackageRule): [string, string][] {
         "  dts: true,",
         "  sourcemap: true,",
         "  clean: true,",
+        // Node builds would otherwise be named .mjs, which the exports map doesn't name.
+        ...(node ? ["  fixedExtension: false,"] : []),
         '  tsconfig: "tsconfig.src.json",',
         "});",
         "",

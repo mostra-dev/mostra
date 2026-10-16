@@ -3,7 +3,7 @@
 // no compiler API). Usage: node api-report.mjs <packageDir> <local|ci>
 // Writes or compares <packageDir>/etc/<name>.api.md and fails on any warning, including public
 // exports without TSDoc (ae-undocumented).
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { Extractor, ExtractorConfig } from "@microsoft/api-extractor";
@@ -17,6 +17,11 @@ if (!packageDir || (mode !== "local" && mode !== "ci")) {
 
 const require = createRequire(import.meta.url);
 const typescriptCompilerFolder = dirname(require.resolve("typescript/package.json"));
+
+// A package whose code runs in Node (its tsconfig names the "node" types) has Node's globals in
+// its public API, AbortSignal for one; the report sees them through that package's @types/node.
+const sourceConfig = JSON.parse(readFileSync(join(packageDir, "tsconfig.src.json"), "utf8"));
+const nodeTypes = (sourceConfig.compilerOptions?.types ?? []).includes("node");
 
 mkdirSync(join(packageDir, "etc"), { recursive: true });
 
@@ -35,7 +40,8 @@ const config = ExtractorConfig.prepare({
           moduleResolution: "bundler",
           strict: true,
           skipLibCheck: true,
-          types: [],
+          types: nodeTypes ? ["node"] : [],
+          ...(nodeTypes ? { typeRoots: [join(packageDir, "node_modules", "@types")] } : {}),
         },
         include: ["dist/**/*.d.ts"],
       },

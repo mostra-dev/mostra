@@ -5,6 +5,24 @@
     "host-protocol": "2026-10-10"
   },
   "definitions": {
+    "ActionError": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "stack": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "description": "An error from server code: its message and diagnostic code."
+    },
     "Actor": {
       "type": "object",
       "properties": {
@@ -550,6 +568,38 @@
         "createdAt"
       ],
       "description": "One artifact: metadata from its latest version, its source and latest version."
+    },
+    "Batches": {
+      "readOnly": true,
+      "description": "A serialized server-function value: its batches of frames, in order.",
+      "type": "array",
+      "items": {
+        "readOnly": true,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      }
+    },
+    "CallRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "args": {
+          "$ref": "#/definitions/Batches"
+        }
+      },
+      "required": [
+        "viewId",
+        "args"
+      ],
+      "description": "A plain server-function call: the view and the serialized arguments."
     },
     "CapabilityLink": {
       "type": "object",
@@ -1813,6 +1863,16 @@
           "items": {
             "$ref": "#/definitions/DeliveryCounts"
           }
+        },
+        "workers": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/WorkerStatus"
+          }
+        },
+        "idleExitAt": {
+          "type": "string"
         }
       },
       "required": [
@@ -1962,6 +2022,83 @@
       ],
       "description": "A successful JSON-RPC 2.0 response."
     },
+    "LivePushParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+        },
+        "value": {},
+        "mode": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "append"
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "key",
+        "value"
+      ],
+      "description": "A value pushed into an artifact's live source."
+    },
+    "LivePushResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "description": "The pushed value's revision."
+    },
+    "LiveRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "keys": {
+          "readOnly": true,
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+              },
+              "window": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              }
+            },
+            "required": [
+              "key"
+            ]
+          }
+        }
+      },
+      "required": [
+        "viewId",
+        "keys"
+      ],
+      "description": "Live sources a page reads and keeps running: keys and append windows."
+    },
     "MostraInitializeParams": {
       "type": "object",
       "properties": {
@@ -2110,6 +2247,17 @@
               "$ref": "#/definitions/StreamSnapshot"
             }
           ]
+        },
+        "ephemeral": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
         }
       },
       "required": [
@@ -2122,6 +2270,29 @@
       "type": "string",
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
+    },
+    "PortSecretsGetParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifactId",
+        "name"
+      ],
+      "description": "The artifact and the name of the secret its server code asks for."
+    },
+    "PortSecretsGetResult": {
+      "description": "The secret's value, or null when the host has none.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "PortSubmissionsDeliverResult": {
       "anyOf": [
@@ -2823,10 +2994,306 @@
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
       "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
     },
+    "RunAttachRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "runIds": {
+          "readOnly": true,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "keyed": {
+          "readOnly": true,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fnId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 1024
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "fnId",
+              "key"
+            ]
+          }
+        }
+      },
+      "required": [
+        "viewId"
+      ],
+      "description": "Runs a page reads and follows: by ID, or by function and key."
+    },
+    "RunCancelRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        }
+      },
+      "required": [
+        "viewId"
+      ],
+      "description": "Cancel a run, from a view."
+    },
     "RunId": {
       "type": "string",
       "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Action run ID: \"run_\" followed by a 26-character ULID."
+    },
+    "RunProgress": {
+      "type": "object",
+      "properties": {
+        "fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "description": "A run's progress: fraction and message."
+    },
+    "RunRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1024
+        },
+        "args": {
+          "$ref": "#/definitions/Batches"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "clientKey": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "viewId",
+        "fnId",
+        "args",
+        "clientKey"
+      ],
+      "description": "Start or join an action run: the function, its arguments and keys."
+    },
+    "RunState": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "fnId": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "waiting",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "progress": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RunProgress"
+            }
+          ]
+        },
+        "log": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "batches": {
+          "$ref": "#/definitions/Batches"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ]
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        },
+        "joined": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runId",
+        "fnId",
+        "status",
+        "log",
+        "batches",
+        "startedAt"
+      ],
+      "description": "An action run: status, progress, log and the result written so far."
+    },
+    "SecretDeleteParams": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+        },
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ArtifactRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "The secret to delete."
+    },
+    "SecretDeleteResult": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "description": "Whether a secret was deleted."
+    },
+    "SecretEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "artifact",
+            "home"
+          ]
+        },
+        "artifactId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "scope",
+        "updatedAt"
+      ],
+      "description": "A secret's name, scope and when it was set; never its value."
+    },
+    "SecretListParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ArtifactRef"
+            }
+          ]
+        }
+      },
+      "description": "The artifact whose secrets to list."
+    },
+    "SecretListResult": {
+      "type": "object",
+      "properties": {
+        "secrets": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SecretEntry"
+          }
+        }
+      },
+      "required": [
+        "secrets"
+      ],
+      "description": "Secrets by name and scope."
+    },
+    "SecretSetParams": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ArtifactRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "description": "A secret's name, value and optional artifact scope."
     },
     "ShellSubmitRequest": {
       "type": "object",
@@ -3560,6 +4027,56 @@
           ]
         }
       ]
+    },
+    "WorkerStatus": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "starting",
+            "ready",
+            "backoff",
+            "parked",
+            "stopped"
+          ]
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "crashes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastCause": {
+          "type": "string"
+        },
+        "retryAt": {
+          "type": "string"
+        },
+        "active": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "state",
+        "crashes",
+        "active"
+      ],
+      "description": "One artifact version's worker."
     }
   }
 }

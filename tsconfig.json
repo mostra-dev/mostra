@@ -19,6 +19,12 @@
     },
     {
       "path": "packages/shell"
+    },
+    {
+      "path": "packages/server"
+    },
+    {
+      "path": "packages/worker"
     }
   ]
 }

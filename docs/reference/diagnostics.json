@@ -1,6 +1,24 @@
 {
   "codes": [
     {
+      "code": "MOSTRA_ACTION_CANCELLED",
+      "severity": "warning",
+      "phase": "runtime",
+      "title": "Action run cancelled",
+      "hint": "Start the action again if it should still run.",
+      "explanation": "The action run was cancelled from a page, and its `abortSignal` fired. The run ends `cancelled` when the action stops; an action that ignores the signal ends with whatever it returns.",
+      "fix": "Nothing to fix. Pass `abortSignal` from `@mostra/server` to `fetch` and other cancellable calls so cancelling stops the work."
+    },
+    {
+      "code": "MOSTRA_ACTION_EVENT_INVALID",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Host event type or payload invalid",
+      "hint": "Name the event `host.<name>` with 1 to 64 letters, digits, `.`, `_` and `-`, and keep its payload JSON of at most 64 KiB.",
+      "explanation": "Server code called `emit(type, payload)` from `@mostra/server` with a type that isn't `host.` followed by a name, or a payload that isn't JSON or is larger than 64 KiB. The event is not appended; `emit` throws.",
+      "fix": "Use a type such as `host.reply-sent` and a small JSON payload. Put larger data in artifact state or a live source and send its key in the event."
+    },
+    {
       "code": "MOSTRA_ACTION_EXPORT_INVALID",
       "severity": "error",
       "phase": "compile",
@@ -8,6 +26,51 @@
       "hint": "Export only async functions from a \"use server\" module; move other exports to an ordinary module.",
       "explanation": "A module that starts with `\"use server\"` makes every export a server function the page can call. React's contract allows only async functions there. Mostra reports this code for any other export (a constant, a class, a non-async function, `export *`), naming the export.",
       "fix": "Make the function `async`, or move the value to a separate module without the directive and import it from both sides."
+    },
+    {
+      "code": "MOSTRA_ACTION_INTERRUPTED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Action run interrupted",
+      "hint": "Check the run's effects at their provider, then start it again with a new key if it should run again.",
+      "explanation": "The action run's worker crashed, ran out of memory, was stopped by the event-loop watchdog, or the instance stopped while the run was running. The run ends `failed` with the reason `interrupted`, and Mostra never retries it by itself (D24): an action that had already started a side effect, such as sending an email, may or may not have finished it.",
+      "fix": "Look at the effect where it happens (the mail provider's sent folder, say) before running the action again. Pass the provider's own idempotency key from the action (for example, the run's key) so a repeated request can't act twice."
+    },
+    {
+      "code": "MOSTRA_ACTION_RUN_NOT_FOUND",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "No such action run",
+      "hint": "Start the action again; the run ID names no run of this artifact.",
+      "explanation": "A page asked for or cancelled an action run that this artifact doesn't have, or one started from another artifact.",
+      "fix": "Use the run IDs `useAction` reports. A page that keeps run IDs itself should drop IDs from other artifacts."
+    },
+    {
+      "code": "MOSTRA_ACTION_THREW",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Server function threw",
+      "hint": "Read the run's log for the stack, then fix the server function or catch the error and return a result instead.",
+      "explanation": "A server function threw while it ran. The page gets `{ code: \"MOSTRA_ACTION_THREW\", message }` with the thrown error's message (`useAction`'s `error`, or the rejected promise of a plain call); the stack goes to the action run's log, never to the page. When the error carried a diagnostic code of its own (a `MOSTRA_SECRET_MISSING`, say), that code is reported instead.",
+      "fix": "Fix the cause in the function, or catch the error inside it and return a value the page can show. Mostra never retries a run by itself (D24); retry in your own code, or call the action again with a new key."
+    },
+    {
+      "code": "MOSTRA_ACTION_TOO_LARGE",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Server function arguments or result too large",
+      "hint": "Return or pass less data: page through it, or write it to artifact state or a live source instead.",
+      "explanation": "A server function's serialized arguments, or an action run's serialized result, is over 16 MiB. A plain call or run with arguments that large is refused before it starts; a run whose result grows past the limit is stopped and ends `failed`.",
+      "fix": "Send identifiers rather than whole documents, return a page of results at a time, or publish large data through a live source or artifact state, which the page reads on its own."
+    },
+    {
+      "code": "MOSTRA_ACTION_UNKNOWN_FUNCTION",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "No such server function in this version",
+      "hint": "Publish the artifact again so the page and its server code come from the same version.",
+      "explanation": "The page called a server function ID (`<module path>#<export>`) that the version's server bundle doesn't export. Pages call only functions their own build references, so this means a page and a worker of different versions, or a request written by hand.",
+      "fix": "Republish the artifact and reload the page. Call server functions by importing them from their `\"use server\"` module, never by ID."
     },
     {
       "code": "MOSTRA_ACTION_UNSERIALIZABLE",
@@ -215,6 +278,15 @@
       "hint": "Open the artifact through a new link: `view/url` or `mostra open` mints one on the new port.",
       "explanation": "The shell's port or an artifact's port is leased per home and reused across restarts, so links keep working (D62, D99). At start-up another program held the leased port, so Mostra leased a new one. Links that named the old port stop working; the shell's port changing affects every link of the home.",
       "fix": "Mint new links with `view/url` (the publish receipt of the next publish carries the new default link too). Stop the program that took the port if you want the old links back; `mostra doctor` names it where it can."
+    },
+    {
+      "code": "MOSTRA_ENV_SERVICE_FAILED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Login service could not be installed",
+      "hint": "Read the message, fix what it names, and run the install again.",
+      "explanation": "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.",
+      "fix": "Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`."
     },
     {
       "code": "MOSTRA_ENV_SHELL_MISSING",
@@ -604,6 +676,24 @@
       "fix": "Get a new link from whoever shared this one. An agent mints it with `view/url`, or rotates the old one with `view/rotate`, and shares the new URL."
     },
     {
+      "code": "MOSTRA_LIVE_SOURCE_FAILED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Live source failed",
+      "hint": "Read the message, fix the live source's loader or stream, and publish again; the last good value stays meanwhile.",
+      "explanation": "A live source's `load` or `stream` threw, or its value was outside the serializable types. Pages keep showing the last good value with `useLive`'s `error` set, and the producer tries again on its schedule (FAILURE_MODEL §6).",
+      "fix": "Fix the producer in `live.ts`, or catch transient failures there and return the previous value."
+    },
+    {
+      "code": "MOSTRA_LIVE_TOO_LARGE",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Live value too large",
+      "hint": "Push or produce a smaller value: at most 4 MiB serialized.",
+      "explanation": "A live value, pushed or produced, is over 4 MiB once serialized (DATA_MODEL §5). It is refused and the last good value stays.",
+      "fix": "Send a smaller window of the data, or split it across several live sources. For high-rate series, push single points in append mode and let the page keep the window."
+    },
+    {
       "code": "MOSTRA_MANIFEST_INVALID",
       "severity": "error",
       "phase": "manifest",
@@ -656,6 +746,33 @@
       "hint": "Publish again once the artifact's files have stopped changing.",
       "explanation": "Publishing reads the entry's manifest twice: once to find the artifact, and again from the snapshot it builds. Mostra reports this code when the two disagree about which artifact the source is, because the manifest `id` or the source's binding changed while the publish ran, for example when an editor saved the entry mid-publish or another publish rebound the path. Nothing was published.",
       "fix": "Wait until the files are saved and nothing else is publishing the same source, then publish again. If the manifest `id` was changed on purpose, the next publish uses the new one."
+    },
+    {
+      "code": "MOSTRA_RUNTIME_WORKER_CRASHED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Artifact server code crashed",
+      "hint": "Read the cause and the worker's last output, fix the server code, and publish again.",
+      "explanation": "The artifact version's worker process exited while serving a call: it threw outside any call, ran out of its heap (1 GiB by default), or kept its event loop blocked past the watchdog (10 s by default). Other artifacts and the gateway keep working (RT-04). Mostra appends `worker.crashed` with the cause and starts the worker again on the next request, waiting longer after each crash (1 s up to 60 s).",
+      "fix": "Fix the crash in the server code. A long synchronous computation can raise `limits.watchdogMs` in the manifest, and a large data set `limits.heapMb`; both are stability limits, not security ones."
+    },
+    {
+      "code": "MOSTRA_RUNTIME_WORKER_PARKED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Artifact server code keeps crashing",
+      "hint": "Fix the server code and publish again, which clears the park; the message names the last crash's cause.",
+      "explanation": "The artifact version's worker crashed more than 5 times in 10 minutes, so Mostra stopped starting it (FAILURE_MODEL §2). Calls, runs and live sources of that version answer this code until the park clears, and the shell tells the viewer that the artifact's server code keeps crashing.",
+      "fix": "Find the cause in the message and the worker's output, fix it, and publish again: a new publish, `verify` or a restart of the instance clears the park."
+    },
+    {
+      "code": "MOSTRA_SECRET_MISSING",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Secret not set",
+      "hint": "Set the secret with `mostra secret set NAME`, reading the value from stdin.",
+      "explanation": "Server code called `secret(name)` for a secret that neither the host's `secrets` port, the artifact's own secrets nor the home's shared secrets hold (D44). The call throws, and an action run fails with this code.",
+      "fix": "Set the secret for the artifact (`mostra secret set NAME --artifact <path|id>`) or for every artifact of the home (`mostra secret set NAME`), passing the value on stdin, then run the action again. Secret values never go into the artifact's source."
     },
     {
       "code": "MOSTRA_SUBMIT_ALREADY",

@@ -9,6 +9,7 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_PORT_TAKEN",
   "MOSTRA_ENV_BIND_FAILED",
   "MOSTRA_ENV_SHELL_MISSING",
+  "MOSTRA_ENV_SERVICE_FAILED",
   // gen:codes
 ] as const;
 
@@ -59,6 +60,17 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
       explanation:
         "Viewers open artifacts inside the shell, Mostra's trusted page, which ships with the runtime as built files. The runtime couldn't find them, which means the runtime installation is incomplete. Artifact frames are still served.",
       fix: "Reinstall Mostra so the runtime bundle is complete. A custom layout can point the runtime at the shell's built directory with `MOSTRA_SHELL_DIR`.",
+    },
+  },
+  MOSTRA_ENV_SERVICE_FAILED: {
+    severity: "error",
+    phase: "host",
+    title: "Login service could not be installed",
+    hint: "Read the message, fix what it names, and run the install again.",
+    docs: {
+      explanation:
+        "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.",
+      fix: "Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.",
     },
   },
   // gen:entries

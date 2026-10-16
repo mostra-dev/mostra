@@ -10,6 +10,7 @@
  * ```
  */
 import * as z from "zod";
+import type { EphemeralMessage } from "./actions.ts";
 import { ArtifactId, Cursor, MutationId, ViewId } from "./ids.ts";
 import {
   DocumentRevision,
@@ -187,6 +188,11 @@ export interface PollResult {
   readonly events: readonly EventRecord[];
   /** Present when the poll asked for none or its cursor was compacted away. */
   readonly snapshot?: StreamSnapshot;
+  /**
+   * Run and live updates for this view since its last poll (WP-08): lossy and never stored as
+   * events, the long-poll's counterpart of the stream's `run` and `live` messages.
+   */
+  readonly ephemeral?: readonly EphemeralMessage[];
 }
 
 /** The Zod schema of the `PollResult` type. */
@@ -195,11 +201,12 @@ export const PollResult: z.ZodType<PollResult> = z
     cursor: Cursor.schema,
     events: z.array(EventRecord).readonly(),
     snapshot: StreamSnapshot.exactOptional(),
+    ephemeral: z.array(z.record(z.string(), z.unknown())).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "PollResult",
     description: "A long-poll answer: the cursor, the events after the asked one, and a snapshot.",
-  });
+  }) as unknown as z.ZodType<PollResult>;
 
 /**
  * `POST /a/{artifactId}/_mostra/ticket`'s answer on the shell origin: a single-use frame ticket,
