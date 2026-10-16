@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * `@mostra/react/form`: react-hook-form on Mostra fields (D52, D26). `useForm` is react-hook-form's
  * own, with one more option, `id`: every answer persists as the Mostra field `<id>.<path>` (a

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Mounting an artifact (D57, D111): the generated client entry hands the page to
  * {@link mountArtifact}, or its `pages/` routes to `mountRoutes` from `@mostra/react/router`. The
@@ -10,6 +12,7 @@ import { type ComponentType, createElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { type ArtifactMode, RuntimeProvider } from "./hooks.ts";
 import { type Runtime, startRuntime } from "./runtime/boot.ts";
+import { setServerCallback } from "./server-reference.ts";
 import { reportReady } from "./shell-bridge.ts";
 import { installStorage } from "./storage.ts";
 
@@ -20,6 +23,9 @@ const FIRST_RENDER_WAIT_MS = 3_000;
 export async function prepareArtifact(): Promise<Runtime> {
   const runtime = await startRuntime();
   installStorage(runtime.store);
+  // Server references call through this page's runtime (D54): Mostra in live mode, and a
+  // `MOSTRA_TARGET_UNAVAILABLE` refusal where there is no server.
+  setServerCallback((id, args) => runtime.store.server.call(id, args));
   await runtime.store.whenReady(FIRST_RENDER_WAIT_MS);
   return runtime;
 }

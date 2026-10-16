@@ -1238,6 +1238,7 @@ export interface LiveRequest {
     readonly keys: readonly {
         readonly key: string;
         readonly window?: number;
+        readonly refresh?: boolean;
     }[];
     readonly viewId: string;
 }

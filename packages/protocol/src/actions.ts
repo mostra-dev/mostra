@@ -350,8 +350,15 @@ export const LIVE_RING_MAX = 100_000;
 export interface LiveRequest {
   /** The view the page was opened as (D104). */
   readonly viewId: string;
-  /** The sources, each with its append window. */
-  readonly keys: readonly { readonly key: string; readonly window?: number }[];
+  /**
+   * The sources, each with its append window; `refresh` asks the source's producer to load again
+   * now (`useLive`'s `refresh()`).
+   */
+  readonly keys: readonly {
+    readonly key: string;
+    readonly window?: number;
+    readonly refresh?: boolean;
+  }[];
 }
 
 /** The Zod schema of the `LiveRequest` type. */
@@ -363,6 +370,7 @@ export const LiveRequest: z.ZodType<LiveRequest> = z
         z.object({
           key: z.string().regex(LIVE_KEY_PATTERN),
           window: z.int().min(1).max(LIVE_RING_MAX).exactOptional(),
+          refresh: z.boolean().exactOptional(),
         }),
       )
       .max(256)

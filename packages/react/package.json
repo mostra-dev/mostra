@@ -87,7 +87,7 @@
         "react-router",
         "react-hook-form"
       ],
-      "limit": "45 kB"
+      "limit": "53 kB"
     },
     {
       "name": "@mostra/react whole entry, zod excluded",
@@ -100,7 +100,7 @@
         "react-hook-form",
         "zod"
       ],
-      "limit": "22 kB"
+      "limit": "30 kB"
     }
   ],
   "peerDependencies": {

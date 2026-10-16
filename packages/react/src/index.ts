@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * `@mostra/react`: the client runtime artifact authors import (INTERFACES §2.3). Fields that behave
  * like `useState` with a stable ID and persist as the viewer works, the artifact channel's
@@ -40,7 +42,22 @@ export {
 export { mountArtifact } from "./mount.ts";
 export { type DiagnosticLike, MostraError } from "./runtime/errors.ts";
 export type { SubmitState } from "./runtime/store.ts";
-export { createServerReference, type ServerReference } from "./server-reference.ts";
+export {
+  type ActionHandle,
+  type LiveKey,
+  type LiveResult,
+  type LiveSources,
+  type LiveValue,
+  type LiveValuesOf,
+  useAction,
+  useLive,
+} from "./server-hooks.ts";
+export {
+  type CallServer,
+  createServerReference,
+  type ServerReference,
+  setServerCallback,
+} from "./server-reference.ts";
 export { connectShell, openLink, reportReady, type ShellConnection } from "./shell-bridge.ts";
 export type { ClaudeCompatibleStorage, StorageEntry } from "./storage.ts";
 

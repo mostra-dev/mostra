@@ -8,15 +8,37 @@ import { ArtifactManifest } from '@mostra/protocol';
 import { Bridge } from '@mostra/protocol';
 import { ComponentType } from 'react';
 import { FieldScope } from '@mostra/protocol';
+import { RunProgress } from '@mostra/protocol';
+import { RunStatus } from '@mostra/protocol';
 import { SubmissionSummary } from '@mostra/protocol';
 import { SubmitBlocker } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
 import { Viewer } from '@mostra/protocol';
 
+// @public
+export interface ActionHandle<A extends unknown[], R> {
+    cancel(): void;
+    readonly data?: R;
+    readonly error?: {
+        readonly code: string;
+        readonly message: string;
+    };
+    readonly isPending: boolean;
+    readonly log: readonly string[];
+    readonly partial: readonly (R extends AsyncIterable<infer T> ? T : unknown)[];
+    readonly progress?: RunProgress;
+    run(...args: A): Promise<R>;
+    readonly runId?: string;
+    readonly status: "idle" | RunStatus;
+}
+
 export { ArtifactManifest }
 
 // @public
 export type ArtifactMode = "live" | "static" | "mcp-app" | "verify";
+
+// @public
+export type CallServer = (id: string, args: unknown[]) => Promise<unknown>;
 
 // @public
 export interface ChoiceCandidate {
@@ -82,6 +104,32 @@ export interface FieldOptions<T> {
 }
 
 // @public
+export type LiveKey = [keyof LiveSources] extends [never] ? string : keyof LiveSources & string;
+
+// @public
+export interface LiveResult<T> {
+    readonly at?: string;
+    readonly data: T | undefined;
+    readonly error?: Error;
+    readonly isLoading: boolean;
+    refresh(): void;
+    readonly revision?: string;
+}
+
+// @public
+export interface LiveSources {}
+
+// @public
+export type LiveValue<K extends string> = K extends keyof LiveSources ? LiveSources[K] : unknown;
+
+// @public
+export type LiveValuesOf<M> = { [K in keyof M as M[K] extends {
+        readonly "~mostra.live": unknown;
+    } ? K : never]: M[K] extends {
+        readonly __value?: infer T;
+    } ? T : never; };
+
+// @public
 export class MostraError extends Error {
     constructor(code: string, message: string, options?: {
         readonly status?: number;
@@ -110,6 +158,9 @@ export interface ServerReference<A extends unknown[] = unknown[], R = unknown> {
     (...args: A): Promise<R>;
     readonly mostraServerFunctionId: string;
 }
+
+// @public
+export function setServerCallback(callback: CallServer): () => void;
 
 // @public
 export interface ShellConnection {
@@ -165,6 +216,11 @@ export interface SubmitHandle {
 export type SubmitState = "open" | "submitting" | "submitted" | "delivered" | "pending-delivery" | "undeliverable" | "closed";
 
 // @public
+export function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>, options?: {
+    readonly key?: string;
+}): ActionHandle<A, Awaited<R>>;
+
+// @public
 export function useArtifact(): {
     readonly id: string;
     readonly versionId: string;
@@ -184,6 +240,18 @@ export function useChoice(reviewSetId: string, options?: {
 
 // @public
 export function useField<T>(id: string, initial: T, options?: FieldOptions<NoInfer<T>>): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>];
+
+// @public
+export function useLive<K extends LiveKey>(key: K, options: {
+    readonly mode: "append";
+    readonly window?: number;
+}): LiveResult<LiveValue<K>[]>;
+
+// @public
+export function useLive<K extends LiveKey>(key: K, options?: {
+    readonly mode?: "latest";
+    readonly window?: number;
+}): LiveResult<LiveValue<K>>;
 
 // @public
 export function useSignal(name: string): {

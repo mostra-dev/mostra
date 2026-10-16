@@ -33,6 +33,7 @@ import {
 } from "@mostra/protocol";
 import { MostraError, targetUnavailable } from "./errors.ts";
 import type { Journal, JournalEntry, MutationEntry, PendingEntry } from "./journal.ts";
+import { ServerClient } from "./server-client.ts";
 import { NetworkError, type Transport } from "./transport.ts";
 
 /** How long the page waits after the last edit before it saves (INTERFACES §2.3). */
@@ -258,9 +259,16 @@ export class Store {
   #resyncing: Promise<void> | undefined;
   readonly #beforeSubmit = new Set<() => Promise<void>>();
   #stopStream: (() => void) | undefined;
+  /** Plain calls, action runs and live sources (WP-08), over the same transport and view. */
+  readonly server: ServerClient;
 
   constructor(options: StoreOptions) {
     this.#options = options;
+    this.server = new ServerClient({
+      ...(options.mode === "live" && options.transport ? { transport: options.transport } : {}),
+      ...(options.mode === "live" && options.view ? { viewId: options.view.viewId } : {}),
+      ...(options.timers ? { timers: options.timers } : {}),
+    });
     this.mode = options.mode;
     this.view = options.view;
     this.#viewer = options.viewer;
@@ -335,10 +343,15 @@ export class Store {
         const online = status === "live";
         if (online !== this.#online) {
           this.#online = online;
-          if (online) this.#kickQueue();
+          if (online) {
+            this.#kickQueue();
+            // Run and live updates sent while the stream was down are gone: read them again.
+            this.server.resync();
+          }
           this.#changed(this.#allKeys());
         }
       },
+      onEphemeral: (message) => this.server.receive(message),
     });
     if (typeof window !== "undefined") {
       window.addEventListener("online", () => this.#kickQueue());
@@ -348,6 +361,7 @@ export class Store {
   /** Stops the stream and timers (the page is going away, or a test ends). */
   stop(): void {
     this.#stopStream?.();
+    this.server.stop();
     this.#broadcast?.close();
     if (this.#debounce !== undefined) this.#timers.clearTimeout(this.#debounce);
     if (this.#retry !== undefined) this.#timers.clearTimeout(this.#retry);

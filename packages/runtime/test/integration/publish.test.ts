@@ -159,7 +159,8 @@ describe("artifacts build with no configuration (AU-01, AU-02, AU-03)", () => {
       { id: "actions.ts#archive", module: "actions.ts", export: "archive", dryRun: true },
       { id: "actions.ts#notify", module: "actions.ts", export: "notify", dryRun: false },
     ]);
-    expect(registry.liveSources).toEqual([{ key: "openWork" }]);
+    // With the literal `always` WP-08's producers read (D63).
+    expect(registry.liveSources).toEqual([{ key: "openWork", always: false }]);
     expect(readFileSync(join(version, "client/logo.svg"), "utf8")).toContain("<svg");
     // The server function body never reaches the browser; the server bundle has it.
     const client = readdirSync(join(version, "client/assets"))

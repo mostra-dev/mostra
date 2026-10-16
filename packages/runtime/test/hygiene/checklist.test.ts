@@ -528,12 +528,15 @@ describe("item 9: per-scope tokens (HY-03)", () => {
     const browser = new Browser();
     const viewer = await openLink(browser, link.url);
     const call = (fn: string) =>
-      browser.fetchJson(viewer.frameOrigin, `/_mostra/v/1/call/${fn}`, {
+      browser.fetchJson(viewer.frameOrigin, `/_mostra/v/2026-10-15/call/${fn}`, {
         body: {},
         csrf: viewer.frameCsrf,
       });
-    expect((await call("actions.ts%23sendReply")).status).toBe(501);
-    expect((await call("lib/mail.ts%23sendReply")).status).toBe(501);
+    // Through every check to WP-08's handler, which reads the (empty) body.
+    expect(code(await call("actions.ts%23sendReply"))).toBe("400 MOSTRA_HYGIENE_REQUEST_MALFORMED");
+    expect(code(await call("lib/mail.ts%23sendReply"))).toBe(
+      "400 MOSTRA_HYGIENE_REQUEST_MALFORMED",
+    );
     expect(code(await call("actions.ts%23archive"))).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
     expect(
       code(
@@ -545,12 +548,17 @@ describe("item 9: per-scope tokens (HY-03)", () => {
     ).toBe("403 MOSTRA_HYGIENE_SCOPE_DENIED");
   });
 
-  it("lets the full link through every declared route's checks to its handler (WP-06 serves fields, submit and signal; actions answer 501 until WP-08)", async () => {
-    // Behind the checks, WP-06's handlers read the body: an empty one is malformed (D96).
+  it("lets the full link through every declared route's checks to its handler (WP-06's fields, submit and signal; WP-08's calls, runs and live sources)", async () => {
+    // Behind the checks, the handlers read the body: an empty one is malformed (D96).
     for (const path of [
       "/_mostra/v/2026-10-15/fields",
       "/_mostra/v/2026-10-15/submit",
       "/_mostra/v/2026-10-15/signal",
+      "/_mostra/v/2026-10-15/runs",
+      "/_mostra/v/2026-10-15/runs/attach",
+      "/_mostra/v/2026-10-15/runs/run_01J00000000000000000000000/cancel",
+      "/_mostra/v/2026-10-15/call/a.ts%23b",
+      "/_mostra/v/2026-10-15/live",
     ]) {
       const answer = await holder.fetchJson(opened.frameOrigin, path, {
         body: {},
@@ -564,13 +572,6 @@ describe("item 9: per-scope tokens (HY-03)", () => {
       csrf: opened.frameCsrf,
     });
     expect(code(unknown)).toBe("404 MOSTRA_HYGIENE_NOT_SERVED");
-    for (const path of ["/_mostra/v/2026-10-15/runs", "/_mostra/v/2026-10-15/call/a.ts%23b"]) {
-      const answer = await holder.fetchJson(opened.frameOrigin, path, {
-        body: {},
-        csrf: opened.frameCsrf,
-      });
-      expect(code(answer), path).toBe("501 MOSTRA_HYGIENE_NOT_SERVED");
-    }
   });
 });
 

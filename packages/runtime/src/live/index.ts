@@ -67,7 +67,11 @@ export interface Live {
     page: PageIdentity,
     input: {
       readonly viewId: string;
-      readonly keys: readonly { readonly key: string; readonly window?: number }[];
+      readonly keys: readonly {
+        readonly key: string;
+        readonly window?: number;
+        readonly refresh?: boolean;
+      }[];
     },
   ): LiveState[];
   /** `live/push` (D56): a value from an agent or a host. */
@@ -347,6 +351,10 @@ export function createLive(options: LiveOptions): Live {
     read(page, input) {
       options.interaction.checkView(page, input.viewId);
       bus.watchLive(page.artifactId, input.viewId, input.keys);
+      for (const entry of input.keys) {
+        if (entry.refresh)
+          running.get(keyOf(page.artifactId, entry.key))?.handle.liveRefresh(entry.key);
+      }
       schedule();
       return ledger.read((db) =>
         input.keys.map((entry) => stateOf(db, page.artifactId, entry.key, entry.window)),

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * The client runtime's hooks (INTERFACES §2.3, D52, D53, D113): fields that behave like
  * `useState` with a stable ID, the artifact channel's submit, the shell's trusted Submit label,
