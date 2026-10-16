@@ -142,6 +142,35 @@ export interface FlushOutcome {
   readonly unsaved: boolean;
 }
 
+/** How many early delivery events a page keeps. */
+const EARLY_DELIVERIES_MAX = 64;
+
+const DELIVERY_SEVERITY = { delivered: 0, pending: 1, rejected: 2, undeliverable: 3 } as const;
+
+/**
+ * One submission's two accounts merged: each delivery as its latest change says, so an answer
+ * built before newer events never takes the state back (Claude review finding 8).
+ */
+function mergedSubmission(
+  known: SubmissionSummary | undefined,
+  next: SubmissionSummary,
+): SubmissionSummary {
+  if (known?.id !== next.id || known.deliveries === undefined) return next;
+  const newer = new Map((next.deliveries ?? []).map((delivery) => [delivery.deliveryId, delivery]));
+  for (const delivery of known.deliveries) {
+    const other = newer.get(delivery.deliveryId);
+    if (other === undefined || delivery.updatedAt > other.updatedAt) {
+      newer.set(delivery.deliveryId, delivery);
+    }
+  }
+  const deliveries = [...newer.values()];
+  let worst: SubmissionSummary["delivery"] = "delivered";
+  for (const delivery of deliveries) {
+    if (DELIVERY_SEVERITY[delivery.state] > DELIVERY_SEVERITY[worst]) worst = delivery.state;
+  }
+  return { ...next, deliveries, delivery: deliveries.length > 0 ? worst : next.delivery };
+}
+
 /** Deep equality for JSON values. */
 function same(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -185,6 +214,8 @@ export class Store {
   #viewer: Viewer | undefined;
   /** Whether the first snapshot arrived. */
   #loaded = false;
+  /** Delivery events for a submission not known yet (the stream may beat the submit's answer). */
+  #earlyDeliveries: EventRecord[] = [];
   #submission: SubmissionSummary | undefined;
   /** Whether a submission closed the viewer's draft (`once`, D106). */
   #closed = false;
@@ -1418,8 +1449,15 @@ export class Store {
     this.#changed();
   }
 
-  #adoptSubmission(submission: SubmissionSummary, fromSnapshot: boolean): void {
+  #adoptSubmission(incoming: SubmissionSummary, fromSnapshot: boolean): void {
+    const submission = mergedSubmission(this.#submission, incoming);
     this.#submission = submission;
+    // Delivery events the stream brought before this submission was known (Claude review
+    // finding 8): applied now, so the state never goes back.
+    const early = this.#earlyDeliveries.filter(
+      (event) => (event.payload as { submissionId?: string }).submissionId === submission.id,
+    );
+    this.#earlyDeliveries = this.#earlyDeliveries.filter((event) => !early.includes(event));
     const policy = this.view?.policy;
     // Under `epochs` the draft goes on to the next round; under `once` it is closed.
     if (policy?.policy !== "epochs" || submission.epoch === this.#epoch) {
@@ -1430,6 +1468,7 @@ export class Store {
       return;
     }
     this.#submitState = deliveryState(submission);
+    for (const event of early) this.#deliveryEvent(event);
   }
 
   #deliveryEvent(event: EventRecord): void {
@@ -1440,7 +1479,10 @@ export class Store {
       owner?: string;
       reason?: string;
     };
-    if (!submission || payload.submissionId !== submission.id) return;
+    if (!submission || payload.submissionId !== submission.id) {
+      this.#earlyDeliveries = [...this.#earlyDeliveries, event].slice(-EARLY_DELIVERIES_MAX);
+      return;
+    }
     const kind = event.type.slice("submission.".length);
     const state =
       kind === "delivered"

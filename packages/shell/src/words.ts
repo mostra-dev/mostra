@@ -5,7 +5,10 @@
  */
 
 /** The rail's save state (D47). */
-export const SAVE_WORDS: Readonly<Record<"saved" | "saving" | "offline" | "conflict", string>> = {
+export const SAVE_WORDS: Readonly<
+  Record<"saved" | "saving" | "offline" | "conflict" | "connecting", string>
+> = {
+  connecting: "Connecting…",
   saved: "Saved",
   saving: "Saving…",
   offline: "Not saved yet: offline",

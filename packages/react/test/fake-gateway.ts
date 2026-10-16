@@ -264,7 +264,24 @@ export class FakeGateway {
       draftRevision: request.expectedRevision,
       digest: "0".repeat(64),
       delivery: "pending",
-      deliveries: [],
+      deliveries: this.deliveries,
     };
+  }
+
+  /** The deliveries a submit's answer carries. */
+  deliveries: NonNullable<SubmissionSummary["deliveries"]> = [];
+
+  /** Streams an event to the page as the gateway would (a delivery's change, say). */
+  emitEvent(event: Omit<EventRecord, "cursor" | "seq" | "artifactId">): void {
+    const record: EventRecord = {
+      ...event,
+      cursor: String(++this.#cursor) as EventRecord["cursor"],
+      seq: this.#cursor,
+      artifactId: "art_01J00000000000000000000000",
+    };
+    this.events.push(record);
+    for (const subscriber of this.#subscribers) {
+      queueMicrotask(() => subscriber.onEvents([record]));
+    }
   }
 }

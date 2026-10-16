@@ -1,6 +1,16 @@
 import type { EventRecord, FrameTicket, StreamSnapshot } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
-import { initialState, submitRevision, withEvents, withSnapshot } from "../src/model.ts";
+import {
+  ARM_MS,
+  allowedSubmitLabel,
+  controlsArmed,
+  initialState,
+  submitRevision,
+  withControlRequest,
+  withEvents,
+  withSnapshot,
+  withSubmission,
+} from "../src/model.ts";
 
 const TICKET: FrameTicket = {
   artifactId: "art_01J00000000000000000000000",
@@ -74,5 +84,133 @@ describe("the revision the trusted Submit names (GPT review findings 2 and 3)", 
 
   it("is the stream's for a version built before the flush message, which answers nothing", () => {
     expect(submitRevision("legacy", undefined, 5)).toEqual({ revision: 5 });
+  });
+});
+
+describe("the receipt never goes back (Claude review finding 8)", () => {
+  const delivery = {
+    deliveryId: "dlv_01J00000000000000000000000",
+    owner: "jcode",
+    state: "pending" as const,
+    attempts: 0,
+    updatedAt: "2026-10-16T00:00:00.000Z",
+  };
+  const summary = {
+    id: "sub_01J00000000000000000000000",
+    at: "2026-10-16T00:00:00.000Z",
+    epoch: 1,
+    channel: "shell" as const,
+    versionId: "ver_00000000000000000000000001",
+    version: 1,
+    viewId: TICKET.viewId,
+    staleView: false,
+    draftRevision: "1",
+    digest: "0".repeat(64),
+    delivery: "pending" as const,
+    deliveries: [delivery],
+  };
+  const event = (type: string, at: string): EventRecord => ({
+    cursor: "30" as EventRecord["cursor"],
+    artifactId: TICKET.artifactId,
+    seq: 3,
+    type,
+    at,
+    actor: { kind: "mostra" },
+    payload: { submissionId: summary.id, deliveryId: delivery.deliveryId, owner: "jcode" },
+  });
+
+  it("applies a delivery event that came before the submit's answer", () => {
+    let state = withEvents(initialState(TICKET), [
+      event("submission.retrying", "2026-10-16T00:00:01.000Z"),
+    ]);
+    state = withSubmission(state, summary);
+    expect(state.submission?.deliveries?.[0]?.waiting).toBe(true);
+  });
+
+  it("keeps a newer delivery state over an answer built before it", () => {
+    let state = withSubmission(initialState(TICKET), summary);
+    state = withEvents(state, [event("submission.delivered", "2026-10-16T00:00:02.000Z")]);
+    state = withSubmission(state, summary);
+    expect(state.submission?.delivery).toBe("delivered");
+  });
+});
+
+describe("the artifact can't change a trusted control under the viewer's click (Claude review finding 6)", () => {
+  it("re-arms a control whose target or words change, and keeps a fresh one disabled", () => {
+    const at = 10_000;
+    let state = withControlRequest(
+      initialState(TICKET),
+      {
+        control: "choose",
+        reviewSetId: "layout",
+        candidates: [{ id: "airy" }, { id: "dense" }],
+        current: "airy",
+      },
+      at,
+    ).state;
+    expect(controlsArmed(state, 0, at + ARM_MS - 1)).toBe(false);
+    expect(controlsArmed(state, 0, at + ARM_MS)).toBe(true);
+    // Swapped as the pointer heads for the rail: disabled again.
+    state = withControlRequest(
+      state,
+      {
+        control: "choose",
+        reviewSetId: "layout",
+        candidates: [{ id: "airy" }, { id: "dense" }],
+        current: "dense",
+      },
+      at + 2_000,
+    ).state;
+    expect(controlsArmed(state, 0, at + 2_100)).toBe(false);
+    // The same request again changes nothing and doesn't re-arm.
+    const same = withControlRequest(
+      state,
+      {
+        control: "choose",
+        reviewSetId: "layout",
+        candidates: [{ id: "airy" }, { id: "dense" }],
+        current: "dense",
+      },
+      at + 5_000,
+    ).state;
+    expect(same.controlsChangedAt).toBe(at + 2_000);
+  });
+
+  it("keeps a page shown or focused a moment ago disabled (a popup of the shell under a second click)", () => {
+    expect(controlsArmed(initialState(TICKET), 50_000, 50_100)).toBe(false);
+    expect(controlsArmed(initialState(TICKET), 50_000, 50_000 + ARM_MS)).toBe(true);
+  });
+
+  it("never lets the Submit read as one of the shell's states", () => {
+    for (const label of [
+      "Submitted",
+      "submitted ✓",
+      "Saved",
+      "Delivered",
+      "Pending delivery",
+      "  saving…",
+    ]) {
+      expect(allowedSubmitLabel(label)).toBe(false);
+    }
+    for (const label of ["Submit & Send", "Send answers", "Approve the plan", "Save draft"]) {
+      expect(allowedSubmitLabel(label)).toBe(true);
+    }
+    const state = withControlRequest(
+      initialState(TICKET),
+      { control: "submit", label: "Submitted" },
+      1,
+    ).state;
+    expect(state.submitLabel).toBeUndefined();
+  });
+
+  it("keeps a confirmation once asked for: a release gives the label back, never the question", () => {
+    let state = withControlRequest(
+      initialState(TICKET),
+      { control: "submit", label: "Send", confirm: "Final answers?" },
+      1,
+    ).state;
+    state = withControlRequest(state, { control: "release", submit: true }, 2).state;
+    expect(state.submitLabel).toBeUndefined();
+    expect(state.submitConfirm).toBe("Final answers?");
   });
 });

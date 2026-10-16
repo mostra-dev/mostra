@@ -278,6 +278,76 @@ test.describe("hosts choose the submit channels (SH-02, D40, D108)", () => {
   });
 });
 
+test.describe("the artifact can't change a trusted control under the viewer's click (Claude review finding 6)", () => {
+  test("a Choose swapped as the pointer heads for it takes no click until it has been seen", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info)),
+      );
+      const choose = page.locator('[data-mostra-choose="layout"]');
+      await expect(choose).toHaveText("Choose Dense");
+      await expect(page.locator("[data-mostra-armed]")).toHaveCount(1);
+      const box = await choose.boundingBox();
+      if (!box) throw new Error("no Choose button");
+      // The page swaps the target, and the click lands at once where the button is.
+      await frame
+        .getByTestId("show-airy")
+        .evaluate((button) => (button as HTMLButtonElement).click());
+      await expect(choose).toHaveText("Choose Airy");
+      await expect(choose).toBeDisabled();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      // No choice was recorded: the shell reads the draft from its own stream.
+      await page.waitForTimeout(300);
+      await expect(choose).toHaveText("Choose Airy");
+      // Once seen, it works.
+      await expect(choose).toBeEnabled();
+      await choose.click();
+      await expect(choose).toHaveText("Chosen: Airy");
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a shell page just opened (a popup under a second click) takes no click at once", async ({
+    page,
+    context,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const link = await linkFor(client, own.artifactId, viewerName(info));
+      await openInShell(page, link);
+      const popup = await context.newPage();
+      // Records whether the trusted Submit took clicks the moment it appeared.
+      await popup.addInitScript(() => {
+        const seen = new MutationObserver(() => {
+          const button = document.getElementById("mostra-submit") as HTMLButtonElement | null;
+          if (!button) return;
+          (window as unknown as { firstDisabled: boolean }).firstDisabled = button.disabled;
+          seen.disconnect();
+        });
+        seen.observe(document, { childList: true, subtree: true });
+      });
+      await popup.goto(page.url());
+      const submit = popup.locator("#mostra-submit");
+      await expect(submit).toBeVisible();
+      expect(
+        await popup.evaluate(
+          () => (window as unknown as { firstDisabled?: boolean }).firstDisabled,
+        ),
+      ).toBe(true);
+      await expect(submit).toBeEnabled();
+    } finally {
+      client.close();
+    }
+  });
+});
+
 test.describe("the trusted Submit sends only what the page confirmed (GPT review finding 3)", () => {
   test("a page that doesn't answer the flush gets nothing submitted, and the viewer is told", async ({
     page,

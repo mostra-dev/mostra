@@ -76,6 +76,49 @@ async function valueElsewhere(
   }
 }
 
+test.describe("a frame whose first handshake fails (Claude review finding 4)", () => {
+  test("connects when it can, saving to Mostra, and the shell says Connecting until then", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The frame's first two session reads fail, as during a daemon restart.
+      let failures = 0;
+      await page.route(
+        (url) => url.pathname === "/_mostra/session",
+        (route) => {
+          if (failures < 2) {
+            failures += 1;
+            return route.abort("connectionrefused");
+          }
+          return route.continue();
+        },
+      );
+      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("[data-mostra-save]")).toHaveAttribute(
+        "data-mostra-save",
+        "connecting",
+      );
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 20_000,
+      });
+      const frame = page.frameLocator("iframe.mostra-frame");
+      await expect(frame.getByTestId("mode")).toHaveText("live");
+      await frame.getByTestId("notes").fill("after a failed start");
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ notes: "after a failed start" });
+      expect(failures).toBe(2);
+    } finally {
+      client.close();
+    }
+  });
+});
+
 test.describe("a closed tab loses nothing (IN-02)", () => {
   test("an edit still inside the debounce is sent when the tab closes (visibilitychange, pagehide)", async ({
     browser,

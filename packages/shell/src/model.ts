@@ -49,6 +49,16 @@ export interface ViewState {
   readonly chooses: ReadonlyMap<string, ChooseRequest>;
   /** The page the viewer is on (`mostra/page`). */
   readonly page?: string;
+  /**
+   * Delivery events for a submission the shell doesn't know yet: the stream may bring them
+   * before the submit's answer, and they apply once it arrives (Claude review finding 8).
+   */
+  readonly early: readonly EventRecord[];
+  /**
+   * When a trusted control's words or target last changed at the artifact's request: it is
+   * armed again only {@link ARM_MS} later (Claude review finding 6).
+   */
+  readonly controlsChangedAt: number;
 }
 
 /** The first state of a view, from its ticket. */
@@ -65,6 +75,8 @@ export function initialState(ticket: FrameTicket): ViewState {
     save: "saved",
     unsaved: false,
     chooses: new Map(),
+    early: [],
+    controlsChangedAt: 0,
   };
 }
 
@@ -96,26 +108,26 @@ export function withSnapshot(state: ViewState, snapshot: StreamSnapshot): ViewSt
       ? { latest: snapshot.latest }
       : {};
   const submission = snapshot.submission;
-  if (Number(snapshot.draft.revision) < state.revision) {
-    return { ...state, ...latest, ...(submission ? { submission } : {}) };
-  }
-  const draft = new Map(
-    Object.entries(snapshot.draft.fields).map(([id, field]) => [
-      id,
-      { value: field.value, known: true },
-    ]),
-  );
-  const sameEpoch = submission !== undefined && submission.epoch === snapshot.draft.epoch;
-  return {
-    ...state,
-    ...latest,
-    viewer: snapshot.viewer,
-    revision: Number(snapshot.draft.revision),
-    epoch: snapshot.draft.epoch,
-    draft,
-    ...(submission ? { submission } : {}),
-    closed: submission !== undefined && sameEpoch && closesDraft(state, true),
-  };
+  const base: ViewState =
+    Number(snapshot.draft.revision) < state.revision
+      ? { ...state, ...latest }
+      : {
+          ...state,
+          ...latest,
+          viewer: snapshot.viewer,
+          revision: Number(snapshot.draft.revision),
+          epoch: snapshot.draft.epoch,
+          draft: new Map(
+            Object.entries(snapshot.draft.fields).map(([id, field]) => [
+              id,
+              { value: field.value, known: true },
+            ]),
+          ),
+          closed: false,
+        };
+  if (!submission) return base;
+  const closed = base.closed || (submission.epoch === base.epoch && closesDraft(base, true));
+  return { ...withSubmission(base, submission), closed };
 }
 
 const DELIVERY_EVENTS: Readonly<Record<string, SubmissionSummary["delivery"]>> = {
@@ -158,7 +170,7 @@ export function withEvents(state: ViewState, events: readonly EventRecord[]): Vi
       const payload = event.payload as { submissionId: string; viewerId?: string };
       const own = payload.viewerId !== undefined && payload.viewerId === next.viewer?.id;
       if (closesDraft(next, own)) next = { ...next, closed: true };
-    } else if (event.type in DELIVERY_EVENTS && next.submission) {
+    } else if (event.type in DELIVERY_EVENTS) {
       const payload = event.payload as {
         submissionId: string;
         deliveryId: string;
@@ -166,7 +178,10 @@ export function withEvents(state: ViewState, events: readonly EventRecord[]): Vi
         attempts?: number;
       };
       const submission = next.submission;
-      if (payload.submissionId !== submission.id) continue;
+      if (submission?.id !== payload.submissionId) {
+        next = { ...next, early: [...next.early, event].slice(-EARLY_MAX) };
+        continue;
+      }
       const state = DELIVERY_EVENTS[event.type] as SubmissionSummary["delivery"];
       const deliveries = (submission.deliveries ?? []).map((delivery) =>
         delivery.deliveryId === payload.deliveryId
@@ -190,44 +205,134 @@ export function withEvents(state: ViewState, events: readonly EventRecord[]): Vi
   return next;
 }
 
-/** Applies a submission the shell made or was told of. */
-export function withSubmission(state: ViewState, submission: SubmissionSummary): ViewState {
-  return {
-    ...state,
-    submission,
-    closed: state.closed || closesDraft(state, true),
-  };
+/** How many early delivery events a view keeps. */
+const EARLY_MAX = 64;
+
+/**
+ * One submission's two accounts merged: each delivery as its latest change says, so an answer
+ * built before the stream's newer events never takes the receipt back (Claude review finding 8).
+ */
+function merged(known: SubmissionSummary | undefined, next: SubmissionSummary): SubmissionSummary {
+  if (known?.id !== next.id || known.deliveries === undefined) return next;
+  const newer = new Map((next.deliveries ?? []).map((delivery) => [delivery.deliveryId, delivery]));
+  for (const delivery of known.deliveries) {
+    const other = newer.get(delivery.deliveryId);
+    if (other === undefined || delivery.updatedAt > other.updatedAt) {
+      newer.set(delivery.deliveryId, delivery);
+    }
+  }
+  const deliveries = [...newer.values()];
+  let worst: SubmissionSummary["delivery"] = "delivered";
+  for (const delivery of deliveries)
+    if (SEVERITY[delivery.state] > SEVERITY[worst]) worst = delivery.state;
+  return { ...next, deliveries, delivery: deliveries.length > 0 ? worst : next.delivery };
 }
 
-/** Applies a control request from the frame; returns the state and whether the control shows. */
+/** Applies a submission the shell made or was told of, and the delivery events that came first. */
+export function withSubmission(state: ViewState, submission: SubmissionSummary): ViewState {
+  const early = state.early.filter(
+    (event) => (event.payload as { submissionId?: string }).submissionId === submission.id,
+  );
+  const next: ViewState = {
+    ...state,
+    submission: merged(state.submission, submission),
+    closed: state.closed || closesDraft(state, true),
+    early: state.early.filter((event) => !early.includes(event)),
+  };
+  return early.length > 0 ? withEvents(next, early) : next;
+}
+
+/**
+ * How long a trusted control stays disabled after it appears, after its words or target change,
+ * or after the shell's page is shown: the delay browsers give permission prompts, so a
+ * click aimed at something else (a swapped Choose, a popup of the shell under a second click)
+ * never lands on it (Claude review finding 6).
+ */
+export const ARM_MS = 500;
+
+/**
+ * Words the shell itself uses for states: an artifact's Submit label may not be one of them, so
+ * an enabled Submit never reads "Submitted" or "Saved" (Claude review finding 6).
+ */
+const RESERVED_LABELS = [
+  "submitted",
+  "submitting",
+  "saved",
+  "saving",
+  "delivered",
+  "pending delivery",
+  "undeliverable",
+  "connecting",
+  "chosen",
+  "not saved yet",
+  "changed elsewhere",
+];
+
+/** Whether an artifact may label the trusted Submit `label`. */
+export function allowedSubmitLabel(label: string): boolean {
+  const words = label
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return words !== "" && !RESERVED_LABELS.some((reserved) => words.startsWith(reserved));
+}
+
+/**
+ * Applies a control request from the frame at `now`; returns the state and whether the control
+ * shows. A label that impersonates the shell's states is ignored, a confirmation once asked for
+ * stays for the view (a page can change its words, never take the question away), and any
+ * change of what a control says or does re-arms it.
+ */
 export function withControlRequest(
   state: ViewState,
   request: ControlRequest,
+  now: number,
 ): { readonly state: ViewState; readonly shown: boolean } {
   const allowed = state.ticket.controls;
   if (request.control === "submit") {
     const shown = showsSubmit(state);
+    const label =
+      request.label !== undefined && allowedSubmitLabel(request.label)
+        ? request.label
+        : state.submitLabel;
+    const confirm = request.confirm ?? state.submitConfirm;
+    const changed = label !== state.submitLabel || confirm !== state.submitConfirm;
     return {
       state: {
         ...state,
-        ...(request.label !== undefined ? { submitLabel: request.label } : {}),
-        ...(request.confirm !== undefined ? { submitConfirm: request.confirm } : {}),
+        ...(label !== undefined ? { submitLabel: label } : {}),
+        ...(confirm !== undefined ? { submitConfirm: confirm } : {}),
+        ...(changed ? { controlsChangedAt: now } : {}),
       },
       shown,
     };
   }
   if (request.control === "choose") {
     const chooses = new Map(state.chooses);
+    const before = state.chooses.get(request.reviewSetId);
     chooses.set(request.reviewSetId, request);
+    const changed = JSON.stringify(before) !== JSON.stringify(request);
     return {
-      state: { ...state, chooses },
+      state: { ...state, chooses, ...(changed ? { controlsChangedAt: now } : {}) },
       shown: allowed.includes("choose") && state.ticket.submitChannels.includes("shell"),
     };
   }
   const chooses = new Map(state.chooses);
   if (request.reviewSetId !== undefined) chooses.delete(request.reviewSetId);
-  const { submitLabel: _label, submitConfirm: _confirm, ...rest } = state;
-  return { state: request.submit ? { ...rest, chooses } : { ...state, chooses }, shown: false };
+  // Releasing the Submit gives its default label back; its confirmation stays.
+  const { submitLabel: _label, ...rest } = state;
+  return {
+    state: request.submit
+      ? { ...rest, chooses, controlsChangedAt: now }
+      : { ...state, chooses, controlsChangedAt: now },
+    shown: false,
+  };
+}
+
+/** Whether the trusted controls take a click at `now`: armed since their last change and since `shownAt`. */
+export function controlsArmed(state: ViewState, shownAt: number, now: number): boolean {
+  return now >= Math.max(state.controlsChangedAt, shownAt) + ARM_MS;
 }
 
 /**

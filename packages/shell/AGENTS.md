@@ -27,6 +27,16 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   answers nothing and shows the shell's draft. On `MOSTRA_SUBMIT_REVISION_MOVED` the viewer checks
   the answers, which the frame already shows from its own stream, and submits again: nothing is
   sent that wasn't on screen.
+- **What a trusted control says and does holds still under the viewer's click (Claude review
+  finding 6).** Submit and Choose are disabled for `ARM_MS` (500 ms) after they appear, after
+  their words or target change, and after the page is shown (a popup of the shell opened under a
+  second click); while the pointer is over the trusted zone, the frame's requests wait until it
+  leaves. An artifact's Submit label may not read as one of the shell's states (`Submitted`,
+  `Saved`, …), and a confirmation once asked for stays for the view. Rules in `src/model.ts`
+  (`withControlRequest`, `controlsArmed`, `allowedSubmitLabel`), tested there and in
+  `tests/e2e/specs/controls.spec.ts`.
+- **The rail says "Connecting…" until the page's runtime reports** (`mostra/fields`), never a
+  "Saved" nobody confirmed; a version built before WP-07 reports nothing, and no save state shows.
 - **The frame shows its view's version (D115).** A frame whose build isn't its ticket's version is
   entered again at that version, at most three times in ten seconds.
 - **The frame never navigates the viewer's tab (D98 item 7).** It is sandboxed with every token

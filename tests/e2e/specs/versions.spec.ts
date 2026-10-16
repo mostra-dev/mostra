@@ -78,7 +78,11 @@ test.describe("a newer version in an open view (VR-04)", () => {
       await page.waitForTimeout(1_500);
       await expect(pageVersion(page)).toHaveText("1");
       const entries = await page.evaluate((): number => window.history.length);
+      const asked = page.waitForRequest((request) => request.url().endsWith("/_mostra/ticket"));
       await page.locator("[data-mostra-switch]").click();
+      // The switch opens the version the banner described, never whatever is latest by then
+      // (Claude review finding 13).
+      expect((await asked).postDataJSON()).toEqual({ version: 2 });
       await expect(pageVersion(page)).toHaveText("2", { timeout: 15_000 });
       await expect(page.locator("[data-mostra-banner]")).toHaveCount(0);
       // The switch is a new frame, not a navigation of the old one: it adds nothing to the tab's

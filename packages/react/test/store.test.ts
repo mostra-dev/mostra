@@ -559,6 +559,37 @@ describe("Claude review findings (WP-07)", () => {
     expect(gateway.docs.viewer.fields.get("name")?.value).toBe("typed early");
   });
 
+  it("8: a delivery's change that the stream brings before the submit's answer still shows", async () => {
+    const gateway = new FakeGateway();
+    const delivery = {
+      deliveryId: "dlv_01J00000000000000000000000",
+      owner: "jcode",
+      state: "pending" as const,
+      attempts: 0,
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    gateway.deliveries = [delivery];
+    const store = open(gateway);
+    await store.whenReady();
+    store.set("viewer", "name", "Ana");
+    await store.flush();
+    // The host is away: the outbox marks the delivery waiting before the submit answers.
+    gateway.emitEvent({
+      type: "submission.retrying",
+      at: "2026-10-16T00:00:01.000Z",
+      actor: { kind: "mostra" },
+      payload: {
+        submissionId: "sub_01J00000000000000000000000",
+        deliveryId: delivery.deliveryId,
+        owner: "jcode",
+      },
+    });
+    await settle();
+    const submission = await store.submit();
+    expect(submission.id).toBe("sub_01J00000000000000000000000");
+    expect(store.submitState()).toBe("pending-delivery");
+  });
+
   it("12: an adopted edit goes out as the view it was made in", async () => {
     const gateway = new FakeGateway();
     const older = { ...VIEW, viewId: "vw_01J22222222222222222222222" };

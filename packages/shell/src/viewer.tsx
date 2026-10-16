@@ -50,6 +50,7 @@ import {
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
+  ARM_MS,
   blockers as blockersOf,
   choiceOf,
   deliveryView,
@@ -415,6 +416,13 @@ export function ViewerPage(props: {
   const frameKindRef = useLatest(frameKind);
   const bridge = useRef<Bridge | undefined>(undefined);
   const reentries = useRef<number[]>([]);
+  // The trusted controls take clicks only once armed (Claude review finding 6): ARM_MS after
+  // they appear or change, and after this page is shown (a popup of the shell opened under a
+  // second click, a tab brought forward).
+  const pointerInZone = useRef(false);
+  const heldRequests = useRef<ControlRequest[]>([]);
+  const [shownAt, setShownAt] = useState(() => Date.now());
+  const [armedFor, setArmedFor] = useState<number | undefined>();
   const latestStateRef = useLatest(state);
 
   const onBridge = useCallback((next: Bridge | undefined) => {
@@ -478,6 +486,33 @@ export function ViewerPage(props: {
     root.dataset["shellSave"] = state.save;
   }, [state.latest.number, state.save]);
 
+  useEffect(() => {
+    const shown = (): void => {
+      if (document.visibilityState === "visible") setShownAt(Date.now());
+    };
+    // Shown, not focused: the click that focuses the window must still count.
+    document.addEventListener("visibilitychange", shown);
+    return () => document.removeEventListener("visibilitychange", shown);
+  }, []);
+  const armUntil = Math.max(state.controlsChangedAt, shownAt) + ARM_MS;
+  const armed = armedFor === armUntil;
+  useEffect(() => {
+    const timer = setTimeout(() => setArmedFor(armUntil), Math.max(0, armUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [armUntil]);
+  const armedRef = useLatest(armed);
+  const releaseHeld = (): void => {
+    pointerInZone.current = false;
+    let next = latestStateRef.current;
+    for (const request of heldRequests.current.splice(0)) {
+      next = withControlRequest(next, request, Date.now()).state;
+    }
+    if (next !== latestStateRef.current) {
+      latestStateRef.current = next;
+      setState(next);
+    }
+  };
+
   /** Asks the frame to save everything; `undefined` when it doesn't answer. */
   const flushFrame = async (reason: "submit" | "switch"): Promise<FlushResult | undefined> => {
     const current = bridge.current;
@@ -514,12 +549,14 @@ export function ViewerPage(props: {
       setBusy("switch");
       mark("", { shellSwitch: options.follow ? "following" : "switching" });
       try {
+        // The version the banner described: a newer one published meanwhile gets a banner of its
+        // own, with its own count, never a switch the viewer didn't see (Claude review finding 13).
+        const latest = latestStateRef.current.latest.number;
         const flushed = await flushFrame("switch");
         if (options.follow) {
           // Following switches by itself only when nothing would be lost from view: checked again
           // after the frame saved everything, since an answer may have changed since the count
           // (LL-03, D63). Otherwise the banner stays, with the count, for the viewer to decide.
-          const latest = latestStateRef.current.latest.number;
           const count = await countNewOrphans(latest);
           if (flushed?.unsaved === true || count > 0) {
             mark("", { shellSwitch: flushed?.unsaved === true ? "held-unsaved" : "held-orphans" });
@@ -527,7 +564,7 @@ export function ViewerPage(props: {
             return;
           }
         }
-        const next = await frameTicket(target.apiBase, session.csrf);
+        const next = await frameTicket(target.apiBase, session.csrf, latest);
         mark("", { shellSwitch: `to-${String(next.version.number)}` });
         setFocusFrame(frameHasFocus());
         setTicket(next);
@@ -609,9 +646,14 @@ export function ViewerPage(props: {
         unsaved: params.unsaved,
       })),
     onControl: (request) => {
-      const outcome = withControlRequest(latestStateRef.current, request);
-      latestStateRef.current = outcome.state;
-      setState(outcome.state);
+      const outcome = withControlRequest(latestStateRef.current, request, Date.now());
+      // While the pointer is over the trusted controls, what they say and do holds still: a
+      // change waits until it leaves (Claude review finding 6).
+      if (pointerInZone.current) heldRequests.current.push(request);
+      else {
+        latestStateRef.current = outcome.state;
+        setState(outcome.state);
+      }
       return outcome.shown;
     },
     onPage: (path) => {
@@ -641,6 +683,7 @@ export function ViewerPage(props: {
   };
 
   const doSubmit = async (): Promise<void> => {
+    if (!armedRef.current) return;
     setConfirming(false);
     setBusy("submit");
     setProblem(undefined);
@@ -687,8 +730,13 @@ export function ViewerPage(props: {
   };
 
   const onSubmit = (): void => {
-    if (state.submitConfirm !== undefined) setConfirming(true);
-    else void doSubmit();
+    if (!armedRef.current) return;
+    if (state.submitConfirm !== undefined) {
+      // The question is a control of its own: armed only after it appears, so a second click
+      // meant for the first never answers it.
+      setShownAt(Date.now());
+      setConfirming(true);
+    } else void doSubmit();
   };
 
   const doChoose = async (reviewSetId: string, candidateId: string, label?: string) => {
@@ -737,12 +785,32 @@ export function ViewerPage(props: {
             </div>
           </div>
         </div>
-        <div className="mostra-status" data-mostra-save={state.save} aria-live="polite">
-          <span className={`mostra-dot mostra-dot-${state.save}`} aria-hidden="true" />
-          {SAVE_WORDS[state.save]}
-        </div>
+        {/* The page's save state, once its runtime reports it: until then it is "Connecting…",
+            never a "Saved" nobody confirmed (Claude review finding 4). A version built before
+            WP-07 reports none, and none is shown. */}
+        {frameKind !== "legacy" && (
+          <div
+            className="mostra-status"
+            data-mostra-save={frameKind === "loading" ? "connecting" : state.save}
+            aria-live="polite"
+          >
+            <span
+              className={`mostra-dot mostra-dot-${frameKind === "loading" ? "saving" : state.save}`}
+              aria-hidden="true"
+            />
+            {frameKind === "loading" ? SAVE_WORDS.connecting : SAVE_WORDS[state.save]}
+          </div>
+        )}
         {(submitShown || chooses.length > 0) && (
-          <div className="mostra-trusted" data-mostra-trusted="">
+          <div
+            className="mostra-trusted"
+            data-mostra-trusted=""
+            data-mostra-armed={armed ? "" : undefined}
+            onPointerEnter={() => {
+              pointerInZone.current = true;
+            }}
+            onPointerLeave={releaseHeld}
+          >
             <span className="mostra-seal">{CONTROL_WORDS.seal}</span>
             {chooses.map((request) => {
               const current = request.candidates.find((c) => c.id === request.current);
@@ -755,8 +823,12 @@ export function ViewerPage(props: {
                   type="button"
                   className="mostra-button"
                   data-mostra-choose={request.reviewSetId}
-                  disabled={chosen || busy !== undefined || state.closed}
-                  onClick={() => void doChoose(request.reviewSetId, current.id, current.label)}
+                  disabled={!armed || chosen || busy !== undefined || state.closed}
+                  onClick={() => {
+                    if (armedRef.current) {
+                      void doChoose(request.reviewSetId, current.id, current.label);
+                    }
+                  }}
                 >
                   {chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
                 </button>
@@ -767,7 +839,7 @@ export function ViewerPage(props: {
                 type="button"
                 id="mostra-submit"
                 className="mostra-button mostra-primary"
-                disabled={submitted || busy !== undefined}
+                disabled={!armed || submitted || busy !== undefined}
                 onClick={onSubmit}
               >
                 {submitted
@@ -899,6 +971,7 @@ export function ViewerPage(props: {
                 type="button"
                 className="mostra-button mostra-primary"
                 data-mostra-confirm-submit=""
+                disabled={!armed}
                 onClick={() => void doSubmit()}
               >
                 {state.submitLabel ?? CONTROL_WORDS.confirm}
