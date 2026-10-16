@@ -11,11 +11,11 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
    - [../DECISIONS.md](../DECISIONS.md), [../PRODUCT.md](../PRODUCT.md), [../STANDARDS.md](../STANDARDS.md), [../ARCHITECTURE.md](../ARCHITECTURE.md), [../REPO_STANDARDS.md](../REPO_STANDARDS.md);
    - this protocol;
    - your `WP-NN.md`;
-   - every `docs/progress/PROGRESS-WP-*.md`, plus any `RECOVERY-WP-NN-*.md` for your package;
+   - every `docs/progress/PROGRESS-WP-*.md`, summarized by `fast-worker` sub-agents with explicit file lists (you may read the latest yourself, and read in full any report whose details you need, D128), plus any `RECOVERY-WP-NN-*.md` for your package, read yourself;
    - then the files your specification lists under "Required reading";
-   - Mostra HQ at `~/src/mostra-hq` for business context, as its AGENTS.md lists (D127). It is context: the dossier stays the contract.
+   - Mostra HQ at `~/src/mostra-hq` for business context, as its AGENTS.md lists (D127), explored through a `fast-worker` sub-agent given those files; then read yourself any HQ file you need in full (D128). It is context: the dossier stays the contract.
 
-   When in doubt, read more (D49). Bulk material you only need summarized (long research reports, large upstream docs) may go to a `fast-worker` sub-agent with an explicit file list, returning the summary in its reply. That is the only sub-agent use allowed (D49). Design and implementation decisions are never delegated.
+   When in doubt, read more (D49). Bulk material you only need summarized (long research reports, large upstream docs, the earlier progress reports, Mostra HQ) may go to a `fast-worker` sub-agent with an explicit file list, returning the summary in its reply. That is the only sub-agent use allowed (D49, D128). Design and implementation decisions are never delegated.
 2. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance). Push the branch and open a pull request early so CI runs on GitHub while you work (D76). Merge only after acceptance.
 3. **Start `docs/progress/PROGRESS-WP-NN.md` with the baseline** on the branch: branch, `HEAD`, `git status`, and the result of `pnpm check` (WP-01 creates it) with any failures already there. The report grows during the session and is finalized after acceptance (§4).
 4. **Re-verify facts.** Check every third-party version, license or behavior you depend on and that [../VERIFIED_FACTS.md](../VERIFIED_FACTS.md) doesn't already cover for the current date. Append what you verify, with source and date.

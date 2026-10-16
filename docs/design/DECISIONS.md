@@ -28,6 +28,7 @@
 | M18 | 2026-10-15T08:07:02.531Z | WP-06 questions. Delegated all eight (check boundaries, the policy in force, epochs, views, the `viewer` parameter, delivery owners and mirrors, prose, the first browser-protocol revision) with "I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering decision", and asked that each be brainstormed meticulously. |
 | M19 | 2026-10-15T12:39:18.647Z | WP-07 questions. Delegated all eight (the channel policy's source, the orphan model, defaults the viewer saw, check boundaries, prose, the Claude review, `window.storage` limits, Choose's candidates) with "I trust you to make the most robust … optimal decision", asking for the most robust, highest-capability choice in each. Raised the Claude Opus review limit to ten of Mostra's packages. Rules aren't frozen: one that is unnecessary or significantly limits capability can be discussed. Work that later packages build on is done so it helps them as a baseline and never limits them. |
 | M20 | 2026-10-16T14:50:33.927Z | Handed over the plan update he approved in his planning work of 2026-10-16, for one documentation session before WP-08. v1 gains a remote server and a relay, with a managed service's operating layer kept outside this repository; license layers (an Apache-2.0 core, a source-available `ee/` folder, a proprietary operating layer); anonymous telemetry in the standalone CLI, never in embedded use; team features; Windows and the terminal packages follow the first release as `v1.1`; new package specifications fix the surface and the options, and implementing sessions settle the details; new packages WP-28 to WP-32; Mostra's business context lives in a private repository, Mostra HQ. Recorded as D116 to D127. |
+| M21 | 2026-10-16T15:56:46.921Z | Accepted the plan update (D116 to D127) and its agent-facing prose ("100% approved"), with two changes: sessions explore Mostra HQ through a sub-agent, then read needed files themselves; and they summarize the earlier progress reports with sub-agents instead of reading each one, keeping the choice to read the latest report themselves. Recorded as D128. |
 
 ## Program-level decisions
 
@@ -789,6 +790,13 @@ A chrome-less embed mode with host theming, host identity and host-rendered trus
 
 ### D127. Business context from Mostra HQ
 Mirza keeps Mostra's business context (strategy, decisions, roadmap, product definitions for the managed service and team features) in a private repository, Mostra HQ, cloned at `~/src/mostra-hq`. Every session reads its README, decision log and roadmap for orientation, and the parts its package touches, as HQ's own AGENTS.md lists. The dossier stays the contract: HQ is context, never a reason to deviate without Mirza. Sessions write to HQ only with Mirza's approval. Nothing from HQ enters this public repository (files, issues, pull requests, commit messages, release notes); a product decision it informs is recorded here with product reasons only. *Source:* M20.
+
+### D128. Sub-agents summarize the progress reports and Mostra HQ
+The progress reports have grown large, and HQ is a second repository. During Orient, a work-package session:
+- has `fast-worker` sub-agents summarize the earlier `PROGRESS-WP-*.md` reports, each with an explicit list, for what bears on its package (decisions, follow-ups, untested boundaries). It may leave the latest report out and read it itself, and it reads in full any report whose details it needs;
+- explores Mostra HQ through a `fast-worker` sub-agent given HQ's AGENTS.md and the files it lists, then reads itself any HQ file it needs in full.
+
+The dossier, the specification and its required reading are still read in full by the session. Design, implementation, review and verification stay with it (D49). *Source:* M21. *Amends* D49 item 3's use of `fast-worker`, the assignment prompt ("You read Mostra's own documents yourself, in full") and the work-package protocol §1.
 
 ## Research consensus adopted
 

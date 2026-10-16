@@ -28,13 +28,19 @@ dossier, they win, and you tell Mirza about the difference.
 
 1. Read the session protocol and your specification in full.
 2. Read in full every file they list: the dossier README, DECISIONS, PRODUCT, STANDARDS,
-   ARCHITECTURE, REPO_STANDARDS, your specification's required reading, and every
-   docs/progress/PROGRESS-WP-*.md. Mostra's documents are written to be read whole, so read each
-   one from top to bottom. When you are unsure whether something bears on your package, read it.
-3. Read Mostra HQ at ~/src/mostra-hq as its AGENTS.md lists: its README, decision log and
-   roadmap, and the parts your package touches. It is Mirza's business context; the dossier stays
-   the contract.
-4. Find your starting point:
+   ARCHITECTURE, REPO_STANDARDS and your specification's required reading. Mostra's documents are
+   written to be read whole, so read each one from top to bottom. When you are unsure whether
+   something bears on your package, read it.
+3. The earlier progress reports (docs/progress/PROGRESS-WP-*.md) have grown large. Have
+   fast-worker sub-agents summarize them, each with an explicit list of reports, and ask for what
+   bears on your package: decisions taken, follow-ups for later packages, untested boundaries. You
+   may leave the latest report out of the sub-agents and read it yourself. Then read in full any
+   report whose details you need.
+4. Explore Mostra HQ at ~/src/mostra-hq through a fast-worker sub-agent: give it HQ's AGENTS.md and
+   the files it lists for orientation and for your package (its README, decision log and roadmap
+   among them), and ask what bears on your package. Then read yourself any HQ file you need in
+   full. HQ is Mirza's business context; the dossier stays the contract.
+5. Find your starting point:
    - Run `git fetch` and look at origin/main. Every package in your specification's "Depends on"
      row must have its PROGRESS report on origin/main. If one is missing, stop and tell Mirza which.
    - If docs/progress/RECOVERY-WP-NN-SESSION-*.md exists, this session continues earlier work.
@@ -156,8 +162,9 @@ The package keeps its identity and scope.
 
 Jcode's sub-agents aren't ready yet, so you have one sub-agent for one use. A fast-worker sub-agent
 may summarize bulk reading you only need in summary, such as a long third-party document or a large
-log. Give it an explicit file list and take the summary from its reply. You read Mostra's own
-documents yourself, in full. Design, implementation, review and verification stay with you.
+log, and the earlier progress reports and Mostra HQ during Orient (D128). Give it an explicit file
+list and take the summary from its reply. You read the rest of Mostra's own documents yourself, in
+full. Design, implementation, review and verification stay with you.
 
 ## Compaction
 
