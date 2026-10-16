@@ -227,7 +227,7 @@ function failed(
  * The SPA mode's server bundle of a built version, relative to it (`server/entry.mjs`), or
  * `undefined` for a version without server code, which never gets a worker (RT-05).
  */
-export function spaServerEntry(versionDir: string): string | undefined {
+function spaServerEntry(versionDir: string): string | undefined {
   return existsSync(join(versionDir, "server", "entry.mjs")) ? "server/entry.mjs" : undefined;
 }
 

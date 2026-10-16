@@ -129,3 +129,9 @@ export async function holds(name: string, expected: string) {
 export async function named(name: string) {
   return secret(name);
 }
+
+/** Waits, then says who called: each call keeps its own context across awaits (D19 seam 3). */
+export async function whoAfter(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  return viewer()?.name ?? null;
+}

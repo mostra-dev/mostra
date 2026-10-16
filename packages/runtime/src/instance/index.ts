@@ -10,7 +10,7 @@
  * ```
  */
 import { readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
@@ -32,9 +32,9 @@ import { createAddressing, resolveBind } from "../addressing/index.ts";
 import {
   coverageMatcher,
   createSpaRenderMode,
+  type RenderMode,
   readFieldCoverage,
   readLiveSources,
-  spaServerEntry,
 } from "../builder/index.ts";
 import {
   createDependencies,
@@ -243,6 +243,21 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log.info("publish.recovered", { ...recovered });
   }
   await recoverDependencies({ home: home.path, log });
+  // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
+  // first use, like the publisher, so a runtime missing its build packages still starts.
+  let spa: RenderMode | undefined;
+  const renderMode = (): RenderMode => {
+    spa ??= createSpaRenderMode({
+      processes: manager,
+      log,
+      env: environment,
+      // Tests shorten the 180 s build limit to exercise MOSTRA_BUILD_TIMEOUT.
+      ...(Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) > 0
+        ? { timeoutMs: Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) }
+        : {}),
+    });
+    return spa;
+  };
   // Built on first use: a runtime without its warm set still starts and says what's missing.
   let publisher: Publisher | undefined;
   const getPublisher = (): Publisher => {
@@ -265,15 +280,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
           : {}),
       }),
-      renderMode: createSpaRenderMode({
-        processes: manager,
-        log,
-        env: environment,
-        // Tests shorten the 180 s build limit to exercise MOSTRA_BUILD_TIMEOUT.
-        ...(Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) > 0
-          ? { timeoutMs: Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) }
-          : {}),
-      }),
+      renderMode: renderMode(),
       runtimeVersion: runtimeVersion(),
       log,
       faults,
@@ -377,7 +384,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     if (cached !== undefined) return cached ?? undefined;
     const version = registry.version(versionId);
     const dir = registry.store.versionDir(versionId);
-    const entry = version ? spaServerEntry(dir) : undefined;
+    // The render mode says what a worker loads from a version (D19 seam 5).
+    const served = version ? renderMode().serverEntry(dir) : undefined;
+    const entry = served === undefined ? undefined : relative(dir, served);
     if (!version || entry === undefined) {
       if (version) workerVersions.set(versionId, null);
       return undefined;
