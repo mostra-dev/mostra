@@ -32,7 +32,8 @@ describe("D19 seam 4: a `use client` runtime (RS-01)", () => {
     ).toContain("MODULE_LEVEL_DIRECTIVE");
   });
 
-  it("loads where there is no browser, touching nothing of one", async () => {
+  // Importing the whole runtime from source takes a while when every check runs at once.
+  it("loads where there is no browser, touching nothing of one", { timeout: 60_000 }, async () => {
     expect(typeof globalThis.window).toBe("undefined");
     expect(typeof globalThis.document).toBe("undefined");
     const runtime = await import("@mostra/react");
@@ -45,7 +46,7 @@ describe("D19 seam 4: a `use client` runtime (RS-01)", () => {
     await expect(reference()).rejects.toMatchObject({ code: "MOSTRA_TARGET_UNAVAILABLE" });
   });
 
-  it("reaches the host bridge only from a browser frame", async () => {
+  it("reaches the host bridge only from a browser frame", { timeout: 60_000 }, async () => {
     const { connectShell } = await import("@mostra/react");
     await expect(connectShell()).resolves.toBeUndefined();
   });

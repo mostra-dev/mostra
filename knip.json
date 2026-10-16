@@ -30,7 +30,7 @@
     "tests/*": {
       "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
       "project": ["**/*.ts"],
-      "ignoreDependencies": ["@mostra/runtime", "@mostra/shell"],
+      "ignoreDependencies": ["@mostra/runtime", "@mostra/server", "@mostra/shell"],
       "ignore": ["fixtures/**"]
     },
     "packages/runtime": {
@@ -44,7 +44,7 @@
         "@mostra/warm",
         "@mostra/worker"
       ],
-      "ignoreBinaries": ["ss", "lsof", "ps"]
+      "ignoreBinaries": ["ss", "lsof", "ps", "plutil"]
     },
     "packages/warm": {
       "entry": [],
