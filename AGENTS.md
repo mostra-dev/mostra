@@ -51,12 +51,13 @@ The owner is where the invariant is enforced; packages not built yet are named b
 | A submission is durable before any delivery attempt | interaction ledger, outbox (WP-06) |
 | Trusted controls render only in the shell's origin | runtime `gateway` (shell and artifacts on separate origins, framing rules) and `@mostra/shell` (the controls arrive in WP-07) |
 | Non-OSI engines never bundled; licenses disclosed before install | license audit (`tools/license-audit`), plugins (WP-16) |
-| Everything users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE` |
+| Everything outside `ee/` that users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE`; the `ee/` boundary in the package map and license audit (WP-11) |
 | Interfaces evolve additively within a revision | `@mostra/protocol` schema snapshots, API reports |
 | Hosts reach Mostra only through public ports and protocol | protocol server, conformance kit (WP-02, WP-12) |
 
-Also: no telemetry; secrets and capability tokens stay out of every log and output; macOS and
-Linux only for v1.0, failing closed with a diagnostic elsewhere.
+Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets and
+capability tokens stay out of every log and output; macOS and Linux only for v1.0, failing closed
+with a diagnostic elsewhere, and Windows in v1.1 (D120).
 
 ## Repository discipline
 
@@ -69,6 +70,16 @@ Linux only for v1.0, failing closed with a diagnostic elsewhere.
   and recorded in `docs/design/VERIFIED_FACTS.md`.
 - Agent-facing prose (the Skill, AGENTS.md files, MCP tool descriptions, CLI help, diagnostic
   hints) is drafted with Mirza and accepted by him (D74).
+
+## Business context
+
+Mirza keeps Mostra's business context (strategy, decisions, roadmap, and the product definitions of
+the managed service and team features) in a private repository, Mostra HQ, cloned at
+`~/src/mostra-hq` (D127). Read its README, decision log and roadmap for orientation, and the parts
+your package touches, as its AGENTS.md lists. HQ is context: the dossier stays the contract. Write
+to HQ only with Mirza's approval. Nothing from HQ enters this repository, its issues, pull requests,
+commit messages or release notes; a product decision it informs is recorded here with product
+reasons only.
 
 ## Working with Mirza
 

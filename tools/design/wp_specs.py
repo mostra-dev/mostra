@@ -77,7 +77,7 @@ DETAIL = {
 "WP-08": dict(
   goal="Agent-authored server code with full capability, isolated for stability: durable action runs, live data and artifact state from the server.",
   reading=["../ARCHITECTURE.md §7", "../INTERFACES.md §2.3 (useAction, useLive), §2.4, §4 (call, runs), §7 (secrets, WorkerLauncher)", "../DATA_MODEL.md §3 (action_run, live_value, live_ring)", "../FAILURE_MODEL.md §2 (workers), §6", "../DECISIONS.md D19, D24, D44, D54 to D56, D62", "../VERIFIED_FACTS.md (React server function serializable types)"],
-  detail=["From WP-07 (D108 to D115): `useAction` and `useLive` join `@mostra/react` on its `Store` (`packages/react/src/runtime/store.ts`) and `HttpTransport`, so they reuse the view, the CSRF token, the event stream with its long-poll fallback and the journal's tab presence; the frame's `call/…`, `runs` and `runs/…/cancel` routes are declared in the gateway behind the action scopes. Pages report run states to the shell over the bridge if the shell shows them; the shell's trusted-control rules (armed controls, D108 channel policy per view) stay as they are.", "From WP-06 (D101): `signal()` in `@mostra/server` raises through the interaction core's `raiseSignal` with `source: \"action\"` and the run as causation; results' `actions` list the runs started in the submission's view (empty until then), and the Markdown golden already renders them. A server-side `state` write is `applyMutation` with an agent actor and its own mutation ID.", "Worker: loads the version's server bundle, executes calls inside AsyncLocalStorage, never sees cookies or tokens; WorkerLauncher as the seam.", "Serializer with a conformance suite mirroring React's documented Server Function types plus AsyncIterable.", "Runs: recorded before start, keys unique per artifact and action, join semantics, cancel, `interrupted` on crash, 1 MB log cap.", "Live sources: producers per D56/D63 with persisted latest value, ring buffer, pushes; ephemeral delivery.", "Lifecycle: watchdog, heap limit, idle eviction, backoff, parking; port leases for artifacts with server code.", "Five RSC seam tests (RS-01).", "Extend WP-03's RT-02 process audit (`packages/runtime/test/integration/audit.test.ts`) to action calls and live producers, and load WP-03's server bundle (`server/entry.mjs` with the function registry); replace the client runtime's unavailable server-call transport with the real one (D93).", "WP-05's gateway declares `call/{fnId}`, `runs` and `runs/{id}/cancel` with the `action:<name>` scope rule of D97 item 4 (`action:*`, `action:<export>`, `action:<module path>#<export>`): attach the handlers there, check `runs`' function ID against the session's scopes, and repeat WP-05's scope test with a real action (a view-only link can't run it). Strip Mostra's cookies before forwarding to the worker (D38). Keep WP-05's RT-05 test green: a worker starts only for a version with server code (D96)."],
+  detail=["From WP-07 (D108 to D115): `useAction` and `useLive` join `@mostra/react` on its `Store` (`packages/react/src/runtime/store.ts`) and `HttpTransport`, so they reuse the view, the CSRF token, the event stream with its long-poll fallback and the journal's tab presence; the frame's `call/…`, `runs` and `runs/…/cancel` routes are declared in the gateway behind the action scopes. Pages report run states to the shell over the bridge if the shell shows them; the shell's trusted-control rules (armed controls, D108 channel policy per view) stay as they are.", "From WP-06 (D101): `signal()` in `@mostra/server` raises through the interaction core's `raiseSignal` with `source: \"action\"` and the run as causation; results' `actions` list the runs started in the submission's view (empty until then), and the Markdown golden already renders them. A server-side `state` write is `applyMutation` with an agent actor and its own mutation ID.", "Worker: loads the version's server bundle, executes calls inside AsyncLocalStorage, never sees cookies or tokens; WorkerLauncher as the seam.", "Serializer with a conformance suite mirroring React's documented Server Function types plus AsyncIterable.", "Runs: recorded before start, keys unique per artifact and action, join semantics, cancel, `interrupted` on crash, 1 MB log cap.", "Live sources: producers per D56/D63 with persisted latest value, ring buffer, pushes; ephemeral delivery.", "Lifecycle: watchdog, heap limit, idle eviction, backoff, parking; port leases for artifacts with server code.", "Five RSC seam tests (RS-01).", "`WorkerLauncher` takes a version reference (D124): `launch` receives the version's digest and a locator for its portable bundle, never a directory path, and the local launcher resolves it to a path. `WorkerChannel` carries only serializable messages, and secrets reach a worker only through the secrets port, never through its inherited environment. Prove the seam: the action suite passes against a second fixture launcher whose worker is a separately started process over a socket. Leave room in the run states for WP-28's \"waiting for the owner\" (additive), so the relay (D117) needs no migration.", "Extend WP-03's RT-02 process audit (`packages/runtime/test/integration/audit.test.ts`) to action calls and live producers, and load WP-03's server bundle (`server/entry.mjs` with the function registry); replace the client runtime's unavailable server-call transport with the real one (D93).", "WP-05's gateway declares `call/{fnId}`, `runs` and `runs/{id}/cancel` with the `action:<name>` scope rule of D97 item 4 (`action:*`, `action:<export>`, `action:<module path>#<export>`): attach the handlers there, check `runs`' function ID against the session's scopes, and repeat WP-05's scope test with a real action (a view-only link can't run it). Strip Mostra's cookies before forwarding to the worker (D38). Keep WP-05's RT-05 test green: a worker starts only for a version with server code (D96)."],
   out=["Verify's use of dry-run (WP-09)"],
   risks=["Effects of a run killed mid-flight: document provider idempotency keys in the Skill references."],
   handoff="J3's inbox works: real Send, once per click, progress, secrets out of every artifact output.",
@@ -93,15 +93,15 @@ DETAIL = {
 "WP-10": dict(
   goal="The CLI agents use every day: every capability through one thin client, predictable JSON, exit codes and no prompts.",
   reading=["../INTERFACES.md §6, §9", "../DECISIONS.md D60", "../rounds/ROUND-2.md §3.1", "../FAILURE_MODEL.md §2 (version skew)"],
-  detail=["From WP-06 (D101): `mostra wait`, `results` and `state get|set|patch` are thin clients of `wait`, `results/get` and `state/*` (exit code 5 for `still_waiting`, 6 for `MOSTRA_SUBMIT_ALREADY` and conflicts); `mostra gc --compact-events --before <cursor>` calls the interaction core's `compactEvents` per artifact in one transaction, and its reads already answer `MOSTRA_HOST_CURSOR_COMPACTED`. IN-10's CLI check is closed here.", "Thin protocol client with daemon autostart and attach; NDJSON for streams.", "`mostra dev`: Vite HMR on a separate port, never reachable through capability URLs (VR-08).", "`doctor`, `gc` (reference rules, dry run), `docs`, `state`, `run`.", "Help text generated from command definitions; the wording is drafted with Mirza (D74).", "`mostra dev` implements `RenderMode.dev` (ROUND-3 §7) beside WP-03's `build`, on the same SPA build settings.", "`mostra add <package…> [--artifact <path|id>]` is the client of WP-04's `deps/add` (D95), defaulting to the artifact in the current directory; `MOSTRA_DEP_MISSING`'s fix already carries that exact command, so add a contract test that runs the command a diagnostic names. `mostra dev` resolves packages through the same `Dependencies.resolve`.", "`gc` also collects WP-04's dependency state (D95): lock layouts in `deps/locks` that no working lockfile (`dependency_lock`) and no kept version's `lock.yaml` names, then `pnpm store prune` through the install child (pnpm 10, D94), removing the pruned packages from `dependency_package`; never while an install runs.", "`mostra doctor` closes LL-05's doctor half (D96): it warns when the home has artifacts with submission policy `none` (read through `artifact/list`) and no always-on daemon, which is the login-service unit WP-08's `mostra daemon install` writes for the home; extend WP-05's LL-05 evidence row with that check.", "Add `mostra dev` to WP-05's VR-03 route enumeration (`packages/runtime/test/integration/routes.test.ts`, D96): no viewer URL reaches the dev server or the source it serves.", "`mostra open` and `mostra publish` print the capability URL; `mostra open --rotate` and `--revoke` are clients of `view/rotate` and `view/revoke` (D97)."],
-  out=["`share` drivers (WP-13)", "`mcp` (WP-15)", "`plugin` (WP-16)", "`term` (WP-22)", "`export` classes beyond the receipt (WP-24)"],
+  detail=["From WP-06 (D101): `mostra wait`, `results` and `state get|set|patch` are thin clients of `wait`, `results/get` and `state/*` (exit code 5 for `still_waiting`, 6 for `MOSTRA_SUBMIT_ALREADY` and conflicts); `mostra gc --compact-events --before <cursor>` calls the interaction core's `compactEvents` per artifact in one transaction, and its reads already answer `MOSTRA_HOST_CURSOR_COMPACTED`. IN-10's CLI check is closed here.", "Thin protocol client with daemon autostart and attach; NDJSON for streams.", "`mostra dev`: Vite HMR on a separate port, never reachable through capability URLs (VR-08).", "`doctor`, `gc` (reference rules, dry run), `docs`, `state`.", "Telemetry (D119, EN-08): the standalone CLI sends anonymous usage events by default, announced on first run and off through a setting, an environment variable or `DO_NOT_TRACK=1`; a host-spawned instance, and any home a host configures, sends nothing. Events carry no artifact content, paths, tokens, identities or IP addresses; useful fields are the command, its outcome and duration, the Mostra version, the platform and the agent or harness that ran it (MCP `clientInfo` or known environment markers). The endpoint is configurable and disabled in development builds. The event list and detection rules are a *Deferred decision* for this package with Mirza, and the first-run notice is agent-facing prose (D74); the event list is published in the docs.", "Help text generated from command definitions; the wording is drafted with Mirza (D74).", "`mostra dev` implements `RenderMode.dev` (ROUND-3 §7) beside WP-03's `build`, on the same SPA build settings.", "`mostra add <package…> [--artifact <path|id>]` is the client of WP-04's `deps/add` (D95), defaulting to the artifact in the current directory; `MOSTRA_DEP_MISSING`'s fix already carries that exact command, so add a contract test that runs the command a diagnostic names. `mostra dev` resolves packages through the same `Dependencies.resolve`.", "`gc` also collects WP-04's dependency state (D95): lock layouts in `deps/locks` that no working lockfile (`dependency_lock`) and no kept version's `lock.yaml` names, then `pnpm store prune` through the install child (pnpm 10, D94), removing the pruned packages from `dependency_package`; never while an install runs.", "`mostra doctor` closes LL-05's doctor half (D96): it warns when the home has artifacts with submission policy `none` (read through `artifact/list`) and no always-on daemon, which is the login-service unit WP-08's `mostra daemon install` writes for the home; extend WP-05's LL-05 evidence row with that check.", "Add `mostra dev` to WP-05's VR-03 route enumeration (`packages/runtime/test/integration/routes.test.ts`, D96): no viewer URL reaches the dev server or the source it serves.", "`mostra open` and `mostra publish` print the capability URL; `mostra open --rotate` and `--revoke` are clients of `view/rotate` and `view/revoke` (D97)."],
+  out=["`share` drivers (WP-13)", "`mcp` (WP-15)", "`plugin` (WP-16)", "`term` (WP-22, after the first release, D122)", "`export` classes beyond the receipt (WP-24)", "`mostra run <bundle>`, sign-in and sharing commands for remote servers (WP-29)"],
   risks=["Keep the CLI free of logic the protocol lacks: anything a host can't do through the protocol is a protocol gap to fix."],
   handoff="J1 runs end to end from a terminal.",
 ),
 "WP-11": dict(
   goal="Users never install Node, hosts download one verified bundle, JavaScript hosts embed Mostra in a few lines, and releases publish themselves.",
   reading=["../ARCHITECTURE.md §4 (distribution)", "../REPO_STANDARDS.md §9", "../INTERFACES.md §6, §7", "../DECISIONS.md D18, D36, D67", "../VERIFIED_FACTS.md (publishing)"],
-  detail=["From WP-06 (D101): the SDK's `wait`, `results` and `events` wrap the host methods, and its `submissions` port answers `port/submissions.deliver`; IN-10's SDK check is closed here, along with an SDK host receiving a delivery.", "Bundles for macOS arm64/x64 and Linux x64/arm64: Node LTS (24, or 26 after 2026-10-28), prebuilt code, warm set, headless Chromium, native modules; SHA-256 manifest and GitHub artifact attestation.", "Ship the warm set as the pre-built, read-only layout WP-04 links (`@mostra/warm`'s `node_modules`, found beside the runtime or through `MOSTRA_WARM_DIR`), and pnpm 10 beside the runtime as the install child's installer (D94; the license audit refuses pnpm 11 or later and `@pnpm/exe.*`). Lock layouts in a home link the warm set by path, so a bundle at a new path relinks them on use (WP-04 does it).", "Download, verify, cache by hash; `npm create mostra`; `@mostra/cli` bootstrap selecting the bundle.", "`@mostra/sdk` `createMostra({ home, ports })` over the spawned instance.", "Release workflow and exact account instructions for Mirza (npm org, trusted publishers per package, disallow tokens, crates.io); verify the first-crate-token hypothesis."],
+  detail=["From WP-06 (D101): the SDK's `wait`, `results` and `events` wrap the host methods, and its `submissions` port answers `port/submissions.deliver`; IN-10's SDK check is closed here, along with an SDK host receiving a delivery.", "Bundles for macOS arm64/x64 and Linux x64/arm64: Node LTS (24, or 26 after 2026-10-28), prebuilt code, warm set, headless Chromium, native modules; SHA-256 manifest and GitHub artifact attestation.", "Ship the warm set as the pre-built, read-only layout WP-04 links (`@mostra/warm`'s `node_modules`, found beside the runtime or through `MOSTRA_WARM_DIR`), and pnpm 10 beside the runtime as the install child's installer (D94; the license audit refuses pnpm 11 or later and `@pnpm/exe.*`). Lock layouts in a home link the warm set by path, so a bundle at a new path relinks them on use (WP-04 does it).", "Download, verify, cache by hash; `npm create mostra`; `@mostra/cli` bootstrap selecting the bundle.", "`@mostra/sdk` `createMostra({ home, ports })` over the spawned instance.", "Release workflow and exact account instructions for Mirza (npm org, trusted publishers per package, disallow tokens, crates.io); verify the first-crate-token hypothesis.", "The `ee/` boundary (D118, EN-09): `tools/package-map.ts` forbids any import from the core into `ee/`, the license audit treats `ee/` separately from the OSI-only core, and a packing check proves that no published core package contains an `ee/` file. The folder itself is created by the first package that needs it, under a license text Mirza supplies.", "Telemetry (D119): extend WP-10's EN-08 test to an SDK-spawned instance, which sends nothing."],
   out=["Rust crate (WP-12)"],
   risks=["Trusted-publisher configurations expire if unused for 2 days: configure them right before the first release."],
   handoff="Anyone can install Mostra; releases flow from merged release PRs.",
@@ -118,7 +118,7 @@ DETAIL = {
   goal="Viewing from anywhere the user chooses, never implicitly public: tailnet with identity, public shares behind explicit flags and short-lived tokens, and frames that work cross-site.",
   reading=["../ARCHITECTURE.md §5, §10", "../DECISIONS.md D38, D47, D70", "../VERIFIED_FACTS.md (Tailscale, Cloudflare, PSL, frame sessions)", "../FAILURE_MODEL.md §8"],
   detail=['From WP-07 (D111): the `static` export writes `<meta name="mostra-target" content="static">` into `index.html`; the client runtime then routes by hash and keeps fields in local storage, as `tests/e2e/specs/pages.spec.ts` checks on a marked build: run that check on the real exporter\'s output (AU-09). The client\'s transport already falls back to `events/poll` after two stream failures; worker mode adds the ticket for it.', "`tailscale serve` and `funnel` driven when installed; identity headers mapped through the identity port; backend stays on loopback.", "Funnel port plan (443 shell, 8443 and 10000 artifacts).", "`cloudflared` quick tunnels with worker-mode frames; long-poll transport where SSE fails.", "Worker mode: bootstrap page, service worker at `/` with `Service-Worker-Allowed`, ticketed streams and WebSockets, diagnostic on conflicting registration; investigate the one-off Firefox install timeout from the prototype.", "WP-05's addressing module already picks the frame-session mode per origin pair (different hosts mean worker mode, D98) and its gateway declares `/_mostra/sw.js`, `/_mostra/v/{rev}/ticket` and the stream routes; build worker mode behind them. Registered tunnel hostnames join the gateway's exact Host allowlist through the addressing module."],
-  out=["Remote mode server (v1.x)"],
+  out=["The remote server (WP-29, WP-30)"],
   risks=["External evidence needs a tailnet device and a phone: arrange with Mirza early in the session."],
   handoff="J8 works; C03-B's remote-link need (H-14) is met.",
 ),
@@ -133,7 +133,7 @@ DETAIL = {
 "WP-15": dict(
   goal="Any MCP client can author, verify, publish, wait for and read Mostra artifacts through a small, stateless tool set.",
   reading=["../INTERFACES.md §12", "../DECISIONS.md D32, D61", "../../research/brief6.md §3.2", "../../research/brief7.md §1, §2 (client limits)", "../VERIFIED_FACTS.md (MCP SDK v2, spec revisions)"],
-  detail=["v2 TypeScript SDK packages; stdio and Streamable HTTP with the full hygiene checklist on HTTP.", "From WP-06 (D104, Claude review): `artifact_open`'s description says that a link without a viewer is shared by everyone who holds it (one draft, one `once` slot).", "HY-01 item 13 (D96): apply `@mostra/protocol`'s `hygiene` checks, the same functions the gateway uses (exact Host, exact Origin, JSON content type, request-target and header sanity), to every HTTP request of `mostra mcp --http`, bind loopback by default, and prove each with a negative test; record the result as an extension of WP-05's HY-01 evidence row.", "Tools of INTERFACES §12; `artifact_wait` capped at 50 s; resources; tool names short and stable.", "Tool descriptions drafted with Mirza (D74)."],
+  detail=["v2 TypeScript SDK packages; stdio and Streamable HTTP with the full hygiene checklist on HTTP.", "From WP-06 (D104, Claude review): `artifact_open`'s description says that a link without a viewer is shared by everyone who holds it (one draft, one `once` slot).", "HY-01 item 13 (D96): apply `@mostra/protocol`'s `hygiene` checks, the same functions the gateway uses (exact Host, exact Origin, JSON content type, request-target and header sanity), to every HTTP request of `mostra mcp --http`, bind loopback by default, and prove each with a negative test; record the result as an extension of WP-05's HY-01 evidence row.", "Tools of INTERFACES §12; `artifact_wait` capped at 50 s; resources; tool names short and stable.", "Tool descriptions drafted with Mirza (D74).", "Keep the tool handlers independent of the stdio and HTTP transports, so WP-30 serves the same handlers as a remote MCP server over Streamable HTTP with OAuth (D116).", "Record the client's `clientInfo` from MCP initialization for D119's harness field, used only where telemetry is allowed (never in embedded use)."],
   out=["App-only tools and MCP Apps export (WP-17)"],
   risks=["ChatGPT freezes tool snapshots: schemas evolve additively only (D32)."],
   handoff="Codex, Claude Code and other MCP clients use Mostra without a Skill.",
@@ -149,8 +149,8 @@ DETAIL = {
 "WP-17": dict(
   goal="The same artifact source renders inline in chat hosts as an MCP App, persisting through the local server, with a full-page URL always offered.",
   reading=["../INTERFACES.md §12, §15", "../VERIFIED_FACTS.md (MCP Apps spec: CSP, bridge, theme variables)", "../../research/brief1.md §2", "../DECISIONS.md D07, D61"],
-  detail=['From WP-07 (D111): the `mcp-app` export writes `<meta name="mostra-target" content="mcp-app">`; `mountRoutes` then uses memory history, as `pages.spec.ts` checks on a marked build: run it on the real exporter\'s output (AU-09). The MCP Apps transport implements `packages/react/src/runtime/transport.ts`\'s `Transport` over the app-only tools; `boot.ts` currently starts mcp-app pages in local mode until it exists.', "Exporter plugin: single-file `ui://` resource, declared CSP, token-to-host variable mapping.", "Client runtime MCP Apps transport over app-only tools; memory routing.", "Explicit degradation messages (MC-03)."],
-  out=["Remote MCP for cloud chat hosts (v1.x)"],
+  detail=['From WP-07 (D111): the `mcp-app` export writes `<meta name="mostra-target" content="mcp-app">`; `mountRoutes` then uses memory history, as `pages.spec.ts` checks on a marked build: run it on the real exporter\'s output (AU-09). The MCP Apps transport implements `packages/react/src/runtime/transport.ts`\'s `Transport` over the app-only tools; `boot.ts` currently starts mcp-app pages in local mode until it exists.', "Exporter plugin: single-file `ui://` resource, declared CSP, token-to-host variable mapping.", "Client runtime MCP Apps transport over app-only tools; memory routing.", "Explicit degradation messages (MC-03).", "In cloud chat hosts, exported apps persist drafts, submissions and actions through WP-30's remote MCP server (D116), which replaces D61's \"until then\" message; under local hosts nothing changes. WP-30 closed MC-04 up to the inline round trip (its check boundary): repeat MC-04's external check inline in claude.ai and ChatGPT through the remote MCP server, and extend WP-30's MC-04 evidence row with the result."],
+  out=["The remote MCP endpoint itself (WP-30), which this package uses"],
   risks=["Host quirks per client: record per-host results as external evidence."],
   handoff="D17's three interfaces are complete.",
 ),
@@ -165,7 +165,7 @@ DETAIL = {
 "WP-19": dict(
   goal="Every D26 library is one import away, themed by the tokens, and the live chart stays smooth at high rates.",
   reading=["../rounds/ROUND-3.md §1.2", "../../research/brief3.md §2, §3", "../VERIFIED_FACTS.md (kit versions; re-verify)", "../DECISIONS.md D26, D48"],
-  detail=["Token-aware wrappers per library; warm set versus on-demand per D65.", "uPlot live chart on `useLive` append mode; set and measure the target rate (at least 60 updates per second with 10k points on CI hardware).", "License and version re-verification recorded in VERIFIED_FACTS."],
+  detail=["Token-aware wrappers per library; warm set versus on-demand per D65.", "uPlot live chart on `useLive` append mode; set and measure the target rate (at least 60 updates per second with 10k points on CI hardware).", "License and version re-verification recorded in VERIFIED_FACTS.", "Team components (KT-11, D121): presence avatars, live cursors, a respondent tracker and attribution chips, built on WP-31's hooks, reading the tokens and accepting `className` (KT-10)."],
   out=["Motion and decks (WP-21)"],
   risks=["TanStack Table 9 and Mermaid 12 are new majors: add churn guidance."],
   handoff="J2's dashboard has every chart it needs.",
@@ -173,7 +173,7 @@ DETAIL = {
 "WP-20": dict(
   goal="Review over any content, in a shell the artifact can't touch, with anchors agents can act on, and the shell's final design.",
   reading=["../ARCHITECTURE.md §8", "../rounds/ROUND-3.md §2, §8", "../INTERFACES.md §5, §8", "../DECISIONS.md D23, D47, D65, D68", "../rounds/round4-shell/ and ../rounds/ROUND-4.md part A", "../../research/brief5.md §2"],
-  detail=["From WP-07 (D113, D108): `ReviewSet` asks for the trusted Choose with `useChoice(id, { candidates, current })`; the shell renders it under the armed-control rules (`packages/shell/src/model.ts`) and posts `review/choose` on the shell channel. The current page arrives as `mostra/page` (`data-shell-page`), for comments to record. The shell's visual pass keeps the trusted zone's behavior: armed controls, frozen while the pointer is over them, state words reserved.", "From WP-06 (D101): results' `comments` (threads with anchors and crop paths) and `choices` labels come from the review layer; the Markdown renderer and its golden already show them, so the review layer fills the snapshot and `buildResults` reads it.", "Overlay, threads (reply, resolve, reopen), multi-layer anchors with crops through the capture port.", "Anchor providers for charts, slides and timelines; bridge injection for served frames.", "Review sets: gallery, focus, synchronized compare with pixel diff, trusted Choose.", "`review export`.", "Final visual pass on the shell with design-focused review (ask Mirza for design skills); mobile layout.", "Review endpoints live on the shell origin under `/a/<artifactId>/_mostra/`, behind WP-05's shell-session, Origin and CSRF checks and the `review` scope (D97, D98)."],
+  detail=["From WP-07 (D113, D108): `ReviewSet` asks for the trusted Choose with `useChoice(id, { candidates, current })`; the shell renders it under the armed-control rules (`packages/shell/src/model.ts`) and posts `review/choose` on the shell channel. The current page arrives as `mostra/page` (`data-shell-page`), for comments to record. The shell's visual pass keeps the trusted zone's behavior: armed controls, frozen while the pointer is over them, state words reserved.", "From WP-06 (D101): results' `comments` (threads with anchors and crop paths) and `choices` labels come from the review layer; the Markdown renderer and its golden already show them, so the review layer fills the snapshot and `buildResults` reads it.", "Overlay, threads (reply, resolve, reopen), multi-layer anchors with crops through the capture port.", "Anchor providers for charts, slides and timelines; bridge injection for served frames.", "Review sets: gallery, focus, synchronized compare with pixel diff, trusted Choose.", "`review export`.", "Final visual pass on the shell with design-focused review (ask Mirza for design skills); mobile layout.", "Review endpoints live on the shell origin under `/a/<artifactId>/_mostra/`, behind WP-05's shell-session, Origin and CSRF checks and the `review` scope (D97, D98).", "Mentions (CO-06, D121): an `@mention` of a viewer in a comment raises one durable event naming that viewer, which hosts filter and route; Mostra notifies nobody itself (D10)."],
   out=["Terminal cell anchors (WP-23)", "Motion and video anchors (WP-21)"],
   risks=["Crops of cross-origin frames come from the capture port, not from the page."],
   handoff="J1 complete: candidates, comments with crops, a choice, delivered together.",
@@ -189,7 +189,7 @@ DETAIL = {
 "WP-22": dict(
   goal="Terminal output agents can verify without vision and humans see exactly: one frame model, an owned renderer, recordings and a ratatui capture crate.",
   reading=["../rounds/ROUND-3.md §5", "../INTERFACES.md §10", "../VERIFIED_FACTS.md (terminal fidelity)", "../../research/brief4.md"],
-  detail=["Frame schemas in `@mostra/protocol`, shared with the Rust crate.", "`@xterm/headless` replay with Unicode 11; `<TerminalGrid>` with bundled font and procedural glyphs.", "Recorded mode with scrub and markers; `term dump` and terminal lint.", "`mostra-term-capture` crate."],
+  detail=["Frame schemas in `@mostra/protocol`, shared with the Rust crate.", "`@xterm/headless` replay with Unicode 11; `<TerminalGrid>` with bundled font and procedural glyphs.", "Recorded mode with scrub and markers; `term dump` and terminal lint.", "`mostra-term-capture` crate.", "`mostra term record` (a first-party CLI-command plugin), moved here from WP-25 (D122)."],
   out=["Live, WASM and compare (WP-23)"],
   risks=["ZWJ, flags and VS16 emoji disagree across engines (prototype): lint them."],
   handoff="WP-23 adds live sessions and compares frames across modes.",
@@ -197,7 +197,7 @@ DETAIL = {
 "WP-23": dict(
   goal="Real programs live in the page, ratatui apps in WASM, and candidates compared cell by cell.",
   reading=["../rounds/ROUND-3.md §5", "../INTERFACES.md §4 (term WebSocket), §7 (pty port)", "../../research/brief4.md §1, §2, §4"],
-  detail=["PTY host and `pty` port; declared sessions only; WebSocket protocol with backpressure; asciicast v3 tee.", "xterm.js 6 WebGL engine as a first-party embed-engine plugin.", "Ratzilla template and WASM island with frame reporting; zero-cell-difference proof against capture (TM-05).", "`<TerminalCompare>` and cell-rectangle comments."],
+  detail=["PTY host and `pty` port; declared sessions only; WebSocket protocol with backpressure; asciicast v3 tee.", "xterm.js 6 WebGL engine as a first-party embed-engine plugin.", "Ratzilla template and WASM island with frame reporting; zero-cell-difference proof against capture (TM-05).", "`<TerminalCompare>` and cell-rectangle comments.", "The xterm.js engine's contract proof through `mostra plugin verify`, moved here from WP-25 (D122): it is the terminal half of EX-05, which WP-25 closes for v1."],
   out=["Recorded mode (WP-22)"],
   risks=["Browsers cap WebGL contexts: virtualize off-screen terminals."],
   handoff="J4 complete.",
@@ -205,23 +205,23 @@ DETAIL = {
 "WP-24": dict(
   goal="Projects' own apps shown as real demos, and every artifact exportable without pretending server features still work.",
   reading=["../ARCHITECTURE.md §3, §9", "../INTERFACES.md §2.2 (demos), §15", "../DECISIONS.md D28", "../../research/brief4.md §5"],
-  detail=["Declared demos with lifecycle; per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting; framing headers stripped for that demo only; bridge injection with opt-out.", "`<WebDemo>` with device frames and viewports.", "Export classes and `mostra run <bundle>`; document `WorkerLauncher` as the future `SandboxPort`."],
-  out=["MCP App export (WP-17)"],
+  detail=["Declared demos with lifecycle; per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting; framing headers stripped for that demo only; bridge injection with opt-out.", "`<WebDemo>` with device frames and viewports.", "The `static`, `html` and `snapshot` export classes. The `bundle` class, `mostra run <bundle>` and the `WorkerLauncher` documentation moved to WP-29 (D125), which a share needs first; VR-07's bundle case reuses them."],
+  out=["MCP App export (WP-17)", "The `bundle` class and `mostra run` (WP-29)", "Terminal exports (WP-22, WP-23)"],
   risks=["Next.js HMR path differs from Vite's: test both."],
-  handoff="J5's embedded live demo works; remote mode has its portable package.",
+  handoff="J5's embedded live demo works; every export class is proven.",
 ),
 "WP-25": dict(
   goal="First-party plugins prove every contract, including the license flow for non-OSI engines.",
   reading=["../rounds/ROUND-3.md §6", "../DECISIONS.md D26, D31", "../VERIFIED_FACTS.md (Remotion, GSAP terms)"],
-  detail=["Remotion and GSAP adapters (user-installed, `--accept-license`), chart datum anchor provider, filesystem connector, `mostra term record`.", "`mostra plugin verify` against each plugin's baselines."],
-  out=["The registry (v1.x)"],
+  detail=["Remotion and GSAP adapters (user-installed, `--accept-license`), chart datum anchor provider, filesystem connector.", "`mostra plugin verify` against each plugin's baselines."],
+  out=["The registry (v1.x)", "`mostra term record` and the xterm.js engine's proof (WP-22 and WP-23, after the first release, D122)"],
   risks=["Never add Remotion or GSAP to any core dependency tree; the license audit enforces it."],
   handoff="J9 works.",
 ),
 "WP-26": dict(
   goal="Agents start from excellent templates, people see what Mostra can do, and the docs are built with Mostra itself.",
   reading=["../PRODUCT.md (journeys, quality and adoption)", "../DECISIONS.md D29, D63, D68", "../REPO_STANDARDS.md §8", "../../research/brief1-second.md (gallery ideas) via the INDEX"],
-  detail=["Templates per family, one-off and long-lived, each with AGENTS.md and passing verify.", "Gallery with prompt, source and result, including the launch demos.", "Docs site built with Mostra, generated references, per-page Markdown, `llms.txt`, deployed to GitHub Pages under `mostra-dev`.", "SPA-mode completeness review (RS-02)."],
+  detail=["Templates per family, one-off and long-lived, each with AGENTS.md and passing verify; they include a team (roster) form and a hosted-sharing example (D121, D116).", "Gallery with prompt, source and result, including the launch demos.", "Docs site built with Mostra, generated references, per-page Markdown, `llms.txt`, deployed to GitHub Pages under `mostra-dev`; it covers remote servers, the relay, teams and the public telemetry event list (D119).", "SPA-mode completeness review (RS-02)."],
   out=["Evaluation suite (WP-27)"],
   risks=["Every example is a CI test: keep baselines committed and stable."],
   handoff="v1 is feature-complete for the closeout.",
@@ -229,29 +229,124 @@ DETAIL = {
 "WP-27": dict(
   goal="An opt-in, paced evaluation suite that measures whether agents succeed with Mostra on the first try and keep succeeding across turns.",
   reading=["../DECISIONS.md D33, D34, D64, D72, D75", "../evaluations/eval-01/ (harness and report)", "../../research/brief6.md §1.1, §4.3"],
-  detail=["Grow the EVAL-01 harness onto the real toolchain: scenarios over templates and journeys J1 to J12, first-pass verify, turns to pass, retention across turns.", "Pacing per D64, announcements per D34, records per STANDARDS.", "Re-run the base comparison on Mostra's own kit."],
+  detail=["Grow the EVAL-01 harness onto the real toolchain: scenarios over templates and journeys J1 to J12 and the team, hosted and relay journeys (J13, J14), first-pass verify, turns to pass, retention across turns.", "Pacing per D64, announcements per D34, records per STANDARDS.", "Re-run the base comparison on Mostra's own kit."],
   out=["Prose quality (never measured by evaluations)"],
   risks=["Model mix variety (D34): don't optimize for one model."],
   handoff="The phase closeout.",
+),
+"WP-28": dict(
+  goal="Settle the remote server's design at the surface, so WP-29 and WP-30 build from the dossier: how a hosted artifact's data, code and identity move between the owner's instance, the remote server and an operating layer (D116, D117), recorded in the dossier with Mirza's acceptance.",
+  reading=["../DECISIONS.md D06, D12, D38, D58, D61, D70, D97, D98, D104, D105 and D116 to D125", "../ARCHITECTURE.md §3, §5, §6, §7, §10, §11, §14", "../INTERFACES.md §4, §6, §7, §12, §15", "../DATA_MODEL.md (all)", "../FAILURE_MODEL.md (all)", "../../research/brief7.md (remote mode and its clients; long, so a fast-worker summary with this file named is acceptable)", "../VERIFIED_FACTS.md (MCP, remote viewing, cross-site frames, the chat hosts of 2026-10-16); re-verify the MCP authorization specification and the chat hosts' remote MCP support on the day", "Infrastructure facts Mirza provides (hosting, the user-content domain): ask for them at the start"],
+  detail=[
+    "This package writes design, not code. Bring Mirza each question below with what you know, the options and your recommendation, as one set (README §2); record the answers as decisions and write them into the documents the Scope names. Then refine WP-29's and WP-30's entries in WORK_PACKAGES.md and their detail here, and regenerate (D123: the surface and the options; the sessions settle the rest).",
+    "1. *Where a hosted artifact's ledger is canonical.* (a) The hosted home is canonical and the owner's instance follows its events (recommended: viewers keep working while the owner sleeps); (b) the owner's ledger is canonical and the remote server caches.",
+    "2. *Transport.* JSON-RPC over WebSocket, or HTTP plus SSE; account tokens from a device-code sign-in.",
+    "3. *What a share pushes.* The portable bundle (ARCHITECTURE §3) with the client build and manifest; the server bundle stays with the owner under the relay.",
+    "4. *Relay semantics.* A run state for \"waiting for the owner\" (additive to WP-08's run states, D124); the offline policy (`queue` with a time limit, or `fail`); idempotency keys end to end; live producers pushing from the owner.",
+    "5. *Authoring from chat hosts* (D117, deferred to this package). Relayed to the owner's instance (recommended for v1), or refused when none is attached; cloud-side builds are v1.x (RM-06).",
+    "6. *Hosting many homes.* One supervisor per active home, or a multi-home supervisor; idle scale-to-zero and its cold-start budget.",
+    "7. *Addressing.* Wildcard per-artifact origins on the user-content domain, worker-mode frames (D70), TLS.",
+    "8. *Identity.* OAuth providers, the mapping to viewers (`view/url`'s `viewer`, D104), anonymous display names recorded as unverified.",
+    "9. *Operator ports.* The smallest surface that lets an operating layer enforce limits, receive metering, resolve accounts and act on abuse, with no-op defaults (HO-09).",
+    "10. *Remote MCP.* Protocol revisions, OAuth details (client registration by metadata document and dynamically, refresh tokens), statelessness with explicit handles (D61), the tool set.",
+    "11. *Self-hosting.* A container image and its configuration.",
+    "Reserve in INTERFACES the client hooks and wait conditions WP-31 fills (D121), labelled *Deferred decision* for WP-31, so the remote binding is designed with them in view.",
+  ],
+  out=["Code: WP-29 and WP-30 build the design", "The managed service's operating layer, which lives outside this repository (D116)", "Sandboxed remote execution (RM-06, v1.x)", "Team semantics beyond reserving their surface (WP-31)"],
+  risks=["The MCP authorization specification and the chat hosts' remote MCP support move quickly: re-verify both on the day and record them in VERIFIED_FACTS.", "A hosted artifact is authorized by its capability URL exactly as a local one (D06, D97); a design that needs a weaker rule is a finding for Mirza, never a shortcut."],
+  handoff="A remote design Mirza accepted, in ARCHITECTURE, INTERFACES, DATA_MODEL and FAILURE_MODEL, and WP-29's and WP-30's specifications refined from it.",
+),
+"WP-29": dict(
+  goal="An agent shares a published version to a remote server with one command; the link works while the author's machine sleeps; answers, waits and actions behave exactly as they do locally.",
+  reading=["../DECISIONS.md D105, D116, D117, D124, D125", "The remote design WP-28 recorded in ARCHITECTURE, INTERFACES, DATA_MODEL and FAILURE_MODEL", "../INTERFACES.md §6, §7, §9, §15", "../FAILURE_MODEL.md §4, §6"],
+  detail=[
+    "WP-28 refines this specification (D123); until then it states the surface.",
+    "From WP-24 (D125): the `bundle` export class, `mostra run <bundle>` and the documentation of `WorkerLauncher` as the future `SandboxPort` move here, because a share pushes the bundle (RM-01). WP-24's VR-07 evidence reuses this bundle.",
+    "Remote submissions reach the host through the local outbox, so H-04's guarantees (durable before delivery, ordered, idempotent replay) hold for hosted artifacts too.",
+    "Sign-in, sign-out and sharing commands join the CLI additively (D60); their help text is drafted with Mirza (D74).",
+    "The relay's \"waiting for the owner\" is an additive state of WP-08's action runs (D124); secrets never cross the relay (D117).",
+  ],
+  out=["The remote server's multi-home mode, viewer sign-in, operator ports and remote MCP (WP-30)", "Sandboxed remote execution (RM-06, v1.x)", "Team features (WP-31)"],
+  risks=["Exactly once in effect across two ledgers: every relayed call and every synced submission carries a stable ID end to end (FAILURE_MODEL §1 rule 3).", "Secrets never cross the relay: grep tests over relay traffic, as WP-08's over logs and events."],
+  handoff="Hosted links whose answers and actions flow back to the owner; WP-30 turns the endpoint fixture into the full remote server.",
+),
+"WP-30": dict(
+  goal="A self-hostable remote server that serves many homes safely on a separate user-content domain, signs viewers in, lets an operating layer enforce its limits through ports, and gives cloud chat hosts a remote MCP server, so inline artifacts persist there.",
+  reading=["../DECISIONS.md D06, D61, D70, D97, D116, D118", "The remote design WP-28 recorded", "../INTERFACES.md §4, §5, §7, §12", "../../research/brief7.md §1, §2 (client limits)", "../VERIFIED_FACTS.md (MCP, the chat hosts of 2026-10-16; re-verify)"],
+  detail=[
+    "WP-28 refines this specification (D123).",
+    "Multi-home mode behind one gateway; per-artifact origins on the user-content domain, with worker-mode frames (D70).",
+    "Operator ports with no-op defaults, so a self-hoster needs no operating layer; the managed service's operating layer reaches the server only through them (D116, HO-09).",
+    "The remote MCP endpoint serves WP-15's transport-independent tool handlers over Streamable HTTP with OAuth (MC-04), so WP-17's MCP Apps persist in cloud chat hosts.", "Check boundary for MC-04 (D125 puts this package before WP-17): prove the endpoint, its authorization and an agent in a cloud chat host creating, opening (through the full-page link) and submitting an artifact. The MCP App exporter, its client transport and the app-only tools are WP-17's; WP-17 repeats the check inline through this server. Build nothing WP-17 would have to work around: the app-only tools of INTERFACES §12 are served by the same handlers.",
+    "The report control renders in the shell's origin like every trusted control (invariant 7); policy hooks add an interstitial and an expiry to public links (HY-09).",
+    "A container image and self-hosting docs; RM-03's audit shows no operating-layer code in the core.",
+  ],
+  out=["The managed service's operating layer: accounts, billing, quotas, metering storage, abuse tooling and fleet operation (outside this repository, D116)", "`ee/` features (D118)", "Sandboxed remote execution (RM-06, v1.x)"],
+  risks=["ChatGPT's write tools on a custom MCP server need a Business or Enterprise workspace, and approved tool snapshots freeze (VERIFIED_FACTS, 2026-10-16): arrange the external check with Mirza early, and keep schemas additive (D32).", "Cross-tenant isolation is hygiene: seeded cross-tenant reads, writes and frame entries are negative tests, as WP-05's are."],
+  handoff="Hosted links on a real remote server, and inline Mostra that persists in cloud chat hosts; WP-31 builds team features on its viewer identity.",
+),
+"WP-31": dict(
+  goal="Send one artifact to a team and know who answered: expected respondents with personal links, waits for everyone, and respondent status, presence and attribution as data any page shows in its own design.",
+  reading=["../DECISIONS.md D39, D47, D63, D97, D103, D104, D107, D121", "../INTERFACES.md §2.3, §4, §6", "../DATA_MODEL.md §3, §4", "../FAILURE_MODEL.md §5", "The remote design WP-28 recorded (viewer identity)"],
+  detail=[
+    "The surface and the options (D123); the session settles names and semantics and records them as delegated decisions.",
+    "Roster: people named by the host's stable viewer reference (`view/url`'s `viewer`, D104) and display name, or by email where a remote server sends invitations; locally one personal link per respondent.",
+    "Waits: options include conditions such as `submitted:all` and `submitted:<N>`, defined under `once` per-viewer (D107) and `epochs` (D103), with an event when the roster completes.",
+    "Hooks: options include `useRespondents()` and `usePresence()`; respondent status also through the host protocol and the CLI.",
+    "Presence and cursors are ephemeral (D47): never stored, rate-limited and coalesced, and off unless the artifact opts in. The shell imposes no presence UI (D121).",
+    "Attribution: who last changed each artifact-scoped field and when, readable by the page.",
+    "Visibility (CO-07): owners, agents and hosts always see respondent status. What viewers see of each other by default is a *Deferred decision* for this package with Mirza; recommendation: private unless the artifact opts in.",
+    "Team scenarios join the conformance kit (WP-12).",
+  ],
+  out=["Real-time co-editing of text (the v1.x Yjs plugin)", "Kit components for teams (WP-19, KT-11)", "Mentions in comments (WP-20, CO-06)", "Roles and permissions beyond capability scopes"],
+  risks=["Presence must never reach the ledger or the event log: a test asserts it (CO-04).", "Roster waits are level- or edge-triggered like D103 and D107: property-test the interleavings."],
+  handoff="Team forms and live team pages work end to end; WP-19 and WP-20 add the kit components and mentions on these hooks.",
+),
+"WP-32": dict(
+  goal="Mostra runs on Windows as it does on macOS and Linux: one install command, no global Node, the same protocol and the same guarantees.",
+  reading=["../DECISIONS.md D18, D35, D45, D62, D81, D82, D85, D120", "../ARCHITECTURE.md §4", "../FAILURE_MODEL.md §2, §10", "../REPO_STANDARDS.md §6, §9", "../VERIFIED_FACTS.md (process model); verify the Windows facts you rely on"],
+  detail=[
+    "The runtime bundle for Windows: private Node, native modules (better-sqlite3 and the others), headless Chromium.",
+    "The supervisor: a local transport in place of Unix sockets (named pipes or another; compare two candidates), process trees in place of process groups, home and runtime-directory paths, the ledger lock.",
+    "The gateway and the CLI on Windows; a Windows leg in the CI jobs that run real processes and browsers.",
+    "The fail-closed gate stays for every platform still unsupported (RT-07).",
+  ],
+  out=["Terminal features on Windows (ConPTY), which wait for WP-22 and WP-23"],
+  risks=["Process identity and reaping differ fundamentally on Windows: re-derive FAILURE_MODEL §2's guarantees rather than porting the Unix code paths."],
+  handoff="Windows users install and use Mostra; the terminal packages follow.",
 ),
 }
 
 ALWAYS = "Plus the files every WP reads ([README.md](README.md) §1)."
 
 
+def blocks(text):
+    """Yield (section title, package block) for every `### WP-NN.` block of WORK_PACKAGES.md. A block ends
+    at the next `### ` or `## ` heading, so a level-2 heading after a package (such as "After the first
+    release") never becomes part of that package's text."""
+    for section in re.split(r"^## ", text, flags=re.M):
+        title = section.split("\n", 1)[0].strip()
+        for b in re.split(r"^### ", section, flags=re.M)[1:]:
+            yield title, b
+
+
+AFTER_FIRST_RELEASE = "After the first release"
+
+
 def main():
     req_rows, owners = load()
     text = (D / "WORK_PACKAGES.md").read_text()
-    blocks = re.split(r"^### ", text, flags=re.M)[1:]
     out_dir = D / "work-packages"
     out_dir.mkdir(exist_ok=True)
     seen = []
     stale = []
-    for b in blocks:
+    for section, b in blocks(text):
         head, body = b.split("\n", 1)
         m = re.match(r"(WP-\d\d)\. (.+)", head)
         wp, title = m.group(1), m.group(2).strip()
         seen.append(wp)
+        if wp not in DETAIL:
+            sys.exit(f"{wp} is in WORK_PACKAGES.md but has no DETAIL entry in tools/design/wp_specs.py")
         det = DETAIL[wp]
         owns = re.search(r"^- \*\*Owns:\*\* (.+)\.$", body, re.M).group(1).split(", ")
         builds = re.search(r"^- \*\*Builds:\*\*(.*?)(?=^- \*\*Depends on)", body, re.M | re.S).group(1).strip()
@@ -261,8 +356,10 @@ def main():
              f"<!-- Generated by tools/design/wp_specs.py. Edit WORK_PACKAGES.md or the generator, then regenerate. -->", "",
              "| | |", "|---|---|",
              f"| **Mode** | `PROGRAM MODE: work-package`, `WORK PACKAGE: {wp}` |",
-             f"| **Depends on** | {depends} |",
-             f"| **Branch** | `wp/{wp[3:]}-<short-name>` from the accepted predecessor |",
+             f"| **Depends on** | {depends} |"]
+        if section == AFTER_FIRST_RELEASE:
+            L.append("| **Release** | v1.1, after the first release (D120, D122) |")
+        L += [f"| **Branch** | `wp/{wp[3:]}-<short-name>` from the accepted predecessor |",
              f"| **Protocol** | [README.md](README.md) |", "",
              "## Goal", "", det["goal"], "",
              "## Owned requirements", "",

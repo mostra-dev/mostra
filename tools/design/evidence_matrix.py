@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Generate docs/design/EVIDENCE_MATRIX.md from REQUIREMENTS.md, WORK_PACKAGES.md and the checks below,
-and fail if any v1 requirement lacks exactly one owner or any owned ID is unknown. With --check it
-writes nothing and fails when the committed matrix is stale (the docs job in CI runs this)."""
+and fail if any v1 or v1.1 requirement lacks exactly one owner or a check, or any owned ID is unknown.
+v1.1 rows (built after the first release, D120, D122) follow the same rules as v1 rows and get their own
+section. With --check it writes nothing and fails when the committed matrix is stale (the docs job in CI
+runs this)."""
 import re, sys, pathlib
 
 D = pathlib.Path(__file__).resolve().parents[2] / "docs" / "design"
+
+# Releases whose requirements the packages in WORK_PACKAGES.md build: each row needs exactly one owner,
+# a concrete check, and takes its evidence from the owner's progress report. v1.x and later rows have none.
+OWNED_RELEASES = ("v1", "v1.1")
 
 
 def load():
     """Parse requirement rows and WP ownership from the dossier."""
     req_rows, owners, wp = {}, {}, None
     for line in (D / "REQUIREMENTS.md").read_text().splitlines():
-        m = re.match(r"^\| ([A-Z]{2}-\d\d) \| (.+?) \| (v1\.x|v1|later) \| (.+?) \| (.+?) \|$", line)
+        m = re.match(r"^\| ([A-Z]{2}-\d\d) \| (.+?) \| (v1\.x|v1\.1|v1|later) \| (.+?) \| (.+?) \|$", line)
         if m:
             rid, text, rel, src, route = m.groups()
             if rid in req_rows:
@@ -47,6 +53,7 @@ CHECKS = {
  "RT-07": "macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home",
  "RT-08": "Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart",
  "RT-09": "SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time",
+ "RT-10": "Windows CI runner without global Node: `npm create mostra` through `verify`, `publish`, a submission and `results`; the RT-07 fail-closed check still passes for unsupported platforms",
  "VR-01": "Digest unit tests (byte changes, renames, lockfile, env fields change the ID; ignored paths don't); same pair publishes as reused",
  "VR-02": "Fault injection at each publish step leaves no visible version and cleans staging on next start",
  "VR-03": "No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions",
@@ -104,6 +111,8 @@ CHECKS = {
  "HY-05": "External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll",
  "HY-06": "SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews",
  "HY-07": "Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic",
+ "HY-08": "Signed-in and anonymous viewers record the right viewer kind; a forged identity claim is refused; a link without sign-in still works within its scopes",
+ "HY-09": "Serving from the main domain is impossible (route test); the artifact can't click or hide the report control (forgery suite of WP-07 reused); interstitial and expiry honored",
  "HO-01": "Every port exercised with and without host registration (conformance)",
  "HO-02": "Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite)",
  "HO-03": "Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release",
@@ -112,6 +121,7 @@ CHECKS = {
  "HO-06": "Audit: no host-specific identifiers in core packages; every JCODE_HOST row maps to a conformance scenario; Mirza reviews",
  "HO-07": "Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas",
  "HO-08": "Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable",
+ "HO-09": "A fixture operator denies a share over its limit with a diagnostic, receives metering events, and suspends an artifact; with no operator everything works",
  "KT-01": "Render test per D26 library wrapper in three engines; license and version re-verified in VERIFIED_FACTS",
  "KT-02": "License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree",
  "KT-03": "Both base packs type-check and render every component; default base set from EVAL-01 evidence",
@@ -122,6 +132,7 @@ CHECKS = {
  "KT-08": "Each guidance rule has a lint fixture with a working autofix; wrong-base TS2322 shape becomes MOSTRA_KIT_WRONG_BASE",
  "KT-09": "Mirza's review of the gallery for beautiful by default",
  "KT-10": "Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly",
+ "KT-11": "Each component renders from fixtures in both themes and accepts `className`",
  "TM-01": "Fidelity fixture suite (box drawing, 256 and true color, CJK, emoji ZWJ, combining marks, wrap, cursor, alt screen) renders consistently across modes within threshold",
  "TM-02": "htop, vim and a ratatui demo run live with resize and input; recording replays to identical frames",
  "TM-03": "asciicast v3 playback with scrub and markers (browser)",
@@ -138,19 +149,24 @@ CHECKS = {
  "AX-06": "Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests",
  "AX-07": "Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews",
  "AX-08": "Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64)",
- "AX-09": "Every D60 command plus run and state implemented with contract tests",
+ "AX-09": "Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122)",
  "AX-10": "Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex",
  "MC-01": "MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex",
  "MC-02": "ext-apps reference host renders the export; fields, submit and actions round-trip; CSP and variables declared; URL fallback offered; external: Claude Desktop and VS Code",
  "MC-03": "Each unavailable feature shows its explicit message in the MCP App (browser)",
+ "MC-04": "Protocol suite against the remote endpoint; external: a claude.ai custom connector and a ChatGPT custom MCP server (formerly developer mode; write tools need a Business or Enterprise workspace, VERIFIED_FACTS) create, open and submit an artifact on a test deployment, opening it through its full-page link. Inline persistence of exported MCP Apps needs WP-17's exporter and app-only tools, which come later: WP-17 repeats this check inline through the remote MCP server (check boundary, D125)",
  "EX-01": "Six contract packages published at 0.x with independent versions; compatibility tests in and out of range",
  "EX-02": "`mostra plugin validate` accepts valid manifests and reports each invalid field",
  "EX-03": "An unchanged third-party shadcn registry item installs; Mostra packs install through shadcn too",
  "EX-04": "Non-OSI fixture plugin refuses without --accept-license and installs with it; recorded in the lockfile; host pre-acceptance works",
- "EX-05": "Each first-party plugin passes `mostra plugin verify` against its baselines",
+ "EX-05": "Each first-party plugin installs, passes its verify baselines and exercises its contract",
  "RS-01": "One test per D19 seam (mode field, use server contract and serializer, AsyncLocalStorage context, use client runtime, RenderMode)",
  "RS-02": "Mirza's review of SPA-mode completeness at WP-26; no SPA component marked temporary",
  "RM-01": "Bundle moves between homes keeping identity; ports and WorkerLauncher documented; MCP server stateless (handle-only test)",
+ "RM-02": "Two instances on one machine, one as a remote server: share, open from a browser, submit, `wait` returns and the local host receives the delivery exactly once in effect; external: the same against a deployed server",
+ "RM-03": "Container image serves two accounts' homes; cross-tenant reads, writes and frame entries are refused (seeded attempts); a grep and dependency audit shows no operator-layer code in the core",
+ "RM-04": "A counting fake mail action pressed on the hosted page runs once on the owner; owner offline: the run waits or fails per policy and resumes or reports on reconnect; relay cut mid-run ends per FAILURE_MODEL; a grep shows no secret in relay traffic",
+ "RM-05": "Mirza accepts the design; generators pass with the refined specifications",
  "EN-01": "LICENSE, NOTICE and DCO check present; CI rejects an unsigned commit",
  "EN-02": "Tooling baseline in place and pinned through catalogs; `pnpm check` equals CI",
  "EN-03": "CI job verifies every example and template with committed visual and ARIA baselines",
@@ -158,12 +174,21 @@ CHECKS = {
  "EN-05": "Release dry run in CI; first real release with provenance after Mirza's account steps (external)",
  "EN-06": "Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running",
  "EN-07": "CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run",
+ "EN-08": "Seeded: a host-spawned instance (`mostra host`) sends nothing; `DO_NOT_TRACK=1` sends nothing; payloads match the documented schema and contain no paths or tokens. WP-11 adds the SDK-spawned case to the same test",
+ "EN-09": "Seeded import from core into `ee/` fails the boundary check; a packed core tarball contains no `ee/` file",
  "LL-01": "Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host",
  "LL-02": "Policy none: no Submit control; submit API refused; state, actions and signals work",
  "LL-03": "Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead",
  "LL-04": "Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded",
  "LL-05": "Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon",
  "LL-06": "Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12",
+ "CO-01": "Roster of five yields five links mapping to five viewers; roster changes are events",
+ "CO-02": "Property test over interleavings: satisfied exactly when the last respondent submits, under `once` per-viewer and `epochs`",
+ "CO-03": "Five simulated viewers in browsers move through states; hook, protocol and CLI agree",
+ "CO-04": "Cursors from three viewers reach each other within the rate; the ledger holds no presence rows; opting out stops sharing",
+ "CO-05": "Two viewers edit a shared field; each sees the other's attribution",
+ "CO-06": "A mention emits one event naming the mentioned viewer; hosts filter it",
+ "CO-07": "Each policy setting returns exactly what it promises to a viewer's hooks; the default is the one WP-31 records with Mirza",
 }
 
 
@@ -172,19 +197,19 @@ def main():
     req_rows, owners = load()
 
     errors = []
-    v1 = {k: v for k, v in req_rows.items() if v["rel"] == "v1"}
-    for rid in v1:
+    owned = {k: v for k, v in req_rows.items() if v["rel"] in OWNED_RELEASES}
+    for rid, r in owned.items():
         o = owners.get(rid, [])
         if len(o) != 1:
-            errors.append(f"{rid}: owners {o}")
+            errors.append(f"{rid} ({r['rel']}): owners {o}")
         if rid not in CHECKS:
-            errors.append(f"{rid}: no check")
+            errors.append(f"{rid} ({r['rel']}): no check")
     for rid in owners:
-        if rid not in v1:
-            errors.append(f"{rid}: owned by {owners[rid]} but not a v1 requirement")
+        if rid not in owned:
+            errors.append(f"{rid}: owned by {owners[rid]} but not a v1 or v1.1 requirement")
     for rid in CHECKS:
-        if rid not in v1:
-            errors.append(f"{rid}: check for unknown or non-v1 requirement")
+        if rid not in owned:
+            errors.append(f"{rid}: check for an unknown requirement or one that is neither v1 nor v1.1")
     if errors:
         sys.exit("\n".join(errors))
 
@@ -199,8 +224,8 @@ def main():
             m = re.match(r"^\| ([A-Z]{2}-\d\d) \| (\w+) \|", line)
             if m and m.group(2).lower() in states:
                 rid, state = m.group(1), m.group(2).lower()
-                if rid not in v1:
-                    errors.append(f"{rid}: evidence in {f.name} for an unknown or non-v1 requirement")
+                if rid not in owned:
+                    errors.append(f"{rid}: evidence in {f.name} for an unknown requirement or one that is neither v1 nor v1.1")
                 elif owners[rid][0] != wp:
                     errors.append(f"{rid}: evidence in {f.name} but owned by {owners[rid][0]}")
                 else:
@@ -208,12 +233,19 @@ def main():
     if errors:
         sys.exit("\n".join(errors))
 
+    v1 = {k: v for k, v in owned.items() if v["rel"] == "v1"}
+    v11 = {k: v for k, v in owned.items() if v["rel"] == "v1.1"}
+    rest = ", ".join(f"{k} ({v['rel']})" for k, v in req_rows.items() if v["rel"] not in OWNED_RELEASES)
+    header = ["| ID | Owner | Route | Concrete check | Evidence |", "|---|---|---|---|---|"]
+    row = lambda rid, r: f"| {rid} | {owners[rid][0]} | {r['route']} | {CHECKS[rid]} | {evidence.get(rid, 'unverified')} |"
     out = ["# Mostra requirement-to-evidence matrix", "",
-           "**Status:** Generated by `tools/design/evidence_matrix.py` from [REQUIREMENTS.md](REQUIREMENTS.md) and [WORK_PACKAGES.md](WORK_PACKAGES.md). The generator fails if any v1 requirement lacks exactly one owning work package or a concrete check. Evidence states follow STANDARDS (verified, validated, plausible, blocked, unverified). The Evidence column comes from the owning WP's progress report (`docs/progress/PROGRESS-WP-NN.md`, an evidence table whose rows begin `| <ID> | <state> |`). Rows without an entry read **unverified**. The phase closeout re-checks the whole matrix.",
-           "", f"v1 requirements: {len(v1)}. Owned exactly once: {len(v1)}. Not in v1 (D16): " + ", ".join(f"{k} ({v['rel']})" for k, v in req_rows.items() if v['rel'] != 'v1') + ".",
-           "", "| ID | Owner | Route | Concrete check | Evidence |", "|---|---|---|---|---|"]
-    for rid, r in v1.items():
-        out.append(f"| {rid} | {owners[rid][0]} | {r['route']} | {CHECKS[rid]} | {evidence.get(rid, 'unverified')} |")
+           "**Status:** Generated by `tools/design/evidence_matrix.py` from [REQUIREMENTS.md](REQUIREMENTS.md) and [WORK_PACKAGES.md](WORK_PACKAGES.md). The generator fails if any v1 or v1.1 requirement lacks exactly one owning work package or a concrete check. Evidence states follow STANDARDS (verified, validated, plausible, blocked, unverified). The Evidence column comes from the owning WP's progress report (`docs/progress/PROGRESS-WP-NN.md`, an evidence table whose rows begin `| <ID> | <state> |`). Rows without an entry read **unverified**. The phase closeout re-checks the v1 rows; the v1.1 rows close with the packages after the first release (D120, D122).",
+           "", f"v1 requirements: {len(v1)}. v1.1 requirements: {len(v11)}. Owned exactly once: {len(owned)}. Neither v1 nor v1.1 (D16): {rest}.",
+           "", "## v1", ""] + header + [row(rid, r) for rid, r in v1.items()]
+    if v11:
+        out += ["", "## v1.1", "",
+                "Built after the first release by the packages under \"After the first release\" in [WORK_PACKAGES.md](WORK_PACKAGES.md) (D120, D122), under the same rules as v1.",
+                ""] + header + [row(rid, r) for rid, r in v11.items()]
     text = "\n".join(out) + "\n"
     target = d / "EVIDENCE_MATRIX.md"
     if "--check" in sys.argv:
@@ -222,9 +254,9 @@ def main():
     else:
         target.write_text(text)
     counts = {}
-    for rid in v1:
+    for rid in owned:
         counts[owners[rid][0]] = counts.get(owners[rid][0], 0) + 1
-    print("ok", len(v1), "v1 requirements;", dict(sorted(counts.items())))
+    print("ok", len(v1), "v1 and", len(v11), "v1.1 requirements;", dict(sorted(counts.items())))
 
 
 if __name__ == "__main__":

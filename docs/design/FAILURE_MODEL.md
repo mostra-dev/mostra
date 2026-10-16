@@ -134,6 +134,13 @@
 | Package lifecycle script fails | The install fails with `MOSTRA_DEP_INSTALL_FAILED` and the script's output; nothing is published. It runs in an install child with the artifact's directory and environment, never in the supervisor (DP-05) |
 | Registry unreachable, or a package the store lacks while offline | `MOSTRA_DEP_OFFLINE` naming the package; with `MOSTRA_OFFLINE` set or no network interface up, the supervisor answers from its store index before any child starts (DP-04). Everything the store holds keeps building, including rebuilds of published versions |
 | No such package or version, or only releases younger than a day for a spec without an exact version | `MOSTRA_DEP_NOT_FOUND` with the registry's answer (D95) |
-| Unsupported platform (Windows, other architectures) | Every entry point fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` before touching the home (D35). `mostra-runtime host` also answers the host's first request with it, so a spawning host gets a typed error |
+| Unsupported platform (Windows until WP-32 adds it in v1.1, D120; other architectures) | Every entry point fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` before touching the home (D35). `mostra-runtime host` also answers the host's first request with it, so a spawning host gets a typed error |
 | No browser available for `verify` | `MOSTRA_ENV_BROWSER_MISSING` with the install command. The runtime bundle includes the headless shell, so this means a damaged bundle |
 | Required tool missing for sharing | `MOSTRA_SHARE_TOOL_MISSING` with install instructions (D47) |
+
+## 11. Remote server, relay and teams
+
+The plan update of 2026-10-16 adds failure cases that later packages define. Each is a *Deferred decision* for the package named, which adds its rows here; the rules of §1 hold for all of them.
+- **WP-28** (D116, D117): the owner offline (pages, drafts, submissions and comments keep working; action runs wait or fail per the artifact's offline policy; live sources show their last value with its time), relay loss mid-run, a remote server restart, sync gaps between an owner's instance and a remote server, and exhaustion of an operator's limits.
+- **WP-31** (D121): roster changes while a wait is pending, and presence traffic over its rate.
+- **WP-32** (D120): the platform cases of §10 for Windows.

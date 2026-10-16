@@ -1,6 +1,6 @@
 # Work-package assignment prompt
 
-Send the block below to a fresh Jcode session in `~/src/mostra`, changing only the `WORK PACKAGE` line. The same text serves every package from WP-01 to WP-27. Package-specific instructions live in each `WP-NN.md` specification, and the procedure's detail lives in [README.md](README.md).
+Send the block below to a fresh Jcode session in `~/src/mostra`, changing only the `WORK PACKAGE` line. The same text serves every package. Package-specific instructions live in each `WP-NN.md` specification, and the procedure's detail lives in [README.md](README.md).
 
 ```text
 PROGRAM MODE: work-package
@@ -28,10 +28,19 @@ dossier, they win, and you tell Mirza about the difference.
 
 1. Read the session protocol and your specification in full.
 2. Read in full every file they list: the dossier README, DECISIONS, PRODUCT, STANDARDS,
-   ARCHITECTURE, REPO_STANDARDS, your specification's required reading, and every
-   docs/progress/PROGRESS-WP-*.md. Mostra's documents are written to be read whole, so read each
-   one from top to bottom. When you are unsure whether something bears on your package, read it.
-3. Find your starting point:
+   ARCHITECTURE, REPO_STANDARDS and your specification's required reading. Mostra's documents are
+   written to be read whole, so read each one from top to bottom. When you are unsure whether
+   something bears on your package, read it.
+3. The earlier progress reports (docs/progress/PROGRESS-WP-*.md) have grown large. Have
+   fast-worker sub-agents summarize them, each with an explicit list of reports, and ask for what
+   bears on your package: decisions taken, follow-ups for later packages, untested boundaries. You
+   may leave the latest report out of the sub-agents and read it yourself. Then read in full any
+   report whose details you need.
+4. Explore Mostra HQ at ~/src/mostra-hq through a fast-worker sub-agent: give it HQ's AGENTS.md and
+   the files it lists for orientation and for your package (its README, decision log and roadmap
+   among them), and ask what bears on your package. Then read yourself any HQ file you need in
+   full. HQ is Mirza's business context; the dossier stays the contract.
+5. Find your starting point:
    - Run `git fetch` and look at origin/main. Every package in your specification's "Depends on"
      row must have its PROGRESS report on origin/main. If one is missing, stop and tell Mirza which.
    - If docs/progress/RECOVERY-WP-NN-SESSION-*.md exists, this session continues earlier work.
@@ -129,8 +138,8 @@ explicitly accepted, and your diff review leaves nothing to fix.
 4. Finalize docs/progress/PROGRESS-WP-NN.md with the contents protocol §4 lists, regenerate the
    evidence matrix, commit both and land them on main through a pull request that merges when
    green.
-5. Tell Mirza the package is done and name the next unit: the next package in WORK_PACKAGES.md, or
-   the phase closeout after WP-27.
+5. Tell Mirza the package is done and name the next unit: the next package in the order of
+   WORK_PACKAGES.md, or the phase closeout after WP-27.
 
 Done when the progress report is on origin/main and Mirza knows the next unit.
 
@@ -146,13 +155,16 @@ The package keeps its identity and scope.
   real options with their consequences, and your recommendation.
 - Keep progress updates short: report what changes a decision, exposes a risk, needs his approval
   or blocks you.
+- Write to Mostra HQ only with his approval, and never bring HQ content into this repository
+  (D127).
 
 ## Sub-agents
 
 Jcode's sub-agents aren't ready yet, so you have one sub-agent for one use. A fast-worker sub-agent
 may summarize bulk reading you only need in summary, such as a long third-party document or a large
-log. Give it an explicit file list and take the summary from its reply. You read Mostra's own
-documents yourself, in full. Design, implementation, review and verification stay with you.
+log, and the earlier progress reports and Mostra HQ during Orient (D128). Give it an explicit file
+list and take the summary from its reply. You read the rest of Mostra's own documents yourself, in
+full. Design, implementation, review and verification stay with you.
 
 ## Compaction
 
@@ -174,10 +186,11 @@ These hold in every package, whatever its scope (PRODUCT, Rule strengths):
 - A submission is durable before any delivery attempt.
 - Trusted controls render only in the shell's origin.
 - Non-OSI engines stay out of the bundle, and their licenses are disclosed before install.
-- Everything users install, embed or self-host is Apache-2.0.
+- Everything outside `ee/` that users install, embed or self-host is Apache-2.0.
 - Interfaces evolve additively within a revision.
 - Hosts reach Mostra only through its public ports and protocol.
 
-Also: there is no telemetry, secrets stay out of every log and output, and v1.0 supports macOS and
-Linux, failing closed with a diagnostic elsewhere.
+Also: only the standalone CLI sends telemetry, never embedded use; secrets stay out of every log
+and output; v1.0 supports macOS and Linux, failing closed with a diagnostic elsewhere, and Windows
+follows in v1.1.
 ```

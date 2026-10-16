@@ -14,13 +14,13 @@ choose, and the answers flow back to the agent through whatever host it runs in.
 - **Verification for agents that can't see.** `mostra verify` builds, renders and smoke-tests an
   artifact headlessly and returns one JSON verdict with stable diagnostic codes.
 - **Any host.** A CLI, a local MCP server, a TypeScript SDK and a Rust crate all speak one
-  versioned protocol. The same artifact runs locally, inline in chat hosts as an MCP App, or as a
-  static page.
+  versioned protocol. The same artifact runs locally, on a self-hostable remote server, inline in
+  chat hosts as an MCP App, or as a static page.
 
 ## Status
 
 The v1 design is accepted, and implementation is under way, one work package at a time. Nothing
-is published to npm yet.
+is published to npm yet. Mostra runs on macOS and Linux; Windows follows in v1.1.
 
 | Package | What it is | Status |
 |---|---|---|

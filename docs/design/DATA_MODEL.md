@@ -173,3 +173,10 @@ These are ephemeral and never stored (D47, D63): presence, live updates, action 
 ## 6. Migrations
 
 The ledger carries `schema_migration`. A new ledger is built in a temporary file with `schema_migration` and `ledger_lock`, then linked into place without replacing anything, so an existing `ledger.sqlite` is always a complete database and Mostra never recreates an empty ledger over one. A newer runtime migrates forward in one transaction at start-up, after `PRAGMA quick_check` passes and a file-level backup (`ledger.sqlite.bak-<from>-<to>`, written with `VACUUM INTO`, which SQLite fsyncs under `synchronous=FULL`; copying the file would drop the supervisor's lock). An older runtime refuses a newer ledger with `MOSTRA_HOME_TOO_NEW`, naming the schema version and the runtime version that wrote it. A file that isn't a Mostra ledger, or can't be read, is `MOSTRA_HOME_LEDGER_UNREADABLE`. `child.start_time` is an opaque identity of a process start (the boot plus `/proc/<pid>/stat` start ticks on Linux, the boot plus `ps -o lstart` seconds on macOS). Version directories, blobs and source snapshots are immutable, so they never migrate.
+
+## 7. Remote server and team data
+
+The plan update of 2026-10-16 adds stored data that later packages design. Each is a *Deferred decision* for the package named, which adds its tables, columns and events here additively, without weakening a constraint above.
+- **WP-28** (D116, D117): hosted homes on a remote server, the mapping from remote accounts to homes as the runtime sees it, the relay's run states (additive to `action_run`, D124), sync cursors between an owner's instance and a remote server, and retention on the server. The operating layer's own data (accounts, billing, metering storage) lives outside this repository (D116).
+- **WP-31** (D121): expected respondents and their roster per artifact or share, the roster-complete event, and the attribution of artifact-scoped fields. Presence, cursors and selections stay ephemeral and are never stored (§4, D47).
+- **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).

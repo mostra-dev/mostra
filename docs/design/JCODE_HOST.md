@@ -69,7 +69,7 @@ Each row is a generic Mostra capability that the Jcode integration relies on. C0
 | H-13 | A Rust host crate (tokio-friendly) and a runtime bundle the host downloads and caches by hash | Jcode is Rust; its install channels manage the bundle | HO-03, RT-01 |
 | H-14 | Addressing port with tunnel hostnames and capability minting | Links work from Mirza's other devices; C04's TUI shows them | HY-04, HO-01 |
 | H-15 | A host conformance kit | C03-B proves the Jcode adapter against it | HO-05 |
-| H-16 | No telemetry; private, owner-only storage in the standalone adapters | Matches Jcode's privacy rules | EN-06 |
+| H-16 | No telemetry in host-embedded instances (D119); private, owner-only storage in the standalone adapters | Matches Jcode's privacy rules | EN-08 |
 
 ## What stays with C03-B, not Mostra
 
@@ -108,4 +108,4 @@ Added by the C03-A design. Every row is a generic mechanism; none names Jcode in
 | H-13 | Rust crate `mostra-host` with a tokio client, port traits and runtime-bundle download and cache by hash |
 | H-14 | `addressing.externalBase`, `share/start` and capability minting through `view/url` |
 | H-15 | `@mostra/conformance` runs against the host's adapter, with expected-failure baselines |
-| H-16 | No telemetry in any package; homes are created 0700 and secrets 0600 |
+| H-16 | No telemetry in host-embedded instances (D119): a host-spawned instance, the SDK, the Rust crate and every home a host configures send nothing; homes are created 0700 and secrets 0600 |
