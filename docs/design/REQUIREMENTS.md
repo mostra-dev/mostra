@@ -4,7 +4,7 @@
 
 **Strength.** Every row is a **requirement** ([STANDARDS.md](STANDARDS.md#rule-strengths)) unless it is marked **Invariant** or **Default**. Invariants are listed in [PRODUCT.md](PRODUCT.md#rule-strengths), and rows that restate one carry the label.
 
-**Release.** `v1`, `v1.x` or `later` per D16.
+**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): Windows (D120) and the terminal modes (D122). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
 
 **Verification routes:**
 - **M:** mechanism or unit tests.
@@ -36,7 +36,8 @@
 | RT-04 | A crash, hang or memory blow-up in one artifact leaves the gateway and other artifacts working; the failure is reported with an actionable message | v1 | D18 | I |
 | RT-05 | Frozen client-only versions are served with no worker process | v1 | D18 | I |
 | RT-06 | One instance per home: a host-spawned process over stdio or a standalone daemon the CLI attaches to over the home socket; racing starters converge on one supervisor and stale sockets are recovered | v1 | D18, D45 | I, C |
-| RT-07 | macOS and Linux are supported; on any other platform every entry point fails closed with a clear diagnostic (Windows is out of v1.0) | v1 | PRODUCT, D35 | I |
+| RT-07 | macOS and Linux are supported; on any other platform every entry point fails closed with a clear diagnostic (Windows is out of v1.0; RT-10 adds it in v1.1) | v1 | PRODUCT, D35, D120 | I |
+| RT-10 | Windows support for the runtime, CLI, gateway and host protocol, with a Windows CI leg | v1.1 | D120 | M, I, X |
 
 ## Versions and publishing (VR)
 
@@ -124,6 +125,8 @@
 | HY-04 | Tailscale Serve exposure with identity-header mapping | v1 | D12 | X |
 | HY-05 | Quick public share via Tailscale Funnel (cookie mode) or a Cloudflare quick tunnel (worker mode) behind an explicit flag and short-lived tokens, with long-poll where SSE doesn't pass | v1 | D12, D47, D70 | X |
 | HY-06 | Security issues are handled under SECURITY.md with private reporting | v1 | STANDARDS | R |
+| HY-08 | Viewer identity on remote servers: optional OAuth sign-in, display names for anonymous viewers recorded as unverified; capability URLs remain the authorization | v1 | D116, D121 | B |
+| HY-09 | Hosted artifacts are served only from the user-content domain; the shell offers a report control in its own origin; a server policy can add an interstitial and an expiry to public links | v1 | D116 | B |
 
 ## Host integration (HO)
 
@@ -137,6 +140,7 @@
 | HO-06 | **Invariant.** No host-specific code in the core; every Jcode need in JCODE_HOST.md is met through generic ports | v1 | D01 | C, R |
 | HO-07 | **Invariant.** Interfaces and tool schemas change additively within a version; breaking changes need a new revision with a deprecation window | v1 | D32 | M |
 | HO-08 | Hosts configure where artifact sources, versions and interaction data live; artifacts, versions and submissions stay readable after the directory the artifact was authored in is removed | v1 | D25, JCODE_HOST H-11 | I, C |
+| HO-09 | Operator ports on the remote server (limits, metering, account resolution, abuse actions) with no-op defaults for self-hosters | v1 | D58, D116 | M, C |
 
 ## Kit (KT)
 
@@ -151,18 +155,19 @@
 | KT-07 | Mostra's own MDX deck runtime with layouts, click steps, presenter view and print to PDF | v1 | D26 | B, R |
 | KT-08 | "Write this, not that" guidance and lint autofixes for every kit library and recently changed tool (Base UI `render`, Tailwind 4, Zod 4, `motion/react`, `@xyflow/react`, Mermaid 12, TanStack Table 9, the `cn` package), including the wrong-base diagnostic | v1 | §13, D48 | M |
 | KT-09 | "Beautiful by default": representative gallery artifacts pass Mirza's review | v1 | PRODUCT | R |
+| KT-11 | Kit components for presence, cursors, a respondent tracker and attribution, built on the CO hooks and restylable (KT-10) | v1 | D121, D68 | B, R |
 
 ## Terminal and web demos (TM)
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
-| TM-01 | A normalized terminal frame model and owned renderer that is pixel-consistent across modes on a fidelity fixture suite (box drawing, 256 and true colour, CJK, emoji ZWJ, combining marks) | v1 | D28 | M, B |
-| TM-02 | Live mode: real program in a PTY rendered with xterm.js, with resize, input and recording to asciicast v3 | v1 | D28 | I, B |
-| TM-03 | Recorded mode: asciicast v3 playback with scrubbing and markers | v1 | D28 | B |
-| TM-04 | WASM mode: a Ratzilla template for ratatui | v1 | D28 | B |
-| TM-05 | A Rust capture crate turns a ratatui TestBackend buffer and scripted keys into frames, with zero cell diff against WASM mode for the same app | v1 | D28 | M |
-| TM-06 | `term dump` (text, cells, ANSI) and terminal lint for agents | v1 | D28, D29 | M |
-| TM-07 | Terminal compare with synchronized playback and cell diff; comments on cell rectangles | v1 | D23, D28 | B |
+| TM-01 | A normalized terminal frame model and owned renderer that is pixel-consistent across modes on a fidelity fixture suite (box drawing, 256 and true colour, CJK, emoji ZWJ, combining marks) | v1.1 | D28, D122 | M, B |
+| TM-02 | Live mode: real program in a PTY rendered with xterm.js, with resize, input and recording to asciicast v3 | v1.1 | D28, D122 | I, B |
+| TM-03 | Recorded mode: asciicast v3 playback with scrubbing and markers | v1.1 | D28, D122 | B |
+| TM-04 | WASM mode: a Ratzilla template for ratatui | v1.1 | D28, D122 | B |
+| TM-05 | A Rust capture crate turns a ratatui TestBackend buffer and scripted keys into frames, with zero cell diff against WASM mode for the same app | v1.1 | D28, D122 | M |
+| TM-06 | `term dump` (text, cells, ANSI) and terminal lint for agents | v1.1 | D28, D29, D122 | M |
+| TM-07 | Terminal compare with synchronized playback and cell diff; comments on cell rectangles | v1.1 | D23, D28, D122 | B |
 | TM-08 | Web demos: the project's own dev server proxied on its own origin with HTTP and WebSocket passthrough, device frames, viewport switching and screenshots | v1 | D28 | I, B |
 
 ## Agent experience (AX)
@@ -185,6 +190,7 @@
 | MC-01 | A local MCP server: stateless, explicit handles, short tool names, about 8 to 15 tools covering create, write or patch, verify, publish, open, wait and results | v1 | D17, D32 | I, X |
 | MC-02 | MCP Apps export: one artifact compiles to a single-file `ui://` resource with declared CSP, mapped theme variables and a bridge transport; the full-page URL is always offered | v1 | D07 | I, X |
 | MC-03 | Features unavailable inside chat iframes degrade explicitly | v1 | §16 | B |
+| MC-04 | A remote MCP server over Streamable HTTP with OAuth (dynamic and metadata-document client registration, refresh tokens), stateless with explicit handles; inline MCP Apps in cloud chat hosts persist drafts, submissions and actions through it | v1 | D61, D116 | I, X |
 
 ## Extensibility (EX)
 
@@ -194,9 +200,10 @@
 | EX-02 | A plugin manifest under the `"mostra"` key with contracts, contributions, declared effects, SPDX license and bundled licenses, validated by `mostra plugin validate` | v1 | D30 | M |
 | EX-03 | Copy-source packs in a superset of the shadcn registry format; any shadcn item installs unchanged | v1 | D30 | I |
 | EX-04 | License classes shown at install; non-OSI classes need a one-time scriptable acknowledgment recorded in the lockfile; hosts can pre-accept | v1 | D31 | I |
-| EX-05 | First-party plugins prove the contracts (xterm.js engine, MCP App exporter, Remotion adapter, GSAP adapter) | v1 | D30 | I, B |
+| EX-05 | First-party plugins prove the contracts (MCP App exporter, Remotion adapter, GSAP adapter); the xterm.js engine plugin ships with the terminal packages | v1 | D30, D122 | I, B |
 | EX-06 | A metadata-only registry with namespace verification, provenance, compatibility badges and agent tools | v1.x | D30 | I, X |
 | EX-07 | The marketplace web interface | later | D30 | R |
+| EX-08 | Embedding Mostra views in host applications: a chrome-less mode with host theming, identity and host-rendered trusted controls | later | D126 | B |
 
 ## RSC readiness (RS)
 
@@ -206,24 +213,43 @@
 | RS-02 | SPA mode is complete and first-class on its own; no SPA component is built weaker in anticipation of RSC | v1 | D19 | R |
 | RS-03 | The `rsc` render mode ships additively once its three triggers hold | v1.x | D19 | M, I, B |
 
-## Remote readiness and remote mode (RM)
+## Remote readiness, remote server and relay (RM)
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
 | RM-01 | v1 seams: portable artifact packages, ports for identity, storage and addressing, a worker-isolation interface, a stateless MCP design | v1 | D12 | M, R |
-| RM-02 | Self-hostable remote mode per ARCHITECTURE §18 | v1.x | D12 | I, X |
-| RM-03 | The managed cloud service | later | D12 | n/a |
+| RM-02 | Remote transport: the host protocol over an authenticated network transport, sign-in from the CLI, sharing a published version to a remote server, and reading waits, results and events back, with remote submissions delivered through the local outbox | v1 | D12, D116 | I, X |
+| RM-03 | A self-hostable remote server hosts many homes behind one gateway with per-artifact origins on a separate user-content domain; the managed service's operating layer lives outside this repository and reaches the server only through operator ports | v1 | D12, D116, D118 | I, X |
+| RM-04 | Relay: a remote server forwards hosted artifacts' action calls and live producers (and authoring operations, if WP-28 so decides under D117) to the owning instance over its outbound connection; secrets never leave the owner; offline behavior follows the artifact's policy | v1 | D117 | I |
+| RM-05 | The remote design is recorded in ARCHITECTURE, INTERFACES, DATA_MODEL and FAILURE_MODEL, and WP-29 and WP-30 specifications are refined from it | v1 | D116, D123 | R |
+| RM-06 | Sandboxed remote execution of actions and builds through `SandboxPort` | v1.x | D12, D116 | I, X |
 
 ## Engineering and release (EN)
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
-| EN-01 | **Invariant.** Apache-2.0 with NOTICE; DCO sign-off on contributions | v1 | D14 | M |
+| EN-01 | **Invariant.** Everything outside `ee/` that users install, embed or self-host is Apache-2.0 with NOTICE; DCO sign-off on contributions | v1 | D14, D118 | M |
 | EN-02 | The tooling baseline, test strategy and release process in STANDARDS.md | v1 | STANDARDS | M |
 | EN-03 | Every example and template passes `verify` in CI, with committed visual and ARIA baselines | v1 | D29 | B |
 | EN-04 | Public API reports gate pull requests; packages pass publint and type-resolution checks | v1 | STANDARDS | M |
 | EN-05 | Releases publish from the Changesets release pull request through a protected environment: npm trusted publishing (direct, provenance, tokens disallowed) and crates.io trusted publishing; accepting a WP authorizes its publication | v1 | STANDARDS, D36, D67 | X |
 | EN-06 | Security policy, supply-chain controls (pinned actions, code scanning, dependency review, release-age cooldown) and an OpenSSF Scorecard | v1 | STANDARDS | M, X |
+| EN-08 | Standalone CLI telemetry per D119: first-run notice, opt-out (setting, variable, `DO_NOT_TRACK`), the public event list, no content or identifiers, never in embedded use | v1 | D119 | M, I |
+| EN-09 | `ee/` boundary per D118: the core never imports `ee/`; the license audit separates it; published core packages contain none of it | v1 | D118 | M |
+
+## Collaboration (CO)
+
+Team features (D121). API names and exact semantics are WP-31's to settle (D123).
+
+| ID | Requirement | Release | Source | Route |
+|---|---|---|---|---|
+| CO-01 | Expected respondents can be named for an artifact or share; locally each gets a personal link | v1 | D121 | I, B |
+| CO-02 | Wait conditions for "every expected respondent submitted" and "N submissions", with an event when the roster completes | v1 | D121 | I, C |
+| CO-03 | Respondent status (not opened, drafting, submitted) through a client hook, the host protocol and the CLI | v1 | D121 | B |
+| CO-04 | Presence through a client hook, with opt-in cursor and selection sharing as ephemeral, rate-limited traffic that is never stored | v1 | D121, D47 | B |
+| CO-05 | Attribution of artifact-scoped fields (who and when) readable by the page | v1 | D121, D63 | B |
+| CO-06 | `@mention` in review comments raises an event hosts can route | v1 | D121 | I |
+| CO-07 | A visibility policy decides what viewers see of each other's status and presence; owners, agents and hosts always see respondent status | v1 | D121 | B |
 
 ## Added by the C03-A phase design
 

@@ -1,13 +1,14 @@
-# Mostra v1 work packages
+# Mostra work packages
 
-**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
+**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
 
 ## How the sequence was built
 
-- **Scope.** The packages together deliver all of v1 (D16) without shrinking it. Every v1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
-- **Order.** D17's interface priority sets the order: first the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15), then MCP Apps export (WP-17). The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 32 packages: 29 deliver all of v1 (D16, as amended by D116, D121 and D122) without shrinking it, and the 3 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D120, D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
+- **Order.** Packages run in the order of this file (D125): WP-01 to WP-15, then WP-28 to WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-32, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125). D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
+- **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
 - **Size.** Each package is one coherent subsystem with its own tests, sized for one fresh session. A package that can't finish safely continues under STANDARDS' recovery rule with the same identity and scope.
 - **Every package:**
   - starts from the accepted predecessor;
@@ -15,7 +16,7 @@
   - extends the diagnostic catalog, docs pages, playbooks and `AGENTS.md` files for what it adds;
   - updates the Skill's reference files when it adds author-facing API (the prose is reviewed with Mirza);
   - closes with evidence for its owned requirements, then Mirza's acceptance and publication (D36).
-- **Release points.** Packages publish as they're accepted. **C03-B can begin after WP-14**: protocol, Rust crate, interaction core, shell trusted controls, results, events, outbox, identity, tailnet sharing, CLI and Skill are all in place. Later packages add features additively, so Jcode moves to newer minor releases without changes (D01, D32).
+- **Release points.** Packages publish as they're accepted. **C03-B can begin after WP-14**: protocol, Rust crate, interaction core, shell trusted controls, results, events, outbox, identity, tailnet sharing, CLI and Skill are all in place. Later packages add features additively, so Jcode moves to newer minor releases without changes (D01, D32). The phase closeout follows WP-27; the packages after the first release follow it.
 
 ```mermaid
 flowchart LR
@@ -23,19 +24,23 @@ flowchart LR
   W02-->W05
   W03-->W05-->W06-->W07
   W06-->W08-->W09
-  W07-->W09-->W10-->W11-->W12-->W13-->W14-->W15-->W16-->W17
+  W07-->W09-->W10-->W11-->W12-->W13-->W14-->W15-->W28-->W29-->W30-->W31-->W16-->W17
+  W07-->W31
   W16-->W18-->W19
   W17-->W18
   W07-->W20
   W18-->W20-->W21
-  W20-->W22-->W23
-  W16-->W23
   W20-->W24
   W17-->W25
   W21-->W25
-  W23-->W25
   W24-->W26
   W25-->W26-->W27
+  subgraph After["After the first release"]
+    W32-->W22-->W23
+  end
+  W27-->W32
+  W20-->W22
+  W16-->W23
 ```
 
 ## The packages
@@ -157,6 +162,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - live sources (`load`, `refresh`, `watch`, `stream`, `always`, ring) and pushes;
   - `useAction` and `useLive`;
   - the watchdog, backoff, parking, eviction and port-lease lifecycles;
+  - the `WorkerLauncher` seam taking a version reference, with a serializable `WorkerChannel` and secrets only through the secrets port (D124);
   - tests for the five RSC seams.
 - **Depends on:** WP-06, WP-07.
 - **Evidence:**
@@ -166,7 +172,8 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - an `AbortSignal` is observed;
   - secrets are absent from logs, events and exports (grep tests);
   - live updates flow without durable events;
-  - a seam test per D19 seam.
+  - a seam test per D19 seam;
+  - the action suite passes against a second fixture launcher whose worker runs as a separately started process over a socket (D124).
 
 ### WP-09. Verify
 - **Owns:** AX-02, AX-04, AX-05, AU-05, VR-09.
@@ -182,30 +189,36 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Evidence:** fixture artifacts for each diagnostic phase produce their codes; a non-opted action is never invoked; a regression fixture is detected; verdict JSON validates against the schema; publish is refused on errors and recorded with `--force`.
 
 ### WP-10. CLI
-- **Owns:** AX-01, AX-09, VR-06, VR-08.
+- **Owns:** AX-01, AX-09, VR-06, VR-08, EN-08.
 - **Builds:**
   - `@mostra/cli` as a thin protocol client covering D60 plus `run` and `state`, with daemon autostart;
   - `--json` on every command, NDJSON streams, the exit codes, no prompts outside a TTY, logs on stderr;
   - generated help;
   - `mostra dev` (HMR, separate port, never a capability URL);
-  - `doctor`, `gc` with its reference rules, and `docs`.
+  - `doctor`, `gc` with its reference rules, and `docs`;
+  - anonymous telemetry in the standalone CLI (D119): the first-run notice (drafted with Mirza, D74), opt-out by a setting, a variable or `DO_NOT_TRACK=1`, the public event list, and nothing sent from embedded use.
+
+  Sign-in and sharing commands for remote servers arrive in WP-29.
 - **Depends on:** WP-09.
-- **Evidence:** contract tests per command (JSON schema, exit code, behavior outside a TTY); `gc` never removes a referenced version (property test); `dev` is unreachable through viewer URLs.
+- **Evidence:** contract tests per command (JSON schema, exit code, behavior outside a TTY); `gc` never removes a referenced version (property test); `dev` is unreachable through viewer URLs; a host-spawned instance and `DO_NOT_TRACK=1` send no telemetry, and payloads match the documented schema with no paths or tokens (EN-08).
 
 ### WP-11. Distribution: runtime bundle, SDK and release pipeline
-- **Owns:** RT-01, HO-04, EN-05.
+- **Owns:** RT-01, HO-04, EN-05, EN-09.
 - **Builds:**
   - per-platform runtime bundles (private Node, prebuilt code, warm set, headless Chromium, native modules) with SHA-256 manifests and attestations;
   - download, verification and cache by hash;
   - `npm create mostra` and the `@mostra/cli` bootstrap;
   - `@mostra/sdk` `createMostra({ home, ports })`;
-  - the Changesets release workflow (D67) and exact account-setup instructions for Mirza.
+  - the Changesets release workflow (D67) and exact account-setup instructions for Mirza;
+  - the `ee/` boundary (D118): a package-map rule that the core never imports `ee/`, the license audit's separate treatment of `ee/`, and a packing check. The `ee/` folder itself is created by the first package that needs it.
 - **Depends on:** WP-10.
 - **Evidence:**
   - a fresh macOS and Linux machine (CI runners) without global Node runs `npm create mostra` through to `verify` and `publish`;
   - a tampered bundle is rejected;
   - an SDK host registers ports and receives a delivery;
-  - a release dry run in CI, then the first real release after Mirza's account steps (external evidence).
+  - a release dry run in CI, then the first real release after Mirza's account steps (external evidence);
+  - a seeded import from the core into `ee/` fails the boundary check, and a packed core tarball contains no `ee/` file (EN-09);
+  - an SDK-spawned instance sends no telemetry (EN-08's check, extended).
 
 ### WP-12. Rust host crate and conformance kit
 - **Owns:** HO-01, HO-03, HO-05, HO-06, HO-08.
@@ -260,6 +273,56 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Depends on:** WP-14.
 - **Evidence:** MCP conformance runs (`@modelcontextprotocol/conformance`); a scripted agent session through the tools from create to results; HTTP hygiene negative tests; external evidence from Claude Desktop or Codex using the server.
 
+### WP-28. Remote design pass
+- **Owns:** RM-05.
+- **Builds:** the design of D116 and D117, recorded in the dossier:
+  - ARCHITECTURE: a new section on the remote server, the relay and the operator boundary, replacing §14's "gets its own design pass at v1.x";
+  - INTERFACES: the network binding of the host protocol and its authentication; CLI sign-in and sharing commands; relay messages; the remote MCP surface; operator ports; the client hooks reserved for WP-31;
+  - DATA_MODEL: hosted homes, the mapping from remote accounts to homes as the runtime sees it, relay and run states, sync cursors, retention;
+  - FAILURE_MODEL: owner offline, relay loss mid-run, remote server restart, sync gaps, limit exhaustion;
+  - refined WP-29 and WP-30 entries in WORK_PACKAGES.md and `tools/design/wp_specs.py`.
+
+  The questions it settles, each with its options, are in the design detail of its specification (D123).
+- **Depends on:** WP-15.
+- **Evidence:** the dossier documents and refined specifications; the generators pass; Mirza accepts the design.
+
+### WP-29. Remote transport and relay
+- **Owns:** RM-01, RM-02, RM-04.
+- **Builds:**
+  - from WP-24: the `bundle` export class, moving a bundle between homes with its version identity, `mostra run <bundle>`, and the `WorkerLauncher` seam documented as the future `SandboxPort` (RM-01);
+  - the host protocol over the network binding with authentication; sign-in and sign-out from the CLI; sharing a published version to a remote server (the managed service by default, any URL allowed);
+  - `wait`, `results` and events against a remote artifact; remote submissions delivered through the local outbox;
+  - the relay on both sides: action calls and live producers (authoring operations too if WP-28 decides so), offline policy, reconnection with backoff;
+  - remote scenarios added to the conformance kit;
+  - Skill and docs updates for sharing (prose drafted with Mirza, D74).
+- **Depends on:** WP-28.
+- **Evidence:** RM-01's check (including a bundle that moves between two homes and keeps its version identity), RM-02's and RM-04's, with a minimal remote endpoint fixture until WP-30 provides the full server.
+
+### WP-30. Remote server and remote MCP
+- **Owns:** RM-03, MC-04, HY-08, HY-09, HO-09.
+- **Builds:**
+  - the remote server mode: many homes, one gateway, per-artifact origins on the user-content domain, worker-mode frames;
+  - viewer sign-in and display names;
+  - the shell's report control, and policy hooks for interstitials and expiry;
+  - operator ports with no-op defaults;
+  - the remote MCP endpoint, so WP-17's MCP Apps persist in cloud chat hosts;
+  - a container image and self-hosting docs.
+- **Depends on:** WP-29.
+- **Evidence:** the RM-03, MC-04, HY-08, HY-09 and HO-09 checks; external evidence from claude.ai and ChatGPT against a test deployment, labelled as external.
+
+### WP-31. Teams
+- **Owns:** CO-01, CO-02, CO-03, CO-04, CO-05, CO-07.
+- **Builds:**
+  - expected respondents and personal links;
+  - "everyone answered" and count waits, and the roster-complete event;
+  - respondent-status and presence hooks, with protocol methods and CLI output;
+  - opt-in cursor and selection sharing over the existing streams;
+  - attribution on artifact-scoped fields;
+  - the visibility policy;
+  - team scenarios in the conformance kit.
+- **Depends on:** WP-30 (identity on remote servers) and WP-07 (the client runtime).
+- **Evidence:** the CO checks; a five-viewer browser scenario; the ledger holds no presence.
+
 ### WP-16. Extension contracts and plugin system
 - **Owns:** EX-01, EX-02, EX-03, EX-04.
 - **Builds:**
@@ -268,7 +331,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - loading order, conflict and range diagnostics;
   - packs as a shadcn registry superset (`mostra add` for packs, with any shadcn item installing unchanged);
   - license classes and `--accept-license` recorded in the lockfile, with host pre-acceptance.
-- **Depends on:** WP-15.
+- **Depends on:** WP-31.
 - **Evidence:** contract compatibility tests (an in-range plugin loads, an out-of-range one is diagnosed); an unchanged third-party shadcn registry item installs; a non-OSI fixture plugin refuses without acknowledgment and installs with it.
 
 ### WP-17. MCP Apps export
@@ -277,12 +340,13 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - the MCP App exporter as a first-party plugin on the exporter contract (a single-file `ui://` resource, declared CSP, token-to-host-context variable mapping);
   - the client runtime's MCP Apps transport with app-only tools;
   - explicit degradation for unavailable features;
-  - `artifact_open` returning the app plus the URL fallback.
+  - `artifact_open` returning the app plus the URL fallback;
+  - persistence through the remote MCP server (WP-30) in cloud chat hosts, replacing D61's "until then" message (D116); local hosts are unchanged.
 - **Depends on:** WP-16.
 - **Evidence:**
   - the ext-apps reference host renders an exported artifact; fields, submit and actions round-trip through app-only tools;
   - degraded features show their message;
-  - external evidence in Claude Desktop and VS Code.
+  - external evidence in Claude Desktop and VS Code, and in a cloud chat host through the remote MCP server.
 
 ### WP-18. Kit I: design system, tokens and forms
 - **Owns:** KT-03, KT-04, KT-05, KT-08, KT-10.
@@ -302,16 +366,17 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - Mirza reviews representative screens.
 
 ### WP-19. Kit II: data, diagrams, code, math, maps and 3D
-- **Owns:** KT-01, AC-08.
+- **Owns:** KT-01, AC-08, KT-11.
 - **Builds:**
   - token-aware wrappers: Recharts 3 through shadcn charts, a uPlot live chart with append-mode `useLive`, ECharts 6, TanStack Table 9, Mermaid 12, `@xyflow/react` 12, Excalidraw, MapLibre with deck.gl, react-three-fiber, Shiki and CodeMirror 6, KaTeX;
   - the warm set and on-demand set as D65 defines them;
-  - license and version re-verification recorded in VERIFIED_FACTS.
+  - license and version re-verification recorded in VERIFIED_FACTS;
+  - components for presence, cursors, a respondent tracker and attribution, on WP-31's hooks and restylable (KT-11).
 - **Depends on:** WP-18.
-- **Evidence:** a render test per library in three browsers; the uPlot path holds the target rate (target set in the WP spec from a measured baseline, at least 60 updates per second with 10k points on CI hardware) without frame drops beyond the budget; the license audit stays green.
+- **Evidence:** a render test per library in three browsers; the uPlot path holds the target rate (target set in the WP spec from a measured baseline, at least 60 updates per second with 10k points on CI hardware) without frame drops beyond the budget; the license audit stays green; each team component renders from fixtures in both themes and accepts `className` (KT-11).
 
 ### WP-20. Review layer and shell design
-- **Owns:** RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06.
+- **Owns:** RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06.
 - **Builds:**
   - the shell's review overlay: pins, threads, resolve and reopen;
   - multi-layer anchors with crops through the capture port;
@@ -319,12 +384,14 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - review sets (gallery, focus, synchronized compare with pixel diff, trusted Choose);
   - bridge injection for served frames;
   - `review export`;
+  - `@mention` in comments raising an event hosts can route (CO-06);
   - the final visual design pass on the shell (with design-focused review, D68) and the mobile layout.
 - **Depends on:** WP-07, WP-18.
 - **Evidence:**
   - comments anchor on DOM, canvas, kit charts, served and opaque iframes, and survive a reload;
   - the artifact can't hide or forge the overlay;
   - choices arrive with the submission;
+  - a mention emits one event naming the mentioned viewer, which hosts filter;
   - mobile touch flows on WebKit and Chromium emulation, and on a real phone over tailnet (external);
   - Mirza's design review.
 
@@ -334,6 +401,59 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Depends on:** WP-20.
 - **Evidence:** deterministic frame screenshots; a deck fixture in three browsers; a printed PDF has one slide per page; presenter view syncs; Mirza reviews a representative deck.
 
+### WP-24. Web demos and exports
+- **Owns:** TM-08, VR-07.
+- **Builds:**
+  - declared demos with the process lifecycle;
+  - the per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting;
+  - framing headers stripped for that demo only;
+  - bridge injection and its opt-out;
+  - `<WebDemo>` with device frames and viewports;
+  - the `static`, `html` and `snapshot` export classes (the `bundle` class, `mostra run` and the `WorkerLauncher` documentation are WP-29's, D125).
+
+  Terminal exports wait for the terminal packages.
+- **Depends on:** WP-20.
+- **Evidence:**
+  - a Vite demo and a Next.js demo hot-reload inside the frame, and their screenshots are captured;
+  - exports open from disk, and actions show as unavailable in `static` and `snapshot`;
+  - VR-07's bundle case reuses WP-29's `bundle` class and `mostra run`.
+
+### WP-25. First-party plugins
+- **Owns:** EX-05.
+- **Builds:** the Remotion adapter and the GSAP adapter (user-installed, with the license flow), the chart datum anchor provider (from WP-20, packaged), and the filesystem connector; and the contract proofs for every first-party plugin, including the WP-17 exporter. `mostra term record` and the xterm.js engine's proof belong to the terminal packages (D122).
+- **Depends on:** WP-17, WP-21.
+- **Evidence:** each plugin passes its baselines through `mostra plugin verify`; the license audit shows no non-OSI code in the core bundle; the license acknowledgment is recorded in the lockfile.
+
+### WP-26. Templates, gallery and documentation site
+- **Owns:** AU-06, AX-07, EN-03, KT-09, RS-02, LL-06.
+- **Builds:**
+  - `mostra new` templates for every family, one-off and long-lived (questionnaire, proposal, prototype or review, dashboard, deck, demo, inbox, tasks, custom), each with AGENTS.md, including a team (roster) form and a hosted-sharing example;
+  - the gallery (prompt, source and result side by side, including the launch demos);
+  - the docs site built with Mostra (generated references, per-page Markdown, `llms.txt`), deployed to GitHub Pages, covering remote servers, the relay, teams and the telemetry event list;
+  - an SPA first-class review across the codebase.
+- **Depends on:** WP-24, WP-25.
+- **Evidence:** every template and example passes `verify` in CI with committed baselines; the docs site builds and deploys; Mirza's review of the gallery for "beautiful by default"; long-lived scenarios present in templates, conformance and gallery.
+
+### WP-27. Agent evaluation suite
+- **Owns:** AX-08.
+- **Builds:**
+  - an opt-in, paced evaluation harness (D34, D64) that grows from the C03-A harness: scenarios over templates and journeys (one-off and long-lived, team, hosted and relay), first-pass `verify` success, turns to pass, and retention across turns;
+  - per-run recording of provider, model, date and tokens;
+  - small-batch pacing;
+  - reports.
+- **Depends on:** WP-26.
+- **Evidence:** a pilot batch (announced to Mirza, GPT-only first) produces a report; the harness reproduces EVAL-01's base comparison; runs with Claude models only after Mirza approves them.
+
+## After the first release
+
+These packages follow the first release, v1.0 (D120, D122). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. WP-32 comes first, and the terminal packages follow it in order.
+
+### WP-32. Windows
+- **Owns:** RT-10.
+- **Builds:** Windows support for the runtime bundle (private Node, native modules, headless Chromium), the supervisor (named pipes or another local transport in place of Unix sockets, process trees in place of process groups, home paths), the gateway and the CLI; a Windows CI leg; docs. Terminal features on Windows (ConPTY) wait for WP-22 and WP-23.
+- **Depends on:** WP-27.
+- **Evidence:** RT-10's check: on a Windows CI runner without a global Node, `npm create mostra` through `verify`, `publish`, a submission and `results`; the RT-07 fail-closed check still passes for unsupported platforms.
+
 ### WP-22. Terminals I: frames, renderer, recordings and capture
 - **Owns:** TM-01, TM-03, TM-06.
 - **Builds:**
@@ -342,8 +462,9 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - `<TerminalGrid>` with a bundled font and procedural glyphs;
   - recorded mode with scrubbing and markers;
   - the `mostra-term-capture` crate (TestBackend buffer and scripted keys to frames);
-  - `term dump` and terminal lint.
-- **Depends on:** WP-20.
+  - `term dump` and terminal lint;
+  - `mostra term record` (from WP-25, D122).
+- **Depends on:** WP-20, WP-32.
 - **Evidence:** the fidelity fixture suite (the prototype's nine fixtures plus 256-color and truecolor grids) renders pixel-consistently across browsers within the stated threshold; the capture crate produces frames for scripted keys; dump goldens. (The zero-difference proof against WASM mode is TM-05, owned by WP-23.)
 
 ### WP-23. Terminals II: live, WASM and compare
@@ -355,53 +476,12 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - the xterm.js 6 WebGL engine as a first-party embed-engine plugin;
   - an asciicast v3 tee;
   - the Ratzilla template and WASM island with frame reporting;
-  - `<TerminalCompare>` with synchronized playback, cell diff and cell-rectangle comments.
+  - `<TerminalCompare>` with synchronized playback, cell diff and cell-rectangle comments;
+  - the xterm.js engine's contract proof through `mostra plugin verify` (from WP-25, D122).
 - **Depends on:** WP-22, WP-16.
 - **Evidence:**
   - htop, vim and a ratatui demo resize correctly live;
   - the recording replays to identical frames;
   - zero cell differences between capture and WASM for the template app;
-  - compare and comments on cells.
-
-### WP-24. Web demos and exports
-- **Owns:** TM-08, VR-07, RM-01.
-- **Builds:**
-  - declared demos with the process lifecycle;
-  - the per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting;
-  - framing headers stripped for that demo only;
-  - bridge injection and its opt-out;
-  - `<WebDemo>` with device frames and viewports;
-  - the `static`, `html`, `bundle` and `snapshot` export classes;
-  - `mostra run <bundle>`;
-  - the `WorkerLauncher` seam documented as the future `SandboxPort`.
-- **Depends on:** WP-20.
-- **Evidence:**
-  - a Vite demo and a Next.js demo hot-reload inside the frame, and their screenshots are captured;
-  - exports open from disk, and actions show as unavailable in `static` and `snapshot`;
-  - a bundle moves between two homes and keeps its version identity.
-
-### WP-25. First-party plugins
-- **Owns:** EX-05.
-- **Builds:** the Remotion adapter and the GSAP adapter (user-installed, with the license flow), the chart datum anchor provider (from WP-20, packaged), the filesystem connector and `mostra term record`; and the contract proofs for every first-party plugin, including the WP-17 exporter and the WP-23 engine.
-- **Depends on:** WP-17, WP-21, WP-23.
-- **Evidence:** each plugin passes its baselines through `mostra plugin verify`; the license audit shows no non-OSI code in the core bundle; the license acknowledgment is recorded in the lockfile.
-
-### WP-26. Templates, gallery and documentation site
-- **Owns:** AU-06, AX-07, EN-03, KT-09, RS-02, LL-06.
-- **Builds:**
-  - `mostra new` templates for every family, one-off and long-lived (questionnaire, proposal, prototype or review, dashboard, deck, demo, inbox, tasks, custom), each with AGENTS.md;
-  - the gallery (prompt, source and result side by side, including the launch demos);
-  - the docs site built with Mostra (generated references, per-page Markdown, `llms.txt`), deployed to GitHub Pages;
-  - an SPA first-class review across the codebase.
-- **Depends on:** WP-24, WP-25.
-- **Evidence:** every template and example passes `verify` in CI with committed baselines; the docs site builds and deploys; Mirza's review of the gallery for "beautiful by default"; long-lived scenarios present in templates, conformance and gallery.
-
-### WP-27. Agent evaluation suite
-- **Owns:** AX-08.
-- **Builds:**
-  - an opt-in, paced evaluation harness (D34, D64) that grows from the C03-A harness: scenarios over templates and journeys (one-off and long-lived), first-pass `verify` success, turns to pass, and retention across turns;
-  - per-run recording of provider, model, date and tokens;
-  - small-batch pacing;
-  - reports.
-- **Depends on:** WP-26.
-- **Evidence:** a pilot batch (announced to Mirza, GPT-only first) produces a report; the harness reproduces EVAL-01's base comparison; runs with Claude models only after Mirza approves them.
+  - compare and comments on cells;
+  - the xterm.js engine plugin passes its baselines.
