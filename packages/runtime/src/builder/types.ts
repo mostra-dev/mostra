@@ -35,8 +35,11 @@ export interface VersionRegistry {
   readonly entry: string;
   /** Every `"use server"` export. */
   readonly actions: readonly ServerFunctionEntry[];
-  /** The live sources `live.ts` exports (D56). */
-  readonly liveSources: readonly { readonly key: string }[];
+  /**
+   * The live sources `live.ts` exports (D56), each with `always` when its `defineLive` literal
+   * says it (WP-08); absent when the builder couldn't tell, and the worker reports it.
+   */
+  readonly liveSources: readonly { readonly key: string; readonly always?: boolean }[];
   /** The routes of `pages/`, empty for a single-page artifact. */
   readonly pages: readonly PageRoute[];
   /** The terminal sessions the manifest declares, by name. */

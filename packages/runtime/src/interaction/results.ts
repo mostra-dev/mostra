@@ -185,7 +185,7 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
       }),
     comments: [],
     orphaned: snapshot.orphaned,
-    actions: [],
+    actions: snapshot.actions ?? [],
     signals: snapshot.signals,
     ...(snapshot.signalsOmitted !== undefined ? { signalsOmitted: snapshot.signalsOmitted } : {}),
     ...(snapshot.signalsCompacted ? { signalsCompacted: true as const } : {}),

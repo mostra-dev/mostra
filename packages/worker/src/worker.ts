@@ -5,7 +5,7 @@
  * through its channel thread, never sees a cookie, a token or a raw browser request, and gets
  * secrets only by asking for them by name.
  */
-import { type FSWatcher, watch as watchFiles } from "node:fs";
+import { type Dirent, type FSWatcher, readdirSync, statSync, watch as watchFiles } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { join, matchesGlob, relative, resolve, sep } from "node:path";
@@ -461,6 +461,41 @@ function describeSource(key: string, source: LiveSourceOptions<unknown>): LiveSo
   };
 }
 
+/** How often watched files are compared, besides file events. */
+const WATCH_POLL_MS = 2000;
+
+/** Directories a watch never descends into. */
+const UNWATCHED = new Set(["node_modules", ".git", ".mostra"]);
+
+/** The sizes and change times of the files under `dir` that `matches`, as one string. */
+function fingerprintOf(dir: string, matches: (path: string) => boolean): string {
+  const parts: string[] = [];
+  const walk = (relativeDir: string, depth: number): void => {
+    if (depth > 16) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(join(dir, relativeDir), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (!UNWATCHED.has(entry.name)) walk(path, depth + 1);
+      } else if (matches(path)) {
+        try {
+          const stats = statSync(join(dir, path));
+          parts.push(`${path}:${stats.size}:${stats.mtimeMs}`);
+        } catch {
+          // Removed while walking: the next comparison sees it.
+        }
+      }
+    }
+  };
+  walk("", 0);
+  return parts.sort().join("|");
+}
+
 /** One running live source: its loads, refreshes, file watching and stream (D56). */
 class Producer {
   readonly #key: string;
@@ -470,6 +505,7 @@ class Producer {
   #controller: AbortController | undefined;
   #timer: ReturnType<typeof setInterval> | undefined;
   #watcher: FSWatcher | undefined;
+  #poll: ReturnType<typeof setInterval> | undefined;
   #debounce: ReturnType<typeof setTimeout> | undefined;
   #loading = false;
   #again = false;
@@ -508,6 +544,8 @@ class Producer {
     if (this.#debounce !== undefined) clearTimeout(this.#debounce);
     this.#watcher?.close();
     this.#watcher = undefined;
+    if (this.#poll !== undefined) clearInterval(this.#poll);
+    this.#poll = undefined;
   }
 
   /** Loads again now; a load already running is followed by one more. */
@@ -553,17 +591,32 @@ class Producer {
       return;
     }
     const patterns = globs.map((glob) => glob.replace(/^\.\//, ""));
+    const matches = (path: string): boolean =>
+      patterns.some((pattern) => matchesGlob(path, pattern));
+    const changed = (): void => {
+      if (this.#debounce !== undefined) clearTimeout(this.#debounce);
+      this.#debounce = setTimeout(() => this.refresh(), 100);
+    };
     try {
       this.#watcher = watchFiles(dir, { recursive: true }, (_event, name) => {
         if (name === null) return;
         const path = relative(dir, resolve(dir, name.toString())).split(sep).join("/");
-        if (!patterns.some((pattern) => matchesGlob(path, pattern))) return;
-        if (this.#debounce !== undefined) clearTimeout(this.#debounce);
-        this.#debounce = setTimeout(() => this.refresh(), 100);
+        if (matches(path)) changed();
       });
     } catch (error) {
       this.#fail(error);
+      return;
     }
+    // File events can be dropped (macOS coalesces and delays them), so the matching files'
+    // sizes and times are also compared every two seconds: a change is never missed for long.
+    let fingerprint = fingerprintOf(dir, matches);
+    this.#poll = setInterval(() => {
+      const next = fingerprintOf(dir, matches);
+      if (next !== fingerprint) {
+        fingerprint = next;
+        changed();
+      }
+    }, WATCH_POLL_MS);
   }
 
   async #stream(signal: AbortSignal): Promise<void> {

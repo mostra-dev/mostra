@@ -13,9 +13,11 @@
 import {
   type Actor,
   type ArtifactRef,
+  type Batches,
   type CapabilityScope,
   type CarryOver,
   type ControlsPolicy,
+  createDiagnostic,
   type DeliveryCounts,
   type EventFilter,
   type EventRecord,
@@ -26,8 +28,10 @@ import {
   type FieldOp,
   type FieldScope,
   type FieldState,
+  MutationId,
   type MutationResult,
   RpcError,
+  type RunState,
   refusal,
   resultsGetMethod,
   type StreamSnapshot,
@@ -44,7 +48,7 @@ import type { Faults } from "../faults.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
-import { latestCursor, readEvents } from "./events.ts";
+import { appendEvent, latestCursor, readEvents } from "./events.ts";
 import {
   applyMutation,
   documentFor,
@@ -54,6 +58,20 @@ import {
 } from "./fields.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
+import {
+  appendRunOutput,
+  createOrJoinRun,
+  finishRun,
+  markRunning,
+  openRuns,
+  type RunEnd,
+  type RunFlush,
+  type RunOutput,
+  type RunRow,
+  runById,
+  runByKey,
+  runState,
+} from "./runs.ts";
 import { raiseSignal } from "./signals.ts";
 import {
   assertChannel,
@@ -76,9 +94,11 @@ import {
 } from "./viewers.ts";
 import { waitFor } from "./wait.ts";
 
-export { appendEvent } from "./events.ts";
+export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
+export { appendEvent, redactEvents } from "./events.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
+export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
 
 /** How the interaction core finds an artifact a host names. */
@@ -214,6 +234,93 @@ export interface Interaction {
   disconnected(session: Session): void;
   /** The outbox per host, for `instance/status`. */
   deliveries(): DeliveryCounts[];
+
+  // ── Actions (WP-08) ──────────────────────────────────────────────────────────────────────
+  /** The version a page's view shows: plain calls and runs run there (D104). */
+  viewVersion(page: PageIdentity, viewId: string): string;
+  /**
+   * Records an action run before any worker starts it, or joins the one its key or client key
+   * names (AC-03); `started` tells the caller to run it.
+   */
+  startRun(
+    page: PageIdentity,
+    input: {
+      readonly viewId: string;
+      readonly fnId: string;
+      readonly args: Batches;
+      readonly key?: string;
+      readonly clientKey: string;
+    },
+  ): { readonly state: RunState; readonly row: RunRow; readonly started: boolean };
+  /** Runs a page asks for by ID, or by function and key (re-attach, AC-02). */
+  runsFor(
+    page: PageIdentity,
+    input: {
+      readonly viewId: string;
+      readonly runIds?: readonly string[];
+      readonly keyed?: readonly { readonly fnId: string; readonly key: string }[];
+    },
+  ): RunState[];
+  /** One run of the page's artifact, for a cancel; `MOSTRA_ACTION_RUN_NOT_FOUND` otherwise. */
+  runFor(page: PageIdentity, viewId: string, runId: string): RunRow;
+  /** A run its worker has. */
+  runRunning(runId: string): void;
+  /** A run's new log lines, batches and progress. */
+  runOutput(runId: string, output: RunOutput): RunFlush | undefined;
+  /** Ends a run with its event. */
+  endRun(runId: string, end: RunEnd): RunState | undefined;
+  /** The runs not yet ended, optionally of one version. */
+  openRuns(versionId?: string): RunRow[];
+  /** A run's state now. */
+  runState(runId: string): RunState | undefined;
+  /** `signal()` from server code: `signal.raised`, source `action`, the run as cause (AC-05). */
+  serverSignal(
+    artifactId: string,
+    input: { readonly name: string; readonly payload?: unknown; readonly runId?: string },
+  ): string;
+  /** `emit()` from server code: a `host.<name>` event (AC-05). */
+  serverEmit(
+    artifactId: string,
+    input: { readonly type: string; readonly payload?: unknown; readonly runId?: string },
+  ): string;
+  /** The artifact state, for `state.get` in server code. */
+  serverState(
+    artifactId: string,
+    ids?: readonly string[],
+  ): { revision: string; fields: Record<string, FieldState> };
+  /** A state write from server code, as the agent (D63). */
+  serverPatch(
+    artifactId: string,
+    input: {
+      readonly ops: readonly FieldOp[];
+      readonly mutationId?: string;
+      readonly baseRevision?: string;
+      readonly runId?: string;
+    },
+  ): MutationResult;
+  /** The artifacts a host subscription names, whose live producers it keeps running. */
+  subscribedArtifacts(): Set<string>;
+  /** Appends `worker.crashed` (DATA_MODEL §4, RT-04): the version, the cause, the backoff. */
+  workerCrashed(crash: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly cause: string;
+    readonly kind: string;
+    readonly backoffMs: number;
+    readonly parked: boolean;
+  }): string;
+  /** Hears every `version.published` once it commits, by artifact; returns the stop. */
+  onPublished(listener: (artifactId: string) => void): () => void;
+  /** How many host subscriptions are open. */
+  subscriptionCount(): number;
+}
+
+function runNotFound(runId: string): RpcError {
+  return new RpcError(
+    createDiagnostic("MOSTRA_ACTION_RUN_NOT_FOUND", {
+      message: `This artifact has no action run ${String(runId).slice(0, 64)}.`,
+    }),
+  );
 }
 
 /** The number of a version. */
@@ -649,5 +756,155 @@ export function createInteraction(options: InteractionOptions): Interaction {
       subscriptions.closed(session.id);
     },
     deliveries: () => outbox.counts(),
+
+    viewVersion(page, viewId) {
+      return ledger.read(
+        (db) => viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId).version_id,
+      );
+    },
+    startRun(page, input) {
+      const actor = pageActor(page);
+      return ledger.write((db) => {
+        const view = viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
+        const { row, joined } = createOrJoinRun(db, {
+          artifactId: page.artifactId,
+          versionId: view.version_id,
+          viewId: view.id,
+          viewerId: page.viewerId,
+          fnId: input.fnId,
+          args: input.args,
+          ...(input.key !== undefined ? { key: input.key } : {}),
+          clientKey: input.clientKey,
+          actor,
+        });
+        return { row, state: runState(db, row, joined), started: !joined };
+      });
+    },
+    runsFor(page, input) {
+      return ledger.read((db) => {
+        viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
+        const rows = new Map<string, RunRow>();
+        for (const runId of input.runIds ?? []) {
+          const row = runById(db, page.artifactId, runId);
+          if (row) rows.set(row.id, row);
+        }
+        for (const entry of input.keyed ?? []) {
+          const row = runByKey(db, page.artifactId, entry.fnId, entry.key);
+          if (row) rows.set(row.id, row);
+        }
+        return [...rows.values()].map((row) => runState(db, row));
+      });
+    },
+    runFor(page, viewId, runId) {
+      return ledger.read((db) => {
+        viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId);
+        const row = runById(db, page.artifactId, runId);
+        if (!row) throw runNotFound(runId);
+        return row;
+      });
+    },
+    runRunning(runId) {
+      ledger.write((db) => markRunning(db, runId));
+    },
+    runOutput(runId, output) {
+      return ledger.write((db) => appendRunOutput(db, runId, output));
+    },
+    endRun(runId, end) {
+      return ledger.write((db) => {
+        const row = finishRun(db, runId, end);
+        return row ? runState(db, row) : undefined;
+      });
+    },
+    openRuns(versionId) {
+      return ledger.read((db) => openRuns(db, versionId));
+    },
+    runState(runId) {
+      return ledger.read((db) => {
+        const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId);
+        return row ? runState(db, row) : undefined;
+      });
+    },
+    serverSignal(artifactId, input) {
+      return ledger.write((db) =>
+        raiseSignal(db, {
+          artifactId,
+          name: input.name,
+          ...(input.payload !== undefined ? { payload: input.payload } : {}),
+          source: "action",
+          actor: { kind: "agent" },
+          // No view: a page never learns another viewer's view from an action's signal (D104).
+          ...(input.runId !== undefined ? { causation: { runId: input.runId } } : {}),
+        }),
+      );
+    },
+    serverEmit(artifactId, input) {
+      return ledger.write((db) =>
+        appendEvent(db, {
+          artifactId,
+          type: input.type,
+          actor: { kind: "agent" },
+          ...(input.runId !== undefined ? { causation: { runId: input.runId } } : {}),
+          payload: input.payload === undefined ? {} : { data: input.payload },
+        }),
+      );
+    },
+    serverState(artifactId, ids) {
+      return ledger.read((db) => {
+        const snapshot = documentSnapshot(db, artifactId, null);
+        const fields =
+          ids === undefined
+            ? snapshot.fields
+            : Object.fromEntries(
+                Object.entries(snapshot.fields).filter(([id]) => ids.includes(id)),
+              );
+        return { revision: snapshot.revision, fields };
+      });
+    },
+    serverPatch(artifactId, input) {
+      return ledger.write(
+        (db) =>
+          applyMutation(db, {
+            artifactId,
+            scope: "artifact",
+            mutationId: input.mutationId ?? MutationId.create(),
+            ...(input.baseRevision !== undefined
+              ? { baseRevision: Number(input.baseRevision) }
+              : {}),
+            ops: input.ops,
+            actor: { kind: "agent", ...(input.runId !== undefined ? { id: input.runId } : {}) },
+          }).result,
+      );
+    },
+    subscribedArtifacts: () => subscriptions.subscribedArtifacts(),
+    workerCrashed(crash) {
+      return ledger.write((db) =>
+        appendEvent(db, {
+          artifactId: crash.artifactId,
+          type: "worker.crashed",
+          actor: { kind: "mostra" },
+          payload: {
+            versionId: crash.versionId,
+            cause: crash.cause,
+            kind: crash.kind,
+            backoffMs: crash.backoffMs,
+            parked: crash.parked,
+          },
+        }),
+      );
+    },
+    onPublished(listener) {
+      let cursor = ledger.read((db) => latestCursor(db));
+      return ledger.onCommit(() => {
+        const published = ledger.read((db) =>
+          db.all<{ cursor: number; artifact_id: string }>(
+            "SELECT cursor, artifact_id FROM event WHERE cursor > ? AND type = 'version.published' ORDER BY cursor",
+            cursor,
+          ),
+        );
+        cursor = ledger.read((db) => latestCursor(db));
+        for (const row of published) listener(row.artifact_id);
+      });
+    },
+    subscriptionCount: () => subscriptions.size,
   };
 }

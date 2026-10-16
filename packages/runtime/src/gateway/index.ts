@@ -19,6 +19,7 @@ import {
   type ArtifactDetail,
   ArtifactId,
   type ArtifactRef,
+  BROWSER_PROTOCOL_REVISIONS,
   type CapabilityLink,
   type CapabilityScope,
   type ControlsPolicy,
@@ -34,9 +35,10 @@ import {
   viewRotateMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
+import type { Actions } from "../actions/index.ts";
 import type { Addressing } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
-import type { Interaction } from "../interaction/index.ts";
+import type { EphemeralBus, Interaction } from "../interaction/index.ts";
 import {
   type Ledger,
   type LedgerDb,
@@ -45,8 +47,10 @@ import {
   recordResult,
   requestKey,
 } from "../ledger/index.ts";
+import type { Live } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
+import { type ActionRoutes, actionRoutes } from "./actions.ts";
 import { type BrowserRoutes, type BrowserRoutesOptions, browserRoutes } from "./browser.ts";
 import {
   type Capabilities,
@@ -103,6 +107,14 @@ export interface GatewayOptions {
   readonly activated: BrowserRoutesOptions["activated"];
   /** The browser-protocol revisions served; `BROWSER_PROTOCOL_REVISIONS` unless a test adds one. */
   readonly revisions?: readonly string[];
+  /**
+   * Server functions and live data (WP-08): plain calls, action runs and live sources. Absent,
+   * their routes answer 501 behind their checks, as before WP-08.
+   */
+  readonly actions?: Actions;
+  readonly live?: Live;
+  /** Run and live updates for page streams and polls (WP-08). */
+  readonly bus?: EphemeralBus;
 }
 
 /** The gateway of one instance. */
@@ -126,11 +138,14 @@ type TicketAnswer = FrameTicket;
 
 const NO_STORE = { "cache-control": "no-store" };
 
+/** How recently an artifact must have been viewed for its port to be bound at start (D129). */
+const RECENT_VIEW_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * The browser-protocol routes of INTERFACES §4 (D96): WP-06 serves `fields`, `submit`, `signal`,
  * `events` and `events/poll`; the others answer 501 until their package attaches a handler.
  */
-function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
+function laterArtifactRoutes(served: BrowserRoutes, acting: ActionRoutes | undefined): RouteSpec[] {
   const action = (params: Readonly<Record<string, string>>): CapabilityScope | "any-action" => {
     const id = params["fn"];
     return id ? (`action:${id}` as CapabilityScope) : "any-action";
@@ -168,6 +183,7 @@ function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: action,
+      ...(acting ? { handler: acting.call } : {}),
     },
     {
       method: "POST",
@@ -175,6 +191,16 @@ function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: () => "any-action",
+      ...(acting ? { handler: acting.runs } : {}),
+    },
+    // WP-08: read runs and follow them (re-attach), by ID or by function and key.
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/runs/attach",
+      intent: "mutation",
+      auth: "session",
+      scope: () => "any-action",
+      ...(acting ? { handler: acting.attach } : {}),
     },
     {
       method: "POST",
@@ -182,6 +208,15 @@ function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
       intent: "mutation",
       auth: "session",
       scope: () => "any-action",
+      ...(acting ? { handler: acting.cancel } : {}),
+    },
+    // WP-08: live sources a page reads and keeps produced; every link may (`view`).
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/live",
+      intent: "mutation",
+      auth: "session",
+      ...(acting ? { handler: acting.live } : {}),
     },
     { method: "POST", path: "/_mostra/v/:rev/ticket", intent: "mutation", auth: "session" },
     {
@@ -214,7 +249,18 @@ export function createGateway(options: GatewayOptions): Gateway {
     },
     activated: options.activated,
     ...(options.revisions ? { revisions: options.revisions } : {}),
+    ...(options.bus ? { bus: options.bus } : {}),
   });
+  const acting: ActionRoutes | undefined =
+    options.actions && options.live
+      ? actionRoutes({
+          interaction,
+          actions: options.actions,
+          live: options.live,
+          log,
+          revisions: options.revisions ?? BROWSER_PROTOCOL_REVISIONS,
+        })
+      : undefined;
   let shellPort: number | undefined;
   const shellOrigin = (): string => {
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
@@ -758,7 +804,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         auth: "session",
         handler: frameSession,
       },
-      ...laterArtifactRoutes(served),
+      ...laterArtifactRoutes(served, acting),
       { method: "GET", path: "/*", intent: "read", auth: "session", handler: files },
     ];
   };
@@ -856,9 +902,23 @@ export function createGateway(options: GatewayOptions): Gateway {
         owner: "shell",
       });
       log.info("gateway.listening", { origin: shellOrigin(), bind: addressing.bindAddress });
-      // Leased artifact ports are bound now, so their frames reload after a restart (D62, FAILURE_MODEL §8).
+      // The ports of artifacts viewed lately are bound now, so their open frames reload after a
+      // restart (D62, FAILURE_MODEL §8). Every other lease stays leased and is bound when its next
+      // frame ticket is issued, so a home with thousands of artifacts holds no thousand listeners
+      // (D129, amending D99); a lease never moves, so links keep their origins.
+      const since = new Date(Date.now() - RECENT_VIEW_MS).toISOString();
+      const recent = new Set(
+        options.ledger.read((db) =>
+          db
+            .all<{ artifact_id: string }>(
+              "SELECT DISTINCT artifact_id FROM view WHERE opened_at >= ?",
+              since,
+            )
+            .map((row) => row.artifact_id),
+        ),
+      );
       for (const lease of addressing.leases()) {
-        if (lease.purpose !== "artifact") continue;
+        if (lease.purpose !== "artifact" || !recent.has(lease.owner)) continue;
         try {
           artifacts.get({ artifactId: lease.owner });
         } catch {

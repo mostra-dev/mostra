@@ -71,6 +71,23 @@ export class Subscriptions {
     this.#unsubscribe = this.#options.ledger.onCommit(() => this.#pumpAll());
   }
 
+  /**
+   * The artifacts some host subscription names in its filter (`artifacts`): their live producers
+   * run while it lasts (LL-04). A subscription without an artifacts filter starts none.
+   */
+  subscribedArtifacts(): Set<string> {
+    const artifacts = new Set<string>();
+    for (const subscription of this.#all.values()) {
+      for (const artifact of subscription.filter?.artifacts ?? []) artifacts.add(artifact);
+    }
+    return artifacts;
+  }
+
+  /** How many subscriptions are open: the daemon stays while hosts listen (D62). */
+  get size(): number {
+    return this.#all.size;
+  }
+
   stop(): void {
     this.#unsubscribe?.();
     this.#all.clear();

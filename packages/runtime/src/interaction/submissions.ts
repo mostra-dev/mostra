@@ -88,7 +88,20 @@ export interface Snapshot {
   }[];
   readonly signalsOmitted?: number;
   readonly signalsCompacted?: true;
+  /**
+   * The action runs started in the view before the submission, with their state then (WP-08):
+   * at most 100, oldest first. Snapshots made before WP-08 have none.
+   */
+  readonly actions?: readonly {
+    readonly runId: string;
+    readonly action: string;
+    readonly status: string;
+    readonly at: string;
+  }[];
 }
+
+/** The most action runs a snapshot lists. */
+const SNAPSHOT_ACTIONS_MAX = 100;
 
 /** A `submission` row. */
 export interface SubmissionRow {
@@ -441,6 +454,14 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
       input.artifactId,
       view.opened_cursor,
     ) !== undefined;
+  // The view's action runs, as they stood when the viewer submitted (D101: results list them).
+  const actions = db
+    .all<{ id: string; action: string; status: string; started_at: string }>(
+      "SELECT id, action, status, started_at FROM action_run WHERE view_id = ? ORDER BY started_at, id LIMIT ?",
+      view.id,
+      SNAPSHOT_ACTIONS_MAX,
+    )
+    .map((run) => ({ runId: run.id, action: run.action, status: run.status, at: run.started_at }));
   const snapshot: Snapshot = {
     schema: 1,
     submissionId,
@@ -468,6 +489,7 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     signals,
     ...(signalsOmitted > 0 ? { signalsOmitted } : {}),
     ...(signalsCompacted ? { signalsCompacted: true as const } : {}),
+    actions,
   };
 
   // 5. The digest of the canonical snapshot, which must fit one protocol message with room to

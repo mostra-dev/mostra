@@ -104,6 +104,17 @@ export interface Registry {
   commit(input: VersionCommit): CommittedVersion;
   /** The source path an artifact was last published from. */
   sourceOf(artifactId: string): string | undefined;
+  /** One committed version: its artifact, number, output digest and manifest (WP-08's workers). */
+  version(versionId: string):
+    | {
+        readonly artifactId: string;
+        readonly number: number;
+        readonly outputDigest: string;
+        readonly manifest: ArtifactManifest;
+      }
+    | undefined;
+  /** Every artifact's latest version, by artifact ID. */
+  latestVersions(): ReadonlyMap<string, string>;
   list(filter?: { readonly family?: string }): ArtifactSummary[];
   /** One artifact in full; `MOSTRA_ARTIFACT_NOT_FOUND` when unknown. */
   get(ref: ArtifactRef): ArtifactDetail;
@@ -326,6 +337,31 @@ export async function openRegistry(options: {
         input.faults?.at("publish:in-commit");
         return committed;
       });
+    },
+    version(versionId) {
+      return ledger.read((db) => {
+        const row = db.get<VersionRow>("SELECT * FROM version WHERE id = ?", versionId);
+        return row
+          ? {
+              artifactId: row.artifact_id,
+              number: row.number,
+              outputDigest: row.output_digest,
+              manifest: JSON.parse(row.manifest_json) as ArtifactManifest,
+            }
+          : undefined;
+      });
+    },
+    latestVersions() {
+      return ledger.read(
+        (db) =>
+          new Map(
+            db
+              .all<{ id: string; latest_version_id: string }>(
+                "SELECT id, latest_version_id FROM artifact WHERE latest_version_id IS NOT NULL",
+              )
+              .map((row) => [row.id, row.latest_version_id]),
+          ),
+      );
     },
     sourceOf(artifactId) {
       return ledger.read(

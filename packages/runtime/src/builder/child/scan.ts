@@ -56,7 +56,7 @@ const SERVER_PACKAGE = "@mostra/server";
 export interface ScanResult {
   /** `"use server"` modules (paths inside the artifact) with their exports. */
   readonly serverModules: ReadonlyMap<string, readonly ServerFunctionEntry[]>;
-  readonly liveSources: readonly { readonly key: string }[];
+  readonly liveSources: readonly { readonly key: string; readonly always?: boolean }[];
   readonly hasLive: boolean;
   readonly pages: readonly PageRoute[];
   /** The field IDs the artifact's own code can use (D109). */
@@ -322,9 +322,34 @@ function serverExports(
   return entries;
 }
 
-/** The exports of `live.ts` that are `defineLive(...)` calls (D56). */
-function liveExports(program: Node): { key: string }[] {
-  const keys: { key: string }[] = [];
+/**
+ * Whether a `defineLive({ … })` argument says `always: true` (D63): `true` or `false` when the
+ * object literal tells, `undefined` when it can't be known without running it (a spread, a
+ * computed key, a value other than a literal, or no object literal at all).
+ */
+function literalAlways(argument: Node | undefined): boolean | undefined {
+  if (argument?.type !== "ObjectExpression") return undefined;
+  let always: boolean | undefined = false;
+  for (const property of argument["properties"] as Node[]) {
+    if (property.type !== "Property" || property["computed"] === true) {
+      always = undefined;
+      continue;
+    }
+    const key = property["key"] as Node;
+    const name = key.type === "Identifier" ? key["name"] : key["value"];
+    if (name !== "always") continue;
+    const value = property["value"] as Node;
+    always =
+      value.type === "Literal" && typeof value["value"] === "boolean"
+        ? (value["value"] as boolean)
+        : undefined;
+  }
+  return always;
+}
+
+/** The exports of `live.ts` that are `defineLive(...)` calls (D56), with their literal `always`. */
+function liveExports(program: Node): { key: string; always?: boolean }[] {
+  const keys: { key: string; always?: boolean }[] = [];
   for (const statement of program["body"] as Node[]) {
     if (statement.type !== "ExportNamedDeclaration") continue;
     const declaration = statement["declaration"] as Node | null;
@@ -339,8 +364,10 @@ function liveExports(program: Node): { key: string }[] {
           : callee?.type === "MemberExpression"
             ? (callee["property"] as Node)["name"]
             : undefined;
-      if (id.type === "Identifier" && calleeName === "defineLive")
-        keys.push({ key: id["name"] as string });
+      if (id.type === "Identifier" && calleeName === "defineLive") {
+        const always = literalAlways((init?.["arguments"] as Node[] | undefined)?.[0]);
+        keys.push({ key: id["name"] as string, ...(always === undefined ? {} : { always }) });
+      }
     }
   }
   return keys;
@@ -367,7 +394,7 @@ export async function scanArtifact(sourceDir: string): Promise<ScanResult> {
   await walk(sourceDir, "", files);
   const diagnostics: Diagnostic[] = [];
   const serverModules = new Map<string, ServerFunctionEntry[]>();
-  let liveSources: { key: string }[] = [];
+  let liveSources: { key: string; always?: boolean }[] = [];
   for (const file of files.sort()) {
     if (!SCRIPT.has(extname(file))) continue;
     const text = await readFile(join(sourceDir, file), "utf8");

@@ -12,6 +12,7 @@ import {
   instanceStatusMethod,
   mostraShutdownMethod,
   RpcError,
+  type WorkerStatus,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "./server.ts";
 
@@ -30,6 +31,10 @@ export interface SessionMethodsOptions {
   gateway?(): GatewayStatus | undefined;
   /** The outbox per host (WP-06). */
   deliveries?(): readonly DeliveryCounts[];
+  /** The artifact workers (WP-08). */
+  workers?(): readonly WorkerStatus[];
+  /** When an idle daemon exits (WP-08); `undefined` while busy or for an instance that never does. */
+  idleExitAt?(): string | undefined;
   /**
    * Stops the instance. Called after the `mostra/shutdown` response is on its way (D87).
    */
@@ -49,6 +54,11 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         processes: [...options.processes()],
         ...(gateway ? { gateway } : {}),
         ...(options.deliveries ? { deliveries: [...options.deliveries()] } : {}),
+        ...(options.workers ? { workers: [...options.workers()] } : {}),
+        ...(() => {
+          const at = options.idleExitAt?.();
+          return at === undefined ? {} : { idleExitAt: at };
+        })(),
       };
     }),
     handler(mostraShutdownMethod, (_params, session) => {

@@ -37,7 +37,7 @@ const BUILD_PACKAGES = [
 ] as const;
 
 /** Bumped whenever the SPA build's settings change, so older versions aren't reused. */
-const SPA_CONFIG_REVISION = 5;
+const SPA_CONFIG_REVISION = 6;
 
 /** What a render mode can deliver for a manifest (ROUND-3 §7). */
 export interface RenderCapabilities {
@@ -149,8 +149,8 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
       needsWorker: hasServerCode,
     }),
     serverEntry(versionDir) {
-      const entry = join(versionDir, "server", "entry.mjs");
-      return existsSync(entry) ? entry : undefined;
+      const entry = spaServerEntry(versionDir);
+      return entry === undefined ? undefined : join(versionDir, entry);
     },
     async build(request) {
       const child = await options.processes.spawn({
@@ -221,6 +221,34 @@ function failed(
   message: string,
 ): BuildResponse {
   return { ok: false, diagnostics: [createDiagnostic(code, { message })] };
+}
+
+/**
+ * The SPA mode's server bundle of a built version, relative to it (`server/entry.mjs`), or
+ * `undefined` for a version without server code, which never gets a worker (RT-05).
+ */
+export function spaServerEntry(versionDir: string): string | undefined {
+  return existsSync(join(versionDir, "server", "entry.mjs")) ? "server/entry.mjs" : undefined;
+}
+
+/** The live sources a version's `registry.json` lists (D56), empty when it has none. */
+export function readLiveSources(
+  versionDir: string,
+): readonly { readonly key: string; readonly always?: boolean }[] {
+  try {
+    const registry = JSON.parse(readFileSync(join(versionDir, "registry.json"), "utf8")) as {
+      readonly liveSources?: unknown;
+    };
+    if (!Array.isArray(registry.liveSources)) return [];
+    return registry.liveSources.filter(
+      (entry): entry is { key: string; always?: boolean } =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as { key?: unknown }).key === "string",
+    );
+  } catch {
+    return [];
+  }
 }
 
 /**

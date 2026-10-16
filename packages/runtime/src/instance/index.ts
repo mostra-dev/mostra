@@ -9,7 +9,7 @@
  * else await started.instance.stopped;
  * ```
  */
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -22,13 +22,26 @@ import {
   type JsonRpcParams,
   type MostraInitializeResult,
   type PortTrustedControlsActivatedParams,
+  portSecretsGetMethod,
   portTrustedControlsActivatedMethod,
   portTrustedControlsPolicyMethod,
   RpcError,
 } from "@mostra/protocol";
+import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
-import { coverageMatcher, createSpaRenderMode, readFieldCoverage } from "../builder/index.ts";
-import { createDependencies, locateWarmSet, recoverDependencies } from "../deps/index.ts";
+import {
+  coverageMatcher,
+  createSpaRenderMode,
+  readFieldCoverage,
+  readLiveSources,
+  spaServerEntry,
+} from "../builder/index.ts";
+import {
+  createDependencies,
+  locateWarmSet,
+  recoverDependencies,
+  runtimeRoot,
+} from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
 import {
   Capabilities,
@@ -49,9 +62,20 @@ import {
   resolveHomePath,
   writeHomeSettings,
 } from "../home/index.ts";
-import { createInteraction, type Interaction } from "../interaction/index.ts";
+import {
+  createEphemeralBus,
+  createInteraction,
+  type Interaction,
+  redactEvents,
+} from "../interaction/index.ts";
+import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { openProcessManager, type ProcessManager, type ReapedChild } from "../processes/index.ts";
+import {
+  artifactEnvironment,
+  openProcessManager,
+  type ProcessManager,
+  type ReapedChild,
+} from "../processes/index.ts";
 import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
 import {
   artifactMethods,
@@ -61,6 +85,17 @@ import {
   versionDamage,
 } from "../publish/index.ts";
 import { openRegistry } from "../registry/index.ts";
+import { openSecrets, secretMethods } from "../secrets/index.ts";
+import { type IdleWatch, watchIdle } from "../service/index.ts";
+import {
+  createWorkerPool,
+  localLauncher,
+  locateWorker,
+  socketLauncher,
+  type WorkerLauncher,
+  type WorkerVersion,
+  workerLimits,
+} from "../workers/index.ts";
 
 /** Options for {@link startInstance}. */
 export interface StartInstanceOptions {
@@ -82,6 +117,11 @@ export interface StartInstanceOptions {
   readonly bind?: string | undefined;
   /** `--url-host`: the host name URLs use; required with a wildcard `--bind` (D99). */
   readonly urlHost?: string | undefined;
+  /**
+   * `--always-on`: a daemon that never exits for lack of work, as the login service runs it
+   * (D62). Without it a daemon exits after 30 idle minutes.
+   */
+  readonly alwaysOn?: boolean;
 }
 
 /** How a stopped instance ended. */
@@ -293,6 +333,132 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ? { portTimeoutMs: Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) }
       : {}),
   });
+  // Server code (WP-08): secrets, the worker pool, action runs and live sources. Every secret the
+  // home holds is protected from the log and the event log before anything runs.
+  const stopRedactingEvents = redactEvents(home.redactor);
+  const secrets = openSecrets({
+    home: home.path,
+    redactor: home.redactor,
+    log,
+    port: () => {
+      const registrant = server.registrants("secrets").at(-1);
+      if (!registrant) return undefined;
+      return async (request) => {
+        const value = await server.callSession(
+          registrant.session,
+          portSecretsGetMethod.method,
+          request as unknown as JsonRpcParams,
+          PORT_TIMEOUT_MS,
+        );
+        return typeof value === "string" ? value : null;
+      };
+    },
+  });
+  const bus = createEphemeralBus();
+  // The local launcher forks workers from this home's versions; tests prove the seam with a worker
+  // host started on its own, reached over a socket (D124).
+  const workerSocket = environment["MOSTRA_TEST_WORKER_HOST"];
+  const located = locateWorker(environment, runtimeRoot());
+  const launcher: WorkerLauncher = workerSocket
+    ? socketLauncher(workerSocket)
+    : localLauncher({
+        processes: manager,
+        home: home.path,
+        workerEntry: located.entry,
+        nodeArgs: located.nodeArgs,
+      });
+  if (workerSocket) log.warn("workers.test_host", { socket: workerSocket });
+  const workerVersions = new Map<string, WorkerVersion | null>();
+  /** What a version's worker needs, or `null` for a version without server code (RT-05). */
+  const workerVersion = (versionId: string): WorkerVersion | undefined => {
+    const cached = workerVersions.get(versionId);
+    if (cached !== undefined) return cached ?? undefined;
+    const version = registry.version(versionId);
+    const dir = registry.store.versionDir(versionId);
+    const entry = version ? spaServerEntry(dir) : undefined;
+    if (!version || entry === undefined) {
+      if (version) workerVersions.set(versionId, null);
+      return undefined;
+    }
+    const source = registry.sourceOf(version.artifactId);
+    const sourceDir = source ? sourceDirectory(source) : undefined;
+    const resolved: WorkerVersion = {
+      artifactId: version.artifactId,
+      ref: { versionId, outputDigest: version.outputDigest, locator: `home:versions/${versionId}` },
+      entry,
+      limits: workerLimits(version.manifest),
+      ...(sourceDir ? { sourceDir } : {}),
+    };
+    workerVersions.set(versionId, resolved);
+    return resolved;
+  };
+  const testIdleMs = Number(environment["MOSTRA_TEST_WORKER_IDLE_MS"]);
+  const pool = createWorkerPool({
+    launcher,
+    log,
+    // The artifact's allowlisted environment (D95), never the supervisor's secrets (D124).
+    env: artifactEnvironment(environment),
+    bridge: {
+      request: (worker, method, params, call) =>
+        actions.bridge.request(worker, method, params, call),
+      log: (worker, line) => actions.bridge.log(worker, line),
+      liveValue: (worker, params) => live.produced(worker, params),
+    },
+    onCrash: (crash) => {
+      actions.crashed(crash);
+      live.crashed(crash);
+      try {
+        interaction.workerCrashed(crash);
+      } catch (error) {
+        log.error("workers.crash_record_failed", { error });
+      }
+    },
+    ...(testIdleMs > 0 ? { idleMsOverride: testIdleMs } : {}),
+  });
+  const actions = createActions({
+    interaction,
+    pool,
+    bus,
+    secrets,
+    redactor: home.redactor,
+    log,
+    version: workerVersion,
+  });
+  // Versions are immutable, so each one's live sources are read from its registry once.
+  const liveSourcesOf = new Map<string, ReturnType<typeof readLiveSources>>();
+  const latestLive = (artifactId: string): LatestLive | undefined => {
+    const versionId = registry.latestVersions().get(artifactId);
+    if (!versionId) return undefined;
+    let sources = liveSourcesOf.get(versionId);
+    if (!sources) {
+      sources = readLiveSources(registry.store.versionDir(versionId));
+      liveSourcesOf.set(versionId, sources);
+    }
+    return sources.length > 0 ? { versionId, sources } : undefined;
+  };
+  const live = createLive({
+    ledger: home.ledger,
+    log,
+    bus,
+    pool,
+    interaction,
+    latest: latestLive,
+    redactor: home.redactor,
+    artifactsWithLive: () =>
+      [...registry.latestVersions().keys()].filter(
+        (artifactId) => latestLive(artifactId) !== undefined,
+      ),
+    version: workerVersion,
+  });
+  // A publish clears its artifact's parked workers (FAILURE_MODEL §2) and moves its producers to
+  // the new version (ARCHITECTURE §7).
+  const stopWatchingPublishes = interaction.onPublished((artifactId) => {
+    pool.clear(artifactId);
+    live.reconcile();
+  });
+  // Runs a stopped instance left open end now (D24: never retried).
+  actions.recover();
+
   const shellDir = locateShell(environment);
   if (shellDir === undefined)
     log.warn("gateway.shell_missing", { code: "MOSTRA_ENV_SHELL_MISSING" });
@@ -308,6 +474,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
     shellDir,
     interaction,
+    actions,
+    live,
+    bus,
     revisions: servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log),
     controls: (artifact) =>
       controlsPolicy({
@@ -354,6 +523,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
   });
   let gatewayStarted = false;
+  let idle: IdleWatch | undefined;
   const info: InstanceInfo = {
     version: runtimeVersion(),
     home: home.path,
@@ -399,7 +569,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
       });
     },
-    supportedPorts: ["submissions", "drafts", "trustedControls"],
+    supportedPorts: ["submissions", "drafts", "trustedControls", "secrets"],
     notifications: [EVENTS_NOTIFY],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),
@@ -412,6 +582,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       }),
       ...gateway.methods(),
       ...interaction.methods(),
+      ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
+      ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,
@@ -430,6 +602,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
               }
             : undefined,
         deliveries: () => interaction.deliveries(),
+        workers: () => pool.status(),
+        idleExitAt: () => idle?.exitAt(),
         shutdown: (reason) => void instance.stop(reason, 0),
       }),
     ],
@@ -444,9 +618,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     stop(reason, exitCode = 0, diagnostic) {
       stopping ??= (async () => {
         log.info("instance.stopping", { reason, exitCode });
+        idle?.stop();
+        stopWatchingPublishes();
+        live.stop();
         interaction.stop();
         server.close();
         await gateway.close();
+        await pool.stopAll();
+        bus.close();
+        stopRedactingEvents();
         try {
           await manager.stopAll();
         } catch (error) {
@@ -470,14 +650,40 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     await server.listen(home.socketPath, options.checkIntervalMs);
     // Deliveries pending from before a restart go out again (FAILURE_MODEL §4).
     interaction.start();
+    // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
+    live.start();
     home.publish(options.mode);
   } catch (error) {
     // Undo what started before the home is released, so no listener or child outlives it.
+    live.stop();
     interaction.stop();
     server.close();
     await gateway.close();
+    await pool.stopAll();
     await manager.stopAll();
+    bus.close();
+    stopRedactingEvents();
     throw error;
+  }
+  // A daemon exits after 30 idle minutes unless it was started always-on (D62, RT-08); a
+  // host-spawned instance lives as long as its stdio.
+  if (options.mode === "daemon" && !options.alwaysOn) {
+    const testIdle = Number(environment["MOSTRA_TEST_IDLE_EXIT_MS"]);
+    idle = watchIdle({
+      ...(testIdle > 0 ? { idleMs: testIdle } : {}),
+      busy: () => ({
+        clients: server.connections,
+        views: bus.activeViews(),
+        deliveries: interaction.deliveries().reduce((sum, owner) => sum + owner.pending, 0),
+        runs: actions.activity(),
+        producers: live.activity(),
+        subscriptions: interaction.subscriptionCount(),
+      }),
+      onIdle: () => {
+        log.info("instance.idle_exit", {});
+        void instance.stop("idle", 0);
+      },
+    });
   }
   home.watch((diagnostic) => {
     log.error("instance.home_gone", { message: diagnostic.message });
@@ -534,4 +740,16 @@ function servedRevisions(next: string | undefined, log: Log): readonly string[] 
   }
   log.warn("instance.test_revision", { next });
   return [...shipped, next];
+}
+
+/** How long a host's `secrets` port has to answer (FAILURE_MODEL §9). */
+const PORT_TIMEOUT_MS = 30_000;
+
+/** The directory of an artifact's source: the directory itself, or a single file's directory. */
+function sourceDirectory(path: string): string | undefined {
+  try {
+    return statSync(path).isDirectory() ? path : dirname(path);
+  } catch {
+    return undefined;
+  }
 }

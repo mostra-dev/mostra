@@ -33,6 +33,9 @@ const SECRET_NAME =
 /** The shortest value worth redacting; shorter ones would mangle ordinary text. */
 const MIN_SECRET_LENGTH = 8;
 
+/** The shortest named secret redacted (`mostra secret set`). */
+const MIN_NAMED_SECRET_LENGTH = 4;
+
 /**
  * Removes secrets and capability material from text before it is logged or reported: values the
  * instance registered (secrets it hands to children, token secrets) and the token parameters of
@@ -46,6 +49,18 @@ export class Redactor {
     if (value.length >= MIN_SECRET_LENGTH) this.#values.add(value);
   }
 
+  /**
+   * Registers a named secret's value (D44): one a person set on purpose, so it is protected from
+   * 4 characters on; a shorter one would match ordinary text everywhere.
+   */
+  protectSecret(value: string): void {
+    if (value.length < MIN_NAMED_SECRET_LENGTH) return;
+    this.#values.add(value);
+    // As it appears inside JSON text (an event payload, a log line), escapes and all.
+    const escaped = JSON.stringify(value).slice(1, -1);
+    if (escaped !== value) this.#values.add(escaped);
+  }
+
   /** Registers the values of variables whose names look like secrets (`*_TOKEN`, `*_SECRET` …). */
   protectEnvironment(env: Environment): void {
     for (const [name, value] of Object.entries(env)) {
@@ -56,7 +71,8 @@ export class Redactor {
   /** Returns `text` with every registered value and capability parameter replaced. */
   redact(text: string): string {
     let result = text.replace(CAPABILITY_PARAMS, `$1${REDACTED}`);
-    for (const value of this.#values) {
+    // Longest first, so a secret that contains another is replaced whole.
+    for (const value of [...this.#values].sort((a, b) => b.length - a.length)) {
       if (result.includes(value)) result = result.split(value).join(REDACTED);
     }
     return result;
@@ -142,3 +158,21 @@ export function openFileLog(options: FileLogOptions): Log {
 
 /** Environment variables, as `process.env` holds them. */
 export type Environment = Readonly<Record<string, string | undefined>>;
+
+/**
+ * `value` with every string in it, keys too, passed through `redactor`: what server code hands to
+ * Mostra (results, state, live values) never carries a secret Mostra knows (D44, AC-06).
+ */
+export function redactValue<T>(value: T, redactor: { redact(text: string): string }): T {
+  const walk = (item: unknown): unknown => {
+    if (typeof item === "string") return redactor.redact(item);
+    if (Array.isArray(item)) return item.map(walk);
+    if (item !== null && typeof item === "object") {
+      return Object.fromEntries(
+        Object.entries(item).map(([key, entry]) => [redactor.redact(key), walk(entry)]),
+      );
+    }
+    return item;
+  };
+  return walk(value) as T;
+}

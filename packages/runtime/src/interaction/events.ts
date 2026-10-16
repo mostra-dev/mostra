@@ -41,9 +41,44 @@ export interface NewEvent {
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
+/** Redactors whose secrets no event may carry (D44, AC-06): the instances of this process. */
+const redactors = new Set<{ redact(text: string): string }>();
+
+/**
+ * Makes every event payload pass through `redactor` before it is stored: a secret that server
+ * code put into a signal, a host event or a state value never enters the event log. Returns the
+ * function that stops it (an instance's stop).
+ */
+export function redactEvents(redactor: { redact(text: string): string }): () => void {
+  redactors.add(redactor);
+  return () => redactors.delete(redactor);
+}
+
+/** `value` with every string (keys too) redacted, its structure kept. */
+function redacted(value: unknown): unknown {
+  if (redactors.size === 0) return value;
+  const text = (input: string): string => {
+    let out = input;
+    for (const redactor of redactors) out = redactor.redact(out);
+    return out;
+  };
+  const walk = (item: unknown): unknown => {
+    if (typeof item === "string") return text(item);
+    if (Array.isArray(item)) return item.map(walk);
+    if (item !== null && typeof item === "object") {
+      return Object.fromEntries(
+        Object.entries(item).map(([key, entry]) => [text(key), walk(entry)]),
+      );
+    }
+    return item;
+  };
+  return walk(value);
+}
+
 /**
  * Appends one event inside the caller's write transaction and returns its cursor (a decimal
  * string, INTERFACES §1). The per-artifact sequence continues from the artifact's last event.
+ * Secrets the instance knows are redacted from its payload.
  */
 export function appendEvent(db: LedgerDb, event: NewEvent): string {
   const seq =
@@ -60,7 +95,7 @@ export function appendEvent(db: LedgerDb, event: NewEvent): string {
     event.type,
     JSON.stringify(event.actor ?? { kind: "agent" }),
     event.causation === undefined ? null : JSON.stringify(event.causation),
-    JSON.stringify(event.payload),
+    JSON.stringify(redacted(event.payload)),
     new Date().toISOString(),
   );
   return String(result.lastInsertRowid);

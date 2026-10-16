@@ -432,4 +432,89 @@ export const MIGRATIONS: readonly Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    name: "action runs and live values",
+    up(db) {
+      // D24, D54, D47, AC-02, AC-03. A run is recorded before any worker starts it. An explicit
+      // key allows one run per artifact, function and key, ever (SQLite treats NULL keys as
+      // distinct, so keyless runs don't collide); a client key makes a retried request join the
+      // run it started. `waiting` is reserved for WP-28's relay (D117, D124). A final run never
+      // changes again, and its result batches only grow while it runs.
+      db.exec(`
+        CREATE TABLE action_run (
+          id TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          view_id TEXT REFERENCES view(id),
+          viewer_id TEXT REFERENCES viewer(id),
+          action TEXT NOT NULL,
+          args_json TEXT NOT NULL,
+          key TEXT,
+          client_key TEXT NOT NULL,
+          status TEXT NOT NULL
+            CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled')),
+          reason TEXT,
+          error_json TEXT,
+          progress_json TEXT,
+          log_text TEXT NOT NULL DEFAULT '',
+          log_lines INTEGER NOT NULL DEFAULT 0,
+          log_truncated INTEGER NOT NULL DEFAULT 0,
+          batches INTEGER NOT NULL DEFAULT 0,
+          result_size INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT NOT NULL,
+          finished_at TEXT,
+          UNIQUE (artifact_id, action, key),
+          UNIQUE (artifact_id, client_key)
+        );
+        CREATE INDEX action_run_view ON action_run(view_id);
+        CREATE INDEX action_run_open ON action_run(status) WHERE status IN ('queued', 'running', 'waiting');
+        CREATE TRIGGER action_run_final_update BEFORE UPDATE ON action_run
+          WHEN OLD.status IN ('succeeded', 'failed', 'cancelled')
+        BEGIN
+          SELECT RAISE(ABORT, 'a finished action run never changes');
+        END;
+        CREATE TRIGGER action_run_no_delete BEFORE DELETE ON action_run
+        BEGIN
+          SELECT RAISE(ABORT, 'action runs are kept with their artifact');
+        END;
+        CREATE TABLE action_run_batch (
+          run_id TEXT NOT NULL REFERENCES action_run(id),
+          seq INTEGER NOT NULL,
+          batch_json TEXT NOT NULL,
+          PRIMARY KEY (run_id, seq)
+        );
+        CREATE TRIGGER action_run_batch_append BEFORE UPDATE ON action_run_batch
+        BEGIN
+          SELECT RAISE(ABORT, 'a run result batch never changes');
+        END;
+      `);
+      // D56, D63, LL-04. A live source keeps its latest value with a revision that only grows, and
+      // in append mode a bounded ring of recent values. Updates are never events.
+      db.exec(`
+        CREATE TABLE live_value (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          key TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          value_json TEXT NOT NULL,
+          producer_version_id TEXT,
+          at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, key)
+        );
+        CREATE TRIGGER live_value_revision BEFORE UPDATE ON live_value
+          WHEN NEW.revision <= OLD.revision
+        BEGIN
+          SELECT RAISE(ABORT, 'a live value revision only grows');
+        END;
+        CREATE TABLE live_ring (
+          artifact_id TEXT NOT NULL,
+          key TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          value_json TEXT NOT NULL,
+          at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, key, revision)
+        );
+      `);
+    },
+  },
 ];
