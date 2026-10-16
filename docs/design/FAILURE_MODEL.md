@@ -93,7 +93,7 @@
 | A run's or live update's message is lost (a dropped stream, a full queue) | Updates are ephemeral (D130): the page sees a gap in a run's offsets, a skipped live revision or a reconnect, and reads the run or source again; the ledger holds the truth |
 | A keyed run failed | The key stays taken: the run happens at most once (D130), and a page shows its failure. A new attempt takes a new key |
 | A `watch` source's file event is missed | The worker also compares the matched files every 2 s (D131, VERIFIED_FACTS WP-08), so the change loads at most that late |
-| A daemon has nothing to do | It exits 0 after 30 minutes (D133), unless it runs `--always-on` as the login service |
+| A daemon has nothing to do | It exits 0 after 30 minutes (D133), unless it runs `--always-on` as the login service or its home has a login service installed |
 | Live producer throws or its source is unreachable | The last good value stays, `useLive` exposes `error` with the code, and the producer retries on its schedule. Viewers never see a blank state for a transient error |
 | Push to an unknown key | Accepted: pushes create sources (D56). A push whose value exceeds 4 MiB is refused with a code |
 | High-rate pushes | Values coalesce per animation frame on the client. Append mode bounds memory with the ring (AC-08) |

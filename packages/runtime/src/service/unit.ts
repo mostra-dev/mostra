@@ -76,6 +76,18 @@ export function serviceFor(spec: ServiceSpec): ServiceStatus {
   );
 }
 
+/**
+ * Whether `home` has a login service installed: its daemon then never exits for lack of work,
+ * whoever started it, so a daemon started by hand before `install` keeps the artifacts answering.
+ */
+export function hasLoginService(home: string, env: Environment = process.env): boolean {
+  try {
+    return serviceFor({ home, node: "", entry: "", env }).installed;
+  } catch {
+    return false;
+  }
+}
+
 const xml = (text: string): string =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -83,7 +95,12 @@ const xml = (text: string): string =>
 const systemdWord = (word: string): string =>
   /^[A-Za-z0-9_./:@=+-]+$/.test(word)
     ? word
-    : `"${word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, "$$$$")}"`;
+    : `"${word
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, "\\n")
+        .replace(/%/g, "%%")
+        .replace(/\$/g, "$$$$")}"`;
 
 /** The environment a service gets: what finding programs and the home needs, nothing secret. */
 function serviceEnvironment(env: Environment): Record<string, string> {
@@ -142,7 +159,7 @@ ${vars}
     .map(([key, value]) => `Environment=${systemdWord(`${key}=${value}`)}`)
     .join("\n");
   return `[Unit]
-Description=Mostra daemon for ${spec.home.replace(/\n/g, " ")}
+Description=Mostra daemon for ${spec.home.replace(/\n/g, " ").replace(/%/g, "%%")}
 After=network.target
 
 [Service]

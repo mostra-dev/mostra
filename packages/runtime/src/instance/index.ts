@@ -86,7 +86,7 @@ import {
 } from "../publish/index.ts";
 import { openRegistry } from "../registry/index.ts";
 import { openSecrets, secretMethods } from "../secrets/index.ts";
-import { type IdleWatch, watchIdle } from "../service/index.ts";
+import { hasLoginService, type IdleWatch, watchIdle } from "../service/index.ts";
 import {
   createWorkerPool,
   localLauncher,
@@ -693,6 +693,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         runs: actions.activity(),
         producers: live.activity(),
         subscriptions: interaction.subscriptionCount(),
+        // A home with a login service is always-on, whoever started its daemon (D133).
+        loginService: hasLoginService(home.path, environment) ? 1 : 0,
       }),
       onIdle: () => {
         log.info("instance.idle_exit", {});

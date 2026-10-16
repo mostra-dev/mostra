@@ -285,6 +285,33 @@ describe("the daemon's lifecycle (RT-08)", () => {
     await gateway.stop();
   }, 60_000);
 
+  it("never exits for lack of work while its home has a login service, whoever started it (D133)", async () => {
+    const gateway = new GatewayHome();
+    const user = tempDir("svc-idle", true);
+    const env = {
+      HOME: user,
+      XDG_CONFIG_HOME: join(user, ".config"),
+      MOSTRA_TEST_IDLE_EXIT_MS: "1000",
+    };
+    // The service's file, written without starting it: this daemon was started by hand.
+    const installed = runBin(["service", "install", "--home", gateway.home.home, "--no-start"], {
+      ...process.env,
+      ...env,
+    });
+    expect((await installed.exited).code).toBe(0);
+    await gateway.start({ env });
+    gateway.client.close();
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+    expect(gateway.daemon.child.exitCode).toBeNull();
+    // Without the service, the same daemon exits once idle.
+    const removed = runBin(["service", "uninstall", "--home", gateway.home.home, "--no-start"], {
+      ...process.env,
+      ...env,
+    });
+    expect((await removed.exited).code).toBe(0);
+    await eventually(() => gateway.daemon.child.exitCode !== null, 15_000);
+  }, 60_000);
+
   it("reuses the artifact's leased port after a restart", async () => {
     const gateway = new GatewayHome();
     await gateway.start();
