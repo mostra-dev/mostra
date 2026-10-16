@@ -12,7 +12,8 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
    - this protocol;
    - your `WP-NN.md`;
    - every `docs/progress/PROGRESS-WP-*.md`, plus any `RECOVERY-WP-NN-*.md` for your package;
-   - then the files your specification lists under "Required reading".
+   - then the files your specification lists under "Required reading";
+   - Mostra HQ at `~/src/mostra-hq` for business context, as its AGENTS.md lists (D127). It is context: the dossier stays the contract.
 
    When in doubt, read more (D49). Bulk material you only need summarized (long research reports, large upstream docs) may go to a `fast-worker` sub-agent with an explicit file list, returning the summary in its reply. That is the only sub-agent use allowed (D49). Design and implementation decisions are never delegated.
 2. **Branch.** Create `wp/NN-<short-name>` from the accepted predecessor (the `main` tip after the previous WP's acceptance). Push the branch and open a pull request early so CI runs on GitHub while you work (D76). Merge only after acceptance.
@@ -37,6 +38,7 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
   Read `/Users/mirzabicer/skills-temp/writing-for-agents/SKILL.md` before drafting.
 - **Install tools freely** (D49). Large installs may use the external `Active` disk.
 - **Ask Mirza** for anything you need: research, an account, a subscription, a decision.
+- **Mostra HQ** (D127). Write to HQ only with Mirza's approval. Nothing from HQ enters this repository: not its files, and not issues, pull requests, commit messages or release notes. A product decision it informs is recorded here with product reasons only.
 - **Live model calls** follow D34 and D64:
   1. announce the question, models, mix and estimated tokens before every batch;
   2. a GPT-only batch may then start; a batch with any Anthropic model waits for Mirza's approval;
@@ -93,8 +95,8 @@ The invariants in [../PRODUCT.md](../PRODUCT.md#rule-strengths):
 - submissions are durable before delivery;
 - trusted controls never render in agent-controlled origins;
 - no non-OSI engine is bundled;
-- Apache-2.0;
+- Apache-2.0 for everything outside `ee/` (D118);
 - interfaces evolve additively;
 - no host-specific code in the core.
 
-Also: no telemetry, secrets redacted everywhere, and macOS and Linux only for v1.0, failing closed elsewhere (D35).
+Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets redacted everywhere; macOS and Linux for v1.0, failing closed elsewhere, and Windows in v1.1 (D35, D120).
