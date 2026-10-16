@@ -173,11 +173,19 @@ interface Running {
   readonly live: Set<string>;
   stopping: boolean;
   hung?: number;
+  /** The heap in use at the last answered ping, in bytes: near the limit, a stall is memory. */
+  heapUsed?: number;
   idleTimer?: ReturnType<typeof setTimeout>;
   watchdog?: ReturnType<typeof setInterval>;
 }
 
 let nextCall = 0;
+
+/**
+ * The share of its heap limit a worker had in use at its last answered ping for a watchdog stop
+ * to count as running out of memory rather than hanging.
+ */
+const OOM_STALL_FRACTION = 0.8;
 
 function crashed(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_RUNTIME_WORKER_CRASHED", { message }));
@@ -222,12 +230,6 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     running: Running,
     limits: WorkerLimits,
   ): { kind: WorkerCrash["kind"]; cause: string } => {
-    if (running.hung !== undefined) {
-      return {
-        kind: "hang",
-        cause: `its event loop was blocked for ${Math.round(running.hung / 1000)} s (watchdog limit ${limits.watchdogMs / 1000} s)`,
-      };
-    }
     const tail = exit.stderrTail.join("\n");
     if (
       /heap out of memory|Allocation failed|Reached heap limit/i.test(tail) ||
@@ -235,6 +237,20 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       exit.code === 134
     ) {
       return { kind: "oom", cause: `it ran out of memory (heap limit ${limits.heapMb} MiB)` };
+    }
+    if (running.hung !== undefined) {
+      // Near its heap limit, V8 collects garbage over and over and the event loop stalls before
+      // the heap gives out: the watchdog stops it first, and the cause is memory (seen on Linux).
+      if ((running.heapUsed ?? 0) >= OOM_STALL_FRACTION * limits.heapMb * 1024 * 1024) {
+        return {
+          kind: "oom",
+          cause: `it ran out of memory (heap limit ${limits.heapMb} MiB): collecting garbage blocked its event loop for ${Math.round(running.hung / 1000)} s`,
+        };
+      }
+      return {
+        kind: "hang",
+        cause: `its event loop was blocked for ${Math.round(running.hung / 1000)} s (watchdog limit ${limits.watchdogMs / 1000} s)`,
+      };
     }
     // Node ends an uncaught exception's report with its version; the error line says what
     // happened (`Error: …`, `TypeError: …`), so it is the cause, else the last line written.
@@ -463,6 +479,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         .request(WORKER_METHODS.ping, {}, { timeoutMs: limit })
         .then((raw) => {
           const ping = WorkerPingResult.parse(raw);
+          running.heapUsed = ping.heapUsed;
           if (!ping.waitingForSecret && ping.blockedMs > limit) {
             running.hung = ping.blockedMs;
             channel.kill();

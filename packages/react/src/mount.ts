@@ -23,9 +23,12 @@ const FIRST_RENDER_WAIT_MS = 3_000;
 export async function prepareArtifact(): Promise<Runtime> {
   const runtime = await startRuntime();
   installStorage(runtime.store);
-  // Server references call through this page's runtime (D54): Mostra in live mode, and a
-  // `MOSTRA_TARGET_UNAVAILABLE` refusal where there is no server.
-  setServerCallback((id, args) => runtime.store.server.call(id, args));
+  // Server references call through this page's runtime in live mode (D54); elsewhere (a static
+  // export, a page opened outside its shell) they keep refusing with `MOSTRA_TARGET_UNAVAILABLE`,
+  // naming the function.
+  if (runtime.store.mode === "live") {
+    setServerCallback((id, args) => runtime.store.server.call(id, args));
+  }
   await runtime.store.whenReady(FIRST_RENDER_WAIT_MS);
   return runtime;
 }

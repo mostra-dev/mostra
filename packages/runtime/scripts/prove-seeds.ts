@@ -1477,20 +1477,18 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "AC-03",
-    name: "a double click in the page sends twice (the hook doesn't join its run)",
+    name: "a double click in the page starts two runs (the hook doesn't join its run, D54)",
     file: "../react/src/server-hooks.ts",
     from: "      if (inFlight.current) return inFlight.current as Promise<Awaited<R>>;",
     to: "",
-    also: [
-      {
-        file: "src/interaction/runs.ts",
-        from: "  if (input.key !== undefined) {",
-        to: "  if (false) {",
-      },
-      { file: "src/interaction/runs.ts", from: "    input.key ?? null,", to: "    null," },
+    check: [
+      "--project",
+      "browser",
+      "test/browser/server-hooks.test.tsx",
+      "-t",
+      "joins the hook's run",
     ],
-    check: e2e("sends a reply once"),
-    e2e: true,
+    cwd: "../react",
   },
   {
     requirement: "AC-04",

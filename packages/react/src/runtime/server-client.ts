@@ -159,7 +159,7 @@ export class ServerClient {
    * iterable result keeps yielding as later batches come).
    */
   async call(fnId: string, args: readonly unknown[]): Promise<unknown> {
-    const transport = this.#transport("Calling server functions");
+    const transport = this.#transport(`Calling the server function ${fnId}`);
     const batches = await serializeAll([...args], {
       mode: "argument",
       serverFunctionId: (fn: AnyFunction) => serverFunctionId(fn),
