@@ -356,4 +356,66 @@ test.describe("offline edits (IN-04)", () => {
       client.close();
     }
   });
+
+  test("edits a closed tab left against version 1 replay as version 1's after version 2 is published (Claude review finding 12)", async ({
+    browserName,
+  }, info) => {
+    test.setTimeout(150_000);
+    // The tab closes with its edit unsent (Mostra is down), version 2 drops the field, and the
+    // browser opens the artifact again at version 2: the journal it left is replayed as the view
+    // it was made in, so the answer is version 1's, not carried over, never mapped to version 2.
+    let daemon = await startDaemon();
+    let client = await Client.connect(daemon.socket);
+    const profile = mkdtempSync(join(tmpdir(), "mostra-e2e-profile-"));
+    const stop = async (): Promise<void> => {
+      client.close();
+      daemon.child.kill("SIGTERM");
+      await new Promise((resolve) => daemon.child.once("exit", resolve));
+    };
+    try {
+      const own = await publishOwn(client, daemon.home, info);
+      const url = await linkFor(client, own.artifactId, viewerName(info));
+      const engine = { chromium, firefox, webkit }[browserName];
+      const first = await engine.launchPersistentContext(profile);
+      const page = first.pages()[0] ?? (await first.newPage());
+      const frame = await openInShell(page, url);
+      await expect(frame.getByTestId("version")).toHaveText("1");
+      await stop();
+      await frame.getByTestId("notes").fill("left by version 1");
+      await frame.getByTestId("notes").blur();
+      await expect(frame.getByTestId("notes-save")).toHaveText("offline");
+      await first.close();
+      daemon = await startDaemon({ root: daemon.root });
+      client = await Client.connect(daemon.socket);
+      await republish(client, own, (text) =>
+        text.replace(
+          'const [notes, setNotes, notesMeta] = useField("notes", "", { label: "Notes" });',
+          'const [notes, setNotes] = useState(""); const notesMeta = { save: "saved" };',
+        ),
+      );
+      const second = await engine.launchPersistentContext(profile);
+      const next = second.pages()[0] ?? (await second.newPage());
+      const again = await openInShell(next, url);
+      await expect(again.getByTestId("version")).toHaveText("2");
+      // The replayed answer is version 1's, shown as not carried over.
+      await expect(next.locator("[data-mostra-orphan=notes]")).toContainText("left by version 1", {
+        timeout: 15_000,
+      });
+      await again.getByTestId("name").fill("Ana");
+      await saved(next);
+      await next.locator("#mostra-submit").click();
+      await expect(next.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as {
+        orphaned: { id: string; value: unknown; fromVersion: number }[];
+      };
+      expect(done.orphaned).toEqual([
+        expect.objectContaining({ id: "notes", value: "left by version 1", fromVersion: 1 }),
+      ]);
+      await second.close();
+    } finally {
+      await stop();
+      removeTree(daemon.root);
+      rmSync(profile, { recursive: true, force: true });
+    }
+  });
 });

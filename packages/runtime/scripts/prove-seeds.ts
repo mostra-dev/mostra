@@ -1360,6 +1360,31 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "wp07-replay-view",
+    name: "a closed tab's journal replays as the page that adopted it (Claude review finding 12)",
+    file: "../react/src/runtime/store.ts",
+    from: "          viewId: mutation.viewId,\n          ops: mutation.ops,\n        },\n        { keepalive },",
+    to: "          viewId: this.view?.viewId ?? mutation.viewId,\n          ops: mutation.ops,\n        },\n        { keepalive },",
+    check: e2e("edits a closed tab left against version 1"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-armed-controls",
+    name: "a trusted control takes a click the moment it appears or changes (Claude review finding 6)",
+    file: "../shell/src/model.ts",
+    from: "  return now >= Math.max(state.controlsChangedAt, shownAt) + ARM_MS;",
+    to: "  return true;",
+    also: [
+      {
+        file: "../shell/src/viewer.tsx",
+        from: "  const armed = armedFor === armUntil;",
+        to: "  const armed = armedFor === armUntil || true;",
+      },
+    ],
+    check: e2e("the artifact can't change a trusted control under the viewer's click"),
+    e2e: true,
+  },
+  {
     requirement: "wp07-scope-controls",
     name: "a link without the submit scope is offered the trusted Submit",
     file: "src/gateway/index.ts",
