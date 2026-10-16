@@ -154,6 +154,12 @@ export interface StreamSnapshot {
   readonly state: DocumentSnapshot;
   /** The submission that closed this draft, or this viewer's latest under `epochs`. */
   readonly submission?: SubmissionSummary;
+  /**
+   * The artifact's latest version when the snapshot was read (WP-07): a reader that missed its
+   * `version.published` event (published between a frame ticket and the stream, or compacted)
+   * still learns of it.
+   */
+  readonly latest?: VersionRef;
 }
 
 /** The Zod schema of the `StreamSnapshot` type. */
@@ -164,6 +170,7 @@ export const StreamSnapshot: z.ZodType<StreamSnapshot> = z
     draft: DocumentSnapshot,
     state: DocumentSnapshot,
     submission: SubmissionSummary.exactOptional(),
+    latest: VersionRef.exactOptional(),
   })
   .register(wireRegistry, {
     id: "StreamSnapshot",

@@ -49,6 +49,26 @@ export default function Page() {
     ]);
   });
 
+  it("forgets literal options a spread after them may replace (GPT review finding 12)", async () => {
+    const coverage = await scan({
+      "index.tsx": `import { useField } from "@mostra/react";
+import { useForm } from "@mostra/react/form";
+export default function Page(options: { scope?: "viewer" }) {
+  const [answer] = useField("answer", "", { scope: "artifact", ...options });
+  const [kept] = useField("kept", "", { ...options, scope: "artifact" });
+  const form = useForm({ id: "old", ...options });
+  return null;
+}
+`,
+    });
+    const answer = coverage.entries.find((entry) => entry.id === "answer");
+    expect(answer?.scope).toBeUndefined();
+    expect(coverage.entries.find((entry) => entry.id === "kept")?.scope).toBe("artifact");
+    // The form's id may be replaced: the version covers every ID.
+    expect(coverage.open).toBe(true);
+    expect(coverageMatcher(coverage)("answer")).toBe(true);
+  });
+
   it("records template IDs as patterns, follows renamed and namespace imports, and sees through TypeScript", async () => {
     const coverage = await scan({
       "index.tsx": `import { useField as field } from "@mostra/react";

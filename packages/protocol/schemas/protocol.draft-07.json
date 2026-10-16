@@ -2993,6 +2993,13 @@
               "$ref": "#/definitions/SubmissionSummary"
             }
           ]
+        },
+        "latest": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/VersionRef"
+            }
+          ]
         }
       },
       "required": [

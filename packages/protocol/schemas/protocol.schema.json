@@ -2877,6 +2877,9 @@
         },
         "submission": {
           "$ref": "#/$defs/SubmissionSummary"
+        },
+        "latest": {
+          "$ref": "#/$defs/VersionRef"
         }
       },
       "required": [

@@ -278,6 +278,49 @@ test.describe("hosts choose the submit channels (SH-02, D40, D108)", () => {
   });
 });
 
+test.describe("the trusted Submit sends only what the page confirmed (GPT review finding 3)", () => {
+  test("a page that doesn't answer the flush gets nothing submitted, and the viewer is told", async ({
+    page,
+  }, info) => {
+    test.slow();
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The artifact's page never hears the shell's `mostra/flush` (an artifact may break its own
+      // runtime): installed in the frame before the page's scripts, not in the shell's page.
+      await page.addInitScript(() => {
+        if (window.parent === window) return;
+        const add = window.addEventListener.bind(window);
+        window.addEventListener = ((type: string, listener: EventListener, options?: unknown) =>
+          add(
+            type,
+            type === "message"
+              ? (event: Event) => {
+                  const data = (event as MessageEvent).data as { method?: string } | undefined;
+                  if (data?.method !== "mostra/flush") listener(event);
+                }
+              : listener,
+            options as AddEventListenerOptions,
+          )) as typeof window.addEventListener;
+      });
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info)),
+      );
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator(".mostra-problem")).toContainText(
+        "didn't confirm your answers are saved",
+        { timeout: 20_000 },
+      );
+      expect(await hasSubmission(client, own.artifactId)).toBe(false);
+    } finally {
+      client.close();
+    }
+  });
+});
+
 test.describe("a link shows only the controls its scopes can use (D97, SH-02)", () => {
   test("a link without submit shows no trusted Submit, and the page can't submit either", async ({
     page,

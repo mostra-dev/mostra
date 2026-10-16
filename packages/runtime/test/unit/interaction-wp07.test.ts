@@ -222,6 +222,13 @@ describe("orphans are judged against the version the view shows (VR-05, D109)", 
   });
 });
 
+describe("a page's snapshot names the latest version (GPT review finding 13)", () => {
+  it("so a shell that missed version.published still learns of it", () => {
+    const { interaction, page, versions } = setup();
+    expect(interaction.pageSnapshot(page).latest).toEqual({ id: versions[1], number: 2 });
+  });
+});
+
 describe("following (LL-03)", () => {
   it("is off until the viewer turns it on, and kept per viewer and artifact", () => {
     const { interaction, page } = setup();

@@ -1603,6 +1603,7 @@ export type StatePatchResult = MutationResult;
 export interface StreamSnapshot {
     readonly cursor: string;
     readonly draft: DocumentSnapshot;
+    readonly latest?: VersionRef;
     readonly state: DocumentSnapshot;
     readonly submission?: SubmissionSummary;
     readonly viewer: Viewer;

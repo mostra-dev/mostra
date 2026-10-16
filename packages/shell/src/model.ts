@@ -85,18 +85,30 @@ function closesDraft(state: ViewState, own: boolean): boolean {
   return policy.scope !== "per-viewer" || own;
 }
 
-/** Applies the stream's snapshot. */
+/**
+ * Applies the stream's snapshot. One read before events the shell already applied (a resync that
+ * answered late) keeps the newer draft; a version the shell hadn't heard of is taken from it
+ * (GPT review finding 13).
+ */
 export function withSnapshot(state: ViewState, snapshot: StreamSnapshot): ViewState {
+  const latest =
+    snapshot.latest !== undefined && snapshot.latest.number > state.latest.number
+      ? { latest: snapshot.latest }
+      : {};
+  const submission = snapshot.submission;
+  if (Number(snapshot.draft.revision) < state.revision) {
+    return { ...state, ...latest, ...(submission ? { submission } : {}) };
+  }
   const draft = new Map(
     Object.entries(snapshot.draft.fields).map(([id, field]) => [
       id,
       { value: field.value, known: true },
     ]),
   );
-  const submission = snapshot.submission;
   const sameEpoch = submission !== undefined && submission.epoch === snapshot.draft.epoch;
   return {
     ...state,
+    ...latest,
     viewer: snapshot.viewer,
     revision: Number(snapshot.draft.revision),
     epoch: snapshot.draft.epoch,
@@ -291,4 +303,25 @@ export function deliveryView(submission: SubmissionSummary): DeliveryView {
     return { kind: "delivered", hosts: hosts.map((d) => d.owner) };
   }
   return { kind: "submitted" };
+}
+
+/** What the frame's page is: loading, a client runtime (WP-07), or a version built before it. */
+export type FrameKind = "loading" | "runtime" | "legacy";
+
+/**
+ * The draft revision the trusted Submit names, or why it can't submit now. A runtime page must
+ * confirm it saved everything (`mostra/flush`), and the revision is the one it confirmed it shows:
+ * a newer one only the shell's stream has met is refused by the gateway as moved, so nothing the
+ * viewer hasn't seen is submitted (GPT review findings 2 and 3). A legacy page, which saves on its
+ * own and answers nothing, shows the draft the shell's stream has.
+ */
+export function submitRevision(
+  kind: FrameKind,
+  flushed: { readonly revision: string } | undefined,
+  streamRevision: number,
+): { readonly revision: number } | { readonly problem: "NOT_READY" | "NO_ANSWER" } {
+  if (kind === "loading") return { problem: "NOT_READY" };
+  if (flushed !== undefined) return { revision: Number(flushed.revision) };
+  if (kind === "runtime") return { problem: "NO_ANSWER" };
+  return { revision: streamRevision };
 }

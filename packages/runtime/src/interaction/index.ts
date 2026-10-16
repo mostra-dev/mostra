@@ -505,6 +505,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
             return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
           })(),
           ...(latestOwn ? { submission: submissionSummary(db, latestOwn) } : {}),
+          ...(() => {
+            // The latest version, so a page that missed its `version.published` learns of it.
+            const latest = db.get<{ id: string; number: number }>(
+              `SELECT version.id, version.number FROM artifact
+                 JOIN version ON version.id = artifact.latest_version_id WHERE artifact.id = ?`,
+              page.artifactId,
+            );
+            return latest ? { latest: { id: latest.id, number: latest.number } } : {};
+          })(),
         };
       });
     },

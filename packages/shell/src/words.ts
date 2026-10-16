@@ -39,6 +39,10 @@ export function submitProblem(code: string): string {
       return "This link was revoked or has expired. Your answers are kept in this browser.";
     case "MOSTRA_HYGIENE_SCOPE_DENIED":
       return "This link can view but not submit.";
+    case "NOT_READY":
+      return "The page is still loading. Submit again in a moment.";
+    case "NO_ANSWER":
+      return "The page didn't confirm your answers are saved. Nothing was submitted; try again.";
     case "UNSAVED":
       return "Some answers aren't saved yet. Submit again when the page is back online.";
     case "NETWORK":

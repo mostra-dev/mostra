@@ -10,5 +10,5 @@ shell's own routes (`ShellSubmitRequest`, `ChooseRequest`, `FollowRequest`, `Car
 carrying the view as `mostra`; the `trustedControls` port methods
 `port/trustedControls.policy` and `port/trustedControls.activated` with `ControlsPolicy`,
 `SubmitChannel` and `TrustedControl`; `HomeConfig.submitChannels` (D108); each delivery's
-`waiting` flag and the submit answer's `deliveries`; and the codes `MOSTRA_SUBMIT_CHANNEL_DENIED`
+`waiting` flag, the submit answer's `deliveries` and the stream snapshot's `latest` version; and the codes `MOSTRA_SUBMIT_CHANNEL_DENIED`
 and `MOSTRA_SUBMIT_BLOCKED`.

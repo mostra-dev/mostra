@@ -53,9 +53,11 @@ import {
   blockers as blockersOf,
   choiceOf,
   deliveryView,
+  type FrameKind,
   initialState,
   showsChoose,
   showsSubmit,
+  submitRevision,
   type ViewState,
   withControlRequest,
   withEvents,
@@ -82,6 +84,8 @@ export function mark(state: string, attributes: Record<string, string> = {}): vo
 
 /** How long the shell waits for the frame to save before a submit or a switch. */
 const FLUSH_TIMEOUT_MS = 10_000;
+/** How soon after a draft change the "Not carried over" list is read again. */
+const ORPHANS_REFRESH_MS = 150;
 
 /** How long the shell waits for its own stream to see the frame's last save. */
 const CATCH_UP_MS = 5_000;
@@ -169,6 +173,11 @@ interface FrameHandlers {
   onPage(path: string): void;
   /** The frame loaded another version than its view's (D98 item 5). */
   onWrongVersion(): void;
+  /**
+   * The page introduced itself: `runtime` when its client runtime speaks WP-07's messages (it
+   * names its version), `legacy` for a version built before them.
+   */
+  onInitialized(kind: "runtime" | "legacy"): void;
 }
 
 /**
@@ -211,6 +220,10 @@ function Frame(props: {
           const loaded = (params as { mostra?: { versionId?: string } }).mostra?.versionId;
           if (loaded !== undefined && loaded !== ticket.version.id) {
             queueMicrotask(() => handlersRef.current.onWrongVersion());
+          } else {
+            queueMicrotask(() =>
+              handlersRef.current.onInitialized(loaded !== undefined ? "runtime" : "legacy"),
+            );
           }
           const result: UiInitializeResult = {
             protocolVersion: MCP_APPS_PROTOCOL_VERSION,
@@ -396,6 +409,10 @@ export function ViewerPage(props: {
   const [problem, setProblem] = useState<string | undefined>();
   const [blocked, setBlocked] = useState<readonly SubmitBlocker[]>([]);
   const [confirming, setConfirming] = useState(false);
+  // What the frame's page is: still loading, a client runtime that saves and answers `mostra/flush`,
+  // or a version built before WP-07, which saves on its own and answers nothing.
+  const [frameKind, setFrameKind] = useState<FrameKind>("loading");
+  const frameKindRef = useLatest(frameKind);
   const bridge = useRef<Bridge | undefined>(undefined);
   const reentries = useRef<number[]>([]);
   const latestStateRef = useLatest(state);
@@ -412,6 +429,7 @@ export function ViewerPage(props: {
     setState(initialState(ticket));
     setBlocked([]);
     setProblem(undefined);
+    setFrameKind("loading");
   }
 
   // Its stream and orphans.
@@ -433,11 +451,26 @@ export function ViewerPage(props: {
         if (status === "revoked") setProblem(submitProblem("MOSTRA_HYGIENE_TOKEN_REVOKED"));
       },
     });
-    void carryOver(target.apiBase, ticket.version.number)
-      .then((carry) => setOrphans(carry.orphans))
-      .catch(() => setOrphans([]));
     return close;
   }, [ticket, target.apiBase]);
+
+  // The answers this view's version doesn't carry, read again whenever the draft changes: another
+  // tab of an older version may write one, and the panel shows what a submission would deliver
+  // (D109, GPT review finding 15).
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(() => {
+      void carryOver(target.apiBase, ticket.version.number)
+        .then((carry) => {
+          if (current) setOrphans(carry.orphans);
+        })
+        .catch(() => undefined);
+    }, ORPHANS_REFRESH_MS);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [ticket, target.apiBase, state.revision]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -585,6 +618,7 @@ export function ViewerPage(props: {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
     },
+    onInitialized: (kind) => setFrameKind(kind),
     onWrongVersion: () => {
       // The frame session serves the version it last entered, which another tab may have moved
       // on (D98 item 5): this view's version is entered again. Several in a row mean two tabs
@@ -611,7 +645,13 @@ export function ViewerPage(props: {
     setBusy("submit");
     setProblem(undefined);
     try {
-      const flushed = await flushFrame("submit");
+      const kind = frameKindRef.current;
+      const flushed = kind === "loading" ? undefined : await flushFrame("submit");
+      const refused = submitRevision(kind, flushed, 0);
+      if ("problem" in refused) {
+        setProblem(submitProblem(refused.problem));
+        return;
+      }
       if (flushed) await caughtUp(Number(flushed.revision));
       const current = latestStateRef.current;
       const found = blockersOf(current, flushed?.blockers ?? []);
@@ -624,7 +664,9 @@ export function ViewerPage(props: {
         setProblem(submitProblem("UNSAVED"));
         return;
       }
-      const revision = Math.max(current.revision, Number(flushed?.revision ?? 0));
+      const planned = submitRevision(kind, flushed, current.revision);
+      if (!("revision" in planned)) return;
+      const revision = planned.revision;
       const submission = await submit(
         target.apiBase,
         session.csrf,

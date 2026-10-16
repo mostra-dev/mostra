@@ -93,6 +93,43 @@ test.describe("a newer version in an open view (VR-04)", () => {
 });
 
 test.describe("answers that don't carry over (VR-05)", () => {
+  test("the panel follows the draft: an older version's tab changing the answer shows at once (GPT review finding 15)", async ({
+    page,
+    browser,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    const other = await browser.newContext();
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const viewer = viewerName(info);
+      const frame = await open(client, page, own, viewer);
+      await frame.getByTestId("notes").fill("first");
+      await saved(page);
+      await republish(client, own, withoutNotes);
+      await expect(page.locator('[data-mostra-banner-orphans="1"]')).toBeVisible({
+        timeout: 10_000,
+      });
+      await page.locator("[data-mostra-switch]").click();
+      await expect(pageVersion(page)).toHaveText("2", { timeout: 15_000 });
+      const orphan = page.locator("[data-mostra-orphan=notes]");
+      await expect(orphan).toContainText("first");
+      // The same viewer, on another device, with a link to version 1, which still has the field.
+      const pinned = await client.call<{ url: string }>("view/url", {
+        artifact: { artifactId: own.artifactId },
+        version: 1,
+        viewer: { ref: viewer, name: viewer },
+      });
+      const second = await other.newPage();
+      const oldFrame = await openInShell(second, pinned.url);
+      await oldFrame.getByTestId("notes").fill("changed on version 1");
+      await saved(second);
+      await expect(orphan).toContainText("changed on version 1", { timeout: 10_000 });
+    } finally {
+      await other.close();
+      client.close();
+    }
+  });
+
   test("the banner counts them, the panel shows them read-only after the switch, and the submission delivers them as orphaned", async ({
     page,
   }, info) => {

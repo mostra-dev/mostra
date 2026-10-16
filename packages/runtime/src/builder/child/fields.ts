@@ -87,13 +87,20 @@ function idParts(node: Node | undefined): string[] | undefined {
   return undefined;
 }
 
-/** A literal object's literal string or boolean properties. */
+/**
+ * A literal object's literal string or boolean properties, as they stand after every property
+ * in order: a spread or a computed key may override anything before it, so what came before is
+ * forgotten (GPT review finding 12); a property the scan can't read is left out.
+ */
 function literalOptions(node: Node | undefined): Record<string, string | boolean> | undefined {
   const target = unwrap(node);
   if (target?.type !== "ObjectExpression") return undefined;
-  const out: Record<string, string | boolean> = {};
+  let out: Record<string, string | boolean> = {};
   for (const property of target["properties"] as Node[]) {
-    if (property.type !== "Property" || property["computed"]) continue;
+    if (property.type !== "Property" || property["computed"]) {
+      out = {};
+      continue;
+    }
     const key = property["key"] as Node;
     const name = key.type === "Identifier" ? key["name"] : key["value"];
     const value = unwrap(property["value"] as Node);
@@ -242,15 +249,18 @@ class FieldScan {
     const first = args[0];
     if (hook === "useForm") {
       const options = unwrap(first);
-      const idProperty =
-        options?.type === "ObjectExpression"
-          ? (options["properties"] as Node[]).find(
-              (property) =>
-                property.type === "Property" &&
-                !property["computed"] &&
-                ((property["key"] as Node)["name"] ?? (property["key"] as Node)["value"]) === "id",
-            )
-          : undefined;
+      // The id that stands: the last one, unless a spread or computed key after it may replace it.
+      let idProperty: Node | undefined;
+      if (options?.type === "ObjectExpression") {
+        for (const property of options["properties"] as Node[]) {
+          if (property.type !== "Property" || property["computed"]) idProperty = undefined;
+          else if (
+            ((property["key"] as Node)["name"] ?? (property["key"] as Node)["value"]) === "id"
+          ) {
+            idProperty = property;
+          }
+        }
+      }
       const parts = idParts(idProperty?.["value"] as Node | undefined);
       if (!parts) {
         this.open("a useForm call without a literal id", location);

@@ -21,8 +21,12 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   with the shell session's CSRF token, which no artifact code can read (D40, SH-02).
 - **A submission is made from what the viewer saw (D110, FAILURE_MODEL §4).** Submit flushes the
   frame, waits for the shell's stream to reach the frame's revision, checks blockers, and posts
-  that revision. On `MOSTRA_SUBMIT_REVISION_MOVED` the viewer checks the answers, which the frame
-  already shows from its own stream, and submits again: nothing is sent that wasn't on screen.
+  exactly the revision the frame confirmed (`submitRevision` in `src/model.ts`), never a newer one
+  only the shell's stream has met. A page with WP-07's runtime (it names its version in
+  `ui/initialize`) must answer the flush, or nothing is submitted; a version built before WP-07
+  answers nothing and shows the shell's draft. On `MOSTRA_SUBMIT_REVISION_MOVED` the viewer checks
+  the answers, which the frame already shows from its own stream, and submits again: nothing is
+  sent that wasn't on screen.
 - **The frame shows its view's version (D115).** A frame whose build isn't its ticket's version is
   entered again at that version, at most three times in ten seconds.
 - **The frame never navigates the viewer's tab (D98 item 7).** It is sandboxed with every token
