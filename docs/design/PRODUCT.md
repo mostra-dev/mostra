@@ -17,21 +17,21 @@ None of them combines ordinary React authoring, durable human input owned by the
 
 ## The end state
 
-An agent writes ordinary React. Mostra turns it into a beautiful, stateful, interactive web artifact on the user's machine, or inline in a chat host, or on a static page. The human looks, plays with it, answers, compares, comments and presses buttons that do real things. The answers flow back to the agent through whatever host it runs in, and survive restarts and timeouts. The agent checks its own work through `verify` before anyone sees it. Anyone can extend the kit, and the result is good enough that people show it to each other.
+An agent writes ordinary React. Mostra turns it into a beautiful, stateful, interactive web artifact on the user's machine or a remote server, inline in a chat host, or on a static page. The human looks, plays with it, answers, compares, comments and presses buttons that do real things. The answers flow back to the agent through whatever host it runs in, and survive restarts and timeouts. The agent checks its own work through `verify` before anyone sees it. Anyone can extend the kit, and the result is good enough that people show it to each other.
 
 ## Who uses Mostra
 
 | Actor | What they do | How they reach Mostra |
 |---|---|---|
-| **Agent author** | Writes artifacts, verifies them, publishes, waits for and reads results | CLI and Skill when it has a filesystem; MCP server (local in v1, remote in v1.x); SDK when embedded |
-| **Human viewer** | Views, interacts, drafts, comments, chooses, submits, presses action buttons | A normal browser on the same machine, a phone over the user's tunnel, inline in a chat host, or a static page |
+| **Agent author** | Writes artifacts, verifies them, publishes, waits for and reads results | CLI and Skill when it has a filesystem; MCP server (local or remote, D116); SDK when embedded |
+| **Human viewer** | Views, interacts, drafts, comments, chooses, submits, presses action buttons | A normal browser on the same machine, a phone over the user's tunnel, a link to a remote server, inline in a chat host, or a static page |
 | **Host** | Embeds Mostra and owns what it needs: the home's location, receipt and storage of delivered answers, identity, delivery to its agent, trusted controls (Mostra's ledger stays canonical, D58) | Host protocol and ports; the Rust host crate; the TypeScript SDK |
 | **Plugin author** | Adds components, templates, engines, adapters, exporters, checks, connectors and commands | Extension contracts, manifests and source packs |
 
 Known hosts and use cases (D11):
 - **Jcode** (Mirza's Rust coding-agent harness). It spawns Mostra, owns durable answers and wakes its agent on submit ([JCODE_HOST.md](JCODE_HOST.md)).
 - **Codex, Claude Code and other coding agents** use the CLI and MCP.
-- **Chat products** such as ChatGPT and Claude.ai show inline MCP Apps in v1. Agents without a filesystem author through remote mode in v1.x.
+- **Chat products** such as ChatGPT and Claude.ai show inline MCP Apps, which persist answers through a remote MCP server (D116). Agents there reach Mostra through that server; D117 recommends that building and verifying run on the owner's instance (WP-28 decides), and authoring without one stays v1.x (RM-06).
 - **Personal AI applications** host Mostra to show things like an inbox dashboard with real "Send" buttons.
 
 ## Vocabulary
@@ -70,6 +70,9 @@ Use these words consistently in code, docs, errors and the Skill. One word per c
 | **Instance** | The supervisor and its child processes that own one home (D45). |
 | **Frame session** | How an artifact frame authenticates: cookie mode where shell and artifact are same-site, worker mode where they are cross-site (D38, D70). |
 | **Ledger** | The home's transactional store, written only by the supervisor (D58, D71). |
+| **Remote server** | A Mostra server that hosts many homes behind one gateway on a separate user-content domain, so a shared link works without a tunnel and while the author's machine sleeps (D116). |
+| **Relay** | The outbound connection over which a remote server forwards a hosted artifact's action calls and live producers to the owner's instance (D117). |
+| **Expected respondent** | A person an artifact or share names as someone who should answer; the roster of expected respondents drives "everyone has answered" waits (D121). |
 
 ## Journeys
 
@@ -81,42 +84,48 @@ These are the caller-first scenarios that the design and acceptance must serve. 
 
 **J3. Inbox with real actions.** A personal AI application hosts Mostra. Each morning its agent publishes an inbox artifact. Every email has an expandable, editable pre-drafted reply and a "Send" button wired to an agent-authored action that calls the user's mail API with a secret held server-side. The human edits a reply and presses Send. The action run streams progress. Its idempotency key stops a double click from sending twice. Another website the user visits cannot press that button, because it doesn't hold the capability URL.
 
-**J4. Terminal UI prototypes.** For a TUI redesign, an agent builds ratatui candidates. It captures them cell-exact through the TestBackend capture crate. It also shows the real binary live in a PTY next to the captures. It verifies the layout with `mostra term dump --format text` before publishing. The human compares candidates with synchronized playback and pins comments to cell regions.
+**J4. Terminal UI prototypes (`v1.1`, D122).** For a TUI redesign, an agent builds ratatui candidates. It captures them cell-exact through the TestBackend capture crate. It also shows the real binary live in a PTY next to the captures. It verifies the layout with `mostra term dump --format text` before publishing. The human compares candidates with synchronized playback and pins comments to cell regions.
 
 **J5. End-of-work presentation.** An agent writes an MDX deck with motion compositions, a chart, a code diff and an embedded live demo of the feature it built (the project's own dev server proxied into an iframe). It asks for approval with a trusted Approve control.
 
 **J6. Multi-round questionnaire.** Round one is an artifact with structured questions and free-text notes. After submission, the agent publishes round two as a new artifact linked to the first, under the `once` policy. A host using `epochs` would instead open a new epoch on the same artifact.
 
-**J7. Inline in a chat host.** A Claude or ChatGPT user's agent calls Mostra's MCP server. The same artifact source renders inline as an MCP App, with a plain URL fallback for the full page.
+**J7. Inline in a chat host.** A Claude or ChatGPT user's agent calls Mostra's MCP server. The same artifact source renders inline as an MCP App, with a plain URL fallback for the full page. Under a local host the app persists through the local MCP server; in claude.ai or ChatGPT it persists drafts, submissions and actions through a remote MCP server (D116).
 
 **J8. Review from a phone.** The user exposes Mostra through Tailscale Serve. Mostra maps the tailnet identity headers to a viewer identity, and the user answers from their phone.
 
 **J9. Agent installs a plugin.** An agent needs video-style compositions beyond the built-in primitive. It searches the plugin index, inspects the Remotion adapter, and sees its license class. It installs it with `--accept-license LicenseRef-Remotion`, which is recorded in the lockfile, and runs the plugin's verify baselines.
 
-**J10. Remote authoring (v1.x).** A ChatGPT Business user's agent connects to a self-hosted Mostra remote server. It creates an artifact and pushes files and patches, each against a `base_rev`. It runs a server-side build and verify job and gets compact diagnostics and screenshots. It publishes and returns the URL.
+**J10. Authoring from a chat host.** A ChatGPT or claude.ai user's agent connects to a remote MCP server (D116) attached to the user's own Mostra instance. It creates an artifact, writes and patches files, verifies, publishes and returns the URL. D117 recommends that building and `verify` run on the owner's instance through the relay; WP-28 decides. Authoring for agents with no instance at all, through server-side builds in a sandbox, stays v1.x (RM-06).
 
 **J11. Personal dashboard, all week (D63).** A personal AI application publishes a dashboard with submission policy `none`, on a home whose daemon runs as a login service. Live sources refresh calendar, mail and finance data. The agent updates artifact state ("today's priorities") through `mostra state set` and publishes new versions as it learns what the user wants. The user follows the artifact, so new versions load automatically when nothing is unsaved. The user ticks off priorities and presses actions all day. The host wakes the agent only for the `state.changed` events it filters for. After a month the home is still bounded and fast.
 
 **J12. Team task manager (D63).** An AI task-manager application hosts Mostra for a small team over the tailnet. Tasks are artifact-scoped state: teammates and the agent create, edit and complete them, and each change is attributed to its viewer identity. Two people editing the same task get an explicit conflict, never a silent overwrite. The agent reacts to new tasks through the host's event filter and posts its own updates as state changes.
 
+**J13. A hosted link answered while the author's laptop sleeps (D116, D117).** An agent publishes a proposal with an approval form and a "Send to the client" button, and shares it to a remote server. The author closes the laptop. A colleague opens the link from a phone that evening, edits two answers, comments and submits; the submission is durable at once. The "Send" button's run waits for the owner, as the artifact's offline policy says. Next morning the author's instance reconnects: the run executes there, with the secret that never left it, exactly once; the host receives the submission through its local outbox, and the agent's `mostra wait` returns.
+
+**J14. A team form, answered by five people (D121).** An agent sends a retrospective form to five teammates. Each gets a personal link. The agent's own page shows "3 of 5 answered" and who is drafting, in its own design, from the respondent-status hook. Two teammates editing the shared action list see each other's cursors and who changed each item. The agent waits until every expected respondent has submitted; when the fifth answer arrives, one roster-complete event wakes it, and `mostra results` returns all five submissions.
+
 ## Scope
 
-Release scope is decided in D16 and refined into requirements in [REQUIREMENTS.md](REQUIREMENTS.md). Summary:
-- **v1, complete local-first product:**
+Release scope is decided in D16, amended by D116, D121 and D122, and refined into requirements in [REQUIREMENTS.md](REQUIREMENTS.md). Summary:
+- **v1, the complete product:**
   - runtime, versions and publishing, the remote-viewing ladder and static export;
-  - the interaction model;
+  - the remote server, the relay and a remote MCP server (D116, D117); the managed service's operating layer is separate and lives outside this repository;
+  - the interaction model, with team features (D121);
   - actions and live data;
   - the review layer;
   - the full kit with motion and decks;
-  - terminal and web demos;
+  - web demos;
   - the CLI, Skill, `verify`, `wait` and `results`;
   - the local MCP server and MCP Apps export;
   - the SDK, host protocol, Rust crate and conformance kit;
   - plugin contracts at 0.x with first-party plugins.
-- **v1.x:** remote mode, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
-- **Later:** the managed cloud service and the marketplace web interface.
+- **v1.1, the follow-up release:** Windows (D120) and the terminal modes (D122).
+- **v1.x:** sandboxed remote execution, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
+- **Later:** the marketplace web interface and embedding Mostra views in host applications (D126).
 
-**Platforms.** macOS and Linux are required for v1. Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder. v1.0 explicitly does not support Windows; it stays on the roadmap for a later release (D35).
+**Platforms.** macOS and Linux are required for v1. Windows follows in v1.1 (D120); v1.0 fails closed there (D35). Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder.
 
 ## Non-goals
 
@@ -124,8 +133,8 @@ Release scope is decided in D16 and refined into requirements in [REQUIREMENTS.m
 - **A general AI app builder, cloud IDE or hosting platform for arbitrary applications.** Mostra hosts artifacts. Projects keep their own apps, which Mostra can proxy as demos.
 - **A chat frontend or agent framework.** Mostra is a runtime that agents and hosts call.
 - **A declarative UI protocol or schema** that agents must fill in (D04).
-- **Multi-user real-time co-editing by default.** It is available as a Yjs plugin in v1.x.
-- **A managed public hosting service in v1** (D12).
+- **Multi-user real-time co-editing of text by default.** It is available as a Yjs plugin in v1.x; v1's team features share presence, cursors and attribution as data (D121).
+- **The managed service's operating layer** (accounts, billing, quotas, metering, abuse handling, fleet operation) is not part of this repository. It reaches the open remote server only through operator ports (D116, D118).
 - **Final Jcode integration.** That is C03-B, and Mostra serves it through generic ports only (D01).
 
 ## Rule strengths
@@ -141,7 +150,7 @@ Labels follow [STANDARDS.md](STANDARDS.md#rule-strengths).
 6. Submissions are durable before any delivery attempt. A wait timeout, a host outage or a closed tab never loses one (D11).
 7. Trusted controls never render in an origin that agent code controls (D06, D21).
 8. Non-OSI engines are never bundled. Their licenses are disclosed before install (D26, D31).
-9. Everything users install, embed or self-host is Apache-2.0 (D14).
+9. Everything outside `ee/` that users install, embed or self-host is Apache-2.0, including the remote server (D14, D118).
 10. Interfaces evolve additively within a version (D32).
 11. Hosts reach Mostra only through public ports and protocol. No host-specific code lives in Mostra's core (D01).
 
@@ -163,9 +172,11 @@ Labels follow [STANDARDS.md](STANDARDS.md#rule-strengths).
 **Launch demos** should be things no competitor can easily copy:
 - the inbox with a working Send button;
 - a multi-candidate design review whose comments flow back to the agent;
-- a pixel-exact TUI demo next to explanatory UI;
+- a team form that five people answer, with the agent woken when the last one does (J14);
+- a hosted link that works while the author's laptop sleeps (J13);
 - a live dashboard;
 - a deck with embedded live demos;
-- the same artifact open locally and inline in Claude or ChatGPT.
+- the same artifact open locally and inline in Claude or ChatGPT;
+- after the first release, a pixel-exact TUI demo next to explanatory UI (`v1.1`, D122).
 
 The documentation site is built with Mostra itself.

@@ -99,7 +99,7 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 | `html` | one self-contained HTML file | Same as `static` |
 | `bundle` | client build, server bundle, manifest and lockfile: the **portable artifact package** (RM-01) | Run anywhere with `mostra run <bundle>` |
 | `snapshot` | what a view showed, including field values and live values at a cursor | Actions marked unavailable, never faked |
-| `mcp-app` | single-file `ui://` resource with declared CSP and the bridge transport (D61) | Through the local MCP server |
+| `mcp-app` | single-file `ui://` resource with declared CSP and the bridge transport (D61) | Through the local MCP server, or the remote MCP server in cloud chat hosts (D116) |
 
 ## 4. Process model
 
@@ -128,7 +128,7 @@ Each child runs in its own process group. Its PID and start time are recorded in
 **Runtime distribution** (RT-01, H-13). Each platform (macOS arm64 and x64, Linux x64 and arm64) gets one signed, hash-pinned bundle: a private Node LTS (24 now, 26 after its LTS date, D48), prebuilt Mostra code, the warm package set, the Playwright Chromium headless shell, and native modules (better-sqlite3, node-pty, Rolldown, Lightning CSS).
 - `npm create mostra`, `@mostra/cli`, the SDK and the Rust crate download it, check the SHA-256 manifest and cache it by hash.
 - Every entry point runs on the private runtime, so users never need a global Node.
-- Windows fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35).
+- Windows fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35) until WP-32 adds it in v1.1 (D120).
 
 ## 5. The browser side
 
@@ -242,7 +242,7 @@ Threads have replies, resolve and reopen, and record each message's author (D47)
 
 ## 9. Terminals and web demos
 
-One frame model (cells, styles, cursor, size, timing, width table) underlies all four modes (D28, D65):
+One frame model (cells, styles, cursor, size, timing, width table) underlies all four terminal modes (D28, D65), which ship in v1.1, after the first release (D122); web demos, below, are v1:
 - **Recorded:** asciicast v3 bytes replayed through `@xterm/headless` with Unicode 11 widths into frames, drawn by Mostra's `<TerminalGrid>` with a bundled font and procedural box drawing.
 - **Captured:** ratatui buffers from the `mostra-term-capture` crate, with widths taken from ratatui.
 - **WASM:** a Ratzilla iframe island that reports frames over the bridge.
@@ -272,6 +272,7 @@ The gateway strips Mostra's cookies before proxying to workers, demos or termina
 - `mostra share --public` uses Tailscale Funnel (ports 443, 8443 and 10000: the shell plus up to two artifacts) or a Cloudflare quick tunnel (worker-mode frames, D70). Public shares always use short-lived scoped tokens.
 - The event stream falls back to long-polling where SSE doesn't pass. Cloudflare quick tunnels don't support SSE (VERIFIED_FACTS).
 - When a tool is missing, Mostra explains how to install it.
+- **A remote server** (D116) is the last rung: the agent shares a published version to a self-hostable remote server, or to the managed service that runs the same open server, and the link works without a tunnel and while the author's machine sleeps. Hosted artifacts are served only from a separate user-content domain, behind the same capability URLs and scopes (D06, D97). Their action calls and live producers run on the owner's instance through the relay (D117). The design is WP-28's (§14).
 
 ## 11. Host integration
 
@@ -289,24 +290,25 @@ Hosts integrate through the **host protocol** (D59, INTERFACES §6) and **option
 | `secrets` | home store | its credential store |
 | `pty` | PTY host | default or its own PTYs |
 
+**Operator ports** (D116, HO-09) are the remote server's counterpart for whoever operates it: limits, metering, account resolution and abuse actions, each with a no-op default, so a self-hoster needs nothing more. The managed service's operating layer, which lives outside this repository (D118), reaches the remote server only through them, as hosts reach an instance only through the host protocol and its ports (invariant 11). Their shape is WP-28's to design.
+
 The **Rust crate** `mostra-host` has wire types generated from the schema, a hand-written tokio client, spawn and attach, runtime-bundle download and cache, and port traits (HO-03). The **TypeScript SDK** has `createMostra({ home, ports })` (HO-04). The **conformance kit** (HO-05) runs scenarios against a host, with expected-failure baselines. JCODE_HOST's H-01 to H-16 map to generic mechanisms only (HO-06, [JCODE_HOST.md](JCODE_HOST.md#how-mostra-meets-each-need)).
 
 ## 12. Agent experience
 
 - **`verify`** (D29, D65): type-check and build; lint, including wrong-base idioms, churned APIs and field IDs; boot; render in the warm browser; collect errors, console, network and React boundaries; axe and an ARIA snapshot; screenshots at 1280×800 and 390×844, DPR 1, with token estimates; the smoke test (actions only through `dryRun()`, D55; observations without a runtime error are warnings, D72); regressions against the last passing version; one JSON verdict with stable `MOSTRA_<AREA>_<NAME>` codes.
 - **The CLI** (D60) is a thin protocol client with `--json` everywhere, documented exit codes and no prompts outside a TTY.
-- **The local MCP server** (D61) is a stateless protocol client with about twelve `artifact_`-prefixed tools.
+- **The local MCP server** (D61) is a stateless protocol client with about twelve `artifact_`-prefixed tools. Its tool handlers don't depend on the transport, so the remote MCP server (D116, WP-30) serves the same tools over Streamable HTTP with OAuth.
 - **Documentation for agents:** the Skill (trigger D69), AGENTS.md in the repository and every scaffolded artifact, templates per family (including long-lived ones), a gallery with source and result, generated `llms.txt`, and harness plugins generated from one source (D65).
 
 ## 13. Extensibility
 
 Six contract packages at 0.x (D65): embed engine, exporter, verify check, anchor provider, connector, CLI command. Plugins declare them under the `"mostra"` key in `package.json`, with declared (never enforced) effects and license metadata. The non-OSI license acknowledgment is recorded in the lockfile (D31). Packs are shadcn registry items with an optional `mostra` block. The `RenderMode` contract stays internal, with SPA as its only v1 implementation (D19 seam 5). First-party plugins prove the contracts:
-- the xterm.js engine;
 - the MCP App exporter;
 - the Remotion and GSAP adapters (user-installed, license flow);
 - chart datum anchors;
 - a filesystem connector;
-- `mostra term record`.
+- with the terminal packages in v1.1 (D122): the xterm.js engine and `mostra term record`.
 
 ## 14. Render modes and remote readiness
 
@@ -319,14 +321,14 @@ Six contract packages at 0.x (D65): embed engine, exporter, verify check, anchor
 
 A later `rsc` mode adds rsc, ssr and client builder environments (`@vitejs/plugin-rsc`), a Flight handler in the worker behind capability authentication, prerender-only MCP App export and server-render error capture in `verify`. Versions, submissions, review, the host protocol, the gateway and `verify`'s browser stages stay unchanged. Old versions never migrate; an artifact opts in with a new version.
 
-**Remote readiness** (D12, RM-01). v1 builds the seams that remote mode (v1.x) uses:
+**Remote readiness** (D12, RM-01). v1 builds the seams that the remote server uses:
 - the portable `bundle` export (§3);
 - identity, addressing and every other port (D58);
 - worker mode for cross-site frames (D70);
-- the `WorkerLauncher` interface that becomes `SandboxPort` (INTERFACES §7);
+- the `WorkerLauncher` interface that becomes `SandboxPort`, taking a version reference rather than a directory (INTERFACES §7, D124);
 - a stateless MCP server with explicit handles (D61).
 
-The remote server itself (Streamable HTTP MCP for the 2025-11-25 and 2026-07-28 revisions, OAuth with CIMD, DCR and refresh tokens, revisioned file push, server-side build jobs, wildcard origins) gets its own design pass at v1.x.
+**The remote server** is in v1 (D116): a remote transport for the host protocol, the relay (D117), many homes behind one gateway on a separate user-content domain, viewer sign-in, operator ports (§11) and a remote MCP server over Streamable HTTP with OAuth. *Deferred decision* for WP-28, which records the design in a new section of this document, with INTERFACES, DATA_MODEL and FAILURE_MODEL (RM-05): where a hosted artifact's ledger is canonical, the transport, what a share pushes, relay semantics and the offline policy, authoring from chat hosts, hosting many homes, addressing, identity, the operator ports, the remote MCP surface and self-hosting. Sandboxed remote execution through `SandboxPort` stays v1.x (RM-06).
 
 **Layers stay usable on their own** (D01, D30): the kit without the runtime, the runtime with any components, and any host through the ports.
 
@@ -352,4 +354,4 @@ The remote server itself (Streamable HTTP MCP for the 2025-11-25 and 2026-07-28 
 | §17 | Contract list; manifest schema; pack format; first-party plugins; loading order | D65 |
 | §18 | v1 remote seams | §3 (portable bundle), D58 (ports), INTERFACES §7 (`WorkerLauncher` becomes `SandboxPort`), D61 (stateless MCP) |
 | §19 | Package map | D65 (P2), [REPO_STANDARDS.md](REPO_STANDARDS.md#3-packages) |
-| extra | D33 confirmation; Windows; publication authorization; evaluation budget | D34; D35; D36, D67; D34, D64 |
+| extra | D33 confirmation; Windows; publication authorization; evaluation budget | D34; D35 (Windows in v1.1, D120); D36, D67; D34, D64 |
