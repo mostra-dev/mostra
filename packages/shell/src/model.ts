@@ -330,6 +330,15 @@ export function withControlRequest(
   };
 }
 
+/** Applies control requests from the frame, in order, to a state (`setState`'s updater). */
+export function applyControlRequests(
+  state: ViewState,
+  requests: readonly ControlRequest[],
+  now: number,
+): ViewState {
+  return requests.reduce((next, request) => withControlRequest(next, request, now).state, state);
+}
+
 /** Whether the trusted controls take a click at `now`: armed since their last change and since `shownAt`. */
 export function controlsArmed(state: ViewState, shownAt: number, now: number): boolean {
   return now >= Math.max(state.controlsChangedAt, shownAt) + ARM_MS;

@@ -598,6 +598,9 @@ importers:
       '@mostra/tools':
         specifier: workspace:*
         version: link:../../tools
+      '@mostra/warm':
+        specifier: workspace:*
+        version: link:../warm
       '@types/better-sqlite3':
         specifier: 'catalog:'
         version: 9.6.0
