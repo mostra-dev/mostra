@@ -1,6 +1,6 @@
 # WP-07 progress: client runtime and shell controls
 
-**Status:** Candidate. Built, tested and reviewed on the branch; waiting for Mirza's acceptance. The report is finalized after the merge (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-16 ("Accepted & approved, 100%!"), merged to `main` as `b9a8422`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | green: format-lint, types, unit, integration, hygiene, e2e, build, boundaries, api, licenses, rust, docs and commits all pass, uncached (`TURBO_FORCE=true`, 4 min 18 s, macOS arm64) |
 | Predecessors | WP-06 done ([PROGRESS-WP-06](PROGRESS-WP-06.md) on `origin/main`); no `RECOVERY-WP-07-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64 |
-| Pull request | [#20](https://github.com/mostra-dev/mostra/pull/20) |
+| Pull request | [#20](https://github.com/mostra-dev/mostra/pull/20), merged; the fix found by `main`'s CI after it, [#21](https://github.com/mostra-dev/mostra/pull/21) |
 
 ## What was built
 
@@ -47,7 +47,7 @@ Every check runs through the real interfaces: pages in Chromium, Firefox and Web
 | IN-02 | verified | An edit still inside the debounce reaches the gateway when the tab closes (`visibilitychange`, `pagehide`, `keepalive`); an edit made while the daemon is down is journaled, survives closing the whole browser, and is sent when the browser opens the artifact again (persistent profile, daemon restarted), in three engines | `pnpm check --job e2e` (`client.spec.ts`) | pass; seeds (no close-time flush: red in two engines, WebKit saves on blur; a journal that keeps nothing) red, then green |
 | IN-03 | verified | Two tabs and a second browser context editing different fields converge through the event stream; the same field edited in two places surfaces a conflict with both values, and keeping mine wins everywhere, in three engines | as above | pass; seed (edits sent as based on the newest revision) red, then green |
 | IN-04 | verified | Offline edits are journaled and replay in order when the page is back; edits made offline against a version since replaced replay as that version's view, then map by ID ("name") or become an orphan ("notes", read-only in the panel, delivered with `fromVersion: 1`); a tab closed with its edit unsent while version 2 is published: the browser reopens at version 2 and the journal replays as version 1's view (the orphan's `fromVersion` is 1); unit: replay, adoption of closed tabs' entries only, each under the view it was made in, stale views | as above; `pnpm --filter @mostra/react test` | pass; seeds (journal keeps nothing; adopted entries replayed as the adopting page's view) red, then green |
-| IN-13 | validated | The receipt shows Submitted (saved by Mostra), then Pending delivery while the expected host is away, then Delivered when it returns; a host's terminal refusal shows Undeliverable with its reason; unit: `waiting` and one `submission.retrying` per delivery; a delivery event that arrives before the submit's answer, and an answer older than an event, never take the receipt back. Mirza reviews the wording (below) | `pnpm check --job e2e` (`controls.spec.ts`); unit `interaction-wp07.test.ts` | pass; seed (never Pending delivery) red, then green |
+| IN-13 | verified | The receipt shows Submitted (saved by Mostra), then Pending delivery while the expected host is away, then Delivered when it returns; a host's terminal refusal shows Undeliverable with its reason; unit: `waiting` and one `submission.retrying` per delivery; a delivery event that arrives before the submit's answer, and an answer older than an event, never take the receipt back. Mirza accepted the wording with the package | `pnpm check --job e2e` (`controls.spec.ts`); unit `interaction-wp07.test.ts` | pass; seed (never Pending delivery) red, then green |
 | SH-02 | verified | The artifact can't render, click or forge the trusted Submit: synthetic clicks, an overlay confined to the frame, requests to the shell's routes from the artifact's origin or with the frame's CSRF token, and forged bridge messages make no submission; the artifact requests a label and confirmation the shell shows; a host taking the shell channel only (`HomeConfig.submitChannels` or the port) gets `MOSTRA_SUBMIT_CHANNEL_DENIED` for the page's submit and choice, also as a repeat; every submission records its channel and viewer; a link without the submit scope is offered no trusted Submit, and one without `review` records no choice through the page; the trusted controls take no click for 500 ms after they appear or change or the shell's page is shown (a Choose swapped under the pointer, a popup of the shell under a second click), and the artifact's label can't read as a shell state. Conformance scenarios: WP-12 | `pnpm check --job e2e`; `pnpm --filter @mostra/runtime test:hygiene`; unit `controls.test.ts`, `interaction-wp07.test.ts` | pass; seeds (channels ignored; trusted Submit recorded as artifact; controls not narrowed by scope; controls armed at once) red, then green |
 | VR-04 | verified | An open view shows the banner after a publish, on the shell's own stream, without a reload; the view switches only when the viewer chooses, in a new frame that adds nothing to the tab's history; answers carry over by ID | `pnpm check --job e2e` (`versions.spec.ts`) | pass; seeds (no newer version seen; frame navigated instead of replaced) red, then green |
 | VR-05 | verified | A version without the "notes" field: the banner counts one answer that won't carry over, the panel shows it read-only and copyable after the switch, and results and Markdown carry it in `orphaned` with `fromVersion`; unit: coverage scan and matcher, carry-over, snapshot orphans, migration 6's backfill | as above; unit `coverage.test.ts`, `interaction-wp07.test.ts` | pass; seed (every version covers every field) red, then green |
@@ -106,7 +106,7 @@ The Claude Opus review's 13 findings, all fixed. Each has a regression test that
 
 ## Agent-facing and viewer-facing prose
 
-Diagnostic hints and `AGENTS.md` additions are delegated as in WP-03 to WP-06 (D111). The viewer-facing words of the shell (`packages/shell/src/words.ts`) are for Mirza's review with the candidate (IN-13, D111).
+Diagnostic hints and `AGENTS.md` additions are delegated as in WP-03 to WP-06 (D111). The viewer-facing words of the shell (`packages/shell/src/words.ts`), the receipt's states included (IN-13), were shown to Mirza with the candidate and accepted with the package.
 
 ## Untested boundaries
 
@@ -115,3 +115,21 @@ Diagnostic hints and `AGENTS.md` additions are delegated as in WP-03 to WP-06 (D
 - The conformance kit's shell and channel scenarios are WP-12's; comments recording the page are WP-20's.
 - The trusted controls' arming (500 ms) is a timing defense like browsers' permission prompts: it stops a click aimed elsewhere, not a viewer who waits and clicks a control they didn't read.
 - Web Locks need a secure context: on plain HTTP over a LAN, tab presence falls back to a BroadcastChannel roll call (300 ms), which no test exercises: the store's tests cover the presence interface it implements, and every browser test runs where Web Locks exist.
+
+## After the merge
+
+`main`'s CI on the merge commit failed once, in the new IN-04 adoption test on Linux Chromium; it had passed in both legs of the branch's CI. It reproduced locally (3 of 24 runs, Chromium and Firefox), and an instrumented copy showed the cause, a defect in the shell rather than in the test: the shell built the state for a page's control request from a copy that follows renders (`latestStateRef`), so a request arriving just after a stream event (the page's `useSubmitControl` and `useChoice` on mount) put the draft's revision back, and the "Not carried over" panel stayed stale. [#21](https://github.com/mostra-dev/mostra/pull/21) applies every control request to the newest state (`applyControlRequests`); the adoption test then passed 48 of 48 runs in three engines, with a shell model test beside it.
+
+## Commits and publication
+
+- **Range:** `f7b41b6..b9a8422` on `main`: 32 signed-off commits on `wp/07-client-runtime` (`5724096` to `5325ae4`) and the merge commit `b9a8422` of [#20](https://github.com/mostra-dev/mostra/pull/20); then [#21](https://github.com/mostra-dev/mostra/pull/21), the fix above. This report lands through its own pull request (D79).
+- **On `main` after the merge:** CodeQL and Scorecard green; CI red only for the e2e test above, which #21 fixes.
+- **Packages:** nothing published. Changesets record minor releases of `@mostra/protocol`, `@mostra/react`, `@mostra/runtime` and `@mostra/shell`; the release pipeline is WP-11's (EN-05).
+- **Docs:** generated pages for the new diagnostic codes in `docs/reference/`; the docs site is WP-26's.
+- **Follow-ups for later packages** are in their specifications ("From WP-07"): WP-08, WP-09, WP-12, WP-13, WP-17, WP-18 and WP-20.
+- **Remaining dirty paths:** none in the repository. Outside it: scripts, logs, review transcripts and traces in `$JCODE_SCRATCH_DIR/wp07`.
+
+## Next
+
+WP-08, workers, actions and live data (`docs/design/work-packages/WP-08.md`).
+
