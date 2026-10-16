@@ -26,9 +26,33 @@ afterAll(async () => {
   await browser.close();
 });
 
+/**
+ * What a later shell may tell a page about its view: a channel, a policy and a target this
+ * release doesn't know (Claude review finding 5). A frozen page must still run live with it.
+ */
+const LATER_VIEW = {
+  submitChannels: ["shell", "artifact", "host"],
+  policy: { policy: "quorum", of: 3 },
+  target: "hosted",
+  laterKey: true,
+};
+
 /** Opens a link in the shell and waits until the frame's page is ready. */
-async function openShell(url: string): Promise<{ page: Page; requests: string[] }> {
+async function openShell(
+  url: string,
+  options: { readonly laterView?: boolean } = {},
+): Promise<{ page: Page; requests: string[] }> {
   const page = await browser.newPage();
+  if (options.laterView) {
+    await page.route(
+      (target) => target.pathname.endsWith("/_mostra/ticket"),
+      async (route) => {
+        const response = await route.fetch();
+        const ticket = (await response.json()) as Record<string, unknown>;
+        await route.fulfill({ response, json: { ...ticket, ...LATER_VIEW } });
+      },
+    );
+  }
   const requests: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -45,11 +69,16 @@ describe("versions built at an earlier browser-protocol revision (VR-10)", () =>
   });
 
   for (const revision of frozenRevisions()) {
-    for (const gateway of ["today's gateway", `a gateway at the next revision (${NEXT})`]) {
+    for (const gateway of [
+      "today's gateway",
+      `a gateway at the next revision (${NEXT})`,
+      "a shell that sends values this release doesn't know",
+    ]) {
       it(`a version frozen at ${revision} saves, signals and submits through ${gateway}`, async () => {
         const home = testHome();
         const frozen = await importFrozen(home.home, revision);
-        const next = gateway !== "today's gateway";
+        const next = gateway.startsWith("a gateway at the next revision");
+        const laterView = gateway.startsWith("a shell");
         const running = await new GatewayHome(home).start(
           next ? { env: { MOSTRA_TEST_BROWSER_REVISION_NEXT: NEXT } } : {},
         );
@@ -57,7 +86,7 @@ describe("versions built at an earlier browser-protocol revision (VR-10)", () =>
           const link = await running.link(frozen.artifactId, {
             viewer: { ref: `frozen-${revision}`, name: "Frozen" },
           });
-          const { page, requests } = await openShell(link.url);
+          const { page, requests } = await openShell(link.url, { laterView });
           const frame = page.frameLocator("iframe.mostra-frame");
           // The page is the frozen build, unchanged.
           expect(await frame.locator("meta[name=mostra-version]").getAttribute("content")).toBe(

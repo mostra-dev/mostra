@@ -7,6 +7,7 @@
 import type { ViewContext } from "@mostra/protocol";
 import { type ReactElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { useFieldArray } from "react-hook-form";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useForm } from "../../src/form.ts";
 import { RuntimeProvider, useSubmit } from "../../src/hooks.ts";
@@ -72,6 +73,45 @@ function Conditional() {
       <span data-testid="blockers">
         {submit.blockers.map((b) => `${b.fieldId}:${b.reason}`).join(",")}
       </span>
+    </form>
+  );
+}
+
+function Order() {
+  const form = useForm<{ name: string; items: { name: string }[] }>({
+    id: "order",
+    defaultValues: { name: "x", items: [{ name: "" }] },
+    labels: { items: "Items" },
+  });
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
+  return (
+    <form>
+      <input data-testid="name" {...form.register("name")} />
+      {fields.map((field, index) => (
+        <input
+          key={field.id}
+          data-testid={`item-${index}`}
+          {...form.register(`items.${index}.name` as const, { required: true })}
+        />
+      ))}
+      <button type="button" data-testid="add" onClick={() => append({ name: "" })} />
+      <button type="button" data-testid="remove-1" onClick={() => remove(1)} />
+      <span data-testid="count">{fields.length}</span>
+    </form>
+  );
+}
+
+let resetForm: (() => void) | undefined;
+function Clearable() {
+  const form = useForm<{ name: string; note: string }>({
+    id: "clear",
+    defaultValues: { name: "", note: "" },
+  });
+  resetForm = () => form.reset();
+  return (
+    <form>
+      <input data-testid="name" {...form.register("name")} />
+      <input data-testid="note" {...form.register("note")} />
     </form>
   );
 }
@@ -182,5 +222,58 @@ describe("@mostra/react/form (D52)", () => {
     expect(gateway.docs.viewer.fields.has("c.extra")).toBe(false);
     expect(gateway.docs.viewer.fields.get("c.other")?.value).toBe("");
     expect(gateway.docs.viewer.fields.get("c.name")?.value).toBe("");
+  });
+
+  it("keeps a field array as one answer: append and remove work, and nothing removed comes back (Claude review finding 1)", async () => {
+    const gateway = new FakeGateway();
+    const page = await render(gateway, Order);
+    type(page.input("item-0"), "apple");
+    page.click("add");
+    await vi.waitFor(() => page.input("item-1"));
+    type(page.input("item-1"), "banana");
+    page.click("add");
+    await vi.waitFor(() => page.input("item-2"));
+    type(page.input("item-2"), "cherry");
+    await page.store.flush();
+    page.click("remove-1");
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="count"]')?.textContent).toBe("2"),
+    );
+    await page.store.flush();
+    // The page is still there, and the draft holds the array once, without the removed row.
+    expect(page.input("name")).toBeTruthy();
+    const ids = [...gateway.docs.viewer.fields.keys()].filter((id) => id.startsWith("order."));
+    expect(ids).toEqual(["order.items"]);
+    expect(gateway.docs.viewer.fields.get("order.items")?.value).toEqual([
+      { name: "apple" },
+      { name: "cherry" },
+    ]);
+    // A row's own rule runs in react-hook-form, and an empty row blocks the submit.
+    page.click("add");
+    await vi.waitFor(() => page.input("item-2"));
+    const prepared = await page.store.prepareSubmit();
+    expect(prepared.blockers).toEqual([
+      expect.objectContaining({ fieldId: "order.items", reason: "invalid", label: "Items" }),
+    ]);
+    type(page.input("item-2"), "date");
+    expect((await page.store.prepareSubmit()).blockers).toEqual([]);
+    // A reload shows the same rows.
+    const again = await render(gateway, Order);
+    await vi.waitFor(() => expect(again.input("item-2").value).toBe("date"));
+    expect(again.input("item-0").value).toBe("apple");
+    expect(again.input("item-1").value).toBe("cherry");
+  });
+
+  it("saves a reset, so a submit sends what the viewer sees (Claude review finding 2)", async () => {
+    const gateway = new FakeGateway();
+    const page = await render(gateway, Clearable);
+    type(page.input("name"), "secret draft");
+    await page.store.flush();
+    expect(gateway.docs.viewer.fields.get("clear.name")?.value).toBe("secret draft");
+    resetForm?.();
+    await vi.waitFor(() => expect(page.input("name").value).toBe(""));
+    const prepared = await page.store.prepareSubmit();
+    expect(prepared.unsaved).toBe(false);
+    expect(gateway.docs.viewer.fields.get("clear.name")?.value).toBe("");
   });
 });

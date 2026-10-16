@@ -32,8 +32,10 @@ import { wireRegistry } from "./wire-registry.ts";
 export {
   type DeliveryTarget,
   REVIEW_SET_ID_PATTERN,
+  readViewContext,
   VersionRef,
   ViewContext,
+  ViewContextWire,
 } from "./view.ts";
 
 /** Every browser-protocol revision this release serves, oldest first. */

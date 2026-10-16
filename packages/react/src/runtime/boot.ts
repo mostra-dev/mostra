@@ -12,6 +12,7 @@ import {
   mostraFields,
   mostraFlush,
   mostraVersionAvailable,
+  readViewContext,
   type VersionAvailableParams,
   type ViewContext,
 } from "@mostra/protocol";
@@ -157,7 +158,11 @@ export async function startRuntime(): Promise<Runtime> {
   const target = deliveryTarget();
   const tab = tabId();
   const shell = target === "live" || target === "verify" ? await framedShell() : undefined;
-  const view: ViewContext | undefined = shell?.host.mostra;
+  // Read the tolerant way: a later shell may send values this page doesn't know (Claude review
+  // finding 5), which never cost it its view.
+  const view: ViewContext | undefined = shell?.host.mostra
+    ? readViewContext(shell.host.mostra)
+    : undefined;
   const built = builtVersion();
   if (shell && view && built !== undefined && built !== view.version.id) {
     // This page is another version than the view the shell opened: another tab moved the frame

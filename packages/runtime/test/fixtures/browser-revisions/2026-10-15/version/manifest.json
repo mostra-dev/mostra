@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "artifactId": "art_01M501A57EP571569A8K1BX4YP",
-  "versionId": "ver_9KKECXT795CVZKD057NBZPHG71",
+  "artifactId": "art_01M524VXKER8GA6CTTT0AW8ARM",
+  "versionId": "ver_APKAN8DJDADJR8D18FGT3E1VBM",
   "mode": "spa",
   "entry": "index.tsx",
   "server": false,
@@ -19,6 +19,6 @@
     "buildConfigDigest": "e66fc905f6773870a9055e63cbccba0867c759b4b5268b563b2ff138bd7e71bc",
     "browserProtocolRevision": "2026-10-15"
   },
-  "outputDigest": "89d627cf9a66f00f588ec776374f9c41ff86ce6ffa55066611efba3670d75572",
+  "outputDigest": "501a0b1e3129e820eebdf0f80678d9df55e13edc8a66e84e14b46e4cae5c6205",
   "forcedCodes": []
 }

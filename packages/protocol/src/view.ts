@@ -121,3 +121,80 @@ export const ViewContext: z.ZodType<ViewContext> = z
     description:
       "What one view is: its artifact, view ID, version, latest version, policy, channels and controls.",
   });
+
+/**
+ * A view as a page reads it from `ui/initialize` (Claude review finding 5): every published
+ * version embeds the page's reader, so it takes values a later Mostra may add (a channel, a
+ * policy, a target) without refusing the whole view; {@link readViewContext} reads them safely.
+ */
+export interface ViewContextWire {
+  /** The artifact. */
+  readonly artifactId: string;
+  /** The view this frame load is (D104). */
+  readonly viewId: string;
+  /** The version the view shows. */
+  readonly version: VersionRef;
+  /** The artifact's latest version when the view opened. */
+  readonly latest: VersionRef;
+  /** The submission policy in force (D102); a later policy or scope is read as `once` per viewer. */
+  readonly policy: {
+    /** `once`, `epochs`, `none`, or one a later release adds. */
+    readonly policy: string;
+    /** `per-artifact` or `per-viewer` under `once`, or one a later release adds. */
+    readonly scope?: string;
+  };
+  /** The submit channels the view accepts (D108); channels this release doesn't know are not allowed. */
+  readonly submitChannels: readonly string[];
+  /** The trusted controls the shell renders for the view (D108). */
+  readonly controls: readonly string[];
+  /** Where the page runs (D111); a target this release doesn't know is read as `live`. */
+  readonly target: string;
+}
+
+/** The Zod schema of the `ViewContextWire` type: open where later revisions may add values. */
+export const ViewContextWire: z.ZodType<ViewContextWire> = z.looseObject({
+  artifactId: ArtifactId.schema,
+  viewId: ViewId.schema,
+  version: VersionRef,
+  latest: VersionRef,
+  policy: z.looseObject({ policy: z.string(), scope: z.string().exactOptional() }),
+  submitChannels: z.array(z.string()).max(16).readonly(),
+  controls: z.array(z.string()).max(32).readonly(),
+  target: z.string(),
+}) as z.ZodType<ViewContextWire>;
+
+const CONTROL_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * The view a page acts on, with every value this release doesn't know read the safe way: an
+ * unknown channel isn't allowed (the shell's stays), an unknown policy or `once` scope is read as
+ * `once` per viewer (the page may submit and the server decides; it closes on its own submission
+ * only), and an unknown target as `live`.
+ */
+export function readViewContext(wire: ViewContextWire): ViewContext {
+  const channels = (["shell", "artifact"] as const).filter((channel) =>
+    wire.submitChannels.includes(channel),
+  );
+  const { policy: name, scope } = wire.policy;
+  const policy: SubmissionPolicy =
+    name === "none"
+      ? { policy: "none" }
+      : name === "epochs"
+        ? { policy: "epochs" }
+        : name === "once" && (scope === undefined || scope === "per-artifact")
+          ? { policy: "once", scope: "per-artifact" }
+          : { policy: "once", scope: "per-viewer" };
+  const target = (["live", "static", "mcp-app", "verify"] as const).find(
+    (known) => known === wire.target,
+  );
+  return {
+    artifactId: wire.artifactId,
+    viewId: wire.viewId,
+    version: wire.version,
+    latest: wire.latest,
+    policy,
+    submitChannels: channels.length > 0 ? channels : ["shell"],
+    controls: wire.controls.filter((control) => CONTROL_NAME.test(control)),
+    target: target ?? "live",
+  };
+}

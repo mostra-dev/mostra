@@ -67,6 +67,7 @@ export {
   OrphanedField,
   PollResult,
   REVIEW_SET_ID_PATTERN,
+  readViewContext,
   ShellSubmitRequest,
   SIGNAL_PAYLOAD_MAX_BYTES,
   SignalRequest,
@@ -74,6 +75,7 @@ export {
   SubmitRequest,
   VersionRef,
   ViewContext,
+  ViewContextWire,
 } from "./browser.ts";
 export { canonicalJson } from "./canonical.ts";
 export {

@@ -1294,6 +1294,9 @@ export interface PublishReceipt {
 export const PublishReceipt: z.ZodType<PublishReceipt>;
 
 // @public
+export function readViewContext(wire: ViewContextWire): ViewContext;
+
+// @public
 export interface Rect {
     readonly height: number;
     readonly width: number;
@@ -1763,7 +1766,7 @@ export interface UiInitializeResult {
     readonly hostCapabilities: Readonly<Record<string, unknown>>;
     readonly hostContext: BridgeHostContext;
     readonly hostInfo: BridgeImplementation;
-    readonly mostra?: ViewContext;
+    readonly mostra?: ViewContextWire;
     readonly protocolVersion: string;
 }
 
@@ -1836,6 +1839,24 @@ export interface ViewContext {
 
 // @public
 export const ViewContext: z.ZodType<ViewContext>;
+
+// @public
+export interface ViewContextWire {
+    readonly artifactId: string;
+    readonly controls: readonly string[];
+    readonly latest: VersionRef;
+    readonly policy: {
+        readonly policy: string;
+        readonly scope?: string;
+    };
+    readonly submitChannels: readonly string[];
+    readonly target: string;
+    readonly version: VersionRef;
+    readonly viewId: string;
+}
+
+// @public
+export const ViewContextWire: z.ZodType<ViewContextWire>;
 
 // @public
 export interface Viewer {

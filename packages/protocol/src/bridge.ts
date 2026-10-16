@@ -22,7 +22,7 @@ import type { MethodDefinition } from "./method.ts";
 import { hostDiagnostic, JSON_RPC_ERROR_CODES, RpcError } from "./rpc/error.ts";
 import { classifyMessage } from "./rpc/messages.ts";
 import { RpcPeer } from "./rpc/peer.ts";
-import { REVIEW_SET_ID_PATTERN, ViewContext } from "./view.ts";
+import { REVIEW_SET_ID_PATTERN, ViewContextWire } from "./view.ts";
 
 /** Which end of the bridge: the trusted shell, or the artifact's frame. */
 export type BridgeSide = "shell" | "artifact";
@@ -108,7 +108,7 @@ export interface UiInitializeResult {
   /** Where and how the artifact is shown. */
   readonly hostContext: BridgeHostContext;
   /** Mostra's shell: the view this frame load is, and what the host allows in it (WP-07). */
-  readonly mostra?: ViewContext;
+  readonly mostra?: ViewContextWire;
 }
 
 /** `ui/initialize`: the artifact's first request, answered with the shell's context. */
@@ -134,7 +134,7 @@ export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>
       timeZone: z.string().exactOptional(),
       platform: z.enum(["web", "desktop", "mobile"]).exactOptional(),
     }),
-    mostra: ViewContext.exactOptional(),
+    mostra: ViewContextWire.exactOptional(),
   }),
 };
 
