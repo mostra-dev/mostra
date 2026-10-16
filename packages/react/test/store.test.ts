@@ -26,6 +26,8 @@ function open(
     view?: ViewContext;
     scopes?: string[];
     gone?: string[];
+    viewer?: { id: string; kind: "local" };
+    fast?: boolean;
   } = {},
 ): Store {
   const store = new Store({
@@ -34,6 +36,17 @@ function open(
     journal: options.journal ?? new MemoryJournal(),
     view: options.view ?? VIEW,
     ...(options.scopes ? { scopes: options.scopes } : {}),
+    ...(options.viewer ? { viewer: options.viewer } : {}),
+    // Timers a hundred times faster: the store's waits (a stream catching up) end in milliseconds.
+    ...(options.fast
+      ? {
+          timers: {
+            setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms / 100),
+            clearTimeout: (handle: unknown) =>
+              clearTimeout(handle as ReturnType<typeof setTimeout>),
+          },
+        }
+      : {}),
     tab: options.tab ?? `tab-${stores.length}`,
     goneTabs: async (tabs) => new Set(tabs.filter((tab) => options.gone?.includes(tab) ?? true)),
   });
@@ -481,5 +494,85 @@ describe("GPT review findings (WP-07)", () => {
     expect(gateway.docs.viewer.fields.get("x")?.value).toBe(1);
     expect(store.unsaved()).toBe(false);
     expect(store.pageSave()).toBe("saved");
+  });
+});
+
+describe("Claude review findings (WP-07)", () => {
+  it("3: a stream that lags never lets a submit name a revision the page hasn't shown", async () => {
+    const gateway = new FakeGateway();
+    gateway.write("viewer", { answer: "shown" });
+    const store = open(gateway, { fast: true });
+    await store.whenReady();
+    await settle();
+    expect(store.value(v("answer"), "")).toBe("shown");
+    // The stream stops delivering (a proxy holding it), while saves still go through.
+    gateway.holdEvents = true;
+    gateway.write("viewer", { answer: "changed elsewhere" });
+    store.set("viewer", "other", "mine");
+    const prepared = await store.prepareSubmit();
+    // It names only what it showed, which the gateway refuses as moved…
+    expect(prepared.revision).toBe(1);
+    // …and fetches the rest, so the viewer sees it before submitting again.
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.value(v("answer"), "")).toBe("changed elsewhere");
+  });
+
+  it("4: an edit made before the first snapshot is journaled, and sent once the snapshot comes", async () => {
+    const gateway = new FakeGateway();
+    const journal = new MemoryJournal();
+    let release: () => void = () => undefined;
+    gateway.holdSnapshots = new Promise((resolve) => {
+      release = resolve;
+    });
+    const transport = gateway.transport();
+    // The stream's own snapshot waits too.
+    const store = new Store({
+      mode: "live",
+      transport: {
+        ...transport,
+        subscribe: (cursor, handlers) =>
+          transport.subscribe(cursor, {
+            ...handlers,
+            onSnapshot: (snapshot) => {
+              void gateway.holdSnapshots?.then(() => handlers.onSnapshot(snapshot));
+            },
+          }),
+      },
+      journal,
+      view: VIEW,
+      viewer: { id: "vwr_01J00000000000000000000000", kind: "local" },
+      tab: "early",
+    });
+    stores.push(store);
+    store.start();
+    store.set("viewer", "name", "typed early");
+    await settle();
+    const loaded = await journal.load("vwr_01J00000000000000000000000");
+    expect(loaded.pending.map((entry) => entry.op.value)).toEqual(["typed early"]);
+    expect(gateway.received).toHaveLength(0);
+    release();
+    gateway.holdSnapshots = undefined;
+    await store.whenReady();
+    await store.flush();
+    await settle();
+    expect(gateway.docs.viewer.fields.get("name")?.value).toBe("typed early");
+  });
+
+  it("12: an adopted edit goes out as the view it was made in", async () => {
+    const gateway = new FakeGateway();
+    const older = { ...VIEW, viewId: "vw_01J22222222222222222222222" };
+    gateway.views.add(older.viewId);
+    const journal = new MemoryJournal();
+    const closed = open(gateway, { journal, tab: "closed", view: older });
+    await closed.whenReady();
+    closed.set("viewer", "notes", "from the older view");
+    closed.stop(); // Closed inside the debounce: the edit is pending in the journal.
+    const next = open(gateway, { journal, tab: "next", gone: ["closed"] });
+    await next.whenReady();
+    await next.flush();
+    await settle();
+    expect(gateway.docs.viewer.fields.get("notes")?.value).toBe("from the older view");
+    expect(gateway.received.at(-1)?.viewId).toBe(older.viewId);
   });
 });

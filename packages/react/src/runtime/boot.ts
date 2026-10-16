@@ -16,6 +16,7 @@ import {
   type ViewContext,
 } from "@mostra/protocol";
 import { builtVersion, connectShell, listenShell, type ShellConnection } from "../shell-bridge.ts";
+import { blockersForShell, clip, firstThatMatter } from "./bridge-limits.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
 import { Store } from "./store.ts";
 import { HttpTransport } from "./transport.ts";
@@ -125,8 +126,28 @@ function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   return api.request("mostra-journal", fn) as Promise<T>;
 }
 
-/** How long the page waits for the shell's handshake before it runs on its own. */
-const SHELL_WAIT_MS = 10_000;
+/** The longest pause between two attempts at the shell's handshake. */
+const SHELL_RETRY_MAX_MS = 8_000;
+
+/**
+ * The shell's connection for a framed page. A page inside a frame is inside Mostra's shell (its
+ * origin is framed by the shell only): if the handshake fails (the daemon restarting during the
+ * frame's load, a slow shell), it tries again rather than run on its own, where its answers
+ * would stay in this browser while the shell said "Saved" (FAILURE_MODEL §1 rule 4; Claude review
+ * finding 4). A page opened on its own has no shell and runs locally.
+ */
+async function framedShell(): Promise<ShellConnection | undefined> {
+  if (typeof window === "undefined" || window.parent === window) return undefined;
+  for (let attempt = 0; ; attempt += 1) {
+    const shell = await connectShell();
+    if (shell) return shell;
+    if (attempt === 1)
+      console.warn("Mostra: waiting for the shell; the page connects when it can.");
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(500 * 2 ** attempt, SHELL_RETRY_MAX_MS)),
+    );
+  }
+}
 
 /**
  * Starts the runtime: live behind the gateway inside Mostra's shell, local otherwise (a static
@@ -135,13 +156,7 @@ const SHELL_WAIT_MS = 10_000;
 export async function startRuntime(): Promise<Runtime> {
   const target = deliveryTarget();
   const tab = tabId();
-  const shell =
-    target === "live" || target === "verify"
-      ? await Promise.race([
-          connectShell(),
-          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), SHELL_WAIT_MS)),
-        ])
-      : undefined;
+  const shell = target === "live" || target === "verify" ? await framedShell() : undefined;
   const view: ViewContext | undefined = shell?.host.mostra;
   const built = builtVersion();
   if (shell && view && built !== undefined && built !== view.version.id) {
@@ -176,6 +191,7 @@ export async function startRuntime(): Promise<Runtime> {
     journal,
     view,
     scopes: shell.session.scopes,
+    ...(shell.session.viewer ? { viewer: shell.session.viewer } : {}),
     tab,
     goneTabs: tabPresence(tab),
     exclusive,
@@ -214,23 +230,31 @@ function wireShell(store: Store, shell: ShellConnection): void {
   let scheduled = false;
   const report = (): void => {
     scheduled = false;
+    const fields = store.registrations().map((registration) => ({
+      id: registration.id,
+      scope: registration.scope,
+      ...(registration.label !== undefined ? { label: clip(registration.label) } : {}),
+      ...(registration.required !== undefined ? { required: registration.required } : {}),
+      ...(registration.sensitive !== undefined ? { sensitive: registration.sensitive } : {}),
+      ...(registration.error !== undefined ? { error: clip(registration.error) } : {}),
+      ...(store.conflict(`${registration.scope}:${registration.id}`) ? { conflict: true } : {}),
+    }));
     const params: FieldsParams = {
-      fields: store.registrations().map((registration) => ({
-        id: registration.id,
-        scope: registration.scope,
-        ...(registration.label !== undefined ? { label: registration.label } : {}),
-        ...(registration.required !== undefined ? { required: registration.required } : {}),
-        ...(registration.sensitive !== undefined ? { sensitive: registration.sensitive } : {}),
-        ...(registration.error !== undefined ? { error: registration.error } : {}),
-        ...(store.conflict(`${registration.scope}:${registration.id}`) ? { conflict: true } : {}),
-      })),
+      fields: firstThatMatter(fields, (field) =>
+        Boolean(field.required || field.error !== undefined || field.conflict),
+      ),
       save: store.pageSave(),
       unsaved: store.unsaved(),
     };
     const text = JSON.stringify(params);
     if (text === last) return;
     last = text;
-    shell.bridge.notify(mostraFields, params);
+    try {
+      shell.bridge.notify(mostraFields, params);
+    } catch (error) {
+      // Never silently: the shell's rail would keep its last state (Claude review finding 11).
+      console.error("Mostra: the page's fields couldn't be reported to the shell.", error);
+    }
   };
   store.subscribe(() => {
     if (scheduled) return;
@@ -247,7 +271,7 @@ function wireShell(store: Store, shell: ShellConnection): void {
         const result: FlushResult = {
           revision: String(prepared.revision),
           unsaved: prepared.unsaved,
-          blockers: prepared.blockers,
+          blockers: blockersForShell(prepared.blockers),
         };
         return result;
       }
@@ -255,7 +279,7 @@ function wireShell(store: Store, shell: ShellConnection): void {
       const result: FlushResult = {
         revision: String(flushed.revision),
         unsaved: flushed.unsaved,
-        blockers: store.blockers(),
+        blockers: blockersForShell(store.blockers()),
       };
       return result;
     },

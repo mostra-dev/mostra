@@ -17,6 +17,7 @@ import {
   uiInitialize,
   uiInitialized,
   uiOpenLink,
+  type Viewer,
 } from "@mostra/protocol";
 
 /**
@@ -43,14 +44,22 @@ export interface ShellConnection {
   readonly host: UiInitializeResult;
   /** The bridge, for the client runtime's messages. */
   readonly bridge: Bridge;
-  /** The frame session's facts: its CSRF token and the link's scopes (D97, D98). */
-  readonly session: { readonly csrf: string; readonly scopes: readonly string[] };
+  /**
+   * The frame session's facts: its CSRF token, the link's scopes (D97, D98) and, from gateways
+   * since WP-07, the viewer it acts as.
+   */
+  readonly session: {
+    readonly csrf: string;
+    readonly scopes: readonly string[];
+    readonly viewer?: Viewer;
+  };
 }
 
 interface FrameSession {
   readonly shellOrigin?: unknown;
   readonly csrf?: unknown;
   readonly scopes?: unknown;
+  readonly viewer?: unknown;
 }
 
 /** Hears what the shell sends: requests answered by the first handler that returns a value. */
@@ -84,6 +93,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       const response = await fetch("/_mostra/session", {
         credentials: "same-origin",
         cache: "no-store",
+        signal: AbortSignal.timeout(HANDSHAKE_TIMEOUT_MS),
       });
       if (!response.ok) return undefined;
       session = (await response.json()) as FrameSession;
@@ -108,16 +118,22 @@ export function connectShell(): Promise<ShellConnection | undefined> {
         for (const listener of listeners) listener.notification?.(message, params);
       },
     });
-    const host = await bridge.call(
-      uiInitialize,
-      {
-        appInfo: { name: "mostra-artifact", version: "0" },
-        appCapabilities: {},
-        protocolVersion: MCP_APPS_PROTOCOL_VERSION,
-        ...versionParams(),
-      },
-      { timeoutMs: 10_000 },
-    );
+    let host: UiInitializeResult;
+    try {
+      host = await bridge.call(
+        uiInitialize,
+        {
+          appInfo: { name: "mostra-artifact", version: "0" },
+          appCapabilities: {},
+          protocolVersion: MCP_APPS_PROTOCOL_VERSION,
+          ...versionParams(),
+        },
+        { timeoutMs: HANDSHAKE_TIMEOUT_MS },
+      );
+    } catch (error) {
+      bridge.close();
+      throw error;
+    }
     bridge.notify(uiInitialized, {});
     return {
       shellOrigin,
@@ -128,11 +144,32 @@ export function connectShell(): Promise<ShellConnection | undefined> {
         scopes: Array.isArray(session.scopes)
           ? session.scopes.filter((scope): scope is string => typeof scope === "string")
           : [],
+        ...(isViewer(session.viewer) ? { viewer: session.viewer } : {}),
       },
     };
-  })().catch(() => undefined);
+  })().then(
+    (connection) => {
+      // A framed page that didn't connect may try again (the daemon restarting during the
+      // frame's load, a slow handshake): only a connection is kept (Claude review finding 4).
+      if (connection === undefined) connecting = undefined;
+      return connection;
+    },
+    () => {
+      connecting = undefined;
+      return undefined;
+    },
+  );
   return connecting;
 }
+
+/** Whether the session's `viewer` looks like a viewer (a light check: the gateway sends it). */
+function isViewer(value: unknown): value is Viewer {
+  const viewer = value as { id?: unknown; kind?: unknown } | null | undefined;
+  return typeof viewer?.id === "string" && typeof viewer.kind === "string";
+}
+
+/** How long one attempt at the shell's handshake may take. */
+const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 /**
  * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints. The

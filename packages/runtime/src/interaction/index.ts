@@ -13,6 +13,7 @@
 import {
   type Actor,
   type ArtifactRef,
+  type CapabilityScope,
   type CarryOver,
   type ControlsPolicy,
   type DeliveryCounts,
@@ -26,10 +27,13 @@ import {
   type FieldScope,
   type FieldState,
   type MutationResult,
+  RpcError,
+  refusal,
   resultsGetMethod,
   type StreamSnapshot,
   type SubmissionSummary,
   type SubmitChannel,
+  scopeAllows,
   stateGetMethod,
   statePatchMethod,
   type Viewer,
@@ -112,6 +116,8 @@ export interface PageIdentity {
   readonly viewerId: string;
   /** The link the page's session came from: a page names only views its own link opened. */
   readonly tokenId?: string;
+  /** The link's scopes (D97): a page writes a review set's choice only with `review`. */
+  readonly scopes?: readonly CapabilityScope[];
 }
 
 /** The interaction core of one instance. */
@@ -356,8 +362,18 @@ export function createInteraction(options: InteractionOptions): Interaction {
         if (replay) return { result: replay, changed: false, replayed: true };
         if (input.scope === "viewer") {
           assertDraftOpen(db, page.artifactId, page.viewerId);
-          // A page's own choice is the artifact channel, which the host may not allow (D108).
-          if (input.ops.some((op) => CHOICE.test(op.id))) assertChannel(view, "artifact");
+          if (input.ops.some((op) => CHOICE.test(op.id))) {
+            // A choice needs the `review` scope however it is written, as the trusted Choose
+            // does (D97; Claude review finding 7)…
+            if (page.scopes !== undefined && !scopeAllows(page.scopes, "review")) {
+              throw new RpcError(
+                refusal("MOSTRA_HYGIENE_SCOPE_DENIED", "This link doesn't carry the review scope.")
+                  .diagnostic,
+              );
+            }
+            // …and a page's own choice is the artifact channel, which the host may not allow (D108).
+            assertChannel(view, "artifact");
+          }
         }
         return applyMutation(db, mutation);
       });
@@ -394,7 +410,17 @@ export function createInteraction(options: InteractionOptions): Interaction {
           channel: input.channel,
         });
       }
-      return outcome.submission;
+      // Read again after the commit: the outbox's first step runs on commit and may already have
+      // marked a delivery waiting, which the answer must not contradict (Claude review finding 8).
+      const fresh = ledger.read((db) => {
+        const row = db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          outcome.submission.id,
+        );
+        return row ? submissionSummary(db, row) : undefined;
+      });
+      if (!fresh) return outcome.submission;
+      return outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh;
     },
     choose(page, input) {
       const actor = pageActor(page);

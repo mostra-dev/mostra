@@ -22,6 +22,7 @@ const ARTIFACT = {
 function input(options: {
   home?: readonly SubmitChannel[];
   host?: (params: unknown) => Promise<unknown>;
+  expected?: readonly string[];
 }) {
   const calls: unknown[] = [];
   return {
@@ -30,6 +31,7 @@ function input(options: {
       artifact: ARTIFACT,
       log: silentLog,
       home: () => options.home,
+      expected: () => options.expected ?? [],
       registrant: () => (options.host ? { session: 7, owner: "jcode" } : undefined),
       call: async (session: number, params: unknown) => {
         calls.push({ session, params });
@@ -85,5 +87,12 @@ describe("the channel policy in force for a view (D108)", () => {
         submitChannels: ["shell"],
       });
     }
+  });
+});
+
+describe("a host that always provides trustedControls (Claude review finding 10)", () => {
+  it("narrows a view to the shell channel while it is away, whatever the home's default", async () => {
+    const { input: away } = input({ expected: ["jcode"], home: ["shell", "artifact"] });
+    expect(await controlsPolicy(away)).toEqual({ submitChannels: ["shell"] });
   });
 });

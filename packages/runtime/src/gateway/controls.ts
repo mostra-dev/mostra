@@ -27,6 +27,11 @@ export interface ControlsPolicyInput {
   readonly log: Log;
   /** The home's `submitChannels`, if a host set them. */
   readonly home: () => readonly SubmitChannel[] | undefined;
+  /**
+   * Hosts that always provide `trustedControls` (`HomeConfig.ports`, D105), by client name: one
+   * that is away decides nothing, so its views get the shell channel only.
+   */
+  readonly expected: () => readonly string[];
   /** The newest connection that registered `trustedControls`, if any. */
   readonly registrant: () => { readonly session: number; readonly owner: string } | undefined;
   /** Calls the port on that connection; rejects on a transport failure or the timeout. */
@@ -35,8 +40,8 @@ export interface ControlsPolicyInput {
 
 /**
  * The policy for a new view (D108). A host's answer wins; a host that registered the port but
- * fails to answer narrows the view to the shell channel, so its outage never widens what it
- * allows.
+ * fails to answer, or that always provides it (`HomeConfig.ports`) and isn't connected, narrows
+ * the view to the shell channel, so its outage never widens what it allows.
  */
 export async function controlsPolicy(input: ControlsPolicyInput): Promise<ControlsPolicy> {
   const registrant = input.registrant();
@@ -57,6 +62,17 @@ export async function controlsPolicy(input: ControlsPolicyInput): Promise<Contro
         error: (error as Error).message,
       });
     }
+    return SHELL_ONLY;
+  }
+  // A host that takes the policy over but is away right now (restarting, or the link opened
+  // first) never has it widened by its absence: the view lives on after it returns (Claude
+  // review finding 10).
+  const away = input.expected();
+  if (away.length > 0) {
+    input.log.warn("gateway.controls_policy_host_away", {
+      owners: away,
+      artifactId: input.artifact.id,
+    });
     return SHELL_ONLY;
   }
   const channels = input.home();

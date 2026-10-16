@@ -45,6 +45,11 @@ export class FakeGateway {
   maxValueBytes = Number.POSITIVE_INFINITY;
   /** While set, snapshot requests answer only once it settles, with what they read at first. */
   holdSnapshots: Promise<void> | undefined;
+  /** Runs as each mutation arrives, before it applies: another writer getting in first. */
+  beforeMutate: ((request: FieldsRequest) => void) | undefined;
+  /** While set, the stream delivers no events: they wait, in order, for {@link releaseEvents}. */
+  holdEvents = false;
+  readonly #held: EventRecord[] = [];
   /** View IDs the gateway accepts. */
   views = new Set<string>(["vw_01J00000000000000000000000"]);
   readonly #subscribers = new Set<StreamHandlers>();
@@ -159,13 +164,27 @@ export class FakeGateway {
       payload: { revision: String(revision), changes },
     };
     this.events.push(event);
+    if (this.holdEvents) {
+      this.#held.push(event);
+      return;
+    }
     for (const subscriber of this.#subscribers) {
       queueMicrotask(() => subscriber.onEvents([event]));
     }
   }
 
+  /** Delivers the events held while {@link holdEvents} was on, in order, and stops holding. */
+  releaseEvents(): void {
+    this.holdEvents = false;
+    const events = this.#held.splice(0);
+    for (const subscriber of this.#subscribers) {
+      queueMicrotask(() => subscriber.onEvents(events));
+    }
+  }
+
   mutate(request: FieldsRequest): MutationResult {
     if (this.offline) throw new NetworkError("offline");
+    this.beforeMutate?.(request);
     this.received.push(request);
     if (this.refuseWith) {
       const code = this.refuseWith;

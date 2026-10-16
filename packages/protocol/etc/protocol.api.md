@@ -209,7 +209,13 @@ export interface Bridge {
 }
 
 // @public
+export const BRIDGE_FIELDS_MAX = 1e4;
+
+// @public
 export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[];
+
+// @public
+export const BRIDGE_TEXT_MAX = 1024;
 
 // @public
 export interface BridgeEvent {
@@ -795,7 +801,7 @@ export const FieldConflict: z.ZodType<FieldConflict>;
 export type FieldDiagnosticCode = (typeof fieldDiagnosticCodes)[number];
 
 // @public
-export const fieldDiagnosticCodes: readonly ["MOSTRA_FIELD_TOO_LARGE", "MOSTRA_FIELD_ID_INVALID", "MOSTRA_FIELD_MUTATION_ID_REUSED"];
+export const fieldDiagnosticCodes: readonly ["MOSTRA_FIELD_TOO_LARGE", "MOSTRA_FIELD_ID_INVALID", "MOSTRA_FIELD_MUTATION_ID_REUSED", "MOSTRA_FIELD_CONFLICT"];
 
 // @public
 export interface FieldOp {

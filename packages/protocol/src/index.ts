@@ -16,7 +16,9 @@ export {
 } from "./artifact.ts";
 export {
   type AnyBridgeMessage,
+  BRIDGE_FIELDS_MAX,
   BRIDGE_MESSAGES,
+  BRIDGE_TEXT_MAX,
   type Bridge,
   type BridgeEvent,
   type BridgeHostContext,

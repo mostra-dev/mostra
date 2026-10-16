@@ -208,9 +208,18 @@ export interface SubmitBlocker {
   readonly reason: "required" | "invalid" | "conflict";
 }
 
+/**
+ * The longest label, validation message or other text a field carries over the bridge; a page
+ * shortens longer ones before it sends them (Claude review finding 11).
+ */
+export const BRIDGE_TEXT_MAX = 1024;
+
+/** The most fields or blockers one bridge message lists; a page sends those that matter first. */
+export const BRIDGE_FIELDS_MAX = 10_000;
+
 const SubmitBlockerSchema: z.ZodType<SubmitBlocker> = z.looseObject({
   fieldId: z.string().min(1).max(256),
-  label: z.string().max(1024).exactOptional(),
+  label: z.string().max(BRIDGE_TEXT_MAX).exactOptional(),
   reason: z.enum(["required", "invalid", "conflict"]),
 });
 
@@ -258,15 +267,15 @@ export const mostraFields: BridgeMessage<FieldsParams, undefined> = {
       .array(
         z.looseObject({
           id: z.string().min(1).max(256),
-          label: z.string().max(1024).exactOptional(),
+          label: z.string().max(BRIDGE_TEXT_MAX).exactOptional(),
           required: z.boolean().exactOptional(),
           scope: z.enum(["viewer", "artifact"]),
           sensitive: z.boolean().exactOptional(),
-          error: z.string().max(1024).exactOptional(),
+          error: z.string().max(BRIDGE_TEXT_MAX).exactOptional(),
           conflict: z.boolean().exactOptional(),
         }),
       )
-      .max(10_000)
+      .max(BRIDGE_FIELDS_MAX)
       .readonly(),
     save: z.enum(["saved", "saving", "offline", "conflict"]),
     unsaved: z.boolean(),
@@ -380,7 +389,7 @@ export const mostraFlush: BridgeMessage<{ readonly reason: "submit" | "switch" }
   result: z.looseObject({
     revision: z.string().regex(/^(0|[1-9][0-9]{0,15})$/),
     unsaved: z.boolean(),
-    blockers: z.array(SubmitBlockerSchema).max(10_000).readonly(),
+    blockers: z.array(SubmitBlockerSchema).max(BRIDGE_FIELDS_MAX).readonly(),
   }),
 };
 

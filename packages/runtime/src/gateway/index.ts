@@ -665,6 +665,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         artifactId,
         shellOrigin: shellOrigin(),
         scopes: session.grant.scopes,
+        // The viewer the page acts as, so edits made before its first snapshot are journaled
+        // under it (WP-07; Claude review finding 4).
+        viewer: interaction.viewer(interaction.viewerOf(session.grant.viewerId)),
         ...(version ? { version: { id: version.id, number: version.number } } : {}),
       });
     };

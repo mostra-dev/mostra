@@ -180,6 +180,26 @@ describe("each view's channels decide every submit and choice (SH-02, D108)", ()
     ]);
   });
 
+  it("refuses a page's choice without the review scope, as the trusted Choose needs it (Claude review finding 7)", () => {
+    const { interaction, page, view } = setup();
+    const viewId = view(2);
+    const write = (scopes: readonly string[]) =>
+      codeOf(() =>
+        interaction.mutate(
+          { ...page, scopes: scopes as never },
+          {
+            viewId,
+            scope: "viewer",
+            mutationId: MutationId.create(),
+            baseRevision: 0,
+            ops: [set("review.layout.choice", "airy")],
+          },
+        ),
+      );
+    expect(write(["view", "draft"])).toBe("MOSTRA_HYGIENE_SCOPE_DENIED");
+    expect(write(["view", "draft", "review"])).toBeUndefined();
+  });
+
   it("lets the page choose where the artifact channel is allowed", () => {
     const { view, write } = setup();
     const viewId = view(2);
@@ -254,6 +274,9 @@ describe("what the viewer sees of a delivery (IN-13)", () => {
       write(viewId, 0, set("name", "Ana"));
       const made = interaction.submit(page, { viewId, expectedRevision: 1, channel: "shell" });
       expect(made.deliveries?.map((delivery) => delivery.owner)).toEqual(["jcode"]);
+      // The answer already says what the outbox's first step on commit found (Claude review
+      // finding 8): a viewer reads "Pending delivery" from the answer alone.
+      expect(made.deliveries?.[0]?.waiting).toBe(true);
       const retrying = () =>
         events(ledger, artifactId).filter((event) => event.type === "submission.retrying");
       await until(() => retrying().length === 1);

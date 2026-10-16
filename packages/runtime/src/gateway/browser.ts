@@ -57,6 +57,7 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_HOST_CURSOR_COMPACTED: 410,
   MOSTRA_HOME_DISK_FULL: 507,
   MOSTRA_HOME_GONE: 503,
+  MOSTRA_HYGIENE_SCOPE_DENIED: 403,
 };
 
 /** Options for {@link browserRoutes}. */
@@ -190,6 +191,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
       viewerId: interaction.viewerOf(session.grant.viewerId),
       // A page names only views its own link opened (Claude review finding 11).
       tokenId: session.grant.tokenId,
+      scopes: session.grant.scopes,
     };
   };
 

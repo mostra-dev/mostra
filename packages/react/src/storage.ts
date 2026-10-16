@@ -6,7 +6,8 @@
  *
  * Differences from Claude's, by design (D112): a value is any JSON value up to 1 MiB (Mostra's
  * field limit; a larger one rejects with `MOSTRA_FIELD_TOO_LARGE`, never truncated), a missing key
- * resolves `null`, and two writers of one key end with the last write.
+ * resolves `null`, and two writers of one key end with the last write (a write that keeps meeting
+ * another writer's change is refused with `MOSTRA_FIELD_CONFLICT`, never reported saved).
  */
 import { isFieldId } from "@mostra/protocol";
 import { MostraError } from "./runtime/errors.ts";
@@ -42,8 +43,11 @@ export interface ClaudeCompatibleStorage {
 
 const PREFIX = "storage.";
 
-/** How many times a write over another writer's change is retried (last write wins, D112). */
-const ATTEMPTS = 3;
+/**
+ * How many times a write over another writer's change is tried (last write wins, D112) before it
+ * is refused with `MOSTRA_FIELD_CONFLICT`.
+ */
+const ATTEMPTS = 6;
 
 function fieldIdOf(key: unknown): string {
   if (typeof key !== "string" || !isFieldId(`${PREFIX}${key}`)) {
@@ -100,8 +104,18 @@ export function createStorage(store: Store): ClaudeCompatibleStorage {
         throw new MostraError(refused.code, refused.message);
       }
       if (!store.conflict(k)) return;
+      if (attempt === ATTEMPTS - 1) break;
+      // Another writer got in between: written again over theirs, after a short, growing pause.
+      await new Promise((resolve) => setTimeout(resolve, 20 * 2 ** attempt * (1 + Math.random())));
       store.keepMine(k);
     }
+    // Another writer kept changing it: the write is refused, never reported saved, and the field
+    // keeps their value (Claude review finding 9).
+    store.takeTheirs(k);
+    throw new MostraError(
+      "MOSTRA_FIELD_CONFLICT",
+      `${key} kept changing under another writer, so this write wasn't saved.`,
+    );
   };
   return {
     async get(key, shared = false) {

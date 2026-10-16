@@ -114,6 +114,11 @@ export interface StoreOptions {
   readonly view?: ViewContext;
   /** The link's scopes (D97): without `draft` the page saves nothing. */
   readonly scopes?: readonly string[];
+  /**
+   * The viewer the page acts as, from its frame session, before the first snapshot: an edit made
+   * before it arrives is journaled like any other (Claude review finding 4).
+   */
+  readonly viewer?: Viewer;
   /** This tab's ID, unique per page load. */
   readonly tab: string;
   /** The tabs whose journal entries this page may adopt: those no longer open. */
@@ -178,6 +183,8 @@ export class Store {
   readonly #seen: Record<FieldScope, number> = { viewer: 0, artifact: 0 };
   #epoch = 1;
   #viewer: Viewer | undefined;
+  /** Whether the first snapshot arrived. */
+  #loaded = false;
   #submission: SubmissionSummary | undefined;
   /** Whether a submission closed the viewer's draft (`once`, D106). */
   #closed = false;
@@ -225,6 +232,7 @@ export class Store {
     this.#options = options;
     this.mode = options.mode;
     this.view = options.view;
+    this.#viewer = options.viewer;
     this.#timers = options.timers ?? {
       setTimeout: (fn, ms) => setTimeout(fn, ms),
       clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -324,7 +332,8 @@ export class Store {
 
   #applySnapshot(snapshot: StreamSnapshot): void {
     this.#gatewayHeard();
-    const first = this.#viewer === undefined;
+    const first = !this.#loaded;
+    this.#loaded = true;
     this.#viewer = snapshot.viewer;
     const touched = new Set<FieldKey>(this.#allKeys());
     // A snapshot replaces a document the page knows no newer revision of. One that is older than
@@ -365,7 +374,11 @@ export class Store {
     this.#changed(touched);
     if (first) {
       this.#openChannel();
-      void this.#recoverJournal().finally(() => this.#markReady());
+      void this.#recoverJournal().finally(() => {
+        this.#markReady();
+        // Edits made before the first snapshot waited for it (Claude review finding 4).
+        if (this.#pending.size > 0) this.#schedule();
+      });
     }
   }
 
@@ -748,7 +761,9 @@ export class Store {
    * outlive the page, and the journal keeps whatever they don't deliver (IN-02).
    */
   async flush(options: { readonly keepalive?: boolean } = {}): Promise<FlushOutcome> {
-    if (this.mode === "local" || this.#viewer === undefined) {
+    // Nothing is sent before the first snapshot: an edit's base must be a revision the page saw.
+    // It is journaled meanwhile and goes out once the snapshot arrives.
+    if (this.mode === "local" || this.#viewer === undefined || !this.#loaded) {
       return { revision: this.#seen.viewer, unsaved: this.unsaved() };
     }
     if (this.#debounce !== undefined) {
@@ -761,7 +776,9 @@ export class Store {
     );
     const groups = new Map<string, PendingEntry[]>();
     for (const [, entry] of ready) {
-      const group = `${entry.scope}\u0000${entry.base}`;
+      // Each edit goes out as the view it was made in (an adopted tab's may be another version's),
+      // so its version and causation name what showed it (Claude review finding 12).
+      const group = `${entry.scope}\u0000${entry.base}\u0000${entry.viewId}`;
       const list = groups.get(group) ?? [];
       list.push(entry);
       groups.set(group, list);
@@ -775,7 +792,7 @@ export class Store {
           kind: "mutation",
           viewerId: this.#viewer.id,
           tab: this.#options.tab,
-          viewId: this.view?.viewId ?? first.viewId,
+          viewId: first.viewId !== "" ? first.viewId : (this.view?.viewId ?? ""),
           scope: first.scope,
           mutationId: MutationId.create(),
           baseRevision: first.base as number,
@@ -1276,6 +1293,14 @@ export class Store {
     // A value another writer changed that the page hasn't got: the page doesn't show what would
     // be submitted until a snapshot brings it.
     if (this.#unknown.size > 0) await this.#resync();
+    if (this.#seen.viewer < flushed.revision) {
+      // The page's own saves landed, but its stream hasn't shown everything up to them: another
+      // writer may have changed a field in between. It names only what it has shown, which the
+      // gateway refuses as moved, and fetches the rest, so the viewer sees it and submits again
+      // (FAILURE_MODEL §4; Claude review finding 3).
+      void this.#resync();
+      return { revision: this.#seen.viewer, unsaved: this.unsaved(), blockers: this.blockers() };
+    }
     return {
       revision: Math.max(this.#seen.viewer, flushed.revision),
       unsaved: this.unsaved() || this.#unknown.size > 0,

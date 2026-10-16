@@ -159,6 +159,22 @@ describe("Mostra's differences, by design (D112)", () => {
     expect(store.conflict(fieldKey("viewer", "storage.status"))).toBeFalsy();
   });
 
+  it("refuses a write another writer keeps changing, never resolving it as saved (Claude review finding 9)", async () => {
+    const { storage: s, gateway, store } = await storage();
+    let other = 0;
+    gateway.beforeMutate = (request) => {
+      if (request.ops.some((op) => op.id === "storage.votes")) {
+        other += 1;
+        gateway.write("artifact", { "storage.votes": 100 + other }, { quiet: true });
+      }
+    };
+    await expect(s.set("votes", 42, true)).rejects.toMatchObject({ code: "MOSTRA_FIELD_CONFLICT" });
+    gateway.beforeMutate = undefined;
+    // The field keeps the other writer's value, with no conflict left open.
+    expect(gateway.docs.artifact.fields.get("storage.votes")?.value).toBe(100 + other);
+    expect(store.conflict(fieldKey("artifact", "storage.votes"))).toBeFalsy();
+  });
+
   it("resolves a write only once Mostra has it: offline, set waits (GPT review finding 10)", async () => {
     const { storage: s, gateway } = await storage();
     gateway.offline = true;

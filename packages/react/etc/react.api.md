@@ -11,6 +11,7 @@ import { FieldScope } from '@mostra/protocol';
 import { SubmissionSummary } from '@mostra/protocol';
 import { SubmitBlocker } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
+import { Viewer } from '@mostra/protocol';
 
 export { ArtifactManifest }
 
@@ -117,6 +118,7 @@ export interface ShellConnection {
     readonly session: {
         readonly csrf: string;
         readonly scopes: readonly string[];
+        readonly viewer?: Viewer;
     };
     readonly shellOrigin: string;
 }

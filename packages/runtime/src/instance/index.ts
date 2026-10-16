@@ -314,6 +314,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         artifact,
         log,
         home: () => readHomeSettings(home.path).submitChannels,
+        expected: () =>
+          Object.entries(readHomeSettings(home.path).expectedPorts ?? {})
+            .filter(([, ports]) => ports.includes("trustedControls"))
+            .map(([owner]) => owner),
         registrant: () => server.registrants("trustedControls").at(-1),
         call: (session, params) =>
           server.callSession(
