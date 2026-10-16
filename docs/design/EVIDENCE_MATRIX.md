@@ -45,7 +45,7 @@ v1 requirements: 135. Owned exactly once: 135. Not in v1 (D16): EX-06 (v1.x), EX
 | IN-10 | WP-06 | I, C | wait level and edge semantics; timeout returns still_waiting with a cursor and later wait returns the event (CLI, protocol, SDK) | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-11 | WP-06 | I | Results JSON validates against the schema; Markdown golden includes answers, choices, comments with crop paths, versions, runs | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-12 | WP-06 | I, C | Host down during submit: submission durable, delivery pending, replay in order on reconnect; crash after host ack redelivers same deliveryId | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
-| IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
+| IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | AC-01 | WP-08 | I | Fixture action reads a file, spawns a process and calls the network with no Mostra restriction (integration) | unverified |
 | AC-02 | WP-08 | I, B | Run streams progress, log and partial results; survives tab reload and re-attaches; final event recorded | unverified |
 | AC-03 | WP-08 | I, B | Double click and two tabs with an explicit key send once to a counting fake server | unverified |
