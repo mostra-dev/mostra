@@ -5,24 +5,60 @@
  * or hang without taking the gateway or another artifact with them; secrets reach server code by
  * name and never anything Mostra keeps; live sources flow without durable events.
  */
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { type ChildProcess, spawn } from "node:child_process";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { deserializeAll, type Frame } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clientKey, FakeMail, openPage, type RunState, resultOf } from "../action-page.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
-import { eventually } from "../support.ts";
+import { eventually, tempDir } from "../support.ts";
 
 const MAIL_TOKEN = "tok-live-9f8e7d6c5b4a";
 
-describe("workers, actions and live data (WP-08)", () => {
+/** `@mostra/worker`'s built entry, which both launchers run. */
+const WORKER_MAIN = fileURLToPath(new URL("../../../worker/dist/main.js", import.meta.url));
+const WORKER_HOST = fileURLToPath(new URL("../fixtures/worker-host.mjs", import.meta.url));
+
+/** Starts the separately started worker host (D124) for a home, and waits until it listens. */
+async function startWorkerHost(home: string): Promise<{ socket: string; process: ChildProcess }> {
+  const socket = join(tempDir("wh", true), "host.sock");
+  const child = spawn(
+    process.execPath,
+    [WORKER_HOST, "--socket", socket, "--home", home, "--worker", WORKER_MAIN],
+    { stdio: ["ignore", "pipe", "inherit"] },
+  );
+  await new Promise<void>((resolve, reject) => {
+    child.stdout?.once("data", () => resolve());
+    child.once("exit", (code) => reject(new Error(`worker host exited (${code})`)));
+  });
+  return { socket, process: child };
+}
+
+// The action suite runs against both launchers: the local one, and a worker host started on its
+// own, reached over a socket with only a version reference and serializable messages (D124).
+describe.each([
+  ["the local launcher", false],
+  ["a worker host started on its own, over a socket (D124)", true],
+])("workers, actions and live data (WP-08), through %s", (_launcher, remote) => {
   const gateway = new GatewayHome();
   const mail = new FakeMail();
   let actions: Receipt & { dir: string };
+  let host: { socket: string; process: ChildProcess } | undefined;
 
   beforeAll(async () => {
     await mail.start();
-    await gateway.start({ env: { MOSTRA_TEST_WORKER_IDLE_MS: "4000" } });
+    if (remote) {
+      mkdirSync(gateway.home.home, { recursive: true, mode: 0o700 });
+      host = await startWorkerHost(realpathSync(gateway.home.home));
+    }
+    await gateway.start({
+      env: {
+        MOSTRA_TEST_WORKER_IDLE_MS: "4000",
+        ...(host ? { MOSTRA_TEST_WORKER_HOST: host.socket } : {}),
+      },
+    });
     actions = await gateway.publish("actions");
     ok(await gateway.client.call("secret/set", { name: "MAIL_URL", value: mail.url }));
     ok(
@@ -37,6 +73,7 @@ describe("workers, actions and live data (WP-08)", () => {
   afterAll(async () => {
     mail.close();
     await gateway.stop();
+    host?.process.kill("SIGTERM");
   });
 
   const workers = async () =>
@@ -63,7 +100,25 @@ describe("workers, actions and live data (WP-08)", () => {
     const second = (await (await openPage(actions.url)).call("actions.ts#pid", [])).value;
     expect(second).toBe(first);
     const ready = (await workers()).filter((w) => w.versionId === actions.versionId);
-    expect(ready).toMatchObject([{ state: "ready", pid: first }]);
+    if (!remote) {
+      expect(ready).toMatchObject([{ state: "ready", pid: first }]);
+      return;
+    }
+    // Through the host: the launch named the version by reference only, no directory, and
+    // carried no secret in its environment (D124).
+    expect(ready).toMatchObject([{ state: "ready" }]);
+    const launches = readFileSync(`${host?.socket}.launches`, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(launches).toHaveLength(1);
+    expect(launches[0]).toMatchObject({
+      artifactId: actions.artifactId,
+      version: { versionId: actions.versionId, locator: `home:versions/${actions.versionId}` },
+    });
+    expect(launches[0]).not.toHaveProperty("sourceDir");
+    expect(JSON.stringify(launches[0])).not.toContain(gateway.home.home);
+    expect(JSON.stringify(launches[0])).not.toContain(MAIL_TOKEN);
   });
 
   it("runs server code with full capability: a file, a process, the network (AC-01)", async () => {
@@ -279,7 +334,8 @@ describe("workers, actions and live data (WP-08)", () => {
     expect(await deserializeAll(read.sources[0]?.value as Frame[][])).toEqual({ n: 1 });
   });
 
-  it("reloads a watched source when its file changes (AC-07)", async () => {
+  // Watching the owner's files needs them: a launcher elsewhere has the version, not the source.
+  it.skipIf(remote)("reloads a watched source when its file changes (AC-07)", async () => {
     const page = await openPage(actions.url);
     const value = async () => {
       const source = (await page.live([{ key: "watched" }])).json<{
