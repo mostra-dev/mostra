@@ -274,12 +274,14 @@ describe("the worker process", () => {
     const harness = await startWorker();
     const idle = (await harness.peer.request("worker/ping", {})) as { blockedMs: number };
     expect(idle.blockedMs).toBeLessThan(1000);
-    const spinning = call(harness, "actions.ts#spin", [1500]);
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    const busy = (await harness.peer.request("worker/ping", {}, { timeoutMs: 1000 })) as {
-      blockedMs: number;
-      heapUsed: number;
-    };
+    const spinning = call(harness, "actions.ts#spin", [3000]);
+    // The channel thread answers while the main thread spins, with how long it has been blocked.
+    let busy = { blockedMs: 0, heapUsed: 0 };
+    const deadline = Date.now() + 2800;
+    while (busy.blockedMs <= 500 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      busy = (await harness.peer.request("worker/ping", {}, { timeoutMs: 1000 })) as typeof busy;
+    }
     expect(busy.blockedMs).toBeGreaterThan(500);
     expect(busy.heapUsed).toBeGreaterThan(0);
     expect((await spinning).value).toBe("spun");
@@ -303,12 +305,19 @@ describe("the worker process", () => {
     await harness.peer.request("worker/live.start", { key: "counter" });
     await harness.peer.request("worker/live.start", { key: "feed" });
     await harness.peer.request("worker/live.start", { key: "broken" });
-    await new Promise((resolve) => setTimeout(resolve, 1300));
-    await harness.peer.request("worker/live.stop", { key: "feed" });
     const values = (key: string) =>
       harness.notifications.filter(
         (entry) => entry.method === "server/live.value" && entry.params["key"] === key,
       );
+    // Wait for enough values, however loaded the machine is.
+    const deadline = Date.now() + 10_000;
+    while (
+      (values("counter").length < 2 || values("feed").length <= 5 || values("broken").length < 1) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await harness.peer.request("worker/live.stop", { key: "feed" });
     const counter = await Promise.all(
       values("counter").map((entry) => deserializeAll(entry.params["value"] as Frame[][])),
     );

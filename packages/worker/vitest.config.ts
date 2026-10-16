@@ -4,5 +4,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { conditions: ["@mostra/source"] },
   ssr: { resolve: { conditions: ["@mostra/source"] } },
-  test: { include: ["test/**/*.test.ts"] },
+  // Real worker processes: generous, so a loaded machine never fails a test by time alone.
+  test: { include: ["test/**/*.test.ts"], testTimeout: 30_000 },
 });
