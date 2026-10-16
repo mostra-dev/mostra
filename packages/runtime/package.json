@@ -65,6 +65,7 @@
   "devDependencies": {
     "@mostra/shell": "workspace:*",
     "@mostra/tools": "workspace:*",
+    "@mostra/warm": "workspace:*",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "@types/semver": "catalog:",

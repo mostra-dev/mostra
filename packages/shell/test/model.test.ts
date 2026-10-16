@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ARM_MS,
   allowedSubmitLabel,
+  applyControlRequests,
   controlsArmed,
   initialState,
   submitRevision,
@@ -212,5 +213,25 @@ describe("the artifact can't change a trusted control under the viewer's click (
     state = withControlRequest(state, { control: "release", submit: true }, 2).state;
     expect(state.submitLabel).toBeUndefined();
     expect(state.submitConfirm).toBe("Final answers?");
+  });
+});
+
+describe("control requests never take the state back", () => {
+  it("apply to the newest state: a draft revision an event brought stays", () => {
+    const later = withEvents(initialState(TICKET), [
+      {
+        cursor: "7" as EventRecord["cursor"],
+        artifactId: TICKET.artifactId,
+        seq: 7,
+        type: "draft.changed",
+        at: "2026-10-16T00:00:00.000Z",
+        actor: { kind: "viewer" },
+        payload: { revision: "1", epoch: 1, changes: [{ id: "notes", value: "replayed" }] },
+      },
+    ]);
+    const next = applyControlRequests(later, [{ control: "submit", label: "Send" }], 1);
+    expect(next.revision).toBe(1);
+    expect(next.draft.get("notes")?.value).toBe("replayed");
+    expect(next.submitLabel).toBe("Send");
   });
 });

@@ -37,7 +37,7 @@
       "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
       "ignore": ["test/fixtures/artifacts/**"],
-      "ignoreDependencies": ["tailwindcss", "pnpm", "@mostra/shell"],
+      "ignoreDependencies": ["tailwindcss", "pnpm", "@mostra/shell", "@mostra/warm"],
       "ignoreBinaries": ["ss", "lsof", "ps"]
     },
     "packages/warm": {

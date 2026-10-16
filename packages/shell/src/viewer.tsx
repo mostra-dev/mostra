@@ -51,6 +51,7 @@ import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
   ARM_MS,
+  applyControlRequests,
   blockers as blockersOf,
   choiceOf,
   deliveryView,
@@ -503,14 +504,11 @@ export function ViewerPage(props: {
   const armedRef = useLatest(armed);
   const releaseHeld = (): void => {
     pointerInZone.current = false;
-    let next = latestStateRef.current;
-    for (const request of heldRequests.current.splice(0)) {
-      next = withControlRequest(next, request, Date.now()).state;
-    }
-    if (next !== latestStateRef.current) {
-      latestStateRef.current = next;
-      setState(next);
-    }
+    const held = heldRequests.current.splice(0);
+    if (held.length === 0) return;
+    const now = Date.now();
+    // Applied to the newest state, never to a copy an event may have overtaken.
+    setState((current) => applyControlRequests(current, held, now));
   };
 
   /** Asks the frame to save everything; `undefined` when it doesn't answer. */
@@ -646,15 +644,15 @@ export function ViewerPage(props: {
         unsaved: params.unsaved,
       })),
     onControl: (request) => {
-      const outcome = withControlRequest(latestStateRef.current, request, Date.now());
+      const now = Date.now();
       // While the pointer is over the trusted controls, what they say and do holds still: a
-      // change waits until it leaves (Claude review finding 6).
+      // change waits until it leaves (Claude review finding 6). Either way the request is applied
+      // to the newest state: building it from `latestStateRef`, which follows renders, lost an
+      // event that arrived just before (the draft's revision, a delivery state).
       if (pointerInZone.current) heldRequests.current.push(request);
-      else {
-        latestStateRef.current = outcome.state;
-        setState(outcome.state);
-      }
-      return outcome.shown;
+      else setState((current) => applyControlRequests(current, [request], now));
+      // Whether it shows depends on the view's ticket only, which no event changes.
+      return withControlRequest(latestStateRef.current, request, now).shown;
     },
     onPage: (path) => {
       setState((current) => ({ ...current, page: path }));
