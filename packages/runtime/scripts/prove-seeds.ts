@@ -1400,6 +1400,182 @@ const SEEDS: readonly Seed[] = [
     check: e2e("a link without submit shows no trusted Submit"),
     e2e: true,
   },
+  // WP-08: workers, actions and live data. Each seed breaks one owned requirement.
+  {
+    requirement: "RT-03",
+    name: "an idle worker is never evicted",
+    file: "src/workers/pool.ts",
+    from: "    if (running.calls.size > 0 || running.live.size > 0 || running.stopping) return;",
+    to: "    return;",
+    check: integration("lifecycle.test.ts", "evicts it after idle"),
+  },
+  {
+    requirement: "RT-03",
+    name: "a worker that keeps crashing is never parked",
+    file: "src/workers/pool.ts",
+    from: "    const parked = slot.crashes.length > park.crashes;",
+    to: "    const parked = false;",
+    check: integration("lifecycle.test.ts", "parks a worker that keeps crashing"),
+  },
+  {
+    requirement: "RT-04",
+    name: "the watchdog never kills a busy-looping worker",
+    file: "src/workers/pool.ts",
+    from: "          if (!ping.waitingForSecret && ping.blockedMs > limit) {",
+    to: "          if (false) {",
+    check: integration("lifecycle.test.ts", "survives a hang"),
+  },
+  {
+    requirement: "RT-08",
+    name: "workers get no heap limit of their artifact's",
+    file: "src/workers/launcher.ts",
+    from: "          `--max-old-space-size=${spec.limits.heapMb}`,",
+    to: '          "--max-old-space-size=4096",',
+    check: integration("lifecycle.test.ts", "applies the heap limit"),
+  },
+  {
+    requirement: "RT-08",
+    name: "a daemon exits for idleness while a run is in flight",
+    file: "src/service/idle.ts",
+    from: "    const busy = Object.values(counts).some((count) => count > 0);",
+    to: "    const busy = Object.values(counts).length < 0;",
+    check: integration("lifecycle.test.ts", "stays while a run is in flight"),
+  },
+  {
+    requirement: "RT-08",
+    name: "the login service runs a daemon that exits when idle",
+    file: "src/service/unit.ts",
+    from: '  const command = [spec.node, spec.entry, "daemon", "--always-on", "--home", spec.home];',
+    to: '  const command = [spec.node, spec.entry, "daemon", "--home", spec.home];',
+    check: integration("lifecycle.test.ts", "login service unit"),
+  },
+  {
+    requirement: "AC-01",
+    name: "workers run under Node's permission model: no processes, no writes",
+    file: "src/workers/launcher.ts",
+    from: "          `--max-old-space-size=${spec.limits.heapMb}`,",
+    to: '          `--max-old-space-size=${spec.limits.heapMb}`, "--permission", "--allow-fs-read=*", "--allow-worker",',
+    check: integration("actions.test.ts", "full capability"),
+  },
+  {
+    requirement: "AC-02",
+    name: "a reloaded page can't find its keyed run again",
+    file: "src/interaction/index.ts",
+    from: "          const row = runByKey(db, page.artifactId, entry.fnId, entry.key);",
+    to: "          const row = undefined as ReturnType<typeof runByKey>;",
+    check: e2e("keeps a run going through a reload"),
+    e2e: true,
+  },
+  {
+    requirement: "AC-03",
+    name: "a key doesn't join the run it names: a double click sends twice",
+    file: "src/interaction/runs.ts",
+    from: "  if (input.key !== undefined) {",
+    to: "  if (false) {",
+    also: [{ file: "src/interaction/runs.ts", from: "    input.key ?? null,", to: "    null," }],
+    check: integration("actions.test.ts", "sends a keyed action once"),
+  },
+  {
+    requirement: "AC-03",
+    name: "a double click in the page sends twice (the hook doesn't join its run)",
+    file: "../react/src/server-hooks.ts",
+    from: "      if (inFlight.current) return inFlight.current as Promise<Awaited<R>>;",
+    to: "",
+    also: [
+      {
+        file: "src/interaction/runs.ts",
+        from: "  if (input.key !== undefined) {",
+        to: "  if (false) {",
+      },
+      { file: "src/interaction/runs.ts", from: "    input.key ?? null,", to: "    null," },
+    ],
+    check: e2e("sends a reply once"),
+    e2e: true,
+  },
+  {
+    requirement: "AC-04",
+    name: "a cancel never reaches the action's AbortSignal",
+    file: "../worker/src/worker.ts",
+    from: "          entry.controller.abort(error);",
+    to: "          void error;",
+    check: integration("actions.test.ts", "abortSignal on cancel"),
+  },
+  {
+    requirement: "AC-05",
+    name: "a signal from a run doesn't name the run as its cause",
+    file: "src/interaction/index.ts",
+    from: "          ...(input.runId !== undefined ? { causation: { runId: input.runId } } : {}),",
+    to: "",
+    check: integration("actions.test.ts", "raises signals and host events"),
+  },
+  {
+    requirement: "AC-06",
+    name: "a secret handed to server code isn't redacted",
+    file: "src/log.ts",
+    from: "    if (value.length < MIN_NAMED_SECRET_LENGTH) return;",
+    to: "    return;",
+    check: integration("actions.test.ts", "keeps secrets out"),
+  },
+  {
+    requirement: "AC-07",
+    name: "live values reach no page as they change",
+    file: "src/live/index.ts",
+    from: '    bus.publishLive(artifactId, {\n      kind: "live",',
+    to: '    void (artifactId, {\n      kind: "live",',
+    check: e2e("shows live values as they come"),
+    e2e: true,
+  },
+  {
+    requirement: "AC-07",
+    name: "a version carries Vite's hot-reload client",
+    file: "src/builder/child/spa.ts",
+    from: '    <script type="module" src="/${GENERATED}/entry.js"></script>',
+    to: '    <script type="module" src="/@vite/client"></script>\n    <script type="module" src="/${GENERATED}/entry.js"></script>',
+    check: integration("actions.test.ts", "delivers live values"),
+  },
+  {
+    requirement: "LL-04",
+    name: "an `always` source runs only while someone wants it",
+    file: "src/live/index.ts",
+    from: "        if (subscribed.has(artifactId) || always === true) add(artifactId, source.key);",
+    to: "        if (subscribed.has(artifactId)) add(artifactId, source.key);",
+    check: integration("producers.test.ts", "always"),
+  },
+  {
+    requirement: "RS-01",
+    name: "seam 3: calls share one context instead of each its own",
+    file: "../server/src/context.ts",
+    from: "  return storage.getStore();",
+    to: "  return (globalThis as { mostraLast?: ServerCallContext }).mostraLast;",
+    also: [
+      {
+        file: "../server/src/context.ts",
+        from: "  return storage.run(context, fn);",
+        to: "  (globalThis as { mostraLast?: ServerCallContext }).mostraLast = context;\n  return storage.run(context, fn);",
+      },
+    ],
+    check: integration("seams.test.ts", "seam 3"),
+  },
+  {
+    requirement: "RS-01",
+    name: "seam 4: the client runtime's entry isn't marked client code",
+    file: "../react/src/index.ts",
+    from: '"use client";\n',
+    to: "",
+    check: ["--project", "unit", "test/seams.test.ts"],
+    cwd: "../react",
+  },
+  {
+    requirement: "D124",
+    name: "a launcher elsewhere is told the owner's source directory",
+    file: "src/workers/launcher.ts",
+    from: "          const { sourceDir: _local, ...remote } = spec;",
+    to: "          const remote = spec;",
+    check: integration(
+      "actions.test.ts",
+      "calls a server function in a worker started on first need",
+    ),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -1407,7 +1583,14 @@ const root = join(runtime, "../..");
 const { values } = parseArgs({ options: { only: { type: "string" } } });
 
 function build(): void {
-  for (const name of ["@mostra/protocol", "@mostra/react", "@mostra/shell", "@mostra/runtime"]) {
+  for (const name of [
+    "@mostra/protocol",
+    "@mostra/server",
+    "@mostra/worker",
+    "@mostra/react",
+    "@mostra/shell",
+    "@mostra/runtime",
+  ]) {
     execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore" });
   }
 }

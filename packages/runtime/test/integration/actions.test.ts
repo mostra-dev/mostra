@@ -291,10 +291,11 @@ describe.each([
 
   it("delivers live values without durable events, and keeps the latest (LL-04, AC-07)", async () => {
     const page = await openPage(actions.url);
+    // The artifact's newest cursor, read to the end, once the page is open.
     const before = ok<{ cursor: string }>(
       await gateway.client.call("events/read", {
         filter: { artifacts: [actions.artifactId] },
-        limit: 1,
+        limit: 1000,
       }),
     );
     expect((await page.live([{ key: "counter" }, { key: "ticks", window: 10 }])).status).toBe(200);
@@ -320,7 +321,14 @@ describe.each([
         limit: 100,
       }),
     );
-    expect(after.events.filter((event) => event.type.startsWith("live"))).toEqual([]);
+    expect(after.events.filter((event) => !event.type.startsWith("view."))).toEqual([]);
+    // Live data never rides a hot-reload channel: no version carries Vite's client (AC-07, D09).
+    const assets = join(gateway.home.home, "versions", actions.versionId, "client");
+    const built = readdirSync(assets, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(js|html)$/.test(file))
+      .map((file) => readFileSync(join(assets, file), "utf8"))
+      .join("\n");
+    expect(built).not.toMatch(/@vite\/client|import\.meta\.hot|vite-hmr|__vite_ws/);
     // A push writes the same source (D56).
     const pushed = ok<{ revision: string }>(
       await gateway.client.call("live/push", {
