@@ -154,7 +154,7 @@ CHECKS = {
  "MC-01": "MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex",
  "MC-02": "ext-apps reference host renders the export; fields, submit and actions round-trip; CSP and variables declared; URL fallback offered; external: Claude Desktop and VS Code",
  "MC-03": "Each unavailable feature shows its explicit message in the MCP App (browser)",
- "MC-04": "Protocol suite against the remote endpoint; external: a claude.ai custom connector and a ChatGPT custom MCP server (formerly developer mode; write tools need a Business or Enterprise workspace, VERIFIED_FACTS) create, open and submit an artifact on a test deployment",
+ "MC-04": "Protocol suite against the remote endpoint; external: a claude.ai custom connector and a ChatGPT custom MCP server (formerly developer mode; write tools need a Business or Enterprise workspace, VERIFIED_FACTS) create, open and submit an artifact on a test deployment, opening it through its full-page link. Inline persistence of exported MCP Apps needs WP-17's exporter and app-only tools, which come later: WP-17 repeats this check inline through the remote MCP server (check boundary, D125)",
  "EX-01": "Six contract packages published at 0.x with independent versions; compatibility tests in and out of range",
  "EX-02": "`mostra plugin validate` accepts valid manifests and reports each invalid field",
  "EX-03": "An unchanged third-party shadcn registry item installs; Mostra packs install through shadcn too",
