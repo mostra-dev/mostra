@@ -8,8 +8,10 @@
 import {
   type Actor,
   type Batches,
+  createDiagnostic,
   type Frame,
   isFinalRunStatus,
+  RpcError,
   RUN_LOG_MAX,
   RUN_LOG_TRUNCATED,
   RunId,
@@ -92,7 +94,17 @@ export function createOrJoinRun(db: LedgerDb, input: NewRun): { row: RunRow; joi
     input.artifactId,
     input.clientKey,
   );
-  if (retried) return { row: retried, joined: true };
+  if (retried) {
+    // A client key is one page's request: another viewer's never joins it.
+    if (retried.viewer_id !== input.viewerId) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+          message: "This clientKey belongs to another request; send a new one.",
+        }),
+      );
+    }
+    return { row: retried, joined: true };
+  }
   if (input.key !== undefined) {
     const keyed = runByKey(db, input.artifactId, input.fnId, input.key);
     if (keyed) return { row: keyed, joined: true };

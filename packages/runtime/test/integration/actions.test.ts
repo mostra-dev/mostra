@@ -181,6 +181,28 @@ describe.each([
     expect(retry.runId).toBe(first.runId);
   });
 
+  it("shares a keyed run with every viewer, and keeps a run without a key its viewer's own (D104, D130)", async () => {
+    const mine = await openPage(actions.url);
+    const ben = await openPage(
+      (await gateway.link(actions.artifactId, { viewer: { ref: "ben", name: "Ben" } })).url,
+    );
+    // A run without a key: Ben can't read it, cancel it, or take its client key.
+    const ck = clientKey();
+    const own = (await mine.run("actions.ts#slow", [5_000], undefined, ck)).json<RunState>();
+    expect((await ben.attach({ runIds: [own.runId] })).json<{ runs: RunState[] }>().runs).toEqual(
+      [],
+    );
+    expect((await ben.cancel(own.runId)).status).toBe(404);
+    expect((await ben.run("actions.ts#slow", [5_000], undefined, ck)).status).toBe(400);
+    expect((await mine.cancel(own.runId)).status).toBe(200);
+    // A keyed run is one invocation of the artifact: Ben's click joins it and sees how it ended.
+    const key = `shared.${Date.now()}`;
+    const first = (await mine.run("actions.ts#echo", ["once"], key)).json<RunState>();
+    const joined = (await ben.run("actions.ts#echo", ["once"], key)).json<RunState>();
+    expect(joined).toMatchObject({ runId: first.runId, joined: true });
+    expect((await ben.settled(first.runId)).status).toBe("succeeded");
+  });
+
   it("aborts a run's abortSignal on cancel, and the run ends cancelled (AC-04)", async () => {
     const page = await openPage(actions.url);
     const started = (await page.run("actions.ts#slow", [30_000])).json<RunState>();

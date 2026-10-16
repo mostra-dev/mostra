@@ -820,6 +820,7 @@ Additive to revision `2026-10-15`, which is unreleased:
 - **Results stream:** a run stores its result as serializer batches. An `AsyncIterable` result yields its items as later batches, and `useAction` shows them as `partial` (additive to INTERFACES §2.3); the stored batches replay to a page that attaches late.
 - **`live`** reads live sources (`{ viewId, keys: [{ key, window?, refresh? }] }`) and keeps their producers running for this view for a minute; pages renew every 20 s.
 - **Ephemeral messages:** run and live updates go out on the page's stream as `event: run` and `event: live` without an `id`, so they never move its cursor, and in a poll's `ephemeral`. They are lossy and coalesced; a page that misses one (a gap in a run's offsets, a skipped live revision, a reconnect) reads again with `runs/attach` or `live`. Nothing of them is a durable event (LL-04).
+- **Who sees a run** (D104): a keyed run belongs to the artifact, since its key makes it one invocation for everyone whose link may run that function, so another viewer's click joins it and sees its progress and end; a run without a key is its viewer's own (other viewers can't attach, cancel or follow it, and a client key never joins another viewer's run). Run states carry no arguments.
 - **Results' `actions`** list the runs started in the submitting view, captured in the submission's immutable snapshot at submit time (at most 100), so a redelivery carries the same list (IN-05).
 
 ### D131. Limits and secrets (delegated, M22)

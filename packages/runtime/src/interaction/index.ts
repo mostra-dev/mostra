@@ -378,6 +378,14 @@ function fieldsForPage(
 }
 
 /** Creates the interaction core. */
+/**
+ * Whether a page may see a run (D104, D130): a keyed run belongs to the artifact, since its key
+ * makes it one invocation for everyone who may run it; a run without a key is its viewer's own.
+ */
+function runVisible(row: RunRow, page: PageIdentity): boolean {
+  return row.key !== null || row.viewer_id === page.viewerId;
+}
+
 export function createInteraction(options: InteractionOptions): Interaction {
   const { ledger, log, hosts } = options;
   const outbox = new Outbox({
@@ -786,7 +794,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         const rows = new Map<string, RunRow>();
         for (const runId of input.runIds ?? []) {
           const row = runById(db, page.artifactId, runId);
-          if (row) rows.set(row.id, row);
+          if (row && runVisible(row, page)) rows.set(row.id, row);
         }
         for (const entry of input.keyed ?? []) {
           const row = runByKey(db, page.artifactId, entry.fnId, entry.key);
@@ -799,7 +807,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       return ledger.read((db) => {
         viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId);
         const row = runById(db, page.artifactId, runId);
-        if (!row) throw runNotFound(runId);
+        if (!row || !runVisible(row, page)) throw runNotFound(runId);
         return row;
       });
     },
