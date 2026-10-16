@@ -1,7 +1,8 @@
 /**
  * The home's settings (`config.json`, DATA_MODEL §1): what hosts set through `HomeConfig` and
  * what every later client of the home then shares: the dependency policy (D43, D95), the home's
- * submission policy (D102) and the ports each host always provides (D105).
+ * submission policy (D102), the ports each host always provides (D105) and the submit channels the
+ * home accepts (D108).
  * Written atomically (a temporary file, then a rename); read fresh by whoever needs a setting, so
  * a host's change applies to the next request.
  */
@@ -22,12 +23,19 @@ export interface HomeSettings {
   readonly submission?: SubmissionPolicy;
   /** The ports each host always provides, by its client name (D105). */
   readonly expectedPorts?: Readonly<Record<string, readonly string[]>>;
+  /** The submit channels the home accepts, when a host narrowed them (D108). */
+  readonly submitChannels?: readonly ("shell" | "artifact")[];
 }
 
 const Settings = z.looseObject({
   dependencies: z.enum(["auto", "explicit"]).optional(),
   submission: SubmissionPolicy.optional(),
   expectedPorts: z.record(z.string(), z.array(z.string())).optional(),
+  submitChannels: z
+    .array(z.enum(["shell", "artifact"]))
+    .min(1)
+    .max(2)
+    .optional(),
 });
 
 /** The settings file of a home. */

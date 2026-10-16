@@ -7,7 +7,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import { parseSync } from "oxc-parser";
+import type { FieldCoverage } from "../coverage.ts";
 import type { PageRoute, ServerFunctionEntry } from "../types.ts";
+import { scanFields } from "./fields.ts";
 
 interface Node {
   readonly type: string;
@@ -57,6 +59,8 @@ export interface ScanResult {
   readonly liveSources: readonly { readonly key: string }[];
   readonly hasLive: boolean;
   readonly pages: readonly PageRoute[];
+  /** The field IDs the artifact's own code can use (D109). */
+  readonly fields: FieldCoverage;
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -392,5 +396,13 @@ export async function scanArtifact(sourceDir: string): Promise<ScanResult> {
     }
     byPath.set(page.path, page.file);
   }
-  return { serverModules, liveSources, hasLive: files.includes("live.ts"), pages, diagnostics };
+  const fields = await scanFields(sourceDir, files);
+  return {
+    serverModules,
+    liveSources,
+    hasLive: files.includes("live.ts"),
+    pages,
+    fields,
+    diagnostics,
+  };
 }

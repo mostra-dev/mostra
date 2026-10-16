@@ -15,7 +15,10 @@ import {
   ViewId,
 } from "./ids.ts";
 import { ArtifactLink, SubmissionPolicy } from "./manifest.ts";
+import type { SubmitChannel } from "./view.ts";
 import { wireRegistry } from "./wire-registry.ts";
+
+export { ControlsPolicy, SubmitChannel, TrustedControl } from "./view.ts";
 
 // ── Viewers and actors ────────────────────────────────────────────────────────────────────
 
@@ -363,9 +366,6 @@ export const WaitCondition: z.ZodType<WaitCondition> = z
 
 // ── Submissions, deliveries and results ──────────────────────────────────────────────────
 
-/** Where a submit came from (D40). */
-export type SubmitChannel = "shell" | "artifact";
-
 /** A delivery's state (FAILURE_MODEL §4). */
 export type DeliveryState = "pending" | "delivered" | "rejected" | "undeliverable";
 
@@ -384,6 +384,11 @@ export interface DeliveryStatus {
   readonly attempts: number;
   /** The host's reason, for a rejection. */
   readonly reason?: string;
+  /**
+   * `true` while a pending delivery waits: its host isn't connected, or an attempt failed and it
+   * will be retried (D47's "Pending delivery"). Absent while the first attempt is under way.
+   */
+  readonly waiting?: true;
   /** When its state last changed. */
   readonly updatedAt: string;
 }
@@ -396,6 +401,7 @@ export const DeliveryStatus: z.ZodType<DeliveryStatus> = z
     state: z.enum(["pending", "delivered", "rejected", "undeliverable"]),
     attempts: z.int().min(0),
     reason: z.string().exactOptional(),
+    waiting: z.literal(true).exactOptional(),
     updatedAt: z.iso.datetime(),
   })
   .register(wireRegistry, {
@@ -427,6 +433,8 @@ export interface SubmissionSummary {
   readonly digest: string;
   /** Every delivery's state, summed up: the worst of them. */
   readonly delivery: DeliveryState;
+  /** Each host's delivery, so a viewer sees which host has it (IN-13). */
+  readonly deliveries?: readonly DeliveryStatus[];
   /** `true` when this submit repeated an earlier one and got it back (D22). */
   readonly duplicate?: true;
 }
@@ -445,6 +453,7 @@ export const SubmissionSummary: z.ZodType<SubmissionSummary> = z
     draftRevision: DocumentRevision,
     digest: z.string().regex(/^[0-9a-f]{64}$/),
     delivery: z.enum(["pending", "delivered", "rejected", "undeliverable"]),
+    deliveries: z.array(DeliveryStatus).readonly().exactOptional(),
     duplicate: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {

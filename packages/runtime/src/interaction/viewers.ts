@@ -5,6 +5,7 @@
  * it, and a submission takes its version from it.
  */
 import {
+  type ControlsPolicy,
   createDiagnostic,
   RpcError,
   type Viewer,
@@ -31,6 +32,18 @@ export interface ViewRow {
   readonly viewer_id: string;
   readonly token_id: string | null;
   readonly opened_cursor: number | null;
+  /** The channels and controls in force for the view (D108); null for views from before them. */
+  readonly controls_json: string | null;
+}
+
+/** Both channels, every control: D40's standalone default. */
+export const OPEN_CONTROLS: ControlsPolicy = { submitChannels: ["shell", "artifact"] };
+
+/** The channels and controls a view was opened with (D108). */
+export function viewControls(view: ViewRow): ControlsPolicy {
+  return view.controls_json === null
+    ? OPEN_CONTROLS
+    : (JSON.parse(view.controls_json) as ControlsPolicy);
 }
 
 /** The `external_ref` of the home's one local user. */
@@ -103,6 +116,8 @@ export function openView(
     readonly versionId: string;
     readonly viewerId: string;
     readonly tokenId?: string | undefined;
+    /** The channels and controls in force for this view (D108). */
+    readonly controls?: ControlsPolicy;
   },
 ): string {
   const id = ViewId.create();
@@ -113,7 +128,7 @@ export function openView(
     payload: { viewId: id, versionId: input.versionId, viewerId: input.viewerId },
   });
   db.run(
-    "INSERT INTO view (id, artifact_id, version_id, viewer_id, token_id, opened_cursor, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO view (id, artifact_id, version_id, viewer_id, token_id, opened_cursor, opened_at, controls_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     id,
     input.artifactId,
     input.versionId,
@@ -121,6 +136,7 @@ export function openView(
     input.tokenId ?? null,
     Number(cursor),
     new Date().toISOString(),
+    JSON.stringify(input.controls ?? OPEN_CONTROLS),
   );
   return id;
 }

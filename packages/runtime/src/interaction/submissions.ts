@@ -13,6 +13,7 @@ import {
   DeliveryId,
   type DeliveryState,
   type DeliveryStatus,
+  type OrphanedField,
   RpcError,
   SubmissionId,
   type SubmissionPolicy,
@@ -25,7 +26,7 @@ import { appendEvent } from "./events.ts";
 import { documentFor, type FieldRow } from "./fields.ts";
 import { storedPolicy } from "./policy.ts";
 import { raiseSubmitSignal, SUBMIT_SIGNAL } from "./signals.ts";
-import { viewer as viewerById, viewFor } from "./viewers.ts";
+import { type ViewRow, viewControls, viewer as viewerById, viewFor } from "./viewers.ts";
 
 /** The most signals a snapshot keeps: the view's newest. */
 export const SNAPSHOT_SIGNALS_MAX = 100;
@@ -118,6 +119,7 @@ interface DeliveryRow {
   readonly state: DeliveryState;
   readonly attempts: number;
   readonly reason: string | null;
+  readonly last_error_json: string | null;
   readonly updated_at: string;
 }
 
@@ -154,6 +156,9 @@ export function deliveriesOf(db: LedgerDb, submissionId: string): DeliveryStatus
       state: row.state,
       attempts: row.attempts,
       ...(row.reason !== null ? { reason: row.reason } : {}),
+      ...(row.state === "pending" && row.last_error_json !== null
+        ? { waiting: true as const }
+        : {}),
       updatedAt: row.updated_at,
     }));
 }
@@ -180,7 +185,10 @@ export function submissionSummary(db: LedgerDb, row: SubmissionRow): SubmissionS
     staleView: row.stale_view === 1,
     draftRevision: String(row.draft_revision),
     digest: row.digest,
-    delivery: overallDelivery(deliveriesOf(db, row.id)),
+    ...(() => {
+      const deliveries = deliveriesOf(db, row.id);
+      return { delivery: overallDelivery(deliveries), deliveries };
+    })(),
   };
 }
 
@@ -235,6 +243,37 @@ function snapshotFields(rows: readonly FieldRow[]): Record<string, SnapshotField
   );
 }
 
+/**
+ * Refuses a submit through a channel the view doesn't accept (D40, D108):
+ * `MOSTRA_SUBMIT_CHANNEL_DENIED`.
+ */
+export function assertChannel(view: ViewRow, channel: SubmitChannel): void {
+  if (viewControls(view).submitChannels.includes(channel)) return;
+  throw new RpcError(
+    createDiagnostic("MOSTRA_SUBMIT_CHANNEL_DENIED", {
+      message:
+        channel === "artifact"
+          ? "This view takes submissions and choices from the shell's trusted controls only."
+          : "This view takes submissions and choices from the artifact's own code only.",
+    }),
+  );
+}
+
+/**
+ * Draft fields a view's version doesn't cover, as results deliver them (D42, D109). A field
+ * records the version whose view last wrote it; one written before Mostra kept that (an
+ * unreleased ledger of WP-06's time, which migration 6 fills from its events where it can) is
+ * attributed to version 1, the earliest it can have come from.
+ */
+export function orphansOf(rows: readonly FieldRow[]): OrphanedField[] {
+  return rows.map((row) => ({
+    id: row.field_id,
+    ...(row.label !== null ? { label: row.label } : {}),
+    value: JSON.parse(row.value_json) as unknown,
+    fromVersion: row.version_number ?? 1,
+  }));
+}
+
 /** What a submit names. */
 export interface SubmitInput {
   readonly artifactId: string;
@@ -249,6 +288,8 @@ export interface SubmitInput {
   readonly channel: SubmitChannel;
   /** The hosts to deliver to (D105): registered or expected now; empty for the built-in adapter. */
   readonly owners: readonly string[];
+  /** Whether the view's version covers a field ID (D109); the others are the orphans. */
+  readonly covers: (versionId: string) => (fieldId: string) => boolean;
 }
 
 /** What a submit did. */
@@ -265,8 +306,9 @@ export interface SubmitOutcome {
  * `MOSTRA_SUBMIT_REVISION_MOVED` when the draft changed since the viewer saw it.
  */
 export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
-  // 1. The view, and through it the exact version the viewer saw.
+  // 1. The view, and through it the exact version the viewer saw, and the channels it accepts.
   const view = viewFor(db, input.viewId, input.artifactId, input.viewerId, input.tokenId);
+  assertChannel(view, input.channel);
   const draft = documentFor(db, input.artifactId, input.viewerId, true);
   // A repeat of the same submit (double click, retry, a second request in flight) gets the
   // submission it made (D22), whatever has happened since.
@@ -318,7 +360,7 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   const state = documentFor(db, input.artifactId, null);
   const stateRows = state
     ? db.all<FieldRow>(
-        "SELECT * FROM field WHERE document_id = ? AND deleted = 0 AND orphaned_from_version IS NULL ORDER BY field_id",
+        "SELECT * FROM field WHERE document_id = ? AND deleted = 0 ORDER BY field_id",
         state.id,
       )
     : [];
@@ -326,6 +368,7 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     "SELECT number FROM version WHERE id = ?",
     view.version_id,
   ) as { number: number };
+  const covered = input.covers(view.version_id);
   const latest =
     artifact.latest_version_id === null
       ? undefined
@@ -415,19 +458,13 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     ...(staleView && latest ? { latestVersion: latest.number } : {}),
     draft: {
       revision: String(draft.revision),
-      fields: snapshotFields(draftRows.filter((row) => row.orphaned_from_version === null)),
+      fields: snapshotFields(draftRows.filter((row) => covered(row.field_id))),
     },
     ...(state
       ? { state: { revision: String(state.revision), fields: snapshotFields(stateRows) } }
       : {}),
-    orphaned: draftRows
-      .filter((row) => row.orphaned_from_version !== null)
-      .map((row) => ({
-        id: row.field_id,
-        ...(row.label !== null ? { label: row.label } : {}),
-        value: JSON.parse(row.value_json) as unknown,
-        fromVersion: row.orphaned_from_version as number,
-      })),
+    // Fields the view's version doesn't cover are delivered too, labelled (D42, D109).
+    orphaned: orphansOf(draftRows.filter((row) => !covered(row.field_id))),
     signals,
     ...(signalsOmitted > 0 ? { signalsOmitted } : {}),
     ...(signalsCompacted ? { signalsCompacted: true as const } : {}),

@@ -11,6 +11,8 @@ export const submitDiagnosticCodes = [
   "MOSTRA_SUBMIT_NOT_FOUND",
   "MOSTRA_SUBMIT_VIEW_INVALID",
   "MOSTRA_SUBMIT_SIGNAL_INVALID",
+  "MOSTRA_SUBMIT_CHANNEL_DENIED",
+  "MOSTRA_SUBMIT_BLOCKED",
   // gen:codes
 ] as const;
 
@@ -83,6 +85,28 @@ export const submitDiagnostics: AreaCatalog<SubmitDiagnosticCode> = {
       explanation:
         "A signal names something the artifact wants a host's attention for, such as `ping-agent`. Its name is 1 to 64 characters of letters, digits, `.`, `_` and `-`, starting with a letter or digit, and its payload is JSON of at most 64 KiB. This one broke one of those rules. The name `submit` is reserved for submissions.",
       fix: "Rename the signal or shrink its payload; put large data into a field or artifact state and send its ID in the payload.",
+    },
+  },
+  MOSTRA_SUBMIT_CHANNEL_DENIED: {
+    severity: "error",
+    phase: "runtime",
+    title: "Submit channel not allowed",
+    hint: "Let the viewer submit with the shell's trusted Submit; this host doesn't take submissions from artifact code.",
+    docs: {
+      explanation:
+        "A submission comes through one of two channels (D40): the shell's trusted Submit (`shell`), which only a person can press, or the artifact's own code (`artifact`, `useSubmit().submit()` and `useChoice().choose()`). The host decides which it accepts (D108): through `HomeConfig.submitChannels` for the home, or its `trustedControls` port for each artifact. This view allows only the other channel, so Mostra refused the submit or the choice. `useSubmit().allowed` is `false` in such a view.",
+      fix: "Ask the viewer to press the shell's Submit (relabel it with `useSubmitControl`), and use `useChoice(id, { candidates })` to have the shell render a trusted Choose. Check `allowed` before showing an in-page submit button.",
+    },
+  },
+  MOSTRA_SUBMIT_BLOCKED: {
+    severity: "error",
+    phase: "runtime",
+    title: "Answers missing before submit",
+    hint: "Fill in the fields this diagnostic lists, fix their errors or resolve their conflicts, then submit again.",
+    docs: {
+      explanation:
+        "Before a submit, the shell and the client runtime check every mounted field (D106): a `required` field without a value, a value its `validate` rejects, or a conflict the viewer hasn't resolved blocks the submit. The diagnostic lists the blockers with their field IDs and labels; `useSubmit().blockers` lists them before anyone submits. Nothing was submitted.",
+      fix: "Show `useSubmit().blockers` next to your submit button, or let the shell list them by label. Answer the required fields, fix the invalid values, and keep or take the conflicting values, then submit again.",
     },
   },
   // gen:entries

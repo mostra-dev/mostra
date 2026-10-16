@@ -26,6 +26,7 @@
 | M16 | 2026-10-14T09:17:25.908Z | WP-05 questions. Delegated all ten with "I trust you to make the most robust, appropriate, high-quality, enterprise-grade … good-engineering decision": the check boundaries for the `mostra doctor` warning, MCP over HTTP and `mostra dev`; the `action:*` scope; rotation; the `viewer` parameter; the URL and session shape; framing ("Brilliant catch!"); one version per browser and artifact origin; the bind flag. Asked that every split between packages costs no robustness and never limits the later package. The Claude Opus review is decided at the end of the package. |
 | M17 | 2026-10-14T19:33:32.530Z | WP-05's Claude Opus review (13 findings). Delegated all three questions with the same words: a link that names a version opens only that version; the frame can't navigate the viewer's tab, with `ui/open-link` instead; signals need a scope of their own. Asked for the balance between robustness, quality, capability and good code on one side and security on the other. |
 | M18 | 2026-10-15T08:07:02.531Z | WP-06 questions. Delegated all eight (check boundaries, the policy in force, epochs, views, the `viewer` parameter, delivery owners and mirrors, prose, the first browser-protocol revision) with "I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering decision", and asked that each be brainstormed meticulously. |
+| M19 | 2026-10-15T12:39:18.647Z | WP-07 questions. Delegated all eight (the channel policy's source, the orphan model, defaults the viewer saw, check boundaries, prose, the Claude review, `window.storage` limits, Choose's candidates) with "I trust you to make the most robust … optimal decision", asking for the most robust, highest-capability choice in each. Raised the Claude Opus review limit to ten of Mostra's packages. Rules aren't frozen: one that is unnecessary or significantly limits capability can be discussed. Work that later packages build on is done so it helps them as a baseline and never limits them. |
 
 ## Program-level decisions
 
@@ -494,7 +495,7 @@ Merging to `main` and publishing packages still follow acceptance (D36). Deletin
 Every work package gets an independent code review before it is presented to Mirza, and every finding is fixed or answered in the progress report:
 1. **GPT-6.1-Sol through `codex review`**, effort high, on the pull request's diff. A GPT-only live call, announced as D34 requires, with its tokens recorded.
 2. **GitHub Copilot code review** runs automatically on every push to a pull request (the `main` ruleset). Its comments are review threads, and the ruleset requires every thread resolved before merging.
-3. **Claude Opus 5.5** also reviews the truly substantial packages, at most one in five of Mostra's WPs. It waits for Mirza's approval like every Anthropic batch (D34).
+3. **Claude Opus 5.5** also reviews the truly substantial packages, up to ten of Mostra's packages (D114; at first at most one in five). It waits for Mirza's approval like every Anthropic batch (D34).
 
 Reviews find defects; they never replace the evidence table. The WP-01 review (13 findings, all fixed with regression tests) showed the value: a green gate suite still had false negatives. *Source:* M12.
 
@@ -672,6 +673,47 @@ The manifest requests a policy and the host decides (D39, D63). At every publish
 
 ### D107. Waiting for the next respondent under `once` per-viewer (delegated under M18; found by the Claude review)
 Amends D103. Under `once` with scope `per-viewer` (a survey: one submission per person), `wait --until submitted` is level-triggered only when the caller gives no cursor, so "has anyone answered?" returns at once. After an explicit `after` cursor it is edge-triggered, as under `epochs`: the first submission after the cursor satisfies it, so an agent can wait for each next respondent without being handed the first one forever. `once` per-artifact stays level-triggered whatever the cursor (exactly one submission exists or will). *Source:* finding 5 of WP-06's Claude Opus review; Mirza delegated WP-06's interaction semantics at M18, and the choice is shown to him at the candidate.
+
+### D108. The submit channel policy in force (delegated, M19)
+Fills D40 and INTERFACES §6 and §7, which name both a home setting and the `trustedControls` port:
+- **The home's default.** `HomeConfig.submitChannels` (`["shell"]`, `["artifact"]` or both) is kept in `config.json` like the other settings, so it holds while its host is away. Without it, both channels are allowed (D40).
+- **The host's answer per artifact.** When a connected client registered `trustedControls`, the gateway asks its `policy` when a frame ticket is issued, bounded at 5 seconds because the page is waiting. The answer's `submitChannels` and `controls` replace the home's default for that view. A call that fails or times out narrows the view to the shell channel and logs why: a host that took over the policy never has it widened by its own outage.
+- **One record per view.** The channels and controls in force are stored on the view (`view.controls_json`), so the shell, the page and the server judge a view by the same answer. The shell renders only the controls the view allows. The artifact's `submit()`, and its writes to `review.<set>.choice`, are refused with `MOSTRA_SUBMIT_CHANNEL_DENIED` where the artifact channel isn't allowed. Every submission records its channel (D40).
+- **Activation.** After a trusted control's change commits, a registered `trustedControls.activated` is told, best effort and never retried, like draft mirrors (D105).
+
+### D109. Field coverage and orphans (delegated, M19)
+Fills D42 and DATA_MODEL §3, which left open how Mostra knows which fields a version has:
+- **Coverage is static.** The builder records in `registry.json` every field ID the version's code can use: literal IDs of `useField`, `useChoice` (`review.<set>.choice`) and the form adapter; template IDs as patterns; `storage.*` where the code uses `window.storage`. A field ID the scan can't know (a computed one, or one an MDX page or a package passes) makes the version *open*: it covers every ID, so nothing is ever orphaned by a guess. A version built before WP-07 has no `fields` and is open too. WP-18 and WP-20 extend the scan to kit inputs and review sets.
+- **Orphans are derived, never stored.** A draft field is an orphan of a view when the view's version doesn't cover it. A submission computes its `orphaned` section in the submit transaction against the submitting view's version; the banner counts orphans against the newer version; the "Not carried over" panel lists them against the view's own. Nothing moves or is dropped: the field stays in the draft, a version that covers it shows it again, and every orphan is delivered (D42).
+- **`fromVersion`.** Migration 6 renames DATA_MODEL's unused `field.orphaned_from_version` to `field.version_number`: the number of the version whose view last wrote the field, which is an orphan's `fromVersion`.
+- **No fields declared.** A version whose code uses none of these (it writes the browser protocol itself, or keeps no fields) is open too: found while building, when such a version orphaned every answer it saved.
+
+### D110. A submission contains what the viewer saw (delegated, M19)
+`useField(id, initial)` stores nothing until the value changes, as `useState` would. Before any submit, through either channel, the client runtime writes the initial value of every mounted viewer field the draft has never stored, then flushes every pending save. A submission therefore holds the defaults the viewer saw and accepted, and the shell's required-field check, which reads the server's draft, agrees with the page. Fields that aren't mounted (another page, a closed section) were never seen and stay out.
+
+### D111. WP-07's check boundaries (delegated, M19)
+Each split leaves the later package free and gives it a baseline, as D93, D96 and D101 required:
+- **Delivery targets (AU-09).** The client runtime takes its target from a `<meta name="mostra-target">` the exporters write (`static`, `mcp-app` or `verify`; none means `live`), and with it the history mode: browser, hash or memory. WP-07 proves each mode against a real version's client build served with that marker. WP-13's static export and WP-17's MCP App exporter write the marker and repeat the check; WP-09's `verify` sets `verify`.
+- **Browser-protocol revisions (VR-10).** The first revision, `2026-10-15`, grows additively in WP-07. Every revision the gateway serves has a frozen fixture version in the repository, built at that revision and run in CI against the current gateway and against one that also serves a newer, test-only revision. A real N+1 adds its own fixture.
+- **Shell wording.** The viewer-facing words (delivery states, banner, panel) are shown to Mirza with the candidate (IN-13). WP-20's design pass may restyle the shell, never weaken its trusted controls.
+- **Prose** is delegated as in WP-03 to WP-06: Mirza sees only the texts the agent isn't confident in, before the merge.
+
+### D112. `window.storage` compatibility details (delegated, M19)
+D53's `window.storage` follows the API Claude-written artifacts use (`get`, `set`, `delete` and `list`, each with `shared`, answering `{ key, value, shared }`) over Mostra fields. Anthropic's help center documents personal and shared storage and a 20 MB limit per artifact, but not the signatures (VERIFIED_FACTS, WP-07), so Mostra's choices are stated here. A missing key resolves `null`, which code written to expect a thrown error or `null` handles alike. A value is limited to DATA_MODEL's 1 MiB per field, refused with `MOSTRA_FIELD_TOO_LARGE`, never truncated; a larger value belongs in a blob. Writes are last-write-wins, as in Claude: a conflict on a storage key is resolved by writing again on the newer revision.
+
+### D113. `useChoice` names its candidates (delegated, M19)
+`useChoice(reviewSetId, options?)` takes an optional `{ candidates: { id, label? }[]; current?: string }`, an additive extension of INTERFACES §2.3. With candidates it asks the shell for the trusted Choose control of that review set, which the shell renders outside the frame ("Choose Airy"). WP-20's `ReviewSet` passes them.
+
+### D114. Claude reviews for up to ten packages (M19)
+Amends D80 item 3: Claude Opus 5.5 may review up to ten of Mostra's packages, still chosen for substance and still waiting for Mirza's approval of each run (D34).
+
+### D115. A frame always shows its own view's version (delegated, M19)
+D98 item 5 lets an artifact origin serve the version its frame session last entered, so a tab whose frame reloads after another tab switched versions gets the other version's page. WP-07 makes that page unable to act as the wrong view, rather than only telling the viewer:
+- **The page names its build.** The builder writes `<meta name="mostra-version" content="<versionId>">` into every version's `index.html` (the version ID is known from the digests before the build, D89, so builds stay a function of their inputs), and the client runtime sends it in `ui/initialize` (`mostra.versionId`, an additive parameter).
+- **A mismatch saves nothing.** A page whose build isn't its view's version runs detached: nothing it shows is saved, journaled or submitted as that view.
+- **The shell enters its version again.** The shell answers, then gets a ticket for its own view's version, so the frame reloads at that version. More than three re-entries within ten seconds mean two tabs keep moving the frame session, and the shell says so instead of reloading without end.
+
+The version banner is unchanged: it tells a view about versions newer than its own (VR-04).
 
 ## Research consensus adopted
 

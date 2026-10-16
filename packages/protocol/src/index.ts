@@ -16,7 +16,9 @@ export {
 } from "./artifact.ts";
 export {
   type AnyBridgeMessage,
+  BRIDGE_FIELDS_MAX,
   BRIDGE_MESSAGES,
+  BRIDGE_TEXT_MAX,
   type Bridge,
   type BridgeEvent,
   type BridgeHostContext,
@@ -27,27 +29,53 @@ export {
   type BridgeReceiver,
   type BridgeRejection,
   type BridgeSide,
+  CONTROL_LABEL_MAX,
+  type ControlRequest,
   connectBridge,
+  type FieldRegistration,
+  type FieldsParams,
+  type FlushResult,
   MCP_APPS_PROTOCOL_VERSION,
+  mostraControlsRequest,
+  mostraFieldFocus,
+  mostraFields,
+  mostraFlush,
+  mostraPage,
   mostraReady,
+  mostraVersionAvailable,
   OPEN_LINK_SCHEMES,
+  type SaveState,
+  type SubmitBlocker,
   type UiInitializeParams,
   type UiInitializeResult,
   uiInitialize,
   uiInitialized,
   uiOpenLink,
   uiSizeChanged,
+  type VersionAvailableParams,
 } from "./bridge.ts";
 export {
   BROWSER_PROTOCOL_REVISION,
   BROWSER_PROTOCOL_REVISIONS,
+  CarryOver,
+  ChooseRequest,
+  type DeliveryTarget,
   DocumentSnapshot,
   FieldsRequest,
+  FollowRequest,
+  FrameTicket,
+  OrphanedField,
   PollResult,
+  REVIEW_SET_ID_PATTERN,
+  readViewContext,
+  ShellSubmitRequest,
   SIGNAL_PAYLOAD_MAX_BYTES,
   SignalRequest,
   StreamSnapshot,
   SubmitRequest,
+  VersionRef,
+  ViewContext,
+  ViewContextWire,
 } from "./browser.ts";
 export { canonicalJson } from "./canonical.ts";
 export {
@@ -145,6 +173,7 @@ export {
 } from "./ids.ts";
 export {
   Actor,
+  ControlsPolicy,
   type DeliveryState,
   DeliveryStatus,
   DocumentRevision,
@@ -163,7 +192,8 @@ export {
   Results,
   SIGNAL_NAME_PATTERN,
   SubmissionSummary,
-  type SubmitChannel,
+  SubmitChannel,
+  TrustedControl,
   Viewer,
   type ViewerKind,
   ViewerSpec,
@@ -271,6 +301,16 @@ export {
   SubmissionEnvelope,
   type SubmissionsDeliverResult,
 } from "./methods/port/submissions-deliver.ts";
+export {
+  type PortTrustedControlsActivatedParams,
+  type PortTrustedControlsActivatedResult,
+  portTrustedControlsActivatedMethod,
+} from "./methods/port/trusted-controls-activated.ts";
+export {
+  type PortTrustedControlsPolicyParams,
+  type PortTrustedControlsPolicyResult,
+  portTrustedControlsPolicyMethod,
+} from "./methods/port/trusted-controls-policy.ts";
 export {
   type ResultsGetParams,
   type ResultsGetResult,

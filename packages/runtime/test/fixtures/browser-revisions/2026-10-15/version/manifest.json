@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "art_01M524VXKER8GA6CTTT0AW8ARM",
+  "versionId": "ver_APKAN8DJDADJR8D18FGT3E1VBM",
+  "mode": "spa",
+  "entry": "index.tsx",
+  "server": false,
+  "manifest": {
+    "title": "Client runtime fixture"
+  },
+  "sourceDigest": "9963346eaf7609105a7cea4c890bf7b0e24aa32dbc55ebdcf3db1b68a78f3a83",
+  "envDigest": "f9a361aa079f32ee4871e0274618723bf2b2428fbbb25955eb4aa62b57cf3414",
+  "environment": {
+    "mostraVersion": "0.0.0",
+    "kitVersion": null,
+    "kitBase": "base",
+    "mode": "spa",
+    "lockDigest": "f6432e8bc1777fbcdf1d58f46ad09fcd4f010fa3efbaa8af9124e44802a0dc14",
+    "buildConfigDigest": "e66fc905f6773870a9055e63cbccba0867c759b4b5268b563b2ff138bd7e71bc",
+    "browserProtocolRevision": "2026-10-15"
+  },
+  "outputDigest": "501a0b1e3129e820eebdf0f80678d9df55e13edc8a66e84e14b46e4cae5c6205",
+  "forcedCodes": []
+}

@@ -21,12 +21,15 @@ import {
   type ArtifactRef,
   type CapabilityLink,
   type CapabilityScope,
+  type ControlsPolicy,
   createDiagnostic,
   durationMs,
+  type FrameTicket,
   type Refusal,
   RpcError,
   refusal,
   safePath,
+  scopeAllows,
   viewRevokeMethod,
   viewRotateMethod,
   viewUrlMethod,
@@ -44,7 +47,7 @@ import {
 } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
-import { type BrowserRoutes, browserRoutes } from "./browser.ts";
+import { type BrowserRoutes, type BrowserRoutesOptions, browserRoutes } from "./browser.ts";
 import {
   type Capabilities,
   type Grant,
@@ -68,6 +71,7 @@ import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse }
 import { fileResponse, findFile } from "./serve.ts";
 
 export { Capabilities, capabilityKey } from "./capabilities.ts";
+export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -90,6 +94,15 @@ export interface GatewayOptions {
   readonly shellDir: string | undefined;
   /** The interaction core the browser protocol's routes hand their work to (WP-06). */
   readonly interaction: Interaction;
+  /**
+   * The submit channels and trusted controls in force for a new view of an artifact (D108): the
+   * `trustedControls` port's answer, the home's `submitChannels`, or both channels.
+   */
+  readonly controls: (artifact: ArtifactDetail) => Promise<ControlsPolicy>;
+  /** Tells hosts with a `trustedControls` port that a trusted control was used (D108). */
+  readonly activated: BrowserRoutesOptions["activated"];
+  /** The browser-protocol revisions served; `BROWSER_PROTOCOL_REVISIONS` unless a test adds one. */
+  readonly revisions?: readonly string[];
 }
 
 /** The gateway of one instance. */
@@ -108,15 +121,8 @@ export interface Gateway {
   close(): Promise<void>;
 }
 
-/** A frame ticket's answer to the shell. */
-interface TicketAnswer {
-  /** The view this frame load is (D104): the page names it in mutations and submits. */
-  readonly viewId: string;
-  readonly src: string;
-  readonly artifactOrigin: string;
-  readonly version: { readonly id: string; readonly number: number };
-  readonly latest: { readonly number: number };
-}
+/** A frame ticket's answer to the shell: the view it opens and its controls (D104, D108). */
+type TicketAnswer = FrameTicket;
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -198,7 +204,17 @@ function laterArtifactRoutes(served: BrowserRoutes): RouteSpec[] {
 /** Creates the gateway; nothing is bound until {@link Gateway.start}. */
 export function createGateway(options: GatewayOptions): Gateway {
   const { addressing, capabilities, artifacts, log, interaction } = options;
-  const served = browserRoutes({ interaction, capabilities, log });
+  const served = browserRoutes({
+    interaction,
+    capabilities,
+    log,
+    versionOf: (artifactId, number) => {
+      const found = artifacts.get({ artifactId }).versions.find((v) => v.number === number);
+      return found ? { id: found.id, number: found.number } : undefined;
+    },
+    activated: options.activated,
+    ...(options.revisions ? { revisions: options.revisions } : {}),
+  });
   let shellPort: number | undefined;
   const shellOrigin = (): string => {
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
@@ -453,19 +469,37 @@ export function createGateway(options: GatewayOptions): Gateway {
       shellOrigin: shellOrigin(),
       shellSessionId: session.id,
     });
-    // One frame load is one view, of exactly this version, by this link's viewer (D104).
+    // One frame load is one view, of exactly this version, by this link's viewer (D104), with
+    // the channels and controls in force for it (D108).
+    const controls = await options.controls(detail);
+    const viewerId = interaction.viewerOf(session.grant.viewerId);
     const viewId = interaction.openView({
       artifactId,
       versionId: version.id,
-      viewerId: interaction.viewerOf(session.grant.viewerId),
+      viewerId,
       tokenId: session.grant.tokenId,
+      controls,
     });
     const answer: TicketAnswer = {
+      artifactId,
       viewId,
       src: `${artifactOrigin}/_mostra/enter?ticket=${value}`,
       artifactOrigin,
       version,
-      latest: { number: latest.number },
+      latest,
+      policy: detail.policy ?? { policy: "once", scope: "per-artifact" },
+      submitChannels: controls.submitChannels,
+      // What the shell offers this link: a control its scopes can't use isn't shown (D97).
+      controls: (controls.controls ?? ["submit", "choose", "approve"]).filter((control) =>
+        control === "submit"
+          ? scopeAllows(session.grant.scopes, "submit")
+          : control === "choose"
+            ? scopeAllows(session.grant.scopes, "review")
+            : true,
+      ),
+      target: "live",
+      follow: interaction.following({ artifactId, viewerId }),
+      pinned: pinned !== undefined,
     };
     return jsonResponse(answer);
   };
@@ -503,7 +537,52 @@ export function createGateway(options: GatewayOptions): Gateway {
       auth: "session",
       handler: ticket,
     },
-    // Review and trusted controls (WP-07, WP-20) live here, behind the shell's session (D96).
+    // The trusted controls, the version banner's sources and follow (WP-07), and review
+    // (WP-20), behind the shell's session (D96). The specific routes come before the wildcard.
+    {
+      method: "POST",
+      path: "/a/:artifactId/_mostra/v/:rev/submit",
+      intent: "mutation",
+      auth: "session",
+      scope: () => "submit",
+      handler: served.shellSubmit,
+    },
+    {
+      method: "POST",
+      path: "/a/:artifactId/_mostra/v/:rev/review/choose",
+      intent: "mutation",
+      auth: "session",
+      scope: () => "review",
+      handler: served.choose,
+    },
+    {
+      method: "POST",
+      path: "/a/:artifactId/_mostra/v/:rev/follow",
+      intent: "mutation",
+      auth: "session",
+      handler: served.follow,
+    },
+    {
+      method: "GET",
+      path: "/a/:artifactId/_mostra/v/:rev/carry",
+      intent: "read",
+      auth: "session",
+      handler: served.carry,
+    },
+    {
+      method: "GET",
+      path: "/a/:artifactId/_mostra/v/:rev/events",
+      intent: "stream",
+      auth: "session",
+      handler: served.stream,
+    },
+    {
+      method: "GET",
+      path: "/a/:artifactId/_mostra/v/:rev/events/poll",
+      intent: "stream",
+      auth: "session",
+      handler: served.poll,
+    },
     {
       method: "POST",
       path: "/a/:artifactId/_mostra/v/:rev/review/*",
@@ -586,6 +665,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         artifactId,
         shellOrigin: shellOrigin(),
         scopes: session.grant.scopes,
+        // The viewer the page acts as, so edits made before its first snapshot are journaled
+        // under it (WP-07; Claude review finding 4).
+        viewer: interaction.viewer(interaction.viewerOf(session.grant.viewerId)),
         ...(version ? { version: { id: version.id, number: version.number } } : {}),
       });
     };

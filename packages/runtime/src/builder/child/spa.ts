@@ -13,6 +13,7 @@ import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { build, type InlineConfig, type PluginOption } from "vite";
+import type { FieldCoverage } from "../coverage.ts";
 import {
   type BuildRequest,
   type BuildResponse,
@@ -20,18 +21,26 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
-import { type BuildInputs, confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
+import {
+  type BuildInputs,
+  confinePlugin,
+  type FieldHookUse,
+  fieldHookUsePlugin,
+  mdxPlugin,
+  serverClientStubPlugin,
+} from "./plugins.ts";
 import { type ScanResult, scanArtifact } from "./scan.ts";
 
 /** Where generated build files live inside the staging directory (never in the snapshot). */
 const GENERATED = ".mostra-build";
 
-const html = (title: string): string =>
+const html = (title: string, versionId: string): string =>
   `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="mostra-version" content="${versionId}" />
     <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
   </head>
   <body>
@@ -42,29 +51,24 @@ const html = (title: string): string =>
 `;
 
 /**
- * The client entry: mounts the page, or the `pages/` routes inside the entry's layout (D57), then
- * connects to the shell over the bridge and reports `mostra/ready` (SH-04, WP-05).
+ * The client entry: hands the page, or the `pages/` routes inside the entry's layout (D57), to the
+ * client runtime, which picks the history mode for its delivery target (D111), connects to the
+ * shell over the bridge, reports the current page and `mostra/ready` (SH-04), and installs
+ * `window.storage` (D53). A single page never loads React Router.
  */
 function clientEntry(request: BuildRequest, scan: ScanResult): string {
   const source = (file: string): string => JSON.stringify(`../source/${file}`);
-  const lines = [
-    `import "./styles.css";`,
-    `import { createElement } from "react";`,
-    `import { createRoot } from "react-dom/client";`,
-    `import { reportReady } from "@mostra/react";`,
-  ];
-  const mount = `createRoot(document.getElementById("root")).render`;
+  const lines = [`import "./styles.css";`];
   if (scan.pages.length === 0) {
     lines.push(
+      `import { mountArtifact } from "@mostra/react";`,
       `import Page from ${source(request.entry)};`,
-      `${mount}(createElement(Page));`,
-      `reportReady();`,
+      `mountArtifact({ page: Page });`,
     );
     return `${lines.join("\n")}\n`;
   }
   lines.push(
-    `import { createBrowserRouter, Outlet } from "react-router";`,
-    `import { RouterProvider } from "react-router/dom";`,
+    `import { mountRoutes } from "@mostra/react/router";`,
     request.entryHasDefault
       ? `import Layout from ${source(request.entry)};`
       : `import ${source(request.entry)};`,
@@ -73,20 +77,26 @@ function clientEntry(request: BuildRequest, scan: ScanResult): string {
     lines.push(`import Page${index} from ${source(page.file)};`);
   }
   const routes = scan.pages
-    .map(
-      (page, index) =>
-        `{ path: ${JSON.stringify(page.path)}, element: createElement(Page${index}) }`,
-    )
+    .map((page, index) => `{ path: ${JSON.stringify(page.path)}, page: Page${index} }`)
     .join(", ");
-  lines.push(`const routes = [${routes}];`);
-  lines.push(
-    request.entryHasDefault
-      ? `const router = createBrowserRouter([{ element: createElement(Layout, null, createElement(Outlet)), children: routes }]);`
-      : `const router = createBrowserRouter(routes);`,
-    `${mount}(createElement(RouterProvider, { router }));`,
-    `reportReady();`,
-  );
+  const layout = request.entryHasDefault ? ", layout: Layout" : "";
+  lines.push(`mountRoutes({ routes: [${routes}]${layout} });`);
   return `${lines.join("\n")}\n`;
+}
+
+/** The field coverage, opened by every package outside the artifact that uses the field hooks. */
+function withPackageUses(fields: FieldCoverage, uses: readonly FieldHookUse[]): FieldCoverage {
+  const packageOf = (file: string): string => {
+    const names = [...file.matchAll(/node_modules\/((?:@[^/]+\/)?[^/]+)/g)];
+    return names.at(-1)?.[1] ?? file;
+  };
+  const openReasons = [
+    ...fields.openReasons,
+    ...[...new Set(uses.map((use) => packageOf(use.importer)))].map((name) => ({
+      reason: `the package ${name} uses @mostra/react's field hooks`,
+    })),
+  ];
+  return { ...fields, open: openReasons.length > 0, openReasons };
 }
 
 /** The server entry: every server function by ID, and the live sources (loaded by WP-08's worker). */
@@ -241,16 +251,31 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   };
   await rm(join(request.stagingDir, "node_modules"), { force: true, recursive: true });
   await symlink(request.nodeModules, join(request.stagingDir, "node_modules"), "dir");
-  await writeFile(join(request.stagingDir, "index.html"), html(request.manifest.title));
+  await writeFile(
+    join(request.stagingDir, "index.html"),
+    html(request.manifest.title, request.versionId),
+  );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
   await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
 
   const serverModules = new Map<string, readonly ServerFunctionEntry[]>(
     [...scan.serverModules].map(([module, entries]) => [join(sourceDir, module), entries]),
   );
+  // Packages that use the field hooks themselves open the version's coverage (D109).
+  const hookUses: FieldHookUse[] = [];
+  let runtimeDir: string | undefined;
+  try {
+    runtimeDir = await realpath(join(request.nodeModules, "@mostra", "react"));
+  } catch {
+    runtimeDir = undefined;
+  }
   try {
     await build({
       ...baseConfig(request, sourceDir, [
+        fieldHookUsePlugin(
+          { sourceDir, generatedDir: generated, ...(runtimeDir ? { runtimeDir } : {}) },
+          hookUses,
+        ),
         confinePlugin(inputs),
         mdxPlugin(),
         serverClientStubPlugin(serverModules, sourceDir),
@@ -303,6 +328,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     pages: scan.pages,
     terminals: Object.keys(request.manifest.terminals ?? {}).sort(),
     demos: Object.keys(request.manifest.demos ?? {}).sort(),
+    fields: withPackageUses(scan.fields, hookUses),
   };
   return { ok: true, registry, server };
 }

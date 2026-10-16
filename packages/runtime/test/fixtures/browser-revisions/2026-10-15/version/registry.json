@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "entry": "index.tsx",
+  "actions": [],
+  "liveSources": [],
+  "pages": [],
+  "terminals": [],
+  "demos": [],
+  "fields": {
+    "open": false,
+    "openReasons": [],
+    "entries": [
+      {
+        "id": "name",
+        "hook": "useField",
+        "label": "Your name",
+        "required": true,
+        "location": {
+          "file": "index.tsx",
+          "line": 39,
+          "column": 37
+        }
+      },
+      {
+        "id": "color",
+        "hook": "useField",
+        "label": "Colour",
+        "location": {
+          "file": "index.tsx",
+          "line": 40,
+          "column": 40
+        }
+      },
+      {
+        "id": "notes",
+        "hook": "useField",
+        "label": "Notes",
+        "location": {
+          "file": "index.tsx",
+          "line": 41,
+          "column": 40
+        }
+      },
+      {
+        "id": "team",
+        "hook": "useField",
+        "scope": "artifact",
+        "label": "Team",
+        "location": {
+          "file": "index.tsx",
+          "line": 42,
+          "column": 37
+        }
+      },
+      {
+        "id": "review.layout.choice",
+        "hook": "useChoice",
+        "location": {
+          "file": "index.tsx",
+          "line": 46,
+          "column": 18
+        }
+      },
+      {
+        "template": [
+          "storage.",
+          ""
+        ],
+        "hook": "storage",
+        "scope": "viewer",
+        "location": {
+          "file": "index.tsx",
+          "line": 118,
+          "column": 43
+        }
+      },
+      {
+        "template": [
+          "storage.",
+          ""
+        ],
+        "hook": "storage",
+        "scope": "artifact",
+        "location": {
+          "file": "index.tsx",
+          "line": 118,
+          "column": 43
+        }
+      }
+    ]
+  }
+}

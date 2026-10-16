@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { Diagnostic } from "../../diagnostics/diagnostic.ts";
+import { SubmitChannel } from "../../interaction.ts";
 import { SubmissionPolicy } from "../../manifest.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { Revision } from "../../revision.ts";
@@ -74,6 +75,12 @@ export interface HomeConfig {
    * Submissions made while it is away wait in the outbox for it; an empty list stops that.
    */
   readonly ports?: readonly PortName[];
+  /**
+   * The submit channels the home accepts (D40, D108), kept in `config.json`: `["shell"]` lets only
+   * the shell's trusted Submit and Choose make submissions and choices; absent, both channels are
+   * allowed. A host's `trustedControls` port answers per view instead, when it is connected.
+   */
+  readonly submitChannels?: readonly SubmitChannel[];
 }
 
 /** How packages enter an artifact's lockfile (D43). */
@@ -165,6 +172,7 @@ export const HomeConfig: z.ZodType<HomeConfig> = z
     dependencies: DependencyPolicy.exactOptional(),
     submission: SubmissionPolicy.exactOptional(),
     ports: z.array(PortName).max(32).readonly().exactOptional(),
+    submitChannels: z.array(SubmitChannel).min(1).max(2).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "HomeConfig",

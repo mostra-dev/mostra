@@ -4,10 +4,12 @@
     "rootDir": ".",
     "outDir": ".tsbuild/test",
     "tsBuildInfoFile": ".tsbuild/test.tsbuildinfo",
-    "types": ["node"],
+    "types": ["node", "vitest/browser"],
     "isolatedDeclarations": false,
     "rewriteRelativeImportExtensions": false,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "jsx": "react-jsx"
   },
   "include": ["test", "*.config.ts"],
   "references": [

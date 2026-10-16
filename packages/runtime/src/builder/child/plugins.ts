@@ -34,6 +34,46 @@ export function mdxPlugin(): Plugin {
   };
 }
 
+/** Where packages outside the artifact use the client runtime's field hooks (D109). */
+export interface FieldHookUse {
+  /** The importing module's path, relative to the build's `node_modules` when it is a package. */
+  readonly importer: string;
+}
+
+/**
+ * Records every module outside the artifact that imports `@mostra/react` or `@mostra/react/form`
+ * (D109): such a package may name fields the artifact's scan can't see, so the version's coverage
+ * is open. `@mostra/react` itself and Mostra's generated files don't count. It resolves nothing.
+ */
+export function fieldHookUsePlugin(
+  roots: {
+    readonly sourceDir: string;
+    readonly generatedDir: string;
+    readonly runtimeDir?: string;
+  },
+  uses: FieldHookUse[],
+): Plugin {
+  const inside = (file: string, dir: string | undefined): boolean =>
+    dir !== undefined && (file === dir || file.startsWith(`${dir}/`));
+  return {
+    name: "mostra:field-hook-use",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source !== "@mostra/react" && source !== "@mostra/react/form") return null;
+      if (importer === undefined || importer.startsWith("\0")) return null;
+      const file = existsSync(importer) ? realpathSync(importer) : importer;
+      if (
+        inside(file, roots.sourceDir) ||
+        inside(file, roots.generatedDir) ||
+        inside(file, roots.runtimeDir)
+      )
+        return null;
+      if (!uses.some((use) => use.importer === file)) uses.push({ importer: file });
+      return null;
+    },
+  };
+}
+
 /** The client stub of one `"use server"` module. */
 export function serverStub(entries: readonly ServerFunctionEntry[]): string {
   const lines = ['import { createServerReference } from "@mostra/react";'];

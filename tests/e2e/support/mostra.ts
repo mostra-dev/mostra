@@ -55,11 +55,27 @@ export function readRun(): Run {
 }
 
 /** A host protocol connection to the daemon's socket. */
+/** Answers the instance's port calls (`port/<name>.<method>`) on a host's connection. */
+export type PortHandler = (method: string, params: unknown) => unknown;
+
+/** How a test connects: as which host, with which ports and home settings. */
+export interface ConnectOptions {
+  /** The client name: a host's identity for deliveries (D105). */
+  readonly name?: string;
+  /** The ports this connection registers. */
+  readonly ports?: readonly string[];
+  /** `HomeConfig` (`submitChannels`, `ports`, `submission`). */
+  readonly home?: Record<string, unknown>;
+  /** Answers port calls; without one, they are left unanswered. */
+  readonly onPortCall?: PortHandler;
+}
+
 export class Client {
   readonly #socket: Socket;
   readonly #pending = new Map<number, (message: Record<string, unknown>) => void>();
   #buffer = "";
   #next = 1;
+  #onPortCall: PortHandler | undefined;
 
   private constructor(socket: Socket) {
     this.#socket = socket;
@@ -71,6 +87,10 @@ export class Client {
         this.#buffer = this.#buffer.slice(index + 1);
         if (line.trim() === "") continue;
         const message = JSON.parse(line) as Record<string, unknown>;
+        if (typeof message["method"] === "string" && message["id"] !== undefined) {
+          void this.#answer(message);
+          continue;
+        }
         const resolve = this.#pending.get(message["id"] as number);
         if (resolve) {
           this.#pending.delete(message["id"] as number);
@@ -80,19 +100,35 @@ export class Client {
     });
   }
 
-  /** Connects and initializes. */
-  static async connect(socketPath: string): Promise<Client> {
+  /** Answers a port call with the handler's result, or an error when it throws. */
+  async #answer(message: Record<string, unknown>): Promise<void> {
+    const reply = (body: Record<string, unknown>): void => {
+      if (!this.#socket.writable) return;
+      this.#socket.write(`${JSON.stringify({ jsonrpc: "2.0", id: message["id"], ...body })}\n`);
+    };
+    if (!this.#onPortCall) return;
+    try {
+      reply({ result: await this.#onPortCall(message["method"] as string, message["params"]) });
+    } catch (error) {
+      reply({ error: { code: -32000, message: (error as Error).message } });
+    }
+  }
+
+  /** Connects and initializes, as the e2e client or as a host with ports and home settings. */
+  static async connect(socketPath: string, options: ConnectOptions = {}): Promise<Client> {
     const socket = createConnection(socketPath);
     await new Promise((resolve, reject) => {
       socket.once("connect", resolve);
       socket.once("error", reject);
     });
     const client = new Client(socket);
+    client.#onPortCall = options.onPortCall;
     await client.call("mostra/initialize", {
-      client: { name: "e2e", version: "0" },
+      client: { name: options.name ?? "e2e", version: "0" },
       revisions: ["2026-10-10"],
       capabilities: {},
-      ports: [],
+      ports: options.ports ?? [],
+      ...(options.home ? { home: options.home } : {}),
     });
     return client;
   }
@@ -136,8 +172,11 @@ export function removeTree(root: string): void {
   rmSync(root, { recursive: true, force: true });
 }
 
-/** Starts a daemon on a fresh home; resolves with its status line and the process. */
-export async function startDaemon(): Promise<{
+/**
+ * Starts a daemon on a fresh home, or again on the home of an earlier one (`root`); resolves with
+ * its status line and the process.
+ */
+export async function startDaemon(options: { readonly root?: string } = {}): Promise<{
   child: ChildProcess;
   root: string;
   home: string;
@@ -148,7 +187,7 @@ export async function startDaemon(): Promise<{
       throw new Error(`${file} is missing: build @mostra/runtime and @mostra/shell first.`);
   }
   // Short paths: macOS limits socket paths to 103 bytes.
-  const root = realpathSync(mkdtempSync("/tmp/mostra-e2e-"));
+  const root = options.root ?? realpathSync(mkdtempSync("/tmp/mostra-e2e-"));
   const home = join(root, "home");
   const { MOSTRA_HOME: _home, ...inherited } = process.env;
   const env = Object.fromEntries(

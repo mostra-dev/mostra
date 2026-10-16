@@ -6,9 +6,39 @@
 
 import { ArtifactManifest } from '@mostra/protocol';
 import { Bridge } from '@mostra/protocol';
+import { ComponentType } from 'react';
+import { FieldScope } from '@mostra/protocol';
+import { SubmissionSummary } from '@mostra/protocol';
+import { SubmitBlocker } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
+import { Viewer } from '@mostra/protocol';
 
 export { ArtifactManifest }
+
+// @public
+export type ArtifactMode = "live" | "static" | "mcp-app" | "verify";
+
+// @public
+export interface ChoiceCandidate {
+    readonly id: string;
+    readonly label?: string;
+}
+
+// @public
+export interface ClaudeCompatibleStorage {
+    delete(key: string, shared?: boolean): Promise<{
+        readonly key: string;
+        readonly deleted: true;
+        readonly shared: boolean;
+    }>;
+    get(key: string, shared?: boolean): Promise<StorageEntry | null>;
+    list(prefix?: string, shared?: boolean): Promise<{
+        readonly keys: string[];
+        readonly prefix?: string;
+        readonly shared: boolean;
+    }>;
+    set(key: string, value: unknown, shared?: boolean): Promise<StorageEntry>;
+}
 
 // @public
 export function connectShell(): Promise<ShellConnection | undefined>;
@@ -18,6 +48,56 @@ export function createServerReference(id: string): ServerReference;
 
 // @public
 export function defineArtifact<const M extends ArtifactManifest>(manifest: M): M;
+
+// @public
+export interface DiagnosticLike {
+    readonly code: string;
+    readonly docs?: string;
+    readonly hint?: string;
+    readonly message: string;
+}
+
+// @public
+export interface FieldMeta<T> {
+    readonly conflict?: {
+        readonly theirs: T;
+        keepMine(): void;
+        takeTheirs(): void;
+    };
+    readonly error?: string;
+    readonly save: "saved" | "saving" | "offline" | "conflict" | "readonly";
+    readonly updatedBy?: {
+        readonly kind: "viewer" | "agent" | "host";
+        readonly name?: string;
+    };
+}
+
+// @public
+export interface FieldOptions<T> {
+    readonly label?: string;
+    readonly required?: boolean;
+    readonly scope?: FieldScope;
+    readonly sensitive?: boolean;
+    readonly validate?: StandardSchema<T> | ((value: T) => string | undefined);
+}
+
+// @public
+export class MostraError extends Error {
+    constructor(code: string, message: string, options?: {
+        readonly status?: number;
+        readonly diagnostic?: DiagnosticLike;
+        readonly body?: Readonly<Record<string, unknown>>;
+    });
+    readonly body: Readonly<Record<string, unknown>> | undefined;
+    readonly code: string;
+    readonly diagnostic: DiagnosticLike | undefined;
+    readonly status: number | undefined;
+}
+
+// @public
+export function mountArtifact(options: {
+    readonly page: ComponentType;
+}): Promise<void>;
 
 // @public
 export function openLink(url: string): Promise<boolean>;
@@ -35,8 +115,96 @@ export interface ServerReference<A extends unknown[] = unknown[], R = unknown> {
 export interface ShellConnection {
     readonly bridge: Bridge;
     readonly host: UiInitializeResult;
+    readonly session: {
+        readonly csrf: string;
+        readonly scopes: readonly string[];
+        readonly viewer?: Viewer;
+    };
     readonly shellOrigin: string;
 }
+
+// @public
+export interface StandardSchema<T> {
+    readonly "~standard": {
+        validate(value: unknown): {
+            readonly issues?: readonly {
+                readonly message: string;
+            }[];
+        } | Promise<unknown>;
+        readonly types?: {
+            readonly input: T;
+            readonly output: T;
+        } | undefined;
+    };
+}
+
+// @public
+export interface StorageEntry {
+    readonly key: string;
+    readonly shared: boolean;
+    readonly value: unknown;
+}
+
+export { SubmissionSummary }
+
+export { SubmitBlocker }
+
+// @public
+export interface SubmitHandle {
+    readonly allowed: boolean;
+    readonly blockers: readonly SubmitBlocker[];
+    readonly state: SubmitState;
+    readonly submission?: {
+        readonly id: string;
+        readonly at: string;
+    };
+    submit(): Promise<SubmissionSummary>;
+}
+
+// @public
+export type SubmitState = "open" | "submitting" | "submitted" | "delivered" | "pending-delivery" | "undeliverable" | "closed";
+
+// @public
+export function useArtifact(): {
+    readonly id: string;
+    readonly versionId: string;
+    readonly version: number;
+    readonly viewId: string;
+    readonly mode: ArtifactMode;
+};
+
+// @public
+export function useChoice(reviewSetId: string, options?: {
+    readonly candidates?: readonly ChoiceCandidate[];
+    readonly current?: string;
+}): {
+    readonly choice?: string;
+    choose(candidateId: string): Promise<void>;
+};
+
+// @public
+export function useField<T>(id: string, initial: T, options?: FieldOptions<NoInfer<T>>): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>];
+
+// @public
+export function useSignal(name: string): {
+    send(payload?: unknown): Promise<void>;
+};
+
+// @public
+export function useSubmit(): SubmitHandle;
+
+// @public
+export function useSubmitControl(options: {
+    readonly label?: string;
+    readonly confirm?: string;
+}): void;
+
+// @public
+export function useViewer(): {
+    readonly id: string;
+    readonly name?: string;
+    readonly source: "local" | "tailnet" | "token" | "host";
+};
 
 // (No @packageDocumentation comment for this package)
 

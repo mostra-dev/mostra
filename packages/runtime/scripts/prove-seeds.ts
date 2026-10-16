@@ -27,7 +27,7 @@ interface Seed {
   readonly check: readonly string[];
   /** Playwright Test arguments instead, run in tests/e2e (three engines unless narrowed). */
   readonly e2e?: boolean;
-  /** Where Vitest runs, relative to packages/runtime, when not there. */
+  /** Where Vitest runs, relative to packages/runtime, when not there (`../react` for its suites). */
   readonly cwd?: string;
 }
 
@@ -1182,6 +1182,223 @@ const SEEDS: readonly Seed[] = [
     from: "  if (own) return event;",
     to: "  if (own || event) return event;",
     check: unit("interaction-review.test.ts", "without their viewer and view IDs"),
+  },
+  // WP-07: the client runtime and the shell's trusted controls. Files outside the runtime are
+  // named from packages/runtime; React's own suites run in packages/react.
+  {
+    requirement: "AU-08",
+    name: "window.storage answers a missing key with an entry instead of null",
+    file: "../react/src/storage.ts",
+    from: "      return value === undefined ? null : { key, value, shared };",
+    to: "      return { key, value, shared };",
+    check: [
+      "--project",
+      "browser",
+      "test/browser/storage.test.tsx",
+      "-t",
+      "a missing key resolves null",
+    ],
+    cwd: "../react",
+  },
+  {
+    requirement: "AU-08",
+    name: "useSubmit lets the artifact submit where the host takes the shell's Submit only",
+    file: "../react/src/hooks.ts",
+    from: '      view.submitChannels.includes("artifact") &&',
+    to: "      true &&",
+    also: [
+      {
+        file: "../react/src/runtime/store.ts",
+        from: '    if (view && !view.submitChannels.includes("artifact")) {',
+        to: "    if (false) {",
+      },
+    ],
+    check: [
+      "--project",
+      "browser",
+      "test/browser/hooks.test.tsx",
+      "-t",
+      "refuses the artifact channel where the host takes the shell's Submit only",
+    ],
+    cwd: "../react",
+  },
+  {
+    requirement: "AU-09",
+    name: "a static export routes with browser history",
+    file: "../react/src/router.ts",
+    from: '  if (target === "static") return "hash";',
+    to: '  if (target === "static") return "browser";',
+    check: e2e("as a static export"),
+    e2e: true,
+  },
+  {
+    requirement: "IN-02",
+    name: "a closing tab doesn't flush: neither visibilitychange nor pagehide sends its edit",
+    file: "../react/src/runtime/boot.ts",
+    from: '  window.addEventListener("pagehide", () => void store.flush({ keepalive: true }));',
+    to: "  void 0;",
+    also: [
+      {
+        file: "../react/src/runtime/boot.ts",
+        from: '    if (document.visibilityState === "hidden") void store.flush({ keepalive: true });',
+        to: "    void 0;",
+      },
+    ],
+    check: e2e("when the tab closes"),
+    e2e: true,
+  },
+  {
+    requirement: "IN-03",
+    name: "edits are sent as if based on the newest revision, so a same-field edit overwrites",
+    file: "../react/src/runtime/store.ts",
+    from: "          baseRevision: first.base as number,",
+    to: "          baseRevision: 999_999_999_999,",
+    check: e2e("one field edited in two places"),
+    e2e: true,
+  },
+  {
+    requirement: "IN-04",
+    name: "the journal keeps nothing of an unsent edit or an unanswered mutation",
+    file: "../react/src/runtime/journal.ts",
+    from: "    return this.#write((store) => store.put(entry, pendingKey(entry)));",
+    to: "    return Promise.resolve(entry && undefined);",
+    also: [
+      {
+        file: "../react/src/runtime/journal.ts",
+        from: "      store.put(mutation, mutationKey(mutation.mutationId));",
+        to: "      void mutation;",
+      },
+    ],
+    check: e2e("journaled and sent when the browser opens"),
+    e2e: true,
+  },
+  {
+    requirement: "IN-13",
+    name: "the receipt never says Pending delivery",
+    file: "../shell/src/model.ts",
+    from: '  if (waiting.length > 0) return { kind: "pending", hosts: waiting.map((d) => d.owner) };',
+    to: '  if (waiting.length < 0) return { kind: "pending", hosts: waiting.map((d) => d.owner) };',
+    check: e2e("then Pending delivery while the host is away"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-02",
+    name: "the submit transaction ignores the view's channels",
+    file: "src/interaction/submissions.ts",
+    from: "  if (viewControls(view).submitChannels.includes(channel)) return;",
+    to: "  if (view || channel) return;",
+    check: e2e("a host taking the shell channel only"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-02",
+    name: "the trusted Submit is recorded on the artifact channel",
+    file: "src/gateway/browser.ts",
+    from: '        channel: "shell",',
+    to: '        channel: "artifact",',
+    check: e2e("a field saves as the viewer types"),
+    e2e: true,
+  },
+  {
+    requirement: "VR-04",
+    name: "the shell never sees a newer version",
+    file: "../shell/src/viewer.tsx",
+    from: "  const newer = !ticket.pinned && state.latest.number > ticket.version.number;",
+    to: "  const newer = !ticket.pinned && state.latest.number < 0;",
+    check: e2e("the banner appears after a publish"),
+    e2e: true,
+  },
+  {
+    requirement: "VR-05",
+    name: "every version covers every field, so nothing is orphaned",
+    file: "src/interaction/index.ts",
+    from: "          covers: options.coverage,",
+    to: "          covers: () => () => true,",
+    also: [
+      {
+        file: "src/interaction/index.ts",
+        from: "      const covers = options.coverage(",
+        to: "      const covers = (() => () => true)(",
+      },
+    ],
+    check: e2e("the banner counts them"),
+    e2e: true,
+  },
+  {
+    requirement: "VR-10",
+    name: "a gateway that serves only its newest browser-protocol revision",
+    file: "src/gateway/browser.ts",
+    from: "  const served: readonly string[] = options.revisions ?? BROWSER_PROTOCOL_REVISIONS;",
+    to: "  const served: readonly string[] = (options.revisions ?? BROWSER_PROTOCOL_REVISIONS).slice(-1);",
+    check: integration("browser-revisions.test.ts"),
+  },
+  {
+    requirement: "LL-03",
+    name: "following moves on over unsaved edits and orphans",
+    file: "../shell/src/viewer.tsx",
+    from: "        if (follow && count === 0 && !state.unsaved && busyRef.current === undefined) {",
+    to: "        if (follow && busyRef.current === undefined) {",
+    check: e2e("a following viewer gets new versions by themselves"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-frame-history",
+    name: "a switch navigates the old frame, adding an entry to the tab's history",
+    file: "../shell/src/viewer.tsx",
+    from: "          key={ticket.viewId}\n",
+    to: "",
+    check: e2e("the banner appears after a publish"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-frame-focus",
+    name: "a frame that replaces a focused one doesn't take the focus",
+    file: "../shell/src/viewer.tsx",
+    from: "      onLoad={props.focus ? (event) => event.currentTarget.focus() : undefined}",
+    to: "      onLoad={undefined}",
+    check: e2e("a following viewer gets new versions by themselves"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-replay-view",
+    name: "a closed tab's journal replays as the page that adopted it (Claude review finding 12)",
+    file: "../react/src/runtime/store.ts",
+    from: "          viewId: mutation.viewId,\n          ops: mutation.ops,\n        },\n        { keepalive },",
+    to: "          viewId: this.view?.viewId ?? mutation.viewId,\n          ops: mutation.ops,\n        },\n        { keepalive },",
+    check: e2e("edits a closed tab left against version 1"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-armed-controls",
+    name: "a trusted control takes a click the moment it appears or changes (Claude review finding 6)",
+    file: "../shell/src/model.ts",
+    from: "  return now >= Math.max(state.controlsChangedAt, shownAt) + ARM_MS;",
+    to: "  return true;",
+    also: [
+      {
+        file: "../shell/src/viewer.tsx",
+        from: "  const armed = armedFor === armUntil;",
+        to: "  const armed = armedFor === armUntil || true;",
+      },
+    ],
+    check: e2e("the artifact can't change a trusted control under the viewer's click"),
+    e2e: true,
+  },
+  {
+    requirement: "wp07-scope-controls",
+    name: "a link without the submit scope is offered the trusted Submit",
+    file: "src/gateway/index.ts",
+    from: '          ? scopeAllows(session.grant.scopes, "submit")',
+    to: "          ? true",
+    also: [
+      {
+        file: "../react/src/hooks.ts",
+        from: "      store.canSubmit() &&",
+        to: "      true &&",
+      },
+    ],
+    check: e2e("a link without submit shows no trusted Submit"),
+    e2e: true,
   },
 ];
 

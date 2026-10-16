@@ -92,102 +92,116 @@ function events(ledger: Ledger, artifactId?: string): EventRecord[] {
   );
 }
 
+/**
+ * Property tests open a real ledger per run (WAL, synchronous=FULL, every migration), so their
+ * time is file I/O: tens of runs take seconds, more on a busy machine.
+ */
+const PROPERTY_TIMEOUT_MS = 30_000;
+
 describe("fields: compare-and-set, rebase, conflicts and replay (IN-01, LL-01)", () => {
-  it("keeps revisions monotonic, applies an op only when its field is unchanged since the base, and replays mutation IDs (property)", () => {
-    const fieldId = fc.constantFrom("a", "b", "c.d", "c.e");
-    const op = fc.oneof(
-      fc.record({ id: fieldId, value: fc.integer({ min: 0, max: 9 }) }),
-      fc.record({ id: fieldId, delete: fc.constant(true as const) }),
-    );
-    const command = fc.record({
-      ops: fc.uniqueArray(op, { minLength: 1, maxLength: 4, selector: (entry) => entry.id }),
-      base: fc.oneof(fc.constant("latest" as const), fc.constant("none" as const), fc.nat()),
-      replay: fc.boolean(),
-    });
-    fc.assert(
-      fc.property(fc.array(command, { minLength: 1, maxLength: 25 }), (commands) => {
-        const { ledger } = freshLedger();
-        const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
-        const model = new Map<string, { value: unknown; rev: number; deleted: boolean }>();
-        let revision = 0;
-        const done: { id: string; ops: FieldOp[]; base?: number; result: MutationResult }[] = [];
-        for (const entry of commands) {
-          if (entry.replay && done.length > 0) {
-            const earlier = done[entry.ops.length % done.length] as (typeof done)[number];
-            const replayed = mutate(ledger, artifactId, earlier.ops, {
-              id: earlier.id,
-              ...(earlier.base !== undefined ? { base: earlier.base } : {}),
-            });
-            expect(replayed).toEqual(earlier.result);
-            continue;
-          }
-          const base =
-            entry.base === "latest"
-              ? revision
-              : entry.base === "none"
-                ? undefined
-                : entry.base % (revision + 1);
-          const ops = entry.ops as FieldOp[];
-          const applied: string[] = [];
-          const conflicts: string[] = [];
-          let changed = false;
-          for (const change of ops) {
-            const current = model.get(change.id);
-            if (base !== undefined && current && current.rev > base) {
-              conflicts.push(change.id);
+  it(
+    "keeps revisions monotonic, applies an op only when its field is unchanged since the base, and replays mutation IDs (property)",
+    () => {
+      const fieldId = fc.constantFrom("a", "b", "c.d", "c.e");
+      const op = fc.oneof(
+        fc.record({ id: fieldId, value: fc.integer({ min: 0, max: 9 }) }),
+        fc.record({ id: fieldId, delete: fc.constant(true as const) }),
+      );
+      const command = fc.record({
+        ops: fc.uniqueArray(op, { minLength: 1, maxLength: 4, selector: (entry) => entry.id }),
+        base: fc.oneof(fc.constant("latest" as const), fc.constant("none" as const), fc.nat()),
+        replay: fc.boolean(),
+      });
+      fc.assert(
+        fc.property(fc.array(command, { minLength: 1, maxLength: 25 }), (commands) => {
+          const { ledger } = freshLedger();
+          const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
+          const model = new Map<string, { value: unknown; rev: number; deleted: boolean }>();
+          let revision = 0;
+          const done: { id: string; ops: FieldOp[]; base?: number; result: MutationResult }[] = [];
+          for (const entry of commands) {
+            if (entry.replay && done.length > 0) {
+              const earlier = done[entry.ops.length % done.length] as (typeof done)[number];
+              const replayed = mutate(ledger, artifactId, earlier.ops, {
+                id: earlier.id,
+                ...(earlier.base !== undefined ? { base: earlier.base } : {}),
+              });
+              expect(replayed).toEqual(earlier.result);
               continue;
             }
-            applied.push(change.id);
-            if (change.delete) {
-              if (current && !current.deleted) {
-                model.set(change.id, { value: null, rev: revision + 1, deleted: true });
+            const base =
+              entry.base === "latest"
+                ? revision
+                : entry.base === "none"
+                  ? undefined
+                  : entry.base % (revision + 1);
+            const ops = entry.ops as FieldOp[];
+            const applied: string[] = [];
+            const conflicts: string[] = [];
+            let changed = false;
+            for (const change of ops) {
+              const current = model.get(change.id);
+              if (base !== undefined && current && current.rev > base) {
+                conflicts.push(change.id);
+                continue;
+              }
+              applied.push(change.id);
+              if (change.delete) {
+                if (current && !current.deleted) {
+                  model.set(change.id, { value: null, rev: revision + 1, deleted: true });
+                  changed = true;
+                }
+              } else {
+                model.set(change.id, { value: change.value, rev: revision + 1, deleted: false });
                 changed = true;
               }
-            } else {
-              model.set(change.id, { value: change.value, rev: revision + 1, deleted: false });
-              changed = true;
             }
+            if (changed) revision += 1;
+            const id = mutationId();
+            const result = mutate(ledger, artifactId, ops, {
+              id,
+              ...(base !== undefined ? { base } : {}),
+            });
+            expect(result.revision).toBe(String(revision));
+            expect(result.applied).toEqual(applied);
+            expect(result.conflicts.map((conflict) => conflict.id)).toEqual(conflicts);
+            for (const conflict of result.conflicts) {
+              const current = model.get(conflict.id);
+              expect(conflict.revision).toBe(String(current?.rev));
+              if (current?.deleted) expect(conflict.deleted).toBe(true);
+              else expect(conflict.value).toEqual(current?.value);
+            }
+            done.push({ id, ops, ...(base !== undefined ? { base } : {}), result });
           }
-          if (changed) revision += 1;
-          const id = mutationId();
-          const result = mutate(ledger, artifactId, ops, {
-            id,
-            ...(base !== undefined ? { base } : {}),
+          const stored = ledger.read((db) => {
+            const document = documentFor(db, artifactId, null);
+            return { revision: document?.revision ?? 0, fields: liveFields(db, document?.id) };
           });
-          expect(result.revision).toBe(String(revision));
-          expect(result.applied).toEqual(applied);
-          expect(result.conflicts.map((conflict) => conflict.id)).toEqual(conflicts);
-          for (const conflict of result.conflicts) {
-            const current = model.get(conflict.id);
-            expect(conflict.revision).toBe(String(current?.rev));
-            if (current?.deleted) expect(conflict.deleted).toBe(true);
-            else expect(conflict.value).toEqual(current?.value);
-          }
-          done.push({ id, ops, ...(base !== undefined ? { base } : {}), result });
-        }
-        const stored = ledger.read((db) => {
-          const document = documentFor(db, artifactId, null);
-          return { revision: document?.revision ?? 0, fields: liveFields(db, document?.id) };
-        });
-        expect(stored.revision).toBe(revision);
-        const expected = Object.fromEntries(
-          [...model].filter(([, field]) => !field.deleted).map(([id, field]) => [id, field.value]),
-        );
-        expect(
-          Object.fromEntries(Object.entries(stored.fields).map(([id, field]) => [id, field.value])),
-        ).toEqual(expected);
-        // One state.changed per revision, in order.
-        const changes = events(ledger, artifactId).filter(
-          (event) => event.type === "state.changed",
-        );
-        expect(changes.map((event) => event.payload["revision"])).toEqual(
-          Array.from({ length: revision }, (_, index) => String(index + 1)),
-        );
-        ledger.close();
-      }),
-      { numRuns: 60 },
-    );
-  });
+          expect(stored.revision).toBe(revision);
+          const expected = Object.fromEntries(
+            [...model]
+              .filter(([, field]) => !field.deleted)
+              .map(([id, field]) => [id, field.value]),
+          );
+          expect(
+            Object.fromEntries(
+              Object.entries(stored.fields).map(([id, field]) => [id, field.value]),
+            ),
+          ).toEqual(expected);
+          // One state.changed per revision, in order.
+          const changes = events(ledger, artifactId).filter(
+            (event) => event.type === "state.changed",
+          );
+          expect(changes.map((event) => event.payload["revision"])).toEqual(
+            Array.from({ length: revision }, (_, index) => String(index + 1)),
+          );
+          ledger.close();
+        }),
+        { numRuns: 60 },
+      );
+    },
+    PROPERTY_TIMEOUT_MS,
+  );
 
   it("rebases edits to different fields and reports a same-field edit as a conflict on both sides (LL-01)", () => {
     const { ledger } = freshLedger();
@@ -314,71 +328,77 @@ describe("fields: compare-and-set, rebase, conflicts and replay (IN-01, LL-01)",
 });
 
 describe("events: order, filters and compaction (IN-08)", () => {
-  it("orders every event totally by cursor, numbers each artifact's events without gaps, and pages without gaps or repeats across a restart (property)", () => {
-    fc.assert(
-      fc.property(
-        fc.array(fc.nat({ max: 2 }), { minLength: 1, maxLength: 40 }),
-        fc.integer({ min: 1, max: 7 }),
-        fc.constantFrom(
-          undefined,
-          ["state.changed"],
-          ["state.*"],
-          ["version.published", "state.changed"],
+  it(
+    "orders every event totally by cursor, numbers each artifact's events without gaps, and pages without gaps or repeats across a restart (property)",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.array(fc.nat({ max: 2 }), { minLength: 1, maxLength: 40 }),
+          fc.integer({ min: 1, max: 7 }),
+          fc.constantFrom(
+            undefined,
+            ["state.changed"],
+            ["state.*"],
+            ["version.published", "state.changed"],
+          ),
+          (writers, page, types) => {
+            const { ledger: first, storeDir } = freshLedger();
+            const artifacts = [0, 1, 2].map(
+              () => addArtifact(first, { id: ArtifactId.create() }).artifactId,
+            );
+            const half = Math.floor(writers.length / 2);
+            writers.slice(0, half).forEach((writer, index) => {
+              mutate(first, artifacts[writer] as string, [set(`f${index}`, index)]);
+            });
+            // A restart in the middle: cursors and sequences continue.
+            first.close();
+            const ledger = open(storeDir);
+            writers.slice(half).forEach((writer, index) => {
+              mutate(ledger, artifacts[writer] as string, [set(`g${index}`, index)]);
+            });
+            const all = events(ledger);
+            const cursors = all.map((event) => Number(event.cursor));
+            expect(cursors).toEqual([...cursors].sort((a, b) => a - b));
+            expect(new Set(cursors).size).toBe(cursors.length);
+            for (const artifactId of artifacts) {
+              const seqs = all
+                .filter((event) => event.artifactId === artifactId)
+                .map((event) => event.seq);
+              expect(seqs).toEqual(seqs.map((_, index) => index + 1));
+            }
+            const filter = {
+              artifacts: [artifacts[0] as string, artifacts[2] as string],
+              ...(types ? { types } : {}),
+            };
+            const expected = all.filter(
+              (event) =>
+                filter.artifacts.includes(event.artifactId as string) &&
+                (!types ||
+                  types.some((pattern) =>
+                    pattern.endsWith(".*")
+                      ? event.type.startsWith(pattern.slice(0, -1))
+                      : pattern === event.type,
+                  )),
+            );
+            const paged: EventRecord[] = [];
+            let after = 0;
+            for (let guard = 0; guard < 500; guard++) {
+              const read = ledger.read((db) => readEvents(db, { filter, after, limit: page }));
+              paged.push(...read.events);
+              if (Number(read.cursor) === after) break;
+              after = Number(read.cursor);
+            }
+            expect(paged.map((event) => event.cursor)).toEqual(
+              expected.map((event) => event.cursor),
+            );
+            ledger.close();
+          },
         ),
-        (writers, page, types) => {
-          const { ledger: first, storeDir } = freshLedger();
-          const artifacts = [0, 1, 2].map(
-            () => addArtifact(first, { id: ArtifactId.create() }).artifactId,
-          );
-          const half = Math.floor(writers.length / 2);
-          writers.slice(0, half).forEach((writer, index) => {
-            mutate(first, artifacts[writer] as string, [set(`f${index}`, index)]);
-          });
-          // A restart in the middle: cursors and sequences continue.
-          first.close();
-          const ledger = open(storeDir);
-          writers.slice(half).forEach((writer, index) => {
-            mutate(ledger, artifacts[writer] as string, [set(`g${index}`, index)]);
-          });
-          const all = events(ledger);
-          const cursors = all.map((event) => Number(event.cursor));
-          expect(cursors).toEqual([...cursors].sort((a, b) => a - b));
-          expect(new Set(cursors).size).toBe(cursors.length);
-          for (const artifactId of artifacts) {
-            const seqs = all
-              .filter((event) => event.artifactId === artifactId)
-              .map((event) => event.seq);
-            expect(seqs).toEqual(seqs.map((_, index) => index + 1));
-          }
-          const filter = {
-            artifacts: [artifacts[0] as string, artifacts[2] as string],
-            ...(types ? { types } : {}),
-          };
-          const expected = all.filter(
-            (event) =>
-              filter.artifacts.includes(event.artifactId as string) &&
-              (!types ||
-                types.some((pattern) =>
-                  pattern.endsWith(".*")
-                    ? event.type.startsWith(pattern.slice(0, -1))
-                    : pattern === event.type,
-                )),
-          );
-          const paged: EventRecord[] = [];
-          let after = 0;
-          for (let guard = 0; guard < 500; guard++) {
-            const read = ledger.read((db) => readEvents(db, { filter, after, limit: page }));
-            paged.push(...read.events);
-            if (Number(read.cursor) === after) break;
-            after = Number(read.cursor);
-          }
-          expect(paged.map((event) => event.cursor)).toEqual(expected.map((event) => event.cursor));
-          ledger.close();
-        },
-      ),
-      { numRuns: 40 },
-    );
-  });
+        { numRuns: 40 },
+      );
+    },
+    PROPERTY_TIMEOUT_MS,
+  );
 
   it("replaces compacted events with one summary at the last replaced cursor, refuses a cursor inside the range, and lets a reader of the summary continue (GPT review findings 5, 6)", () => {
     const { ledger } = freshLedger();
@@ -497,7 +517,15 @@ function submitting(policy: unknown) {
     owners: string[] = [],
   ) =>
     ledger.write((db) =>
-      submit(db, { artifactId, viewerId, viewId, expectedRevision, channel: "shell", owners }),
+      submit(db, {
+        artifactId,
+        viewerId,
+        viewId,
+        expectedRevision,
+        channel: "shell",
+        owners,
+        covers: () => () => true,
+      }),
     );
   return { ledger, artifactId, versions, latest, stale, draft, doSubmit };
 }
@@ -586,6 +614,7 @@ describe("submit (IN-05, IN-06, IN-07, LL-02)", () => {
     const tab = viewOf(ledger, artifactId, versions[1] as string, latest.viewerId);
     expect(codeOf(() => doSubmit(tab.viewId, 1))).toBe("MOSTRA_SUBMIT_ALREADY");
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -753,6 +782,7 @@ describe("Mostra decides nothing on a signal's behalf (IN-09, D10)", () => {
     const hosts = new FakeHosts();
     hosts.registered = [{ session: 1, owner: "host", ports: ["drafts"] }];
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -776,6 +806,7 @@ describe("Mostra decides nothing on a signal's behalf (IN-09, D10)", () => {
     draft([set("a", 1)]);
     ledger.write((db) =>
       submit(db, {
+        covers: () => () => true,
         artifactId,
         viewerId: latest.viewerId,
         viewId: latest.viewId,
@@ -1089,6 +1120,7 @@ describe("the outbox (IN-12, IN-06)", () => {
     const setup = submitting(undefined);
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger: setup.ledger,
       log: silentLog,
       faults: noFaults,
@@ -1269,6 +1301,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const hosts = new FakeHosts();
     hosts.registered = [{ session: 1, owner: "mostra", ports: ["submissions"] }];
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1296,6 +1329,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1349,6 +1383,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
     const y = addArtifact(ledger, { id: ArtifactId.create() }).artifactId;
     const hosts = new FakeHosts();
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,
@@ -1408,6 +1443,7 @@ describe("findings of the GPT-6.1-Sol review", () => {
   it("replays a committed save after a submission closed the draft, instead of refusing it (finding 7)", () => {
     const { ledger, artifactId, versions, latest } = submitting(undefined);
     const interaction = createInteraction({
+      coverage: () => () => true,
       ledger,
       log: silentLog,
       faults: noFaults,

@@ -10,7 +10,7 @@
  * ```
  */
 import * as z from "zod";
-import { Cursor, MutationId, ViewId } from "./ids.ts";
+import { ArtifactId, Cursor, MutationId, ViewId } from "./ids.ts";
 import {
   DocumentRevision,
   EventRecord,
@@ -19,7 +19,24 @@ import {
   SubmissionSummary,
   Viewer,
 } from "./interaction.ts";
+import { SubmissionPolicy } from "./manifest.ts";
+import {
+  REVIEW_SET_ID_PATTERN,
+  SubmitChannel,
+  TrustedControl,
+  VersionRef,
+  type ViewContext,
+} from "./view.ts";
 import { wireRegistry } from "./wire-registry.ts";
+
+export {
+  type DeliveryTarget,
+  REVIEW_SET_ID_PATTERN,
+  readViewContext,
+  VersionRef,
+  ViewContext,
+  ViewContextWire,
+} from "./view.ts";
 
 /** Every browser-protocol revision this release serves, oldest first. */
 export const BROWSER_PROTOCOL_REVISIONS: readonly ["2026-10-15"] = ["2026-10-15"];
@@ -139,6 +156,12 @@ export interface StreamSnapshot {
   readonly state: DocumentSnapshot;
   /** The submission that closed this draft, or this viewer's latest under `epochs`. */
   readonly submission?: SubmissionSummary;
+  /**
+   * The artifact's latest version when the snapshot was read (WP-07): a reader that missed its
+   * `version.published` event (published between a frame ticket and the stream, or compacted)
+   * still learns of it.
+   */
+  readonly latest?: VersionRef;
 }
 
 /** The Zod schema of the `StreamSnapshot` type. */
@@ -149,6 +172,7 @@ export const StreamSnapshot: z.ZodType<StreamSnapshot> = z
     draft: DocumentSnapshot,
     state: DocumentSnapshot,
     submission: SubmissionSummary.exactOptional(),
+    latest: VersionRef.exactOptional(),
   })
   .register(wireRegistry, {
     id: "StreamSnapshot",
@@ -175,4 +199,157 @@ export const PollResult: z.ZodType<PollResult> = z
   .register(wireRegistry, {
     id: "PollResult",
     description: "A long-poll answer: the cursor, the events after the asked one, and a snapshot.",
+  });
+
+/**
+ * `POST /a/{artifactId}/_mostra/ticket`'s answer on the shell origin: a single-use frame ticket,
+ * the view it opens and what the shell needs to render the view's trusted controls (D104, D108).
+ */
+export interface FrameTicket extends ViewContext {
+  /** The frame's entry URL, carrying the single-use ticket. */
+  readonly src: string;
+  /** The artifact's origin: the only origin the bridge accepts messages from. */
+  readonly artifactOrigin: string;
+  /** Whether this viewer follows the artifact's new versions (D63). */
+  readonly follow: boolean;
+  /** Whether the link opens this version only (D97 item 9): then the shell offers no newer one. */
+  readonly pinned: boolean;
+}
+
+/** The Zod schema of the `FrameTicket` type. */
+export const FrameTicket: z.ZodType<FrameTicket> = z
+  .object({
+    artifactId: ArtifactId.schema,
+    viewId: ViewId.schema,
+    version: VersionRef,
+    latest: VersionRef,
+    policy: SubmissionPolicy,
+    submitChannels: z.array(SubmitChannel).min(1).max(2).readonly(),
+    controls: z.array(TrustedControl).max(32).readonly(),
+    target: z.enum(["live", "static", "mcp-app", "verify"]),
+    src: z.string().min(1),
+    artifactOrigin: z.string().min(1),
+    follow: z.boolean(),
+    pinned: z.boolean(),
+  })
+  .register(wireRegistry, {
+    id: "FrameTicket",
+    description: "A frame ticket: the view it opens, where to load it, and the view's controls.",
+  });
+
+// ── The shell's own routes (WP-07, on the shell origin) ──────────────────────────────────
+
+/**
+ * `POST /a/{artifactId}/_mostra/v/{rev}/submit`: the shell's trusted Submit (the `shell` channel,
+ * D40). Only the shell's page can send it: the route takes the shell's session, its exact origin
+ * and its CSRF token, none of which an artifact's page has.
+ */
+export interface ShellSubmitRequest {
+  /** The view the shell's frame shows (D104); its version is what the submission names. */
+  readonly viewId: string;
+  /** The draft revision the viewer saw, after the frame flushed its saves. */
+  readonly expectedRevision: DocumentRevision;
+}
+
+/** The Zod schema of the `ShellSubmitRequest` type. */
+export const ShellSubmitRequest: z.ZodType<ShellSubmitRequest> = z
+  .object({ viewId: ViewId.schema, expectedRevision: DocumentRevision })
+  .register(wireRegistry, {
+    id: "ShellSubmitRequest",
+    description: "The shell's trusted Submit: the view and the draft revision the viewer saw.",
+  });
+
+/**
+ * `POST /a/{artifactId}/_mostra/v/{rev}/review/choose`: the shell's trusted Choose (D65, D113).
+ * It writes the viewer's draft field `review.<reviewSetId>.choice` like any mutation, so a stale
+ * base revision comes back as a conflict.
+ */
+export interface ChooseRequest {
+  /** The view the shell's frame shows. */
+  readonly viewId: string;
+  /** A fresh `mut_` ID; a retry repeats it. */
+  readonly mutationId: string;
+  /** The draft revision the shell last saw. */
+  readonly baseRevision: DocumentRevision;
+  /** The review set. */
+  readonly reviewSetId: string;
+  /** The chosen candidate's ID. */
+  readonly candidateId: string;
+  /** The candidate's label, kept with the choice for results. */
+  readonly label?: string;
+}
+
+/** The Zod schema of the `ChooseRequest` type. */
+export const ChooseRequest: z.ZodType<ChooseRequest> = z
+  .object({
+    viewId: ViewId.schema,
+    mutationId: MutationId.schema,
+    baseRevision: DocumentRevision,
+    reviewSetId: z.string().regex(REVIEW_SET_ID_PATTERN),
+    candidateId: z.string().min(1).max(256),
+    label: z.string().max(256).exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "ChooseRequest",
+    description:
+      "The shell's trusted Choose: the view, mutation, base revision, set and candidate.",
+  });
+
+/** `POST /a/{artifactId}/_mostra/v/{rev}/follow`: the viewer's "Always follow this artifact" (D63). */
+export interface FollowRequest {
+  /** `true` to load new versions automatically, `false` to stop. */
+  readonly follow: boolean;
+}
+
+/** The Zod schema of the `FollowRequest` type. */
+export const FollowRequest: z.ZodType<FollowRequest> = z
+  .object({ follow: z.boolean() })
+  .register(wireRegistry, {
+    id: "FollowRequest",
+    description: "Whether the viewer follows the artifact's new versions.",
+  });
+
+/** A draft field a version doesn't cover (D42, D109): kept, shown read-only and delivered. */
+export interface OrphanedField {
+  /** The field's ID. */
+  readonly id: string;
+  /** Its label, when it has one. */
+  readonly label?: string;
+  /** Its value. */
+  readonly value: unknown;
+  /** The version whose view last wrote it. */
+  readonly fromVersion: number;
+}
+
+/** The Zod schema of the `OrphanedField` type. */
+export const OrphanedField: z.ZodType<OrphanedField> = z
+  .object({
+    id: z.string(),
+    label: z.string().exactOptional(),
+    value: z.unknown(),
+    fromVersion: z.int().min(1),
+  })
+  .register(wireRegistry, {
+    id: "OrphanedField",
+    description: "A draft field a version doesn't cover: its ID, label, value and source version.",
+  }) as z.ZodType<OrphanedField>;
+
+/**
+ * `GET /a/{artifactId}/_mostra/v/{rev}/carry?version=<number>`: which of the viewer's answers a
+ * version doesn't carry over (D42, D109). The banner counts them before a switch; the "Not
+ * carried over" panel lists them for the version shown.
+ */
+export interface CarryOver {
+  /** The version asked about. */
+  readonly version: VersionRef;
+  /** The viewer's draft fields the version doesn't cover. */
+  readonly orphans: readonly OrphanedField[];
+}
+
+/** The Zod schema of the `CarryOver` type. */
+export const CarryOver: z.ZodType<CarryOver> = z
+  .object({ version: VersionRef, orphans: z.array(OrphanedField).readonly() })
+  .register(wireRegistry, {
+    id: "CarryOver",
+    description: "The viewer's answers a version doesn't carry over.",
   });

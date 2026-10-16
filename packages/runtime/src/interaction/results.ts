@@ -15,7 +15,7 @@ import {
 } from "./submissions.ts";
 
 /** The field ID a review set's choice is kept under (D65): `review.<set>.choice`. */
-const CHOICE = /^review\.(.+)\.choice$/;
+export const CHOICE: RegExp = /^review\.(.+)\.choice$/;
 
 /**
  * Nests dotted field IDs into objects (D52): `reply.m1` becomes `{ reply: { m1 } }`. A value never
@@ -171,9 +171,16 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
       .sort()
       .flatMap((id) => {
         const match = CHOICE.exec(id);
-        const value = (draftFields[id] as SnapshotField).value;
-        return match && typeof value === "string"
-          ? [{ reviewSetId: match[1] as string, candidateId: value }]
+        const field = draftFields[id] as SnapshotField;
+        // The trusted Choose keeps the candidate's label as the field's (D113).
+        return match && typeof field.value === "string"
+          ? [
+              {
+                reviewSetId: match[1] as string,
+                candidateId: field.value,
+                ...(field.label !== undefined ? { label: field.label } : {}),
+              },
+            ]
           : [];
       }),
     comments: [],

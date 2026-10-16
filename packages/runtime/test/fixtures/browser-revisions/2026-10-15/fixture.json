@@ -1,0 +1,12 @@
+{
+  "revision": "2026-10-15",
+  "artifactId": "art_01M524VXKER8GA6CTTT0AW8ARM",
+  "versionId": "ver_APKAN8DJDADJR8D18FGT3E1VBM",
+  "sourceDigest": "9963346eaf7609105a7cea4c890bf7b0e24aa32dbc55ebdcf3db1b68a78f3a83",
+  "envDigest": "f9a361aa079f32ee4871e0274618723bf2b2428fbbb25955eb4aa62b57cf3414",
+  "outputDigest": "501a0b1e3129e820eebdf0f80678d9df55e13edc8a66e84e14b46e4cae5c6205",
+  "manifest": {
+    "title": "Client runtime fixture"
+  },
+  "frozenAt": "2026-10-16T10:42:03.232Z"
+}

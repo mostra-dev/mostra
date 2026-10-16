@@ -14,21 +14,27 @@ import { dirname, join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
+  BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
   type Diagnostic,
   EVENTS_NOTIFY,
   type InstanceInfo,
   type JsonRpcParams,
   type MostraInitializeResult,
+  type PortTrustedControlsActivatedParams,
+  portTrustedControlsActivatedMethod,
+  portTrustedControlsPolicyMethod,
   RpcError,
 } from "@mostra/protocol";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
-import { createSpaRenderMode } from "../builder/index.ts";
+import { coverageMatcher, createSpaRenderMode, readFieldCoverage } from "../builder/index.ts";
 import { createDependencies, locateWarmSet, recoverDependencies } from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
 import {
   Capabilities,
+  CONTROLS_POLICY_TIMEOUT_MS,
   capabilityKey,
+  controlsPolicy,
   createGateway,
   type Gateway,
   locateShell,
@@ -269,6 +275,19 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         .filter(([, ports]) => ports.includes("submissions"))
         .map(([owner]) => owner),
     artifacts: { resolve: (ref) => registry.get(canonicalRef(ref)).id },
+    // Which field IDs each version covers (D109); versions are immutable, so it is read once.
+    coverage: (() => {
+      const cache = new Map<string, (fieldId: string) => boolean>();
+      return (versionId: string) => {
+        let matcher = cache.get(versionId);
+        if (!matcher) {
+          matcher = coverageMatcher(readFieldCoverage(registry.store.versionDir(versionId)));
+          if (cache.size >= 512) cache.delete(cache.keys().next().value as string);
+          cache.set(versionId, matcher);
+        }
+        return matcher;
+      };
+    })(),
     // Tests shorten the 30 s port-call limit to exercise a host that never answers.
     ...(Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) > 0
       ? { portTimeoutMs: Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) }
@@ -289,6 +308,50 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     },
     shellDir,
     interaction,
+    revisions: servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log),
+    controls: (artifact) =>
+      controlsPolicy({
+        artifact,
+        log,
+        home: () => readHomeSettings(home.path).submitChannels,
+        expected: () =>
+          Object.entries(readHomeSettings(home.path).expectedPorts ?? {})
+            .filter(([, ports]) => ports.includes("trustedControls"))
+            .map(([owner]) => owner),
+        registrant: () => server.registrants("trustedControls").at(-1),
+        call: (session, params) =>
+          server.callSession(
+            session,
+            portTrustedControlsPolicyMethod.method,
+            params as unknown as JsonRpcParams,
+            CONTROLS_POLICY_TIMEOUT_MS,
+          ),
+      }),
+    activated: (event) => {
+      // Best effort and never retried, like draft mirrors (D105, D108): the change is durable.
+      for (const registrant of server.registrants("trustedControls")) {
+        const params: PortTrustedControlsActivatedParams = {
+          artifactId: event.artifactId,
+          control: event.control,
+          viewer: interaction.viewer(event.viewerId),
+          viewId: event.viewId,
+          detail: event.detail,
+        };
+        server
+          .callSession(
+            registrant.session,
+            portTrustedControlsActivatedMethod.method,
+            params as unknown as JsonRpcParams,
+            CONTROLS_POLICY_TIMEOUT_MS,
+          )
+          .catch((error: unknown) =>
+            log.warn("gateway.activated_failed", {
+              owner: registrant.owner,
+              error: (error as Error).message,
+            }),
+          );
+      }
+    },
   });
   let gatewayStarted = false;
   const info: InstanceInfo = {
@@ -322,6 +385,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
         ...(config.submission !== undefined ? { submission: config.submission } : {}),
         ...(config.ports !== undefined ? { expectedPorts } : {}),
+        ...(config.submitChannels !== undefined
+          ? { submitChannels: [...new Set(config.submitChannels)].sort() }
+          : {}),
       };
       if (Object.keys(change).length === 0) return;
       writeHomeSettings(home.path, change);
@@ -330,9 +396,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
         ...(config.submission !== undefined ? { submission: config.submission } : {}),
         ...(config.ports !== undefined ? { ports: config.ports } : {}),
+        ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
       });
     },
-    supportedPorts: ["submissions", "drafts"],
+    supportedPorts: ["submissions", "drafts", "trustedControls"],
     notifications: [EVENTS_NOTIFY],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),
@@ -449,4 +516,22 @@ function testClockOffset(value: string | undefined, log: Log): number {
   }
   if (offset > 0) log.warn("instance.test_clock", { offsetMs: offset });
   return offset;
+}
+
+/**
+ * The browser-protocol revisions the gateway serves: every one Mostra shipped, plus, in tests, a
+ * newer test-only revision (`MOSTRA_TEST_BROWSER_REVISION_NEXT`), so a version frozen at today's
+ * revision is proven against a gateway at the next one (VR-10, D111). A value that isn't a dated
+ * revision newer than the newest is ignored and logged.
+ */
+function servedRevisions(next: string | undefined, log: Log): readonly string[] {
+  const shipped: readonly string[] = BROWSER_PROTOCOL_REVISIONS;
+  if (next === undefined || next === "") return shipped;
+  const newest = shipped.at(-1) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next) || next <= newest) {
+    log.warn("instance.test_revision_ignored", { next });
+    return shipped;
+  }
+  log.warn("instance.test_revision", { next });
+  return [...shipped, next];
 }

@@ -13,6 +13,9 @@
 import {
   type Actor,
   type ArtifactRef,
+  type CapabilityScope,
+  type CarryOver,
+  type ControlsPolicy,
   type DeliveryCounts,
   type EventFilter,
   type EventRecord,
@@ -24,10 +27,13 @@ import {
   type FieldScope,
   type FieldState,
   type MutationResult,
+  RpcError,
+  refusal,
   resultsGetMethod,
   type StreamSnapshot,
   type SubmissionSummary,
   type SubmitChannel,
+  scopeAllows,
   stateGetMethod,
   statePatchMethod,
   type Viewer,
@@ -39,20 +45,35 @@ import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
 import { latestCursor, readEvents } from "./events.ts";
-import { applyMutation, documentFor, liveFields, replayedMutation } from "./fields.ts";
+import {
+  applyMutation,
+  documentFor,
+  type FieldRow,
+  liveFields,
+  replayedMutation,
+} from "./fields.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
-import { buildResults, resultsMarkdown, submissionFor } from "./results.ts";
+import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
 import { raiseSignal } from "./signals.ts";
 import {
+  assertChannel,
   assertDraftOpen,
   closingSubmission,
+  orphansOf,
   type Snapshot,
   type SubmissionRow,
   submissionSummary,
   submit,
 } from "./submissions.ts";
 import { Subscriptions } from "./subscriptions.ts";
-import { localViewerId, openView, viewer, viewerForSpec, viewFor } from "./viewers.ts";
+import {
+  localViewerId,
+  openView,
+  viewControls,
+  viewer,
+  viewerForSpec,
+  viewFor,
+} from "./viewers.ts";
 import { waitFor } from "./wait.ts";
 
 export { appendEvent } from "./events.ts";
@@ -80,6 +101,11 @@ export interface InteractionOptions {
   /** The hosts that always provide the submissions port (`HomeConfig.ports`, D105). */
   readonly expectedHosts: () => readonly string[];
   readonly artifacts: InteractionArtifacts;
+  /**
+   * Whether a version covers a field ID (D109): from the version's `registry.json`; every ID for
+   * a version whose code can use IDs the builder couldn't know.
+   */
+  readonly coverage: (versionId: string) => (fieldId: string) => boolean;
   /** How long a host has to answer a port call (30 s; tests shorten it). */
   readonly portTimeoutMs?: number;
 }
@@ -90,6 +116,8 @@ export interface PageIdentity {
   readonly viewerId: string;
   /** The link the page's session came from: a page names only views its own link opened. */
   readonly tokenId?: string;
+  /** The link's scopes (D97): a page writes a review set's choice only with `review`. */
+  readonly scopes?: readonly CapabilityScope[];
 }
 
 /** The interaction core of one instance. */
@@ -105,13 +133,16 @@ export interface Interaction {
   viewer(viewerId: string): Viewer;
   /** The viewer for `view/url`'s `viewer`, inside the caller's transaction. */
   viewerForSpec(db: LedgerDb, spec: ViewerSpec): string;
-  /** Records a frame load of a version (D104) and returns its view ID. */
+  /** Records a frame load of a version (D104), with the controls in force (D108); returns its ID. */
   openView(input: {
     readonly artifactId: string;
     readonly versionId: string;
     readonly viewerId: string;
     readonly tokenId?: string;
+    readonly controls?: ControlsPolicy;
   }): string;
+  /** The channels and controls a page's view was opened with (D108). */
+  viewControls(page: PageIdentity, viewId: string): ControlsPolicy;
 
   /** A viewer's mutation of their draft or the artifact's state, from a page (IN-01, LL-01). */
   mutate(
@@ -133,6 +164,30 @@ export interface Interaction {
       readonly channel: SubmitChannel;
     },
   ): SubmissionSummary & { readonly duplicate?: true };
+  /**
+   * The shell's trusted Choose (D65, D113): writes `review.<set>.choice` in the viewer's draft
+   * through the `shell` channel, keeping the candidate's label.
+   */
+  choose(
+    page: PageIdentity,
+    input: {
+      readonly viewId: string;
+      readonly mutationId: string;
+      readonly baseRevision: number;
+      readonly reviewSetId: string;
+      readonly candidateId: string;
+      readonly label?: string;
+    },
+  ): MutationResult;
+  /** The viewer's draft fields a version doesn't cover (D42, D109). */
+  carryOver(
+    page: PageIdentity,
+    version: { readonly id: string; readonly number: number },
+  ): CarryOver;
+  /** Whether the viewer follows the artifact's new versions (D63). */
+  following(page: PageIdentity): boolean;
+  /** Sets the viewer's "Always follow this artifact" (D63, LL-03). */
+  setFollowing(page: PageIdentity, follow: boolean): void;
   /** A viewer's signal (IN-09); returns its cursor. */
   signal(
     page: PageIdentity,
@@ -159,6 +214,13 @@ export interface Interaction {
   disconnected(session: Session): void;
   /** The outbox per host, for `instance/status`. */
   deliveries(): DeliveryCounts[];
+}
+
+/** The number of a version. */
+function versionNumber(db: LedgerDb, versionId: string): number {
+  const row = db.get<{ number: number }>("SELECT number FROM version WHERE id = ?", versionId);
+  if (!row) throw new Error(`No version ${versionId}.`);
+  return row.number;
 }
 
 /** Whether a page may see an event (D104): never another viewer's draft, signal or view. */
@@ -273,11 +335,16 @@ export function createInteraction(options: InteractionOptions): Interaction {
     openView(input) {
       return ledger.write((db) => openView(db, input));
     },
+    viewControls(page, viewId) {
+      return ledger.read((db) =>
+        viewControls(viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId)),
+      );
+    },
 
     mutate(page, input) {
       const actor = pageActor(page);
       const outcome = ledger.write((db) => {
-        viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
+        const view = viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
         const mutation = {
           artifactId: page.artifactId,
           scope: input.scope,
@@ -287,12 +354,27 @@ export function createInteraction(options: InteractionOptions): Interaction {
           ops: input.ops,
           actor,
           viewId: input.viewId,
+          versionNumber: versionNumber(db, view.version_id),
         };
         // A committed mutation replays its result even after a submission closed the draft (D106):
         // the retry of a save whose answer was lost must not turn into a failure.
         const replay = replayedMutation(db, mutation);
         if (replay) return { result: replay, changed: false, replayed: true };
-        if (input.scope === "viewer") assertDraftOpen(db, page.artifactId, page.viewerId);
+        if (input.scope === "viewer") {
+          assertDraftOpen(db, page.artifactId, page.viewerId);
+          if (input.ops.some((op) => CHOICE.test(op.id))) {
+            // A choice needs the `review` scope however it is written, as the trusted Choose
+            // does (D97; Claude review finding 7)…
+            if (page.scopes !== undefined && !scopeAllows(page.scopes, "review")) {
+              throw new RpcError(
+                refusal("MOSTRA_HYGIENE_SCOPE_DENIED", "This link doesn't carry the review scope.")
+                  .diagnostic,
+              );
+            }
+            // …and a page's own choice is the artifact channel, which the host may not allow (D108).
+            assertChannel(view, "artifact");
+          }
+        }
         return applyMutation(db, mutation);
       });
       const result = {
@@ -318,6 +400,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           expectedRevision: input.expectedRevision,
           channel: input.channel,
           owners,
+          covers: options.coverage,
         }),
       );
       if (outcome.created) {
@@ -327,7 +410,90 @@ export function createInteraction(options: InteractionOptions): Interaction {
           channel: input.channel,
         });
       }
-      return outcome.submission;
+      // Read again after the commit: the outbox's first step runs on commit and may already have
+      // marked a delivery waiting, which the answer must not contradict (Claude review finding 8).
+      const fresh = ledger.read((db) => {
+        const row = db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          outcome.submission.id,
+        );
+        return row ? submissionSummary(db, row) : undefined;
+      });
+      if (!fresh) return outcome.submission;
+      return outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh;
+    },
+    choose(page, input) {
+      const actor = pageActor(page);
+      const outcome = ledger.write((db) => {
+        const view = viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
+        assertChannel(view, "shell");
+        const mutation = {
+          artifactId: page.artifactId,
+          scope: "viewer" as const,
+          viewerId: page.viewerId,
+          mutationId: input.mutationId,
+          baseRevision: input.baseRevision,
+          ops: [
+            {
+              id: `review.${input.reviewSetId}.choice`,
+              value: input.candidateId,
+              ...(input.label !== undefined ? { label: input.label } : {}),
+            },
+          ],
+          actor,
+          viewId: input.viewId,
+          versionNumber: versionNumber(db, view.version_id),
+          channel: "shell" as const,
+        };
+        const replay = replayedMutation(db, mutation);
+        if (replay) return { result: replay, changed: false, replayed: true };
+        assertDraftOpen(db, page.artifactId, page.viewerId);
+        return applyMutation(db, mutation);
+      });
+      if (outcome.changed) outbox.mirror(page.artifactId, page.viewerId);
+      return outcome.result;
+    },
+    carryOver(page, version) {
+      const covers = options.coverage(version.id);
+      return ledger.read((db) => {
+        const draft = documentFor(db, page.artifactId, page.viewerId);
+        const rows =
+          draft === undefined
+            ? []
+            : db.all<FieldRow>(
+                "SELECT * FROM field WHERE document_id = ? AND deleted = 0 ORDER BY field_id",
+                draft.id,
+              );
+        return { version, orphans: orphansOf(rows.filter((row) => !covers(row.field_id))) };
+      });
+    },
+    following(page) {
+      return ledger.read(
+        (db) =>
+          db.get(
+            "SELECT 1 FROM follow WHERE viewer_id = ? AND artifact_id = ?",
+            page.viewerId,
+            page.artifactId,
+          ) !== undefined,
+      );
+    },
+    setFollowing(page, follow) {
+      ledger.write((db) => {
+        if (follow) {
+          db.run(
+            "INSERT OR IGNORE INTO follow (viewer_id, artifact_id, followed_at) VALUES (?, ?, ?)",
+            page.viewerId,
+            page.artifactId,
+            new Date().toISOString(),
+          );
+        } else {
+          db.run(
+            "DELETE FROM follow WHERE viewer_id = ? AND artifact_id = ?",
+            page.viewerId,
+            page.artifactId,
+          );
+        }
+      });
     },
     signal(page, input) {
       const actor = pageActor(page);
@@ -365,6 +531,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
             return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
           })(),
           ...(latestOwn ? { submission: submissionSummary(db, latestOwn) } : {}),
+          ...(() => {
+            // The latest version, so a page that missed its `version.published` learns of it.
+            const latest = db.get<{ id: string; number: number }>(
+              `SELECT version.id, version.number FROM artifact
+                 JOIN version ON version.id = artifact.latest_version_id WHERE artifact.id = ?`,
+              page.artifactId,
+            );
+            return latest ? { latest: { id: latest.id, number: latest.number } } : {};
+          })(),
         };
       });
     },

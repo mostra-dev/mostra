@@ -383,4 +383,53 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    name: "views, follows and field versions",
+    up(db) {
+      // D108, D109, D63. A view records the submit channels and trusted controls in force when it
+      // opened, so the shell, the page and the server judge it alike. `follow` keeps each viewer's
+      // "Always follow this artifact". A field records the version whose view last wrote it (an
+      // orphan's `fromVersion`): the column WP-06 reserved as `orphaned_from_version`, never set,
+      // since orphans are derived per view and never stored.
+      db.exec(`
+        ALTER TABLE field RENAME COLUMN orphaned_from_version TO version_number;
+        ALTER TABLE view ADD COLUMN controls_json TEXT;
+        CREATE TABLE follow (
+          viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          followed_at TEXT NOT NULL,
+          PRIMARY KEY (viewer_id, artifact_id)
+        );
+      `);
+      // Fields written before: each draft change names the view it came from, so the newest
+      // change of a field tells its version. Changes whose events were compacted stay unknown.
+      const changes = db.all<{
+        artifact_id: string;
+        payload_json: string;
+        version_number: number;
+      }>(
+        `SELECT event.artifact_id, event.payload_json, version.number AS version_number FROM event
+           JOIN view ON view.id = json_extract(event.causation_json, '$.viewId')
+           JOIN version ON version.id = view.version_id
+          WHERE event.type = 'draft.changed' ORDER BY event.cursor`,
+      );
+      for (const change of changes) {
+        const payload = JSON.parse(change.payload_json) as {
+          viewerId?: string;
+          changes?: { id: string }[];
+        };
+        for (const field of payload.changes ?? []) {
+          db.run(
+            `UPDATE field SET version_number = ? WHERE field_id = ? AND document_id IN
+               (SELECT id FROM document WHERE artifact_id = ? AND scope = 'viewer' AND viewer_id = ?)`,
+            change.version_number,
+            field.id,
+            change.artifact_id,
+            payload.viewerId ?? null,
+          );
+        }
+      }
+    },
+  },
 ];

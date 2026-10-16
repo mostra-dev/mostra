@@ -1,7 +1,7 @@
 {
   "name": "@mostra/react",
   "version": "0.0.0",
-  "description": "Mostra client runtime for artifact authors: defineArtifact and the client side of server functions.",
+  "description": "Mostra client runtime for artifact authors: fields, submit, signals, choices, window.storage, routing and the shell bridge.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
   "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/react#readme",
@@ -18,6 +18,16 @@
       "@mostra/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./form": {
+      "@mostra/source": "./src/form.ts",
+      "types": "./dist/form.d.ts",
+      "default": "./dist/form.js"
+    },
+    "./router": {
+      "@mostra/source": "./src/router.ts",
+      "types": "./dist/router.d.ts",
+      "default": "./dist/router.js"
     },
     "./package.json": "./package.json"
   },
@@ -45,12 +55,20 @@
   },
   "devDependencies": {
     "@mostra/tools": "workspace:*",
+    "@size-limit/preset-small-lib": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "playwright": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "react-router": "catalog:",
+    "size-limit": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "size-limit": "catalog:",
-    "@size-limit/preset-small-lib": "catalog:"
+    "vitest": "catalog:"
   },
   "keywords": [
     "mostra",
@@ -63,16 +81,40 @@
       "name": "@mostra/react whole entry, zod included (every version embeds it)",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "30 kB"
+      "ignore": [
+        "react",
+        "react-dom",
+        "react-router",
+        "react-hook-form"
+      ],
+      "limit": "45 kB"
     },
     {
       "name": "@mostra/react whole entry, zod excluded",
       "path": "dist/index.js",
       "import": "*",
       "ignore": [
+        "react",
+        "react-dom",
+        "react-router",
+        "react-hook-form",
         "zod"
       ],
-      "limit": "7 kB"
+      "limit": "22 kB"
     }
-  ]
+  ],
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0",
+    "react-hook-form": "^7.89.0"
+  },
+  "peerDependenciesMeta": {
+    "react-router": {
+      "optional": true
+    },
+    "react-hook-form": {
+      "optional": true
+    }
+  }
 }

@@ -54,7 +54,7 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     audience: "artifact authors (browser)",
     environment: "browser",
     workspace: ["@mostra/protocol"],
-    external: ["react", "react-dom", "react-router"],
+    external: ["react", "react-dom", "react-router", "react-hook-form"],
     published: true,
   },
   {

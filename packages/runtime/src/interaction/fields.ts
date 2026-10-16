@@ -51,7 +51,8 @@ export interface FieldRow {
   readonly sensitive: number;
   readonly label: string | null;
   readonly required: number | null;
-  readonly orphaned_from_version: number | null;
+  /** The number of the version whose view last wrote the field (D109); null for agents and hosts. */
+  readonly version_number: number | null;
 }
 
 /**
@@ -113,14 +114,17 @@ export function fieldState(row: FieldRow): FieldState {
   };
 }
 
-/** A document's live fields (deleted and orphaned ones left out), by ID. */
+/**
+ * A document's live fields (deleted ones left out), by ID. A draft field the page's version
+ * doesn't cover is still live: orphans are derived per view, never stored (D109).
+ */
 export function liveFields(
   db: LedgerDb,
   documentId: number | undefined,
 ): Record<string, FieldState> {
   if (documentId === undefined) return {};
   const rows = db.all<FieldRow>(
-    "SELECT * FROM field WHERE document_id = ? AND deleted = 0 AND orphaned_from_version IS NULL ORDER BY field_id",
+    "SELECT * FROM field WHERE document_id = ? AND deleted = 0 ORDER BY field_id",
     documentId,
   );
   return Object.fromEntries(rows.map((row) => [row.field_id, fieldState(row)]));
@@ -139,6 +143,10 @@ export interface MutationInput {
   readonly actor: Actor;
   /** The view a viewer's mutation came from, recorded as its cause. */
   readonly viewId?: string;
+  /** The number of that view's version, recorded on each field it writes (D109). */
+  readonly versionNumber?: number;
+  /** The submit channel a choice came through (D40, D108), recorded as its cause. */
+  readonly channel?: "shell" | "artifact";
 }
 
 /** What {@link applyMutation} did, for the caller's follow-ups (mirrors, streams). */
@@ -280,10 +288,7 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     }
     applied.push(op.id);
     const json = encoded.get(op.id);
-    const oldSize =
-      row && row.deleted === 0 && row.orphaned_from_version === null
-        ? Buffer.byteLength(row.value_json, "utf8")
-        : 0;
+    const oldSize = row && row.deleted === 0 ? Buffer.byteLength(row.value_json, "utf8") : 0;
     const sensitive = op.sensitive ?? (row ? row.sensitive === 1 : false);
     if (json === undefined) {
       // Deleting what isn't there changes nothing and needs no new revision.
@@ -291,10 +296,11 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
       size -= oldSize;
       writes.push(() =>
         db.run(
-          "UPDATE field SET value_json = 'null', deleted = 1, field_rev = ?, updated_by_json = ?, updated_at = ?, orphaned_from_version = NULL WHERE document_id = ? AND field_id = ?",
+          "UPDATE field SET value_json = 'null', deleted = 1, field_rev = ?, updated_by_json = ?, updated_at = ?, version_number = ? WHERE document_id = ? AND field_id = ?",
           revision,
           JSON.stringify(input.actor),
           now,
+          input.versionNumber ?? null,
           document.id,
           op.id,
         ),
@@ -307,12 +313,12 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     const required = op.required !== undefined ? (op.required ? 1 : 0) : (row?.required ?? null);
     writes.push(() =>
       db.run(
-        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, orphaned_from_version)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, NULL)
+        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (document_id, field_id) DO UPDATE SET value_json = excluded.value_json, deleted = 0,
            field_rev = excluded.field_rev, updated_by_json = excluded.updated_by_json,
            updated_at = excluded.updated_at, sensitive = excluded.sensitive, label = excluded.label,
-           required = excluded.required, orphaned_from_version = NULL`,
+           required = excluded.required, version_number = excluded.version_number`,
         document.id,
         op.id,
         json,
@@ -322,6 +328,7 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
         sensitive ? 1 : 0,
         label,
         required,
+        input.versionNumber ?? null,
       ),
     );
     changes.push(
@@ -345,6 +352,7 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
   const causation = {
     mutationId: input.mutationId,
     ...(input.viewId !== undefined ? { viewId: input.viewId } : {}),
+    ...(input.channel !== undefined ? { channel: input.channel } : {}),
   };
   const subject =
     input.scope === "viewer" ? { viewerId: input.viewerId as string, epoch: document.epoch } : {};
