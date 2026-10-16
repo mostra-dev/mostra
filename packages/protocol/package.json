@@ -59,6 +59,9 @@
     "@size-limit/preset-small-lib": "catalog:",
     "@types/node": "catalog:",
     "fast-check": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-server-dom-parcel": "catalog:",
     "size-limit": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
@@ -72,7 +75,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "29 kB"
+      "limit": "34 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",
@@ -100,6 +103,15 @@
         "zod"
       ],
       "limit": "8.5 kB"
+    },
+    {
+      "name": "@mostra/protocol server-function serializer (D54)",
+      "path": "dist/index.js",
+      "import": "{ ValueWriter, ValueReader, serializeAll, deserializeAll }",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "5 kB"
     }
   ]
 }

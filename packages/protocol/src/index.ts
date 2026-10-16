@@ -374,3 +374,21 @@ export {
   type RpcRequestContext,
   type RpcRequestOptions,
 } from "./rpc/peer.ts";
+export {
+  type AnyFunction,
+  deserializeAll,
+  type Frame,
+  fromBase64,
+  RemoteError,
+  SerializationError,
+  type SerializeMode,
+  serializeAll,
+  toBase64,
+  UNSERIALIZABLE_CODE,
+  ValueReader,
+  type ValueReaderOptions,
+  ValueWriter,
+  type ValueWriterOptions,
+  type WireError,
+  wireError,
+} from "./serializer.ts";

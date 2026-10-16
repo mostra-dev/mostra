@@ -10,7 +10,7 @@ import * as z from 'zod';
 export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
 
 // @public
-export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID"];
+export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID", "MOSTRA_ACTION_UNSERIALIZABLE"];
 
 // @public
 export interface Actor {
@@ -37,6 +37,9 @@ export const ALL_SCOPES: readonly CapabilityScope[];
 
 // @public
 export type AnyBridgeMessage = BridgeMessage<unknown, unknown>;
+
+// @public
+export type AnyFunction = (...args: never) => unknown;
 
 // @public
 export type AnyMethod = MethodDefinition<unknown, unknown>;
@@ -537,6 +540,9 @@ export interface DepsAddResult {
 }
 
 // @public
+export function deserializeAll(batches: readonly unknown[], options?: ValueReaderOptions): Promise<unknown>;
+
+// @public
 export interface Diagnostic {
     readonly code: DiagnosticCode;
     readonly count?: number;
@@ -879,6 +885,27 @@ export interface FollowRequest {
 export const FollowRequest: z.ZodType<FollowRequest>;
 
 // @public
+export type Frame = {
+    readonly c: number;
+    readonly v: unknown;
+} | {
+    readonly p: number;
+    readonly v: unknown;
+} | {
+    readonly p: number;
+    readonly e: WireError;
+} | {
+    readonly i: number;
+    readonly v: unknown;
+} | {
+    readonly i: number;
+    readonly end: true;
+} | {
+    readonly i: number;
+    readonly e: WireError;
+};
+
+// @public
 export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
     readonly follow: boolean;
@@ -888,6 +915,9 @@ export interface FrameTicket extends ViewContext {
 
 // @public
 export const FrameTicket: z.ZodType<FrameTicket>;
+
+// @public
+export function fromBase64(text: string): Uint8Array;
 
 // @public
 export interface GatewayStatus {
@@ -1314,6 +1344,12 @@ export interface Refusal {
 export function refusal(code: HygieneDiagnosticCode, message: string, status?: number): Refusal;
 
 // @public
+export class RemoteError extends Error {
+    constructor(error: WireError);
+    readonly code: string | undefined;
+}
+
+// @public
 export interface RequestFacts {
     readonly csrf?: string;
     readonly headers: readonly (readonly [string, string])[];
@@ -1544,6 +1580,19 @@ export type SaveState = "saved" | "saving" | "offline" | "conflict";
 export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
 
 // @public
+export class SerializationError extends Error {
+    constructor(message: string, path?: string);
+    readonly code: string;
+    readonly path: string;
+}
+
+// @public
+export function serializeAll(value: unknown, options: Omit<ValueWriterOptions, "onBatch">): Promise<Frame[][]>;
+
+// @public
+export type SerializeMode = "argument" | "result";
+
+// @public
 export interface ShellSubmitRequest {
     readonly expectedRevision: DocumentRevision;
     readonly viewId: string;
@@ -1734,6 +1783,9 @@ export type ThreadId = Id<"thr">;
 export const ThreadId: GeneratedIdKind<"thr">;
 
 // @public
+export function toBase64(bytes: Uint8Array): string;
+
+// @public
 export type TokenId = Id<"tok">;
 
 // @public
@@ -1783,6 +1835,38 @@ export const uiSizeChanged: BridgeMessage<{
     readonly width?: number;
     readonly height?: number;
 }, undefined>;
+
+// @public
+export const UNSERIALIZABLE_CODE = "MOSTRA_ACTION_UNSERIALIZABLE";
+
+// @public
+export class ValueReader {
+    constructor(options?: ValueReaderOptions);
+    get complete(): boolean;
+    fail(error: unknown): void;
+    push(batch: unknown): void;
+    readonly root: Promise<unknown>;
+}
+
+// @public
+export interface ValueReaderOptions {
+    readonly serverFunction?: (id: string) => AnyFunction;
+}
+
+// @public
+export class ValueWriter {
+    constructor(options: ValueWriterOptions);
+    abort(): void;
+    readonly done: Promise<void>;
+    write(value: unknown): Promise<void>;
+}
+
+// @public
+export interface ValueWriterOptions {
+    readonly mode: SerializeMode;
+    readonly onBatch: (batch: Frame[]) => void;
+    readonly serverFunctionId?: (fn: AnyFunction) => string | undefined;
+}
 
 // @public
 export interface VersionAvailableParams {
@@ -1969,6 +2053,15 @@ export type WaitResult = {
     readonly status: "still_waiting";
     readonly cursor: string;
 };
+
+// @public
+export interface WireError {
+    readonly code?: string;
+    readonly message: string;
+}
+
+// @public
+export function wireError(error: unknown): WireError;
 
 // (No @packageDocumentation comment for this package)
 
