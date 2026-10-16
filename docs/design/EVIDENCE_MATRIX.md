@@ -150,7 +150,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | unverified |
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
-| AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`term` arrives with WP-22 in v1.1, D122) | unverified |
+| AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | unverified |
 | AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | unverified |
 | EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | RV-06 | WP-21 | B | Comments on a Timeline, a video and a deck slide anchor to time plus region or slide plus step and re-resolve after reload | unverified |

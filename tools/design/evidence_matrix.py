@@ -149,7 +149,7 @@ CHECKS = {
  "AX-06": "Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests",
  "AX-07": "Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews",
  "AX-08": "Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64)",
- "AX-09": "Every D60 command plus run and state implemented with contract tests (`term` arrives with WP-22 in v1.1, D122)",
+ "AX-09": "Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122)",
  "AX-10": "Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex",
  "MC-01": "MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex",
  "MC-02": "ext-apps reference host renders the export; fields, submit and actions round-trip; CSP and variables declared; URL fallback offered; external: Claude Desktop and VS Code",

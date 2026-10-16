@@ -191,7 +191,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
 ### WP-10. CLI
 - **Owns:** AX-01, AX-09, VR-06, VR-08, EN-08.
 - **Builds:**
-  - `@mostra/cli` as a thin protocol client covering D60 plus `run` and `state`, with daemon autostart;
+  - `@mostra/cli` as a thin protocol client covering D60 plus `state` (`mostra run` arrives with WP-29's bundle), with daemon autostart;
   - `--json` on every command, NDJSON streams, the exit codes, no prompts outside a TTY, logs on stderr;
   - generated help;
   - `mostra dev` (HMR, separate port, never a capability URL);
