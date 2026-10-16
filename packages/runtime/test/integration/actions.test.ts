@@ -13,7 +13,7 @@ import { deserializeAll, type Frame } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clientKey, FakeMail, openPage, type RunState, resultOf } from "../action-page.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
-import { eventually, tempDir } from "../support.ts";
+import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
 const MAIL_TOKEN = "tok-live-9f8e7d6c5b4a";
 
@@ -196,10 +196,35 @@ describe.each([
     expect(done.log).toEqual(["slow started", 'console line {"ms":30000}']);
   });
 
-  it("raises signals and host events from a run, with the run as their cause (AC-05)", async () => {
+  it("raises signals and host events from a run, with the run as their cause, to a subscribed host (AC-05)", async () => {
+    // A host subscribed to the artifact's signals and host events, as Jcode would be.
+    const host = await connectTo(gateway.daemon.status.socket as string);
+    ok(
+      await host.call(
+        "mostra/initialize",
+        initializeParams({ capabilities: { notifications: ["events/notify"] } }),
+      ),
+    );
+    ok(
+      await host.call("events/subscribe", {
+        filter: { artifacts: [actions.artifactId], types: ["signal.raised", "host.*"] },
+      }),
+    );
     const page = await openPage(actions.url);
     const started = (await page.run("actions.ts#raise", [])).json<RunState>();
     expect((await page.settled(started.runId)).status).toBe("succeeded");
+    const heard: { type: string; causation?: { runId?: string } }[] = [];
+    while (heard.length < 2) {
+      const note = (await host.next((m) => m.method === "events/notify", 15_000)) as {
+        params: { events: { type: string; causation?: { runId?: string } }[] };
+      };
+      heard.push(...note.params.events);
+    }
+    host.close();
+    expect(heard.map((event) => [event.type, event.causation?.runId])).toEqual([
+      ["signal.raised", started.runId],
+      ["host.mail.sent", started.runId],
+    ]);
     const events = ok<{
       events: { type: string; causation?: { runId?: string }; payload: Record<string, unknown> }[];
     }>(

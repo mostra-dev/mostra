@@ -9,7 +9,12 @@ export default defineConfig({
   ssr: { resolve: { conditions: ["@mostra/source"] } },
   test: {
     projects: [
-      { extends: true, test: { name: "unit", include: ["test/unit/**/*.test.ts"] } },
+      {
+        extends: true,
+        // A full local `pnpm check` runs every package's suites at once; 5 s starved a 0.3 s test
+        // (WP-08's check), so time limits here bound hangs, never speed.
+        test: { name: "unit", include: ["test/unit/**/*.test.ts"], testTimeout: 30_000 },
+      },
       {
         extends: true,
         test: {
