@@ -38,7 +38,7 @@ M19 delegated every question (2026-10-15T12:39Z): **D108** channel policy (home 
 
 ## Evidence
 
-Every check runs through the real interfaces: pages in Chromium, Firefox and WebKit through the real shell, gateway and daemon (`tests/e2e`), React's hooks in a real React DOM in Chromium (`packages/react` `browser` project), the frozen version against real gateways (`integration`), and the ledger in-process. Every row's checks also ran with a seeded violation (`node packages/runtime/scripts/prove-seeds.ts --only <ID>`): 16 seeds, each red when planted and green when restored; the unit-level fixes (saves retried when the stream returns, the coverage matcher, migration 6's backfill, the pre-commit ESLint job) were seeded by hand the same way. The full e2e suite passed twice in a row in three engines (246 of 246) before the last fixes, and CI is green on macOS and Linux.
+Every check runs through the real interfaces: pages in Chromium, Firefox and WebKit through the real shell, gateway and daemon (`tests/e2e`), React's hooks in a real React DOM in Chromium (`packages/react` `browser` project), the frozen version against real gateways (`integration`), and the ledger in-process. Every row's checks also ran with a seeded violation (`node packages/runtime/scripts/prove-seeds.ts --only <ID>`): 16 seeds, each red when planted and green when restored; the unit-level fixes (saves retried when the stream returns, the coverage matcher, migration 6's backfill, the pre-commit ESLint job) were seeded by hand the same way. After the review's fixes, `pnpm check` is green and the full e2e suite passed twice in a row in three engines (264 of 264, 6.7 min); CI runs it on macOS and Linux.
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
