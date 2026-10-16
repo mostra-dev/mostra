@@ -480,6 +480,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     actions,
     live,
     bus,
+    parked: (versionId) =>
+      pool.status().some((w) => w.versionId === versionId && w.state === "parked"),
     revisions: servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log),
     controls: (artifact) =>
       controlsPolicy({

@@ -59,6 +59,11 @@ export interface ViewState {
    * armed again only {@link ARM_MS} later (Claude review finding 6).
    */
   readonly controlsChangedAt: number;
+  /**
+   * The view's server code keeps crashing and is parked (WP-08): from the ticket, then from the
+   * stream's `worker.crashed`, until the next publish of the artifact clears it.
+   */
+  readonly serverParked: boolean;
 }
 
 /** The first state of a view, from its ticket. */
@@ -77,6 +82,7 @@ export function initialState(ticket: FrameTicket): ViewState {
     chooses: new Map(),
     early: [],
     controlsChangedAt: 0,
+    serverParked: ticket.serverParked === true,
   };
 }
 
@@ -165,6 +171,15 @@ export function withEvents(state: ViewState, events: readonly EventRecord[]): Vi
       const payload = event.payload as { versionId: string; number: number };
       if (payload.number > next.latest.number) {
         next = { ...next, latest: { id: payload.versionId, number: payload.number } };
+      }
+      // Any publish of the artifact clears its parked workers (FAILURE_MODEL §2).
+      if (next.serverParked) {
+        next = { ...next, serverParked: false };
+      }
+    } else if (event.type === "worker.crashed") {
+      const payload = event.payload as { versionId?: string; parked?: boolean };
+      if (payload.versionId === next.ticket.version.id && payload.parked === true) {
+        next = { ...next, serverParked: true };
       }
     } else if (event.type === "submission.created") {
       const payload = event.payload as { submissionId: string; viewerId?: string };

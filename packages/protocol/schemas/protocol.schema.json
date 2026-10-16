@@ -1587,6 +1587,10 @@
         },
         "pinned": {
           "type": "boolean"
+        },
+        "serverParked": {
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [

@@ -173,9 +173,20 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     expect((await (await openPage(sibling.url)).call("actions.ts#echo", [])).end).toEqual({
       status: "succeeded",
     });
+    // The shell is told on its next frame ticket, so it says the server code keeps crashing.
+    const ticket = async (): Promise<{ serverParked?: boolean }> =>
+      (
+        await page.browser.fetchJson(
+          page.opened.link.shell,
+          `/a/${actions.artifactId}/_mostra/ticket`,
+          { body: {}, csrf: page.opened.shellCsrf },
+        )
+      ).json<{ serverParked?: boolean }>();
+    expect((await ticket()).serverParked).toBe(true);
     // The next publish clears the park (FAILURE_MODEL §2).
     ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
     expect((await page.call("actions.ts#echo", ["back"])).end).toEqual({ status: "succeeded" });
+    expect((await ticket()).serverParked).toBeUndefined();
   }, 120_000);
 });
 

@@ -74,6 +74,7 @@ import {
   ORPHAN_WORDS,
   RECEIPT_WORDS,
   SAVE_WORDS,
+  SERVER_WORDS,
   submitProblem,
 } from "./words.ts";
 
@@ -850,6 +851,13 @@ export function ViewerPage(props: {
           </div>
         )}
       </header>
+      {state.serverParked && (
+        <div className="mostra-banner mostra-warn" data-mostra-server-notice="parked" role="alert">
+          <div>
+            <strong>{SERVER_WORDS.parked}</strong> <span>{SERVER_WORDS.parkedDetail}</span>
+          </div>
+        </div>
+      )}
       {newer && later !== state.latest.number && (
         <div
           className="mostra-banner"

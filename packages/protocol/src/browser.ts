@@ -221,6 +221,11 @@ export interface FrameTicket extends ViewContext {
   readonly follow: boolean;
   /** Whether the link opens this version only (D97 item 9): then the shell offers no newer one. */
   readonly pinned: boolean;
+  /**
+   * The version's server code keeps crashing and is parked (WP-08, FAILURE_MODEL §2): the shell
+   * says so, since the page's actions and live data won't work until a new publish.
+   */
+  readonly serverParked?: true;
 }
 
 /** The Zod schema of the `FrameTicket` type. */
@@ -238,6 +243,7 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
     artifactOrigin: z.string().min(1),
     follow: z.boolean(),
     pinned: z.boolean(),
+    serverParked: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",

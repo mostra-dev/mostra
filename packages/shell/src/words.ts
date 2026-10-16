@@ -15,6 +15,12 @@ export const SAVE_WORDS: Readonly<
   conflict: "Changed elsewhere",
 };
 
+/** What the shell says when the view's server code keeps crashing (WP-08, FAILURE_MODEL §2). */
+export const SERVER_WORDS = {
+  parked: "This artifact's server code keeps crashing.",
+  parkedDetail: "Its buttons and live data won't work until a fixed version is published.",
+} as const;
+
 /** The trusted controls' fixed words. */
 export const CONTROL_WORDS = {
   submit: "Submit",

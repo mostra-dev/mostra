@@ -977,6 +977,7 @@ export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
     readonly follow: boolean;
     readonly pinned: boolean;
+    readonly serverParked?: true;
     readonly src: string;
 }
 

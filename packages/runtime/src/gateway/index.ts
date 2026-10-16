@@ -115,6 +115,8 @@ export interface GatewayOptions {
   readonly live?: Live;
   /** Run and live updates for page streams and polls (WP-08). */
   readonly bus?: EphemeralBus;
+  /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */
+  readonly parked?: (versionId: string) => boolean;
 }
 
 /** The gateway of one instance. */
@@ -546,6 +548,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       target: "live",
       follow: interaction.following({ artifactId, viewerId }),
       pinned: pinned !== undefined,
+      ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
     };
     return jsonResponse(answer);
   };
