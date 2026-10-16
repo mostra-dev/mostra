@@ -115,10 +115,10 @@ Deliver the complete accepted outcome:
 
 - **The product rules** are D05 (no guardrails) and D06 (only capability holders), implemented through the checklist in [ARCHITECTURE.md](ARCHITECTURE.md#10-hygiene-and-remote-viewing). Never add a capability restriction. Never skip a hygiene item.
 - **Secrets** stay out of logs, diagnostics, reports, fixtures, screenshots and exported bundles. Redact capability tokens everywhere.
-- **No telemetry.** The core does not phone home.
+- **Telemetry (D119).** Only the standalone CLI sends anonymous usage telemetry, on by default, announced on first run and turned off by a setting, an environment variable or `DO_NOT_TRACK=1`. Embedded use never sends any: the SDK, the Rust crate, host-spawned instances and every home a host configures send nothing. Events are listed publicly and carry no artifact content, paths, tokens, identities or IP addresses.
 - **Supply chain:**
   - review each new dependency's maintenance, license and install scripts;
-  - keep the core OSI-only, with a license audit in CI;
+  - keep the core OSI-only, with a license audit in CI; `ee/` is source-available, kept apart from the core, and never imported by it (D118);
   - pin GitHub Actions by SHA;
   - apply a release-age cooldown for dependency updates.
 
@@ -211,7 +211,7 @@ A requirement with plausible or unverified evidence is incomplete unless Mirza a
 
 **Publishing:** npm trusted publishing (OIDC) with provenance and staged publishing, after Mirza authorizes it. No long-lived npm tokens.
 
-**Governance files:** `LICENSE` (Apache-2.0), `NOTICE`, `CONTRIBUTING.md` (DCO), `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `AGENTS.md`.
+**Governance files:** `LICENSE` (Apache-2.0 for everything outside `ee/`, D118), `NOTICE`, `CONTRIBUTING.md` (DCO), `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `AGENTS.md`.
 
 ## Versioning
 

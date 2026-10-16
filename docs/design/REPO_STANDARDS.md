@@ -29,7 +29,11 @@ mostra/
   apps/docs/          the documentation site, built with Mostra
   tests/              cross-package end-to-end, conformance runs, hygiene negative tests, fixtures
   tools/              repo tooling: generators, license audit, harness-plugin generator, release scripts
+  ee/                 enterprise features of self-hosted servers, source-available under a commercial
+                      license (D118); created by the first package that needs it, never imported by the core
 ```
+
+Everything outside `ee/` is Apache-2.0 (D14, D118). The managed service's operating layer is not in this repository (D116).
 
 ## 3. Packages
 
@@ -54,6 +58,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/contract-*` | plugin authors | protocol | everything else |
 | crate `mostra-host` | Rust hosts | serde, tokio | |
 | crate `mostra-term-capture` | ratatui authors | ratatui, serde | |
+| `ee/*` (D118) | operators of self-hosted servers | the core's public packages | nothing in the core may depend on `ee/` |
 
 Inside `@mostra/runtime` the modules are deep and owned: `ledger`, `interaction`, `gateway`, `addressing`, `registry`, `publish`, `deps`, `processes`, `live`, `share`, `protocol-server`, `builder` (child entry), `home` (the platform gate, resolution, permissions, the runtime directory and acquisition, D85) and `instance`, the composition root, which assembles the others and holds no policy of its own (D85). Each module has one public `index.ts`, and dependency-cruiser forbids imports into another module's internals. The package's binary, `mostra-runtime host|daemon`, is the runtime bundle's entry point (D85).
 
@@ -72,7 +77,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | Tests | Vitest 5 (unit, and browser mode through Playwright); Playwright Test for end-to-end in Chromium, Firefox and WebKit; `cargo nextest` |
 | Boundaries and hygiene | dependency-cruiser (§3 rules), knip (unused files, exports, dependencies), size-limit (`@mostra/react` and `@mostra/kit` entry budgets) |
 | API surface | API Extractor reports (`*.api.md`, committed), publint, are-the-types-wrong |
-| Licenses | `tools/license-audit` over the resolved dependency tree (OSI-only core, `pnpr/` excluded, D20, D26); `cargo-deny` |
+| Licenses | `tools/license-audit` over the resolved dependency tree (OSI-only core, `pnpr/` excluded, D20, D26; `ee/` audited apart from the core, and no published core package contains it, D118); `cargo-deny` |
 | Editors | `.editorconfig`; VS Code workspace settings and recommended extensions (Biome, ESLint, rust-analyzer, Playwright) so the language servers work across project references |
 
 ## 5. Local workflow
@@ -142,7 +147,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 - **Changesets** keeps a release pull request open. Merging it runs the release workflow in the protected `release` environment (D67):
   - npm publish with trusted publishing, direct, provenance automatic, tokens disallowed per package;
   - crates.io with `rust-lang/crates-io-auth-action`;
-  - runtime bundles built per platform (macOS arm64 and x64, Linux x64 and arm64) with a SHA-256 manifest and a GitHub artifact attestation, attached to the GitHub release;
+  - runtime bundles built per platform (macOS arm64 and x64, Linux x64 and arm64; Windows from v1.1, D120) with a SHA-256 manifest and a GitHub artifact attestation, attached to the GitHub release;
   - the docs site deployed.
 - **One-time account steps** are Mirza's:
   - create the npm organization;
@@ -158,4 +163,4 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 - **Renovate:** a minimum release age of 7 days for npm and crates, grouped updates per catalog, with the churn guidance (D48) updated in the same pull request when a major changes.
 - **New dependencies:** each one is reviewed for maintenance, license and install scripts, recorded in the pull request, and checked by the license audit.
 - **Security process:** `SECURITY.md` with private vulnerability reporting enabled, secret scanning and push protection on.
-- **No telemetry** in any package (H-16).
+- **Telemetry** (D119). Only the standalone CLI sends anonymous usage telemetry, with a first-run notice and an opt-out (a setting, an environment variable or `DO_NOT_TRACK=1`). Embedded use never sends any: the SDK, the Rust crate, host-spawned instances and every home a host configures send nothing (H-16). The endpoint is configurable and disabled in development builds; the event list is public (WP-10).
