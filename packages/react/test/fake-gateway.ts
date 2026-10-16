@@ -43,6 +43,8 @@ export class FakeGateway {
   refuseWith: string | undefined;
   /** The largest field value in UTF-8 bytes, like the gateway's 1 MiB (DATA_MODEL §5). */
   maxValueBytes = Number.POSITIVE_INFINITY;
+  /** While set, snapshot requests answer only once it settles, with what they read at first. */
+  holdSnapshots: Promise<void> | undefined;
   /** View IDs the gateway accepts. */
   views = new Set<string>(["vw_01J00000000000000000000000"]);
   readonly #subscribers = new Set<StreamHandlers>();
@@ -50,7 +52,12 @@ export class FakeGateway {
 
   transport(): Transport {
     return {
-      snapshot: async () => this.snapshot(),
+      snapshot: async () => {
+        // Taken now, answered when the test lets it: a snapshot that arrives late (GPT review).
+        const taken = this.snapshot();
+        if (this.holdSnapshots) await this.holdSnapshots;
+        return taken;
+      },
       mutate: async (request) => this.mutate(request),
       submit: async (request) => this.submit(request),
       signal: async (request) => {
@@ -118,10 +125,26 @@ export class FakeGateway {
     return doc.revision;
   }
 
+  /** Another device writes sensitive fields: the event carries no value (D52). */
+  writeSensitive(scope: "viewer" | "artifact", values: Record<string, unknown>): number {
+    const doc = this.docs[scope];
+    doc.revision += 1;
+    for (const [id, value] of Object.entries(values)) {
+      doc.fields.set(id, { value, revision: doc.revision });
+    }
+    this.#emit(
+      scope,
+      doc.revision,
+      Object.keys(values).map((id) => ({ id, sensitive: true as const })),
+      { kind: "viewer", id: "vwr_01J00000000000000000000001", name: "Other device" },
+    );
+    return doc.revision;
+  }
+
   #emit(
     scope: "viewer" | "artifact",
     revision: number,
-    changes: { id: string; value?: unknown; deleted?: true }[],
+    changes: { id: string; value?: unknown; deleted?: true; sensitive?: true }[],
     actor: EventRecord["actor"],
     mutationId?: string,
   ): void {

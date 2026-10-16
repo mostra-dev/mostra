@@ -24,6 +24,12 @@ import {
   useForm as useHookForm,
 } from "react-hook-form";
 import { useStore } from "./hooks.ts";
+
+/** Whether two JSON values are the same. */
+function sameJson(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
 import { fieldKey } from "./runtime/store.ts";
 
 /** Options of {@link useForm}: react-hook-form's, and the form's field ID. */
@@ -51,12 +57,18 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
   const prefix = `${id}.`;
   const version = useSyncExternalStore(store.subscribe, store.version, store.version);
 
-  // The form's values as Mostra has them, over its defaults: react-hook-form takes them as
-  // `values`, keeping what the viewer is editing (`keepDirtyValues`).
+  // The form starts from its values as Mostra has them, over its defaults. After that, every
+  // field follows the store: the store's value of a field is the viewer's own unsaved edit while
+  // there is one, else the gateway's, so another writer's change reaches the input once the
+  // viewer's edit landed, and never overwrites it before (GPT review finding 5; react-hook-form's
+  // `keepDirtyValues` kept a saved field's old value for good).
   const [defaults] = useState(() => hookOptions.defaultValues);
-  // `version` stands for the store's state, which the memo reads through `store`.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: as above.
-  const stored = useMemo(() => {
+  const storedValue = useCallback(
+    (name: string): unknown =>
+      store.value(fieldKey(scope, `${prefix}${name}`), get(defaults ?? {}, name)),
+    [store, scope, prefix, defaults],
+  );
+  const [initial] = useState(() => {
     const base =
       typeof defaults === "object" && defaults !== null
         ? structuredClone(defaults as TFieldValues)
@@ -66,14 +78,9 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
       setPath(base, fieldId.slice(prefix.length), store.value(fieldKey(scope, fieldId), undefined));
     }
     return base;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` stands for the store's state.
-  }, [store, scope, prefix, version, defaults]);
-
-  const form = useHookForm<TFieldValues>({
-    ...hookOptions,
-    values: stored,
-    resetOptions: { keepDirtyValues: true, ...hookOptions.resetOptions },
   });
+
+  const form = useHookForm<TFieldValues>({ ...hookOptions, defaultValues: initial as never });
 
   // Labels usually come as an object literal: the same labels are the same registration.
   const labelsKey = JSON.stringify(labels ?? {});
@@ -89,9 +96,11 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
       form.subscribe({
         formState: { values: true },
         callback: ({ values, name }) => {
-          if (name === undefined) return; // A reset from Mostra's own values: nothing to save.
+          if (name === undefined) return; // A reset: nothing the viewer changed.
           const fieldId = `${prefix}${name}`;
           if (!store.writable(fieldKey(scope, fieldId))) return;
+          // The store's own value coming back through `setValue` below isn't an edit.
+          if (sameJson(get(values, name), storedValue(name))) return;
           const label = stableLabels?.[name as FieldPath<TFieldValues>];
           store.set(scope, fieldId, get(values, name), {
             ...(label !== undefined ? { label } : {}),
@@ -99,27 +108,85 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
           });
         },
       }),
-    [form, store, scope, prefix, stableLabels, sensitiveNames],
+    [form, store, scope, prefix, stableLabels, sensitiveNames, storedValue],
   );
 
-  // Registered fields become Mostra registrations, so the shell lists their blockers.
+  // Fields whose value changed in the store (another writer, another tab, a snapshot) take it.
+  const { getValues, setValue } = form;
+  // `version` stands for the store's state, which the effect reads through `store`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: as above.
+  useEffect(() => {
+    const names = new Set<string>(rules.current.keys());
+    for (const fieldId of store.ids(scope)) {
+      if (fieldId.startsWith(prefix)) names.add(fieldId.slice(prefix.length));
+    }
+    for (const name of names) {
+      const value = storedValue(name);
+      if (sameJson(value, getValues(name as FieldPath<TFieldValues>))) continue;
+      setValue(name as FieldPath<TFieldValues>, value as never, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+    }
+  }, [version, store, scope, prefix, storedValue, getValues, setValue]);
+
+  // Registered fields become Mostra registrations, so the shell lists their blockers. Only
+  // mounted ones: a field whose input left the page, or that `unregister` removed, is released,
+  // so it neither blocks a submit nor has its default written (D110, GPT review finding 11).
   const rules = useRef(new Map<string, boolean>());
-  const register = form.register;
+  const mounted = useRef(new Map<string, { release: () => void; signature: string }>());
+  const release = useCallback(
+    (name: string): void => {
+      rules.current.delete(name);
+      const fieldId = `${prefix}${name}`;
+      mounted.current.get(fieldId)?.release();
+      mounted.current.delete(fieldId);
+    },
+    [prefix],
+  );
+  const { register, unregister } = form;
+  // One ref callback per field, so React calls it on mount and unmount only, not every render.
+  const refs = useRef(
+    new Map<string, { latest: (element: unknown) => void; ref: (element: unknown) => void }>(),
+  );
   const wrapped = useMemo(
     () =>
       ((name: FieldPath<TFieldValues>, ruleOptions?: RegisterOptions<TFieldValues>) => {
-        rules.current.set(
-          name,
-          ruleOptions?.required !== undefined && ruleOptions.required !== false,
-        );
-        return register(name, ruleOptions);
+        const required = ruleOptions?.required !== undefined && ruleOptions.required !== false;
+        rules.current.set(name, required);
+        const registered = register(name, ruleOptions);
+        let entry = refs.current.get(name);
+        if (!entry) {
+          const created = {
+            latest: registered.ref as (element: unknown) => void,
+            ref: (element: unknown): void => {
+              created.latest(element);
+              if (element === null) release(name);
+              else rules.current.set(name, rules.current.get(name) ?? required);
+            },
+          };
+          entry = created;
+          refs.current.set(name, entry);
+        }
+        entry.latest = registered.ref as (element: unknown) => void;
+        return { ...registered, ref: entry.ref };
       }) as UseFormReturn<TFieldValues>["register"],
-    [register],
+    [register, release],
+  );
+  const wrappedUnregister = useMemo(
+    () =>
+      ((name?: FieldPath<TFieldValues> | readonly FieldPath<TFieldValues>[], options?: never) => {
+        const names =
+          name === undefined ? [...rules.current.keys()] : Array.isArray(name) ? name : [name];
+        for (const each of names) release(each as string);
+        unregister(name as never, options);
+      }) as UseFormReturn<TFieldValues>["unregister"],
+    [unregister, release],
   );
   const errors = form.formState.errors;
   // Registered on the first render that names a field, updated only when a rule, label or error
   // changes, and released on unmount: re-registering on every render would never settle.
-  const mounted = useRef(new Map<string, { release: () => void; signature: string }>());
   const sync = useCallback(
     (errorOf: (name: string) => unknown): void => {
       for (const [name, required] of rules.current) {
@@ -175,5 +242,5 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
   );
 
   // A new object each render: react-hook-form renews `formState`'s proxy every render.
-  return { ...form, register: wrapped };
+  return { ...form, register: wrapped, unregister: wrappedUnregister };
 }

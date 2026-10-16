@@ -126,13 +126,32 @@ export interface FieldMeta<T> {
   readonly updatedBy?: { readonly kind: "viewer" | "agent" | "host"; readonly name?: string };
 }
 
-function validationError<T>(validate: FieldOptions<T>["validate"], value: T): string | undefined {
-  if (validate === undefined) return undefined;
-  if (typeof validate === "function") return validate(value) ?? undefined;
-  const result = validate["~standard"].validate(value);
-  if (result instanceof Promise) return undefined;
-  const issues = (result as { issues?: readonly { message: string }[] }).issues;
+/** What a field's validator says of a value: now, or once its asynchronous check settles. */
+type Validation =
+  | { readonly kind: "now"; readonly error: string | undefined }
+  | { readonly kind: "later"; readonly settled: Promise<string | undefined> };
+
+/** The message shown while an asynchronous check runs; it blocks a submit until it settles. */
+const CHECKING = "Checking this answer…";
+
+function messageOf(result: unknown): string | undefined {
+  const issues = (result as { issues?: readonly { message: string }[] } | undefined)?.issues;
   return issues && issues.length > 0 ? (issues[0]?.message ?? "Invalid value.") : undefined;
+}
+
+function validationOf<T>(validate: FieldOptions<T>["validate"], value: T): Validation {
+  if (validate === undefined) return { kind: "now", error: undefined };
+  if (typeof validate === "function") return { kind: "now", error: validate(value) ?? undefined };
+  const result = validate["~standard"].validate(value);
+  if (result instanceof Promise) {
+    // A Standard Schema may check asynchronously (Zod's async refinements): the answer counts
+    // only once the check settles (GPT review finding 14).
+    return {
+      kind: "later",
+      settled: result.then(messageOf, () => "This answer couldn't be checked."),
+    };
+  }
+  return { kind: "now", error: messageOf(result) };
 }
 
 function updatedByOf(actor: Actor | undefined): FieldMeta<unknown>["updatedBy"] {
@@ -170,7 +189,25 @@ export function useField<T>(
     () => store.keyVersion(key),
   );
   const value = store.value(key, first) as T;
-  const error = validationError(options.validate, value);
+  const { validate } = options;
+  const validation = useMemo(() => validationOf(validate, value), [validate, value]);
+  const [settled, setSettled] = useState<{ of: Validation; error: string | undefined }>();
+  useEffect(() => {
+    if (validation.kind !== "later") return;
+    let current = true;
+    void validation.settled.then((message) => {
+      if (current) setSettled({ of: validation, error: message });
+    });
+    return () => {
+      current = false;
+    };
+  }, [validation]);
+  const error =
+    validation.kind === "now"
+      ? validation.error
+      : settled?.of === validation
+        ? settled.error
+        : CHECKING;
   const { label, required, sensitive } = options;
 
   // Registered once per mount and ID; the next effect keeps its options current.
@@ -199,6 +236,22 @@ export function useField<T>(
       ...(error !== undefined ? { error } : {}),
     });
   });
+  // A submit waits for an asynchronous check of the value it would send, then counts its answer.
+  useEffect(() => {
+    if (validation.kind !== "later") return;
+    return store.beforeSubmit(async () => {
+      const message = await validation.settled;
+      store.updateRegistration({
+        id,
+        scope,
+        initial: first,
+        ...(label !== undefined ? { label } : {}),
+        ...(required !== undefined ? { required } : {}),
+        ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(message !== undefined ? { error: message } : {}),
+      });
+    });
+  }, [store, validation, id, scope, first, label, required, sensitive]);
 
   const set = useCallback(
     (next: T | ((previous: T) => T)) => {

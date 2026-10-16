@@ -355,3 +355,131 @@ describe("local mode (D111)", () => {
     await expect(store.signal("ping")).rejects.toMatchObject({ code: "MOSTRA_TARGET_UNAVAILABLE" });
   });
 });
+
+describe("GPT review findings (WP-07)", () => {
+  const VIEWER = "vwr_01J00000000000000000000000";
+
+  it("finding 1: a conflict left unresolved comes back as a conflict on the next page, never an overwrite", async () => {
+    const gateway = new FakeGateway();
+    const journal = new MemoryJournal();
+    const closed = open(gateway, { journal, tab: "closed" });
+    await closed.whenReady();
+    closed.set("viewer", "x", "mine");
+    gateway.write("viewer", { x: "theirs" }, { quiet: true });
+    await closed.flush();
+    expect(closed.conflict(v("x"))?.theirs).toBe("theirs");
+    closed.stop();
+    await settle();
+    const next = open(gateway, { journal, tab: "next", gone: ["closed"] });
+    await next.whenReady();
+    await next.flush();
+    await settle();
+    expect(gateway.docs.viewer.fields.get("x")?.value).toBe("theirs");
+    expect(next.conflict(v("x"))?.theirs).toBe("theirs");
+    expect(next.value(v("x"), "")).toBe("mine");
+    next.keepMine(v("x"));
+    await next.flush();
+    expect(gateway.docs.viewer.fields.get("x")?.value).toBe("mine");
+  });
+
+  it("finding 4: a sensitive change the page hasn't got holds the submit until a snapshot brings it, and an edit of it conflicts", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    let release = (): void => undefined;
+    gateway.holdSnapshots = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    gateway.writeSensitive("viewer", { pin: "9999", code: "4242" });
+    await settle();
+    let prepared: { unsaved: boolean } | undefined;
+    const preparing = store.prepareSubmit().then((value) => {
+      prepared = value;
+    });
+    await settle();
+    expect(prepared).toBeUndefined();
+    // An edit of a value the page hasn't got is based on what it had: a conflict with theirs.
+    store.set("viewer", "pin", "1111");
+    await store.flush();
+    expect(store.conflict(v("pin"))?.theirs).toBe("9999");
+    expect(gateway.docs.viewer.fields.get("pin")?.value).toBe("9999");
+    store.takeTheirs(v("pin"));
+    await settle();
+    expect(prepared).toBeUndefined();
+    gateway.holdSnapshots = undefined;
+    release();
+    await preparing;
+    expect(prepared?.unsaved).toBe(false);
+    expect(store.value(v("code"), "")).toBe("4242");
+  });
+
+  it("finding 6: edits of one field left by two closed tabs are both sent; the second meets the first as a conflict", async () => {
+    const gateway = new FakeGateway();
+    const journal = new MemoryJournal();
+    const a = open(gateway, { journal, tab: "a" });
+    const b = open(gateway, { journal, tab: "b" });
+    await a.whenReady();
+    await b.whenReady();
+    a.set("viewer", "x", "from a");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    b.set("viewer", "x", "from b");
+    a.stop();
+    b.stop();
+    await settle();
+    const next = open(gateway, { journal, tab: "next", gone: ["a", "b"] });
+    await next.whenReady();
+    await next.flush();
+    await settle();
+    expect(gateway.received.map((request) => request.ops[0]?.value)).toEqual(["from a", "from b"]);
+    expect(gateway.docs.viewer.fields.get("x")?.value).toBe("from a");
+    expect(next.conflict(v("x"))?.theirs).toBe("from a");
+    expect(next.value(v("x"), "")).toBe("from b");
+  });
+
+  it("finding 7: a refused value is still in the journal for the next page", async () => {
+    const gateway = new FakeGateway();
+    const journal = new MemoryJournal();
+    const store = open(gateway, { journal });
+    await store.whenReady();
+    gateway.refuseWith = "MOSTRA_FIELD_TOO_LARGE";
+    store.set("viewer", "essay", "x".repeat(50));
+    await store.flush();
+    await settle();
+    const contents = await journal.load(VIEWER);
+    expect(contents.mutations).toEqual([]);
+    expect(contents.pending.map((entry) => entry.op.value)).toEqual(["x".repeat(50)]);
+  });
+
+  it("finding 8: a snapshot older than events already applied doesn't roll fields back", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    let release = (): void => undefined;
+    gateway.holdSnapshots = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The sensitive write asks for a snapshot, read now and answered after a newer event.
+    gateway.writeSensitive("viewer", { pin: "9999" });
+    await settle();
+    gateway.write("viewer", { name: "new" });
+    await settle();
+    expect(store.value(v("name"), "")).toBe("new");
+    gateway.holdSnapshots = undefined;
+    release();
+    await settle();
+    expect(store.value(v("name"), "")).toBe("new");
+    expect(store.value(v("pin"), "")).toBe("9999");
+  });
+
+  it("finding 9: saves sent as a hidden page's keepalive leave the queue when answered", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    store.set("viewer", "x", 1);
+    await store.flush({ keepalive: true });
+    await settle();
+    expect(gateway.docs.viewer.fields.get("x")?.value).toBe(1);
+    expect(store.unsaved()).toBe(false);
+    expect(store.pageSave()).toBe("saved");
+  });
+});

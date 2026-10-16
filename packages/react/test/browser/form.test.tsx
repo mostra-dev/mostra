@@ -5,6 +5,7 @@
  * react-hook-form's `required` rule and validation errors block a submit like any field's.
  */
 import type { ViewContext } from "@mostra/protocol";
+import { type ReactElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useForm } from "../../src/form.ts";
@@ -55,6 +56,26 @@ function Intake() {
   );
 }
 
+function Conditional() {
+  const form = useForm<{ name: string; extra: string; other: string }>({
+    id: "c",
+    defaultValues: { name: "", extra: "", other: "" },
+  });
+  const [shown, setShown] = useState(true);
+  const submit = useSubmit();
+  return (
+    <form>
+      <input data-testid="name" {...form.register("name")} />
+      {shown && <input data-testid="extra" {...form.register("extra", { required: true })} />}
+      <input data-testid="other" {...form.register("other", { required: true })} />
+      <button type="button" data-testid="hide" onClick={() => setShown(false)} />
+      <span data-testid="blockers">
+        {submit.blockers.map((b) => `${b.fieldId}:${b.reason}`).join(",")}
+      </span>
+    </form>
+  );
+}
+
 /** Types into an input the way a person does: React sees an `input` event. */
 function type(input: HTMLInputElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -62,7 +83,7 @@ function type(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-async function render(gateway: FakeGateway) {
+async function render(gateway: FakeGateway, Component: () => ReactElement = Intake) {
   const store = new Store({
     mode: "live",
     transport: gateway.transport(),
@@ -78,7 +99,7 @@ async function render(gateway: FakeGateway) {
   const root = createRoot(element);
   root.render(
     <RuntimeProvider store={store} mode="live">
-      <Intake />
+      <Component />
     </RuntimeProvider>,
   );
   mounted.push({ root, store, element });
@@ -91,6 +112,8 @@ async function render(gateway: FakeGateway) {
   return {
     store,
     input,
+    click: (id: string) =>
+      element.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)?.click(),
     blockers: () => element.querySelector('[data-testid="blockers"]')?.textContent ?? "",
   };
 }
@@ -133,5 +156,31 @@ describe("@mostra/react/form (D52)", () => {
     await vi.waitFor(() => expect(page.blockers()).toBe("intake.age:invalid:Age"));
     type(page.input("age"), "40");
     expect((await page.store.prepareSubmit()).blockers).toEqual([]);
+  });
+
+  it("takes another writer's change of a field the viewer edited and saved (GPT review finding 5)", async () => {
+    const gateway = new FakeGateway();
+    const page = await render(gateway);
+    type(page.input("name"), "Ana");
+    await page.store.flush();
+    await vi.waitFor(() =>
+      expect(gateway.docs.viewer.fields.get("intake.name")?.value).toBe("Ana"),
+    );
+    gateway.write("viewer", { "intake.name": "Remote" });
+    await vi.waitFor(() => expect(page.input("name").value).toBe("Remote"));
+    expect(gateway.received.filter((r) => r.ops.some((o) => o.value === "Remote"))).toEqual([]);
+  });
+
+  it("releases a field whose input left the page: no blocker, no default written (GPT review finding 11)", async () => {
+    const gateway = new FakeGateway();
+    const page = await render(gateway, Conditional);
+    await vi.waitFor(() => expect(page.blockers()).toBe("c.extra:required,c.other:required"));
+    page.click("hide");
+    await vi.waitFor(() => expect(page.blockers()).toBe("c.other:required"));
+    // The hidden field's default isn't written; mounted ones' are (D110).
+    await page.store.prepareSubmit();
+    expect(gateway.docs.viewer.fields.has("c.extra")).toBe(false);
+    expect(gateway.docs.viewer.fields.get("c.other")?.value).toBe("");
+    expect(gateway.docs.viewer.fields.get("c.name")?.value).toBe("");
   });
 });

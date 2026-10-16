@@ -233,6 +233,54 @@ describe("useField (D52)", () => {
   });
 });
 
+describe("asynchronous validation (GPT review finding 14)", () => {
+  it("blocks while a Standard Schema checks asynchronously, and a submit waits for its answer", async () => {
+    // Every check started (StrictMode renders twice) answers together.
+    const waiting: ((ok: boolean) => void)[] = [];
+    const answer = (ok: boolean): void => {
+      for (const resolve of waiting.splice(0)) resolve(ok);
+    };
+    const slow: StandardSchema<string> = {
+      "~standard": {
+        validate: (value) =>
+          value === ""
+            ? {}
+            : new Promise((resolve) => {
+                waiting.push((ok) => resolve(ok ? {} : { issues: [{ message: "Taken" }] }));
+              }),
+      },
+    };
+    function Handle() {
+      const [, setHandle, meta] = useField("handle", "", { validate: slow, label: "Handle" });
+      const submit = useSubmit();
+      return (
+        <div>
+          <span data-testid="ready" />
+          <span data-testid="err">{meta.error ?? ""}</span>
+          <span data-testid="blockers">
+            {submit.blockers.map((b) => `${b.fieldId}:${b.reason}`).join(",")}
+          </span>
+          <button type="button" data-testid="type" onClick={() => setHandle("ana")} />
+        </div>
+      );
+    }
+    const page = await render(<Handle />);
+    page.click("type");
+    await vi.waitFor(() => expect(page.text("err")).toBe("Checking this answer…"));
+    expect(page.text("blockers")).toBe("handle:invalid");
+    let prepared: { blockers: unknown[] } | undefined;
+    const preparing = page.store.prepareSubmit().then((value) => {
+      prepared = value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(prepared).toBeUndefined();
+    answer(false);
+    await preparing;
+    expect(prepared?.blockers).toEqual([{ fieldId: "handle", label: "Handle", reason: "invalid" }]);
+    await vi.waitFor(() => expect(page.text("err")).toBe("Taken"));
+  });
+});
+
 describe("useSubmit (D40, IN-13)", () => {
   function Form() {
     const [name, setName] = useField("name", "", { label: "Name", required: true });

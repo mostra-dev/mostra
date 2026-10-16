@@ -21,7 +21,6 @@ import {
   type FieldConflict,
   type FieldOp,
   type FieldScope,
-  type FieldState,
   isFieldId,
   MutationId,
   type MutationResult,
@@ -212,6 +211,13 @@ export class Store {
   #broadcast: BroadcastChannel | undefined;
   #submitState: SubmitState = "open";
   #catchUp: (() => void)[] = [];
+  /**
+   * Fields another writer changed whose new value the page hasn't got (a sensitive value isn't in
+   * events, D52): an edit of one is based on what the page last had, so it conflicts instead of
+   * overwriting, and a submit waits until a snapshot brings the value.
+   */
+  readonly #unknown = new Set<FieldKey>();
+  #resyncing: Promise<void> | undefined;
   readonly #beforeSubmit = new Set<() => Promise<void>>();
   #stopStream: (() => void) | undefined;
 
@@ -321,11 +327,28 @@ export class Store {
     const first = this.#viewer === undefined;
     this.#viewer = snapshot.viewer;
     const touched = new Set<FieldKey>(this.#allKeys());
-    for (const key of [...this.#server.keys()]) this.#server.delete(key);
-    const load = (scope: FieldScope, fields: Readonly<Record<string, FieldState>>): void => {
-      for (const [id, field] of Object.entries(fields)) {
+    // A snapshot replaces a document the page knows no newer revision of. One that is older than
+    // events already applied (a resync answered after the stream moved on) only adds what it
+    // knows newer, field by field: the stream's cursor is past those events, so they would never
+    // come again (GPT review finding 11).
+    const load = (scope: FieldScope, document: StreamSnapshot["draft"]): boolean => {
+      const revision = Number(document.revision);
+      const replace = first || revision >= this.#seen[scope];
+      if (replace) {
+        for (const key of [...this.#server.keys()]) {
+          if (keyParts(key).scope === scope) this.#server.delete(key);
+        }
+        for (const key of [...this.#unknown]) {
+          if (keyParts(key).scope === scope) this.#unknown.delete(key);
+        }
+        this.#seen[scope] = revision;
+      }
+      for (const [id, field] of Object.entries(document.fields)) {
         const key = fieldKey(scope, id);
+        const current = this.#server.get(key);
+        if (!replace && current && current.revision >= Number(field.revision)) continue;
         touched.add(key);
+        this.#unknown.delete(key);
         this.#server.set(key, {
           value: field.value,
           revision: Number(field.revision),
@@ -333,12 +356,10 @@ export class Store {
           ...(field.updatedBy ? { updatedBy: field.updatedBy } : {}),
         });
       }
+      return replace;
     };
-    load("viewer", snapshot.draft.fields);
-    load("artifact", snapshot.state.fields);
-    this.#seen.viewer = Number(snapshot.draft.revision);
-    this.#seen.artifact = Number(snapshot.state.revision);
-    this.#epoch = snapshot.draft.epoch;
+    if (load("viewer", snapshot.draft)) this.#epoch = snapshot.draft.epoch;
+    load("artifact", snapshot.state);
     if (snapshot.submission) this.#adoptSubmission(snapshot.submission, true);
     this.#resolveCatchUp();
     this.#changed(touched);
@@ -386,9 +407,15 @@ export class Store {
                 deleted: false,
                 updatedBy: event.actor,
               });
-            } else resync = true;
+            } else {
+              // The page still shows the old value: until the snapshot brings the new one, an
+              // edit conflicts and a submit waits (GPT review finding 4).
+              this.#unknown.add(key);
+              resync = true;
+            }
             continue;
           }
+          this.#unknown.delete(key);
           this.#server.set(key, {
             value: change.deleted ? undefined : change.value,
             revision,
@@ -421,12 +448,18 @@ export class Store {
     if (touched.size > 0) this.#changed(touched);
   }
 
-  async #resync(): Promise<void> {
-    try {
-      this.#applySnapshot(await this.#transport().snapshot());
-    } catch {
-      // The next event or reconnect brings it.
-    }
+  /** Loads a fresh snapshot, once at a time; a failure leaves it to the next event or submit. */
+  #resync(): Promise<void> {
+    this.#resyncing ??= (async () => {
+      try {
+        this.#applySnapshot(await this.#transport().snapshot());
+      } catch {
+        // The next event, reconnect or submit asks again.
+      } finally {
+        this.#resyncing = undefined;
+      }
+    })();
+    return this.#resyncing;
   }
 
   // ── Reading ────────────────────────────────────────────────────────────────────────────
@@ -671,6 +704,8 @@ export class Store {
   /** The base of a new edit: what the page has seen of the field (null while it is in flight). */
   #baseFor(key: FieldKey): number | null {
     if (this.#sending.has(key)) return null;
+    // A value the page hasn't got: based on what it last had, so the write conflicts.
+    if (this.#unknown.has(key)) return this.#server.get(key)?.revision ?? 0;
     const { scope } = keyParts(key);
     return Math.max(this.#server.get(key)?.revision ?? 0, this.#seen[scope]);
   }
@@ -779,7 +814,14 @@ export class Store {
   async #drain(keepalive: boolean): Promise<void> {
     if (keepalive) {
       // The page is closing: every request goes out now, outliving it.
-      for (const mutation of this.#queue) void this.#send(mutation, true).catch(() => undefined);
+      // A hidden page may come back: each answered request leaves the queue (GPT review finding 9).
+      for (const mutation of [...this.#queue]) {
+        void this.#send(mutation, true)
+          .then((outcome) => {
+            if (outcome === "done") this.#dequeue(mutation);
+          })
+          .catch(() => undefined);
+      }
       return;
     }
     if (this.#sendingQueue) {
@@ -801,14 +843,20 @@ export class Store {
           this.#scheduleRetry();
           return;
         }
-        this.#queue.shift();
-        // The page's save state changes only now that the mutation left the queue.
-        this.#changed(head.ops.map((op) => fieldKey(head.scope, op.id)));
+        this.#dequeue(head);
       }
       this.#retryMs = 1_000;
     } finally {
       this.#sendingQueue = false;
     }
+  }
+
+  /** Removes an answered mutation from the queue; the page's save state changes only now. */
+  #dequeue(mutation: MutationEntry): void {
+    const index = this.#queue.indexOf(mutation);
+    if (index === -1) return;
+    this.#queue.splice(index, 1);
+    this.#changed(mutation.ops.map((op) => fieldKey(mutation.scope, op.id)));
   }
 
   /**
@@ -929,6 +977,7 @@ export class Store {
   #conflicted(key: FieldKey, op: FieldOp, conflict: FieldConflict, mutation: MutationEntry): void {
     const theirs = conflict.deleted ? undefined : conflict.value;
     const mine = op.delete ? undefined : op.value;
+    this.#unknown.delete(key);
     this.#server.set(key, {
       value: theirs,
       revision: Number(conflict.revision),
@@ -944,17 +993,25 @@ export class Store {
       }
       return;
     }
-    // The viewer's value stays as a held edit, shown as theirs to keep or drop.
-    const held: PendingEntry = later ?? {
-      kind: "pending",
-      viewerId: mutation.viewerId,
-      tab: this.#options.tab,
-      viewId: mutation.viewId,
-      scope: mutation.scope,
-      op,
-      base: Number(conflict.revision),
-      at: Date.now(),
-    };
+    // The viewer's value stays as a held edit, shown as theirs to keep or drop. It keeps the
+    // base it was made on, so a page that replays it from the journal meets the same conflict
+    // instead of writing over theirs; only `keepMine()` moves it to their revision (GPT review
+    // finding 1).
+    const held: PendingEntry =
+      later !== undefined
+        ? later.base === null
+          ? { ...later, base: mutation.baseRevision }
+          : later
+        : {
+            kind: "pending",
+            viewerId: mutation.viewerId,
+            tab: this.#options.tab,
+            viewId: mutation.viewId,
+            scope: mutation.scope,
+            op,
+            base: mutation.baseRevision,
+            at: Date.now(),
+          };
     this.#pending.set(key, held);
     void this.#options.journal.putPending(held).catch(() => undefined);
     this.#conflicts.set(key, {
@@ -1024,6 +1081,9 @@ export class Store {
           at: Date.now(),
         };
         this.#pending.set(key, held);
+        // Journaled before the mutation is forgotten: the next page still has the value (GPT
+        // review finding 7).
+        void this.#options.journal.putPending(held).catch(() => undefined);
       }
       this.#refused.set(key, { code, message });
     }
@@ -1056,10 +1116,42 @@ export class Store {
       ...new Set([...contents.pending, ...contents.mutations].map((entry) => entry.tab)),
     ].filter((tab) => tab !== this.#options.tab);
     const gone = this.#options.goneTabs ? await this.#options.goneTabs(tabs) : new Set(tabs);
-    const adopted: JournalEntry[] = [
-      ...contents.mutations.filter((entry) => gone.has(entry.tab)),
-      ...contents.pending.filter((entry) => gone.has(entry.tab)),
-    ];
+    const mutations = contents.mutations.filter((entry) => gone.has(entry.tab));
+    // Edits of one field left by several closed tabs: the newest stays an edit, the older ones
+    // become mutations of their own, sent first, so each is saved or meets the others as a
+    // conflict; adopting them under this tab would otherwise keep only one (GPT review finding 6).
+    const pending: PendingEntry[] = [];
+    const newest = new Map<FieldKey, PendingEntry>();
+    for (const entry of contents.pending
+      .filter((candidate) => gone.has(candidate.tab))
+      .sort((a, b) => a.at - b.at)) {
+      const key = fieldKey(entry.scope, entry.op.id);
+      const earlier = newest.get(key);
+      if (earlier) {
+        const promoted: MutationEntry = {
+          kind: "mutation",
+          viewerId: earlier.viewerId,
+          tab: earlier.tab,
+          viewId: earlier.viewId,
+          scope: earlier.scope,
+          mutationId: MutationId.create(),
+          baseRevision:
+            earlier.base ?? this.#server.get(key)?.revision ?? this.#seen[earlier.scope],
+          ops: [earlier.op],
+          seq: earlier.at * 1000,
+        };
+        try {
+          await this.#options.journal.promote(promoted, [earlier]);
+        } catch {
+          return;
+        }
+        mutations.push(promoted);
+        pending.splice(pending.indexOf(earlier), 1);
+      }
+      newest.set(key, entry);
+      pending.push(entry);
+    }
+    const adopted: JournalEntry[] = [...mutations.sort((a, b) => a.seq - b.seq), ...pending];
     if (adopted.length === 0) return;
     try {
       await this.#options.journal.adopt(adopted, this.#options.tab);
@@ -1181,9 +1273,12 @@ export class Store {
     }
     const flushed = await this.flush();
     await this.#caughtUp(flushed.revision);
+    // A value another writer changed that the page hasn't got: the page doesn't show what would
+    // be submitted until a snapshot brings it.
+    if (this.#unknown.size > 0) await this.#resync();
     return {
       revision: Math.max(this.#seen.viewer, flushed.revision),
-      unsaved: this.unsaved(),
+      unsaved: this.unsaved() || this.#unknown.size > 0,
       blockers: this.blockers(),
     };
   }

@@ -158,4 +158,19 @@ describe("Mostra's differences, by design (D112)", () => {
     expect(gateway.docs.viewer.fields.get("storage.status")?.value).toBe("mine");
     expect(store.conflict(fieldKey("viewer", "storage.status"))).toBeFalsy();
   });
+
+  it("resolves a write only once Mostra has it: offline, set waits (GPT review finding 10)", async () => {
+    const { storage: s, gateway } = await storage();
+    gateway.offline = true;
+    let done = false;
+    const writing = s.set("note", "kept").then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(done).toBe(false);
+    gateway.offline = false;
+    window.dispatchEvent(new Event("online"));
+    await writing;
+    expect(gateway.docs.viewer.fields.get("storage.note")?.value).toBe("kept");
+  });
 });

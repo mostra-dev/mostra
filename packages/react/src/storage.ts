@@ -72,8 +72,28 @@ export function createStorage(store: Store): ClaudeCompatibleStorage {
       ...(value === undefined ? { delete: true } : {}),
     });
     const k = fieldKey(scope, id);
+    // Settled: saved, refused or in conflict. Offline, the write waits in the journal and the
+    // promise with it: it resolves when Mostra has the value, never before (GPT review finding 10).
+    const settled = (): Promise<void> =>
+      new Promise((resolve) => {
+        const done = (): boolean =>
+          store.refusal(k) !== undefined ||
+          store.conflict(k) !== undefined ||
+          store.save(k) === "saved" ||
+          store.save(k) === "readonly";
+        if (done()) {
+          resolve();
+          return;
+        }
+        const stop = store.subscribe(() => {
+          if (!done()) return;
+          stop();
+          resolve();
+        });
+      });
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       await store.flush();
+      await settled();
       const refused = store.refusal(k);
       if (refused !== undefined) {
         store.takeTheirs(k);
