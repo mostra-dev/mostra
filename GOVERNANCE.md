@@ -24,5 +24,6 @@ Mostra is a maintainer-led open-source project under the Apache-2.0 license.
 
 ## Licensing and trademarks
 
-Everything users install, embed or self-host is Apache-2.0, and contributions use the DCO, not a
-CLA. The name "Mostra" identifies this project; forks are welcome under a different name.
+Everything outside `ee/` that users install, embed or self-host is Apache-2.0, and contributions
+use the DCO, not a CLA. A future `ee/` folder holds source-available enterprise features under its
+own license and takes contributions only from the core team (D118). The name "Mostra" identifies this project; forks are welcome under a different name.
