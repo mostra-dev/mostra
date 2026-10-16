@@ -613,6 +613,9 @@ importers:
       '@mostra/warm':
         specifier: workspace:*
         version: link:../warm
+      '@mostra/worker':
+        specifier: workspace:*
+        version: link:../worker
       '@types/better-sqlite3':
         specifier: 'catalog:'
         version: 9.6.0
