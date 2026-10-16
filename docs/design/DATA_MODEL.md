@@ -96,10 +96,16 @@ comment(id PK, thread_id FK, author_viewer_id, text, at, edited_at NULL)
 
 -- Actions and live data
 action_run(id PK, artifact_id, version_id, view_id NULL, viewer_id NULL, action, args_json, key NULL, client_key,
-           status CHECK(status IN ('queued','running','succeeded','failed','cancelled')), reason NULL,
-           result_json NULL, error_json NULL, log_blob NULL, log_truncated BOOLEAN, started_at, finished_at,
-           UNIQUE(artifact_id, action, key))
-live_value(artifact_id, key, revision INTEGER, value_json, producer_version_id, at, PRIMARY KEY(artifact_id, key))
+           status CHECK(status IN ('queued','running','waiting','succeeded','failed','cancelled')), reason NULL,
+           error_json NULL, progress_json NULL, log_text, log_lines, log_truncated BOOLEAN, batches, result_size,
+           started_at, finished_at NULL, UNIQUE(artifact_id, action, key), UNIQUE(artifact_id, client_key))
+                                                    -- migration 7 (WP-08, D130): `waiting` is reserved for WP-28's relay;
+                                                    -- a final run never changes and is never deleted (triggers)
+action_run_batch(run_id FK, seq, batch_json, PRIMARY KEY(run_id, seq))   -- the result, as serializer batches;
+                                                                          -- append-only (a trigger refuses UPDATE)
+live_value(artifact_id, key, revision INTEGER, value_json, producer_version_id NULL, at, PRIMARY KEY(artifact_id, key))
+                                                    -- a trigger refuses a revision that doesn't grow; value_json holds
+                                                    -- serializer batches (D56); NULL producer: a push
 live_ring(artifact_id, key, revision, value_json, at, PRIMARY KEY(artifact_id, key, revision))
 
 -- Addressing and processes
@@ -126,14 +132,16 @@ dependency_package(name, version, stored_at, PRIMARY KEY(name, version))   -- wh
 Invariants carried by constraints:
 - **`once`:** at most one submission per scope key and epoch (H-02).
 - **`epochs`:** each submit bumps `document.epoch` and links to the previous epoch through the snapshot.
-- **One run per explicit key** per artifact and action (AC-03).
+- **One run per explicit key** per artifact and action (AC-03), and one per client key per artifact, so a retried start joins its own run (D130).
+- **Finished runs never change** (a trigger), and their result batches never change (D130).
+- **Live revisions only grow** per artifact and key (a trigger); the ring keeps at most the source's `ring` values (D131).
 - **One durable result per mutation ID** (IN-01).
 - **One delivery row per submission and port owner**, which makes the outbox idempotent (IN-12). A trigger refuses any change to a delivery once its state is terminal.
 - **Event order:** the home-wide cursor gives total order, and the per-artifact sequence gives each artifact's order (IN-08).
 - **Leases:** each port has exactly one lease holder.
 - **Capabilities:** the ledger holds no secret. A token's secret, a session's cookie and its CSRF token are stored only as SHA-256 hashes. A trigger refuses any change to a revoked token and any change to a token's secret, artifact, grant, expiry, version or shell origin, and a default token can't expire (D97, D98).
 
-`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
+`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans, the action runs started in the view with their state at submit time (at most 100, D130) and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
 
 ## 4. Event catalog
 
@@ -155,7 +163,7 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
 | `host.<name>` | any payload, emitted by server code (AC-05) |
-| `worker.crashed` | versionId, cause, restart backoff |
+| `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133) |
 | `share.started` / `share.stopped` | via, hostname |
 | `token.revoked` | tokenId |
 
@@ -167,7 +175,9 @@ These are ephemeral and never stored (D47, D63): presence, live updates, action 
 
 - **Field values** are JSON. Binary data goes to blobs, referenced as `{ "$blob": sha256, "type": mime }`.
 - **Limits.** 1 MiB per field value and 16 MiB per document (D62 class, configurable). Exceeding either is `MOSTRA_FIELD_TOO_LARGE`, never truncation.
-- **Live values.** 4 MiB each. Ring buffers are bounded by count.
+- **Live values.** 4 MiB each. Ring buffers are bounded by count: the source's `ring`, 1024 for pushed keys, at most 100,000 (D131).
+- **Action runs.** Arguments and stored results 16 MiB each of serialized JSON (D131).
+- **Secrets.** Names of at most 128 characters; values of 1 byte to 64 KiB, files only, never in the ledger (D131).
 - **Run logs** are capped at 1 MB with a truncation marker (D47).
 
 ## 6. Migrations

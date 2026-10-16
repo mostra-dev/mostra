@@ -60,7 +60,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | crate `mostra-term-capture` | ratatui authors | ratatui, serde | |
 | `ee/*` (D118) | operators of self-hosted servers | the core's public packages | nothing in the core may depend on `ee/` |
 
-Inside `@mostra/runtime` the modules are deep and owned: `ledger`, `interaction`, `gateway`, `addressing`, `registry`, `publish`, `deps`, `processes`, `live`, `share`, `protocol-server`, `builder` (child entry), `home` (the platform gate, resolution, permissions, the runtime directory and acquisition, D85) and `instance`, the composition root, which assembles the others and holds no policy of its own (D85). Each module has one public `index.ts`, and dependency-cruiser forbids imports into another module's internals. The package's binary, `mostra-runtime host|daemon`, is the runtime bundle's entry point (D85).
+Inside `@mostra/runtime` the modules are deep and owned: `ledger`, `interaction`, `gateway`, `addressing`, `registry`, `publish`, `deps`, `processes`, `live`, `actions` (calls and action runs), `workers` (the launchers and the worker pool), `secrets` (the home's store and the secrets port), `service` (idle exit and the login service; WP-08 added these four), `share`, `protocol-server`, `builder` (child entry), `home` (the platform gate, resolution, permissions, the runtime directory and acquisition, D85) and `instance`, the composition root, which assembles the others and holds no policy of its own (D85). Each module has one public `index.ts`, and dependency-cruiser forbids imports into another module's internals. The package's binary, `mostra-runtime host|daemon`, is the runtime bundle's entry point (D85).
 
 ## 4. Toolchain
 
