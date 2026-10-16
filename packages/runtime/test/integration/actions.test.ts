@@ -381,6 +381,28 @@ describe.each([
     await eventually(async () => JSON.stringify(await value()) === '{"value":2}', 15_000);
   });
 
+  it("refuses arguments and stops results past 16 MiB, for calls and runs (D131)", async () => {
+    const page = await openPage(actions.url);
+    // A result past the bound stops the call and the run: nothing buffers without limit.
+    const call = await page.call("actions.ts#huge", [17]);
+    expect(call.end).toMatchObject({
+      status: "failed",
+      error: { code: "MOSTRA_ACTION_TOO_LARGE" },
+    });
+    const run = (await page.run("actions.ts#huge", [17])).json<RunState>();
+    expect(await page.settled(run.runId)).toMatchObject({
+      status: "failed",
+      reason: "too-large",
+      error: { code: "MOSTRA_ACTION_TOO_LARGE" },
+    });
+    // Within it, the result arrives whole.
+    expect(((await page.call("actions.ts#huge", [1])).value as string).length).toBe(1024 * 1024);
+    // Arguments past it are refused before any worker sees them.
+    const big = "y".repeat(16 * 1024 * 1024 + 1);
+    expect((await page.call("actions.ts#echo", [big])).status).toBe(413);
+    expect((await page.run("actions.ts#echo", [big])).status).toBe(413);
+  });
+
   it("caps a run's log at 1 MB with a marker (D47)", async () => {
     const page = await openPage(actions.url);
     const run = (await page.run("actions.ts#chatty", [])).json<RunState>();

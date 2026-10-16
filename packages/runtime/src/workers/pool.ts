@@ -173,6 +173,8 @@ interface Running {
   readonly live: Set<string>;
   stopping: boolean;
   hung?: number;
+  /** The watchdog stopped it for not answering at all, rather than for a blocked event loop. */
+  silent?: boolean;
   /** The heap in use at the last answered ping, in bytes: near the limit, a stall is memory. */
   heapUsed?: number;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -180,6 +182,9 @@ interface Running {
 }
 
 let nextCall = 0;
+
+/** Unanswered pings in a row, each as long as the watchdog's limit, before a worker is stopped. */
+const PINGS_MISSED_BEFORE_STOP = 3;
 
 /**
  * The share of its heap limit a worker had in use at its last answered ping for a watchdog stop
@@ -249,7 +254,9 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       }
       return {
         kind: "hang",
-        cause: `its event loop was blocked for ${Math.round(running.hung / 1000)} s (watchdog limit ${limits.watchdogMs / 1000} s)`,
+        cause: running.silent
+          ? `it answered nothing for ${Math.round(running.hung / 1000)} s (watchdog limit ${limits.watchdogMs / 1000} s)`
+          : `its event loop was blocked for ${Math.round(running.hung / 1000)} s (watchdog limit ${limits.watchdogMs / 1000} s)`,
       };
     }
     // Node ends an uncaught exception's report with its version; the error line says what
@@ -471,6 +478,10 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     // The watchdog (D62): a worker whose event loop stays blocked past its limit, or that stops
     // answering, is stopped and reported as hung.
     let asking = false;
+    // Pings missed in a row. The channel thread answers even while artifact code blocks the
+    // event loop, so silence means the channel is congested (a large result ahead of the answer,
+    // a slow link to a launcher elsewhere) or the process is gone; only a long silence stops it.
+    let missed = 0;
     running.watchdog = setInterval(() => {
       if (asking || running.stopping) return;
       asking = true;
@@ -479,6 +490,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         .request(WORKER_METHODS.ping, {}, { timeoutMs: limit })
         .then((raw) => {
           const ping = WorkerPingResult.parse(raw);
+          missed = 0;
           running.heapUsed = ping.heapUsed;
           if (!ping.waitingForSecret && ping.blockedMs > limit) {
             running.hung = ping.blockedMs;
@@ -487,7 +499,10 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         })
         .catch(() => {
           if (running.stopping || peer.closed) return;
-          running.hung = limit;
+          missed += 1;
+          if (missed < PINGS_MISSED_BEFORE_STOP) return;
+          running.hung = limit * missed;
+          running.silent = true;
           channel.kill();
         })
         .finally(() => {

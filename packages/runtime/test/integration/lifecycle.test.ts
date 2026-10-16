@@ -125,6 +125,62 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     90_000,
   );
 
+  it("stops a worker that stops answering at all, after three silent watchdog periods (RT-04)", async () => {
+    ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
+    const page = await openPage(actions.url);
+    const pid = (await page.call("actions.ts#pid", [])).value as number;
+    const { cursor } = ok<{ cursor: string }>(
+      await gateway.client.call("events/read", {
+        filter: { artifacts: [actions.artifactId] },
+        limit: 1000,
+      }),
+    );
+    // A run in flight, so idle eviction can't be what ends the worker.
+    const busy = (await page.run("actions.ts#slow", [60_000])).json<RunState>();
+    // A stopped process answers nothing, not even through its channel thread.
+    process.kill(pid, "SIGSTOP");
+    const started = Date.now();
+    let crash: Record<string, unknown> | undefined;
+    await eventually(async () => {
+      crash = ok<{ events: { payload: Record<string, unknown> }[] }>(
+        await gateway.client.call("events/read", {
+          filter: { artifacts: [actions.artifactId], types: ["worker.crashed"] },
+          after: cursor,
+        }),
+      ).events[0]?.payload;
+      return crash !== undefined;
+    }, 30_000);
+    // Three periods of the 2 s limit: one missed ping alone (a large result ahead of it) is no hang.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(5_000);
+    expect(crash).toMatchObject({
+      kind: "hang",
+      cause: expect.stringMatching(/answered nothing for/),
+    });
+    expect(await page.settled(busy.runId)).toMatchObject({
+      status: "failed",
+      reason: "interrupted",
+    });
+    const next = (await page.call("actions.ts#pid", [])).value as number;
+    expect(next).not.toBe(pid);
+  }, 90_000);
+
+  it("ends a run cancelled at once while its worker backs off, never waiting for it (AC-04)", async () => {
+    ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
+    const page = await openPage(actions.url);
+    // Five crashes: the next start waits 1.6 s (100 ms doubling, D133).
+    for (let i = 0; i < 5; i++) await crashes(page, "actions.ts#crash");
+    const run = (await page.run("actions.ts#echo", ["late"])).json<RunState>();
+    expect(run.status).toBe("queued");
+    const asked = Date.now();
+    expect((await page.cancel(run.runId)).json<RunState>().status).toBe("cancelled");
+    expect(Date.now() - asked).toBeLessThan(1000);
+    // It stays cancelled once the worker is back: the action never ran.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect((await page.settled(run.runId)).status).toBe("cancelled");
+    // A publish clears the crashes for the tests after this one.
+    ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
+  }, 90_000);
+
   it("backs off after each crash and parks a worker that keeps crashing, until a publish (RT-03)", async () => {
     ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
     const page = await openPage(actions.url);

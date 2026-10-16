@@ -135,3 +135,8 @@ export async function whoAfter(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
   return viewer()?.name ?? null;
 }
+
+/** Returns `mib` MiB of text: past 16 MiB, Mostra stops the call or run (D131). */
+export async function huge(mib: number) {
+  return "x".repeat(mib * 1024 * 1024);
+}

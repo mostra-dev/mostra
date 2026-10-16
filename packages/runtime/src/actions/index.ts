@@ -96,6 +96,15 @@ export interface Actions {
   activity(): number;
 }
 
+/** A run this instance is executing. */
+interface Executing {
+  handle?: WorkerHandle;
+  callId?: string;
+  cancelled: boolean;
+  /** Ends the run now: set while it waits for its worker, so a cancel needn't wait for one. */
+  endNow?: () => void;
+}
+
 function failed(code: string, message: string): RpcError {
   return new RpcError(createDiagnostic(code as never, { message }));
 }
@@ -104,10 +113,7 @@ function failed(code: string, message: string): RpcError {
 export function createActions(options: ActionsOptions): Actions {
   const { interaction, pool, bus, log } = options;
   /** Runs executing in this instance: their worker call, for cancel and crashes. */
-  const executing = new Map<
-    string,
-    { handle?: WorkerHandle; callId?: string; cancelled: boolean }
-  >();
+  const executing = new Map<string, Executing>();
   /** Which run each worker call is, for crashes. */
   const callRuns = new Map<string, string>();
   /** Why a run's worker stopped under it, until its `execute` ends it. */
@@ -145,9 +151,7 @@ export function createActions(options: ActionsOptions): Actions {
 
   /** Runs a recorded run in its version's worker, writing its output as it comes. */
   const execute = async (row: RunRow): Promise<void> => {
-    const entry: { handle?: WorkerHandle; callId?: string; cancelled: boolean } = {
-      cancelled: false,
-    };
+    const entry: Executing = { cancelled: false };
     executing.set(row.id, entry);
     let pendingLines: string[] = [];
     let pendingBatches: Frame[][] = [];
@@ -211,11 +215,19 @@ export function createActions(options: ActionsOptions): Actions {
       }
     };
 
+    let ended = false;
     try {
       let handle: WorkerHandle;
+      // A cancel while the worker starts (or backs off after a crash) ends the run at once.
+      entry.endNow = () => {
+        ended = true;
+        end("cancelled", "cancelled");
+      };
       try {
         handle = await pool.acquire(versionOf(row.version_id));
       } catch (error) {
+        delete entry.endNow;
+        if (ended) return;
         const diagnostic = error instanceof RpcError ? error.diagnostic : undefined;
         end("failed", diagnostic?.code === "MOSTRA_RUNTIME_WORKER_PARKED" ? "parked" : "crashed", {
           code: diagnostic?.code ?? "MOSTRA_RUNTIME_WORKER_CRASHED",
@@ -223,6 +235,8 @@ export function createActions(options: ActionsOptions): Actions {
         });
         return;
       }
+      delete entry.endNow;
+      if (ended) return;
       if (entry.cancelled) {
         end("cancelled", "cancelled");
         return;
@@ -334,6 +348,8 @@ export function createActions(options: ActionsOptions): Actions {
     const viewer = interaction.viewer(page.viewerId);
     const queue: CallLine[] = [];
     let wake: (() => void) | undefined;
+    let size = 0;
+    let tooLarge = false;
     const { callId, outcome } = handle.call(
       {
         fnId: input.fnId,
@@ -348,6 +364,14 @@ export function createActions(options: ActionsOptions): Actions {
       },
       {
         onBatch(batch) {
+          if (tooLarge) return;
+          // The same bound as a run's result, so a call never buffers without limit (D131).
+          size += JSON.stringify(batch).length;
+          if (size > ACTION_RESULT_MAX) {
+            tooLarge = true;
+            handle.cancel(callId, "The result grew past 16 MiB.");
+            return;
+          }
           queue.push({ batch: redactValue([...batch], options.redactor) });
           wake?.();
         },
@@ -359,8 +383,17 @@ export function createActions(options: ActionsOptions): Actions {
     let ended: CallLine | undefined;
     void outcome.then(
       (result) => {
-        ended =
-          result.status === "succeeded"
+        ended = tooLarge
+          ? {
+              end: {
+                status: "failed",
+                error: {
+                  code: "MOSTRA_ACTION_TOO_LARGE",
+                  message: "The call's result grew past 16 MiB; the call was stopped.",
+                },
+              },
+            }
+          : result.status === "succeeded"
             ? { end: { status: "succeeded" } }
             : result.status === "cancelled"
               ? {
@@ -412,6 +445,8 @@ export function createActions(options: ActionsOptions): Actions {
     } finally {
       calls -= 1;
       signal.removeEventListener("abort", abort);
+      // A reader that stopped early (the response failed) leaves nothing running.
+      if (!ended) handle.cancel(callId, "The page went away.");
     }
   }
 
@@ -504,8 +539,9 @@ export function createActions(options: ActionsOptions): Actions {
       const running = executing.get(row.id);
       if (running) {
         running.cancelled = true;
-        if (running.handle && running.callId)
+        if (running.handle && running.callId) {
           running.handle.cancel(running.callId, "Cancelled from a page.");
+        } else running.endNow?.();
       } else if (row.status === "queued" || row.status === "running" || row.status === "waiting") {
         // Recorded but not in this instance (it restarted): nothing runs it, so it ends here.
         interaction.endRun(row.id, { status: "cancelled", reason: "cancelled" });
