@@ -31,6 +31,7 @@
 | M21 | 2026-10-16T15:56:46.921Z | Accepted the plan update (D116 to D127) and its agent-facing prose ("100% approved"), with two changes: sessions explore Mostra HQ through a sub-agent, then read needed files themselves; and they summarize the earlier progress reports with sub-agents instead of reading each one, keeping the choice to read the latest report themselves. Recorded as D128. |
 | M22 | 2026-10-16T16:59:49.389Z | WP-08 questions. Delegated all twelve (the synchronous `secret()`, the worker channel and version reference, the browser protocol's additions, run states with `waiting` reserved, streamed results, re-attaching by key, the limits, secrets, lazy artifact listeners, the daemon's lifecycle and login service, issue #8, the parked notice) with "I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision" (his shorthand `<ITU/>`). Recorded as D129 to D134. |
 | M23 | 2026-10-17T09:01:30.190Z | WP-08's open question on server code's packages: "Absolutely. I completely agree -- let's fix it in WP-08, _in the most robust, high-quality, complete, meticulous, enterprise-grade_ manner." Accepted the parked notice's wording. Recorded as D135. |
+| M24 | 2026-10-17T11:51:05Z | Two requirements for the remote design: a hosted page must not be able to plant or override another page's sign-in on the user-content domain before that domain is a public suffix ("Let's indeed talk about this, research, contemplate and make a decision (or add robust instructions so that the relevant agent does so)"), and the user-content domain is configuration so new links can move to a spare ("Yes, sounds good, this is important!"). Recorded as D137. |
 
 ## Program-level decisions
 
@@ -859,6 +860,12 @@ The fourteen findings of WP-08's Claude Opus review (D80, D114) were all fixed; 
 - **Thousands of artifacts:** which artifacts' latest versions have live sources is kept in memory and updated on publish, so reconciling producers costs nothing per artifact without them; a worker started only to learn which sources are `always` starts one at a time and stops at once when nothing needs it.
 - **Typed arrays by kind:** a subclass (Node's `Buffer`) crosses as its built-in base, so `readFile`'s result reaches the page as a `Uint8Array`. React's Flight server sends a `Buffer` through its `toJSON` with a warning; Mostra sends the bytes.
 - **Write-once action runs** (DATA_MODEL §3): migration 7, unreleased, refuses an insert over an existing run, a deletion of a result batch, and a batch for a finished run.
+
+### D137. Hosted pages without a public-suffix entry; the user-content domain is configuration (M24)
+- **No public-suffix entry at first.** The user-content domain is not on the Public Suffix List when hosted links first ship, and an entry takes months to reach browsers. Until it does, every hosted page is same-site with every other tenant's page and can set cookies for the parent domain (cookie tossing). Viewer sessions on the user-content domain therefore use host-only `__Host-` cookies or none, never trust a cookie scoped to the parent domain, and stay bound to the origin they were issued for (D98 item 1). WP-28 settles the mechanism (its questions 7 and 8) and WP-30 proves it with seeded negative tests. The design stays correct once an entry exists.
+- **The user-content domain is configuration.** A remote server reads its active user-content domain and any spare domains from configuration: new links use the active domain, links already issued keep resolving on theirs, and changing the active domain needs no release. A domain flagged by a blocklist then costs a configuration change, not an outage of new shares.
+
+*Why:* one tenant's page must never be able to sign a viewer in as someone else or hijack another page's session (invariant 1, D06); and a shared domain can be flagged because of one abusive page, so moving new links has to be cheap. *Source:* M24. *Amends* WP-28's questions 7 and 8 and its risks.
 
 ## Research consensus adopted
 
