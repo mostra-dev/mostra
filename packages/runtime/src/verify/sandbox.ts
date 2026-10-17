@@ -153,9 +153,11 @@ export async function startSandbox(
   });
   if (!opening.ok) throw new Error("A verify sandbox's scratch ledger was locked.");
   const ledger = opening.ledger;
+  // Stops run last-pushed first: everything else, then the ledger, then the directory, so the
+  // scratch ledger closes (and checkpoints) before its files are removed.
   const stops: (() => Promise<void> | void)[] = [
-    () => ledger.close(),
     () => rm(runDir, { recursive: true, force: true }),
+    () => ledger.close(),
   ];
   const close = async (): Promise<void> => {
     for (const stop of stops.splice(0).reverse()) {

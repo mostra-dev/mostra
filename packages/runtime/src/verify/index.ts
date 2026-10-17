@@ -43,7 +43,7 @@ import { probedFieldLint, staticFieldLint, unstableFieldLint } from "./fields.ts
 import { ariaRegression, contractRegressions, pixelRegression } from "./regression.ts";
 import type { RunnerClient } from "./runner.ts";
 import { type Sandbox, type SandboxOptions, type SandboxVersion, startSandbox } from "./sandbox.ts";
-import { TYPECHECK_REVISION, typecheck } from "./typecheck.ts";
+import { reportedByBuild, TYPECHECK_REVISION, typecheck } from "./typecheck.ts";
 
 export { createRunnerClient, locateRunner, type RunnerClient } from "./runner.ts";
 export { recoverSandboxes, type SandboxOptions } from "./sandbox.ts";
@@ -125,7 +125,7 @@ export interface Verifier {
   cached(prepared: PreparedSource): VerifyVerdict | undefined;
   /** Verify's build of a version, when the cache still holds it complete. */
   builtVersion(versionId: string): string | undefined;
-  /** Whether a verdict's errors stop a publish, and which codes it records with `--force`. */
+  /** `cache/verify/`: the verdicts, and each verdict's screenshots, ARIA snapshots and diffs. */
   readonly cacheDir: string;
 }
 
@@ -139,7 +139,7 @@ export function verdictKey(sourceDigest: string, envDigest: string): string {
     .digest("hex");
 }
 
-const sum = (diagnostics: readonly Diagnostic[]): boolean =>
+const hasError = (diagnostics: readonly Diagnostic[]): boolean =>
   diagnostics.some((diagnostic) => diagnostic.severity === "error");
 
 /** The directory size, for the build cache's cap. */
@@ -312,24 +312,21 @@ export function createVerifier(options: VerifierOptions): Verifier {
         workDir: `${prepared.stagingDir}-check`,
         nodeModules: prepared.nodeModules,
         hasLive,
-        alreadyReported: (specifier) =>
-          buildDiagnostics.some((diagnostic) => diagnostic.message.includes(specifier)),
+        alreadyReported: (specifier) => reportedByBuild(buildDiagnostics, specifier),
       }).then((outcome) => {
         time("typecheck", compileStart);
         return outcome;
       }),
     ]);
     diagnostics.push(...(built.ok ? [] : built.diagnostics));
+    // A module the build already couldn't resolve isn't reported twice (D137 item 8). The type
+    // check's own callback may run before the build ends, so its TS2307s are matched again here.
     diagnostics.push(
-      ...checked.diagnostics.filter(
-        (diagnostic) =>
-          built.ok ||
-          diagnostic.code !== "MOSTRA_TYPE_ERROR" ||
-          !/TS2307/.test(diagnostic.message) ||
-          !built.diagnostics.some((other) =>
-            diagnostic.message.includes(other.message.slice(0, 40)),
-          ),
-      ),
+      ...checked.diagnostics.filter((diagnostic) => {
+        if (built.ok || diagnostic.code !== "MOSTRA_TYPE_ERROR") return true;
+        const missing = /^TS2307: .*?'([^']+)'/.exec(diagnostic.message)?.[1];
+        return missing === undefined || !reportedByBuild(built.diagnostics, missing);
+      }),
     );
 
     const regressions: {
@@ -399,15 +396,21 @@ export function createVerifier(options: VerifierOptions): Verifier {
           name: string,
           collect: RenderRequest["collect"],
         ): Promise<RenderResult> => {
-          const result = await options.runner.render({
-            url: (sandbox as Sandbox).link(versionId),
-            viewport,
-            clockMs,
-            outDir: artifactsDir,
-            name,
-            collect,
-            deadline,
-          });
+          const result = await options.runner
+            .render({
+              url: (sandbox as Sandbox).link(versionId),
+              viewport,
+              clockMs,
+              outDir: artifactsDir,
+              name,
+              collect,
+              deadline,
+            })
+            .catch((error: unknown) => {
+              if (error instanceof RpcError && error.diagnostic.code === "MOSTRA_VERIFY_TIMEOUT")
+                return { timedOut: true } as RenderResult;
+              throw error;
+            });
           if (result.timedOut) {
             throw new RpcError(
               createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
@@ -548,11 +551,10 @@ export function createVerifier(options: VerifierOptions): Verifier {
             }
             if (before.screenshot && after.screenshot) {
               const diff = join(artifactsDir, `diff-${viewport.name}.png`);
-              const compared = await options.runner.compare({
-                a: before.screenshot.path,
-                b: after.screenshot.path,
-                diff,
-              });
+              const compared = await options.runner.compare(
+                { a: before.screenshot.path, b: after.screenshot.path, diff },
+                deadline,
+              );
               pixels.push({ viewport: viewport.name, ratio: compared.ratio });
               const found = pixelRegression(
                 compared.ratio,
@@ -612,7 +614,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       ...diagnostic,
       message: options.redactor.redact(diagnostic.message),
     }));
-    const failed = sum(merged);
+    const failed = hasError(merged);
     const policy = run.screenshots ?? "on-failure";
     const verdict: VerifyVerdict = {
       status: failed ? "fail" : "pass",

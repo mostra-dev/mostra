@@ -13,7 +13,7 @@ import {
   pixelRegression,
   removedControls,
 } from "../../src/verify/regression.ts";
-import { parseTscOutput } from "../../src/verify/typecheck.ts";
+import { parseTscOutput, reportedByBuild } from "../../src/verify/typecheck.ts";
 
 const at = (line: number) => ({ file: "index.tsx", line, column: 3 });
 const coverage = (entries: FieldCoverage["entries"]): FieldCoverage => ({
@@ -195,6 +195,24 @@ describe("the type check's output (D137 item 8)", () => {
     ]);
     expect(found[0]?.message).toContain("TS2322");
     expect(found[0]?.message).toContain("The expected type comes from here.");
+  });
+});
+
+describe("a module the build couldn't resolve is reported once (D137 item 8)", () => {
+  const build = [
+    {
+      code: "MOSTRA_BUILD_UNRESOLVED",
+      severity: "error",
+      phase: "compile",
+      message: 'Could not resolve "left-pad-nowhere" from index.tsx: it isn\'t in the warm set.',
+      docs: "",
+    },
+  ] as const;
+  it("matches the build's quoted specifier, and nothing else", () => {
+    expect(reportedByBuild(build, "left-pad-nowhere")).toBe(true);
+    expect(reportedByBuild(build, "left-pad")).toBe(false);
+    expect(reportedByBuild(build, "react")).toBe(false);
+    expect(reportedByBuild([], "left-pad-nowhere")).toBe(false);
   });
 });
 

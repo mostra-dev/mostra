@@ -257,4 +257,35 @@ describe("verify's failures", () => {
     },
     VERIFY_MS,
   );
+  it("stops a page that blocks the browser after it got ready, and reports the timeout (FAILURE_MODEL §9)", async () => {
+    await withDaemon({ MOSTRA_TEST_VERIFY_TIMEOUT_MS: "6000" }, async (client, home) => {
+      const dir = join(tempDir("verify-busy"), "busy");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "index.tsx"),
+        `import { useEffect } from "react";
+export default function Page() {
+  // Ready first, then the main thread never yields again: every browser call waits forever.
+  useEffect(() => {
+    setTimeout(() => {
+      for (;;) {}
+    }, 300);
+  }, []);
+  return <main><h1>Busy</h1></main>;
+}
+`,
+      );
+      const started = Date.now();
+      const verdict = await verifyOf(client, dir);
+      // Within the limit and its grace, not whenever the browser gave up.
+      expect(Date.now() - started).toBeLessThan(60_000);
+      expect(codes(verdict, "error")).toContain("MOSTRA_VERIFY_TIMEOUT");
+      expect(cachedVerdicts(home)).toEqual([]);
+      // The stuck runner and its browser are gone; the next verify starts fresh and passes.
+      // (This test's 6 s limit is too short for a whole run; rendering both viewports shows the
+      // fresh runner's browser answers.)
+      const again = await verifyOf(client, single());
+      expect(again.screenshots.map((shot) => shot.viewport)).toEqual(["desktop", "mobile"]);
+    });
+  }, 120_000);
 });

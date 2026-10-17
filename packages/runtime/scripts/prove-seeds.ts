@@ -1898,6 +1898,14 @@ const SEEDS: readonly Seed[] = [
   },
   // WP-09: verify and publish's gate (AX-02, AX-04, AX-05, AU-05, VR-09, RT-02; D137).
   {
+    requirement: "AX-02-hang",
+    name: "a runner stuck on a page that blocks the browser is waited for without end",
+    file: "src/verify/runner.ts",
+    from: "      overdue,\n    ]).finally(() => clearTimeout(timer));",
+    to: "    ]).finally(() => clearTimeout(timer));",
+    check: integration("verify-failures.test.ts", "blocks the browser"),
+  },
+  {
     requirement: "AX-02-secrets",
     name: "a verify sandbox hands server code's secrets to the page unredacted",
     file: "src/verify/sandbox.ts",

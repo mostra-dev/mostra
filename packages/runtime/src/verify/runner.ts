@@ -35,10 +35,22 @@ export function locateRunner(
   };
 }
 
+/**
+ * How long past its deadline a runner may take to answer: a render checks its deadline between
+ * steps, so an answer slightly late is normal, and only a runner this late is stuck.
+ */
+const OVERDUE_GRACE_MS = 5_000;
+
 /** The runner as the verify pipeline uses it. */
 export interface RunnerClient {
+  /**
+   * Renders one link. A runner that hasn't answered shortly after `request.deadline` (a page whose
+   * code blocks the browser, say) is stopped, browser and all, and the call fails with
+   * `MOSTRA_VERIFY_TIMEOUT` (FAILURE_MODEL §9).
+   */
   render(request: RenderRequest): Promise<RenderResult>;
-  compare(request: CompareRequest): Promise<CompareResult>;
+  /** Compares two screenshots, bounded by `deadline` like a render. */
+  compare(request: CompareRequest, deadline: number): Promise<CompareResult>;
   /** Stops the runner child, if one runs. */
   close(): Promise<void>;
 }
@@ -103,16 +115,40 @@ export function createRunnerClient(options: {
     return child;
   };
 
-  const ask = async (method: string, params: object): Promise<unknown> => {
+  const ask = async (method: string, params: object, deadline: number): Promise<unknown> => {
     const handle = await start();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const overdue = new Promise<{ kind: "overdue" }>((done) => {
+      timer = setTimeout(
+        () => done({ kind: "overdue" }),
+        Math.max(0, deadline - Date.now()) + OVERDUE_GRACE_MS,
+      );
+    });
     const outcome = await Promise.race([
       handle.request(method, params as Record<string, unknown>).then(
         (result) => ({ kind: "result" as const, result }),
         (error: unknown) => ({ kind: "error" as const, error }),
       ),
       handle.exited.then((exit) => ({ kind: "exit" as const, exit })),
-    ]);
+      overdue,
+    ]).finally(() => clearTimeout(timer));
     if (outcome.kind === "result") return outcome.result;
+    if (outcome.kind === "overdue") {
+      // The runner is stuck (artifact code blocking the page's main thread keeps every browser
+      // call waiting): stop it and its browser; the next run starts a fresh one.
+      options.log.warn("verify.runner_overdue", { method });
+      if (child) {
+        const stuck = child;
+        child = undefined;
+        await (await stuck.catch(() => undefined))?.stop(2000);
+      }
+      throw new RpcError(
+        createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
+          message:
+            "Verify ran out of time: the browser stopped answering while it checked the page.",
+        }),
+      );
+    }
     if (outcome.kind === "error" && outcome.error instanceof RpcError) {
       // The runner answered with a diagnostic of its own (no browser, say): it stands. A closed
       // channel or an internal error means the runner itself failed, reported as a crash.
@@ -136,8 +172,10 @@ export function createRunnerClient(options: {
   };
 
   return {
-    render: (request) => ask(VERIFY_RUNNER_METHODS.render, request) as Promise<RenderResult>,
-    compare: (request) => ask(VERIFY_RUNNER_METHODS.compare, request) as Promise<CompareResult>,
+    render: (request) =>
+      ask(VERIFY_RUNNER_METHODS.render, request, request.deadline) as Promise<RenderResult>,
+    compare: (request, deadline) =>
+      ask(VERIFY_RUNNER_METHODS.compare, request, deadline) as Promise<CompareResult>,
     async close() {
       const running = child;
       child = undefined;

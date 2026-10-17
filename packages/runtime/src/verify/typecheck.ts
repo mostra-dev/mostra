@@ -243,3 +243,13 @@ export async function typecheck(options: {
     await rm(workDir, { recursive: true, force: true });
   }
 }
+
+/** Whether the build's diagnostics already name a module the type check couldn't find. */
+export function reportedByBuild(diagnostics: readonly Diagnostic[], specifier: string): boolean {
+  return diagnostics.some(
+    (diagnostic) =>
+      diagnostic.message.includes(`"${specifier}"`) ||
+      diagnostic.message.includes(`'${specifier}'`) ||
+      diagnostic.message.includes(`\`${specifier}\``),
+  );
+}
