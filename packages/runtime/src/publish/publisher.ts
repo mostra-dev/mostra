@@ -38,17 +38,20 @@ import {
   ArtifactId,
   type ArtifactManifest,
   type ArtifactPublishParams,
+  type ArtifactVerifyParams,
   BROWSER_PROTOCOL_REVISION,
   createDiagnostic,
   type DepsAddParams,
   type DepsAddResult,
+  type Diagnostic,
   type PublishReceipt,
   RpcError,
   type SourceRef,
   type SubmissionPolicy,
+  type VerifyVerdict,
 } from "@mostra/protocol";
 import type { RenderMode } from "../builder/index.ts";
-import { type Dependencies, lockKey } from "../deps/index.ts";
+import { type Dependencies, lockKey, type Resolution } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import {
   InflightRequests,
@@ -60,6 +63,14 @@ import {
 } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
+import {
+  type BuildOutcome,
+  didNotBuild,
+  errorCodes,
+  type PreparedSource,
+  VERIFY_REVISION,
+  type Verifier,
+} from "../verify/index.ts";
 import {
   type BuildEnvironment,
   canonicalJson,
@@ -93,12 +104,21 @@ export interface PublisherOptions {
   readonly faults?: Faults;
   /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
   readonly homePolicy?: () => SubmissionPolicy | undefined;
+  /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D137). */
+  readonly verifier: () => Verifier;
+  /**
+   * Tests of other features only (`MOSTRA_TEST_UNVERIFIED_PUBLISH`): publish without the gate.
+   * Such a version records no verdict, so it never counts as passing (D137 item 4).
+   */
+  readonly unverified?: boolean;
 }
 
 /** Publishes and creates artifacts. */
 export interface Publisher {
-  /** `artifact/publish`. */
+  /** `artifact/publish`: gated by verify (D41). */
   publish(params: ArtifactPublishParams): Promise<PublishReceipt>;
+  /** `artifact/verify`: one run, its verdict cached for the publish that follows (D137). */
+  verify(params: ArtifactVerifyParams, progress?: (stage: string) => void): Promise<VerifyVerdict>;
   /** `artifact/create`. */
   create(params: ArtifactCreateParams): Promise<ArtifactCreateResult>;
   /** `deps/add`: adds packages to an artifact's working lockfile (D95). */
@@ -313,9 +333,33 @@ class KeyedQueue {
   }
 }
 
+/** The first diagnostic of a failed build, or a generic one. */
+function firstDiagnostic(diagnostics: readonly Diagnostic[]): Diagnostic {
+  return (
+    diagnostics[0] ?? createDiagnostic("MOSTRA_BUILD_FAILED", { message: "The build failed." })
+  );
+}
+
+/**
+ * The verdict of a source verify couldn't prepare (an invalid manifest, dependencies that can't be
+ * resolved): that diagnostic alone, never cached (D137 item 3).
+ */
+function failedVerdict(path: string, diagnostic: Diagnostic): VerifyVerdict {
+  return {
+    status: diagnostic.severity === "error" ? "fail" : "pass",
+    artifact: { path, sourceDigest: "", envDigest: "" },
+    diagnostics: [diagnostic],
+    screenshots: [],
+    aria: [],
+    smoke: { interactions: 0, skippedActions: [], stateChanges: 0 },
+    regressions: {},
+    timingsMs: { total: 0 },
+  };
+}
+
 /** Creates the publisher of one instance. */
 export function createPublisher(options: PublisherOptions): Publisher {
-  const { registry, ledger, renderMode, dependencies, log } = options;
+  const { registry, ledger, renderMode, dependencies, log, verifier } = options;
   const faults = options.faults ?? noFaults;
   const queue = new KeyedQueue();
   const buildConfigDigest = sha256Hex(canonicalJson(renderMode.buildConfig));
@@ -352,203 +396,373 @@ export function createPublisher(options: PublisherOptions): Publisher {
     return bound;
   };
 
-  const publishOnce = async (params: ArtifactPublishParams): Promise<PublishReceipt> => {
-    const path = pathOf(params.source);
-    const source = await resolveSource(path);
+  /** What {@link prepare} read of a snapshot, besides the {@link PreparedSource}. */
+  interface Staged {
+    readonly prepared: PreparedSource;
+    readonly source: ResolvedSource;
+    readonly listed: readonly ListedFile[];
+    readonly entryHasDefault: boolean;
+    readonly environment: BuildEnvironment;
+    readonly deps: Resolution;
+  }
 
-    // Publishes of one source path, then of one artifact, run one at a time (always in that
-    // order, so they can't deadlock): a path-bound artifact's identity is decided once, and two
-    // copies claiming one ID never promote the same version directory at once. The commit checks
-    // the identity again inside its transaction.
+  /**
+   * Steps 1 to 3 of a publish, shared with verify (D41, D95): the snapshot, its manifest, the
+   * dependencies (resolved exactly as publish does, through the same working lockfile) and the
+   * digests. Throws the manifest's or the dependencies' diagnostic.
+   */
+  const prepare = async (
+    path: string,
+    source: ResolvedSource,
+    provisional: string,
+    identityKnown: boolean,
+    staging: string,
+  ): Promise<Staged> => {
+    // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read.
+    const files = await listSource(source);
+    const listed = await copySnapshot(files, join(staging, "source"));
+    faults.at("publish:after-snapshot");
+    const extracted = extractManifest(
+      source.entry,
+      await readFile(join(staging, "source", source.entry), "utf8"),
+    );
+    for (const warning of extracted.warnings)
+      log.warn("publish.manifest_warning", { code: warning.code, message: warning.message });
+    const manifest: ArtifactManifest = extracted.manifest ?? { title: defaultTitle(source) };
+    const artifactId = registry.identityFor(source.bindingPath, manifest.id, () => provisional);
+    if (artifactId !== provisional) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_PUBLISH_SOURCE_CHANGED", {
+          message: `The manifest of ${path} changed while it was being published.`,
+        }),
+      );
+    }
+
+    // 2. The dependencies, from the snapshot's imports and the artifact's working lockfile.
+    const deps = await dependencies.resolve({
+      key: lockKey(manifest.id ?? registry.artifactAt(source.bindingPath), source.bindingPath),
+      sourceDir: join(staging, "source"),
+      artifactDir: source.root,
+      artifactPath: path,
+    });
+    faults.at("publish:after-dependencies");
+
+    // 3. Digests (DATA_MODEL §2).
+    const sourceDigest = listingDigest(listed);
+    const environment: BuildEnvironment = {
+      mostraVersion: options.runtimeVersion,
+      kitVersion: null,
+      kitBase: manifest.kit?.base ?? "base",
+      mode: manifest.mode ?? "spa",
+      lockDigest: deps.lockDigest,
+      buildConfigDigest,
+      // The browser protocol the version's client runtime speaks (VR-10, D106).
+      browserProtocolRevision: BROWSER_PROTOCOL_REVISION,
+    };
+    const envDigest = environmentDigest(environment);
+    const versionId = versionIdFor(artifactId, sourceDigest, envDigest);
+    faults.at("publish:after-digests");
+    return {
+      prepared: {
+        path,
+        stagingDir: staging,
+        sourceDir: source.root,
+        manifest,
+        warnings: extracted.warnings,
+        artifactId,
+        identityKnown,
+        sourceDigest,
+        envDigest,
+        versionId,
+        nodeModules: deps.nodeModules,
+      },
+      source,
+      listed,
+      entryHasDefault: extracted.hasDefaultExport,
+      environment,
+      deps,
+    };
+  };
+
+  /**
+   * Step 5's build, laid out as a version directory in `out`: the client and server builds,
+   * `registry.json`, `lock.yaml` and `manifest.json` (whose `forcedCodes` and `verify` publish
+   * fills in when it promotes; neither is part of the output digest).
+   */
+  const stageBuild = async (staged: Staged, out: string): Promise<BuildOutcome> => {
+    const { prepared } = staged;
+    const built = await renderMode.build({
+      stagingDir: prepared.stagingDir,
+      entry: staged.source.entry,
+      entryHasDefault: staged.entryHasDefault,
+      manifest: prepared.manifest,
+      versionId: prepared.versionId,
+      nodeModules: staged.deps.nodeModules,
+      outDir: out,
+    });
+    if (!built.ok) return { ok: false, diagnostics: built.diagnostics };
+    faults.at("publish:after-build");
+    await writeFile(join(out, "registry.json"), `${JSON.stringify(built.registry, null, 2)}\n`);
+    await writeFile(join(out, "lock.yaml"), staged.deps.lock);
+    const outputDigest = listingDigest(await outputListing(out));
+    await writeVersionManifest(out, staged, {
+      outputDigest,
+      server: built.server,
+      forcedCodes: [],
+    });
+    return { ok: true, outputDigest, registry: built.registry };
+  };
+
+  /** Writes a version directory's `manifest.json`. */
+  const writeVersionManifest = async (
+    out: string,
+    staged: Staged,
+    fields: {
+      readonly outputDigest: string;
+      readonly server: boolean;
+      readonly forcedCodes: readonly string[];
+      readonly verify?: { readonly status: "pass" | "fail"; readonly verifyRevision: string };
+    },
+  ): Promise<void> => {
+    const { prepared } = staged;
+    await writeFile(
+      join(out, "manifest.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          artifactId: prepared.artifactId,
+          versionId: prepared.versionId,
+          mode: staged.environment.mode,
+          entry: staged.source.entry,
+          server: fields.server,
+          manifest: prepared.manifest,
+          sourceDigest: prepared.sourceDigest,
+          envDigest: prepared.envDigest,
+          environment: staged.environment,
+          outputDigest: fields.outputDigest,
+          forcedCodes: fields.forcedCodes,
+          ...(fields.verify ? { verify: fields.verify } : {}),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  };
+
+  /**
+   * Runs `fn` with the source's identity decided and its staging directory made: one at a time per
+   * source path, then per artifact (always in that order, so they can't deadlock), so a path-bound
+   * artifact's identity is decided once and two copies claiming one ID never promote the same
+   * version directory at once. The commit checks the identity again inside its transaction.
+   */
+  const staged = async <T>(
+    ref: SourceRef,
+    fn: (input: {
+      readonly path: string;
+      readonly source: ResolvedSource;
+      readonly provisional: string;
+      readonly identityKnown: boolean;
+      readonly staging: string;
+    }) => Promise<T>,
+  ): Promise<T> => {
+    const path = pathOf(ref);
+    const source = await resolveSource(path);
     return queue.run(`path:${source.bindingPath}`, async () => {
       const peek = extractManifest(source.entry, await readEntry(source));
-      const provisional = registry.identityFor(source.bindingPath, peek.manifest?.id, () =>
-        ArtifactId.create(),
-      );
+      const known = peek.manifest?.id ?? registry.artifactAt(source.bindingPath);
+      const provisional = known ?? ArtifactId.create();
       return queue.run(`artifact:${provisional}`, async () => {
         const staging = await mkdtemp(join(registry.store.stagingDir, "publish-"));
-        // What this publish placed in the store before its commit; removed again if it fails
-        // (the next start removes it too, should this process die first: FAILURE_MODEL §3).
-        const undo: (() => Promise<void>)[] = [];
-        let committed = false;
         try {
-          // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read.
-          const files = await listSource(source);
-          const listed = await copySnapshot(files, join(staging, "source"));
-          faults.at("publish:after-snapshot");
-          const extracted = extractManifest(
-            source.entry,
-            await readFile(join(staging, "source", source.entry), "utf8"),
-          );
-          for (const warning of extracted.warnings)
-            log.warn("publish.manifest_warning", { code: warning.code, message: warning.message });
-          const manifest: ArtifactManifest = extracted.manifest ?? { title: defaultTitle(source) };
-          const artifactId = registry.identityFor(
-            source.bindingPath,
-            manifest.id,
-            () => provisional,
-          );
-          if (artifactId !== provisional) {
-            throw new RpcError(
-              createDiagnostic("MOSTRA_PUBLISH_SOURCE_CHANGED", {
-                message: `The manifest of ${path} changed while it was being published.`,
-              }),
-            );
-          }
-
-          // 2. The dependencies, from the snapshot's imports and the artifact's working lockfile.
-          const key = lockKey(
-            manifest.id ?? registry.artifactAt(source.bindingPath),
-            source.bindingPath,
-          );
-          const deps = await dependencies.resolve({
-            key,
-            sourceDir: join(staging, "source"),
-            artifactDir: source.root,
-            artifactPath: path,
+          return await fn({
+            path,
+            source,
+            provisional,
+            identityKnown: known !== undefined,
+            staging,
           });
-          faults.at("publish:after-dependencies");
-
-          // 3. Digests (DATA_MODEL §2).
-          const sourceDigest = listingDigest(listed);
-          const environment: BuildEnvironment = {
-            mostraVersion: options.runtimeVersion,
-            kitVersion: null,
-            kitBase: manifest.kit?.base ?? "base",
-            mode: manifest.mode ?? "spa",
-            lockDigest: deps.lockDigest,
-            buildConfigDigest,
-            // The browser protocol the version's client runtime speaks (VR-10, D106).
-            browserProtocolRevision: BROWSER_PROTOCOL_REVISION,
-          };
-          const envDigest = environmentDigest(environment);
-          const versionId = versionIdFor(artifactId, sourceDigest, envDigest);
-          faults.at("publish:after-digests");
-
-          // 5. Build, archive and promote, unless this artifact already has this exact version.
-          let outputDigest: string | undefined;
-          const forcedCodes: string[] = [];
-          // A version whose directory is missing or no longer matches its own recorded output
-          // digest is rebuilt from the same source and environment, and put back in place; its
-          // ledger row stays as it was (FAILURE_MODEL §3, D80 Claude review finding 3).
-          const exists = registry.hasVersion(versionId);
-          const damage = exists
-            ? await versionDamage(registry.store.versionDir(versionId))
-            : undefined;
-          if (damage !== undefined) {
-            log.warn("publish.version_damaged", { versionId, damage });
-          }
-          if (!exists || damage !== undefined) {
-            const out = join(staging, "out");
-            const built = await renderMode.build({
-              stagingDir: staging,
-              entry: source.entry,
-              entryHasDefault: extracted.hasDefaultExport,
-              manifest,
-              versionId,
-              nodeModules: deps.nodeModules,
-              outDir: out,
-            });
-            if (!built.ok) {
-              const [first, ...rest] = built.diagnostics;
-              for (const other of rest)
-                log.warn("publish.build_diagnostic", { code: other.code, message: other.message });
-              throw new RpcError(
-                first ?? createDiagnostic("MOSTRA_BUILD_FAILED", { message: "The build failed." }),
-              );
-            }
-            faults.at("publish:after-build");
-            await writeFile(
-              join(out, "registry.json"),
-              `${JSON.stringify(built.registry, null, 2)}\n`,
-            );
-            await writeFile(join(out, "lock.yaml"), deps.lock);
-            outputDigest = listingDigest(await outputListing(out));
-            await writeFile(
-              join(out, "manifest.json"),
-              `${JSON.stringify(
-                {
-                  schemaVersion: 1,
-                  artifactId,
-                  versionId,
-                  mode: environment.mode,
-                  entry: source.entry,
-                  server: built.server,
-                  manifest,
-                  sourceDigest,
-                  envDigest,
-                  environment,
-                  outputDigest,
-                  forcedCodes,
-                },
-                null,
-                2,
-              )}\n`,
-            );
-            const archive = registry.store.snapshotPath(artifactId, sourceDigest);
-            if (await archiveSnapshot(join(staging, "source"), listed, archive)) {
-              undo.push(() => rm(archive, { force: true }));
-            }
-            faults.at("publish:after-archive");
-            if (damage !== undefined) await removeTree(registry.store.versionDir(versionId));
-            undo.push(() => removeTree(registry.store.versionDir(versionId)));
-            await registry.store.promote(out, versionId);
-            faults.at("publish:after-promote");
-          }
-
-          // 6. One transaction: identity, version, binding, events.
-          const result = registry.commit({
-            artifactId,
-            bindingPath: source.bindingPath,
-            manifestId: manifest.id,
-            versionId,
-            sourceDigest,
-            envDigest,
-            outputDigest,
-            manifest,
-            // D102: the registry resolves the policy in force from these, the earlier publishes'
-            // choice and the manifest's request.
-            policy: params.policy,
-            homePolicy: options.homePolicy?.(),
-            forcedCodes,
-            stillClaims,
-            faults,
-            request: requestKey("artifact/publish", params),
-            // The resolution becomes the artifact's working lockfile only with the version (D95):
-            // a refused publish, such as a copy claiming another artifact's ID, changes nothing.
-            inTransaction: (db) => deps.save(db, artifactId),
-          });
-          committed = true;
-          faults.at("publish:after-commit");
-          log.info("publish.committed", {
-            artifactId,
-            versionId,
-            version: result.version,
-            reused: result.reused,
-          });
-          return {
-            artifactId,
-            versionId,
-            version: result.version,
-            cursor: result.cursor,
-            reused: result.reused,
-            ...(forcedCodes.length > 0 ? { forcedDiagnostics: forcedCodes } : {}),
-          };
-        } catch (error) {
-          if (!committed) {
-            for (const step of undo.reverse()) {
-              await step().catch((cleanup: unknown) =>
-                log.warn("publish.undo_failed", { error: cleanup }),
-              );
-            }
-          }
-          throw error;
         } finally {
           await removeTree(staging);
+          await removeTree(`${staging}-check`);
         }
       });
     });
   };
+
+  const verifyOnce = (params: ArtifactVerifyParams, progress?: (stage: string) => void) =>
+    staged(params.source, async ({ path, source, provisional, identityKnown, staging }) => {
+      progress?.("prepare");
+      let ready: Staged;
+      try {
+        ready = await prepare(path, source, provisional, identityKnown, staging);
+      } catch (error) {
+        // A manifest or the dependencies that can't be read are the verdict, not a failure of verify.
+        if (
+          error instanceof RpcError &&
+          /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD)_/.test(error.diagnostic.code)
+        ) {
+          return failedVerdict(path, error.diagnostic);
+        }
+        throw error;
+      }
+      // Verify records the working lockfile like publish (D95), so the publish that follows
+      // resolves the same versions and its environment digest matches the cached verdict.
+      ledger.write((db) =>
+        ready.deps.save(
+          db,
+          lockKey(
+            ready.prepared.manifest.id ?? registry.artifactAt(source.bindingPath),
+            source.bindingPath,
+          ),
+        ),
+      );
+      return verifier().run(ready.prepared, {
+        build: (out) => stageBuild(ready, out),
+        ...(params.screenshots ? { screenshots: params.screenshots } : {}),
+        ...(progress ? { progress } : {}),
+      });
+    });
+
+  const publishOnce = (params: ArtifactPublishParams): Promise<PublishReceipt> =>
+    staged(params.source, async ({ path, source, provisional, identityKnown, staging }) => {
+      // What this publish placed in the store before its commit; removed again if it fails
+      // (the next start removes it too, should this process die first: FAILURE_MODEL §3).
+      const undo: (() => Promise<void>)[] = [];
+      let committed = false;
+      try {
+        const ready = await prepare(path, source, provisional, identityKnown, staging);
+        const { prepared } = ready;
+        const { artifactId, versionId, sourceDigest, envDigest, manifest } = prepared;
+
+        // 4 and 5. Gate, build, archive and promote, unless this artifact already has this exact
+        // version. A version whose directory is missing or no longer matches its own recorded
+        // output digest is rebuilt from the same source and environment, and put back in place;
+        // its ledger row stays as it was (FAILURE_MODEL §3, D80 Claude review finding 3).
+        let outputDigest: string | undefined;
+        let forcedCodes: string[] = [];
+        let verifyRecord: { status: "pass" | "fail"; verifyRevision: string } | undefined;
+        const exists = registry.hasVersion(versionId);
+        const damage = exists
+          ? await versionDamage(registry.store.versionDir(versionId))
+          : undefined;
+        if (damage !== undefined) log.warn("publish.version_damaged", { versionId, damage });
+        if (!exists || damage !== undefined) {
+          const out = join(staging, "out");
+          if (exists || options.unverified === true) {
+            // A repair (the version passed, or was forced, when it was published), or a test of
+            // another feature that publishes without the gate.
+            const built = await stageBuild(ready, out);
+            if (!built.ok) throw new RpcError(firstDiagnostic(built.diagnostics));
+            outputDigest = built.outputDigest;
+          } else {
+            // 4. The gate (D41, D137): the verdict cached for these digests, or a run now.
+            const verdict =
+              verifier().cached(prepared) ??
+              (await verifier().run(prepared, { build: (dir) => stageBuild(ready, dir) }));
+            const unbuilt = didNotBuild(verdict);
+            if (unbuilt) throw new RpcError(unbuilt);
+            const errors = errorCodes(verdict);
+            if (errors.length > 0 && params.force !== true) {
+              throw new RpcError(
+                createDiagnostic("MOSTRA_PUBLISH_VERIFY_FAILED", {
+                  message: `Verify found errors, so nothing was published: ${errors.join(", ")}.`,
+                }),
+              );
+            }
+            forcedCodes = params.force === true ? errors : [];
+            verifyRecord = {
+              status: errors.length === 0 ? "pass" : "fail",
+              verifyRevision: VERIFY_REVISION,
+            };
+            // 5. Verify's build, promoted as it is when it was made for this version ID; built
+            // again from the same snapshot otherwise (D137 item 5).
+            const cachedBuild = verifier().builtVersion(versionId);
+            if (cachedBuild && (await versionDamage(cachedBuild)) === undefined) {
+              await rename(cachedBuild, out);
+              outputDigest = (
+                JSON.parse(await readFile(join(out, "manifest.json"), "utf8")) as {
+                  outputDigest: string;
+                }
+              ).outputDigest;
+            } else {
+              log.info("publish.rebuild", {
+                versionId,
+                reason: cachedBuild ? "damaged" : "not cached",
+              });
+              const built = await stageBuild(ready, out);
+              if (!built.ok) throw new RpcError(firstDiagnostic(built.diagnostics));
+              outputDigest = built.outputDigest;
+            }
+            const server = existsSync(join(out, "server", "entry.mjs"));
+            await writeVersionManifest(out, ready, {
+              outputDigest,
+              server,
+              forcedCodes,
+              verify: verifyRecord,
+            });
+          }
+          const archive = registry.store.snapshotPath(artifactId, sourceDigest);
+          if (await archiveSnapshot(join(staging, "source"), ready.listed, archive)) {
+            undo.push(() => rm(archive, { force: true }));
+          }
+          faults.at("publish:after-archive");
+          if (damage !== undefined) await removeTree(registry.store.versionDir(versionId));
+          undo.push(() => removeTree(registry.store.versionDir(versionId)));
+          await registry.store.promote(out, versionId);
+          faults.at("publish:after-promote");
+        }
+
+        // 6. One transaction: identity, version, binding, events.
+        const result = registry.commit({
+          artifactId,
+          bindingPath: source.bindingPath,
+          manifestId: manifest.id,
+          versionId,
+          sourceDigest,
+          envDigest,
+          outputDigest,
+          manifest,
+          // D102: the registry resolves the policy in force from these, the earlier publishes'
+          // choice and the manifest's request.
+          policy: params.policy,
+          homePolicy: options.homePolicy?.(),
+          forcedCodes,
+          ...(verifyRecord ? { verify: verifyRecord } : {}),
+          stillClaims,
+          faults,
+          request: requestKey("artifact/publish", params),
+          // The resolution becomes the artifact's working lockfile only with the version (D95):
+          // a refused publish, such as a copy claiming another artifact's ID, changes nothing.
+          inTransaction: (db) => ready.deps.save(db, artifactId),
+        });
+        committed = true;
+        faults.at("publish:after-commit");
+        log.info("publish.committed", {
+          artifactId,
+          versionId,
+          version: result.version,
+          reused: result.reused,
+          ...(forcedCodes.length > 0 ? { forcedCodes } : {}),
+        });
+        return {
+          artifactId,
+          versionId,
+          version: result.version,
+          cursor: result.cursor,
+          reused: result.reused,
+          ...(forcedCodes.length > 0 ? { forcedDiagnostics: forcedCodes } : {}),
+        };
+      } catch (error) {
+        if (!committed) {
+          for (const step of undo.reverse()) {
+            await step().catch((cleanup: unknown) =>
+              log.warn("publish.undo_failed", { error: cleanup }),
+            );
+          }
+        }
+        throw error;
+      }
+    });
 
   return {
     publish: (params) =>
@@ -556,6 +770,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
         // The receipt is recorded inside the commit's transaction (Registry.commit).
         return publishOnce(params);
       }),
+    verify: (params, progress) => verifyOnce(params, progress),
     // Creates run one at a time: two requests for one directory, or one request sent twice, can
     // never both find it empty.
     create: (params) => queue.run("create", () => create(params)),

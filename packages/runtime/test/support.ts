@@ -73,7 +73,19 @@ export function testHome(): TestHome {
   const env = Object.fromEntries(
     Object.entries(inherited).filter(([name]) => !/^npm_config_/i.test(name)),
   );
-  return { home: join(root, "home"), runtimeDir, env: { ...env, MOSTRA_RUNTIME_DIR: runtimeDir } };
+  // Suites of other features publish without verify's gate (D137); `verifiedHome` keeps it.
+  return {
+    home: join(root, "home"),
+    runtimeDir,
+    env: { ...env, MOSTRA_RUNTIME_DIR: runtimeDir, MOSTRA_TEST_UNVERIFIED_PUBLISH: "1" },
+  };
+}
+
+/** A test home whose publishes go through verify's gate, as a user's do (D41, D137). */
+export function verifiedHome(): TestHome {
+  const home = testHome();
+  const { MOSTRA_TEST_UNVERIFIED_PUBLISH: _unverified, ...env } = home.env;
+  return { ...home, env };
 }
 
 /** A message received on a connection. */

@@ -1,0 +1,60 @@
+{
+  "name": "@mostra/verify",
+  "version": "0.0.0",
+  "description": "The verify runner: the child process that renders artifact pages in a warm headless Chromium for `mostra verify`.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/verify#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/verify"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api"
+  },
+  "dependencies": {
+    "@mostra/protocol": "workspace:*",
+    "axe-core": "catalog:",
+    "pixelmatch": "catalog:",
+    "playwright-core": "catalog:",
+    "pngjs": "catalog:"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "@types/pngjs": "catalog:"
+  },
+  "bin": {
+    "mostra-verify": "./dist/main.js"
+  }
+}

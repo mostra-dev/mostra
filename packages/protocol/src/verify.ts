@@ -308,3 +308,73 @@ export interface ProbedField {
   /** Other hook kinds, scopes or initial types it was mounted with, if any. */
   readonly conflicts: readonly string[];
 }
+
+/** The verify runner's methods (ARCHITECTURE §1): the supervisor asks, the runner answers. @internal */
+export const VERIFY_RUNNER_METHODS = {
+  /** Opens one capability link in a fresh browser context and reports what the page did. */
+  render: "verify/render",
+  /** Compares two screenshots and writes their difference. */
+  compare: "verify/compare",
+} as const;
+
+/** `verify/render`'s params. @internal */
+export interface RenderRequest {
+  /** The capability link to open, as a viewer would (D137 item 1). */
+  readonly url: string;
+  readonly viewport: VerifyViewport;
+  /** The fixed time `Date` reports, in ms since the epoch: the same for every render of a run. */
+  readonly clockMs: number;
+  /** Where the screenshot and the ARIA snapshot are written, named after `name`. */
+  readonly outDir: string;
+  readonly name: string;
+  /** What to collect besides readiness and the page's own errors. */
+  readonly collect: {
+    readonly screenshot: boolean;
+    readonly aria: boolean;
+    readonly axe: boolean;
+    /** The page's mounted fields, from the field probe. */
+    readonly fields: boolean;
+    /** Run the smoke test after rendering, within this budget. */
+    readonly smoke?: { readonly maxInteractions: number; readonly maxMs: number };
+  };
+  /** When this render must have ended, in ms since the epoch. */
+  readonly deadline: number;
+}
+
+/** `verify/render`'s answer. @internal */
+export interface RenderResult {
+  /** Whether the page reported `mostra/ready`. */
+  readonly ready: boolean;
+  /** What the runner found: page errors, console output, failed requests, axe, smoke, blank. */
+  readonly findings: readonly Diagnostic[];
+  readonly screenshot?: { readonly path: string; readonly width: number; readonly height: number };
+  readonly aria?: { readonly path: string; readonly text: string };
+  readonly fields?: readonly ProbedField[];
+  readonly smoke?: {
+    readonly interactions: number;
+    readonly stateChanges: number;
+    /** Server functions the sandbox refused during the smoke test. */
+    readonly skipped: readonly string[];
+    /** Whether it stopped at its budget. */
+    readonly budget: boolean;
+  };
+  /** Whether the render ran past its deadline and stopped where it was. */
+  readonly timedOut: boolean;
+  readonly timingsMs: Readonly<Record<string, number>>;
+}
+
+/** `verify/compare`'s params. @internal */
+export interface CompareRequest {
+  readonly a: string;
+  readonly b: string;
+  /** Where to write the difference image. */
+  readonly diff: string;
+}
+
+/** `verify/compare`'s answer. @internal */
+export interface CompareResult {
+  /** The share of pixels that differ beyond pixelmatch's perceptual threshold. */
+  readonly ratio: number;
+  /** Whether the two images had different sizes (then `ratio` is 1). */
+  readonly sizeChanged: boolean;
+}

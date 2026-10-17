@@ -194,7 +194,12 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
     Object.entries(inherited).filter(([name]) => !/^npm_config_/i.test(name)),
   );
   const child = spawn(process.execPath, [BIN, "daemon", "--home", home], {
-    env: { ...env, MOSTRA_RUNTIME_DIR: join(root, "run") },
+    env: {
+      ...env,
+      MOSTRA_RUNTIME_DIR: join(root, "run"),
+      // The browser suites test other features; verify and its gate have their own (D137).
+      MOSTRA_TEST_UNVERIFIED_PUBLISH: "1",
+    },
     stdio: ["ignore", "pipe", "inherit"],
     detached: false,
   });

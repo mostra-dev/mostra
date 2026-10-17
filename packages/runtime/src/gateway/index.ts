@@ -135,6 +135,11 @@ export interface Gateway {
   readonly shellOrigin: () => string;
   /** The artifact's default link (D97 item 3), shown again or minted: the publish receipt's URL. */
   defaultLink(artifactId: string): { readonly url: string; readonly tokenId: string };
+  /**
+   * Mints a link with every scope, for a version only when `version` names its number (D97
+   * item 9): what `view/url` mints, for callers inside the instance (a verify run's sandbox).
+   */
+  link(input: { readonly artifactId: string; readonly version?: number }): string;
   /** The handlers of `view/url`, `view/rotate` and `view/revoke`. */
   methods(): MethodHandler[];
   /** The origins of the artifact listeners that are bound, by artifact ID. */
@@ -953,6 +958,14 @@ export function createGateway(options: GatewayOptions): Gateway {
     defaultLink(artifactId) {
       const { url, tokenId } = link(capabilities.defaultLink(artifactId));
       return { url, tokenId };
+    },
+    link(input) {
+      return link(
+        capabilities.mint({
+          artifactId: input.artifactId,
+          ...(input.version !== undefined ? { pinnedVersion: input.version } : {}),
+        }),
+      ).url;
     },
     methods: () => [
       handler(viewUrlMethod, (params) => {

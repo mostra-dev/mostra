@@ -65,6 +65,11 @@ export interface VersionCommit {
   readonly homePolicy?: SubmissionPolicy | undefined;
   readonly forcedCodes: readonly string[];
   /**
+   * What verify found for this version (D137 item 4): `pass` only when its verdict had no error
+   * and nothing was forced. Absent when no verify ran (a reuse, a repair).
+   */
+  readonly verify?: { readonly status: "pass" | "fail"; readonly verifyRevision: string };
+  /**
    * Whether `path` still claims `artifactId` in its manifest (D51): a moved source no longer does,
    * a copy still does. Runs inside the transaction, so it must be synchronous.
    */
@@ -98,6 +103,8 @@ export interface Registry {
   identityFor(bindingPath: string, manifestId: string | undefined, generate: () => string): string;
   /** The artifact a source path is bound to, if any (D51). */
   artifactAt(bindingPath: string): string | undefined;
+  /** The newest version of an artifact whose recorded verdict passed (D137 item 4). */
+  passedVersion(artifactId: string): string | undefined;
   /** The version row of `versionId`, if it was committed. */
   hasVersion(versionId: string): boolean;
   /** Commits a version in one ledger transaction. Throws `MOSTRA_PUBLISH_ID_CONFLICT` for a copied ID. */
@@ -191,6 +198,15 @@ export async function openRegistry(options: {
     artifactAt(bindingPath) {
       return ledger.read((db) => boundArtifact(db, bindingPath));
     },
+    passedVersion(artifactId) {
+      return ledger.read(
+        (db) =>
+          db.get<{ id: string }>(
+            "SELECT id FROM version WHERE artifact_id = ? AND json_extract(verify_json, '$.status') = 'pass' ORDER BY number DESC LIMIT 1",
+            artifactId,
+          )?.id,
+      );
+    },
     hasVersion(versionId) {
       return ledger.read(
         (db) => db.get("SELECT 1 FROM version WHERE id = ?", versionId) !== undefined,
@@ -271,7 +287,7 @@ export async function openRegistry(options: {
               input.artifactId,
             )?.next ?? 1;
           db.run(
-            "INSERT INTO version (id, artifact_id, number, source_digest, env_digest, output_digest, manifest_json, forced_codes_json, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO version (id, artifact_id, number, source_digest, env_digest, output_digest, manifest_json, forced_codes_json, published_at, verify_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             input.versionId,
             input.artifactId,
             number,
@@ -281,6 +297,7 @@ export async function openRegistry(options: {
             JSON.stringify(input.manifest),
             input.forcedCodes.length > 0 ? JSON.stringify(input.forcedCodes) : null,
             now,
+            input.verify ? JSON.stringify(input.verify) : null,
           );
         }
         if (cursor === undefined) {

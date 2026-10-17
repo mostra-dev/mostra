@@ -21,6 +21,8 @@
     "@hookform/resolvers": "catalog:",
     "@mostra/react": "workspace:*",
     "@tanstack/react-table": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@xterm/addon-fit": "catalog:",
     "@xterm/addon-unicode11": "catalog:",
     "@xterm/addon-webgl": "catalog:",

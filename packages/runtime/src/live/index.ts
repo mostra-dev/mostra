@@ -100,6 +100,8 @@ export interface Live {
   start(): void;
   /** Stops checking; the pool stops the producers with their workers. */
   stop(): void;
+  /** The artifact's sources whose producers failed last, with the error each reported (verify, D137). */
+  failures(artifactId: string): { readonly key: string; readonly error: WireError }[];
 }
 
 interface LiveRow {
@@ -387,6 +389,12 @@ export function createLive(options: LiveOptions): Live {
   };
 
   return {
+    failures(artifactId) {
+      const prefix = keyOf(artifactId, "");
+      return [...failures]
+        .filter(([id]) => id.startsWith(prefix))
+        .map(([id, error]) => ({ key: id.slice(prefix.length), error }));
+    },
     read(page, input) {
       options.interaction.checkView(page, input.viewId);
       bus.watchLive(page.artifactId, input.viewId, input.keys);
