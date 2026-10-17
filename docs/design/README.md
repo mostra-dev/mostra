@@ -8,7 +8,7 @@
 | **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
 | **Plan update** | 2026-10-16 (M20, D116 to D127): the remote server, relay and team features join v1; Windows and the terminal packages follow the first release as `v1.1`; new packages WP-28 to WP-32. |
-| **Next unit** | WP-08 (work-package mode; WP-07 is done, see [PROGRESS-WP-07](../progress/PROGRESS-WP-07.md)). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
+| **Next unit** | WP-09 (work-package mode; WP-08 is done, see [PROGRESS-WP-08](../progress/PROGRESS-WP-08.md)). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
 
 ## Reading order
 

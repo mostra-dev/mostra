@@ -1,7 +1,6 @@
 # WP-08 progress: workers, actions and live data
 
-**Status:** Candidate, awaiting Mirza's acceptance. The report is finalized after acceptance
-(work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-17 ("absolutely incredible work. accepted & approved!", 11:13Z), merged to `main` as `bd9515f`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -145,9 +144,10 @@ No Skill text: the Skill is WP-14's, and its specification now lists what its re
 
 ## Commits and publication
 
-- **Range:** `b0da907..HEAD` on `wp/08-workers-actions` (signed-off commits; the final range and merge commit are recorded after acceptance).
+- **Range:** `b0da907..bd9515f` on `main`: 32 signed-off commits on `wp/08-workers-actions` (`31daea0` to `ffa46c0`) and the merge commit `bd9515f` of [#24](https://github.com/mostra-dev/mostra/pull/24), merged with CI and CodeQL green on `ffa46c0`. This report lands through its own pull request (D79).
+- **Code scanning:** five `js/resource-exhaustion` and similar alerts on the test fixture artifact's actions (`test/fixtures/artifacts/actions/actions.ts`: timers and work of the test's own size) were dismissed as test code: they are the agent-authored server code AC-01 says runs with full capability (D05).
 - **Packages:** nothing published; changesets record minor releases of `@mostra/protocol`, `@mostra/react`, `@mostra/runtime`, `@mostra/shell` and `@mostra/worker`, and the first releases of `@mostra/server` and `@mostra/worker` (the release pipeline is WP-11's).
-- **Issues:** #8 is closed by D134 once this merges.
+- **Issues:** [#8](https://github.com/mostra-dev/mostra/issues/8) closed after the merge, with D134's evidence.
 - **Remaining dirty paths:** none in the repository. Outside it: scripts, logs and prototypes in `$JCODE_SCRATCH_DIR/wp08`.
 
 ## Next
