@@ -182,7 +182,7 @@ export default function Page() {
 /** The faults fixture: one page whose every part is one fault verify must name. */
 function faults(markers: { sent: string; saved: string }): string {
   return artifact("faults", {
-    "index.tsx": `import { useEffect, useState } from "react";
+    "index.tsx": `import { Component, type ReactNode, useEffect, useState } from "react";
 import { defineArtifact, useAction, useChoice, useField } from "@mostra/react";
 import { save, send } from "./actions";
 
@@ -206,6 +206,15 @@ function Note() {
   const [id] = useState(() => \`note-\${Math.random()}\`);
   const [value, setValue] = useField(id, "");
   return <textarea aria-label="Note" value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+/** An error boundary around a part that throws while rendering: React reports the catch. */
+class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override render() { return this.state.failed ? <p>That part failed.</p> : this.props.children; }
+}
+function Broken(): ReactNode {
+  throw new Error("Caught by a boundary in the faults fixture");
 }
 function Pick() {
   const { choice } = useChoice("pick");
@@ -243,6 +252,7 @@ export default function Page() {
       <Note />
       <Pick />
       <PickField />
+      <Boundary><Broken /></Boundary>
     </main>
   );
 }
@@ -317,6 +327,13 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", ()
       find(verdict, "MOSTRA_CONSOLE_ERROR").some((d) => d.message.includes("Load-time failure")),
     ).toBe(true);
     expect(find(verdict, "MOSTRA_CONSOLE_WARNING")[0]?.severity).toBe("hint");
+    // An error a React error boundary caught is still an error (D138 item 3): React reports it to
+    // the root's onCaughtError, which logs it.
+    const caught = verdict.diagnostics.filter((d) =>
+      d.message.includes("Caught by a boundary in the faults fixture"),
+    );
+    expect(caught.length).toBeGreaterThan(0);
+    expect(caught.every((d) => d.severity === "error")).toBe(true);
   });
 
   it("network: the page's own missing file is an error, another origin's failure a warning, favicon nothing", () => {
