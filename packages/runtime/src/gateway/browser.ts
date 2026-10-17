@@ -8,6 +8,7 @@ import {
   BROWSER_PROTOCOL_REVISIONS,
   ChooseRequest,
   type Diagnostic,
+  type EphemeralMessage,
   type EventRecord,
   FieldsRequest,
   FollowRequest,
@@ -21,7 +22,12 @@ import {
   ViewId,
 } from "@mostra/protocol";
 import type * as z from "zod";
-import { type Interaction, type PageIdentity, SubmitConflict } from "../interaction/index.ts";
+import {
+  type EphemeralBus,
+  type Interaction,
+  type PageIdentity,
+  SubmitConflict,
+} from "../interaction/index.ts";
 import type { Log } from "../log.ts";
 import type { Capabilities } from "./capabilities.ts";
 import { BASE_HEADERS, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
@@ -75,6 +81,11 @@ export interface BrowserRoutesOptions {
     artifactId: string,
     number: number,
   ) => { readonly id: string; readonly number: number } | undefined;
+  /**
+   * Run and live updates for pages (WP-08): a stream sends them as `event: run` and `event: live`
+   * without an `id`, a poll as its `ephemeral` (LL-04). Absent: neither carries any.
+   */
+  readonly bus?: EphemeralBus;
   /** Tells a host with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: (event: {
     readonly artifactId: string;
@@ -207,6 +218,13 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     return undefined;
   };
 
+  /** The page's view, from the query (checked by {@link viewOf} first). */
+  const viewIdOf = (context: RouteContext): string =>
+    new URL(context.request.url).searchParams.get("view") ?? "";
+
+  /** The most ephemeral messages a stream holds for a slow reader; older ones are dropped. */
+  const EPHEMERAL_HELD = 1000;
+
   const fields = async (context: RouteContext): Promise<Response> => {
     const refused = knownRevision(context);
     if (refused) return refused;
@@ -304,10 +322,30 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
       dirty = true;
       wake?.();
     });
+    // Run and live updates for this view: lossy by design (a page reads what it missed), so a
+    // slow reader drops the oldest rather than making the gateway hold more.
+    // Held as messages and coalesced while the reader is behind (Opus review 12): a newer live
+    // value replaces an older one of its source, and a run's deltas merge.
+    const held: EphemeralMessage[] = [];
+    const heldText = (): string =>
+      held
+        .splice(0)
+        .map(
+          (message) =>
+            `event: ${message.kind}\ndata: ${JSON.stringify(message.kind === "run" ? message.run : message.live)}\n\n`,
+        )
+        .join("");
+    const unlisten =
+      options.bus?.listen(page.artifactId, viewIdOf(context), (message) => {
+        options.bus?.coalesce(page.artifactId, viewIdOf(context), held, message);
+        if (held.length > EPHEMERAL_HELD) held.splice(0, held.length - EPHEMERAL_HELD);
+        wake?.();
+      }) ?? (() => {});
     const close = (controller?: ReadableStreamDefaultController<Uint8Array>): void => {
       if (!open) return;
       open = false;
       unsubscribe();
+      unlisten();
       wake?.();
       context.request.signal.removeEventListener("abort", aborted);
       try {
@@ -351,7 +389,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
               return;
             }
             cursor = read.cursor;
-            if (read.events.length > 0) {
+            const ephemeral = heldText();
+            if (read.events.length > 0 || ephemeral !== "") {
               controller.enqueue(
                 encoder.encode(
                   read.events
@@ -359,13 +398,13 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
                       (event) =>
                         `id: ${event.cursor}\nevent: mostra\ndata: ${JSON.stringify(event)}\n\n`,
                     )
-                    .join(""),
+                    .join("") + ephemeral,
                 ),
               );
               return;
             }
-            // Nothing new: wait for a commit, or send a heartbeat after a while.
-            if (dirty) continue;
+            // Nothing new: wait for a commit or an update, or send a heartbeat after a while.
+            if (dirty || held.length > 0) continue;
             const woke = await new Promise<"commit" | "heartbeat">((resolve) => {
               const timer = setTimeout(() => resolve("heartbeat"), HEARTBEAT_MS);
               timer.unref?.();
@@ -373,6 +412,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
                 clearTimeout(timer);
                 resolve("commit");
               };
+              if (held.length > 0) wake();
             });
             wake = undefined;
             if (woke === "heartbeat" && open) {
@@ -410,9 +450,19 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (!Number.isInteger(waitS) || waitS < 0 || waitS > POLL_MAX_WAIT_S) {
       return malformed(`\`wait\` must be a whole number of seconds from 0 to ${POLL_MAX_WAIT_S}.`);
     }
+    const viewId = viewIdOf(context);
+    const bus = options.bus;
+    // Polling views collect their run and live updates between polls (LL-04).
+    // Taking what is queued also starts the queue, so updates during the wait are kept.
+    let early = bus?.drain(page.artifactId, viewId) ?? [];
+    const withEphemeral = <T extends object>(value: T): T & { ephemeral?: unknown[] } => {
+      const ephemeral = [...early, ...(bus?.drain(page.artifactId, viewId) ?? [])];
+      early = [];
+      return ephemeral.length > 0 ? { ...value, ephemeral } : value;
+    };
     if (resume === undefined) {
       const snapshot = interaction.pageSnapshot(page);
-      return jsonResponse({ cursor: snapshot.cursor, events: [], snapshot });
+      return jsonResponse(withEphemeral({ cursor: snapshot.cursor, events: [], snapshot }));
     }
     const revoked = (): Response =>
       answer(
@@ -431,8 +481,11 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     };
     try {
       const first = once();
-      if (first.events.length > 0 || "snapshot" in first || waitS === 0) return jsonResponse(first);
+      if (first.events.length > 0 || "snapshot" in first || waitS === 0 || early.length > 0) {
+        return jsonResponse(withEphemeral(first));
+      }
       let ended = false;
+      const stopWaiting = new AbortController();
       const result = await new Promise<ReturnType<typeof once>>((resolve, reject) => {
         let done = false;
         const finish = (value?: ReturnType<typeof once>): void => {
@@ -472,10 +525,15 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
         );
         const timer = setTimeout(() => finish(), waitS * 1000);
         context.request.signal.addEventListener("abort", aborted, { once: true });
+        // A run or live update for this view answers the poll too.
+        void bus?.wait(page.artifactId, viewId, waitS * 1000, stopWaiting.signal).then(() => {
+          if (!done) finish(first);
+        });
       });
+      stopWaiting.abort();
       // The link is checked again at the end: nothing read after it died leaves (HY-03).
       if (ended || !live(context)) return revoked();
-      return jsonResponse(result);
+      return jsonResponse(withEphemeral(result));
     } catch (error) {
       return failure(error);
     }

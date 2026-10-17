@@ -47,7 +47,48 @@ export interface InstanceStatusResult {
   readonly gateway?: GatewayStatus;
   /** The outbox per host (WP-06, D105): how many deliveries are in each state. */
   readonly deliveries?: readonly DeliveryCounts[];
+  /** The artifact workers, one per active version with server code (WP-08, RT-03). */
+  readonly workers?: readonly WorkerStatus[];
+  /** When the daemon exits for lack of work, if it will (WP-08, RT-08); absent: it won't. */
+  readonly idleExitAt?: string;
 }
+
+/** One artifact version's worker (RT-03, D62). */
+export interface WorkerStatus {
+  /** The artifact. */
+  readonly artifactId: string;
+  /** The version. */
+  readonly versionId: string;
+  /**
+   * `starting`, `ready`, `backoff` (it crashed and restarts on the next request after `retryAt`),
+   * `parked` (it crashed more than 5 times in 10 minutes, FAILURE_MODEL §2), `stopped`.
+   */
+  readonly state: "starting" | "ready" | "backoff" | "parked" | "stopped";
+  /** The worker's process, while it runs locally. */
+  readonly pid?: number;
+  /** Crashes in the last 10 minutes. */
+  readonly crashes: number;
+  /** The last crash's cause, such as `out of memory` or `event loop blocked for 10 s`. */
+  readonly lastCause?: string;
+  /** When a worker in `backoff` may start again. */
+  readonly retryAt?: string;
+  /** Calls, runs and live producers it serves now. */
+  readonly active: number;
+}
+
+/** The Zod schema of the `WorkerStatus` type. */
+export const WorkerStatus: z.ZodType<WorkerStatus> = z
+  .object({
+    artifactId: z.string(),
+    versionId: z.string(),
+    state: z.enum(["starting", "ready", "backoff", "parked", "stopped"]),
+    pid: z.int().min(1).exactOptional(),
+    crashes: z.int().min(0),
+    lastCause: z.string().exactOptional(),
+    retryAt: z.string().exactOptional(),
+    active: z.int().min(0),
+  })
+  .register(wireRegistry, { id: "WorkerStatus", description: "One artifact version's worker." });
 
 /** One host's deliveries by state (D105). */
 export interface DeliveryCounts {
@@ -115,6 +156,8 @@ const result: z.ZodType<InstanceStatusResult> = z
     processes: z.array(ChildProcessStatus).readonly(),
     gateway: GatewayStatus.exactOptional(),
     deliveries: z.array(DeliveryCounts).readonly().exactOptional(),
+    workers: z.array(WorkerStatus).readonly().exactOptional(),
+    idleExitAt: z.string().exactOptional(),
   })
   .register(wireRegistry, { id: "InstanceStatusResult" });
 

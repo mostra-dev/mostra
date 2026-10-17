@@ -100,6 +100,41 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **Orphans are derived, never stored (D109).** A field is an orphan of a view when the view's
   version's `fields` coverage (`builder/coverage.ts`) doesn't cover it; nothing moves or drops a
   field. Coverage that can't be known is open: a version never orphans an answer by a guess.
+- **Artifact server code runs only in workers (RT-02, RT-03, D129).** `workers/pool.ts` keeps one
+  worker per version with server code, started through a `WorkerLauncher` that gets a version
+  reference, never a path; `workers/launcher.ts` holds the local launcher (the process manager,
+  `artifactEnvironment`, the heap limit, the channel on descriptor 4) and the socket launcher
+  tests use. A replacement starts only once a stopping worker has exited. A worker's crash, OOM
+  or hang ends it alone: the pool restarts it with backoff, parks it after more than five crashes
+  in ten minutes, and appends `worker.crashed`; a publish clears the park for calls (`pool.clear`)
+  and live producers (`live.unpark`) alike. Server code's packages run from the layout the version
+  was built against (D135): the local launcher asks `Dependencies.runtimeModules` for it before a
+  worker starts (installing a removed layout from the store, or a pinned one when the warm set
+  moved on) and passes it as `--modules`.
+- **A run is recorded before it starts, and ends once (AC-02, AC-03, D130).** `actions` inserts the
+  run (`interaction/runs.ts`) before a worker sees it; keys and client keys join existing runs; a
+  run cut off by a crash or a stop ends `failed` with reason `interrupted` and is never retried
+  (D24). A finished run and its result batches never change, and no insert replaces them
+  (triggers). A page sees a run only through a link that may run its function, and a run without
+  a key only as its own viewer: `runVisible` in `interaction` decides it, before anything is
+  attached to the page, and for every `action.*` event on its stream. A function its version
+  doesn't have, and arguments `checkArgumentFrames` refuses, are refused before a run is recorded
+  or a worker starts (D136). Server code's signals and `host.*` events carry the calling viewer;
+  pages see only their own viewer's signals and never a `host.*` event (`visibleTo`).
+- **Secrets reach server code only as answers on its channel (D44, D124, D131).** `secrets` keeps
+  values as 0600 files, never in the ledger; `secret()` asks the host's port, then the artifact's
+  store, then the home's. Every value handed out is registered with the redactor, and logs, run
+  logs, run progress, errors (live sources' too), events, run results, action-written state and
+  live values pass through it. Serializer batches (results, live values) go through
+  `redactFrames`, which redacts values rather than text (bytes included, `$` escapes kept); other
+  new output of server code goes through `redactValue`. A multi-line secret is protected line by
+  line too, since child output is kept a line at a time.
+- **Live updates and run progress are never events (LL-04, D130).** They travel on the
+  `interaction/ephemeral.ts` bus to the pages and polls that asked within the last minute, without
+  an `id`; the ledger keeps the latest live value and the ring, and pages read again after a gap.
+  What a slow reader hasn't taken is coalesced (`bus.coalesce`): a source's newer value in latest
+  mode replaces its older ones, and a run's contiguous deltas merge. Which artifacts have live
+  sources is kept in memory (`instance`), so reconciling never scans every artifact.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -122,6 +157,11 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
 | `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
+| `actions` | Plain calls and durable action runs (D54, D130): starting, joining, attaching, cancelling and recovering runs, flushing their progress, log and result batches, the worker bridge for `secret`, `signal`, `emit` and `state` |
+| `workers` | The `WorkerLauncher` seam with the local and socket launchers (D124), and the pool: one worker per version, start, ping watchdog, idle eviction, crash kinds, backoff and parking (D129, D133) |
+| `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
+| `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
+| `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd) (D133) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -131,6 +171,12 @@ or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-re
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
 (token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10). These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
+`MOSTRA_TEST_WORKER_IDLE_MS` shortens workers' idle eviction, `MOSTRA_TEST_WORKER_BACKOFF_MS` their
+first restart delay, `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
+source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
+`MOSTRA_TEST_WORKER_HOST` sends every launch to a worker host listening on that socket
+(`test/fixtures/worker-host.mjs`, D124). `MOSTRA_WORKER_ENTRY` points at another build of
+`@mostra/worker` (default: `worker/dist/main.js`, or its source under `@mostra/source`).
 `MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
 `shell/dist` beside the runtime package); without one the shell's pages answer
 `MOSTRA_ENV_SHELL_MISSING` and the instance still starts.
@@ -155,7 +201,10 @@ first module outside `protocol-server` needs it.
   a daemon, real pages and hosts on their own connections (`interaction.test.ts`: conflicts, waits,
   results, deliveries while a host is away, redelivery after a crash, resumed subscriptions), and
   the versions frozen at every browser-protocol revision against today's gateway and the next
-  (`browser-revisions.test.ts`, VR-10). CI runs them on macOS and
+  (`browser-revisions.test.ts`, VR-10), and WP-08's suites: calls, runs, secrets and live sources
+  through both launchers (`actions.test.ts`), worker and daemon lifecycles (`lifecycle.test.ts`),
+  producers and the secrets port (`producers.test.ts`), and the five D19 seams (`seams.test.ts`).
+  CI runs them on macOS and
   Linux (`integration` job, D86).
 - `pnpm --filter @mostra/runtime test:hygiene`: the hygiene checklist (ARCHITECTURE §10) as
   negative tests against a real gateway, through `test/browser-client.ts`, a cookie-jar HTTP
@@ -184,7 +233,8 @@ first module outside `protocol-server` needs it.
 - `net.Server.close()` removes the socket file. Close an old listener before binding its
   replacement.
 - macOS start times have one-second resolution; compare them only with `startedNoEarlier` and
-  `sameBoot` in `processes/identity.ts`.
+  `sameBoot` in `processes/identity.ts`. That is enough because XNU reuses a PID only after the
+  whole PID range went round (issue #8, VERIFIED_FACTS WP-08).
 - A killed process can linger as a zombie until init reaps it. Tests wait for it with
   `eventually`, never with a single check.
 - Keep a strong reference to an open better-sqlite3 `Database`: garbage collection closes it and

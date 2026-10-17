@@ -6,7 +6,7 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { Writable } from "node:stream";
+import type { Duplex, Writable } from "node:stream";
 import { type JsonRpcParams, RpcPeer } from "@mostra/protocol";
 import * as z from "zod";
 import { type Faults, noFaults } from "../faults.ts";
@@ -80,6 +80,12 @@ export interface SpawnSpec {
     readonly onRequest?: (method: string, params: unknown) => unknown;
     readonly onNotification?: (method: string, params: unknown) => void;
   };
+  /**
+   * Opens a plain byte channel as the child's fd 4 (an artifact's worker, D124): a pipe the child
+   * reads and writes as it likes, unlike `ipc`, which is Node's own channel on the main thread.
+   * The two exclude each other.
+   */
+  readonly channel?: true;
 }
 
 /** A running child. */
@@ -98,6 +104,8 @@ export interface ChildHandle {
     params?: JsonRpcParams,
     options?: { timeoutMs?: number },
   ): Promise<unknown>;
+  /** The child's fd 4, when it was started with `channel`. */
+  readonly channel?: Duplex;
   /** Resolves when the child has exited and its process groups are gone. */
   readonly exited: Promise<ChildExit>;
   /** Stops the child: SIGTERM to its group, SIGKILL after `graceMs`. */
@@ -317,6 +325,7 @@ function createManager({
 
   const spawnChild = async (spec: SpawnSpec): Promise<ChildHandle> => {
     if (stopping) throw new Error("The process manager is stopping.");
+    if (spec.ipc && spec.channel) throw new Error("A child takes ipc or a channel, not both.");
     for (const value of spec.redact ?? []) redactor.protect(value);
     redactor.protectEnvironment(spec.env ?? process.env);
     // fd 3 is the gate; the IPC channel, when there is one, is fd 4 (NODE_CHANNEL_FD survives
@@ -330,7 +339,9 @@ function createManager({
         detached: true,
         stdio: spec.ipc
           ? ["ignore", "pipe", "pipe", "pipe", "ipc"]
-          : ["ignore", "pipe", "pipe", "pipe"],
+          : spec.channel
+            ? ["ignore", "pipe", "pipe", "pipe", "pipe"]
+            : ["ignore", "pipe", "pipe", "pipe"],
         serialization: "json",
       },
     );
@@ -463,11 +474,16 @@ function createManager({
       return { code, signal, stderrTail: [...stderrTail] };
     });
 
+    const channel = spec.channel ? (child.stdio[4] as Duplex | null) : null;
+    channel?.on("error", (error) =>
+      log.warn("process.channel_error", { kind: spec.kind, pid, error }),
+    );
     const handle: ChildHandle = {
       pid,
       kind: spec.kind,
       ownerRef: spec.ownerRef,
       startedAt,
+      ...(channel ? { channel } : {}),
       exited,
       request(method, params, options) {
         if (!peer) return Promise.reject(new Error(`${spec.kind} was started without IPC.`));

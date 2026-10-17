@@ -7,10 +7,24 @@
 import * as z from 'zod';
 
 // @public
+export const ACTION_ARGS_MAX: number;
+
+// @public
+export const ACTION_RESULT_MAX: number;
+
+// @public
 export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
 
 // @public
-export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID"];
+export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID", "MOSTRA_ACTION_UNSERIALIZABLE", "MOSTRA_ACTION_THREW", "MOSTRA_ACTION_UNKNOWN_FUNCTION", "MOSTRA_ACTION_INTERRUPTED", "MOSTRA_ACTION_CANCELLED", "MOSTRA_ACTION_TOO_LARGE", "MOSTRA_ACTION_RUN_NOT_FOUND", "MOSTRA_ACTION_EVENT_INVALID"];
+
+// @public
+export interface ActionError extends WireError {
+    readonly stack?: string;
+}
+
+// @public
+export const ActionError: z.ZodType<ActionError>;
 
 // @public
 export interface Actor {
@@ -39,10 +53,16 @@ export const ALL_SCOPES: readonly CapabilityScope[];
 export type AnyBridgeMessage = BridgeMessage<unknown, unknown>;
 
 // @public
+export type AnyFunction = (...args: never) => unknown;
+
+// @public
 export type AnyMethod = MethodDefinition<unknown, unknown>;
 
 // @public
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
+
+// @public
+export const ARGUMENT_BIGINT_DIGITS_MAX = 1e4;
 
 // @public
 export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[];
@@ -200,6 +220,12 @@ export interface ArtifactSummary {
 export const ArtifactSummary: z.ZodType<ArtifactSummary>;
 
 // @public
+export type Batches = readonly (readonly Frame[])[];
+
+// @public
+export const Batches: z.ZodType<Batches>;
+
+// @public
 export interface Bridge {
     call<P, R>(message: BridgeMessage<P, R>, params: P, options?: {
         timeoutMs?: number;
@@ -292,6 +318,41 @@ export type BuildDiagnosticCode = (typeof buildDiagnosticCodes)[number];
 export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUILD_UNRESOLVED", "MOSTRA_BUILD_CRASHED", "MOSTRA_BUILD_TIMEOUT"];
 
 // @public
+export interface CallContext {
+    readonly dryRun: boolean;
+    readonly kind: "call" | "run";
+    readonly runId?: string;
+    readonly viewer?: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly viewId?: string;
+}
+
+// @public
+export type CallLine = {
+    readonly batch: readonly Frame[];
+} | {
+    readonly end: {
+        readonly status: "succeeded";
+    };
+} | {
+    readonly end: {
+        readonly status: "failed";
+        readonly error: WireError;
+    };
+};
+
+// @public
+export interface CallRequest {
+    readonly args: Batches;
+    readonly viewId: string;
+}
+
+// @public
+export const CallRequest: z.ZodType<CallRequest>;
+
+// @public
 export function canonicalJson(value: unknown): string;
 
 // @public
@@ -320,6 +381,9 @@ export interface CarryOver {
 
 // @public
 export const CarryOver: z.ZodType<CarryOver>;
+
+// @public
+export function checkArgumentFrames(batches: readonly unknown[]): void;
 
 // @public
 export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refusal | undefined;
@@ -456,6 +520,9 @@ export const Cursor: {
 export const DEFAULT_DOCS_BASE: string;
 
 // @public
+export const DEFAULT_WORKER_LIMITS: WorkerLimits;
+
+// @public
 export function defineMethod<Params, Result>(definition: MethodDefinition<Params, Result>): MethodDefinition<Params, Result>;
 
 // @public
@@ -535,6 +602,9 @@ export interface DepsAddResult {
     readonly lockDigest: string;
     readonly packages: readonly AddedPackage[];
 }
+
+// @public
+export function deserializeAll(batches: readonly unknown[], options?: ValueReaderOptions): Promise<unknown>;
 
 // @public
 export interface Diagnostic {
@@ -674,7 +744,16 @@ export function encodeLine(message: JsonRpcMessage): string;
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED"];
+
+// @public
+export type EphemeralMessage = {
+    readonly kind: "run";
+    readonly run: RunDelta;
+} | {
+    readonly kind: "live";
+    readonly live: LiveUpdate;
+};
 
 // @public
 export interface EventFilter {
@@ -879,15 +958,40 @@ export interface FollowRequest {
 export const FollowRequest: z.ZodType<FollowRequest>;
 
 // @public
+export type Frame = {
+    readonly c: number;
+    readonly v: unknown;
+} | {
+    readonly p: number;
+    readonly v: unknown;
+} | {
+    readonly p: number;
+    readonly e: WireError;
+} | {
+    readonly i: number;
+    readonly v: unknown;
+} | {
+    readonly i: number;
+    readonly end: true;
+} | {
+    readonly i: number;
+    readonly e: WireError;
+};
+
+// @public
 export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
     readonly follow: boolean;
     readonly pinned: boolean;
+    readonly serverParked?: true;
     readonly src: string;
 }
 
 // @public
 export const FrameTicket: z.ZodType<FrameTicket>;
+
+// @public
+export function fromBase64(text: string): Uint8Array;
 
 // @public
 export interface GatewayStatus {
@@ -1001,14 +1105,19 @@ export interface InstanceStatusResult {
     readonly connections: number;
     readonly deliveries?: readonly DeliveryCounts[];
     readonly gateway?: GatewayStatus;
+    readonly idleExitAt?: string;
     readonly instance: InstanceInfo;
     readonly processes: readonly ChildProcessStatus[];
     readonly socket: string;
     readonly startedAt: string;
+    readonly workers?: readonly WorkerStatus[];
 }
 
 // @public
 export function isFieldId(id: unknown): id is string;
+
+// @public
+export function isFinalRunStatus(status: RunStatus): boolean;
 
 // @public
 export function isJsonContentType(value: string | undefined): boolean;
@@ -1087,13 +1196,95 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
     constructor(maxLineLength?: number);
     push(chunk: string): string[];
     get rest(): string;
+}
+
+// @public
+export const LIVE_KEY_PATTERN: RegExp;
+
+// @public
+export const LIVE_RING_DEFAULT = 1024;
+
+// @public
+export const LIVE_RING_MAX = 1e5;
+
+// @public
+export const LIVE_VALUE_MAX: number;
+
+// @public
+export type LiveDiagnosticCode = (typeof liveDiagnosticCodes)[number];
+
+// @public
+export const liveDiagnosticCodes: readonly ["MOSTRA_LIVE_TOO_LARGE", "MOSTRA_LIVE_SOURCE_FAILED"];
+
+// @public
+export const livePushMethod: MethodDefinition<LivePushParams, LivePushResult>;
+
+// @public
+export interface LivePushParams {
+    readonly artifact: ArtifactRef;
+    readonly key: string;
+    readonly mode?: "replace" | "append";
+    readonly requestId?: string;
+    readonly value: unknown;
+}
+
+// @public
+export interface LivePushResult {
+    readonly revision: string;
+}
+
+// @public
+export interface LiveRequest {
+    readonly keys: readonly {
+        readonly key: string;
+        readonly window?: number;
+        readonly refresh?: boolean;
+    }[];
+    readonly viewId: string;
+}
+
+// @public
+export const LiveRequest: z.ZodType<LiveRequest>;
+
+// @public
+export interface LiveSourceInfo {
+    readonly always: boolean;
+    readonly key: string;
+    readonly load: boolean;
+    readonly refreshMs?: number;
+    readonly ring?: number;
+    readonly stream: boolean;
+    readonly watch?: readonly string[];
+}
+
+// @public
+export interface LiveState {
+    readonly at?: string;
+    readonly error?: WireError;
+    readonly key: string;
+    readonly revision?: string;
+    readonly ring?: readonly {
+        readonly revision: string;
+        readonly at: string;
+        readonly value: Batches;
+    }[];
+    readonly value?: Batches;
+}
+
+// @public
+export interface LiveUpdate {
+    readonly at?: string;
+    readonly error?: WireError;
+    readonly key: string;
+    readonly revision?: string;
+    readonly value?: Batches;
 }
 
 // @public
@@ -1227,6 +1418,7 @@ export const platformDiagnosticCodes: readonly ["MOSTRA_PLATFORM_UNSUPPORTED"];
 // @public
 export interface PollResult {
     readonly cursor: string;
+    readonly ephemeral?: readonly EphemeralMessage[];
     readonly events: readonly EventRecord[];
     readonly snapshot?: StreamSnapshot;
 }
@@ -1242,6 +1434,18 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 
 // @public
 export const PortName: z.ZodType<PortName, string>;
+
+// @public
+export const portSecretsGetMethod: MethodDefinition<PortSecretsGetParams, PortSecretsGetResult>;
+
+// @public
+export interface PortSecretsGetParams {
+    readonly artifactId: string;
+    readonly name: string;
+}
+
+// @public
+export type PortSecretsGetResult = string | null;
 
 // @public
 export const portSubmissionsDeliverMethod: MethodDefinition<SubmissionEnvelope, SubmissionsDeliverResult>;
@@ -1312,6 +1516,12 @@ export interface Refusal {
 
 // @public
 export function refusal(code: HygieneDiagnosticCode, message: string, status?: number): Refusal;
+
+// @public
+export class RemoteError extends Error {
+    constructor(error: WireError);
+    readonly code: string | undefined;
+}
 
 // @public
 export interface RequestFacts {
@@ -1526,10 +1736,116 @@ export interface RpcRequestOptions {
 }
 
 // @public
+export const RUN_KEY_MAX = 256;
+
+// @public
+export const RUN_LOG_MAX: number;
+
+// @public
+export const RUN_LOG_TRUNCATED = "[log truncated at 1 MB]";
+
+// @public
+export const RUN_STATUSES: readonly RunStatus[];
+
+// @public
+export interface RunAttachRequest {
+    readonly held?: readonly {
+        readonly runId: string;
+        readonly log: number;
+        readonly batches: number;
+    }[];
+    readonly keyed?: readonly {
+        readonly fnId: string;
+        readonly key: string;
+    }[];
+    readonly runIds?: readonly string[];
+    readonly viewId: string;
+}
+
+// @public
+export const RunAttachRequest: z.ZodType<RunAttachRequest>;
+
+// @public
+export interface RunCancelRequest {
+    readonly viewId: string;
+}
+
+// @public
+export const RunCancelRequest: z.ZodType<RunCancelRequest>;
+
+// @public
+export interface RunDelta {
+    readonly batches: Batches;
+    readonly batchFrom: number;
+    readonly error?: WireError;
+    readonly finishedAt?: string;
+    readonly log: readonly string[];
+    readonly logFrom: number;
+    readonly progress?: RunProgress;
+    readonly reason?: RunReason;
+    readonly runId: string;
+    readonly status: RunStatus;
+}
+
+// @public
 export type RunId = Id<"run">;
 
 // @public
 export const RunId: GeneratedIdKind<"run">;
+
+// @public
+export interface RunProgress {
+    readonly fraction?: number;
+    readonly message?: string;
+}
+
+// @public
+export const RunProgress: z.ZodType<RunProgress>;
+
+// @public
+export type RunReason = string;
+
+// @public
+export interface RunRequest {
+    readonly args: Batches;
+    readonly clientKey: string;
+    readonly fnId: string;
+    readonly key?: string;
+    readonly viewId: string;
+}
+
+// @public
+export const RunRequest: z.ZodType<RunRequest>;
+
+// @public
+export interface RunState {
+    readonly batches: Batches;
+    readonly batchFrom?: number;
+    readonly error?: WireError;
+    readonly finishedAt?: string;
+    readonly fnId: string;
+    readonly joined?: boolean;
+    readonly key?: string;
+    readonly log: readonly string[];
+    readonly logFrom?: number;
+    readonly progress?: RunProgress;
+    readonly reason?: RunReason;
+    readonly runId: string;
+    readonly startedAt: string;
+    readonly status: RunStatus;
+}
+
+// @public
+export const RunState: z.ZodType<RunState>;
+
+// @public
+export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
+
+// @public
+export type RuntimeDiagnosticCode = (typeof runtimeDiagnosticCodes)[number];
+
+// @public
+export const runtimeDiagnosticCodes: readonly ["MOSTRA_RUNTIME_WORKER_CRASHED", "MOSTRA_RUNTIME_WORKER_PARKED"];
 
 // @public
 export function safeEqual(a: string, b: string): boolean;
@@ -1542,6 +1858,159 @@ export type SaveState = "saved" | "saving" | "offline" | "conflict";
 
 // @public
 export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
+
+// @public
+export const SECRET_NAME_PATTERN: RegExp;
+
+// @public
+export const SECRET_VALUE_MAX: number;
+
+// @public
+export const secretDeleteMethod: MethodDefinition<SecretDeleteParams, SecretDeleteResult>;
+
+// @public
+export interface SecretDeleteParams {
+    readonly artifact?: ArtifactRef;
+    readonly name: string;
+}
+
+// @public
+export interface SecretDeleteResult {
+    readonly deleted: boolean;
+}
+
+// @public
+export type SecretDiagnosticCode = (typeof secretDiagnosticCodes)[number];
+
+// @public
+export const secretDiagnosticCodes: readonly ["MOSTRA_SECRET_MISSING"];
+
+// @public
+export interface SecretEntry {
+    readonly artifactId?: string;
+    readonly name: string;
+    readonly scope: "artifact" | "home";
+    readonly updatedAt: string;
+}
+
+// @public
+export const SecretEntry: z.ZodType<SecretEntry>;
+
+// @public
+export const secretListMethod: MethodDefinition<SecretListParams, SecretListResult>;
+
+// @public
+export interface SecretListParams {
+    readonly artifact?: ArtifactRef;
+}
+
+// @public
+export interface SecretListResult {
+    readonly secrets: readonly SecretEntry[];
+}
+
+// @public
+export const secretSetMethod: MethodDefinition<SecretSetParams, SecretSetResult>;
+
+// @public
+export interface SecretSetParams {
+    readonly artifact?: ArtifactRef;
+    readonly name: string;
+    readonly value: string;
+}
+
+// @public
+export type SecretSetResult = SecretEntry;
+
+// @public
+export class SerializationError extends Error {
+    constructor(message: string, path?: string);
+    readonly code: string;
+    readonly path: string;
+}
+
+// @public
+export function serializeAll(value: unknown, options: Omit<ValueWriterOptions, "onBatch">): Promise<Frame[][]>;
+
+// @public
+export type SerializeMode = "argument" | "result";
+
+// @public
+export interface ServerEmitParams {
+    readonly callId?: string;
+    readonly payload?: unknown;
+    readonly type: string;
+}
+
+// @public
+export const ServerEmitParams: z.ZodType<ServerEmitParams>;
+
+// @public
+export interface ServerLiveValueParams {
+    readonly error?: WireError;
+    readonly key: string;
+    readonly value?: Batches;
+}
+
+// @public
+export const ServerLiveValueParams: z.ZodType<ServerLiveValueParams>;
+
+// @public
+export interface ServerLogParams {
+    readonly callId?: string;
+    readonly line: string;
+}
+
+// @public
+export const ServerLogParams: z.ZodType<ServerLogParams>;
+
+// @public
+export interface ServerProgressParams extends RunProgress {
+    readonly callId: string;
+}
+
+// @public
+export const ServerProgressParams: z.ZodType<ServerProgressParams>;
+
+// @public
+export interface ServerSecretParams {
+    readonly name: string;
+}
+
+// @public
+export const ServerSecretParams: z.ZodType<ServerSecretParams>;
+
+// @public
+export interface ServerSignalParams {
+    readonly callId?: string;
+    readonly name: string;
+    readonly payload?: unknown;
+}
+
+// @public
+export const ServerSignalParams: z.ZodType<ServerSignalParams>;
+
+// @public
+export interface ServerStateGetParams {
+    readonly ids?: readonly string[];
+}
+
+// @public
+export const ServerStateGetParams: z.ZodType<ServerStateGetParams>;
+
+// @public
+export interface ServerStatePatchParams {
+    readonly baseRevision?: DocumentRevision;
+    readonly callId?: string;
+    readonly mutationId?: string;
+    readonly ops: readonly FieldOp[];
+}
+
+// @public
+export const ServerStatePatchParams: z.ZodType<ServerStatePatchParams>;
+
+// @public
+export type ServerStatePatchResult = MutationResult;
 
 // @public
 export interface ShellSubmitRequest {
@@ -1734,6 +2203,9 @@ export type ThreadId = Id<"thr">;
 export const ThreadId: GeneratedIdKind<"thr">;
 
 // @public
+export function toBase64(bytes: Uint8Array): string;
+
+// @public
 export type TokenId = Id<"tok">;
 
 // @public
@@ -1783,6 +2255,41 @@ export const uiSizeChanged: BridgeMessage<{
     readonly width?: number;
     readonly height?: number;
 }, undefined>;
+
+// @public
+export const UNSERIALIZABLE_CODE = "MOSTRA_ACTION_UNSERIALIZABLE";
+
+// @public
+export class ValueReader {
+    constructor(options?: ValueReaderOptions);
+    get complete(): boolean;
+    fail(error: unknown): void;
+    finish(): void;
+    push(batch: unknown): void;
+    readonly root: Promise<unknown>;
+}
+
+// @public
+export interface ValueReaderOptions {
+    readonly mode?: SerializeMode;
+    readonly serverFunction?: (id: string) => AnyFunction;
+}
+
+// @public
+export class ValueWriter {
+    constructor(options: ValueWriterOptions);
+    abort(): void;
+    get cutShort(): boolean;
+    readonly done: Promise<void>;
+    write(value: unknown): Promise<void>;
+}
+
+// @public
+export interface ValueWriterOptions {
+    readonly mode: SerializeMode;
+    readonly onBatch: (batch: Frame[]) => void;
+    readonly serverFunctionId?: (fn: AnyFunction) => string | undefined;
+}
 
 // @public
 export interface VersionAvailableParams {
@@ -1969,6 +2476,146 @@ export type WaitResult = {
     readonly status: "still_waiting";
     readonly cursor: string;
 };
+
+// @public
+export interface WireError {
+    readonly code?: string;
+    readonly message: string;
+}
+
+// @public
+export function wireError(error: unknown): WireError;
+
+// @public
+export const WORKER_CHANNEL_REVISION = "2026-10-16";
+
+// @public
+export const WORKER_METHODS: {
+    readonly start: "worker/start";
+    readonly call: "worker/call";
+    readonly cancel: "worker/cancel";
+    readonly ping: "worker/ping";
+    readonly liveStart: "worker/live.start";
+    readonly liveStop: "worker/live.stop";
+    readonly liveRefresh: "worker/live.refresh";
+    readonly stop: "worker/stop";
+    readonly batch: "worker/batch";
+    readonly progress: "server/progress";
+    readonly log: "server/log";
+    readonly secret: "server/secret";
+    readonly signal: "server/signal";
+    readonly emit: "server/emit";
+    readonly stateGet: "server/state.get";
+    readonly statePatch: "server/state.patch";
+    readonly liveValue: "server/live.value";
+};
+
+// @public
+export interface WorkerBatchParams {
+    readonly batch: readonly Frame[];
+    readonly callId: string;
+}
+
+// @public
+export const WorkerBatchParams: z.ZodType<WorkerBatchParams>;
+
+// @public
+export type WorkerCallOutcome = {
+    readonly status: "succeeded";
+} | {
+    readonly status: "cancelled";
+} | {
+    readonly status: "failed";
+    readonly error: ActionError;
+};
+
+// @public
+export const WorkerCallOutcome: z.ZodType<WorkerCallOutcome>;
+
+// @public
+export interface WorkerCallParams {
+    readonly args: Batches;
+    readonly callId: string;
+    readonly context: CallContext;
+    readonly fnId: string;
+}
+
+// @public
+export const WorkerCallParams: z.ZodType<WorkerCallParams>;
+
+// @public
+export interface WorkerCancelParams {
+    readonly callId: string;
+    readonly reason?: string;
+}
+
+// @public
+export interface WorkerLimits {
+    readonly heapMb: number;
+    readonly idleMinutes: number;
+    readonly watchdogMs: number;
+}
+
+// @public
+export interface WorkerLiveParams {
+    readonly key: string;
+}
+
+// @public
+export interface WorkerPingResult {
+    readonly blockedMs: number;
+    readonly heapUsed: number;
+    readonly waitingForSecret: boolean;
+}
+
+// @public
+export const WorkerPingResult: z.ZodType<WorkerPingResult>;
+
+// @public
+export interface WorkerStartParams {
+    readonly artifactId: string;
+    readonly entry: string;
+    readonly limits: WorkerLimits;
+    readonly version: WorkerVersionRef;
+}
+
+// @public
+export const WorkerStartParams: z.ZodType<WorkerStartParams>;
+
+// @public
+export interface WorkerStartResult {
+    readonly functions: readonly string[];
+    readonly live: readonly LiveSourceInfo[];
+    readonly revision: string;
+}
+
+// @public
+export const WorkerStartResult: z.ZodType<WorkerStartResult>;
+
+// @public
+export interface WorkerStatus {
+    readonly active: number;
+    readonly artifactId: string;
+    readonly crashes: number;
+    readonly lastCause?: string;
+    readonly pid?: number;
+    readonly retryAt?: string;
+    readonly state: "starting" | "ready" | "backoff" | "parked" | "stopped";
+    readonly versionId: string;
+}
+
+// @public
+export const WorkerStatus: z.ZodType<WorkerStatus>;
+
+// @public
+export interface WorkerVersionRef {
+    readonly locator: string;
+    readonly outputDigest: string;
+    readonly versionId: string;
+}
+
+// @public
+export const WorkerVersionRef: z.ZodType<WorkerVersionRef>;
 
 // (No @packageDocumentation comment for this package)
 

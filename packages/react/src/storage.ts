@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * `window.storage`, compatible with Claude artifacts' persistent storage (D53, D112): agents that
  * learned `await window.storage.get(key)` keep working, and their values become Mostra fields.

@@ -4,6 +4,12 @@
  * and when it started within that boot. Linux reads `/proc/<pid>/stat` (start ticks since boot)
  * and the boot ID; macOS reads `ps -o lstart` (seconds) and `kern.boottime` (VERIFIED_FACTS,
  * WP-02). Zombies count as gone: they have exited and only wait for their parent.
+ *
+ * Seconds are enough on macOS (issue #8): XNU hands out PIDs in order from the last one, up to
+ * 99,999, then from 100, skipping any PID still used as a process, process group or session
+ * (`forkproc` in `bsd/kern/kern_fork.c`). A PID comes back only after the whole range has been
+ * handed out, about 99,900 forks, which takes this machine about 100 s at its measured 1,000
+ * spawns a second, and never while its process group lives (VERIFIED_FACTS, WP-08).
  */
 import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";

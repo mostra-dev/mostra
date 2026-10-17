@@ -10,6 +10,7 @@
  * ```
  */
 import * as z from "zod";
+import type { EphemeralMessage } from "./actions.ts";
 import { ArtifactId, Cursor, MutationId, ViewId } from "./ids.ts";
 import {
   DocumentRevision,
@@ -187,6 +188,11 @@ export interface PollResult {
   readonly events: readonly EventRecord[];
   /** Present when the poll asked for none or its cursor was compacted away. */
   readonly snapshot?: StreamSnapshot;
+  /**
+   * Run and live updates for this view since its last poll (WP-08): lossy and never stored as
+   * events, the long-poll's counterpart of the stream's `run` and `live` messages.
+   */
+  readonly ephemeral?: readonly EphemeralMessage[];
 }
 
 /** The Zod schema of the `PollResult` type. */
@@ -195,11 +201,12 @@ export const PollResult: z.ZodType<PollResult> = z
     cursor: Cursor.schema,
     events: z.array(EventRecord).readonly(),
     snapshot: StreamSnapshot.exactOptional(),
+    ephemeral: z.array(z.record(z.string(), z.unknown())).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "PollResult",
     description: "A long-poll answer: the cursor, the events after the asked one, and a snapshot.",
-  });
+  }) as unknown as z.ZodType<PollResult>;
 
 /**
  * `POST /a/{artifactId}/_mostra/ticket`'s answer on the shell origin: a single-use frame ticket,
@@ -214,6 +221,11 @@ export interface FrameTicket extends ViewContext {
   readonly follow: boolean;
   /** Whether the link opens this version only (D97 item 9): then the shell offers no newer one. */
   readonly pinned: boolean;
+  /**
+   * The version's server code keeps crashing and is parked (WP-08, FAILURE_MODEL §2): the shell
+   * says so, since the page's actions and live data won't work until a new publish.
+   */
+  readonly serverParked?: true;
 }
 
 /** The Zod schema of the `FrameTicket` type. */
@@ -231,6 +243,7 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
     artifactOrigin: z.string().min(1),
     follow: z.boolean(),
     pinned: z.boolean(),
+    serverParked: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",

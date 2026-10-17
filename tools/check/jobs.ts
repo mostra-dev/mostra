@@ -46,6 +46,12 @@ export interface Job {
   steps?(plan: Plan): readonly Step[];
   /** Part of `--fast` (the pre-push hook). */
   readonly fast?: boolean;
+  /**
+   * Runs on its own after the other task jobs, in a local `pnpm check` only: CI gives every job a
+   * machine of its own, and three browsers beside the real-process suites on one laptop time out
+   * (WP-07's and WP-08's baselines). The job's own tests still run in parallel.
+   */
+  readonly alone?: boolean;
 }
 
 const BIN = "node_modules/.bin";
@@ -130,6 +136,7 @@ export const JOBS: readonly Job[] = [
       "Playwright through the real gateway in Chromium, Firefox and WebKit, on macOS and Linux in CI",
     applies: (plan) => affects(plan, [...GATEWAY, "@mostra/react", "@mostra/e2e"]),
     tasks: ["e2e"],
+    alone: true,
   },
   {
     name: "build",

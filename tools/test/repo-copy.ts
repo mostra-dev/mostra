@@ -71,6 +71,9 @@ export function copyRepository(): RepoCopy {
       // every gate that needs them builds them in the copy (WP-04 baseline finding).
       "--exclude",
       "/packages/*/dist",
+      // And the type checker's incremental state, which `tsc -b` rewrites as it runs.
+      "--exclude",
+      ".tsbuild",
       `${ROOT}/`,
       `${root}/`,
     ],

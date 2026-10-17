@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * `pages/` routing on React Router (D57): the generated entry hands the routes, and the entry's
  * layout when it has one, to {@link mountRoutes}. The history follows the delivery target (D111):

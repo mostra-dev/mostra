@@ -268,3 +268,19 @@ describe("LineSplitter", () => {
     expect(JSON.parse(lines[0] ?? "")).toEqual(message);
   });
 });
+
+describe("LineSplitter on long lines (WP-08)", () => {
+  it("splits a 32 MiB line sent in 64 KiB chunks in linear time, and keeps every character", () => {
+    const splitter = new LineSplitter();
+    const chunk = "x".repeat(64 * 1024);
+    const started = performance.now();
+    for (let i = 0; i < 512; i++) expect(splitter.push(chunk)).toEqual([]);
+    expect(splitter.rest.length).toBe(32 * 1024 * 1024);
+    const [line, ...others] = splitter.push("y\nnext");
+    // Searching every buffered character again per chunk took 1.6 s here; one pass takes 20 ms.
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(line?.length).toBe(32 * 1024 * 1024 + 1);
+    expect(others).toEqual([]);
+    expect(splitter.rest).toBe("next");
+  });
+});

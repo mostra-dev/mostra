@@ -1,9 +1,16 @@
 #!/usr/bin/env node
+import { mkdirSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 /**
  * `mostra-runtime`, the runtime bundle's entry point (D85).
  *
  *   mostra-runtime host [--home <dir>]     the host protocol over stdio (`mostra host`)
- *   mostra-runtime daemon [--home <dir>]   the home's daemon on its socket (`mostra daemon start`)
+ *   mostra-runtime daemon [--home <dir>] [--always-on]
+ *                                          the home's daemon on its socket (`mostra daemon start`);
+ *                                          it exits after 30 idle minutes unless `--always-on`
+ *   mostra-runtime service install|uninstall|status [--home <dir>] [--no-start]
+ *                                          the home's login service (`mostra daemon install`, D62):
+ *                                          one JSON line with the service's file and state
  *
  * Both take `--bind <address>` to serve viewers on an address other than 127.0.0.1, and
  * `--url-host <name>`, the host name links use, which a wildcard address needs (D99). Neither is
@@ -24,13 +31,17 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { checkPlatform, resolveHomePath } from "./home/index.ts";
 import { type Instance, runtimeVersion, startInstance } from "./instance/index.ts";
+import { installService, serviceStatus, uninstallService } from "./service/index.ts";
 
 /** Exit codes, as INTERFACES §9 defines them for the CLI. */
 const EXIT = { ok: 0, failure: 1, usage: 2, environment: 3 } as const;
 
-const USAGE =
-  "usage: mostra-runtime <host|daemon> [--home <dir>] [--bind <address> [--url-host <name>]]";
+const USAGE = [
+  "usage: mostra-runtime <host|daemon> [--home <dir>] [--bind <address> [--url-host <name>]] [--always-on]",
+  "       mostra-runtime service <install|uninstall|status> [--home <dir>] [--no-start]",
+].join("\n");
 
 // A closed stdout or stderr (a starter that read the ready line and left) must not crash the
 // supervisor.
@@ -116,6 +127,8 @@ async function main(argv: readonly string[]): Promise<number> {
     return EXIT.ok;
   }
   const [mode, ...rest] = positionals;
+  if (mode === "service" && !values.help)
+    return service(rest, values.home, values["no-start"] === true);
   if (values.help || (mode !== "host" && mode !== "daemon") || rest.length > 0) {
     (values.help ? process.stdout : process.stderr).write(`${USAGE}\n`);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -127,6 +140,7 @@ async function main(argv: readonly string[]): Promise<number> {
       home: values.home,
       bind: values.bind,
       urlHost: values["url-host"],
+      alwaysOn: values["always-on"] === true,
       mirror,
       ...(mode === "host" ? { stdio: { input: process.stdin, output: process.stdout } } : {}),
     });
@@ -170,6 +184,41 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
+/** `mostra-runtime service …`: the home's login service, as one JSON line (D62, RT-08). */
+function service(args: readonly string[], home: string | undefined, noStart: boolean): number {
+  const [action, ...extra] = args;
+  if ((action !== "install" && action !== "uninstall" && action !== "status") || extra.length > 0) {
+    process.stderr.write(`${USAGE}\n`);
+    return EXIT.usage;
+  }
+  const gate = checkPlatform();
+  if (gate) {
+    process.stdout.write(`${JSON.stringify({ status: "failed", diagnostic: gate })}\n`);
+    return EXIT.environment;
+  }
+  try {
+    const resolved = resolveHomePath({ home, env: process.env });
+    mkdirSync(resolved, { recursive: true, mode: 0o700 });
+    const spec = {
+      home: realpathSync(resolved),
+      node: process.execPath,
+      entry: fileURLToPath(import.meta.url),
+    };
+    const status =
+      action === "install"
+        ? installService(spec, { noStart })
+        : action === "uninstall"
+          ? uninstallService(spec, { noStart })
+          : serviceStatus(spec);
+    process.stdout.write(`${JSON.stringify({ status: "ok", action, service: status })}\n`);
+    return EXIT.ok;
+  } catch (error) {
+    const diagnostic = diagnosticOf(error);
+    process.stdout.write(`${JSON.stringify({ status: "failed", diagnostic })}\n`);
+    return EXIT.environment;
+  }
+}
+
 function parse(argv: readonly string[]) {
   return parseArgs({
     args: [...argv],
@@ -178,6 +227,8 @@ function parse(argv: readonly string[]) {
       home: { type: "string" },
       bind: { type: "string" },
       "url-host": { type: "string" },
+      "always-on": { type: "boolean" },
+      "no-start": { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean" },
     },

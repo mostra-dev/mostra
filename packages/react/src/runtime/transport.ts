@@ -6,10 +6,20 @@
  */
 import {
   BROWSER_PROTOCOL_REVISION,
+  type CallLine,
+  type CallRequest,
+  type EphemeralMessage,
   type EventRecord,
   type FieldsRequest,
+  type LiveRequest,
+  type LiveState,
+  type LiveUpdate,
   type MutationResult,
   type PollResult,
+  type RunAttachRequest,
+  type RunDelta,
+  type RunRequest,
+  type RunState,
   type SignalRequest,
   type StreamSnapshot,
   type SubmissionSummary,
@@ -33,6 +43,8 @@ export interface StreamHandlers {
   onEvents(events: readonly EventRecord[]): void;
   /** The stream's health: `live` while connected, `offline` while it retries, `revoked` at the end. */
   onStatus(status: "live" | "offline" | "revoked"): void;
+  /** Run and live updates (WP-08): lossy, never events, so a page reads again what it missed. */
+  onEphemeral?(message: EphemeralMessage): void;
 }
 
 /** The client runtime's way to Mostra. */
@@ -50,6 +62,16 @@ export interface Transport {
   signal(request: SignalRequest): Promise<{ readonly cursor: string }>;
   /** Hears the page's events after `cursor`; returns the function that stops. */
   subscribe(cursor: string | undefined, handlers: StreamHandlers): () => void;
+  /** A plain server-function call (D54): its result's lines as they come. */
+  call?(fnId: string, request: CallRequest, signal?: AbortSignal): AsyncIterable<CallLine>;
+  /** Starts or joins an action run (AC-02, AC-03). */
+  startRun?(request: RunRequest): Promise<RunState>;
+  /** Reads runs and follows them for a minute. */
+  attachRuns?(request: RunAttachRequest): Promise<{ readonly runs: readonly RunState[] }>;
+  /** Cancels a run (AC-04). */
+  cancelRun?(runId: string, viewId: string): Promise<RunState>;
+  /** Reads live sources and keeps them produced for a minute (D56). */
+  live?(request: LiveRequest): Promise<{ readonly sources: readonly LiveState[] }>;
 }
 
 /** The longest body `fetch` sends with `keepalive` (the Fetch standard's 64 KiB budget). */
@@ -153,6 +175,80 @@ export class HttpTransport implements Transport {
     return this.#post("/signal", request) as Promise<{ cursor: string }>;
   }
 
+  async *call(fnId: string, request: CallRequest, signal?: AbortSignal): AsyncIterable<CallLine> {
+    const csrf = await this.#token();
+    let response: Response;
+    try {
+      response = await fetch(`${this.#base}/call/${encodeURIComponent(fnId)}`, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "content-type": "application/json", "x-mostra-csrf": csrf },
+        body: JSON.stringify(request),
+        ...(signal ? { signal } : {}),
+      });
+    } catch (error) {
+      throw new NetworkError((error as Error).message);
+    }
+    if (!response.ok || !response.body) {
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
+      const diagnostic = (body ?? {}) as Partial<DiagnosticLike>;
+      if (typeof diagnostic.code !== "string") {
+        throw new NetworkError(`The gateway answered ${response.status}.`);
+      }
+      throw new MostraError(diagnostic.code, diagnostic.message ?? diagnostic.code, {
+        status: response.status,
+        diagnostic: diagnostic as DiagnosticLike,
+      });
+    }
+    // NDJSON: one line per batch, then the end.
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    try {
+      for (;;) {
+        let chunk: ReadableStreamReadResult<string>;
+        try {
+          chunk = await reader.read();
+        } catch (error) {
+          throw new NetworkError((error as Error).message);
+        }
+        if (chunk.done) break;
+        buffer += chunk.value;
+        let newline = buffer.indexOf("\n");
+        while (newline !== -1) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          if (line.trim() !== "") yield JSON.parse(line) as CallLine;
+          newline = buffer.indexOf("\n");
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (buffer.trim() !== "") yield JSON.parse(buffer) as CallLine;
+  }
+
+  startRun(request: RunRequest): Promise<RunState> {
+    return this.#post("/runs", request) as Promise<RunState>;
+  }
+
+  attachRuns(request: RunAttachRequest): Promise<{ readonly runs: readonly RunState[] }> {
+    return this.#post("/runs/attach", request) as Promise<{ runs: RunState[] }>;
+  }
+
+  cancelRun(runId: string, viewId: string): Promise<RunState> {
+    return this.#post(`/runs/${encodeURIComponent(runId)}/cancel`, { viewId }) as Promise<RunState>;
+  }
+
+  live(request: LiveRequest): Promise<{ readonly sources: readonly LiveState[] }> {
+    return this.#post("/live", request) as Promise<{ sources: LiveState[] }>;
+  }
+
   subscribe(cursor: string | undefined, handlers: StreamHandlers): () => void {
     let closed = false;
     let last = cursor;
@@ -175,6 +271,7 @@ export class HttpTransport implements Transport {
           handlers.onStatus("live");
           if (result.snapshot) handlers.onSnapshot(result.snapshot);
           if (result.events.length > 0) handlers.onEvents(result.events);
+          for (const message of result.ephemeral ?? []) handlers.onEphemeral?.(message);
           last = result.cursor;
         } catch (error) {
           if (error instanceof MostraError && error.code === "MOSTRA_HYGIENE_TOKEN_REVOKED") {
@@ -212,6 +309,15 @@ export class HttpTransport implements Transport {
         const record = JSON.parse((event as MessageEvent<string>).data) as EventRecord;
         last = record.cursor;
         handlers.onEvents([record]);
+      });
+      // Run and live updates carry no `id`, so they never move the stream's cursor.
+      source.addEventListener("run", (event) => {
+        const run = JSON.parse((event as MessageEvent<string>).data) as RunDelta;
+        handlers.onEphemeral?.({ kind: "run", run });
+      });
+      source.addEventListener("live", (event) => {
+        const live = JSON.parse((event as MessageEvent<string>).data) as LiveUpdate;
+        handlers.onEphemeral?.({ kind: "live", live });
       });
       source.addEventListener("error", () => {
         if (closed) return;

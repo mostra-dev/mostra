@@ -113,6 +113,23 @@ export interface Dependencies {
    * `MOSTRA_DEP_MISSING`). The caller records it with {@link Resolution.save}.
    */
   resolve(target: DependencyTarget & { readonly sourceDir: string }): Promise<Resolution>;
+  /**
+   * The `node_modules` a version's server code resolves its packages from at run time (D135):
+   * the warm set when the version has no on-demand packages, else the layout of its frozen
+   * lockfile, installed again from the store if it was removed. When the warm set moved since the
+   * version was built (a runtime with other warm versions), a pinned layout installs the warm
+   * packages the version locked at their exact versions, so its server code runs against what it
+   * was built with.
+   *
+   * @throws RpcError `MOSTRA_DEP_OFFLINE`, `MOSTRA_DEP_INSTALL_FAILED` … when a layout can't be made.
+   */
+  runtimeModules(target: {
+    readonly artifactId: string;
+    /** The version's directory, holding its `lock.yaml`. */
+    readonly versionDir: string;
+    /** The artifact's source directory, when it still exists: lifecycle scripts run there. */
+    readonly sourceDir?: string;
+  }): Promise<string>;
   /** `deps/add`: adds packages to the artifact's working lockfile and installs them. */
   add(
     target: DependencyTarget & {
@@ -443,6 +460,97 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       return nodeModules;
     });
 
+  /**
+   * A layout for a version whose locked warm packages the current warm set no longer holds at
+   * those versions: each such package installs at its locked version, the others link to the warm
+   * set as usual, and the version's installer lockfile seeds the rest of the graph.
+   */
+  const ensurePinnedLayout = (
+    lock: Lock,
+    digest: string,
+    drifted: readonly string[],
+    target: { readonly key: string; readonly artifactDir: string },
+  ): Promise<string> => {
+    const name = `pinned-${lockDigest(`${digest}\n${JSON.stringify(warm.packages)}`)}`;
+    return byLayout.run(name, async () => {
+      const dir = join(dirs.locks, name);
+      const nodeModules = join(dir, "node_modules");
+      if (existsSync(join(dir, LAYOUT_MARKER))) {
+        await relinkWarm(dir);
+        return nodeModules;
+      }
+      const pinnedWarm = Object.fromEntries(
+        Object.keys(lock.warm).map((pkg) => [
+          pkg,
+          drifted.includes(pkg) ? (lock.warm[pkg] as string) : `link:warm/${pkg}`,
+        ]),
+      );
+      const isOff = offline();
+      if (isOff) {
+        const missing = drifted.find((pkg) => !stored(pkg).includes(lock.warm[pkg] as string));
+        if (missing) {
+          throw fail(
+            "MOSTRA_DEP_OFFLINE",
+            `Mostra is offline, and this version's server code needs ${missing}@${lock.warm[missing]}, which the warm set no longer holds and the home's package store doesn't.`,
+          );
+        }
+      }
+      await rm(dir, { recursive: true, force: true });
+      await mkdir(dir, { recursive: true });
+      try {
+        await symlink(warm.nodeModules, join(dir, "warm"), "dir");
+        await writeFile(
+          join(dir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "mostra-artifact-dependencies",
+              private: true,
+              dependencies: Object.fromEntries(
+                Object.entries({ ...pinnedWarm, ...lock.packages }).sort(([a], [b]) =>
+                  a < b ? -1 : 1,
+                ),
+              ),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        if (lock.pnpm !== undefined) await writeFile(join(dir, "pnpm-lock.yaml"), lock.pnpm);
+        const outcome = await install().run({
+          command: ["install", "--no-frozen-lockfile"],
+          dir,
+          cwd: target.artifactDir,
+          offline: isOff,
+          // Every version here was accepted when the version was published.
+          releaseAge: false,
+          ownerRef: target.key,
+        });
+        if (!outcome.ok) throw new RpcError(outcome.diagnostic);
+        const now = new Date().toISOString();
+        const pinned = await readFile(join(dir, "pnpm-lock.yaml"), "utf8").catch(() => "");
+        ledger.write((db) => {
+          for (const { name: pkg, version } of pinnedPackages(pinned)) {
+            db.run(
+              "INSERT OR IGNORE INTO dependency_package (name, version, stored_at) VALUES (?, ?, ?)",
+              pkg,
+              version,
+              now,
+            );
+          }
+        });
+        await writeFile(
+          join(dir, LAYOUT_MARKER),
+          `${JSON.stringify({ lockDigest: digest, pinned: drifted, installer: install().version })}\n`,
+        );
+      } catch (error) {
+        await rm(dir, { recursive: true, force: true });
+        throw error;
+      }
+      log.info("deps.pinned_layout_installed", { lockDigest: digest, pinned: drifted });
+      return nodeModules;
+    });
+  };
+
   /** Settles a lockfile: its text, digest and layout. */
   const settle = async (
     lock: Lock,
@@ -459,6 +567,20 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
 
   return {
     warm,
+
+    async runtimeModules(target) {
+      const text = await readFile(join(target.versionDir, "lock.yaml"), "utf8");
+      const lock = parseLock(text);
+      const digest = lockDigest(text);
+      const where = { key: target.artifactId, artifactDir: target.sourceDir ?? target.versionDir };
+      // Mostra's own packages always come from this runtime: they aren't on a registry to pin.
+      const drifted = Object.keys(lock.warm)
+        .filter((pkg) => !pkg.startsWith("@mostra/"))
+        .filter((pkg) => warm.packages[pkg] !== lock.warm[pkg]);
+      if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);
+      if (Object.keys(lock.packages).length === 0) return warm.nodeModules;
+      return ensureLayout(lock, digest, where);
+    },
 
     resolve: (target) =>
       byArtifact.run(target.key, async () => {

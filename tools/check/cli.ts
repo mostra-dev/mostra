@@ -179,8 +179,14 @@ console.log(
   `pnpm check: ${applicable.map((job) => job.name).join(", ") || "nothing to run"}` +
     (plan.packages === "all" ? "" : ` (packages: ${plan.packages.join(", ") || "none"})`),
 );
+// Jobs that must run alone (the browsers) start once the other task jobs are done.
+const together = taskJobs.filter((job) => !job.alone);
+const alone = taskJobs.filter((job) => job.alone);
 const outcomes = (
-  await Promise.all([runTasks(taskJobs, plan), ...stepJobs.map((job) => runSteps(job, plan))])
+  await Promise.all([
+    runTasks(together, plan).then(async (first) => [...first, ...(await runTasks(alone, plan))]),
+    ...stepJobs.map((job) => runSteps(job, plan)),
+  ])
 ).flat();
 
 let failed = 0;

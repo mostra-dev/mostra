@@ -23,37 +23,48 @@ export function encodeLine(message: JsonRpcMessage): string {
  */
 export class LineSplitter {
   readonly #maxLineLength: number;
-  #buffer = "";
+  /** The unfinished line, in the pieces it arrived in: joined only once its newline comes. */
+  #pending: string[] = [];
+  #pendingLength = 0;
 
   /** @param maxLineLength - The longest line accepted, in UTF-16 code units. Default 64 Mi. */
   constructor(maxLineLength: number = MAX_LINE_LENGTH) {
     this.#maxLineLength = maxLineLength;
   }
 
-  /** Returns the lines completed by `chunk`, without their newlines (and without a trailing `\r`). */
+  /**
+   * Returns the lines completed by `chunk`, without their newlines (and without a trailing `\r`).
+   * Only `chunk` is searched for newlines, so a long line costs time in proportion to its length,
+   * however many chunks bring it.
+   */
   push(chunk: string): string[] {
     const lines: string[] = [];
-    const text = this.#buffer + chunk;
     let start = 0;
-    for (let index = text.indexOf("\n"); index >= 0; index = text.indexOf("\n", start)) {
-      if (index - start > this.#maxLineLength) this.#overflow();
-      const line = text.slice(start, index);
+    for (let index = chunk.indexOf("\n"); index >= 0; index = chunk.indexOf("\n", start)) {
+      if (this.#pendingLength + index - start > this.#maxLineLength) this.#overflow();
+      this.#pending.push(chunk.slice(start, index));
+      const line = this.#pending.join("");
+      this.#pending = [];
+      this.#pendingLength = 0;
       lines.push(line.endsWith("\r") ? line.slice(0, -1) : line);
       start = index + 1;
     }
-    const rest = text.slice(start);
-    if (rest.length > this.#maxLineLength) this.#overflow();
-    this.#buffer = rest;
+    if (start < chunk.length) {
+      this.#pendingLength += chunk.length - start;
+      if (this.#pendingLength > this.#maxLineLength) this.#overflow();
+      this.#pending.push(chunk.slice(start));
+    }
     return lines;
   }
 
   /** The unfinished text after the last newline. A stream that ends with it holds a cut-off message. */
   get rest(): string {
-    return this.#buffer;
+    return this.#pending.join("");
   }
 
   #overflow(): never {
-    this.#buffer = "";
+    this.#pending = [];
+    this.#pendingLength = 0;
     throw new RangeError(`A message is longer than ${this.#maxLineLength} characters.`);
   }
 }

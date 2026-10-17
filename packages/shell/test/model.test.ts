@@ -235,3 +235,36 @@ describe("control requests never take the state back", () => {
     expect(next.submitLabel).toBe("Send");
   });
 });
+
+describe("a view whose server code keeps crashing (WP-08, FAILURE_MODEL §2)", () => {
+  const record = (type: string, payload: Record<string, unknown>): EventRecord => ({
+    cursor: "40" as EventRecord["cursor"],
+    artifactId: TICKET.artifactId,
+    seq: 4,
+    type,
+    at: "2026-10-16T00:00:00.000Z",
+    actor: { kind: "mostra" },
+    payload,
+  });
+
+  it("says so from the ticket, and from a parking crash of its own version only", () => {
+    expect(initialState({ ...TICKET, serverParked: true }).serverParked).toBe(true);
+    const fresh = initialState(TICKET);
+    expect(fresh.serverParked).toBe(false);
+    // A crash that backs off, or one of another version, isn't a park of this view.
+    const backoff = withEvents(fresh, [
+      record("worker.crashed", { versionId: TICKET.version.id, parked: false }),
+      record("worker.crashed", { versionId: "ver_00000000000000000000000002", parked: true }),
+    ]);
+    expect(backoff.serverParked).toBe(false);
+    const parked = withEvents(fresh, [
+      record("worker.crashed", { versionId: TICKET.version.id, parked: true }),
+    ]);
+    expect(parked.serverParked).toBe(true);
+    // The next publish clears every park of the artifact.
+    const published = withEvents(parked, [
+      record("version.published", { versionId: "ver_00000000000000000000000002", number: 2 }),
+    ]);
+    expect(published.serverParked).toBe(false);
+  });
+});

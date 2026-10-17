@@ -16,8 +16,8 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | AU-06 | WP-26 | I, R | `mostra new --template <family>` for every family produces an artifact that passes verify, with AGENTS.md (CI matrix); Mirza reviews | unverified |
 | RT-01 | WP-11 | I, X | Clean macOS and Linux CI runners without Node: npm create mostra → verify → publish; tampered bundle rejected; external: real install | unverified |
 | RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
-| RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | unverified |
-| RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | unverified |
+| RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | RT-05 | WP-05 | I | Client-only version served with zero worker processes (process table assertion) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | RT-06 | WP-02 | I, C | 16 racing starters converge on one supervisor; stale socket recovered; `mostra host` over stdio and attach over socket both pass the protocol suite | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | RT-07 | WP-02 | I | macOS and Linux CI legs green; simulated Windows platform fails closed with MOSTRA_PLATFORM_UNSUPPORTED before touching the home | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
@@ -48,13 +48,13 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | IN-11 | WP-06 | I | Results JSON validates against the schema; Markdown golden includes answers, choices, comments with crop paths, versions, runs | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-12 | WP-06 | I, C | Host down during submit: submission durable, delivery pending, replay in order on reconnect; crash after host ack redelivers same deliveryId | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | IN-13 | WP-07 | B, R | Shell shows Submitted, Delivered, Pending delivery and Undeliverable in the right sequence (browser); Mirza reviews wording | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
-| AC-01 | WP-08 | I | Fixture action reads a file, spawns a process and calls the network with no Mostra restriction (integration) | unverified |
-| AC-02 | WP-08 | I, B | Run streams progress, log and partial results; survives tab reload and re-attaches; final event recorded | unverified |
-| AC-03 | WP-08 | I, B | Double click and two tabs with an explicit key send once to a counting fake server | unverified |
-| AC-04 | WP-08 | I | Cancel reaches the action's AbortSignal; run ends cancelled | unverified |
-| AC-05 | WP-08 | C | emit() and signal() from an action reach a subscribed host with causation (conformance) | unverified |
-| AC-06 | WP-08 | I | Secrets set by name, resolved by home store and by port; grep tests over logs, events, exports, diagnostics and screenshots find no value | unverified |
-| AC-07 | WP-08 | I, B | load, refresh, watch, stream and push all update useLive; live data never uses HMR channels (no Vite client in versions) | unverified |
+| AC-01 | WP-08 | I | Fixture action reads a file, spawns a process and calls the network with no Mostra restriction (integration) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-02 | WP-08 | I, B | Run streams progress, log and partial results; survives tab reload and re-attaches; final event recorded | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-03 | WP-08 | I, B | Double click and two tabs with an explicit key send once to a counting fake server | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-04 | WP-08 | I | Cancel reaches the action's AbortSignal; run ends cancelled | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-05 | WP-08 | C | emit() and signal() from an action reach a subscribed host with causation (conformance) | validated ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-06 | WP-08 | I | Secrets set by name, resolved by home store and by port; grep tests over logs, events, exports, diagnostics and screenshots find no value | validated ([WP-08](../progress/PROGRESS-WP-08.md)) |
+| AC-07 | WP-08 | I, B | load, refresh, watch, stream and push all update useLive; live data never uses HMR channels (no Vite client in versions) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | AC-08 | WP-19 | B | uPlot live chart holds the WP-19 target rate with the stated point count in CI browsers; frame-drop budget asserted | unverified |
 | RV-01 | WP-20 | B | Comments pin and reload on DOM, canvas, kit charts, served iframe and opaque iframe fixtures (three engines) | unverified |
 | RV-02 | WP-20 | M, B | Stored anchors contain every applicable layer and always a crop; resolution order tested by removing layers | unverified |
@@ -112,7 +112,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | EX-03 | WP-16 | I | An unchanged third-party shadcn registry item installs; Mostra packs install through shadcn too | unverified |
 | EX-04 | WP-16 | I | Non-OSI fixture plugin refuses without --accept-license and installs with it; recorded in the lockfile; host pre-acceptance works | unverified |
 | EX-05 | WP-25 | I, B | Each first-party plugin installs, passes its verify baselines and exercises its contract | unverified |
-| RS-01 | WP-08 | M | One test per D19 seam (mode field, use server contract and serializer, AsyncLocalStorage context, use client runtime, RenderMode) | unverified |
+| RS-01 | WP-08 | M | One test per D19 seam (mode field, use server contract and serializer, AsyncLocalStorage context, use client runtime, RenderMode) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | RS-02 | WP-26 | R | Mirza's review of SPA-mode completeness at WP-26; no SPA component marked temporary | unverified |
 | RM-01 | WP-29 | M, R | Bundle moves between homes keeping identity; ports and WorkerLauncher documented; MCP server stateless (handle-only test) | unverified |
 | RM-02 | WP-29 | I, X | Two instances on one machine, one as a remote server: share, open from a browser, submit, `wait` returns and the local host receives the delivery exactly once in effect; external: the same against a deployed server | unverified |
@@ -137,7 +137,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
-| RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | unverified |
+| RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | validated ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
 | VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
@@ -145,7 +145,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | LL-02 | WP-06 | B, C | Policy none: no Submit control; submit API refused; state, actions and signals work | validated ([WP-06](../progress/PROGRESS-WP-06.md)) |
 | LL-03 | WP-07 | B | Follow on: new version loads automatically; blocked by unsaved edits or orphans with the banner instead | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
-| LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | unverified |
+| LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | unverified |

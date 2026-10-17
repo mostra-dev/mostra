@@ -66,6 +66,7 @@
     "@mostra/shell": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@mostra/warm": "workspace:*",
+    "@mostra/worker": "workspace:*",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "@types/semver": "catalog:",

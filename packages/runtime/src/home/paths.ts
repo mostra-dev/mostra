@@ -106,17 +106,22 @@ export function socketPathLimit(platform: string = process.platform): number {
 }
 
 /**
- * The control socket for a home (D82): 16 Crockford base32 characters of the SHA-256 of the
- * home's real path. Throws `MOSTRA_HOME_SOCKET_TOO_LONG` when the path exceeds the limit.
+ * A home's hash (D82): 16 Crockford base32 characters of the SHA-256 of its real path, which
+ * names its socket and its login service.
  */
-export function socketPathFor(runtimeDir: string, realHome: string, platform?: string): string {
+export function homeHash(realHome: string): string {
   const digest = createHash("sha256").update(realHome, "utf8").digest();
   // VersionId.fromSha256 is the one Crockford encoder (D77); its body starts with the same 16
   // characters any encoding of this digest would.
-  const hash = VersionId.fromSha256(new Uint8Array(digest)).slice(
-    "ver_".length,
-    "ver_".length + 16,
-  );
+  return VersionId.fromSha256(new Uint8Array(digest)).slice("ver_".length, "ver_".length + 16);
+}
+
+/**
+ * The control socket for a home (D82), named by its {@link homeHash}. Throws
+ * `MOSTRA_HOME_SOCKET_TOO_LONG` when the path exceeds the limit.
+ */
+export function socketPathFor(runtimeDir: string, realHome: string, platform?: string): string {
+  const hash = homeHash(realHome);
   const path = join(runtimeDir, `${hash}.sock`);
   const limit = socketPathLimit(platform);
   const length = Buffer.byteLength(path);

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * The artifact's end of the shell bridge (INTERFACES §5, SH-04). The client runtime starts it:
  * when the page runs inside Mostra's shell, it learns the shell's exact origin and its link's

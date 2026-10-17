@@ -4,6 +4,7 @@
  */
 export { acquireHome, type OwnedHome } from "./acquire.ts";
 export {
+  homeHash,
   prepareOwnedDirectory,
   resolveHomePath,
   resolveRuntimeDir,

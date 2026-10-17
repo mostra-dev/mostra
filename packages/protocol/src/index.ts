@@ -7,6 +7,37 @@
  * @packageDocumentation
  */
 export {
+  ACTION_ARGS_MAX,
+  ACTION_RESULT_MAX,
+  ActionError,
+  Batches,
+  type CallLine,
+  CallRequest,
+  type EphemeralMessage,
+  isFinalRunStatus,
+  LIVE_KEY_PATTERN,
+  LIVE_RING_DEFAULT,
+  LIVE_RING_MAX,
+  LIVE_VALUE_MAX,
+  LiveRequest,
+  type LiveState,
+  type LiveUpdate,
+  RUN_KEY_MAX,
+  RUN_LOG_MAX,
+  RUN_LOG_TRUNCATED,
+  RUN_STATUSES,
+  RunAttachRequest,
+  RunCancelRequest,
+  type RunDelta,
+  RunProgress,
+  type RunReason,
+  RunRequest,
+  RunState,
+  type RunStatus,
+  SECRET_NAME_PATTERN,
+  SECRET_VALUE_MAX,
+} from "./actions.ts";
+export {
   ArtifactDetail,
   ArtifactRef,
   ArtifactSummary,
@@ -109,13 +140,19 @@ export {
   hostDiagnosticCodes,
   hygieneDiagnosticCodes,
   type KnownDiagnosticCode,
+  type LiveDiagnosticCode,
+  liveDiagnosticCodes,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
   type PlatformDiagnosticCode,
   type PublishDiagnosticCode,
   platformDiagnosticCodes,
   publishDiagnosticCodes,
+  type RuntimeDiagnosticCode,
+  runtimeDiagnosticCodes,
+  type SecretDiagnosticCode,
   type SubmitDiagnosticCode,
+  secretDiagnosticCodes,
   submitDiagnosticCodes,
   type TargetDiagnosticCode,
   targetDiagnosticCodes,
@@ -273,7 +310,9 @@ export {
   type InstanceStatusParams,
   type InstanceStatusResult,
   instanceStatusMethod,
+  WorkerStatus,
 } from "./methods/instance/status.ts";
+export { type LivePushParams, type LivePushResult, livePushMethod } from "./methods/live/push.ts";
 export {
   ClientCapabilities,
   ClientInfo,
@@ -297,6 +336,11 @@ export {
   portDraftsMirrorMethod,
 } from "./methods/port/drafts-mirror.ts";
 export {
+  type PortSecretsGetParams,
+  type PortSecretsGetResult,
+  portSecretsGetMethod,
+} from "./methods/port/secrets-get.ts";
+export {
   portSubmissionsDeliverMethod,
   SubmissionEnvelope,
   type SubmissionsDeliverResult,
@@ -317,6 +361,22 @@ export {
   ResultsMarkdown,
   resultsGetMethod,
 } from "./methods/results/get.ts";
+export {
+  type SecretDeleteParams,
+  type SecretDeleteResult,
+  secretDeleteMethod,
+} from "./methods/secret/delete.ts";
+export {
+  type SecretListParams,
+  type SecretListResult,
+  secretListMethod,
+} from "./methods/secret/list.ts";
+export {
+  SecretEntry,
+  type SecretSetParams,
+  type SecretSetResult,
+  secretSetMethod,
+} from "./methods/secret/set.ts";
 export { type StateGetParams, type StateGetResult, stateGetMethod } from "./methods/state/get.ts";
 export {
   type StatePatchParams,
@@ -374,3 +434,49 @@ export {
   type RpcRequestContext,
   type RpcRequestOptions,
 } from "./rpc/peer.ts";
+export {
+  type AnyFunction,
+  ARGUMENT_BIGINT_DIGITS_MAX,
+  checkArgumentFrames,
+  deserializeAll,
+  type Frame,
+  fromBase64,
+  RemoteError,
+  SerializationError,
+  type SerializeMode,
+  serializeAll,
+  toBase64,
+  UNSERIALIZABLE_CODE,
+  ValueReader,
+  type ValueReaderOptions,
+  ValueWriter,
+  type ValueWriterOptions,
+  type WireError,
+  wireError,
+} from "./serializer.ts";
+export {
+  type CallContext,
+  DEFAULT_WORKER_LIMITS,
+  type LiveSourceInfo,
+  ServerEmitParams,
+  ServerLiveValueParams,
+  ServerLogParams,
+  ServerProgressParams,
+  ServerSecretParams,
+  ServerSignalParams,
+  ServerStateGetParams,
+  ServerStatePatchParams,
+  type ServerStatePatchResult,
+  WORKER_CHANNEL_REVISION,
+  WORKER_METHODS,
+  WorkerBatchParams,
+  WorkerCallOutcome,
+  WorkerCallParams,
+  type WorkerCancelParams,
+  type WorkerLimits,
+  type WorkerLiveParams,
+  WorkerPingResult,
+  WorkerStartParams,
+  WorkerStartResult,
+  WorkerVersionRef,
+} from "./worker.ts";

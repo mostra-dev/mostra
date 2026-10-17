@@ -119,8 +119,13 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
       ]),
     );
     // The ports the interaction ledger calls (WP-06, D105) and the notification it sends.
-    // WP-07 added the trustedControls port (D108).
-    expect(result.capabilities.ports).toEqual(["submissions", "drafts", "trustedControls"]);
+    // WP-07 added the trustedControls port (D108), WP-08 the secrets port (D44).
+    expect(result.capabilities.ports).toEqual([
+      "submissions",
+      "drafts",
+      "trustedControls",
+      "secrets",
+    ]);
     expect(result.capabilities.notifications).toEqual(["events/notify"]);
     // Unimplemented ports, the reserved `ai` included, are warnings, never silent (D84, D46).
     expect(result.warnings.map((warning) => [warning.code, warning.severity])).toEqual([

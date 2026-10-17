@@ -5,6 +5,7 @@
 ```ts
 
 import { Diagnostic } from '@mostra/protocol';
+import { Duplex } from 'node:stream';
 import { InstanceInfo } from '@mostra/protocol';
 import { JsonRpcParams } from '@mostra/protocol';
 import { MostraInitializeResult } from '@mostra/protocol';
@@ -20,6 +21,7 @@ export interface ChildExit {
 
 // @public
 export interface ChildHandle {
+    readonly channel?: Duplex;
     readonly exited: Promise<ChildExit>;
     readonly kind: string;
     readonly ownerRef: string;
@@ -92,6 +94,7 @@ export function runtimeVersion(): string;
 // @public
 export interface SpawnSpec {
     readonly args?: readonly string[];
+    readonly channel?: true;
     readonly command: string;
     readonly cwd?: string;
     readonly env?: Environment;
@@ -120,6 +123,7 @@ export function startInstance(options: StartInstanceOptions): Promise<StartedIns
 
 // @public
 export interface StartInstanceOptions {
+    readonly alwaysOn?: boolean;
     readonly bind?: string | undefined;
     readonly checkIntervalMs?: number;
     readonly env?: Environment;

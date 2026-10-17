@@ -12,8 +12,8 @@ import { gzipSync } from "node:zlib";
 export interface FixturePackage {
   readonly name: string;
   readonly version: string;
-  /** Files besides `package.json`, by path inside the package. */
-  readonly files?: Readonly<Record<string, string>>;
+  /** Files besides `package.json`, by path inside the package: text, or bytes (a native addon). */
+  readonly files?: Readonly<Record<string, string | Uint8Array>>;
   /** Extra `package.json` fields: `dependencies`, `peerDependencies`, `scripts`, `type`, `main` … */
   readonly manifest?: Readonly<Record<string, unknown>>;
   /** The publish time; default 2026-01-01, well past the one-day release age (D95). */
@@ -30,10 +30,10 @@ export interface FakeRegistry {
 }
 
 /** A ustar archive of `files` under `package/`, gzipped: what npm tarballs are. */
-function tarball(files: Readonly<Record<string, string>>): Buffer {
+function tarball(files: Readonly<Record<string, string | Uint8Array>>): Buffer {
   const blocks: Buffer[] = [];
   for (const [path, text] of Object.entries(files)) {
-    const data = Buffer.from(text);
+    const data = typeof text === "string" ? Buffer.from(text) : Buffer.from(text);
     const header = Buffer.alloc(512);
     header.write(`package/${path}`, 0, 100);
     header.write("0000644\0", 100);

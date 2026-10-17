@@ -10,8 +10,8 @@ The client runtime artifact authors import (INTERFACES §2.3): `defineArtifact`;
 `useSubmit`, `useSubmitControl`, `useSignal`, `useChoice`, `useViewer`, `useArtifact`;
 `window.storage` (D53, D112); `openLink`; `@mostra/react/form` (react-hook-form, D52) and
 `@mostra/react/router` (`pages/`, D57). It also holds what the builder's generated entry calls
-(`mountArtifact`, `mountRoutes`) and `createServerReference`. WP-08 adds `useAction`, `useLive`
-and the transport that makes server references reach a worker.
+(`mountArtifact`, `mountRoutes`) and `createServerReference`; and, since WP-08, `useAction`,
+`useLive` and the transport that makes server references reach a worker (`setServerCallback`).
 
 ## How it works
 
@@ -24,8 +24,12 @@ and the transport that makes server references reach a worker.
   registrations and blockers, submissions and their deliveries. Hooks read it through
   `useSyncExternalStore`.
 - `src/runtime/journal.ts` writes every edit to IndexedDB before it is sent; `transport.ts` speaks
-  the browser protocol (`fields`, `submit`, `signal`, the event stream with its long-poll
-  fallback).
+  the browser protocol (`fields`, `submit`, `signal`, `call`, `runs`, `live`, the event stream with
+  its long-poll fallback).
+- `src/runtime/server-client.ts` (the store's `server`) owns the page's runs and live sources:
+  one record per run and per key however many hooks show it, fed by the stream's ephemeral
+  messages and read again after a gap or a reconnect; `src/server-hooks.ts` holds `useAction` and
+  `useLive` over it.
 
 ## Invariants it owns
 
@@ -47,6 +51,11 @@ and the transport that makes server references reach a worker.
   it (D51), so the function may only type-check and return its argument.
 - **Client-only and environment-free (D19 seam 4).** No Node built-ins, no module-level singletons
   that assume a browser global at import time, no import of server code. Size-limit gates the entry.
+- **A run happens once (AC-03, D130).** A hook's second call joins its in-flight run, a key joins the
+  one run of that key everywhere, and a start the network lost is retried with the same client
+  key. A final run state never goes back.
+- **Live values only move forward.** A revision older than the one shown never replaces it; a
+  producer's error keeps the last good value.
 - **A server reference without a transport fails loudly.** It rejects with
   `MOSTRA_TARGET_UNAVAILABLE`; it never resolves with a made-up result.
 
