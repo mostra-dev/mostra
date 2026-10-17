@@ -158,3 +158,8 @@ export async function stubborn(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
   return "sent anyway";
 }
+
+/** A registered symbol, which a result may carry (D136). */
+export async function symbolic() {
+  return Symbol.for("mostra.seam");
+}

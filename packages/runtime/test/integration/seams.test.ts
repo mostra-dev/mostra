@@ -77,16 +77,21 @@ describe("the five seams of D19 (RS-01)", () => {
       { nested: { deep: [new Date(0)] } },
       new Map<unknown, unknown>([["k", new Set([1, 2])]]),
       new Uint8Array([1, 2, 3]),
-      Symbol.for("mostra.seam"),
       form,
     ];
     const echoed = await page.call("actions.ts#echo", args);
     expect(echoed.end).toEqual({ status: "succeeded" });
     const value = echoed.value as { args: unknown[] };
-    expect(value.args.slice(0, 13)).toEqual(args.slice(0, 13));
-    const received = value.args[13] as FormData;
+    expect(value.args.slice(0, 12)).toEqual(args.slice(0, 12));
+    const received = value.args[12] as FormData;
     expect(received.get("name")).toBe("Ada");
     expect(await (received.get("file") as File).text()).toBe("hello");
+    // A registered symbol is a result, never an argument: `Symbol.for` would keep a page's names
+    // for the life of the worker (D136, as React's reply codec refuses it).
+    expect((await page.call("actions.ts#symbolic", [])).value).toBe(Symbol.for("mostra.seam"));
+    await expect(page.call("actions.ts#echo", [Symbol.for("mostra.seam")])).rejects.toMatchObject({
+      code: "MOSTRA_ACTION_UNSERIALIZABLE",
+    });
     // Outside the type set is refused at the boundary, naming the argument.
     class Mail {}
     await expect(page.call("actions.ts#echo", [new Mail()])).rejects.toMatchObject({
