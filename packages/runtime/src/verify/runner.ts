@@ -114,8 +114,11 @@ export function createRunnerClient(options: {
     ]);
     if (outcome.kind === "result") return outcome.result;
     if (outcome.kind === "error" && outcome.error instanceof RpcError) {
-      // The runner answered with a diagnostic (no browser, say), or its channel closed.
-      if (outcome.error.diagnostic.code !== "MOSTRA_HOST_INTERNAL_ERROR") throw outcome.error;
+      // The runner answered with a diagnostic of its own (no browser, say): it stands. A closed
+      // channel or an internal error means the runner itself failed, reported as a crash.
+      const code = outcome.error.diagnostic.code;
+      if (code !== "MOSTRA_HOST_INTERNAL_ERROR" && !code.startsWith("MOSTRA_HOST_CONNECTION"))
+        throw outcome.error;
     }
     const exit =
       outcome.kind === "exit"
