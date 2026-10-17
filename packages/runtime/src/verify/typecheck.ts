@@ -1,9 +1,11 @@
 /**
- * The type check (D138 item 8): TypeScript 7 `tsc --noEmit` over an artifact's snapshot, in a
+ * The type check (D138 item 8, as D139 amends it): TypeScript 7 `tsc --noEmit` over an artifact's snapshot, in a
  * child the process manager starts and records, beside the build and inside its 180 s. Imports
  * resolve as the build resolves them: the same `node_modules` layout (the warm set or the lock
  * layout), `@/*` at the snapshot's root, `@mostra/react`'s and `@mostra/server`'s types and the
- * generated live-source declaration. MDX isn't checked.
+ * generated live-source declaration. It judges what the build compiles: the build's compile
+ * settings first, the artifact's own `tsconfig.json` over them, then the options Mostra forces;
+ * imports are declared by Vite's own client types. MDX isn't checked.
  *
  * The check runs in a directory of its own (a copy of the snapshot with the layout linked beside
  * it), so it never races the builder, which links its own `node_modules` into the staging root.

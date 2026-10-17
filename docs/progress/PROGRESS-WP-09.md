@@ -81,17 +81,13 @@ Every check runs through the real interfaces: a real `mostra-runtime daemon` sta
 - **Size budgets.** `@mostra/protocol`'s whole entry rose from 38 kB to 44 kB (the verdict, viewports, token estimates, the runner's channel); `@mostra/react` without Zod from 30 kB to 30.5 kB and with Zod from 53 kB to 53.5 kB (the field probe, `useChoice`'s announcement, the pending count and the root's boundary report).
 - **The verdict adds fields** to INTERFACES §13's sketch, additively: `artifact.versionId`, screenshots' `width` and `height`. INTERFACES §13 records them.
 
-## Decision awaiting Mirza
+## Decisions after the reviews
 
-**D138 item 8, the type check's configuration** (the Opus review's finding 2). As written, Mostra's options win "only for `noEmit`, `skipLibCheck`, `moduleResolution: "bundler"`, the `@/*` path and the include list", and an artifact's own `tsconfig.json` gets none of the build's settings. Read literally, that fails code the build compiles: a `tsconfig.json` with only `strict` fails every JSX file, and one from a TypeScript 5 project (`baseUrl`, shadcn's Vite setup) fails with TS5102. The candidate builds this amendment, pending approval:
-- the check starts from the build's compile options (target, lib, `jsx`, `module`, isolated modules, JSON and `.ts`-extension imports, Node's types), and the artifact's own `tsconfig.json` applies over them;
-- Mostra's options win for `noEmit`, `skipLibCheck`, `module: "ESNext"` with `moduleResolution: "bundler"` (the build is a bundler), a cleared `baseUrl` (the build doesn't use it; TypeScript 7 refuses it), the `@/*` path and the include list;
-- imports are declared by Vite's own client types for the pinned release, plus MDX;
-- `strict` stays the default only without an own `tsconfig.json`.
+**D139** (M26, delegated): the type check starts from the build's own compile settings with the artifact's `tsconfig.json` over them, forces `module: "ESNext"` and a cleared `baseUrl` besides D138 item 8's options, and declares imports with Vite's own client types (amends D138 item 8, after the Opus review's finding 2); the seven warning-level hints below ship as written.
 
 ## Agent-facing prose
 
-Delegated as in WP-03 to WP-08 (M25), with one addition: Mirza sees the hint of every warning-level smoke and regression code before the merge (D138 item 11). Each says what was observed:
+Delegated as in WP-03 to WP-08 (M25), with one addition: Mirza sees the hint of every warning-level smoke and regression code before the merge (D138 item 11). He saw these seven and delegated their wording (M26, D139): they ship as written. Each says what was observed:
 
 | Code | Hint |
 |---|---|
