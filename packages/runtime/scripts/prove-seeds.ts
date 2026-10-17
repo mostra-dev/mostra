@@ -1979,18 +1979,20 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "wp09-opus-5",
-    name: "one stuck page stops every run's browser, and their renders aren't retried",
+    name: "a render another run's recovery cut off isn't retried",
+    file: "src/verify/runner.ts",
+    from: "    if (recycled.has(handle) && !retried && Date.now() < deadline) {",
+    to: "    if (recycled.has(handle) && retried && Date.now() < deadline) {",
+    check: integration("verify-failures.test.ts", "never answers"),
+  },
+  {
+    requirement: "wp09-opus-5b",
+    name: "the runner waits on a render that never answers instead of abandoning it",
     file: "../verify/src/runner.ts",
-    from: "    return await Promise.race([rendering, abandoned]);",
-    to: "    return await rendering;",
-    also: [
-      {
-        file: "src/verify/runner.ts",
-        from: "    if (recycled.has(handle) && !retried && Date.now() < deadline) {",
-        to: "    if (recycled.has(handle) && retried && Date.now() < deadline) {",
-      },
-    ],
-    check: integration("verify-failures.test.ts", "one page blocks the browser"),
+    from: "    return await Promise.race([guarded, abandoned]);",
+    to: "    return await guarded;",
+    check: ["test/bounded.test.ts"],
+    cwd: "../verify",
   },
   {
     requirement: "wp09-opus-6",
@@ -2067,7 +2069,7 @@ const SEEDS: readonly Seed[] = [
         to: "      const temporary = `${target}.tmp`;",
       },
     ],
-    check: integration("verify-failures.test.ts", "two paths at once"),
+    check: integration("verify-failures.test.ts", "one cache key one at a time"),
   },
   {
     requirement: "wp09-gpt-3",
@@ -2111,11 +2113,11 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "AX-02-hang",
-    name: "a runner stuck on a page that blocks the browser is waited for without end",
+    name: "a runner that never answers is waited for without end",
     file: "src/verify/runner.ts",
     from: "      overdue,\n    ]).finally(() => clearTimeout(timer));",
     to: "    ]).finally(() => clearTimeout(timer));",
-    check: integration("verify-failures.test.ts", "blocks the browser"),
+    check: integration("verify-failures.test.ts", "never answers"),
   },
   {
     requirement: "AX-02-secrets",
@@ -2175,8 +2177,8 @@ const SEEDS: readonly Seed[] = [
       },
       {
         file: "../verify/src/runner.ts",
-        from: "  const outOfTime: RenderResult = { ready: false, findings: [], timedOut: true, timingsMs: {} };",
-        to: "  const outOfTime: RenderResult = { ready: false, findings: [], timedOut: false, timingsMs: {} };",
+        from: "    late: { ready: false, findings: [], timedOut: true, timingsMs: {} },",
+        to: "    late: { ready: false, findings: [], timedOut: false, timingsMs: {} },",
       },
     ],
     check: integration("verify-failures.test.ts", "runs out of time"),

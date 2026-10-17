@@ -9,6 +9,7 @@ export { ariaSummary } from "@mostra/protocol";
 export { dedupe, judge, type Moment } from "./observe.ts";
 export { type RecordedEntry, recorder } from "./recorder.ts";
 export {
+  bounded,
   compareImages,
   createRunner,
   RUNNER_IDLE_MS,

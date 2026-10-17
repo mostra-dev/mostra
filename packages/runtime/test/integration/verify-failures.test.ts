@@ -48,6 +48,24 @@ async function withDaemon(
   }
 }
 
+/** A stand-in runner (test/fixtures/fake-verify-runner.mjs) with its settings, as `MOSTRA_VERIFY_ENTRY`. */
+function fakeRunner(settings: Record<string, string>): {
+  readonly entry: string;
+  readonly dir: string;
+} {
+  const dir = tempDir("verify-fake-runner");
+  const entry = join(dir, "runner.mjs");
+  writeFileSync(
+    entry,
+    `${Object.entries({ MOSTRA_TEST_FAKE_RUNNER_DIR: dir, ...settings })
+      .map(([name, value]) => `process.env.${name} = ${JSON.stringify(value)};`)
+      .join("\n")}
+await import(${JSON.stringify(fileURLToPath(new URL("../fixtures/fake-verify-runner.mjs", import.meta.url)))});
+`,
+  );
+  return { entry, dir };
+}
+
 const verifyOf = async (client: LineClient, path: string): Promise<VerifyVerdict> =>
   VerifyVerdict.parse(
     result(await client.call("artifact/verify", { source: { path } }, VERIFY_MS)),
@@ -282,11 +300,13 @@ describe("verify's failures", () => {
         join(dir, "index.tsx"),
         `import { useEffect } from "react";
 export default function Page() {
-  // Ready first, then the main thread never yields again: every browser call waits forever.
+  // Ready first; then, once verify starts looking at the page (its quiescence wait installs
+  // __mostraQuiet), the main thread never yields again: every browser call into it waits forever.
   useEffect(() => {
-    setTimeout(() => {
-      for (;;) {}
-    }, 300);
+    const id = setInterval(() => {
+      if ((globalThis as { __mostraQuiet?: unknown }).__mostraQuiet) for (;;) {}
+    }, 20);
+    return () => clearInterval(id);
   }, []);
   return <main><h1>Busy</h1></main>;
 }
@@ -310,8 +330,15 @@ export default function Page() {
     "verifies identical sources at two paths at once, each getting its verdict (GPT review finding 2)",
     async () => {
       await withDaemon({}, async (client, home) => {
+        // Each starts while the one before renders: unserialized, a later start would delete the
+        // earlier run's screenshots, or two would write one verdict file at once.
         const sources = [single(), single(), single()];
-        const verdicts = await Promise.all(sources.map((path) => verifyOf(client, path)));
+        const verdicts = await Promise.all(
+          sources.map(async (path, index) => {
+            await new Promise((resolve) => setTimeout(resolve, index * 1500));
+            return verifyOf(client, path);
+          }),
+        );
         expect(new Set(verdicts.map((verdict) => verdict.artifact.sourceDigest)).size).toBe(1);
         expect(verdicts.map((verdict) => verdict.status)).toEqual(["pass", "pass", "pass"]);
         // One verdict for the shared key, and no temporary file left beside it.
@@ -333,14 +360,27 @@ export default function Page() {
           join(dir, "index.tsx"),
           `import { useEffect } from "react";
 export default function Page() {
-  useEffect(() => { setTimeout(() => { for (;;) {} }, 300); }, []);
+  useEffect(() => { const id = setInterval(() => { if ((globalThis as { __mostraQuiet?: unknown }).__mostraQuiet) for (;;) {} }, 20); return () => clearInterval(id); }, []);
   return <main><h1>Busy</h1></main>;
 }
 `,
         );
         const busy = verifyOf(client, dir);
-        await new Promise((resolve) => setTimeout(resolve, 12_000));
-        const fine = await verifyOf(client, single());
+        // A correct page whose smoke test runs past the moment the stuck page's render is
+        // abandoned (about 21 s in) and the moment recovery would stop the shared runner (29 s).
+        const many = join(tempDir("verify-many"), "many");
+        mkdirSync(many, { recursive: true });
+        writeFileSync(
+          join(many, "index.tsx"),
+          `import { useState } from "react";
+export default function Page() {
+  const [count, setCount] = useState(0);
+  return <main><h1>Many {count}</h1>{Array.from({ length: 60 }, (_, i) => <button type="button" key={i} onClick={() => setCount(i)}>Button {i}</button>)}</main>;
+}
+`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 15_000));
+        const fine = await verifyOf(client, many);
         const blocked = await busy;
         expect(codes(blocked, "error")).toContain("MOSTRA_VERIFY_TIMEOUT");
         expect(codes(fine, "error")).toEqual([]);
@@ -369,6 +409,59 @@ export default function Page() {
         expect(codes(verdict, "error")).toEqual([]);
         expect(verdict.diagnostics.map((d) => d.code)).toContain("MOSTRA_SMOKE_BUDGET");
       });
+    },
+    VERIFY_MS,
+  );
+  it("stops a runner that never answers and retries the renders it cut off (Opus review finding 5)", async () => {
+    // A stand-in runner whose first render never answers and whose second is still in flight
+    // when the supervisor stops it for the first one.
+    const runner = fakeRunner({ MOSTRA_TEST_FAKE_RUNNER_DELAY_MS: "25000" });
+    await withDaemon(
+      { MOSTRA_VERIFY_ENTRY: runner.entry, MOSTRA_TEST_VERIFY_TIMEOUT_MS: "20000" },
+      async (client) => {
+        const started = Date.now();
+        const stuck = verifyOf(client, single());
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
+        const other = join(tempDir("verify-other"), "other");
+        mkdirSync(other, { recursive: true });
+        writeFileSync(
+          join(other, "index.tsx"),
+          "export default function Page() { return <main><h1>Other</h1></main>; }\n",
+        );
+        const cutOff = await verifyOf(client, other);
+        const first = await stuck;
+        // The stuck run ends with its timeout, within its limit and the grace after it.
+        expect(codes(first, "error")).toContain("MOSTRA_VERIFY_TIMEOUT");
+        expect(Date.now() - started).toBeLessThan(60_000);
+        // The run whose render the recovery cut off was retried on a fresh runner.
+        expect(codes(cutOff, "error")).toEqual([]);
+        expect(cutOff.status).toBe("pass");
+      },
+    );
+  }, 120_000); // Normally about 30 s; a supervisor that waits for the stuck runner forever fails here.
+  it(
+    "renders runs of one cache key one at a time (GPT review finding 2)",
+    async () => {
+      // Identical sources at three paths share one verdict file and one screenshot directory, so
+      // their renders must never overlap; the stand-in runner records when each one ran.
+      const runner = fakeRunner({ MOSTRA_TEST_FAKE_RUNNER_MODE: "record" });
+      await withDaemon({ MOSTRA_VERIFY_ENTRY: runner.entry }, async (client) => {
+        const verdicts = await Promise.all(
+          [single(), single(), single()].map((path) => verifyOf(client, path)),
+        );
+        expect(verdicts.map((verdict) => verdict.status)).toEqual(["pass", "pass", "pass"]);
+      });
+      const renders = readFileSync(join(runner.dir, "renders.ndjson"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { outDir: string; start: number; end: number })
+        .sort((a, b) => a.start - b.start);
+      expect(new Set(renders.map((render) => render.outDir)).size).toBe(1);
+      expect(renders.length).toBeGreaterThanOrEqual(6);
+      for (const [index, render] of renders.entries()) {
+        if (index > 0)
+          expect(render.start).toBeGreaterThanOrEqual((renders[index - 1] as { end: number }).end);
+      }
     },
     VERIFY_MS,
   );

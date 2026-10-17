@@ -181,6 +181,46 @@ export function uniform(png: Buffer): boolean {
 }
 
 /**
+ * Waits for `work`, and gives up on it `graceMs` past `deadline`: `abandon()` is called (for a
+ * render, closing its context, which ends a page whose code blocks its main thread) and `late` is
+ * the answer, also when `work` then fails because of the abandon. A failure before that is
+ * `work`'s own and is thrown (Opus review finding 5).
+ */
+export async function bounded<T>(
+  work: Promise<T>,
+  options: {
+    readonly deadline: number;
+    readonly late: T;
+    readonly abandon: () => Promise<unknown> | undefined;
+    readonly graceMs?: number;
+  },
+): Promise<T> {
+  let abandoning = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const abandoned = new Promise<T>((done) => {
+    timer = setTimeout(
+      () => {
+        abandoning = true;
+        const closing = Promise.resolve(options.abandon()).catch(() => undefined);
+        void Promise.race([closing, new Promise((wait) => setTimeout(wait, 2000))]).then(() =>
+          done(options.late),
+        );
+      },
+      Math.max(0, options.deadline - Date.now()) + (options.graceMs ?? RENDER_ABANDON_MS),
+    );
+  });
+  const guarded = work.catch((error: unknown) => {
+    if (abandoning) return options.late;
+    throw error;
+  });
+  try {
+    return await Promise.race([guarded, abandoned]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Renders one capability link, and abandons it when it is still running past its deadline: its
  * context is closed (the page's renderer with it), and the render reports it ran out of time.
  */
@@ -190,32 +230,11 @@ async function renderBounded(
   axeSource: string,
 ): Promise<RenderResult> {
   const created: { context?: BrowserContext } = {};
-  const outOfTime: RenderResult = { ready: false, findings: [], timedOut: true, timingsMs: {} };
-  let abandoning = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const abandoned = new Promise<RenderResult>((done) => {
-    timer = setTimeout(
-      () => {
-        abandoning = true;
-        const closing = created.context?.close().catch(() => undefined);
-        void Promise.race([closing, new Promise((wait) => setTimeout(wait, 2000))]).then(() =>
-          done(outOfTime),
-        );
-      },
-      Math.max(0, request.deadline - Date.now()) + RENDER_ABANDON_MS,
-    );
+  return bounded(renderPage(browser, request, axeSource, created), {
+    deadline: request.deadline,
+    late: { ready: false, findings: [], timedOut: true, timingsMs: {} },
+    abandon: () => created.context?.close(),
   });
-  // Closing the context makes the render's own calls fail at once: once it is abandoned, that is
-  // its timeout, never an error of the runner's.
-  const rendering = renderPage(browser, request, axeSource, created).catch((error: unknown) => {
-    if (abandoning) return outOfTime;
-    throw error;
-  });
-  try {
-    return await Promise.race([rendering, abandoned]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /** Renders one capability link and reports what the page did. */

@@ -14,6 +14,14 @@ import { RenderResult } from '@mostra/protocol';
 export { ariaSummary }
 
 // @public
+export function bounded<T>(work: Promise<T>, options: {
+    readonly deadline: number;
+    readonly late: T;
+    readonly abandon: () => Promise<unknown> | undefined;
+    readonly graceMs?: number;
+}): Promise<T>;
+
+// @public
 export function compareImages(request: CompareRequest): Promise<CompareResult>;
 
 // @public
