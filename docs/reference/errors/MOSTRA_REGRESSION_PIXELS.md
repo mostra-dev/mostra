@@ -16,8 +16,8 @@ Verify rendered the newest version whose verdict passed and this source at the s
 
 ## How to fix it
 
-Look at both screenshots. If the difference is intended, nothing needs to change.
+If the change is one you made on purpose, nothing needs to change. To see where it is, read the ARIA snapshots, or look at the diff image the message names if you can view images.
 
 ## Hint
 
-Observed only: this viewport looks different from the last passing version; compare the two screenshots before changing anything.
+Observed only: this share of the viewport's pixels differs from the last passing version; an intended visual change shows here too and needs nothing more.

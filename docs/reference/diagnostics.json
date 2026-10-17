@@ -860,7 +860,7 @@
       "severity": "warning",
       "phase": "contract",
       "title": "Server function gone since the last passing version",
-      "hint": "Observed only: the last passing version had this server function and this source doesn't; check that this is intended.",
+      "hint": "Observed only: the last passing version had this server function and this source doesn't; one removed on purpose needs nothing more.",
       "explanation": "A `\"use server\"` export the last passing version had is gone. Pages of the older version still call it while they are open, and keyed runs started by it can't be started again.",
       "fix": "If it was renamed by mistake, keep its name. If it was removed on purpose, nothing needs to change."
     },
@@ -869,7 +869,7 @@
       "severity": "warning",
       "phase": "regression",
       "title": "Controls or landmarks gone since the last passing version",
-      "hint": "Observed only: the last passing version had these controls or landmarks and this source doesn't; check that this is intended.",
+      "hint": "Observed only: the last passing version had these controls or landmarks and this source doesn't; a change that removed them on purpose needs nothing more.",
       "explanation": "Verify compared this source's accessibility snapshot with the newest version whose verdict passed, rendered in the same run with the same data. The controls or landmarks the message lists (by role and name) were there and aren't now. A redesign may remove them on purpose.",
       "fix": "If they should be gone, nothing needs to change. If not, look at what removed them."
     },
@@ -878,7 +878,7 @@
       "severity": "warning",
       "phase": "contract",
       "title": "Field gone since the last passing version",
-      "hint": "Observed only: answers saved under these field IDs won't carry over to this version; check that this is intended.",
+      "hint": "Observed only: answers saved under this field ID won't carry over to this version; a field removed on purpose needs nothing more.",
       "explanation": "A field ID the last passing version used is gone from this source. Viewers' answers under it become orphans when they switch (D42): kept, shown read-only and delivered, but not editable. The message gives how many saved answers it affects.",
       "fix": "If the field was renamed by mistake, keep its old ID. If it was removed on purpose, nothing needs to change."
     },
@@ -887,7 +887,7 @@
       "severity": "warning",
       "phase": "contract",
       "title": "Live source gone since the last passing version",
-      "hint": "Observed only: the last passing version had this live source and this source doesn't; check that this is intended.",
+      "hint": "Observed only: the last passing version had this live source and this source doesn't; one removed on purpose needs nothing more.",
       "explanation": "A live source (`live.ts` export) the last passing version had is gone, so its producer stops and hosts that push to it push to a key no page reads.",
       "fix": "If it was renamed by mistake, keep its name. If it was removed on purpose, nothing needs to change."
     },
@@ -896,7 +896,7 @@
       "severity": "warning",
       "phase": "contract",
       "title": "Page route gone since the last passing version",
-      "hint": "Observed only: the last passing version had this page route and this source doesn't; check that this is intended.",
+      "hint": "Observed only: the last passing version had this page route and this source doesn't; one removed on purpose needs nothing more.",
       "explanation": "A route of `pages/` the last passing version had is gone, so links and bookmarks to it now open the artifact's fallback page.",
       "fix": "If it was renamed by mistake, keep its path. If it was removed on purpose, nothing needs to change."
     },
@@ -905,9 +905,9 @@
       "severity": "warning",
       "phase": "regression",
       "title": "Page looks different from the last passing version",
-      "hint": "Observed only: this viewport looks different from the last passing version; compare the two screenshots before changing anything.",
+      "hint": "Observed only: this share of the viewport's pixels differs from the last passing version; an intended visual change shows here too and needs nothing more.",
       "explanation": "Verify rendered the newest version whose verdict passed and this source at the same viewport, clock and data, and the share of pixels the message gives differs between them. Any intended visual change shows here too.",
-      "fix": "Look at both screenshots. If the difference is intended, nothing needs to change."
+      "fix": "If the change is one you made on purpose, nothing needs to change. To see where it is, read the ARIA snapshots, or look at the diff image the message names if you can view images."
     },
     {
       "code": "MOSTRA_RUNTIME_BLANK",
@@ -977,9 +977,9 @@
       "severity": "warning",
       "phase": "smoke",
       "title": "Control showed no effect",
-      "hint": "Observed only: using this control changed nothing verify could see; check it by hand before changing working code.",
-      "explanation": "Verify's smoke test clicked, hovered or filled the control the message names, and saw no change: no change to the page, no request, no saved field and no navigation. Controls that are disabled or already active (the selected tab), and those that open on hover, are classified before this is judged. A control can still be fine: it may act on something verify can't observe.",
-      "fix": "Use the control yourself. If it does what it should, nothing needs to change."
+      "hint": "Observed only: using this control twice changed nothing verify could see; a control that acts on something verify can't observe needs no change.",
+      "explanation": "Verify's smoke test clicked or hovered the control the message names, once among the other controls and again after them, and saw no change either time: no change to the page, no request, no saved field, no navigation and no error. Controls that are disabled or already active (the selected tab) are skipped, and those that open on hover are hovered. A control can still be fine: it may act on something verify can't observe, such as the clipboard or a sound.",
+      "fix": "Read the control's handler. If it does what it should, nothing needs to change; if it is meant to change the page, look at why it doesn't."
     },
     {
       "code": "MOSTRA_SUBMIT_ALREADY",

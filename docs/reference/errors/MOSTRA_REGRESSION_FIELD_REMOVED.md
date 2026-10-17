@@ -20,4 +20,4 @@ If the field was renamed by mistake, keep its old ID. If it was removed on purpo
 
 ## Hint
 
-Observed only: answers saved under these field IDs won't carry over to this version; check that this is intended.
+Observed only: answers saved under this field ID won't carry over to this version; a field removed on purpose needs nothing more.

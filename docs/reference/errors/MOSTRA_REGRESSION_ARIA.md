@@ -20,4 +20,4 @@ If they should be gone, nothing needs to change. If not, look at what removed th
 
 ## Hint
 
-Observed only: the last passing version had these controls or landmarks and this source doesn't; check that this is intended.
+Observed only: the last passing version had these controls or landmarks and this source doesn't; a change that removed them on purpose needs nothing more.

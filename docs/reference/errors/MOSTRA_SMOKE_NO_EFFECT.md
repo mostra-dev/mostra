@@ -12,12 +12,12 @@ Control showed no effect. Severity: warning. Phase: smoke.
 
 ## What it means
 
-Verify's smoke test clicked, hovered or filled the control the message names, and saw no change: no change to the page, no request, no saved field and no navigation. Controls that are disabled or already active (the selected tab), and those that open on hover, are classified before this is judged. A control can still be fine: it may act on something verify can't observe.
+Verify's smoke test clicked or hovered the control the message names, once among the other controls and again after them, and saw no change either time: no change to the page, no request, no saved field, no navigation and no error. Controls that are disabled or already active (the selected tab) are skipped, and those that open on hover are hovered. A control can still be fine: it may act on something verify can't observe, such as the clipboard or a sound.
 
 ## How to fix it
 
-Use the control yourself. If it does what it should, nothing needs to change.
+Read the control's handler. If it does what it should, nothing needs to change; if it is meant to change the page, look at why it doesn't.
 
 ## Hint
 
-Observed only: using this control changed nothing verify could see; check it by hand before changing working code.
+Observed only: using this control twice changed nothing verify could see; a control that acts on something verify can't observe needs no change.

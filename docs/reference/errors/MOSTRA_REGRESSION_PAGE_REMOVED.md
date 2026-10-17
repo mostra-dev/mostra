@@ -20,4 +20,4 @@ If it was renamed by mistake, keep its path. If it was removed on purpose, nothi
 
 ## Hint
 
-Observed only: the last passing version had this page route and this source doesn't; check that this is intended.
+Observed only: the last passing version had this page route and this source doesn't; one removed on purpose needs nothing more.
