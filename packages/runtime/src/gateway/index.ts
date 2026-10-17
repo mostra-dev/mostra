@@ -14,6 +14,7 @@
  * ```
  */
 import { existsSync, readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   type ArtifactDetail,
@@ -117,6 +118,13 @@ export interface GatewayOptions {
   readonly bus?: EphemeralBus;
   /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */
   readonly parked?: (versionId: string) => boolean;
+  /**
+   * The delivery target the gateway serves pages for (D111): `live` for viewers, `verify` for a
+   * verify run's sandbox (D137), whose tickets name it and whose documents get
+   * `<meta name="mostra-target" content="verify">` as they are served. The stored build never
+   * holds the tag, so what publish promotes is byte-identical to what verify built.
+   */
+  readonly target?: "live" | "verify";
 }
 
 /** The gateway of one instance. */
@@ -545,7 +553,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             ? scopeAllows(session.grant.scopes, "review")
             : true,
       ),
-      target: "live",
+      target: options.target ?? "live",
       follow: interaction.following({ artifactId, viewerId }),
       pinned: pinned !== undefined,
       ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
@@ -771,6 +779,12 @@ export function createGateway(options: GatewayOptions): Gateway {
           return damaged(number, damage, context.document);
         }
       }
+      if (file && options.target === "verify" && file.path.endsWith(".html")) {
+        return verifyDocument(file.path, context.request, {
+          ...headers,
+          "cache-control": "no-cache",
+        });
+      }
       if (file) {
         return fileResponse(file, context.request, {
           ...headers,
@@ -783,6 +797,12 @@ export function createGateway(options: GatewayOptions): Gateway {
       const page = context.document
         ? await findFile(root(session.versionId), "/index.html")
         : undefined;
+      if (page && options.target === "verify") {
+        return verifyDocument(page.path, context.request, {
+          ...headers,
+          "cache-control": "no-cache",
+        });
+      }
       if (page)
         return fileResponse(page, context.request, { ...headers, "cache-control": "no-cache" });
       return refuse(
@@ -1016,6 +1036,27 @@ export function createGateway(options: GatewayOptions): Gateway {
       ]);
     },
   };
+}
+
+/** The tag that tells the client runtime it runs for `verify` (D111, D137). */
+const VERIFY_TARGET_TAG = '<meta name="mostra-target" content="verify" />';
+
+/**
+ * A version's HTML document as a verify run's sandbox serves it: the stored file with the verify
+ * target's tag added at the start of its head, so the build itself never carries it (D137).
+ */
+async function verifyDocument(
+  path: string,
+  request: Request,
+  headers: Record<string, string>,
+): Promise<Response> {
+  const text = await readFile(path, "utf8");
+  const head = /<head[^>]*>/i.exec(text);
+  const at = head ? head.index + head[0].length : 0;
+  const body = `${text.slice(0, at)}\n    ${VERIFY_TARGET_TAG}\n${text.slice(at)}`;
+  return new Response(request.method === "HEAD" ? null : body, {
+    headers: { ...BASE_HEADERS, ...headers, "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 /**

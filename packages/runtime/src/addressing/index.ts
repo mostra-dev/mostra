@@ -166,6 +166,12 @@ export function createAddressing(options: {
   readonly ledger: Ledger;
   readonly log: Log;
   readonly bind: BindOptions;
+  /**
+   * Listen on ports the operating system assigns and lease none: a `verify` run's short-lived
+   * listeners (D137). Ephemeral ports lie above the lease range (D99), so they never take a port
+   * leased to an artifact whose listener isn't bound yet (D132).
+   */
+  readonly ephemeral?: boolean;
 }): Addressing {
   const { ledger, log } = options;
   const bindAddress = options.bind.address;
@@ -221,6 +227,14 @@ export function createAddressing(options: {
         )
         .map((row) => ({ port: row.port, purpose: row.purpose, owner: row.owner_ref })),
     async listen(server, owner) {
+      if (options.ephemeral) {
+        if (!(await tryListen(server, 0, bindAddress))) {
+          throw bindFailed(`No ephemeral port is free on ${bindAddress}.`);
+        }
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("not a TCP listener");
+        return address.port;
+      }
       const previous = leased(owner);
       if (previous !== undefined) {
         if (await tryListen(server, previous, bindAddress)) return previous;

@@ -52,6 +52,16 @@ export interface ActionsOptions {
   readonly log: Log;
   /** What the pool needs to start a version's worker, or `undefined` for a version without server code. */
   readonly version: (versionId: string) => WorkerVersion | undefined;
+  /**
+   * A verify run's dry-run policy (D55, D137). With it, a function that opted into `dryRun()` runs
+   * with `dryRun: true`, and any other is refused with `MOSTRA_VERIFY_ACTION_SKIPPED` before a run
+   * is recorded or a worker starts, for plain calls and runs alike. Absent for viewers' pages.
+   */
+  readonly dryRun?: {
+    readonly optedIn: (versionId: string, fnId: string) => boolean;
+    /** Told about each refused function, for the verdict's `skippedActions`. */
+    readonly skipped: (fnId: string) => void;
+  };
 }
 
 /** Plain calls and action runs, and the bridge workers ask through. */
@@ -148,6 +158,14 @@ export function createActions(options: ActionsOptions): Actions {
       throw failed(
         "MOSTRA_ACTION_UNKNOWN_FUNCTION",
         `This version has no server function ${fnId.slice(0, 200)}.`,
+      );
+    }
+    const policy = options.dryRun;
+    if (policy && !policy.optedIn(versionId, fnId)) {
+      policy.skipped(fnId);
+      throw failed(
+        "MOSTRA_VERIFY_ACTION_SKIPPED",
+        `Skipped in verify: the server function ${fnId.slice(0, 200)} doesn't check dryRun(), so verify never runs it.`,
       );
     }
     return version;
@@ -285,7 +303,7 @@ export function createActions(options: ActionsOptions): Actions {
             ...(viewer
               ? { viewer: { id: viewer.id, ...(viewer.name ? { name: viewer.name } : {}) } }
               : {}),
-            dryRun: false,
+            dryRun: options.dryRun !== undefined,
           },
           ...(row.viewer_id ? { viewerId: row.viewer_id } : {}),
         },
@@ -381,7 +399,7 @@ export function createActions(options: ActionsOptions): Actions {
           kind: "call",
           viewId: input.viewId,
           viewer: { id: viewer.id, ...(viewer.name ? { name: viewer.name } : {}) },
-          dryRun: false,
+          dryRun: options.dryRun !== undefined,
         },
         viewerId: page.viewerId,
       },

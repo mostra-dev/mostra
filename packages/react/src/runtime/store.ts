@@ -80,8 +80,10 @@ export interface Registration {
   readonly label?: string;
   readonly required?: boolean;
   readonly sensitive?: boolean;
-  /** The current value's validation message, if any. */
+  /** The validation message of its current value, if any. */
   readonly error?: string;
+  /** The hook that named it, for `verify`'s field-ID checks (D137): `useField` unless stated. */
+  readonly hook?: string;
 }
 
 /** The page's save state (D47): what the shell's rail and `FieldMeta.save` show. */
@@ -234,6 +236,8 @@ export class Store {
 
   // Mounted fields.
   readonly #registrations = new Map<FieldKey, { registration: Registration; count: number }>();
+  /** Who hears each mount and unmount: `verify`'s field probe (D137). */
+  readonly #mountObservers = new Set<(registration: Registration, mounted: boolean) => void>();
 
   #ready = false;
   #readyWaiters: (() => void)[] = [];
@@ -637,14 +641,29 @@ export class Store {
       existing.count += 1;
       existing.registration = { ...registration, initial: existing.registration.initial };
     } else this.#registrations.set(key, { registration, count: 1 });
+    for (const observer of this.#mountObservers) observer(registration, true);
     this.#changed([key]);
+    let released = false;
     return () => {
       const entry = this.#registrations.get(key);
       if (!entry) return;
+      if (!released) {
+        released = true;
+        for (const observer of this.#mountObservers) observer(registration, false);
+      }
       entry.count -= 1;
       if (entry.count <= 0) this.#registrations.delete(key);
       this.#changed([key]);
     };
+  }
+
+  /**
+   * Hears every field mount and unmount, with the registration as the hook gave it; returns the
+   * function that stops. `verify`'s field probe uses it (D137). @internal
+   */
+  observeMounts(observer: (registration: Registration, mounted: boolean) => void): () => void {
+    this.#mountObservers.add(observer);
+    return () => this.#mountObservers.delete(observer);
   }
 
   /** Updates a mounted field's options or validation message. */

@@ -21,6 +21,7 @@ import { blockersForShell, clip, firstThatMatter } from "./bridge-limits.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
 import { Store } from "./store.ts";
 import { HttpTransport } from "./transport.ts";
+import { installVerifyProbe } from "./verify-probe.ts";
 
 /** The page's runtime: its store, where it runs, and its shell connection. */
 export interface Runtime {
@@ -203,6 +204,8 @@ export async function startRuntime(): Promise<Runtime> {
     channel: (name) =>
       typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel(name),
   });
+  // A verify run reads which fields the page mounts (D137); a viewer's page never records them.
+  if (target === "verify") installVerifyProbe(store);
   store.start();
   wireLifecycle(store);
   wireShell(store, shell);

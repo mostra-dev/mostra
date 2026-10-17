@@ -274,6 +274,7 @@ export function useForm<TFieldValues extends FieldValues = FieldValues>(
         const registration = {
           id: fieldId,
           scope,
+          hook: "useForm",
           initial: defaultOf(leaf),
           ...(label !== undefined ? { label } : {}),
           ...(required ? { required } : {}),
