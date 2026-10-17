@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: seeds quote source text, template literals included.
 /**
  * Seeded-violation proofs for the runtime's owned requirements (README §3 of the work-package
  * protocol): each seed breaks the product in one place, rebuilds, runs the check that must catch
