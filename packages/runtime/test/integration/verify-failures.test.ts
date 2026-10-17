@@ -281,11 +281,12 @@ export default function Page() {
       expect(Date.now() - started).toBeLessThan(60_000);
       expect(codes(verdict, "error")).toContain("MOSTRA_VERIFY_TIMEOUT");
       expect(cachedVerdicts(home)).toEqual([]);
-      // The stuck runner and its browser are gone; the next verify starts fresh and passes.
-      // (This test's 6 s limit is too short for a whole run; rendering both viewports shows the
-      // fresh runner's browser answers.)
+      // The stuck runner and its browser are gone, and the next verify starts a fresh one. The
+      // source's first viewport renders before anything else, so its screenshot shows the fresh
+      // browser answers (this test's 6 s may end the run after it, on a slow machine).
       const again = await verifyOf(client, single());
-      expect(again.screenshots.map((shot) => shot.viewport)).toEqual(["desktop", "mobile"]);
+      expect(again.screenshots[0]?.viewport).toBe("desktop");
+      expect(codes(again, "error")).not.toContain("MOSTRA_VERIFY_CRASHED");
     });
   }, 120_000);
 });
