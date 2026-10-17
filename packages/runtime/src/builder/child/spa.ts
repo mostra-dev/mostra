@@ -316,14 +316,20 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
       await build({
         ...baseConfig(request, sourceDir, [confinePlugin(inputs), mdxPlugin(), react()]),
         publicDir: false,
-        ssr: { noExternal: true, external: ["@mostra/server"], target: "node" },
+        // Packages stay external (Vite's default for a server build, D135): the worker resolves
+        // them from the layout this build resolved them in (the warm set's, or the lockfile's,
+        // whose digest the version's identity covers), so each runs from its own directory with
+        // its native addons and its own files, and React exists once. The artifact's own code is
+        // bundled; a package Vite can't run unbundled (a linked one, or one whose entry isn't
+        // JavaScript) is bundled too.
+        ssr: { external: ["@mostra/server"], target: "node" },
         build: {
           ssr: join(generated, "server-entry.js"),
           outDir: join(request.outDir, "server"),
           emptyOutDir: true,
           sourcemap: true,
           rolldownOptions: {
-            // The worker provides @mostra/server (WP-08); everything else is bundled.
+            // The worker provides @mostra/server (WP-08), its own copy, so the two share context.
             external: ["@mostra/server"],
             output: { entryFileNames: "entry.mjs", format: "es" },
           },

@@ -8,12 +8,18 @@
  * closes; when the connection closes, it ends the worker.
  *
  *   node worker-host.mjs --socket <path> --home <home> --worker <@mostra/worker main.js>
+ *     --warm <the warm set's node_modules>
+ *
+ * A version's packages resolve, as the local launcher's do (D135), from the layout of its
+ * `lock.yaml`: the owner's layout in the home when the lockfile has on-demand packages (a remote
+ * host would install it from the lockfile), else the warm set.
  *
  * Every launch is appended to `<socket>.launches` as a JSON line, so a test can tell which
  * launcher ran its workers.
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -23,12 +29,23 @@ const { values } = parseArgs({
     socket: { type: "string" },
     home: { type: "string" },
     worker: { type: "string" },
+    warm: { type: "string" },
   },
 });
-const { socket: socketPath, home, worker } = values;
-if (!socketPath || !home || !worker) {
-  process.stderr.write("usage: worker-host.mjs --socket <path> --home <home> --worker <main.js>\n");
+const { socket: socketPath, home, worker, warm } = values;
+if (!socketPath || !home || !worker || !warm) {
+  process.stderr.write(
+    "usage: worker-host.mjs --socket <path> --home <home> --worker <main.js> --warm <node_modules>\n",
+  );
   process.exit(2);
+}
+
+/** Where a version's packages resolve from: its lockfile's layout, or the warm set. */
+function modulesOf(versionDir) {
+  const lock = readFileSync(join(versionDir, "lock.yaml"), "utf8");
+  if (!/^packages:/m.test(lock)) return warm;
+  const digest = createHash("sha256").update(lock).digest("hex");
+  return join(home, "deps", "locks", digest, "node_modules");
 }
 
 rmSync(socketPath, { force: true });
@@ -63,6 +80,8 @@ const server = createServer((connection) => {
         "fd:3",
         "--version-dir",
         join(home, "versions", match[1]),
+        "--modules",
+        modulesOf(join(home, "versions", match[1])),
       ],
       { env: spec.env, stdio: ["ignore", "ignore", "pipe", "pipe"], detached: true },
     );

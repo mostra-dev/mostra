@@ -91,6 +91,15 @@ export interface LocalLauncherOptions {
   readonly workerEntry: string;
   /** Extra Node flags, such as `--conditions` in tests. */
   readonly nodeArgs?: readonly string[];
+  /**
+   * The `node_modules` the version's packages resolve from (D135), made ready before the worker
+   * starts; without it, the server bundle's package imports have nothing to resolve from.
+   */
+  readonly modules?: (target: {
+    readonly artifactId: string;
+    readonly versionDir: string;
+    readonly sourceDir?: string;
+  }) => Promise<string>;
 }
 
 /**
@@ -108,6 +117,11 @@ export function localLauncher(options: LocalLauncherOptions): WorkerLauncher {
       if (!versionDir.startsWith(`${resolve(options.home, "versions")}/`)) {
         throw new Error("A home: locator names a version directory of the home.");
       }
+      const modules = await options.modules?.({
+        artifactId: spec.artifactId,
+        versionDir,
+        ...(spec.sourceDir ? { sourceDir: spec.sourceDir } : {}),
+      });
       const child = await options.processes.spawn({
         kind: "worker",
         ownerRef: spec.version.versionId,
@@ -121,6 +135,7 @@ export function localLauncher(options: LocalLauncherOptions): WorkerLauncher {
           "--version-dir",
           versionDir,
           ...(spec.sourceDir ? ["--source-dir", spec.sourceDir] : []),
+          ...(modules ? ["--modules", modules] : []),
         ],
         cwd: spec.sourceDir ?? versionDir,
         env: spec.env,

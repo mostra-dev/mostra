@@ -5,9 +5,16 @@
  * through its channel thread, never sees a cookie, a token or a raw browser request, and gets
  * secrets only by asking for them by name.
  */
-import { type Dirent, type FSWatcher, readdirSync, statSync, watch as watchFiles } from "node:fs";
+import {
+  type Dirent,
+  type FSWatcher,
+  readdirSync,
+  realpathSync,
+  statSync,
+  watch as watchFiles,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
-import { registerHooks } from "node:module";
+import { isBuiltin, registerHooks } from "node:module";
 import { join, matchesGlob, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -50,6 +57,13 @@ export interface WorkerOptions {
   readonly versionDir: string;
   /** The artifact's source directory, when it still exists: `watch` globs are relative to it. */
   readonly sourceDir?: string;
+  /**
+   * The `node_modules` the version's packages resolve from (D135): the layout of the version's
+   * lockfile, or the warm set's. The server bundle keeps every package import external, so the
+   * packages run from their own directories: native addons load, and files a package reads
+   * beside itself are there.
+   */
+  readonly modules?: string;
 }
 
 type AnyFunction = (...args: unknown[]) => unknown;
@@ -62,16 +76,47 @@ const BEAT_MS = 100;
 
 const ownExtension = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
 
-/** Makes `@mostra/server` in the artifact's bundle this worker's own copy, so they share context. */
-function shareServerPackage(): void {
+/** Whether `specifier` names a package (`react`, `@scope/name/sub`), not a path, URL or built-in. */
+function isPackageSpecifier(specifier: string): boolean {
+  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("#")) {
+    return false;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) return false; // node:, file:, data:, https:
+  return !isBuiltin(specifier);
+}
+
+/**
+ * Resolves the version's imports (D135): `@mostra/server` is this worker's own copy, so they share
+ * context; every other package the server bundle imports resolves from `modules`, the layout the
+ * version was built against, as though the bundle sat beside it. Imports inside packages resolve
+ * as Node resolves them, from the packages' own directories.
+ */
+function resolveVersionImports(versionDir: string, modules: string | undefined): void {
   const entries = {
     "@mostra/server": import.meta.resolve("@mostra/server"),
     "@mostra/server/host": import.meta.resolve("@mostra/server/host"),
   } as Record<string, string>;
+  // The bundle's imports name it by its real path (Node resolves symlinks), the launcher's
+  // argument perhaps through one (macOS's /tmp): either form is the version.
+  const versionUrls = [resolve(versionDir), realpathSync(versionDir)].map(
+    (dir) => `${pathToFileURL(dir).href}/`,
+  );
+  const layoutParent =
+    modules === undefined
+      ? undefined
+      : pathToFileURL(join(modules, "..", "mostra-server.mjs")).href;
   registerHooks({
     resolve(specifier, context, next) {
       const url = entries[specifier];
-      return url ? { url, shortCircuit: true } : next(specifier, context);
+      if (url) return { url, shortCircuit: true };
+      if (
+        layoutParent !== undefined &&
+        versionUrls.some((url) => context.parentURL?.startsWith(url) === true) &&
+        isPackageSpecifier(specifier)
+      ) {
+        return next(specifier, { ...context, parentURL: layoutParent });
+      }
+      return next(specifier, context);
     },
   });
 }
@@ -84,7 +129,7 @@ interface Call {
 
 /** Runs a worker until its channel closes. */
 export async function runWorker(options: WorkerOptions): Promise<void> {
-  shareServerPackage();
+  resolveVersionImports(options.versionDir, options.modules);
   const shared = createSharedState();
   const views = sharedViews(shared);
   const thread = new Worker(new URL(`./channel-thread${ownExtension}`, import.meta.url), {

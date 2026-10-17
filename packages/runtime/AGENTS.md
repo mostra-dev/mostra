@@ -107,7 +107,10 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   tests use. A replacement starts only once a stopping worker has exited. A worker's crash, OOM
   or hang ends it alone: the pool restarts it with backoff, parks it after more than five crashes
   in ten minutes, and appends `worker.crashed`; a publish clears the park for calls (`pool.clear`)
-  and live producers (`live.unpark`) alike.
+  and live producers (`live.unpark`) alike. Server code's packages run from the layout the version
+  was built against (D135): the local launcher asks `Dependencies.runtimeModules` for it before a
+  worker starts (installing a removed layout from the store, or a pinned one when the warm set
+  moved on) and passes it as `--modules`.
 - **A run is recorded before it starts, and ends once (AC-02, AC-03, D130).** `actions` inserts the
   run (`interaction/runs.ts`) before a worker sees it; keys and client keys join existing runs; a
   run cut off by a crash or a stop ends `failed` with reason `interrupted` and is never retried

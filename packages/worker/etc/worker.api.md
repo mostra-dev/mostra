@@ -13,6 +13,7 @@ export function workerEntry(): string;
 // @public
 export interface WorkerOptions {
     readonly channel: string;
+    readonly modules?: string;
     readonly sourceDir?: string;
     readonly versionDir: string;
 }

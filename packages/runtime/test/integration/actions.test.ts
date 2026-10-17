@@ -27,13 +27,15 @@ const MAIL_TOKEN = "tok-live-9f8e7d6c5b4a";
 /** `@mostra/worker`'s built entry, which both launchers run. */
 const WORKER_MAIN = fileURLToPath(new URL("../../../worker/dist/main.js", import.meta.url));
 const WORKER_HOST = fileURLToPath(new URL("../fixtures/worker-host.mjs", import.meta.url));
+/** The warm set's layout, which a version without on-demand packages resolves from (D135). */
+const WARM = realpathSync(fileURLToPath(new URL("../../../warm/node_modules", import.meta.url)));
 
 /** Starts the separately started worker host (D124) for a home, and waits until it listens. */
 async function startWorkerHost(home: string): Promise<{ socket: string; process: ChildProcess }> {
   const socket = join(tempDir("wh", true), "host.sock");
   const child = spawn(
     process.execPath,
-    [WORKER_HOST, "--socket", socket, "--home", home, "--worker", WORKER_MAIN],
+    [WORKER_HOST, "--socket", socket, "--home", home, "--worker", WORKER_MAIN, "--warm", WARM],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   await new Promise<void>((resolve, reject) => {

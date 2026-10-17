@@ -31,9 +31,13 @@ version's server bundle.
   its own `server/secret` request. Never read secrets from `process.env` here.
 - **Never sees a browser request.** Calls arrive with their context (viewer, view, run, dry run);
   no cookie, token or header reaches server code.
-- **One `@mostra/server`.** The resolve hook in `shareServerPackage` maps the bundle's
+- **One `@mostra/server`.** The resolve hook in `resolveVersionImports` maps the bundle's
   `@mostra/server` to this package's copy, so the context the worker sets is the one server code
   reads (D19 seam 3).
+- **Packages run from their own directories (D135).** The server bundle imports packages by
+  name; the same hook resolves the bundle's package imports from `--modules`, the layout the
+  version was built against, so native addons load and packages find their own files. Imports
+  inside packages resolve as Node resolves them.
 - **Dies with its channel.** When the channel closes, the worker signals its process group and
   exits, so programs server code started end with it (the same rule as the runtime's children).
 - **Full capability (D05, AC-01).** Nothing restricts what server code does.

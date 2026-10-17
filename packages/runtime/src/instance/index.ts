@@ -38,6 +38,7 @@ import {
 } from "../builder/index.ts";
 import {
   createDependencies,
+  type Dependencies,
   locateWarmSet,
   recoverDependencies,
   runtimeRoot,
@@ -259,27 +260,29 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     return spa;
   };
   // Built on first use: a runtime without its warm set still starts and says what's missing.
+  let dependencies: Dependencies | undefined;
+  const getDependencies = (): Dependencies =>
+    (dependencies ??= createDependencies({
+      home: home.path,
+      ledger: home.ledger,
+      processes: manager,
+      log,
+      env: environment,
+      warm: locateWarmSet(environment),
+      policy: () => readHomeSettings(home.path).dependencies ?? "auto",
+      faults,
+      // Tests shorten the 300 s install limit to exercise MOSTRA_DEP_TIMEOUT.
+      ...(Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) > 0
+        ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
+        : {}),
+    }));
   let publisher: Publisher | undefined;
   const getPublisher = (): Publisher => {
     if (publisher) return publisher;
-    const warm = locateWarmSet(environment);
     publisher = createPublisher({
       registry,
       ledger: home.ledger,
-      dependencies: createDependencies({
-        home: home.path,
-        ledger: home.ledger,
-        processes: manager,
-        log,
-        env: environment,
-        warm,
-        policy: () => readHomeSettings(home.path).dependencies ?? "auto",
-        faults,
-        // Tests shorten the 300 s install limit to exercise MOSTRA_DEP_TIMEOUT.
-        ...(Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) > 0
-          ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
-          : {}),
-      }),
+      dependencies: getDependencies(),
       renderMode: renderMode(),
       runtimeVersion: runtimeVersion(),
       log,
@@ -375,6 +378,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         home: home.path,
         workerEntry: located.entry,
         nodeArgs: located.nodeArgs,
+        // A version's packages run from the layout it was built against (D135).
+        modules: (target) => getDependencies().runtimeModules(target),
       });
   if (workerSocket) log.warn("workers.test_host", { socket: workerSocket });
   const workerVersions = new Map<string, WorkerVersion | null>();

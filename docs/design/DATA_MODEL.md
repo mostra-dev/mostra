@@ -15,6 +15,7 @@
   sources/<artifactId>/<sourceDigest>.tar.zst   source snapshots for every published version (H-11)
   blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
   deps/store/                  shared content-addressed package store (pnpm 10's, D20, D94)
+  deps/locks/pinned-<digest>/  a version's layout once the warm set moved on: its locked warm versions installed (D135)
   deps/locks/<lockDigest>/     per-lockfile node_modules layouts, hard-linked from the store; each links the warm set
                                through a `warm` symlink and is complete once it carries `.mostra-layout` (D95)
   deps/cache/, deps/state/     the installer's registry metadata (read when offline) and its own state
