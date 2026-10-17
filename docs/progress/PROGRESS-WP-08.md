@@ -43,7 +43,7 @@ M22 delegated all twelve questions (2026-10-16T16:59Z, `<ITU/>`): **D129** worke
 
 ## Evidence
 
-Every check runs through the real interfaces: a real `mostra-runtime daemon`, its gateway and real worker processes (`packages/runtime/test/integration`, with the action suite run twice, once through the local launcher and once through a worker host started on its own over a socket, D124), pages in Chromium, Firefox and WebKit through the real shell and gateway (`tests/e2e/specs/actions.spec.ts`, the J3 inbox), the hooks in a real React DOM in Chromium (`packages/react/test/browser`), and the worker and serializer against their real peers (`packages/worker/test`, `packages/protocol/test`, the serializer beside React's own codec). Every row's checks also ran with a seeded violation (`node packages/runtime/scripts/prove-seeds.ts --only <ID>`): 27 seeds for WP-08 (19 for the requirements, 3 more for AC-06 and the environment, 5 for this package's own review fixes), each red when planted and green when restored; the line-splitter fix was seeded by hand (its regression test took 1.6 s on the old code against a 500 ms bound, and 20 ms on the new).
+Every check runs through the real interfaces: a real `mostra-runtime daemon`, its gateway and real worker processes (`packages/runtime/test/integration`, with the action suite run twice, once through the local launcher and once through a worker host started on its own over a socket, D124), pages in Chromium, Firefox and WebKit through the real shell and gateway (`tests/e2e/specs/actions.spec.ts`, the J3 inbox), the hooks in a real React DOM in Chromium (`packages/react/test/browser`), and the worker and serializer against their real peers (`packages/worker/test`, `packages/protocol/test`, the serializer beside React's own codec). Every row's checks also ran with a seeded violation (`node packages/runtime/scripts/prove-seeds.ts --only <ID>`): 35 seeds for WP-08 (19 for the requirements, 3 more for AC-06 and the environment, 5 for this package's own review fixes, 8 for the GPT review's), each red when planted and green when restored; the line-splitter fix was seeded by hand (its regression test took 1.6 s on the old code against a 500 ms bound, and 20 ms on the new).
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
@@ -62,7 +62,24 @@ Every check runs through the real interfaces: a real `mostra-runtime daemon`, it
 
 ## Reviews (D80)
 
-The GPT-6.1-Sol review through `codex review` is next, announced to Mirza first (D34). Copilot: requested on every push. A Claude Opus 5.5 review waits for Mirza's approval (D114; this is a substantial package).
+- **GPT-6.1-Sol through `codex review --base origin/main`** (OpenAI, ChatGPT sign-in), effort high, on 2026-10-17 against `41448db`: 3,854,110 input tokens (3,671,936 cached) and 13,693 output tokens (6,025 reasoning). A GPT-only run, announced to Mirza (D34). 8 findings (4 P1, 4 P2), all valid, all fixed below.
+- **Copilot:** requested on every push; as on earlier packages, the requester's quota is used up, so it reviewed nothing.
+- **Claude Opus 5.5:** Mirza decides after the GPT review's fixes (D114).
+
+The GPT review's 8 findings, all fixed. Each has a regression test that fails on the code before the fix and passes after it (seeds `wp08-gpt-1` to `wp08-gpt-8`, each red when planted and green when restored):
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 (P1) A link scoped to one action could attach to a run of another function by its ID: the response left it out, but the page was already attached, so the run's log and result reached it on its stream | Whether a page may see a run is decided in one place (`runVisible`), before anything is attached: only a link that may run the function sees the run | Integration test: a narrow link attaches, polls, and can't cancel; nothing of the run reaches it |
+| 2 (P1) An action's `progress()` carrying a secret was stored and sent unredacted | Progress is redacted like every other output | AC-06's test: `progress({ message: secret(…) })` reads `[redacted]`, and the grep of the home finds no value |
+| 3 (P1) A live source's error carrying a secret was kept and sent unredacted | Live errors are redacted before they are kept or sent | AC-06's test: a loader that throws the secret shows `[redacted]` |
+| 4 (P1) A call during a worker's idle stop started a replacement the slot couldn't hold, and kept starting more until the old one exited (the review's probe: 17 workers in 100 ms) | A call waits for the stopping worker to exit, then starts one replacement; a worker the slot can't hold is stopped at once | Unit test with a launcher whose workers take 300 ms to stop: three calls, two launches in all |
+| 5 (P2) A listener added to `abortSignal` by two calls ran in the first call's context for both | Bound copies are kept per signal, so each call's copy runs in its own context | `@mostra/server` test: one module-level listener, two calls |
+| 6 (P2) A live read answered after newer stream updates replaced an append window with older points | Reads and updates of a source apply one at a time in arrival order, and a read keeps the newer points it finds | `ServerClient` test: updates 4 and 5 arrive while the read of 3 is held; the window is 3, 4, 5 |
+| 7 (P2) A publish that cleared a park (reusing the same version) restarted calls but left live producers stopped for good | The publish clears the live module's park too (`live.unpark`) | Lifecycle test: a parked `counter` source produces again after the reused publish |
+| 8 (P2) `useAction` kept the old key's run after its key changed, and could join it instead of starting the new key's | Its state and in-flight run are kept per function and key | Browser test: switch the key mid-run; the hook shows idle, then starts the new key's run |
+
+The seeds caught one defect of this round's own: the first version of the tests for findings 2 and 3 landed in the wrong test case, and their seeds stayed green until the block moved into AC-06's test.
 
 Before the independent reviews, my own review of the full diff found and fixed these, each with a regression test that fails on the code before the fix (seeds `wp08-self-1` to `wp08-self-5`, and the line splitter by hand):
 
