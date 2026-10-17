@@ -14,7 +14,7 @@
  * `{ outDir, start, end }` to `renders.ndjson` in that directory, so a test can see which renders
  * overlapped (GPT review finding 2).
  */
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { RpcPeer, VERIFY_RUNNER_METHODS } from "@mostra/protocol";
 
@@ -24,11 +24,15 @@ const record = process.env.MOSTRA_TEST_FAKE_RUNNER_MODE === "record";
 const send = process.send?.bind(process);
 if (!send || !dir) process.exit(2);
 
+/** Claims a role once per home: an exclusive create, so two runners can't both take it. */
 const claim = (name) => {
-  const marker = join(dir, name);
-  if (existsSync(marker)) return false;
-  writeFileSync(marker, String(process.pid));
-  return true;
+  try {
+    writeFileSync(join(dir, name), String(process.pid), { flag: "wx" });
+    return true;
+  } catch (error) {
+    if (error.code === "EEXIST") return false;
+    throw error;
+  }
 };
 
 const peer = new RpcPeer({
