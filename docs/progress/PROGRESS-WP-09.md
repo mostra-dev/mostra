@@ -1,6 +1,6 @@
 # WP-09 progress: verify
 
-**Status:** Candidate, presented to Mirza. The report is finalized after acceptance (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-17 ("absolutely incredible work", 22:47Z, and "i accept & approve!", 23:06Z), merged to `main` as `5fa1132`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -12,7 +12,7 @@
 | `pnpm check` | uncached (`TURBO_FORCE=true`, 14 min 32 s, macOS arm64): every job green (format-lint, types, unit, integration, hygiene, e2e, build, boundaries, api, licenses, rust, docs, commits) |
 | Predecessors | WP-08 done ([PROGRESS-WP-08](PROGRESS-WP-08.md) on `origin/main`); no `RECOVERY-WP-09-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64 |
-| Pull request | [#27](https://github.com/mostra-dev/mostra/pull/27) (draft) |
+| Pull request | [#27](https://github.com/mostra-dev/mostra/pull/27), merged as `5fa1132` |
 | `main` during the session | `a8957f5` (PR #26, D137 and M24 for WP-28) landed at 12:09Z and was merged into the branch (`e94cf9d`); WP-09's decision, first written as D137 (M24), became **D138** (**M25**) |
 
 ## What was built
@@ -29,9 +29,9 @@
 Mirza answered the session's twelve questions at M25 (2026-10-17T12:26Z), approving the recommendations with additions and one replacement (rebuild-on-miss instead of re-stamping the version ID). They are recorded as **D138** (first written as D137; renumbered after `main`'s D137, M24, landed during the session). Choices made while building, under D138:
 - The source's first viewport renders before the baseline and the other viewports, so a page that never gets ready ends the browser stages at once instead of waiting at every render.
 - `verify` writes the artifact's working lockfile like publish (D95), so the publish that follows resolves the same packages and its `envDigest` matches the cached verdict.
-- A configuration the compiler refuses (the artifact's `tsconfig.json` against Mostra's forced options, or TypeScript 7's removed `baseUrl`) is a `MOSTRA_TYPE_ERROR` pointing at the artifact's `tsconfig.json`; the forced options stay exactly D138's list.
+- A configuration the compiler refuses (contradictory or unknown options in the artifact's `tsconfig.json`; an inherited `baseUrl` is cleared instead, D139) is a `MOSTRA_TYPE_ERROR` pointing at the artifact's `tsconfig.json`; the forced options stay exactly D138's list.
 - Controls an interaction reveals (a dialog's buttons) are used before anything is dismissed, two levels deep, and judged for errors and unbound inputs but not for "no effect": a second try would need their container reopened, and silence is the conservative answer (D72).
-- Runs that share a cache key run one at a time; a stuck runner is stopped 5 s after the run's deadline and the run reports `MOSTRA_VERIFY_TIMEOUT`.
+- Runs that share a cache key run one at a time. The runner gives up on a render 1 s past its deadline by closing that render's browser context; a runner that still hasn't answered 8 s past it is stopped, and the run reports `MOSTRA_VERIFY_TIMEOUT` (Opus review finding 5).
 
 ## Evidence
 
@@ -111,10 +111,13 @@ The other new hints and pages are in `packages/protocol/src/diagnostics/codes/` 
 - **Local `pnpm check` with every job in parallel** is load-bound on this machine now that verify's browser suites run beside the rest: one run saw timeouts in `e2e` (Firefox, then Chromium's IN-03 tests), another in `@mostra/react`'s browser tests (15 s and 60 s limits). Each passes when run alone (Firefox 52 of 52, WebKit 52 of 52, `client.spec.ts` in Chromium 9 of 9 twice, `@mostra/react` 92 of 92 in 7 s) and on CI, which runs every job on its own machine. The last uncached local run (18 min 45 s) was green in every other job.
 - **WP-08's park test on macOS CI** (`lifecycle.test.ts`, "backs off after each crash and parks …") timed out once on `main`'s CI for a docs-only commit (`a8957f5`); it isn't touched by this package and passed on this branch's CI.
 
+- **CI's critical path is now `e2e` on macOS** (10 min 35 s on the last run, `dd3956b`), past the 10-minute target; its suites aren't WP-09's (they publish without the gate), and the grouped `integration` job's longest group took 7 min 13 s. Splitting `e2e` by browser or spec is a follow-up for the next package that touches the CI job.
+
 ## Commits and publication
 
-- **Range:** `d7c9aff..` on `wp/09-verify` (final range and merge commit recorded after acceptance).
-- **Packages:** nothing published; the changeset records minor releases of `@mostra/protocol`, `@mostra/runtime`, `@mostra/react`, `@mostra/shell` and the first release of `@mostra/verify` (the release pipeline is WP-11's).
+- **Range:** `d7c9aff..5fa1132` on `main`: 29 signed-off commits on `wp/09-verify` (`686031c` to `dd3956b`), one merge of `main` into the branch (`e94cf9d`, bringing PR #26's D137), and the merge commit `5fa1132` of [#27](https://github.com/mostra-dev/mostra/pull/27), merged with CI and CodeQL green on `dd3956b`, every review thread resolved and no open code-scanning alert. This report lands through its own pull request (D79).
+- **Packages:** nothing published; the changeset records minor releases of `@mostra/protocol`, `@mostra/runtime`, `@mostra/react`, `@mostra/shell` and the first release of `@mostra/verify` (the release pipeline is WP-11's). No docs site exists yet to deploy (AX-07).
+- **Remaining dirty paths:** none in the repository. Outside it: logs, scripts and the review texts in `$JCODE_SCRATCH_DIR/wp09`.
 
 ## Next
 
