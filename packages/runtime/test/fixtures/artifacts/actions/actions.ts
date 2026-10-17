@@ -141,7 +141,7 @@ export async function huge(mib: number) {
   return "x".repeat(mib * 1024 * 1024);
 }
 
-/** The worker's environment, to show that no secret reaches it that way (D124). */
+/** What the worker's process sees of its start: no secret reaches it that way (D124, D38). */
 export async function environment() {
-  return { ...process.env };
+  return { env: { ...process.env }, argv: process.argv };
 }

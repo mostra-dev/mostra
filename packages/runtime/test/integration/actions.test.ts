@@ -324,7 +324,23 @@ describe.each([
 
   it("gives server code no secret through its environment: only by name, through Mostra (D124)", async () => {
     const page = await openPage(actions.url);
-    const env = (await page.call("actions.ts#environment", [])).value as Record<string, string>;
+    const seen = (await page.call("actions.ts#environment", [])).value as {
+      env: Record<string, string>;
+      argv: string[];
+    };
+    const env = seen.env;
+    // Nor anything of the browser's: the link's secret, the session cookies, the CSRF token (D38).
+    const secret = actions.url.split("#t=")[1] as string;
+    const cookies = page.browser
+      .cookiesFor(`${page.opened.frameOrigin}/`)
+      .split("; ")
+      .map((pair) => pair.split("=")[1] ?? "")
+      .filter((value) => value.length > 0);
+    const visible = JSON.stringify(seen);
+    for (const value of [secret, page.opened.frameCsrf, ...cookies]) {
+      expect(visible).not.toContain(value);
+    }
+    expect(cookies.length).toBeGreaterThan(0);
     expect(Object.keys(env)).not.toContain("MOSTRA_TEST_SUPERVISOR_ONLY");
     expect(Object.keys(env)).not.toContain("GITHUB_TOKEN");
     expect(JSON.stringify(env)).not.toContain(MAIL_TOKEN);
