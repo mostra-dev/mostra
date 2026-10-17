@@ -668,6 +668,13 @@ export function createPublisher(options: PublisherOptions): Publisher {
             const unbuilt = didNotBuild(verdict);
             if (unbuilt) throw new RpcError(unbuilt);
             const errors = errorCodes(verdict);
+            // Verify couldn't run (no browser): without --force, publish fails with that
+            // environment error itself, so the caller knows it isn't the artifact (D137 item 7).
+            const environmental = verdict.diagnostics.find(
+              (diagnostic) =>
+                diagnostic.severity === "error" && diagnostic.code.startsWith("MOSTRA_ENV_"),
+            );
+            if (environmental && params.force !== true) throw new RpcError(environmental);
             if (errors.length > 0 && params.force !== true) {
               throw new RpcError(
                 createDiagnostic("MOSTRA_PUBLISH_VERIFY_FAILED", {
