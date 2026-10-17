@@ -266,7 +266,7 @@ describe("write-once rows (invariant 3, IN-08)", () => {
         "INSERT INTO artifact (id, title, family, links_json, policy_json, created_at, latest_version_id) VALUES ('art_1', 'A', NULL, '[]', NULL, 'now', NULL)",
       );
       db.run(
-        "INSERT INTO version VALUES ('ver_1', 'art_1', 1, 's', 'e', 'o', '{\"title\":\"A\"}', NULL, 'now')",
+        "INSERT INTO version (id, artifact_id, number, source_digest, env_digest, output_digest, manifest_json, forced_codes_json, published_at) VALUES ('ver_1', 'art_1', 1, 's', 'e', 'o', '{\"title\":\"A\"}', NULL, 'now')",
       );
       db.run(
         "INSERT INTO event (artifact_id, seq, type, actor_json, payload_json, at) VALUES ('art_1', 1, 'version.published', '{}', '{}', 'now')",

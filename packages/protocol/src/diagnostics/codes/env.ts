@@ -10,6 +10,7 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_BIND_FAILED",
   "MOSTRA_ENV_SHELL_MISSING",
   "MOSTRA_ENV_SERVICE_FAILED",
+  "MOSTRA_ENV_BROWSER_MISSING",
   // gen:codes
 ] as const;
 
@@ -71,6 +72,17 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
       explanation:
         "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.",
       fix: "Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.",
+    },
+  },
+  MOSTRA_ENV_BROWSER_MISSING: {
+    severity: "error",
+    phase: "host",
+    title: "Browser for verify missing",
+    hint: "Install the browser verify uses with `npx playwright-core install chromium-headless-shell`, then verify again.",
+    docs: {
+      explanation:
+        "Verify renders pages in Playwright's Chromium headless shell, which the runtime bundle includes. It wasn't found, so verify ran only the stages that need no browser (type check, build and the field-ID scan) and reported this error. Publishing needs `--force` until it is installed.",
+      fix: "Run `npx playwright-core install chromium-headless-shell`, or reinstall Mostra's runtime, then verify again.",
     },
   },
   // gen:entries

@@ -7,6 +7,7 @@ import type { AreaCatalog } from "../spec.ts";
 export const publishDiagnosticCodes = [
   "MOSTRA_PUBLISH_ID_CONFLICT",
   "MOSTRA_PUBLISH_SOURCE_CHANGED",
+  "MOSTRA_PUBLISH_VERIFY_FAILED",
   // gen:codes
 ] as const;
 
@@ -35,6 +36,17 @@ export const publishDiagnostics: AreaCatalog<PublishDiagnosticCode> = {
       explanation:
         "Publishing reads the entry's manifest twice: once to find the artifact, and again from the snapshot it builds. Mostra reports this code when the two disagree about which artifact the source is, because the manifest `id` or the source's binding changed while the publish ran, for example when an editor saved the entry mid-publish or another publish rebound the path. Nothing was published.",
       fix: "Wait until the files are saved and nothing else is publishing the same source, then publish again. If the manifest `id` was changed on purpose, the next publish uses the new one.",
+    },
+  },
+  MOSTRA_PUBLISH_VERIFY_FAILED: {
+    severity: "error",
+    phase: "publish",
+    title: "Verify found errors",
+    hint: "Run `mostra verify` to see the errors and fix them, or publish with `--force` to record them in the version.",
+    docs: {
+      explanation:
+        "Publish runs verify (or reuses the verdict it cached for the same source and environment) and refuses when the verdict has errors (D41). The message lists their codes. Nothing was published. With `--force`, publish goes ahead and records the codes in the version, where hosts read them; a source that doesn't build can't be published either way.",
+      fix: "Fix the errors `mostra verify` reports and publish again, or publish with `--force` if the version must ship as it is.",
     },
   },
   // gen:entries

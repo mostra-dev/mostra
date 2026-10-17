@@ -12,7 +12,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | AU-02 | WP-03 | I, B | A single page.tsx, a single page.mdx and a directory with pages, components, "use server" modules, data and assets each publish and render | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-03 | WP-03 | I | Fresh directory without package.json or config publishes (integration); no config file is written | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-04 | WP-03 | M | Manifest metadata (title, description, family, links, mode) round-trips into artifact/get and results; mode defaults to spa (unit + integration) | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
-| AU-05 | WP-09 | M, B | Fixtures with duplicate IDs, IDs changing between renders and unbound controls produce MOSTRA_FIELD_* codes at the right severity | unverified |
+| AU-05 | WP-09 | M, B | Fixtures with duplicate IDs, IDs changing between renders and unbound controls produce MOSTRA_FIELD_* codes at the right severity | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AU-06 | WP-26 | I, R | `mostra new --template <family>` for every family produces an artifact that passes verify, with AGENTS.md (CI matrix); Mirza reviews | unverified |
 | RT-01 | WP-11 | I, X | Clean macOS and Linux CI runners without Node: npm create mostra → verify → publish; tampered bundle rejected; external: real install | unverified |
 | RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
@@ -96,10 +96,10 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | KT-11 | WP-19 | B, R | Each component renders from fixtures in both themes and accepts `className` | unverified |
 | TM-08 | WP-24 | I, B | Vite and Next.js demos proxied with HTTP and WebSocket passthrough and HMR; framing headers stripped for that demo only; device frames and screenshots | unverified |
 | AX-01 | WP-10 | M | Contract test per command: --json schema, exit codes, no prompts without a TTY, logs on stderr | unverified |
-| AX-02 | WP-09 | I, B | Pipeline stage fixtures each produce their diagnostics; verdict validates; timings recorded | unverified |
+| AX-02 | WP-09 | I, B | Pipeline stage fixtures each produce their diagnostics; verdict validates; timings recorded | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | unverified |
-| AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | unverified |
+| AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
+| AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | unverified |
 | AX-07 | WP-26 | B, R | Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews | unverified |
 | AX-08 | WP-27 | E | Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64) | unverified |
@@ -139,7 +139,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | RT-08 | WP-08 | I | Lifecycle tests for daemon idle exit (with and without pending work), `daemon install` units generated, heap and watchdog limits applied, port leases reused after restart | validated ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | RT-09 | WP-02 | I | SIGKILL the supervisor with demo and PTY grandchildren running; next start reaps them by recorded PID and start time | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
-| VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | unverified |
+| VR-09 | WP-09 | I | Publish reuses a cached verdict (no rebuild), refuses on errors, and with --force records failing codes in the manifest | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | VR-10 | WP-07 | I, B | Fixture version built at browser-protocol revision N works against a gateway at N+1 (CI keeps old fixtures) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | VR-11 | WP-03 | I | Delete the authoring directory; artifact, versions, results and verify regression baselines remain readable | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | LL-01 | WP-06 | M, I, B | Agent and viewer write the same artifact field concurrently; both see the conflict; state.changed events filtered by a host | verified ([WP-06](../progress/PROGRESS-WP-06.md)) |

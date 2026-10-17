@@ -4,47 +4,68 @@
  */
 import type { Diagnostic } from "../diagnostic.ts";
 import { buildDiagnostic, type DiagnosticDetails, type DiagnosticSpec } from "../spec.ts";
+import { type A11yDiagnosticCode, a11yDiagnostics } from "./a11y.ts";
 import { type ActionDiagnosticCode, actionDiagnostics } from "./action.ts";
 import { type ArtifactDiagnosticCode, artifactDiagnostics } from "./artifact.ts";
 import { type BuildDiagnosticCode, buildDiagnostics } from "./build.ts";
+import { type ConsoleDiagnosticCode, consoleDiagnostics } from "./console.ts";
 import { type DepDiagnosticCode, depDiagnostics } from "./dep.ts";
 import { type EnvDiagnosticCode, envDiagnostics } from "./env.ts";
 import { type FieldDiagnosticCode, fieldDiagnostics } from "./field.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
 import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
-// gen:area-imports
 import { type LiveDiagnosticCode, liveDiagnostics } from "./live.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
+import { type NetworkDiagnosticCode, networkDiagnostics } from "./network.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
+// gen:area-imports
+import { type RegressionDiagnosticCode, regressionDiagnostics } from "./regression.ts";
 import { type RuntimeDiagnosticCode, runtimeDiagnostics } from "./runtime.ts";
 import { type SecretDiagnosticCode, secretDiagnostics } from "./secret.ts";
+import { type SmokeDiagnosticCode, smokeDiagnostics } from "./smoke.ts";
 import { type SubmitDiagnosticCode, submitDiagnostics } from "./submit.ts";
 import { type TargetDiagnosticCode, targetDiagnostics } from "./target.ts";
+import { type TypeDiagnosticCode, typeDiagnostics } from "./type.ts";
+import { type VerifyDiagnosticCode, verifyDiagnostics } from "./verify.ts";
 
+export { type A11yDiagnosticCode, a11yDiagnosticCodes } from "./a11y.ts";
 export { type ActionDiagnosticCode, actionDiagnosticCodes } from "./action.ts";
 export { type ArtifactDiagnosticCode, artifactDiagnosticCodes } from "./artifact.ts";
 export { type BuildDiagnosticCode, buildDiagnosticCodes } from "./build.ts";
+export { type ConsoleDiagnosticCode, consoleDiagnosticCodes } from "./console.ts";
 export { type DepDiagnosticCode, depDiagnosticCodes } from "./dep.ts";
 export { type EnvDiagnosticCode, envDiagnosticCodes } from "./env.ts";
 export { type FieldDiagnosticCode, fieldDiagnosticCodes } from "./field.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
 export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
-// gen:area-exports
 export { type LiveDiagnosticCode, liveDiagnosticCodes } from "./live.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
+export { type NetworkDiagnosticCode, networkDiagnosticCodes } from "./network.ts";
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
+// gen:area-exports
+export { type RegressionDiagnosticCode, regressionDiagnosticCodes } from "./regression.ts";
 export { type RuntimeDiagnosticCode, runtimeDiagnosticCodes } from "./runtime.ts";
 export { type SecretDiagnosticCode, secretDiagnosticCodes } from "./secret.ts";
+export { type SmokeDiagnosticCode, smokeDiagnosticCodes } from "./smoke.ts";
 export { type SubmitDiagnosticCode, submitDiagnosticCodes } from "./submit.ts";
 export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
+export { type TypeDiagnosticCode, typeDiagnosticCodes } from "./type.ts";
+export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
 
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | RegressionDiagnosticCode
+  | SmokeDiagnosticCode
+  | A11yDiagnosticCode
+  | NetworkDiagnosticCode
+  | ConsoleDiagnosticCode
+  | TypeDiagnosticCode
+  | VerifyDiagnosticCode
   | LiveDiagnosticCode
   | SecretDiagnosticCode
   | RuntimeDiagnosticCode
@@ -66,6 +87,13 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...regressionDiagnostics,
+  ...smokeDiagnostics,
+  ...a11yDiagnostics,
+  ...networkDiagnostics,
+  ...consoleDiagnostics,
+  ...typeDiagnostics,
+  ...verifyDiagnostics,
   ...liveDiagnostics,
   ...secretDiagnostics,
   ...runtimeDiagnostics,

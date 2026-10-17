@@ -10,7 +10,8 @@
   instance.json                discovery record of the running supervisor (D81): pid, start time, socket, runtime version, revisions; never a lock
   store/ledger.sqlite          the ledger (WAL, synchronous=FULL, locking_mode=EXCLUSIVE: no -shm file), with -wal
   store/ledger.sqlite.bak-<from>-<to>   backup written before a migration (§6)
-  versions/<versionId>/        immutable and read-only (files 0444, directories 0555): manifest.json, client/, server/
+  versions/<versionId>/        immutable and read-only (files 0444, directories 0555): manifest.json (with `forcedCodes`
+                               and, since WP-09, `verify: { status, verifyRevision }`, D138), client/, server/
                                (optional, entry.mjs), registry.json, lock.yaml
   sources/<artifactId>/<sourceDigest>.tar.zst   source snapshots for every published version (H-11)
   blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
@@ -20,9 +21,13 @@
                                through a `warm` symlink and is complete once it carries `.mostra-layout` (D95)
   deps/cache/, deps/state/     the installer's registry metadata (read when offline) and its own state
   deps/tmp/                    scratch projects of resolutions in progress; emptied at every start
-  cache/builds/<digests>/      verify-built outputs awaiting publish; LRU-capped at 5 GB (D47)
+  cache/builds/<versionId>/    verify's builds, laid out as version directories, which publish promotes when its own
+                               version ID matches (D138 item 5); LRU-capped at 5 GB (D47)
   cache/staging/               one directory per publish in progress (snapshot copy, build output); emptied at every start
-  cache/verify/<digests>.json  cached verdicts (D41)
+  cache/verify/<key>.json      cached verdicts, keyed by sourceDigest, envDigest and the verify revision (D41, D138)
+  cache/verify/<key>/          that verdict's screenshots, ARIA snapshots and pixel diffs
+  cache/verify/runs/<run>/     a running verify's sandbox (its scratch ledger); removed when the run ends, and at
+                               every start (D138 item 1)
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)
   keys/capability              32 random bytes, mode 0600: the key capability secrets are derived under (D97)
   logs/                        rotated supervisor and child logs, capability URLs redacted
@@ -51,7 +56,10 @@ artifact(id PK, title, family, links_json, policy_json, policy_chosen_json NULL,
                                                     -- policy_json: the policy in force; policy_chosen_json: one a publish named (D102)
 source_binding(path PK, artifact_id FK, bound_at)
 version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest, manifest_json,
-        forced_codes_json, published_at, UNIQUE(artifact_id, number))
+        forced_codes_json, published_at, verify_json NULL, UNIQUE(artifact_id, number))
+                                                    -- verify_json: { status, verifyRevision } of the verdict the
+                                                    -- version was published on (migration 8, D138 item 4); NULL
+                                                    -- before verify; only 'pass' makes a regression baseline
 viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
                                                     -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104)
 view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json,

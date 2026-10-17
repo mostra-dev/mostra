@@ -41,6 +41,7 @@
         "tailwindcss",
         "pnpm",
         "@mostra/shell",
+        "@mostra/verify",
         "@mostra/warm",
         "@mostra/worker"
       ],

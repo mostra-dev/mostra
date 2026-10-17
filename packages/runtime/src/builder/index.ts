@@ -19,8 +19,13 @@ import type { ProcessManager } from "../processes/index.ts";
 import type { FieldCoverage } from "./coverage.ts";
 import { BUILD_METHOD, type BuildRequest, type BuildResponse, STAGING_FILES } from "./types.ts";
 
-export { coverageMatcher, type FieldCoverage } from "./coverage.ts";
-export type { BuildRequest, BuildResponse } from "./types.ts";
+export { coverageMatcher, type FieldCoverage, type FieldEntry } from "./coverage.ts";
+export {
+  type BuildRequest,
+  type BuildResponse,
+  LIVE_DECLARATION,
+  type VersionRegistry,
+} from "./types.ts";
 
 /** How long one build may take (FAILURE_MODEL §9). */
 export const BUILD_TIMEOUT_MS = 180_000;
