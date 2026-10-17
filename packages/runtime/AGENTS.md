@@ -219,7 +219,10 @@ first module outside `protocol-server` needs it.
   through both launchers (`actions.test.ts`), worker and daemon lifecycles (`lifecycle.test.ts`),
   producers and the secrets port (`producers.test.ts`), and the five D19 seams (`seams.test.ts`).
   CI runs them on macOS and
-  Linux (`integration` job, D86).
+  Linux (`integration` job, D86), split into groups of suites, one machine each:
+  `MOSTRA_TEST_GROUP=core|verify|verify-failures` runs one group (`vitest.config.ts`), unset runs
+  them all. The groups partition the files by name, so a new suite lands in exactly one; a new
+  `verify*` suite joins `verify`.
 - `pnpm --filter @mostra/runtime test:integration -- verify audit`: verify through a real daemon
   (`verify.test.ts`: WP-03's fixtures as negatives, a fixture per stage's faults, regressions, the
   gate; `verify-failures.test.ts`: timeout, the smoke budget, no browser, a runner that dies,

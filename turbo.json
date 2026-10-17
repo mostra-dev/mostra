@@ -20,7 +20,8 @@
     "test:integration": {
       "dependsOn": ["build", "^build"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
-      "outputs": []
+      "outputs": [],
+      "env": ["MOSTRA_TEST_GROUP"]
     },
     "size": {
       "dependsOn": ["build"],
