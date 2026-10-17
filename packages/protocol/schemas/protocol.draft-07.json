@@ -3039,6 +3039,35 @@
               "key"
             ]
           }
+        },
+        "held": {
+          "readOnly": true,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "log": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "batches": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "runId",
+              "log",
+              "batches"
+            ]
+          }
         }
       },
       "required": [
@@ -3176,6 +3205,16 @@
         },
         "joined": {
           "type": "boolean"
+        },
+        "logFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "batchFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "required": [

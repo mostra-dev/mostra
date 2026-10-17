@@ -114,17 +114,27 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **A run is recorded before it starts, and ends once (AC-02, AC-03, D130).** `actions` inserts the
   run (`interaction/runs.ts`) before a worker sees it; keys and client keys join existing runs; a
   run cut off by a crash or a stop ends `failed` with reason `interrupted` and is never retried
-  (D24). A finished run and its result batches never change (triggers). A page sees a run only
-  through a link that may run its function, and a run without a key only as its own viewer:
-  `runVisible` in `interaction` decides it, before anything is attached to the page.
+  (D24). A finished run and its result batches never change, and no insert replaces them
+  (triggers). A page sees a run only through a link that may run its function, and a run without
+  a key only as its own viewer: `runVisible` in `interaction` decides it, before anything is
+  attached to the page, and for every `action.*` event on its stream. A function its version
+  doesn't have, and arguments `checkArgumentFrames` refuses, are refused before a run is recorded
+  or a worker starts (D136). Server code's signals and `host.*` events carry the calling viewer;
+  pages see only their own viewer's signals and never a `host.*` event (`visibleTo`).
 - **Secrets reach server code only as answers on its channel (D44, D124, D131).** `secrets` keeps
   values as 0600 files, never in the ledger; `secret()` asks the host's port, then the artifact's
   store, then the home's. Every value handed out is registered with the redactor, and logs, run
   logs, run progress, errors (live sources' too), events, run results, action-written state and
-  live values pass through it. New output of server code goes through `redactValue` too.
+  live values pass through it. Serializer batches (results, live values) go through
+  `redactFrames`, which redacts values rather than text (bytes included, `$` escapes kept); other
+  new output of server code goes through `redactValue`. A multi-line secret is protected line by
+  line too, since child output is kept a line at a time.
 - **Live updates and run progress are never events (LL-04, D130).** They travel on the
   `interaction/ephemeral.ts` bus to the pages and polls that asked within the last minute, without
   an `id`; the ledger keeps the latest live value and the ring, and pages read again after a gap.
+  What a slow reader hasn't taken is coalesced (`bus.coalesce`): a source's newer value in latest
+  mode replaces its older ones, and a run's contiguous deltas merge. Which artifacts have live
+  sources is kept in memory (`instance`), so reconciling never scans every artifact.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).

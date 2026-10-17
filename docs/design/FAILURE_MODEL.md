@@ -23,7 +23,7 @@
 | A worker answers nothing at all (its process stopped, its channel congested) | Its channel thread answers the watchdog even while artifact code blocks the event loop, so silence is a different failure: after three silent watchdog periods in a row it is stopped as hung ("it answered nothing for N s"), and a single missed ping, such as one queued behind a large result, stops nothing (D133) |
 | A watchdog stop while the heap is near its limit (80 % or more) | Reported as out of memory: near the limit, garbage collection stalls the event loop before the heap gives out (seen on Linux) |
 | A plain call's or a run's result grows past 16 MiB | The worker's call is cancelled and the call or run ends `MOSTRA_ACTION_TOO_LARGE` (`too-large`); arguments past 16 MiB are refused (413) before a worker sees them (D131) |
-| A worker can't be started (its version is damaged, the runtime lacks `@mostra/worker`) | The call or run fails with `MOSTRA_RUNTIME_WORKER_CRASHED` naming why, and counts as a crash for backoff and parking |
+| A worker can't be started (its version is damaged, the runtime lacks `@mostra/worker`, its bundle throws while loading) | The call or run fails with `MOSTRA_RUNTIME_WORKER_CRASHED` naming why, and counts as one crash for backoff and parking, its kind (`oom` while loading) included (D136) |
 | Builder or verify runner crashes | The operation fails with `MOSTRA_BUILD_CRASHED` or `MOSTRA_VERIFY_CRASHED` plus the child's last stderr lines. Nothing is published. The next operation starts a fresh child |
 | PTY host crashes | Live terminals show "Session ended unexpectedly", recordings keep their bytes up to the crash, and a reconnect starts a new PTY host. Other features are unaffected |
 | Demo dev server exits | `<WebDemo>` shows the exit code and the last log lines. `mostra open` or a reload restarts it |
@@ -84,7 +84,9 @@
 |---|---|
 | Double click, two tabs or a reload with an explicit key | One run per (artifact, action, key). Later calls join it and stream the same progress and result (AC-03) |
 | Double click without a key | Calls join the hook instance's in-flight run. After it finishes, a new click starts a new run, as the author intended |
-| Cancellation | The run's `AbortSignal` fires. The run ends `cancelled` if the action stops, or reaches whatever final state the action itself returns (AC-04) |
+| Cancellation | The run's `AbortSignal` fires. The run ends `cancelled` if the action stops, or reaches whatever final state the action itself returns (AC-04): an action that ignores the signal and returns ends `succeeded` with its result, so a page never shows "cancelled" for a mail that was sent; a streamed result a cancel cut short ends `cancelled` (D136) |
+| A page sends arguments that would outlive the call (symbol names, which `Symbol.for` keeps for the life of the process), a bigint of more than 10,000 digits, an async iterable, or a promise the batches never settle | Refused with 400 `MOSTRA_ACTION_UNSERIALIZABLE` before a run is recorded or a worker sees them; the worker's reader refuses them again. One link holder can't fill a worker's heap and park an artifact for every viewer (D136) |
+| A page names a function its version doesn't have | 404 `MOSTRA_ACTION_UNKNOWN_FUNCTION`: no run is recorded, no key spent, no worker started (D130) |
 | A version's package layout was removed, or the warm set moved on, before its worker starts | The layout is installed again from the home's store, or a pinned layout with the version's locked warm packages, before the worker starts (D135). Offline with a package the store lacks: `MOSTRA_DEP_OFFLINE` naming it, and the start backs off like a crash |
 | Worker crash during a run | `failed` with reason `interrupted` and `MOSTRA_ACTION_INTERRUPTED` naming the cause, no retry (D24). Runs still open when the instance starts (it crashed or was killed) end the same way. An action with external effects should use the provider's own idempotency key. The docs say so, because Mostra's de-duplication covers invocations, not the side effects of a run killed mid-flight |
 | An action never returns | Allowed: actions may run long. A busy loop trips the event-loop watchdog. An action awaiting forever just stays `running` until it's cancelled or its worker is evicted (eviction waits for running actions) |
@@ -97,7 +99,8 @@
 | A daemon has nothing to do | It exits 0 after 30 minutes (D133), unless it runs `--always-on` as the login service or its home has a login service installed |
 | Live producer throws or its source is unreachable | The last good value stays, `useLive` exposes `error` with the code, and the producer retries on its schedule. Viewers never see a blank state for a transient error |
 | Push to an unknown key | Accepted: pushes create sources (D56). A push whose value exceeds 4 MiB is refused with a code |
-| High-rate pushes | Values coalesce per animation frame on the client. Append mode bounds memory with the ring (AC-08) |
+| High-rate pushes | Values coalesce: a slow reader's queued values of a source in latest mode give way to its newest, on the server and in the page, which decodes only the newest waiting value and renders at most once per animation frame. Append mode keeps every value, bounded by the ring (AC-08, D136) |
+| A home holds thousands of artifacts | Live producers reconcile from an in-memory list of the artifacts whose latest versions have live sources, kept up to date on publish, so a reconcile costs nothing per artifact without them and the supervisor keeps answering (D136) |
 
 ## 7. Versions and stale clients
 

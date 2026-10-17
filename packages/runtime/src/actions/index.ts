@@ -13,6 +13,7 @@ import {
   ACTION_RESULT_MAX,
   type Batches,
   type CallLine,
+  checkArgumentFrames,
   createDiagnostic,
   type Frame,
   RpcError,
@@ -28,7 +29,7 @@ import {
   WORKER_METHODS,
 } from "@mostra/protocol";
 import type { EphemeralBus, Interaction, PageIdentity, RunRow } from "../interaction/index.ts";
-import { type Log, type Redactor, redactValue } from "../log.ts";
+import { type Log, type Redactor, redactFrames, redactValue } from "../log.ts";
 import type { Secrets } from "../secrets/index.ts";
 import type {
   WorkerBridge,
@@ -137,12 +138,34 @@ export function createActions(options: ActionsOptions): Actions {
     return version;
   };
 
+  /**
+   * The view's version, which must have the function: a page can't record runs, start workers or
+   * spend a key for a function its version doesn't have (INTERFACES §4; Opus review 6).
+   */
+  const functionOf = (versionId: string, fnId: string): WorkerVersion => {
+    const version = versionOf(versionId);
+    if (!version.functions.has(fnId)) {
+      throw failed(
+        "MOSTRA_ACTION_UNKNOWN_FUNCTION",
+        `This version has no server function ${fnId.slice(0, 200)}.`,
+      );
+    }
+    return version;
+  };
+
   const checkArgs = (args: Batches): void => {
     if (JSON.stringify(args).length > ACTION_ARGS_MAX) {
       throw failed(
         "MOSTRA_ACTION_TOO_LARGE",
         "The serialized arguments are larger than 16 MiB; pass less data, such as identifiers.",
       );
+    }
+    // What a worker would refuse is refused before one starts or a run is recorded: a page can't
+    // make server code hold memory for the life of its process (Opus review 1).
+    try {
+      checkArgumentFrames(args);
+    } catch (error) {
+      throw failed("MOSTRA_ACTION_UNSERIALIZABLE", (error as Error).message);
     }
   };
 
@@ -275,7 +298,7 @@ export function createActions(options: ActionsOptions): Actions {
               handle.cancel(callId, "The result grew past 16 MiB.");
               return;
             }
-            pendingBatches.push(redactValue([...batch], options.redactor));
+            pendingBatches.push(redactFrames([...batch], options.redactor));
             soon();
           },
           onProgress(progress) {
@@ -372,7 +395,7 @@ export function createActions(options: ActionsOptions): Actions {
             handle.cancel(callId, "The result grew past 16 MiB.");
             return;
           }
-          queue.push({ batch: redactValue([...batch], options.redactor) });
+          queue.push({ batch: redactFrames([...batch], options.redactor) });
           wake?.();
         },
       },
@@ -465,6 +488,7 @@ export function createActions(options: ActionsOptions): Actions {
               name: parsed.name,
               ...(parsed.payload !== undefined ? { payload: parsed.payload } : {}),
               ...(runId !== undefined ? { runId } : {}),
+              ...(call?.viewerId !== undefined ? { viewerId: call.viewerId } : {}),
             }),
           };
         }
@@ -481,6 +505,7 @@ export function createActions(options: ActionsOptions): Actions {
               type: parsed.type,
               ...(parsed.payload !== undefined ? { payload: parsed.payload } : {}),
               ...(runId !== undefined ? { runId } : {}),
+              ...(call?.viewerId !== undefined ? { viewerId: call.viewerId } : {}),
             }),
           };
         }
@@ -510,14 +535,14 @@ export function createActions(options: ActionsOptions): Actions {
     async call(page, input, signal) {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
-      const handle = await pool.acquire(versionOf(versionId));
+      const handle = await pool.acquire(functionOf(versionId, input.fnId));
       return stream(page, input, signal, handle);
     },
 
     startRun(page, input) {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
-      versionOf(versionId);
+      functionOf(versionId, input.fnId);
       const { state, row, started } = interaction.startRun(page, input);
       bus.attachRuns(page.artifactId, input.viewId, [state.runId]);
       if (started) void execute(row);

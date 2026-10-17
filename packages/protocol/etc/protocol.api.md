@@ -62,6 +62,9 @@ export type AnyMethod = MethodDefinition<unknown, unknown>;
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
 
 // @public
+export const ARGUMENT_BIGINT_DIGITS_MAX = 1e4;
+
+// @public
 export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[];
 
 // @public
@@ -378,6 +381,9 @@ export interface CarryOver {
 
 // @public
 export const CarryOver: z.ZodType<CarryOver>;
+
+// @public
+export function checkArgumentFrames(batches: readonly unknown[]): void;
 
 // @public
 export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refusal | undefined;
@@ -1743,6 +1749,11 @@ export const RUN_STATUSES: readonly RunStatus[];
 
 // @public
 export interface RunAttachRequest {
+    readonly held?: readonly {
+        readonly runId: string;
+        readonly log: number;
+        readonly batches: number;
+    }[];
     readonly keyed?: readonly {
         readonly fnId: string;
         readonly key: string;
@@ -1809,12 +1820,14 @@ export const RunRequest: z.ZodType<RunRequest>;
 // @public
 export interface RunState {
     readonly batches: Batches;
+    readonly batchFrom?: number;
     readonly error?: WireError;
     readonly finishedAt?: string;
     readonly fnId: string;
     readonly joined?: boolean;
     readonly key?: string;
     readonly log: readonly string[];
+    readonly logFrom?: number;
     readonly progress?: RunProgress;
     readonly reason?: RunReason;
     readonly runId: string;
@@ -2251,12 +2264,14 @@ export class ValueReader {
     constructor(options?: ValueReaderOptions);
     get complete(): boolean;
     fail(error: unknown): void;
+    finish(): void;
     push(batch: unknown): void;
     readonly root: Promise<unknown>;
 }
 
 // @public
 export interface ValueReaderOptions {
+    readonly mode?: SerializeMode;
     readonly serverFunction?: (id: string) => AnyFunction;
 }
 
@@ -2264,6 +2279,7 @@ export interface ValueReaderOptions {
 export class ValueWriter {
     constructor(options: ValueWriterOptions);
     abort(): void;
+    get cutShort(): boolean;
     readonly done: Promise<void>;
     write(value: unknown): Promise<void>;
 }

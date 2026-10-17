@@ -27,7 +27,7 @@ import {
 import type { EphemeralBus, Interaction, PageIdentity } from "../interaction/index.ts";
 import type { Ledger, LedgerDb, RequestKey } from "../ledger/index.ts";
 import { recordedResult, recordResult, requestKey } from "../ledger/index.ts";
-import { type Log, redactValue } from "../log.ts";
+import { type Log, redactFrames, redactValue } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import type { WorkerCrash, WorkerHandle, WorkerPool, WorkerVersion } from "../workers/index.ts";
 
@@ -110,6 +110,9 @@ interface LiveRow {
 
 const keyOf = (artifactId: string, key: string): string => `${artifactId}\u0000${key}`;
 
+/** After a worker couldn't start to describe its sources, how long before it is tried again. */
+const DISCOVERY_RETRY_MS = 60_000;
+
 function tooLarge(key: string): RpcError {
   return new RpcError(
     createDiagnostic("MOSTRA_LIVE_TOO_LARGE", {
@@ -139,6 +142,8 @@ export function createLive(options: LiveOptions): Live {
   let timer: ReturnType<typeof setInterval> | undefined;
   let scheduled = false;
   let stopped = false;
+  /** A worker is starting only to say which of its version's sources are `always`. */
+  let discovering = false;
 
   const ringOf = (key: string, versionId: string | undefined): number | undefined => {
     if (!versionId) return undefined;
@@ -161,7 +166,7 @@ export function createLive(options: LiveOptions): Live {
     );
     const revision = (current?.revision ?? 0) + 1;
     const at = new Date().toISOString();
-    const json = JSON.stringify(options.redactor ? redactValue(value, options.redactor) : value);
+    const json = JSON.stringify(redactBatches(value));
     db.run(
       `INSERT INTO live_value (artifact_id, key, revision, value_json, producer_version_id, at)
        VALUES (?, ?, ?, ?, ?, ?)
@@ -207,9 +212,15 @@ export function createLive(options: LiveOptions): Live {
         key,
         revision: String(revision),
         at,
-        value: options.redactor ? redactValue(value, options.redactor) : value,
+        value: redactBatches(value),
       },
     });
+  };
+
+  /** A live value's batches as frames, redacted as values (D131; Opus review 7). */
+  const redactBatches = (value: Batches): Batches => {
+    const redactor = options.redactor;
+    return redactor ? value.map((batch) => redactFrames([...batch], redactor)) : value;
   };
 
   const fail = (artifactId: string, key: string, raw: WireError): void => {
@@ -274,21 +285,40 @@ export function createLive(options: LiveOptions): Live {
     if (stopped) return;
     const want = wanted();
     const now = Date.now();
-    // Versions whose `always` the registry couldn't read: their worker says.
-    for (const artifactId of options.artifactsWithLive()) {
-      const latest = options.latest(artifactId);
-      if (!latest || described.has(latest.versionId)) continue;
-      if (!latest.sources.some((source) => source.always === undefined)) continue;
-      if ((retryAt.get(latest.versionId) ?? 0) > now) continue;
-      const version = options.version(latest.versionId);
-      if (!version) continue;
-      void pool.acquire(version).then(
-        (handle) => {
-          described.set(latest.versionId, handle.started.live);
-          schedule();
-        },
-        () => {},
-      );
+    // Versions whose `always` the registry couldn't read: their worker says. One at a time, and
+    // a worker started only to say stops at once unless it has a producer to run, so a home of
+    // many such artifacts never starts many workers together (Opus review 2).
+    if (!discovering) {
+      for (const artifactId of options.artifactsWithLive()) {
+        const latest = options.latest(artifactId);
+        if (!latest || described.has(latest.versionId)) continue;
+        if (!latest.sources.some((source) => source.always === undefined)) continue;
+        if ((retryAt.get(latest.versionId) ?? 0) > now) continue;
+        const version = options.version(latest.versionId);
+        if (!version) continue;
+        discovering = true;
+        void pool
+          .acquire(version)
+          .then(
+            (handle) => {
+              described.set(latest.versionId, handle.started.live);
+              const needed =
+                handle.started.live.some((source) => source.always === true) ||
+                [...want.values()].some((entry) => entry.artifactId === artifactId);
+              if (!needed) pool.release(latest.versionId);
+            },
+            () => {
+              // Never sooner than a crash's backoff or park asked for.
+              const later = Date.now() + DISCOVERY_RETRY_MS;
+              retryAt.set(latest.versionId, Math.max(retryAt.get(latest.versionId) ?? 0, later));
+            },
+          )
+          .finally(() => {
+            discovering = false;
+            schedule();
+          });
+        break;
+      }
     }
     for (const [id, producer] of running) {
       const latest = options.latest(producer.artifactId);

@@ -16,9 +16,16 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deserializeAll, type Frame } from "@mostra/protocol";
+import { deserializeAll, type EventRecord, type Frame } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clientKey, FakeMail, openPage, type RunState, resultOf } from "../action-page.ts";
+import {
+  type ActionPage,
+  clientKey,
+  FakeMail,
+  openPage,
+  type RunState,
+  resultOf,
+} from "../action-page.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
 import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
@@ -272,12 +279,17 @@ describe.each([
       "host.mail.sent",
       "action.succeeded",
     ]);
+    // A host sees which viewer's call raised them (pages see only their own, Opus review 4).
     expect(events[1]?.payload).toMatchObject({
       name: "reply-sent",
       source: "action",
       payload: { id: 7 },
+      viewerId: expect.stringMatching(/^vwr_/),
     });
-    expect(events[2]?.payload).toEqual({ data: { id: 7 } });
+    expect(events[2]?.payload).toEqual({
+      data: { id: 7 },
+      viewerId: expect.stringMatching(/^vwr_/),
+    });
   });
 
   it("writes artifact state as the agent (D63)", async () => {
@@ -516,6 +528,114 @@ describe.each([
     const big = "y".repeat(16 * 1024 * 1024 + 1);
     expect((await page.call("actions.ts#echo", [big])).status).toBe(413);
     expect((await page.run("actions.ts#echo", [big])).status).toBe(413);
+  });
+
+  /** The PIDs of the instance's workers, by version. */
+  const workerPids = async (): Promise<Record<string, number | undefined>> =>
+    Object.fromEntries(
+      (
+        ok<{ workers?: { versionId: string; pid?: number }[] }>(
+          await gateway.client.call("instance/status", {}),
+        ).workers ?? []
+      ).map((worker) => [worker.versionId, worker.pid]),
+    );
+
+  it("refuses a symbol, an iterable or a huge bigint argument before any worker or run (Opus review 1)", async () => {
+    const page = await openPage(actions.url);
+    const before = workerPids();
+    for (const root of [["$Sname"], ["$x1"], [`$n${"9".repeat(20_000)}`]]) {
+      const args = [[{ c: 0, v: root }]];
+      const call = await page.post("call/actions.ts%23echo", { viewId: page.opened.viewId, args });
+      expect(call.status).toBe(400);
+      expect(call.json<{ code: string }>().code).toBe("MOSTRA_ACTION_UNSERIALIZABLE");
+      const key = `bad.${Date.now()}.${Math.random()}`;
+      const run = await page.post("runs", {
+        viewId: page.opened.viewId,
+        fnId: "actions.ts#echo",
+        args,
+        key,
+        clientKey: clientKey(),
+      });
+      expect(run.status).toBe(400);
+      // Nothing was recorded: the key is still free.
+      const found = (await page.attach({ keyed: [{ fnId: "actions.ts#echo", key }] })).json<{
+        runs: RunState[];
+      }>();
+      expect(found.runs).toEqual([]);
+    }
+    expect(await workerPids()).toEqual(await before);
+  });
+
+  it("ends a run its action finished despite a cancel as succeeded, with its result (Opus review 3)", async () => {
+    const page = await openPage(actions.url);
+    const started = (await page.run("actions.ts#stubborn", [800])).json<RunState>();
+    await eventually(async () => {
+      const state = (await page.attach({ runIds: [started.runId] })).json<{ runs: RunState[] }>()
+        .runs[0];
+      return state?.status === "running";
+    });
+    expect((await page.cancel(started.runId)).status).toBe(200);
+    const done = await page.settled(started.runId);
+    expect(done.status).toBe("succeeded");
+    expect(await resultOf(done)).toBe("sent anyway");
+    // A plain call the same.
+    expect((await page.call("actions.ts#stubborn", [10])).end).toEqual({ status: "succeeded" });
+  });
+
+  it("shows a page no other viewer's action events, signals or host events (Opus review 4)", async () => {
+    const mine = await openPage(actions.url);
+    const viewOnly = await openPage(
+      (await gateway.link(actions.artifactId, { viewer: { ref: "vera" }, scopes: ["view"] })).url,
+    );
+    const { cursor } = (await viewOnly.poll()).json<{ cursor: string }>();
+    const keyless = (await mine.run("actions.ts#raise", [])).json<RunState>();
+    await mine.settled(keyless.runId);
+    expect((await mine.call("actions.ts#raise", [])).end).toEqual({ status: "succeeded" });
+    const seenBy = async (page: ActionPage): Promise<EventRecord[]> =>
+      page.poll(cursor).then((answer) => answer.json<{ events: EventRecord[] }>().events);
+    const theirs = await seenBy(viewOnly);
+    expect(theirs.filter((event) => /^(action\.|host\.)/.test(event.type))).toEqual([]);
+    expect(theirs.filter((event) => event.type === "signal.raised")).toEqual([]);
+    // The page whose calls raised them sees its own, without anyone's viewer ID.
+    const own = await seenBy(mine);
+    expect(own.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["action.started", "action.succeeded", "signal.raised"]),
+    );
+    expect(own.some((event) => event.type.startsWith("host."))).toBe(false);
+    expect(JSON.stringify(own)).not.toContain('"viewerId"');
+  });
+
+  it("refuses a function its version doesn't have, recording nothing (Opus review 6)", async () => {
+    const page = await openPage(actions.url);
+    const call = await page.call("actions.ts#doesNotExist", []);
+    expect(call.status).toBe(404);
+    const key = `missing.${Date.now()}`;
+    const run = await page.post("runs", {
+      viewId: page.opened.viewId,
+      fnId: "actions.ts#doesNotExist",
+      args: [[{ c: 0, v: [] }]],
+      key,
+      clientKey: clientKey(),
+    });
+    expect(run.status).toBe(404);
+    expect(run.json<{ code: string }>().code).toBe("MOSTRA_ACTION_UNKNOWN_FUNCTION");
+    const found = (await page.attach({ keyed: [{ fnId: "actions.ts#doesNotExist", key }] })).json<{
+      runs: RunState[];
+    }>();
+    expect(found.runs).toEqual([]);
+  });
+
+  it("never joins a client key to a run of another function (Opus review 9)", async () => {
+    const page = await openPage(actions.url);
+    const narrow = await openPage(
+      (await gateway.link(actions.artifactId, { scopes: ["view", "action:echo"] })).url,
+    );
+    const ck = clientKey();
+    const slow = (await page.run("actions.ts#slow", [5_000], undefined, ck)).json<RunState>();
+    const joined = await narrow.run("actions.ts#echo", [], undefined, ck);
+    expect(joined.status).toBe(400);
+    expect(joined.body).not.toContain(slow.runId);
+    expect((await page.cancel(slow.runId)).status).toBe(200);
   });
 
   it("caps a run's log at 1 MB with a marker (D47)", async () => {

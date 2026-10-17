@@ -60,6 +60,8 @@ export function raiseSignal(
     readonly source: SignalSource;
     readonly actor: Actor;
     readonly viewId?: string;
+    /** The viewer whose call raised it, for a signal of server code (D104: theirs alone). */
+    readonly viewerId?: string;
     readonly causation?: Readonly<Record<string, string>>;
   },
 ): string {
@@ -98,6 +100,7 @@ function appendSignal(
     readonly source: SignalSource;
     readonly actor: Actor;
     readonly viewId?: string;
+    readonly viewerId?: string;
     readonly causation?: Readonly<Record<string, string>>;
   },
 ): string {
@@ -110,6 +113,7 @@ function appendSignal(
       name: input.name,
       source: input.source,
       ...(input.viewId !== undefined ? { viewId: input.viewId } : {}),
+      ...(input.viewerId !== undefined ? { viewerId: input.viewerId } : {}),
       ...(input.payload !== undefined ? { payload: input.payload } : {}),
     },
   });

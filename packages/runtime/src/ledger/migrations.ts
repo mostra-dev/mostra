@@ -488,6 +488,27 @@ export const MIGRATIONS: readonly Migration[] = [
         BEGIN
           SELECT RAISE(ABORT, 'a run result batch never changes');
         END;
+        -- Write-once like submissions and versions (DATA_MODEL §3): an INSERT OR REPLACE would
+        -- delete the row it replaces without firing the DELETE trigger (Opus review 11).
+        CREATE TRIGGER action_run_not_replaced BEFORE INSERT ON action_run
+        WHEN EXISTS (SELECT 1 FROM action_run WHERE id = NEW.id
+          OR (artifact_id = NEW.artifact_id AND client_key = NEW.client_key)
+          OR (NEW.key IS NOT NULL AND artifact_id = NEW.artifact_id AND action = NEW.action
+              AND key = NEW.key))
+        BEGIN
+          SELECT RAISE(ABORT, 'an action run is never replaced');
+        END;
+        CREATE TRIGGER action_run_batch_no_delete BEFORE DELETE ON action_run_batch
+        BEGIN
+          SELECT RAISE(ABORT, 'a run result batch is kept with its run');
+        END;
+        CREATE TRIGGER action_run_batch_once BEFORE INSERT ON action_run_batch
+        WHEN EXISTS (SELECT 1 FROM action_run_batch WHERE run_id = NEW.run_id AND seq = NEW.seq)
+          OR EXISTS (SELECT 1 FROM action_run WHERE id = NEW.run_id
+            AND status IN ('succeeded', 'failed', 'cancelled'))
+        BEGIN
+          SELECT RAISE(ABORT, 'a finished run takes no more result batches');
+        END;
       `);
       // D56, D63, LL-04. A live source keeps its latest value with a revision that only grows, and
       // in append mode a bounded ring of recent values. Updates are never events.

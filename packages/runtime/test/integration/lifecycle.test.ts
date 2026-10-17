@@ -217,6 +217,16 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
       [1600, false],
       [0, true],
     ]);
+    // A page sees that the server code crashed and is parked, never its output (Opus review 4).
+    const seen = (await page.poll(cursor))
+      .json<{
+        events: { type: string; payload: Record<string, unknown> }[];
+      }>()
+      .events.filter((event) => event.type === "worker.crashed");
+    expect(seen).toHaveLength(6);
+    expect(seen.at(-1)?.payload).toMatchObject({ versionId: actions.versionId, parked: true });
+    expect(JSON.stringify(seen)).not.toContain("crashed on purpose");
+    expect(seen.every((event) => !("cause" in event.payload))).toBe(true);
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "parked", crashes: 6 });
     expect(worker?.lastCause).toMatch(/crashed on purpose/);

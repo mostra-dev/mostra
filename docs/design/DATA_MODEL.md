@@ -101,9 +101,11 @@ action_run(id PK, artifact_id, version_id, view_id NULL, viewer_id NULL, action,
            error_json NULL, progress_json NULL, log_text, log_lines, log_truncated BOOLEAN, batches, result_size,
            started_at, finished_at NULL, UNIQUE(artifact_id, action, key), UNIQUE(artifact_id, client_key))
                                                     -- migration 7 (WP-08, D130): `waiting` is reserved for WP-28's relay;
-                                                    -- a final run never changes and is never deleted (triggers)
+                                                    -- a final run never changes, is never deleted, and no
+                                                    -- insert replaces a run (triggers, D136)
 action_run_batch(run_id FK, seq, batch_json, PRIMARY KEY(run_id, seq))   -- the result, as serializer batches;
-                                                                          -- append-only (a trigger refuses UPDATE)
+                                                                          -- append-only: triggers refuse UPDATE, DELETE
+                                                                          -- and a batch for a finished run (D136)
 live_value(artifact_id, key, revision INTEGER, value_json, producer_version_id NULL, at, PRIMARY KEY(artifact_id, key))
                                                     -- a trigger refuses a revision that doesn't grow; value_json holds
                                                     -- serializer batches (D56); NULL producer: a push
@@ -160,11 +162,11 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `submission.created` | submissionId, versionId, version, viewId, viewerId, channel, epoch, staleView, digest |
 | `submission.retrying` | submissionId, deliveryId, owner, attempts, reason: once per delivery, when its host is away or its first attempt failed, so the viewer sees "Pending delivery" (IN-13) |
 | `submission.delivered` / `submission.rejected` / `submission.undeliverable` | submissionId, deliveryId, owner, attempts, reason |
-| `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106) |
+| `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106); from server code, the `viewerId` whose call raised it instead of a view, and a page sees it only when that is its own viewer (D136) |
 | `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
-| `host.<name>` | any payload, emitted by server code (AC-05) |
-| `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133) |
+| `host.<name>` | `data`, the payload server code emitted (AC-05), and the `viewerId` whose call emitted it; for hosts, never shown to pages (D136) |
+| `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133); pages get it without `cause`, which quotes the server code's output (D136) |
 | `share.started` / `share.stopped` | via, hostname |
 | `token.revoked` | tokenId |
 

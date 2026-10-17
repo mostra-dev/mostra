@@ -35,6 +35,8 @@ export interface WorkerVersion {
   readonly entry: string;
   readonly limits: WorkerLimits;
   readonly sourceDir?: string;
+  /** The IDs of the version's server functions, from its `registry.json` (the builder's scan). */
+  readonly functions: ReadonlySet<string>;
 }
 
 /** A call's link back to the caller: its batches, progress and log lines as they come. */
@@ -140,6 +142,11 @@ export interface WorkerPool {
   acquire(version: WorkerVersion): Promise<WorkerHandle>;
   /** The worker if it runs now, without starting one. */
   running(versionId: string): WorkerHandle | undefined;
+  /**
+   * Stops a version's worker now if it runs nothing (no call, no producer), rather than after its
+   * idle time: for a worker started only to say what its live sources are.
+   */
+  release(versionId: string): void;
   /** Clears the park and crash history of every version of an artifact (a publish, `verify`). */
   clear(artifactId: string): void;
   /** Every version's worker state, for `instance/status`. */
@@ -172,6 +179,11 @@ interface Running {
   readonly calls: Map<string, { info: CallInfo; listener: CallListener }>;
   readonly live: Set<string>;
   stopping: boolean;
+  /**
+   * Set until `worker/start` answers: a worker that ends before then failed to start, which
+   * `acquire` records once, with the start's message (Opus review 5).
+   */
+  starting: boolean;
   hung?: number;
   /** The watchdog stopped it for not answering at all, rather than for a blocked event loop. */
   silent?: boolean;
@@ -194,6 +206,15 @@ const OOM_STALL_FRACTION = 0.8;
 
 function crashed(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_RUNTIME_WORKER_CRASHED", { message }));
+}
+
+/** A worker that couldn't start, and how it ended. */
+class StartFailure extends RpcError {
+  readonly kind: WorkerCrash["kind"];
+  constructor(message: string, kind: WorkerCrash["kind"]) {
+    super(createDiagnostic("MOSTRA_RUNTIME_WORKER_CRASHED", { message }));
+    this.kind = kind;
+  }
 }
 
 /** Creates the pool. */
@@ -321,6 +342,8 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       if (slot.state === "ready") slot.state = "stopped";
       return;
     }
+    // A worker that ends during its start failed to start: `acquire` records that, once.
+    if (running.starting) return;
     const { kind, cause } = classify(exit, running, slot.version.limits);
     recordCrash(slot, kind, cause, [...running.calls.keys()], [...running.live]);
   };
@@ -380,6 +403,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       calls,
       live,
       stopping: false,
+      starting: true,
       handle: undefined as unknown as WorkerHandle,
     };
     void channel.ended.then((exit) => onEnded(slot, running, exit));
@@ -397,6 +421,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         { timeoutMs: START_TIMEOUT_MS },
       );
       started = WorkerStartResultSchema.parse(raw);
+      running.starting = false;
     } catch (error) {
       running.stopping = true;
       channel.kill();
@@ -405,8 +430,11 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         .filter((line) => line.trim() !== "")
         .slice(-3)
         .join(" / ");
-      throw crashed(
+      // How it ended: a worker that ran out of memory while loading is an OOM, not a crash.
+      const { kind } = classify(exit, running, version.limits);
+      throw new StartFailure(
         `The server code of ${version.ref.versionId} couldn't start: ${error instanceof RpcError ? error.diagnostic.message : String(error)}${tail ? ` (${tail})` : ""}`,
+        kind,
       );
     }
 
@@ -573,7 +601,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
           // and a version that never starts is parked like one that keeps crashing.
           recordCrash(
             slot,
-            "crash",
+            error instanceof StartFailure ? error.kind : "crash",
             error instanceof RpcError ? error.diagnostic.message : String(error),
             [],
             [],
@@ -587,6 +615,12 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     running(versionId) {
       const current = slots.get(versionId)?.current;
       return current && !current.stopping ? current.handle : undefined;
+    },
+    release(versionId) {
+      const current = slots.get(versionId)?.current;
+      if (!current || current.stopping || current.calls.size > 0 || current.live.size > 0) return;
+      options.log.info("worker.idle_stop", { versionId, reason: "released" });
+      void stopRunning(current);
     },
     clear(artifactId) {
       for (const slot of slots.values()) {

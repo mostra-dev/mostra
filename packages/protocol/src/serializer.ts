@@ -56,6 +56,13 @@ export type AnyFunction = (...args: never) => unknown;
 /** Whether a value is written as a call's arguments or as its result. */
 export type SerializeMode = "argument" | "result";
 
+/**
+ * The most digits a bigint argument may have. A page's arguments are decoded before the action
+ * runs, and parsing a bigint takes time that grows faster than its length: 16 M digits held a
+ * worker's event loop for seconds. Results aren't limited; server code writes them.
+ */
+export const ARGUMENT_BIGINT_DIGITS_MAX = 10_000;
+
 /** The diagnostic code of a value outside the type set (INTERFACES §2.4). */
 export const UNSERIALIZABLE_CODE = "MOSTRA_ACTION_UNSERIALIZABLE";
 
@@ -190,13 +197,24 @@ const TYPED_CONSTRUCTORS: Readonly<Record<TypedKind, (buffer: ArrayBuffer) => Ar
   dv: (b) => new DataView(b),
 };
 
-/** The wire tag of a typed array or `DataView`, or `undefined` for anything else. */
+/**
+ * The wire tag of a typed array or `DataView`, or `undefined` for anything else. A subclass is
+ * its built-in base (Node's `Buffer` is a `Uint8Array`), found along the prototype chain, so
+ * what Node's file and crypto APIs return crosses as the bytes it holds.
+ */
 function typedKind(value: object): TypedKind | undefined {
   if (!ArrayBuffer.isView(value)) return undefined;
-  const name = Object.getPrototypeOf(value)?.constructor?.name as string | undefined;
-  return name !== undefined && name in TYPED_ARRAYS
-    ? TYPED_ARRAYS[name as keyof typeof TYPED_ARRAYS]
-    : undefined;
+  for (
+    let proto = Object.getPrototypeOf(value) as { constructor?: { name?: string } } | null;
+    proto !== null;
+    proto = Object.getPrototypeOf(proto) as { constructor?: { name?: string } } | null
+  ) {
+    const name = Object.hasOwn(proto, "constructor") ? proto.constructor?.name : undefined;
+    if (name !== undefined && name in TYPED_ARRAYS) {
+      return TYPED_ARRAYS[name as keyof typeof TYPED_ARRAYS];
+    }
+  }
+  return undefined;
 }
 
 const isPlainObject = (value: object): boolean => Object.getPrototypeOf(value) === Object.prototype;
@@ -254,6 +272,7 @@ export class ValueWriter {
   #nextId = 1;
   #pending = 0;
   #aborted = false;
+  #cutShort = false;
   #wroteRoot = false;
   readonly #rootPath: string;
   #queue: Promise<void> = Promise.resolve();
@@ -301,9 +320,18 @@ export class ValueWriter {
     this.#settleIfIdle();
   }
 
+  /**
+   * Whether {@link ValueWriter.abort} stopped the value before all of it was written: a promise
+   * still unsettled, an iterable not yet ended.
+   */
+  get cutShort(): boolean {
+    return this.#cutShort;
+  }
+
   /** Stops every iterable still being read, and settles `done`. */
   abort(): void {
     if (this.#aborted) return;
+    this.#cutShort = this.#pending > 0;
     this.#aborted = true;
     for (const iterator of this.#iterators) void iterator.return?.()?.catch?.(() => {});
     this.#iterators.clear();
@@ -365,9 +393,29 @@ export class ValueWriter {
           return item;
         case "undefined":
           return "$undefined";
-        case "bigint":
-          return `$n${item.toString()}`;
+        case "bigint": {
+          const digits = item.toString();
+          if (
+            this.#options.mode === "argument" &&
+            digits.replace("-", "").length > ARGUMENT_BIGINT_DIGITS_MAX
+          ) {
+            throw new SerializationError(
+              `is a bigint of more than ${ARGUMENT_BIGINT_DIGITS_MAX} digits; send a larger number as a string.`,
+              at,
+            );
+          }
+          return `$n${digits}`;
+        }
         case "symbol": {
+          if (this.#options.mode === "argument") {
+            // React 19.3's reply codec refuses symbols in arguments too (VERIFIED_FACTS, WP-08):
+            // a registered symbol lives as long as the process, so a page could fill the
+            // worker's memory with them.
+            throw new SerializationError(
+              "is a symbol; an argument can't be one, only a result can (a registered symbol).",
+              at,
+            );
+          }
           const key = Symbol.keyFor(item);
           if (key === undefined) {
             throw new SerializationError(
@@ -660,6 +708,12 @@ export async function serializeAll(
 export interface ValueReaderOptions {
   /** The function a Server Function ID stands for; absent: a reference is refused. */
   readonly serverFunction?: (id: string) => AnyFunction;
+  /**
+   * `argument`: what a page sent, read where server code runs: no symbols, no async iterables,
+   * bigints of at most {@link ARGUMENT_BIGINT_DIGITS_MAX} digits, the writer's own limits. Default
+   * `result`: everything the writer writes.
+   */
+  readonly mode?: SerializeMode;
 }
 
 interface Deferred {
@@ -811,6 +865,24 @@ export class ValueReader {
     for (const frame of ordered) this.#apply(frame);
   }
 
+  /**
+   * Ends the value: every frame taken so far is applied, and the value must be complete. Throws a
+   * {@link SerializationError} when a promise or iterable it holds is still open or a frame names
+   * one the value never refers to, so a reader that has all the batches (a page's arguments)
+   * never hands on a promise that can't settle.
+   */
+  finish(): void {
+    if (!this.#hasRoot) throw malformed("the value has no root");
+    for (;;) {
+      const before = this.#early.length;
+      if (before === 0) break;
+      this.#flush();
+      if (this.#early.length === before) break;
+    }
+    if (this.#early.length > 0) throw malformed("a frame names a promise the value doesn't hold");
+    if (!this.complete) throw malformed("the value ended before its promises settled");
+  }
+
   /** Rejects every promise and iterable still open: the stream broke. */
   fail(error: unknown): void {
     if (!this.#hasRoot) this.#root.reject(error);
@@ -910,8 +982,16 @@ export class ValueReader {
     switch (tag) {
       case "n":
         if (!/^-?[0-9]+$/.test(text.slice(2))) throw malformed("a bigint");
+        if (
+          this.#options.mode === "argument" &&
+          text.replace("-", "").length - 2 > ARGUMENT_BIGINT_DIGITS_MAX
+        ) {
+          throw malformed(`a bigint argument has more than ${ARGUMENT_BIGINT_DIGITS_MAX} digits`);
+        }
         return BigInt(text.slice(2));
       case "S":
+        // Symbol.for keeps every name it is given for the life of the process.
+        if (this.#options.mode === "argument") throw malformed("an argument is a symbol");
         return Symbol.for(text.slice(2));
       case "D": {
         const date = new Date(text.slice(2));
@@ -934,6 +1014,7 @@ export class ValueReader {
         return entry.promise;
       }
       case "x": {
+        if (this.#options.mode === "argument") throw malformed("an argument is an async iterable");
         const id = this.#id(text, 2);
         let entry = this.#iterables.get(id);
         if (!entry) {
@@ -1074,9 +1155,63 @@ export async function deserializeAll(
 ): Promise<unknown> {
   const reader = new ValueReader(options);
   for (const batch of batches) reader.push(batch);
+  // Arguments arrive whole: one that can't be finished is refused before anything runs.
+  if (options.mode === "argument") reader.finish();
   if (!reader.complete) {
     // Settle whatever the batches never settled: nothing more will come.
     queueMicrotask(() => reader.fail(new SerializationError("The written value ended early.")));
   }
   return reader.root;
+}
+
+/**
+ * Checks a page's argument batches without decoding them, before they reach server code: no
+ * symbol (`$S`), no async iterable (`$x`), no bigint of more than
+ * {@link ARGUMENT_BIGINT_DIGITS_MAX} digits. The supervisor runs it so such arguments are refused
+ * before any worker sees them (Opus review 1); the worker's reader refuses them again.
+ *
+ * @throws SerializationError naming what was found.
+ */
+export function checkArgumentFrames(batches: readonly unknown[]): void {
+  const check = (text: string): void => {
+    if (text.length < 2 || text[0] !== "$" || text[1] === "$") return;
+    if (text[1] === "S") throw malformed("an argument is a symbol");
+    if (text[1] === "x") throw malformed("an argument is an async iterable");
+    if (text[1] === "n" && text.replace("-", "").length - 2 > ARGUMENT_BIGINT_DIGITS_MAX) {
+      throw malformed(`a bigint argument has more than ${ARGUMENT_BIGINT_DIGITS_MAX} digits`);
+    }
+  };
+  const scan = (value: unknown, visit: (text: string) => void): void => {
+    const stack: unknown[] = [value];
+    while (stack.length > 0) {
+      const item = stack.pop();
+      if (typeof item === "string") visit(item);
+      else if (Array.isArray(item)) for (const entry of item) stack.push(entry);
+      else if (item !== null && typeof item === "object") {
+        for (const entry of Object.values(item)) stack.push(entry);
+      }
+    }
+  };
+  // A FormData chunk's entry names are written as they are, never escaped: only its values are
+  // encoded strings, so those chunks are checked value by value.
+  const forms = new Set<number>();
+  scan(batches, (text) => {
+    const match = /^\$K([0-9]+)$/.exec(text);
+    if (match) forms.add(Number(match[1]));
+  });
+  for (const batch of batches) {
+    if (!Array.isArray(batch)) continue;
+    for (const frame of batch) {
+      const record = frame as { c?: unknown; v?: unknown } | null;
+      if (
+        record !== null &&
+        typeof record === "object" &&
+        typeof record.c === "number" &&
+        forms.has(record.c) &&
+        Array.isArray(record.v)
+      ) {
+        for (const entry of record.v) scan(Array.isArray(entry) ? entry[1] : entry, check);
+      } else scan(frame, check);
+    }
+  }
 }

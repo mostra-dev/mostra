@@ -8,6 +8,7 @@ import {
   BROWSER_PROTOCOL_REVISIONS,
   ChooseRequest,
   type Diagnostic,
+  type EphemeralMessage,
   type EventRecord,
   FieldsRequest,
   FollowRequest,
@@ -323,12 +324,20 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     });
     // Run and live updates for this view: lossy by design (a page reads what it missed), so a
     // slow reader drops the oldest rather than making the gateway hold more.
-    const held: string[] = [];
+    // Held as messages and coalesced while the reader is behind (Opus review 12): a newer live
+    // value replaces an older one of its source, and a run's deltas merge.
+    const held: EphemeralMessage[] = [];
+    const heldText = (): string =>
+      held
+        .splice(0)
+        .map(
+          (message) =>
+            `event: ${message.kind}\ndata: ${JSON.stringify(message.kind === "run" ? message.run : message.live)}\n\n`,
+        )
+        .join("");
     const unlisten =
       options.bus?.listen(page.artifactId, viewIdOf(context), (message) => {
-        held.push(
-          `event: ${message.kind}\ndata: ${JSON.stringify(message.kind === "run" ? message.run : message.live)}\n\n`,
-        );
+        options.bus?.coalesce(page.artifactId, viewIdOf(context), held, message);
         if (held.length > EPHEMERAL_HELD) held.splice(0, held.length - EPHEMERAL_HELD);
         wake?.();
       }) ?? (() => {});
@@ -380,7 +389,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
               return;
             }
             cursor = read.cursor;
-            const ephemeral = held.splice(0).join("");
+            const ephemeral = heldText();
             if (read.events.length > 0 || ephemeral !== "") {
               controller.enqueue(
                 encoder.encode(

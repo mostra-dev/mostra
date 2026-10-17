@@ -152,3 +152,9 @@ export async function progressLeak() {
   await new Promise((resolve) => setTimeout(resolve, 400));
   return "done";
 }
+
+/** Runs for `ms` without watching for a cancel, as a provider call that can't be stopped. */
+export async function stubborn(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  return "sent anyway";
+}

@@ -95,8 +95,9 @@ export function createOrJoinRun(db: LedgerDb, input: NewRun): { row: RunRow; joi
     input.clientKey,
   );
   if (retried) {
-    // A client key is one page's request: another viewer's never joins it.
-    if (retried.viewer_id !== input.viewerId) {
+    // A client key is one page's request: another viewer's never joins it, nor a request for
+    // another function (whose run its link may not be allowed to see, Opus review 9).
+    if (retried.viewer_id !== input.viewerId || retried.action !== input.fnId) {
       throw new RpcError(
         createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
           message: "This clientKey belongs to another request; send a new one.",
@@ -271,13 +272,23 @@ export function openRuns(db: LedgerDb, versionId?: string): RunRow[] {
 }
 
 /** A run as a page reads it: state, progress, the whole log and every batch so far. */
-export function runState(db: LedgerDb, row: RunRow, joined?: boolean): RunState {
+export function runState(
+  db: LedgerDb,
+  row: RunRow,
+  joined?: boolean,
+  held?: { readonly log: number; readonly batches: number },
+): RunState {
+  // What the page holds already isn't read again (Opus review 14).
+  const batchFrom = Math.min(held?.batches ?? 0, row.batches);
   const batches = db
     .all<{ batch_json: string }>(
-      "SELECT batch_json FROM action_run_batch WHERE run_id = ? ORDER BY seq",
+      "SELECT batch_json FROM action_run_batch WHERE run_id = ? AND seq >= ? ORDER BY seq",
       row.id,
+      batchFrom,
     )
     .map((entry) => JSON.parse(entry.batch_json) as Frame[]);
+  const lines = row.log_text === "" && row.log_lines === 0 ? [] : row.log_text.split("\n");
+  const logFrom = Math.min(held?.log ?? 0, lines.length);
   const error = row.error_json === null ? undefined : (JSON.parse(row.error_json) as WireError);
   return {
     runId: row.id,
@@ -288,8 +299,10 @@ export function runState(db: LedgerDb, row: RunRow, joined?: boolean): RunState 
     ...(row.progress_json !== null
       ? { progress: JSON.parse(row.progress_json) as RunProgress }
       : {}),
-    log: row.log_text === "" && row.log_lines === 0 ? [] : row.log_text.split("\n"),
+    log: logFrom === 0 ? lines : lines.slice(logFrom),
     batches,
+    ...(logFrom > 0 ? { logFrom } : {}),
+    ...(batchFrom > 0 ? { batchFrom } : {}),
     ...(error
       ? { error: { message: error.message, ...(error.code ? { code: error.code } : {}) } }
       : {}),

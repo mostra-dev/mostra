@@ -1,7 +1,9 @@
 // The cases of the serializer's conformance suite (D54): values of every type React documents for
 // Server Function arguments and results, and of the types it documents as unsupported. Shared by
-// `serializer.test.ts` (Mostra's serializer) and `react-flight.mjs` (React's own Flight reply
-// codec, run under the `react-server` condition), which describe each round trip the same way.
+// `serializer.test.ts` (Mostra's serializer), `react-flight.mjs` (React's own Flight reply codec,
+// the arguments' path) and `react-flight-results.mjs` (React's Flight server and client, the
+// results' path), both run under the `react-server` condition, which describe each round trip
+// the same way.
 // Node runs it as TypeScript directly (type stripping), so both load it without a build.
 
 /** One conformance case. */
@@ -10,6 +12,13 @@ export interface SerializerCase {
   readonly documented: "supported" | "unsupported" | "undocumented";
   readonly react?: "accepted" | "refused";
   readonly argument?: "refused";
+  /**
+   * Where React's result path (Flight server to client) answers otherwise than Mostra, why: a
+   * recorded divergence the result-side conformance check doesn't compare.
+   */
+  readonly reactResult?: string;
+  /** As `reactResult`, for the arguments' path (React's reply codec). */
+  readonly reactArgument?: string;
   readonly make: () => unknown;
 }
 
@@ -56,6 +65,10 @@ export const CASES: readonly SerializerCase[] = [
   {
     name: "registered symbol",
     documented: "supported",
+    // An argument is decoded where server code runs, and a registered symbol lives as long as the
+    // process: Mostra refuses one as an argument as React's reply codec does (Opus review 1). A
+    // result may carry one, as React's Flight server does.
+    argument: "refused",
     // React 19.3 refuses symbols in a reply unless the caller passes a temporary reference set,
     // which turns them into opaque references the server can't read.
     react: "refused",
@@ -67,12 +80,29 @@ export const CASES: readonly SerializerCase[] = [
   { name: "Map", documented: "supported", make: () => new Map<unknown, unknown>([["a", { b: 1 }], [2, [3]]]) },
   { name: "Set", documented: "supported", make: () => new Set(["a", 1, null]) },
   { name: "Uint8Array", documented: "supported", make: () => new Uint8Array([0, 1, 255]) },
+  {
+    name: "Buffer",
+    documented: "supported",
+    // A Node Buffer is a Uint8Array, and crosses as one (Opus review 10). React 19.3 sends it
+    // through its `toJSON` (`{ type: "Buffer", data }`) with a warning to pass a Uint8Array.
+    react: "accepted",
+    reactArgument: "React sends a Buffer through its toJSON; Mostra sends its bytes as a Uint8Array",
+    reactResult: "React sends a Buffer through its toJSON; Mostra sends its bytes as a Uint8Array",
+    make: () => Buffer.from([104, 105]),
+  },
   { name: "Int16Array", documented: "supported", make: () => new Int16Array([-2, 300]) },
   { name: "Float64Array", documented: "supported", make: () => new Float64Array([0.5, -1e300]) },
   { name: "BigInt64Array", documented: "supported", make: () => new BigInt64Array([-1n, 2n]) },
   { name: "ArrayBuffer", documented: "supported", make: () => new Uint8Array([9, 8, 7]).buffer },
   { name: "Date", documented: "supported", make: () => new Date(Date.UTC(2026, 9, 16, 12)) },
-  { name: "FormData", documented: "supported", make: formData },
+  {
+    name: "FormData",
+    documented: "supported",
+    // React's Flight server sends a FormData's files as Blobs, so a file's name arrives as "blob";
+    // Mostra keeps each File's name both ways, as React's reply codec does for arguments.
+    reactResult: "React's result path names every file \"blob\"; Mostra keeps the File's name",
+    make: formData,
+  },
   { name: "plain object", documented: "supported", make: () => ({ a: 1, nested: { b: [true] } }) },
   { name: "object with a $ key and value", documented: "supported", make: () => ({ $k: "$v" }) },
   { name: "shared object", documented: "supported", make: sharedObject },
@@ -85,6 +115,9 @@ export const CASES: readonly SerializerCase[] = [
     // does the same; a result carries the rejection to the page.
     react: "refused",
     argument: "refused",
+    // React's Flight client rebuilds the server's Error through its bundler's runtime, which a
+    // plain Node process lacks; the rejection still arrives, with that message instead of "no".
+    reactResult: "the rejection arrives in both; React's message here comes from its missing bundler",
     make: () => {
       const promise = Promise.reject(new Error("no"));
       promise.catch(() => {});
@@ -172,7 +205,12 @@ export async function describe(value: unknown, seen = new Map<unknown, number>()
   }
   if (value instanceof ArrayBuffer) return `arraybuffer:${[...new Uint8Array(value)].join(".")}`;
   if (ArrayBuffer.isView(value)) {
-    return `${(value.constructor as { name: string }).name}:${[...new Uint8Array(value.buffer, value.byteOffset, value.byteLength)].join(".")}`;
+    // A subclass (Node's Buffer) is described as its built-in base: the bytes and the kind.
+    let proto = Object.getPrototypeOf(value) as { constructor: { name: string } };
+    while (!(globalThis as Record<string, unknown>)[proto.constructor.name] || proto.constructor.name === "Buffer") {
+      proto = Object.getPrototypeOf(proto) as { constructor: { name: string } };
+    }
+    return `${proto.constructor.name}:${[...new Uint8Array(value.buffer, value.byteOffset, value.byteLength)].join(".")}`;
   }
   if (value instanceof FormData) {
     const entries = [];

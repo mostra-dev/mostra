@@ -102,6 +102,8 @@ interface TrackedLive {
    * decode asynchronously, and two in flight must never land out of order.
    */
   applying: Promise<void>;
+  /** The newest value in latest mode still waiting its turn; a newer one replaces it. */
+  pending?: LiveUpdate;
 }
 
 /** Options for {@link ServerClient}. */
@@ -126,6 +128,7 @@ export class ServerClient {
   #renewTimer: unknown;
   #liveFlush: Promise<void> | undefined;
   #liveRefresh = new Set<string>();
+  #notifyScheduled = false;
 
   constructor(options: ServerClientOptions) {
     this.#options = options;
@@ -142,9 +145,23 @@ export class ServerClient {
   /** A number that changes with every change, for `useSyncExternalStore`. */
   version = (): number => this.#version;
 
+  /**
+   * Notes a change. Listeners hear about it once per animation frame (FAILURE_MODEL §6), or in a
+   * microtask where a page has no frames to draw (a hidden tab, outside a browser), so a source
+   * producing hundreds of values a second renders at most once a frame.
+   */
   #changed(): void {
     this.#version += 1;
-    for (const listener of [...this.#listeners]) listener();
+    if (this.#notifyScheduled) return;
+    this.#notifyScheduled = true;
+    const notify = (): void => {
+      this.#notifyScheduled = false;
+      for (const listener of [...this.#listeners]) listener();
+    };
+    const visible =
+      typeof document === "undefined" ? false : document.visibilityState === "visible";
+    if (visible && typeof requestAnimationFrame === "function") requestAnimationFrame(notify);
+    else queueMicrotask(notify);
   }
 
   #transport(what: string): Transport & Required<Pick<Transport, "call">> {
@@ -242,10 +259,18 @@ export class ServerClient {
     readonly keyed?: readonly { readonly fnId: string; readonly key: string }[];
   }): Promise<RunView[]> {
     const transport = this.#transport("Running actions");
+    // What the page holds of each run already isn't sent again (Opus review 14).
+    const held = (input.runIds ?? []).flatMap((runId) => {
+      const tracked = this.#runs.get(runId);
+      return tracked && (tracked.view.log.length > 0 || tracked.batches.length > 0)
+        ? [{ runId, log: tracked.view.log.length, batches: tracked.batches.length }]
+        : [];
+    });
     const { runs } = await (transport.attachRuns as NonNullable<Transport["attachRuns"]>)({
       viewId: this.#viewId,
       ...(input.runIds && input.runIds.length > 0 ? { runIds: input.runIds } : {}),
       ...(input.keyed && input.keyed.length > 0 ? { keyed: input.keyed } : {}),
+      ...(held.length > 0 ? { held } : {}),
     });
     return runs.map((state) => this.#track(state));
   }
@@ -305,9 +330,9 @@ export class ServerClient {
       status: state.status,
       ...(state.reason !== undefined ? { reason: state.reason } : {}),
       ...(state.progress ? { progress: state.progress } : {}),
-      logFrom: 0,
+      logFrom: state.logFrom ?? 0,
       log: state.log,
-      batchFrom: 0,
+      batchFrom: state.batchFrom ?? 0,
       batches: state.batches,
       ...(state.error ? { error: state.error } : {}),
       ...(state.finishedAt ? { finishedAt: state.finishedAt } : {}),
@@ -511,7 +536,24 @@ export class ServerClient {
   }
 
   #applyLiveUpdate(update: LiveUpdate): Promise<void> {
-    return this.#inOrder(update.key, (tracked) => this.#applyLiveUpdateNow(tracked, update));
+    const tracked = this.#live.get(update.key);
+    if (!tracked) return Promise.resolve();
+    // In latest mode only the newest value shows: one still waiting its turn is replaced, never
+    // decoded (Opus review 12). Append mode keeps every value for its ring.
+    if (update.value !== undefined && this.#windowOf(tracked) === undefined) {
+      const waiting = tracked.pending;
+      // Never for an older one arriving late.
+      if (!waiting || Number(update.revision ?? 0) > Number(waiting.revision ?? 0)) {
+        tracked.pending = update;
+      }
+      if (waiting) return tracked.applying;
+      return this.#inOrder(update.key, async (current) => {
+        const next = current.pending;
+        delete current.pending;
+        if (next) await this.#applyLiveUpdateNow(current, next);
+      });
+    }
+    return this.#inOrder(update.key, (current) => this.#applyLiveUpdateNow(current, update));
   }
 
   async #applyLiveStateNow(tracked: TrackedLive, state: LiveState): Promise<void> {

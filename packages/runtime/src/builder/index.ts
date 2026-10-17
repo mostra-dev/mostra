@@ -231,6 +231,23 @@ function spaServerEntry(versionDir: string): string | undefined {
   return existsSync(join(versionDir, "server", "entry.mjs")) ? "server/entry.mjs" : undefined;
 }
 
+/** The IDs of the server functions a version's `registry.json` lists, empty when it has none. */
+export function readServerFunctions(versionDir: string): ReadonlySet<string> {
+  try {
+    const registry = JSON.parse(readFileSync(join(versionDir, "registry.json"), "utf8")) as {
+      readonly actions?: unknown;
+    };
+    if (!Array.isArray(registry.actions)) return new Set();
+    return new Set(
+      registry.actions
+        .map((entry) => (entry as { id?: unknown } | null)?.id)
+        .filter((id): id is string => typeof id === "string"),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 /** The live sources a version's `registry.json` lists (D56), empty when it has none. */
 export function readLiveSources(
   versionDir: string,

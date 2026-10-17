@@ -4,8 +4,10 @@
  * for people. Every string written passes through the instance's {@link Redactor}, so secrets and
  * capability tokens never reach the file or its mirror (STANDARDS security).
  */
+
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fromBase64, toBase64 } from "@mostra/protocol";
 
 /** Structured fields of one log event. Values must be JSON-serializable. */
 export type LogFields = Readonly<Record<string, unknown>>;
@@ -36,6 +38,9 @@ const MIN_SECRET_LENGTH = 8;
 /** The shortest named secret redacted (`mostra secret set`). */
 const MIN_NAMED_SECRET_LENGTH = 4;
 
+/** The shortest line of a multi-line secret that is protected on its own. */
+const MIN_SECRET_LINE_LENGTH = 8;
+
 /**
  * Removes secrets and capability material from text before it is logged or reported: values the
  * instance registered (secrets it hands to children, token secrets) and the token parameters of
@@ -59,6 +64,21 @@ export class Redactor {
     // As it appears inside JSON text (an event payload, a log line), escapes and all.
     const escaped = JSON.stringify(value).slice(1, -1);
     if (escaped !== value) this.#values.add(escaped);
+    // A multi-line secret (a PEM key, a service account's JSON) also reaches output a line at a
+    // time: a child's output is split into lines before it is kept, and `util.inspect` splits
+    // long strings (Opus review 8). Each line long enough to be specific is protected too.
+    if (/[\r\n]/.test(value)) {
+      for (const line of value.split(/\r?\n|\r/)) {
+        const trimmed = line.trim();
+        if (trimmed.length >= MIN_SECRET_LINE_LENGTH) this.#values.add(trimmed);
+      }
+    }
+  }
+
+  /** The UTF-8 bytes of every protected value, for redacting binary output. */
+  protectedBytes(): Uint8Array[] {
+    const encoder = new TextEncoder();
+    return [...this.#values].map((value) => encoder.encode(value));
   }
 
   /** Registers the values of variables whose names look like secrets (`*_TOKEN`, `*_SECRET` …). */
@@ -175,4 +195,122 @@ export function redactValue<T>(value: T, redactor: { redact(text: string): strin
     return item;
   };
   return walk(value) as T;
+}
+
+/** Overwrites, in place, every occurrence of each needle in `bytes` with `*`; true if any. */
+function maskBytes(bytes: Uint8Array, needles: readonly Uint8Array[]): boolean {
+  let masked = false;
+  for (const needle of needles) {
+    if (needle.length === 0 || needle.length > bytes.length) continue;
+    const first = needle[0] as number;
+    for (let at = bytes.indexOf(first); at !== -1 && at <= bytes.length - needle.length; ) {
+      let match = true;
+      for (let k = 1; k < needle.length; k++) {
+        if (bytes[at + k] !== needle[k]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        bytes.fill(0x2a, at, at + needle.length);
+        masked = true;
+        at = bytes.indexOf(first, at + needle.length);
+      } else at = bytes.indexOf(first, at + 1);
+    }
+  }
+  return masked;
+}
+
+/**
+ * Redacts one batch of the server-function serializer's frames (INTERFACES §2.4) as values, not as
+ * text (Opus review 7): a string keeps its `$` escape, so a secret starting with `$` stays a
+ * string; a registered symbol's name is redacted; the bytes of an `ArrayBuffer`, a typed array or
+ * a file are searched for each protected value's UTF-8 bytes, which are overwritten with `*` in
+ * place, so every typed array keeps its length. Frames this function doesn't recognize are
+ * redacted as text.
+ */
+export function redactFrames<T>(
+  batch: T,
+  redactor: { redact(text: string): string; protectedBytes?(): Uint8Array[] },
+): T {
+  if (!Array.isArray(batch)) return redactValue(batch, redactor);
+  // Which chunks hold bytes: the references to them are in this batch (the writer puts a value's
+  // chunks in the batch that refers to them).
+  const kinds = new Map<number, "A" | "T" | "B">();
+  const scan = (item: unknown): void => {
+    if (typeof item === "string") {
+      const match = /^\$([ATB])([0-9]+)$/.exec(item);
+      if (match) kinds.set(Number(match[2]), match[1] as "A" | "T" | "B");
+    } else if (Array.isArray(item)) item.forEach(scan);
+    else if (item !== null && typeof item === "object") Object.values(item).forEach(scan);
+  };
+  scan(batch);
+  const needles = redactor.protectedBytes?.() ?? [];
+  const maskBase64 = (text: unknown): unknown => {
+    if (typeof text !== "string" || needles.length === 0) return text;
+    let bytes: Uint8Array;
+    try {
+      bytes = fromBase64(text);
+    } catch {
+      return redactor.redact(text);
+    }
+    return maskBytes(bytes, needles) ? toBase64(bytes) : text;
+  };
+  const string = (text: string): string => {
+    if (text.startsWith("$$")) {
+      const plain = redactor.redact(text.slice(1));
+      return plain.startsWith("$") ? `$${plain}` : plain;
+    }
+    if (text.startsWith("$S")) return `$S${redactor.redact(text.slice(2))}`;
+    if (text.startsWith("$")) return text;
+    const plain = redactor.redact(text);
+    // A redaction can't make a plain string read as a reference.
+    return plain.startsWith("$") ? `$${plain}` : plain;
+  };
+  const value = (item: unknown): unknown => {
+    if (typeof item === "string") return string(item);
+    if (Array.isArray(item)) return item.map(value);
+    if (item !== null && typeof item === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(item)) {
+        Object.defineProperty(out, redactor.redact(key), {
+          value: value(entry),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return out;
+    }
+    return item;
+  };
+  return batch.map((frame: unknown) => {
+    if (frame === null || typeof frame !== "object") return frame;
+    const record = frame as Record<string, unknown>;
+    if (typeof record["c"] === "number") {
+      const kind = kinds.get(record["c"]);
+      const v = record["v"];
+      if (kind === "A") return { ...record, v: maskBase64(v) };
+      if (kind === "T" && Array.isArray(v)) return { ...record, v: [v[0], maskBase64(v[1])] };
+      if (kind === "B" && v !== null && typeof v === "object" && !Array.isArray(v)) {
+        const file = v as Record<string, unknown>;
+        return {
+          ...record,
+          v: {
+            ...file,
+            data: maskBase64(file["data"]),
+            ...(typeof file["name"] === "string" ? { name: redactor.redact(file["name"]) } : {}),
+          },
+        };
+      }
+      return { ...record, v: value(v) };
+    }
+    // A promise or iterable frame: its value is encoded like a chunk's; an error is plain text.
+    return Object.fromEntries(
+      Object.entries(record).map(([key, entry]) => [
+        key,
+        key === "v" ? value(entry) : redactValue(entry, redactor),
+      ]),
+    );
+  }) as T;
 }

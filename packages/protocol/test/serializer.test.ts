@@ -10,6 +10,8 @@ import fc from "fast-check";
 import { expect, describe as group, it } from "vitest";
 import {
   type AnyFunction,
+  ARGUMENT_BIGINT_DIGITS_MAX,
+  checkArgumentFrames,
   deserializeAll,
   type Frame,
   fromBase64,
@@ -23,16 +25,19 @@ import { CASES, describe } from "./fixtures/serializer-cases.ts";
 
 type ReactVerdict = { accepted: true; value: string } | { accepted: false; message: string };
 
-const reactVerdicts: Record<string, ReactVerdict> = JSON.parse(
-  execFileSync(
-    process.execPath,
-    [
-      "--conditions=react-server",
-      fileURLToPath(new URL("./fixtures/react-flight.mjs", import.meta.url)),
-    ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-  ),
-) as Record<string, ReactVerdict>;
+/** React's own verdicts, through one of its Flight paths, per case. */
+const reactRun = (fixture: URL): Record<string, ReactVerdict> =>
+  JSON.parse(
+    execFileSync(process.execPath, ["--conditions=react-server", fileURLToPath(fixture)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }),
+  ) as Record<string, ReactVerdict>;
+
+/** Arguments: React's reply codec (`encodeReply`, `decodeReply`). */
+const reactVerdicts = reactRun(new URL("./fixtures/react-flight.mjs", import.meta.url));
+/** Results: React's Flight server and client (`renderToReadableStream`, `createFromReadableStream`). */
+const reactResults = reactRun(new URL("./fixtures/react-flight-results.mjs", import.meta.url));
 
 async function roundTrip(value: unknown, mode: "argument" | "result"): Promise<unknown> {
   const batches = await serializeAll(value, { mode });
@@ -60,12 +65,21 @@ group("the documented type set, against React's Flight reply codec", () => {
           const [back] = (await roundTrip([testCase.make()], "argument")) as unknown[];
           const ours = await describe(back);
           expect(ours).toBe(expected);
-          // Where React takes it, both come back the same.
-          if (react?.accepted) expect(ours).toBe(react.value);
+          // Where React takes it, both come back the same, unless a divergence is recorded.
+          if (react?.accepted && testCase.reactArgument === undefined)
+            expect(ours).toBe(react.value);
         }
         // A result carries the same type set (wrapped, so a promise isn't flattened by `await`).
         const [result] = (await roundTrip([testCase.make()], "result")) as unknown[];
         expect(await describe(result)).toBe(expected);
+        // And comes back as React's own result path brings it (Opus review 10).
+        const reactResult = reactResults[testCase.name];
+        if (testCase.reactResult === undefined) {
+          expect(reactResult, "React's result verdict").toMatchObject({
+            accepted: true,
+            value: expected,
+          });
+        }
       } else {
         await expect(serializeAll([testCase.make()], { mode: "argument" })).rejects.toThrow(
           SerializationError,
@@ -316,5 +330,98 @@ group("properties", () => {
         expect(toBase64(bytes)).toBe(Buffer.from(bytes).toString("base64"));
       }),
     );
+  });
+});
+
+group("arguments a page sends (Opus review 1 and 13)", () => {
+  const argumentBatch = (root: unknown, ...frames: Frame[]): unknown[] => [
+    [{ c: 0, v: root }, ...frames],
+  ];
+
+  it("refuses a symbol, an async iterable and a huge bigint, written or read", async () => {
+    await expect(serializeAll([Symbol.for("x")], { mode: "argument" })).rejects.toThrow(
+      /an argument can't be one/,
+    );
+    await expect(
+      serializeAll([10n ** BigInt(ARGUMENT_BIGINT_DIGITS_MAX)], { mode: "argument" }),
+    ).rejects.toThrow(/more than 10000 digits/);
+    await expect(
+      serializeAll([10n ** BigInt(ARGUMENT_BIGINT_DIGITS_MAX - 1)], { mode: "argument" }),
+    ).resolves.toBeDefined();
+    for (const root of [
+      ["$Sname"],
+      ["$x1"],
+      [`$n${"9".repeat(ARGUMENT_BIGINT_DIGITS_MAX + 1)}`],
+      [`$n-${"9".repeat(ARGUMENT_BIGINT_DIGITS_MAX + 1)}`],
+    ]) {
+      await expect(deserializeAll(argumentBatch(root), { mode: "argument" })).rejects.toThrow(
+        SerializationError,
+      );
+      expect(() => checkArgumentFrames(argumentBatch(root))).toThrow(SerializationError);
+      // A result may carry them.
+      if (root[0] !== "$x1" && !String(root[0]).startsWith("$n")) {
+        await expect(deserializeAll(argumentBatch(root))).resolves.toBeDefined();
+      }
+    }
+  });
+
+  it("checks without false alarms: escaped strings, keys, FormData names", async () => {
+    const form = new FormData();
+    form.append("$Sname", "$x and $S");
+    const batches = await serializeAll([{ $S: "$Sx", note: "$x1" }, form], { mode: "argument" });
+    expect(() => checkArgumentFrames(batches)).not.toThrow();
+    const [object, back] = (await deserializeAll(batches, { mode: "argument" })) as [
+      unknown,
+      FormData,
+    ];
+    expect(object).toEqual({ $S: "$Sx", note: "$x1" });
+    expect(back.get("$Sname")).toBe("$x and $S");
+  });
+
+  it("refuses arguments whose promises the batches never settle", async () => {
+    // A promise with no settlement: the action would wait for ever.
+    await expect(deserializeAll(argumentBatch(["$@5"]), { mode: "argument" })).rejects.toThrow(
+      /ended before its promises settled/,
+    );
+    // A settlement for a promise the value doesn't hold.
+    await expect(
+      deserializeAll(argumentBatch([1], { p: 9, v: 1 } as Frame), { mode: "argument" }),
+    ).rejects.toThrow(/doesn't hold/);
+    // A promise settled in a later batch is complete, nested ones too.
+    const batches = await serializeAll([Promise.resolve({ inner: Promise.resolve(2) })], {
+      mode: "argument",
+    });
+    const [outer] = (await deserializeAll(batches, { mode: "argument" })) as [
+      Promise<{ inner: Promise<number> }>,
+    ];
+    expect(await (await outer).inner).toBe(2);
+  });
+});
+
+group("a writer stopped part-way (Opus review 3)", () => {
+  it("says whether the stop cut the value short", async () => {
+    const whole = new ValueWriter({ mode: "result", onBatch: () => {} });
+    await whole.write({ sent: true });
+    await whole.done;
+    whole.abort();
+    expect(whole.cutShort).toBe(false);
+
+    async function* slow() {
+      yield 1;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      yield 2;
+    }
+    const streaming = new ValueWriter({ mode: "result", onBatch: () => {} });
+    await streaming.write(slow());
+    streaming.abort();
+    expect(streaming.cutShort).toBe(true);
+  });
+});
+
+group("typed-array subclasses (Opus review 10)", () => {
+  it("sends a Node Buffer as the Uint8Array it is", async () => {
+    const [back] = (await roundTrip([Buffer.from("hi")], "result")) as [Uint8Array];
+    expect(back).toBeInstanceOf(Uint8Array);
+    expect(new TextDecoder().decode(back)).toBe("hi");
   });
 });

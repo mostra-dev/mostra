@@ -140,6 +140,13 @@ export interface RunState {
   readonly finishedAt?: string;
   /** Whether this request joined a run that already existed (a key or a retried `clientKey`). */
   readonly joined?: boolean;
+  /**
+   * The index of the first line in `log`, when the request said which lines the page holds
+   * (`RunAttachRequest.held`); absent: 0, the whole log.
+   */
+  readonly logFrom?: number;
+  /** The index of the first batch in `batches`, as `logFrom`; absent: 0. */
+  readonly batchFrom?: number;
 }
 
 /** The Zod schema of the `RunState` type. */
@@ -157,6 +164,8 @@ export const RunState: z.ZodType<RunState> = z
     startedAt: z.string(),
     finishedAt: z.string().exactOptional(),
     joined: z.boolean().exactOptional(),
+    logFrom: z.number().int().nonnegative().exactOptional(),
+    batchFrom: z.number().int().nonnegative().exactOptional(),
   })
   .register(wireRegistry, {
     id: "RunState",
@@ -300,6 +309,16 @@ export interface RunAttachRequest {
   readonly runIds?: readonly string[];
   /** Runs by function and key. */
   readonly keyed?: readonly { readonly fnId: string; readonly key: string }[];
+  /**
+   * What the page already holds of runs it names by ID: so many log lines and batches. Each such
+   * run's answer starts there (`RunState.logFrom`, `batchFrom`), so a page renewing its interest
+   * doesn't read the whole run again (Opus review 14).
+   */
+  readonly held?: readonly {
+    readonly runId: string;
+    readonly log: number;
+    readonly batches: number;
+  }[];
 }
 
 /** The Zod schema of the `RunAttachRequest` type. */
@@ -310,6 +329,17 @@ export const RunAttachRequest: z.ZodType<RunAttachRequest> = z
     keyed: z
       .array(
         z.object({ fnId: z.string().min(3).max(1024), key: z.string().min(1).max(RUN_KEY_MAX) }),
+      )
+      .max(100)
+      .readonly()
+      .exactOptional(),
+    held: z
+      .array(
+        z.object({
+          runId: z.string().max(64),
+          log: z.number().int().nonnegative(),
+          batches: z.number().int().nonnegative(),
+        }),
       )
       .max(100)
       .readonly()

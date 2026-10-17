@@ -21,6 +21,7 @@ import { Worker } from "node:worker_threads";
 import {
   type Batches,
   createDiagnostic,
+  deserializeAll,
   encodeLine,
   type Frame,
   type LiveSourceInfo,
@@ -28,7 +29,6 @@ import {
   RpcPeer,
   SerializationError,
   serializeAll,
-  ValueReader,
   ValueWriter,
   WORKER_CHANNEL_REVISION,
   WORKER_METHODS,
@@ -369,9 +369,12 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     try {
       let args: unknown;
       try {
-        const reader = new ValueReader({ serverFunction: (id) => serverFunction(id) });
-        for (const batch of params.args) reader.push(batch);
-        args = await reader.root;
+        // A page's arguments arrive whole and are read in argument mode: no symbols or
+        // iterables, bounded bigints, and every promise in them settled (Opus review 1, 13).
+        args = await deserializeAll(params.args, {
+          mode: "argument",
+          serverFunction: (id) => serverFunction(id),
+        });
       } catch (error) {
         return { status: "failed", error: errorOf(error, "MOSTRA_ACTION_UNSERIALIZABLE") };
       }
@@ -407,10 +410,14 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
       });
       entry.writer = writer;
       const stop = (): void => writer.abort();
-      entry.controller.signal.addEventListener("abort", stop, { once: true });
       try {
         await runWithContext(context, async () => {
           await writer.write(result);
+          // The action returned, so it ran to its end (FAILURE_MODEL §6, AC-04): a cancel from
+          // here on stops only the parts of the result still streaming, and the run is
+          // `cancelled` only if it cut one short.
+          if (entry.controller.signal.aborted) writer.abort();
+          else entry.controller.signal.addEventListener("abort", stop, { once: true });
           await writer.done;
         });
       } catch (error) {
@@ -424,8 +431,7 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
         };
       }
       await settlePending(entry);
-      if (entry.controller.signal.aborted) return { status: "cancelled" };
-      return { status: "succeeded" };
+      return { status: writer.cutShort ? "cancelled" : "succeeded" };
     } finally {
       calls.delete(params.callId);
     }

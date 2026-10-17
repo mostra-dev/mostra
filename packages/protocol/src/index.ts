@@ -436,6 +436,8 @@ export {
 } from "./rpc/peer.ts";
 export {
   type AnyFunction,
+  ARGUMENT_BIGINT_DIGITS_MAX,
+  checkArgumentFrames,
   deserializeAll,
   type Frame,
   fromBase64,

@@ -35,6 +35,7 @@ import {
   type RenderMode,
   readFieldCoverage,
   readLiveSources,
+  readServerFunctions,
 } from "../builder/index.ts";
 import {
   createDependencies,
@@ -403,6 +404,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ref: { versionId, outputDigest: version.outputDigest, locator: `home:versions/${versionId}` },
       entry,
       limits: workerLimits(version.manifest),
+      functions: readServerFunctions(dir),
       ...(sourceDir ? { sourceDir } : {}),
     };
     workerVersions.set(versionId, resolved);
@@ -444,17 +446,30 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log,
     version: workerVersion,
   });
-  // Versions are immutable, so each one's live sources are read from its registry once.
+  // Versions are immutable, so each one's live sources are read from its registry once. Which
+  // version is each artifact's latest is read from the ledger once, then kept up to date from
+  // `version.published`, so a reconcile costs nothing per artifact without live sources, however
+  // many the home holds (D132; Opus review 2).
   const liveSourcesOf = new Map<string, ReturnType<typeof readLiveSources>>();
-  const latestLive = (artifactId: string): LatestLive | undefined => {
-    const versionId = registry.latestVersions().get(artifactId);
-    if (!versionId) return undefined;
+  const sourcesOf = (versionId: string): ReturnType<typeof readLiveSources> => {
     let sources = liveSourcesOf.get(versionId);
     if (!sources) {
       sources = readLiveSources(registry.store.versionDir(versionId));
       liveSourcesOf.set(versionId, sources);
     }
-    return sources.length > 0 ? { versionId, sources } : undefined;
+    return sources;
+  };
+  /** The latest version of each artifact whose latest version defines live sources. */
+  const latestWithLive = new Map<string, string>();
+  const noteLatest = (artifactId: string, versionId: string): void => {
+    if (sourcesOf(versionId).length > 0) latestWithLive.set(artifactId, versionId);
+    else latestWithLive.delete(artifactId);
+  };
+  for (const [artifactId, versionId] of registry.latestVersions())
+    noteLatest(artifactId, versionId);
+  const latestLive = (artifactId: string): LatestLive | undefined => {
+    const versionId = latestWithLive.get(artifactId);
+    return versionId ? { versionId, sources: sourcesOf(versionId) } : undefined;
   };
   const live = createLive({
     ledger: home.ledger,
@@ -464,15 +479,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     interaction,
     latest: latestLive,
     redactor: home.redactor,
-    artifactsWithLive: () =>
-      [...registry.latestVersions().keys()].filter(
-        (artifactId) => latestLive(artifactId) !== undefined,
-      ),
+    artifactsWithLive: () => [...latestWithLive.keys()],
     version: workerVersion,
     ...(testLease > 0 ? { reconcileMs: Math.max(100, testLease / 4) } : {}),
   });
   // A new latest version moves its artifact's producers to it (ARCHITECTURE §7).
-  const stopWatchingPublishes = interaction.onPublished(() => live.reconcile());
+  const stopWatchingPublishes = interaction.onPublished((artifactId, versionId) => {
+    noteLatest(artifactId, versionId);
+    live.reconcile();
+  });
   // Runs a stopped instance left open end now (D24: never retried).
   actions.recover();
 

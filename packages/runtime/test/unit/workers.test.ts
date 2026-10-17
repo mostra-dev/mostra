@@ -13,8 +13,11 @@ import {
 } from "../../src/workers/index.ts";
 import type { WorkerChannel, WorkerExit } from "../../src/workers/launcher.ts";
 
-/** A launcher whose workers answer at once and take `stopMs` to exit when asked to stop. */
-function fakeLauncher(stopMs: number) {
+/**
+ * A launcher whose workers answer at once and take `stopMs` to exit when asked to stop; with
+ * `dieOnStart`, each worker exits a moment after `worker/start` arrives, without answering it.
+ */
+function fakeLauncher(stopMs: number, options: { dieOnStart?: boolean } = {}) {
   const launched: { exited: boolean }[] = [];
   const launcher: WorkerLauncher = {
     async launch() {
@@ -36,7 +39,12 @@ function fakeLauncher(stopMs: number) {
         send(message: JsonRpcMessage) {
           if (record.exited) return;
           const request = message as { id?: unknown; method?: string };
-          if (request.method === "worker/start") {
+          if (request.method === "worker/start" && options.dieOnStart) {
+            setTimeout(
+              () => end({ code: 1, signal: null, stderrTail: ["Error: the bundle threw at load"] }),
+              5,
+            );
+          } else if (request.method === "worker/start") {
             answer(request.id, { revision: "2026-10-16", functions: ["a.ts#f"], live: [] });
           } else if (request.method === "worker/ping") {
             answer(request.id, { blockedMs: 0, waitingForSecret: false, heapUsed: 0 });
@@ -68,6 +76,13 @@ const version: WorkerVersion = {
   },
   entry: "server/entry.mjs",
   limits: { heapMb: 1024, watchdogMs: 10_000, idleMinutes: 10 },
+  functions: new Set(["a.ts#f"]),
+};
+
+const quietBridge = {
+  request: async () => ({}),
+  log() {},
+  liveValue() {},
 };
 
 describe("the worker pool (RT-03)", () => {
@@ -100,5 +115,46 @@ describe("the worker pool (RT-03)", () => {
     expect(pool.running(version.ref.versionId)).toBe(handles[0]);
     await pool.stopAll();
     expect(launched.every((worker) => worker.exited)).toBe(true);
+  });
+
+  it("counts a worker that dies during its start as one crash (Opus review 5)", async () => {
+    const { launcher, launched } = fakeLauncher(0, { dieOnStart: true });
+    const crashes: { backoffMs: number; parked: boolean; cause: string }[] = [];
+    const pool = createWorkerPool({
+      launcher,
+      log: silentLog,
+      env: {},
+      bridge: quietBridge,
+      onCrash: (crash) => crashes.push(crash),
+      backoffMinMs: 1,
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(pool.acquire(version)).rejects.toThrow(/couldn't start/);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(launched).toHaveLength(3);
+    // One crash per failed start: backoff 1, 2, 4 ms, and no park after three.
+    expect(crashes.map((crash) => crash.backoffMs)).toEqual([1, 2, 4]);
+    expect(crashes.every((crash) => !crash.parked)).toBe(true);
+    expect(crashes[0]?.cause).toMatch(/the bundle threw at load/);
+    expect(pool.status()[0]).toMatchObject({ crashes: 3, state: "backoff" });
+    await pool.stopAll();
+  });
+
+  it("stops a worker at once when released with nothing to run", async () => {
+    const { launcher, launched } = fakeLauncher(0);
+    const pool = createWorkerPool({
+      launcher,
+      log: silentLog,
+      env: {},
+      bridge: quietBridge,
+      onCrash() {},
+    });
+    await pool.acquire(version);
+    pool.release(version.ref.versionId);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(launched[0]?.exited).toBe(true);
+    expect(pool.running(version.ref.versionId)).toBeUndefined();
+    await pool.stopAll();
   });
 });

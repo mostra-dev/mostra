@@ -40,6 +40,7 @@ class FakeServer {
   liveRequests: { key: string; window?: number; refresh?: boolean }[][] = [];
   /** Holds every live read's answer until it settles. */
   liveGate: Promise<void> | undefined;
+  attachRequests: Parameters<NonNullable<Transport["attachRuns"]>>[0][] = [];
   #next = 1;
 
   transport(): Transport {
@@ -90,18 +91,35 @@ class FakeServer {
         }
         return state;
       },
-      attachRuns: async (request) => ({
-        runs: [
-          ...(request.runIds ?? []).flatMap((id) =>
-            this.runs.has(id) ? [this.runs.get(id) as RunState] : [],
-          ),
-          ...(request.keyed ?? []).flatMap((entry) =>
-            [...this.runs.values()].filter(
-              (run) => run.fnId === entry.fnId && run.key === entry.key,
+      attachRuns: async (request) => {
+        this.attachRequests.push(request);
+        const held = new Map((request.held ?? []).map((entry) => [entry.runId, entry]));
+        return {
+          runs: [
+            ...(request.runIds ?? []).flatMap((id) => {
+              const run = this.runs.get(id);
+              if (!run) return [];
+              const from = held.get(id);
+              if (!from) return [run];
+              // As the interaction core answers: only what the page doesn't hold.
+              return [
+                {
+                  ...run,
+                  log: run.log.slice(from.log),
+                  batches: run.batches.slice(from.batches),
+                  ...(from.log > 0 ? { logFrom: from.log } : {}),
+                  ...(from.batches > 0 ? { batchFrom: from.batches } : {}),
+                },
+              ];
+            }),
+            ...(request.keyed ?? []).flatMap((entry) =>
+              [...this.runs.values()].filter(
+                (run) => run.fnId === entry.fnId && run.key === entry.key,
+              ),
             ),
-          ),
-        ],
-      }),
+          ],
+        };
+      },
       cancelRun: async (runId) => {
         const run = this.runs.get(runId) as RunState;
         const ended: RunState = { ...run, status: "cancelled", reason: "cancelled" };
@@ -259,6 +277,18 @@ describe("action runs (AC-02, AC-03, AC-04)", () => {
     });
     await expect(page.settled(runId)).resolves.toBe(7);
     expect(page.run(runId)?.log).toEqual(["one", "two"]);
+  });
+
+  it("renews by sending what it holds, and takes only what is newer (Opus review 14)", async () => {
+    const server = new FakeServer();
+    const page = client(server);
+    const { runId } = await page.startRun("actions.ts#send", []);
+    page.receive({ kind: "run", run: await server.advance(runId, { log: ["one", "two"] }) });
+    await server.advance(runId, { log: ["three"] }); // dropped on the stream
+    page.resync();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.attachRequests.at(-1)?.held).toEqual([{ runId, log: 2, batches: 0 }]);
+    expect(page.run(runId)?.log).toEqual(["one", "two", "three"]);
   });
 
   it("never takes a final state back for a late update", async () => {
@@ -435,6 +465,32 @@ describe("live sources (D56)", () => {
     release();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(page.liveView("cpu")).toMatchObject({ data: 5, revision: "5", ring: [3, 4, 5] });
+  });
+
+  it("decodes and shows only the newest of a burst of values in latest mode (Opus review 12)", async () => {
+    const server = new FakeServer();
+    server.live.set("ticks", await state("ticks", 1, 1));
+    const page = client(server);
+    page.watchLive("ticks");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    let notified = 0;
+    page.subscribe(() => {
+      notified += 1;
+    });
+    const burst = await Promise.all(
+      Array.from({ length: 200 }, async (_, index) => ({
+        key: "ticks",
+        revision: String(index + 2),
+        value: await serializeAll(index + 2, { mode: "argument" }),
+      })),
+    );
+    // Arriving in one tick, as a stream's backlog does, and one late, older value among them.
+    for (const live of burst) page.receive({ kind: "live", live });
+    page.receive({ kind: "live", live: burst[10] as (typeof burst)[number] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(page.liveView("ticks")).toMatchObject({ data: 201, revision: "201" });
+    // Two values decoded (the first, then the newest), so a handful of notifications at most.
+    expect(notified).toBeLessThanOrEqual(3);
   });
 
   it("asks the producer to load again on refresh", async () => {

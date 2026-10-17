@@ -259,6 +259,11 @@ export interface Interaction {
       readonly viewId: string;
       readonly runIds?: readonly string[];
       readonly keyed?: readonly { readonly fnId: string; readonly key: string }[];
+      readonly held?: readonly {
+        readonly runId: string;
+        readonly log: number;
+        readonly batches: number;
+      }[];
     },
   ): RunState[];
   /** One run of the page's artifact, for a cancel; `MOSTRA_ACTION_RUN_NOT_FOUND` otherwise. */
@@ -276,12 +281,22 @@ export interface Interaction {
   /** `signal()` from server code: `signal.raised`, source `action`, the run as cause (AC-05). */
   serverSignal(
     artifactId: string,
-    input: { readonly name: string; readonly payload?: unknown; readonly runId?: string },
+    input: {
+      readonly name: string;
+      readonly payload?: unknown;
+      readonly runId?: string;
+      readonly viewerId?: string;
+    },
   ): string;
   /** `emit()` from server code: a `host.<name>` event (AC-05). */
   serverEmit(
     artifactId: string,
-    input: { readonly type: string; readonly payload?: unknown; readonly runId?: string },
+    input: {
+      readonly type: string;
+      readonly payload?: unknown;
+      readonly runId?: string;
+      readonly viewerId?: string;
+    },
   ): string;
   /** The artifact state, for `state.get` in server code. */
   serverState(
@@ -310,7 +325,7 @@ export interface Interaction {
     readonly parked: boolean;
   }): string;
   /** Hears every `version.published` once it commits, by artifact; returns the stop. */
-  onPublished(listener: (artifactId: string) => void): () => void;
+  onPublished(listener: (artifactId: string, versionId: string) => void): () => void;
   /** How many host subscriptions are open. */
   subscriptionCount(): number;
 }
@@ -330,9 +345,27 @@ function versionNumber(db: LedgerDb, versionId: string): number {
   return row.number;
 }
 
-/** Whether a page may see an event (D104): never another viewer's draft, signal or view. */
-function visibleTo(event: EventRecord, viewerId: string): boolean {
+/**
+ * Whether a page may see an event (D104, D130): never another viewer's draft, signal or view;
+ * server code's signals only by the viewer whose call raised them; `host.*` events never (they
+ * are for hosts, AC-05); an action's run events only through a link that may see its run.
+ * `run` looks a run up by its ID.
+ */
+function visibleTo(
+  event: EventRecord,
+  page: PageIdentity,
+  run: (runId: string) => RunRow | undefined,
+): boolean {
+  const viewerId = page.viewerId;
   if (event.type.startsWith("draft.")) return event.payload["viewerId"] === viewerId;
+  if (event.type.startsWith("host.")) return false;
+  if (event.type.startsWith("action.")) {
+    const row = run(String(event.payload["runId"] ?? ""));
+    return row !== undefined && runVisible(row, page);
+  }
+  if (event.type === "signal.raised" && event.payload["source"] === "action") {
+    return event.payload["viewerId"] === viewerId;
+  }
   if (event.type === "signal.raised" || event.type.startsWith("view.")) {
     return event.actor.kind !== "viewer" || event.actor.id === viewerId;
   }
@@ -350,6 +383,17 @@ function actorForPage(actor: Actor, viewerId: string): Actor {
 
 /** An event as a page sees it: other viewers' identities left out. */
 function eventForPage(event: EventRecord, viewerId: string): EventRecord {
+  // A worker's crash shows a page only what the shell's notice needs: never the server code's
+  // own output, which its cause quotes (Opus review 4).
+  if (event.type === "worker.crashed") {
+    const { cause: _cause, ...payload } = event.payload as Record<string, unknown>;
+    return { ...event, payload };
+  }
+  if (event.type.startsWith("action.") || event.type === "signal.raised") {
+    // A run's or a signal's own viewer: a page sees only its own runs' viewer, so leave it out.
+    const { viewerId: _viewer, ...payload } = event.payload as Record<string, unknown>;
+    if (event.actor.kind !== "viewer") return { ...event, payload };
+  }
   const own = event.actor.kind !== "viewer" || event.actor.id === viewerId;
   if (own) return event;
   const { viewerId: _viewer, viewId: _view, ...payload } = event.payload as Record<string, unknown>;
@@ -667,6 +711,11 @@ export function createInteraction(options: InteractionOptions): Interaction {
       return ledger.read((db) => {
         const events: EventRecord[] = [];
         let cursor = after;
+        const runs = new Map<string, RunRow | undefined>();
+        const runOf = (runId: string): RunRow | undefined => {
+          if (!runs.has(runId)) runs.set(runId, runById(db, page.artifactId, runId));
+          return runs.get(runId);
+        };
         for (;;) {
           const read = readEvents(db, {
             filter: { artifacts: [page.artifactId] },
@@ -676,7 +725,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           for (const event of read.events) {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
-            if (visibleTo(event, page.viewerId)) events.push(eventForPage(event, page.viewerId));
+            if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));
           if (read.events.length < limit || events.length === limit) {
@@ -788,6 +837,9 @@ export function createInteraction(options: InteractionOptions): Interaction {
           clientKey: input.clientKey,
           actor,
         });
+        // A joined run is shown only to a link that may see it (D130): the scope was checked for
+        // the function asked, and the run joined is of that function, but say so here too.
+        if (joined && !runVisible(row, page)) throw runNotFound(row.id);
         return { row, state: runState(db, row, joined), started: !joined };
       });
     },
@@ -803,7 +855,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
           const row = runByKey(db, page.artifactId, entry.fnId, entry.key);
           if (row && runVisible(row, page)) rows.set(row.id, row);
         }
-        return [...rows.values()].map((row) => runState(db, row));
+        const held = new Map((input.held ?? []).map((entry) => [entry.runId, entry]));
+        return [...rows.values()].map((row) => runState(db, row, undefined, held.get(row.id)));
       });
     },
     runFor(page, viewId, runId) {
@@ -844,6 +897,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
           source: "action",
           actor: { kind: "agent" },
           // No view: a page never learns another viewer's view from an action's signal (D104).
+          // The viewer whose call raised it decides which page may see it.
+          ...(input.viewerId !== undefined ? { viewerId: input.viewerId } : {}),
           ...(input.runId !== undefined ? { causation: { runId: input.runId } } : {}),
         }),
       );
@@ -855,7 +910,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
           type: input.type,
           actor: { kind: "agent" },
           ...(input.runId !== undefined ? { causation: { runId: input.runId } } : {}),
-          payload: input.payload === undefined ? {} : { data: input.payload },
+          payload: {
+            ...(input.payload === undefined ? {} : { data: input.payload }),
+            ...(input.viewerId !== undefined ? { viewerId: input.viewerId } : {}),
+          },
         }),
       );
     },
@@ -907,13 +965,16 @@ export function createInteraction(options: InteractionOptions): Interaction {
       let cursor = ledger.read((db) => latestCursor(db));
       return ledger.onCommit(() => {
         const published = ledger.read((db) =>
-          db.all<{ cursor: number; artifact_id: string }>(
-            "SELECT cursor, artifact_id FROM event WHERE cursor > ? AND type = 'version.published' ORDER BY cursor",
+          db.all<{ cursor: number; artifact_id: string; payload_json: string }>(
+            "SELECT cursor, artifact_id, payload_json FROM event WHERE cursor > ? AND type = 'version.published' ORDER BY cursor",
             cursor,
           ),
         );
         cursor = ledger.read((db) => latestCursor(db));
-        for (const row of published) listener(row.artifact_id);
+        for (const row of published) {
+          const { versionId } = JSON.parse(row.payload_json) as { versionId: string };
+          listener(row.artifact_id, versionId);
+        }
       });
     },
     subscriptionCount: () => subscriptions.size,

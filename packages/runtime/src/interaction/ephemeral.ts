@@ -25,6 +25,68 @@ interface ViewInterest {
   wake?: () => void;
 }
 
+type RunMessage = Extract<EphemeralMessage, { kind: "run" }>;
+
+/**
+ * Adds `message` to a view's queue of messages not yet sent, coalesced (D130, FAILURE_MODEL §6;
+ * Opus review 12), so a fast source can't make a slow reader fall behind:
+ * - a live value in latest mode replaces the values of its source still queued: the page shows
+ *   only the newest (append mode keeps every value, for the ring);
+ * - a run's delta that continues the one queued for the run merges into it, losing nothing.
+ */
+function coalesceInto(
+  view: ViewInterest,
+  queue: EphemeralMessage[],
+  message: EphemeralMessage,
+): void {
+  if (message.kind === "live") {
+    const latestMode = view.live.get(message.live.key)?.window === undefined;
+    if (latestMode && message.live.value !== undefined) {
+      for (let index = queue.length - 1; index >= 0; index--) {
+        const queued = queue[index] as EphemeralMessage;
+        if (
+          queued.kind === "live" &&
+          queued.live.key === message.live.key &&
+          queued.live.value !== undefined
+        ) {
+          queue.splice(index, 1);
+        }
+      }
+    }
+    queue.push(message);
+    return;
+  }
+  const delta = message.run;
+  for (let index = queue.length - 1; index >= 0; index--) {
+    const queued = queue[index] as EphemeralMessage;
+    if (queued.kind !== "run" || queued.run.runId !== delta.runId) continue;
+    const prior = queued.run;
+    if (
+      delta.logFrom === prior.logFrom + prior.log.length &&
+      delta.batchFrom === prior.batchFrom + prior.batches.length
+    ) {
+      const merged: RunMessage = {
+        kind: "run",
+        run: {
+          ...prior,
+          ...delta,
+          logFrom: prior.logFrom,
+          log: [...prior.log, ...delta.log],
+          batchFrom: prior.batchFrom,
+          batches: [...prior.batches, ...delta.batches],
+          ...((delta.progress ?? prior.progress)
+            ? { progress: delta.progress ?? prior.progress }
+            : {}),
+        },
+      };
+      queue[index] = merged;
+      return;
+    }
+    break;
+  }
+  queue.push(message);
+}
+
 /** A live source some view, host or `always` keeps alive. */
 export interface LiveInterest {
   readonly artifactId: string;
@@ -33,6 +95,16 @@ export interface LiveInterest {
 
 /** The bus. */
 export interface EphemeralBus {
+  /**
+   * Adds `message` to `queue`, a reader's messages not yet sent, coalescing it with what the
+   * queue holds for the same source or run as the view's interest allows.
+   */
+  coalesce(
+    artifactId: string,
+    viewId: string,
+    queue: EphemeralMessage[],
+    message: EphemeralMessage,
+  ): void;
   /** The view follows these runs for the next minute. */
   attachRuns(artifactId: string, viewId: string, runIds: readonly string[]): void;
   /** The view reads these live sources for the next minute. */
@@ -110,7 +182,7 @@ export function createEphemeralBus(
   const deliver = (view: ViewInterest, message: EphemeralMessage): void => {
     for (const listener of view.listeners) listener(message);
     if (view.queue && (view.queueUntil ?? 0) > now()) {
-      view.queue.push(message);
+      coalesceInto(view, view.queue, message);
       if (view.queue.length > POLL_QUEUE_MAX)
         view.queue.splice(0, view.queue.length - POLL_QUEUE_MAX);
       view.wake?.();
@@ -144,6 +216,9 @@ export function createEphemeralBus(
   sweep.unref?.();
 
   return {
+    coalesce(artifactId, viewId, queue, message) {
+      coalesceInto(viewOf(artifactId, viewId), queue, message);
+    },
     attachRuns(artifactId, viewId, runIds) {
       const view = viewOf(artifactId, viewId);
       const until = now() + lease;
