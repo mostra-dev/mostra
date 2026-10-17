@@ -11,9 +11,11 @@
 
 /** One thing the page reported. */
 export interface RecordedEntry {
+  /** Its place in the page's order of entries, from 0. */
   readonly seq: number;
   /** `error` and `warn` (the console), `uncaught` (an error event) or `rejection`. */
   readonly kind: "error" | "warn" | "uncaught" | "rejection";
+  /** The message, or the error's name and message, as the page gave it. */
   readonly text: string;
   /** The `code`s of the value and its `cause` chain: `MostraError`s carry one. */
   readonly codes: readonly string[];

@@ -24,7 +24,6 @@ export {
   type BuildRequest,
   type BuildResponse,
   LIVE_DECLARATION,
-  STAGING_FILES,
   type VersionRegistry,
 } from "./types.ts";
 

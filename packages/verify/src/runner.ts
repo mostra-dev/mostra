@@ -46,13 +46,17 @@ const READY_WAIT_MS = 15_000;
 export interface RunnerOptions {
   /** Called when the runner has been idle for `idleMs`: the process exits then. */
   readonly onIdle?: () => void;
+  /** How long without work counts as idle; {@link RUNNER_IDLE_MS} by default. */
   readonly idleMs?: number;
 }
 
 /** The runner of one process. */
 export interface Runner {
+  /** Renders one capability link in a fresh browser context and reports what the page did. */
   render(request: RenderRequest): Promise<RenderResult>;
+  /** Compares two screenshots and writes the difference. */
   compare(request: CompareRequest): Promise<CompareResult>;
+  /** Closes the browser. */
   close(): Promise<void>;
 }
 

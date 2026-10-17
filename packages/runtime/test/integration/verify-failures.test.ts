@@ -204,4 +204,56 @@ describe("verify's failures", () => {
     },
     VERIFY_MS,
   );
+  it(
+    "reports its stages as artifact/progress, only to a client that accepts it and asked",
+    async () => {
+      await withDaemon({}, async (client, home) => {
+        const listener = await connectTo(
+          JSON.parse(readFileSync(join(home.home, "instance.json"), "utf8")).socket as string,
+        );
+        result(
+          await listener.call(
+            "mostra/initialize",
+            initializeParams({ capabilities: { notifications: ["artifact/progress"] } }),
+          ),
+        );
+        const path = single();
+        VerifyVerdict.parse(
+          result(
+            await listener.call(
+              "artifact/verify",
+              { source: { path }, progressToken: "p1" },
+              VERIFY_MS,
+            ),
+          ),
+        );
+        const stages: string[] = [];
+        for (;;) {
+          const note = await listener
+            .next((message) => message.method === "artifact/progress", 200)
+            .catch(() => undefined);
+          if (!note) break;
+          const params = note.params as { progressToken: string; stage: string };
+          expect(params.progressToken).toBe("p1");
+          stages.push(params.stage);
+        }
+        expect(stages).toEqual(["prepare", "compile", "boot", "render", "smoke", "regression"]);
+        // A client that didn't accept the notification gets none, even with a token.
+        result(
+          await client.call(
+            "artifact/verify",
+            { source: { path }, progressToken: "p2" },
+            VERIFY_MS,
+          ),
+        );
+        expect(
+          await client
+            .next((message) => message.method === "artifact/progress", 500)
+            .catch(() => undefined),
+        ).toBeUndefined();
+        listener.close();
+      });
+    },
+    VERIFY_MS,
+  );
 });

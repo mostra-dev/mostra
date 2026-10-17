@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * The verify runner child's entry (`mostra-verify`, ARCHITECTURE §1): the supervisor's process
  * manager starts it, in its own process group, with a JSON-RPC channel over Node IPC. It serves

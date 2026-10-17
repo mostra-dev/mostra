@@ -22,7 +22,9 @@ export const ScreenshotPolicy: z.ZodType<ScreenshotPolicy, string> = z
 export interface VerifyViewport {
   /** Its name in the verdict: `desktop`, `mobile`, `tablet`, or `<width>x<height>`. */
   readonly name: string;
+  /** Its width in CSS pixels, which at DPR 1 are the screenshot's pixels. */
   readonly width: number;
+  /** Its height in CSS pixels. */
   readonly height: number;
 }
 
@@ -152,11 +154,15 @@ export function estimateImageTokens(width: number, height: number): TokenEstimat
 
 /** One screenshot in a verdict (AX-05). */
 export interface VerdictScreenshot {
+  /** The viewport's name. */
   readonly viewport: string;
   /** The PNG, at device pixel ratio 1. */
   readonly path: string;
+  /** The image's width in pixels. */
   readonly width: number;
+  /** The image's height in pixels. */
   readonly height: number;
+  /** What reading the image costs each model family ({@link estimateImageTokens}). */
   readonly tokensEstimate: TokenEstimate;
   /** Whether the caller is handed the image: on failure, or when asked (`screenshots`). */
   readonly returned: boolean;
@@ -164,6 +170,7 @@ export interface VerdictScreenshot {
 
 /** One ARIA snapshot in a verdict: the text-only picture of what a viewport shows. */
 export interface VerdictAria {
+  /** The viewport's name. */
   readonly viewport: string;
   /** The snapshot's YAML. */
   readonly path: string;
@@ -173,19 +180,28 @@ export interface VerdictAria {
 
 /** The verdict of one `verify` run (INTERFACES §13). `status` is `fail` exactly when an error exists. */
 export interface VerifyVerdict {
+  /** `fail` when any diagnostic is an error, else `pass`. */
   readonly status: "pass" | "fail";
+  /** What was verified. */
   readonly artifact: {
     /** The artifact, when it has one already: a manifest `id` or a published path. */
     readonly id?: string;
+    /** The source path as the request named it. */
     readonly path: string;
+    /** The snapshot's digest (DATA_MODEL §2); empty when verify couldn't read the source. */
     readonly sourceDigest: string;
+    /** The environment's digest, `lockDigest` included (DATA_MODEL §2); empty likewise. */
     readonly envDigest: string;
     /** The version this source would publish as, when the artifact is known (D89). */
     readonly versionId?: string;
   };
+  /** Every finding, errors first, identical ones folded with a `count`. */
   readonly diagnostics: readonly Diagnostic[];
+  /** One per viewport rendered. */
   readonly screenshots: readonly VerdictScreenshot[];
+  /** One per viewport rendered. */
   readonly aria: readonly VerdictAria[];
+  /** What the smoke test did. */
   readonly smoke: {
     /** Controls the smoke test used. */
     readonly interactions: number;
@@ -194,8 +210,12 @@ export interface VerifyVerdict {
     /** Field writes the interactions caused. */
     readonly stateChanges: number;
   };
+  /** What changed since the last passing version; empty when there is none. */
   readonly regressions: {
-    /** The version compared against: the newest whose recorded verdict passed (D137 item 4). */
+    /**
+     * The last passing version: the newest whose recorded verdict passed (D137 item 4). When it is
+     * this very source, nothing needed comparing.
+     */
     readonly against?: string;
     /** Controls and landmarks the baseline had and this source doesn't, in brief. */
     readonly aria?: string;
@@ -270,7 +290,7 @@ export const ARTIFACT_PROGRESS = "artifact/progress";
 export interface ArtifactProgressParams {
   /** The `progressToken` the request carried. */
   readonly progressToken: string;
-  /** The stage: `prepare`, `build`, `boot`, `render`, `smoke`, `regression` … */
+  /** The stage that started: `prepare`, `compile`, `boot`, `render`, `smoke`, `regression`. */
   readonly stage: string;
   /** How much of the request is done, from 0 to 1, when known. */
   readonly fraction?: number;
@@ -291,13 +311,15 @@ export const ArtifactProgressParams: z.ZodType<ArtifactProgressParams> = z
 /**
  * What a verify run's page tells the runner about its fields (D137 item 3), on
  * `globalThis[VERIFY_PROBE]` in the `verify` target only: every field it mounted, how, and with
- * which initial value's type. @internal
+ * which initial value's type; internal to Mostra.
  */
 export const VERIFY_PROBE = "__mostraVerify";
 
-/** One mounted field, as the probe reports it. @internal */
+/** One mounted field, as the probe reports it; internal to Mostra. */
 export interface ProbedField {
+  /** The field ID. */
   readonly id: string;
+  /** Its scope, as first mounted. */
   readonly scope: "viewer" | "artifact";
   /** The hook that named it: `useField`, `useChoice`, `useForm` or `storage`. */
   readonly hook: string;
@@ -309,7 +331,7 @@ export interface ProbedField {
   readonly conflicts: readonly string[];
 }
 
-/** The verify runner's methods (ARCHITECTURE §1): the supervisor asks, the runner answers. @internal */
+/** The verify runner's methods (ARCHITECTURE §1): the supervisor asks, the runner answers; internal to Mostra. */
 export const VERIFY_RUNNER_METHODS = {
   /** Opens one capability link in a fresh browser context and reports what the page did. */
   render: "verify/render",
@@ -317,20 +339,25 @@ export const VERIFY_RUNNER_METHODS = {
   compare: "verify/compare",
 } as const;
 
-/** `verify/render`'s params. @internal */
+/** `verify/render`'s params; internal to Mostra. */
 export interface RenderRequest {
   /** The capability link to open, as a viewer would (D137 item 1). */
   readonly url: string;
+  /** The viewport to render at, DPR 1. */
   readonly viewport: VerifyViewport;
   /** The fixed time `Date` reports, in ms since the epoch: the same for every render of a run. */
   readonly clockMs: number;
   /** Where the screenshot and the ARIA snapshot are written, named after `name`. */
   readonly outDir: string;
+  /** The render's name: its files are `<name>.png` and `<name>.aria.yml`. */
   readonly name: string;
   /** What to collect besides readiness and the page's own errors. */
   readonly collect: {
+    /** A screenshot of the viewport. */
     readonly screenshot: boolean;
+    /** The ARIA snapshot. */
     readonly aria: boolean;
+    /** axe-core's violations. */
     readonly axe: boolean;
     /** The page's mounted fields, from the field probe. */
     readonly fields: boolean;
@@ -341,17 +368,23 @@ export interface RenderRequest {
   readonly deadline: number;
 }
 
-/** `verify/render`'s answer. @internal */
+/** `verify/render`'s answer; internal to Mostra. */
 export interface RenderResult {
   /** Whether the page reported `mostra/ready`. */
   readonly ready: boolean;
   /** What the runner found: page errors, console output, failed requests, axe, smoke, blank. */
   readonly findings: readonly Diagnostic[];
+  /** The screenshot written, when asked for. */
   readonly screenshot?: { readonly path: string; readonly width: number; readonly height: number };
+  /** The ARIA snapshot written, and its text, when asked for. */
   readonly aria?: { readonly path: string; readonly text: string };
+  /** The mounted fields the probe reported, when asked for. */
   readonly fields?: readonly ProbedField[];
+  /** What the smoke test did, when asked for. */
   readonly smoke?: {
+    /** Controls used. */
     readonly interactions: number;
+    /** Field writes they caused. */
     readonly stateChanges: number;
     /** Server functions the sandbox refused during the smoke test. */
     readonly skipped: readonly string[];
@@ -360,18 +393,21 @@ export interface RenderResult {
   };
   /** Whether the render ran past its deadline and stopped where it was. */
   readonly timedOut: boolean;
+  /** When each step ended, in ms after the render started. */
   readonly timingsMs: Readonly<Record<string, number>>;
 }
 
-/** `verify/compare`'s params. @internal */
+/** `verify/compare`'s params; internal to Mostra. */
 export interface CompareRequest {
+  /** The baseline's screenshot. */
   readonly a: string;
+  /** The source's screenshot. */
   readonly b: string;
   /** Where to write the difference image. */
   readonly diff: string;
 }
 
-/** `verify/compare`'s answer. @internal */
+/** `verify/compare`'s answer; internal to Mostra. */
 export interface CompareResult {
   /** The share of pixels that differ beyond pixelmatch's perceptual threshold. */
   readonly ratio: number;

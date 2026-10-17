@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type ArtifactManifest,
@@ -719,9 +719,4 @@ export function didNotBuild(verdict: VerifyVerdict): Diagnostic | undefined {
         diagnostic.code.startsWith("MOSTRA_DEP_") ||
         diagnostic.code.startsWith("MOSTRA_ARTIFACT_")),
   );
-}
-
-/** Reads a verdict file, for tests and tools. */
-export async function readVerdict(file: string): Promise<VerifyVerdict> {
-  return VerifyVerdict.parse(JSON.parse(await readFile(file, "utf8")));
 }
