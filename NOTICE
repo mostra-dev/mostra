@@ -3,3 +3,12 @@ Copyright 2026 The Mostra Authors
 
 This product includes software developed as part of the Mostra project
 (https://github.com/mostra-dev/mostra), licensed under the Apache License, Version 2.0.
+
+The Mostra runtime bundle's verify runner (@mostra/verify) injects axe-core
+(https://github.com/dequelabs/axe-core), Copyright (c) 2015 - 2026 Deque
+Systems, Inc., unmodified into the pages it checks. axe-core is licensed under the Mozilla
+Public License, Version 2.0 (https://mozilla.org/MPL/2.0/); its source is
+available from the address above and from the npm package axe-core. axe-core
+itself includes colorjs.io (Copyright (c) 2021 Lea Verou, Chris Lilley) and
+core-js-pure (Copyright (c) 2014-2023 Denis Pushkarev), under the MIT License,
+as its LICENSE-3RD-PARTY.txt states.
