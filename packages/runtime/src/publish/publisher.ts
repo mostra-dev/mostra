@@ -568,8 +568,14 @@ export function createPublisher(options: PublisherOptions): Publisher {
     const path = pathOf(ref);
     const source = await resolveSource(path);
     return queue.run(`path:${source.bindingPath}`, async () => {
-      const peek = extractManifest(source.entry, await readEntry(source));
-      const known = peek.manifest?.id ?? registry.artifactAt(source.bindingPath);
+      // A manifest that can't be read here is reported by `prepare`, from the snapshot.
+      let peeked: string | undefined;
+      try {
+        peeked = extractManifest(source.entry, await readEntry(source)).manifest?.id;
+      } catch {
+        peeked = undefined;
+      }
+      const known = peeked ?? registry.artifactAt(source.bindingPath);
       const provisional = known ?? ArtifactId.create();
       return queue.run(`artifact:${provisional}`, async () => {
         const staging = await mkdtemp(join(registry.store.stagingDir, "publish-"));

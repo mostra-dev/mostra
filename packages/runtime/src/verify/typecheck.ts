@@ -36,7 +36,8 @@ const DEFAULT_OPTIONS = {
   resolveJsonModule: true,
   allowJs: true,
   checkJs: false,
-  types: [],
+  // Server code runs in Node (D18): its modules see Node's types.
+  types: ["node"],
 };
 
 /** The options Mostra's check always sets, over an artifact's own `tsconfig.json` too. */

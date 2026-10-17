@@ -278,9 +278,12 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     const afterAttributes = newDocument
       ? beforeAttributes
       : await target.evaluate(attributesOf).catch(() => beforeAttributes);
+    // Whatever the page reported meanwhile (an error) is an effect too: judged as itself.
+    const reported = (await recorded(frame, seen)).length > 0;
     const changed =
       navigated ||
       newDocument ||
+      reported ||
       network.protocolSince(mark) > 0 ||
       afterAttributes !== beforeAttributes ||
       (afterMutations > beforeMutations && beforeMutations >= 0);

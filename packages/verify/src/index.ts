@@ -5,10 +5,10 @@
  * `@mostra/protocol`. This entry exposes the runner itself, for tests and other hosts of it.
  */
 
+export { ariaSummary } from "@mostra/protocol";
 export { dedupe, judge, type Moment } from "./observe.ts";
 export { type RecordedEntry, recorder } from "./recorder.ts";
 export {
-  ariaSummary,
   compareImages,
   createRunner,
   RUNNER_IDLE_MS,

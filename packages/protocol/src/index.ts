@@ -476,6 +476,7 @@ export {
 export {
   ARTIFACT_PROGRESS,
   ArtifactProgressParams,
+  ariaSummary,
   type CompareRequest,
   type CompareResult,
   DEFAULT_VIEWPORTS,

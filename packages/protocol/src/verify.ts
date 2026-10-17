@@ -378,3 +378,37 @@ export interface CompareResult {
   /** Whether the two images had different sizes (then `ratio` is 1). */
   readonly sizeChanged: boolean;
 }
+
+/** A one-line count of an ARIA snapshot: headings, controls and landmarks. */
+export function ariaSummary(text: string): string {
+  const counts = new Map<string, number>();
+  for (const match of text.matchAll(/^\s*- ([a-z]+)\b/gm)) {
+    const role = match[1] as string;
+    counts.set(role, (counts.get(role) ?? 0) + 1);
+  }
+  const named: [string, string][] = [
+    ["heading", "headings"],
+    ["button", "buttons"],
+    ["link", "links"],
+    ["textbox", "text fields"],
+    ["checkbox", "checkboxes"],
+    ["combobox", "comboboxes"],
+    ["tab", "tabs"],
+    ["img", "images"],
+    ["table", "tables"],
+  ];
+  const parts = named
+    .filter(([role]) => counts.has(role))
+    .map(([role, plural]) => `${counts.get(role)} ${counts.get(role) === 1 ? role : plural}`);
+  const landmarks = [
+    "main",
+    "navigation",
+    "banner",
+    "contentinfo",
+    "form",
+    "region",
+    "dialog",
+  ].filter((role) => counts.has(role));
+  if (landmarks.length > 0) parts.push(`landmarks: ${landmarks.join(", ")}`);
+  return parts.length > 0 ? parts.join(", ") : "no headings, controls or landmarks";
+}

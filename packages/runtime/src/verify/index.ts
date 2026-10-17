@@ -20,6 +20,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { join } from "node:path";
 import {
   type ArtifactManifest,
+  ariaSummary,
   createDiagnostic,
   type Diagnostic,
   estimateImageTokens,
@@ -103,6 +104,8 @@ export interface VerifierOptions {
   readonly sandbox: SandboxOptions;
   /** Clears the artifact's parked worker in the instance's pool (D133). */
   readonly clearPark: (artifactId: string) => void;
+  /** Tests shorten the 120 s and the smoke test's 200 interactions. */
+  readonly limits?: { readonly timeoutMs?: number; readonly smokeInteractions?: number };
 }
 
 /** One run's options. */
@@ -125,6 +128,9 @@ export interface Verifier {
   /** Whether a verdict's errors stop a publish, and which codes it records with `--force`. */
   readonly cacheDir: string;
 }
+
+/** The source's page never got ready: the browser stages after its first render can't run. */
+class NotReady extends Error {}
 
 /** The verdict cache's key for two digests. */
 export function verdictKey(sourceDigest: string, envDigest: string): string {
@@ -365,7 +371,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       if (prepared.identityKnown) options.clearPark(prepared.artifactId);
 
       // 3 to 5: boot, render, smoke and regressions, within 120 s.
-      const deadline = Date.now() + VERIFY_TIMEOUT_MS;
+      const deadline = Date.now() + (options.limits?.timeoutMs ?? VERIFY_TIMEOUT_MS);
       const candidateDir = join(buildsDir, prepared.versionId);
       let sandbox: Sandbox | undefined;
       let stage = "boot";
@@ -405,33 +411,21 @@ export function createVerifier(options: VerifierOptions): Verifier {
           if (result.timedOut) {
             throw new RpcError(
               createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
-                message: `Verify ran out of its 120 s during the ${stage} stage (${name}).`,
+                message: `Verify ran out of its ${Math.round((options.limits?.timeoutMs ?? VERIFY_TIMEOUT_MS) / 1000)} s during the ${stage} stage (${name}).`,
               }),
             );
           }
           return result;
         };
 
-        stage = "baseline render";
+        stage = "render";
         run.progress?.("render");
         const renderStart = Date.now();
-        const baselineShots = new Map<string, RenderResult>();
-        if (compared) {
-          for (const viewport of viewports) {
-            baselineShots.set(
-              viewport.name,
-              await render(compared.versionId, viewport, `baseline-${viewport.name}`, {
-                screenshot: true,
-                aria: true,
-                axe: false,
-                fields: false,
-              }),
-            );
-          }
-        }
-        stage = "render";
         const candidateShots = new Map<string, RenderResult>();
-        for (const [index, viewport] of viewports.entries()) {
+        const renderCandidate = async (
+          index: number,
+          viewport: VerifyViewport,
+        ): Promise<RenderResult> => {
           const result = await render(prepared.versionId, viewport, viewport.name, {
             screenshot: true,
             aria: true,
@@ -459,12 +453,38 @@ export function createVerifier(options: VerifierOptions): Verifier {
             aria.push({
               viewport: viewport.name,
               path: result.aria.path,
-              summary: ariaSummaryOf(text),
+              summary: ariaSummary(text),
             });
+          }
+          return result;
+        };
+        // The source's first viewport first: a page that never gets ready ends the browser stages
+        // here, rather than waiting the same way at every other render.
+        const opening = await renderCandidate(0, viewports[0] as VerifyViewport);
+        const baselineShots = new Map<string, RenderResult>();
+        if (opening.ready) {
+          if (compared) {
+            stage = "baseline render";
+            for (const viewport of viewports) {
+              baselineShots.set(
+                viewport.name,
+                await render(compared.versionId, viewport, `baseline-${viewport.name}`, {
+                  screenshot: true,
+                  aria: true,
+                  axe: false,
+                  fields: false,
+                }),
+              );
+            }
+          }
+          stage = "render";
+          for (const [index, viewport] of viewports.entries()) {
+            if (index > 0) await renderCandidate(index, viewport);
           }
         }
         time("render", renderStart);
 
+        if (!opening.ready) throw new NotReady();
         // The second boot with identical inputs, for field IDs that change between renders.
         const first = viewports[0] as VerifyViewport;
         const firstFields: readonly ProbedField[] = candidateShots.get(first.name)?.fields ?? [];
@@ -489,7 +509,12 @@ export function createVerifier(options: VerifierOptions): Verifier {
             aria: false,
             axe: false,
             fields: false,
-            smoke: SMOKE_BUDGET,
+            smoke: {
+              ...SMOKE_BUDGET,
+              ...(options.limits?.smokeInteractions !== undefined
+                ? { maxInteractions: options.limits.smokeInteractions }
+                : {}),
+            },
           });
           diagnostics.push(...result.findings);
           smoke.interactions = result.smoke?.interactions ?? 0;
@@ -556,7 +581,9 @@ export function createVerifier(options: VerifierOptions): Verifier {
           );
         }
       } catch (error) {
-        if (error instanceof RpcError) diagnostics.push(error.diagnostic);
+        if (error instanceof NotReady) {
+          // Reported by the render already; nothing after it can run.
+        } else if (error instanceof RpcError) diagnostics.push(error.diagnostic);
         else {
           log.error("verify.stage_failed", { stage, error });
           diagnostics.push(
@@ -670,40 +697,6 @@ function mergeDiagnostics(diagnostics: readonly Diagnostic[]): Diagnostic[] {
   }
   const order = { error: 0, warning: 1, hint: 2 };
   return [...seen.values()].sort((a, b) => order[a.severity] - order[b.severity]);
-}
-
-/** The ARIA summary, as the runner computes it, for a redacted snapshot. */
-function ariaSummaryOf(text: string): string {
-  const counts = new Map<string, number>();
-  for (const match of text.matchAll(/^\s*- ([a-z]+)\b/gm)) {
-    const role = match[1] as string;
-    counts.set(role, (counts.get(role) ?? 0) + 1);
-  }
-  const named: [string, string][] = [
-    ["heading", "headings"],
-    ["button", "buttons"],
-    ["link", "links"],
-    ["textbox", "text fields"],
-    ["checkbox", "checkboxes"],
-    ["combobox", "comboboxes"],
-    ["tab", "tabs"],
-    ["img", "images"],
-    ["table", "tables"],
-  ];
-  const parts = named
-    .filter(([role]) => counts.has(role))
-    .map(([role, plural]) => `${counts.get(role)} ${counts.get(role) === 1 ? role : plural}`);
-  const landmarks = [
-    "main",
-    "navigation",
-    "banner",
-    "contentinfo",
-    "form",
-    "region",
-    "dialog",
-  ].filter((role) => counts.has(role));
-  if (landmarks.length > 0) parts.push(`landmarks: ${landmarks.join(", ")}`);
-  return parts.length > 0 ? parts.join(", ") : "no headings, controls or landmarks";
 }
 
 /** The error codes of a verdict, each once, in order: what `--force` records (D41). */

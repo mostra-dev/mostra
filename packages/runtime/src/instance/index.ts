@@ -346,6 +346,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         serverEntry: (dir) => renderMode().serverEntry(dir),
         damage: (dir) => versionDamage(dir),
       },
+      // Tests shorten verify's 120 s and its smoke test's 200 interactions.
+      limits: {
+        ...(Number(environment["MOSTRA_TEST_VERIFY_TIMEOUT_MS"]) > 0
+          ? { timeoutMs: Number(environment["MOSTRA_TEST_VERIFY_TIMEOUT_MS"]) }
+          : {}),
+        ...(Number(environment["MOSTRA_TEST_SMOKE_INTERACTIONS"]) > 0
+          ? { smokeInteractions: Number(environment["MOSTRA_TEST_SMOKE_INTERACTIONS"]) }
+          : {}),
+      },
       // verify clears the artifact's park, for its calls and its live producers (D133).
       clearPark: (artifactId) => {
         pool.clear(artifactId);
