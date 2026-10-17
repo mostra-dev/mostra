@@ -233,7 +233,8 @@ describe("verify's failures", () => {
             .next((message) => message.method === "artifact/progress", 200)
             .catch(() => undefined);
           if (!note) break;
-          const params = note.params as { progressToken: string; stage: string };
+          const params = (note as unknown as { params: { progressToken: string; stage: string } })
+            .params;
           expect(params.progressToken).toBe("p1");
           stages.push(params.stage);
         }
