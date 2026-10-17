@@ -104,11 +104,11 @@ export interface PublisherOptions {
   readonly faults?: Faults;
   /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
   readonly homePolicy?: () => SubmissionPolicy | undefined;
-  /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D137). */
+  /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D138). */
   readonly verifier: () => Verifier;
   /**
    * Tests of other features only (`MOSTRA_TEST_UNVERIFIED_PUBLISH`): publish without the gate.
-   * Such a version records no verdict, so it never counts as passing (D137 item 4).
+   * Such a version records no verdict, so it never counts as passing (D138 item 4).
    */
   readonly unverified?: boolean;
 }
@@ -117,7 +117,7 @@ export interface PublisherOptions {
 export interface Publisher {
   /** `artifact/publish`: gated by verify (D41). */
   publish(params: ArtifactPublishParams): Promise<PublishReceipt>;
-  /** `artifact/verify`: one run, its verdict cached for the publish that follows (D137). */
+  /** `artifact/verify`: one run, its verdict cached for the publish that follows (D138). */
   verify(params: ArtifactVerifyParams, progress?: (stage: string) => void): Promise<VerifyVerdict>;
   /** `artifact/create`. */
   create(params: ArtifactCreateParams): Promise<ArtifactCreateResult>;
@@ -342,7 +342,7 @@ function firstDiagnostic(diagnostics: readonly Diagnostic[]): Diagnostic {
 
 /**
  * The verdict of a source verify couldn't prepare (an invalid manifest, dependencies that can't be
- * resolved): that diagnostic alone, never cached (D137 item 3).
+ * resolved): that diagnostic alone, never cached (D138 item 3).
  */
 function failedVerdict(path: string, diagnostic: Diagnostic): VerifyVerdict {
   return {
@@ -650,7 +650,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
         const recorded = registry.version(versionId);
         const exists = recorded !== undefined;
         // An existing version keeps what it was published with: its forced codes reach this
-        // receipt and event too, and a repaired directory gets them back (D41, D137).
+        // receipt and event too, and a repaired directory gets them back (D41, D138).
         if (recorded) {
           forcedCodes = [...recorded.forcedCodes];
           verifyRecord = recorded.verify;
@@ -676,7 +676,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               });
             }
           } else {
-            // 4. The gate (D41, D137): the verdict cached for these digests, or a run now.
+            // 4. The gate (D41, D138): the verdict cached for these digests, or a run now.
             const verdict =
               verifier().cached(prepared) ??
               (await verifier().run(prepared, { build: (dir) => stageBuild(ready, dir) }));
@@ -684,7 +684,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
             if (unbuilt) throw new RpcError(unbuilt);
             const errors = errorCodes(verdict);
             // Verify couldn't run (no browser): without --force, publish fails with that
-            // environment error itself, so the caller knows it isn't the artifact (D137 item 7).
+            // environment error itself, so the caller knows it isn't the artifact (D138 item 7).
             const environmental = verdict.diagnostics.find(
               (diagnostic) =>
                 diagnostic.severity === "error" && diagnostic.code.startsWith("MOSTRA_ENV_"),
@@ -703,7 +703,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
               verifyRevision: VERIFY_REVISION,
             };
             // 5. Verify's build, promoted as it is when it was made for this version ID; built
-            // again from the same snapshot otherwise (D137 item 5).
+            // again from the same snapshot otherwise (D138 item 5).
             const cachedBuild = verifier().builtVersion(versionId);
             if (cachedBuild && (await versionDamage(cachedBuild)) === undefined) {
               await rename(cachedBuild, out);

@@ -197,7 +197,7 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
     env: {
       ...env,
       MOSTRA_RUNTIME_DIR: join(root, "run"),
-      // The browser suites test other features; verify and its gate have their own (D137).
+      // The browser suites test other features; verify and its gate have their own (D138).
       MOSTRA_TEST_UNVERIFIED_PUBLISH: "1",
     },
     stdio: ["ignore", "pipe", "inherit"],

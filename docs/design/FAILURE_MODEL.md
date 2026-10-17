@@ -132,7 +132,7 @@
 | Operation | Default | On timeout |
 |---|---|---|
 | `wait` | caller-chosen (CLI) or 50 s at most per MCP call | `still_waiting` with a cursor and nothing lost (IN-10) |
-| `verify` | 120 s for every stage after compile, the baseline's render included; the smoke test 60 s or 200 interactions; installs keep their 300 s and the build its 180 s, with the type check beside the build inside the same 180 s (D137) | Partial verdict with `MOSTRA_VERIFY_TIMEOUT` (an error) and the stage reached; a smoke test at its budget stops with a hint and nothing else |
+| `verify` | 120 s for every stage after compile, the baseline's render included; the smoke test 60 s or 200 interactions; installs keep their 300 s and the build its 180 s, with the type check beside the build inside the same 180 s (D138) | Partial verdict with `MOSTRA_VERIFY_TIMEOUT` (an error) and the stage reached; a smoke test at its budget stops with a hint and nothing else |
 | Build | 180 s | `MOSTRA_BUILD_TIMEOUT` |
 | Package install | 300 s, or immediate when offline | `MOSTRA_DEP_TIMEOUT`, or `MOSTRA_DEP_OFFLINE` naming the package (DP-04) |
 | Port calls to hosts | 30 s | Retryable failure (§4) |

@@ -1,7 +1,7 @@
 /**
  * `verify` through the real host protocol (WP-09: AX-02, AX-04, AX-05, AU-05, VR-09): a real
  * `mostra-runtime daemon` builds, type-checks and renders artifacts in its verify runner's
- * Chromium, inside a sandbox, and gates its publishes on the verdict (D41, D137).
+ * Chromium, inside a sandbox, and gates its publishes on the verdict (D41, D138).
  *
  * Every check that reports something has a negative here too: WP-03's fixtures, correct code,
  * raise no error or warning (EVAL-01: false positives make agents break working code).
@@ -270,7 +270,7 @@ export async function save(value: string): Promise<string> {
   });
 }
 
-describe("the pipeline's stages each name their faults (AX-02, AU-05, D137)", () => {
+describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", () => {
   const markers = {
     sent: join(tempDir("verify-markers"), "sent.txt"),
     saved: join(tempDir("verify-markers"), "saved.txt"),
@@ -396,7 +396,7 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D137)", ()
     expect(readFileSync(verdict.aria[0]?.path as string, "utf8")).toContain('button "Send"');
   });
 
-  it("touches nothing of the home's interaction data, and leaves no sandbox behind (D137 item 1)", async () => {
+  it("touches nothing of the home's interaction data, and leaves no sandbox behind (D138 item 1)", async () => {
     const events = result(await client.call("events/read", {})) as { events: unknown[] };
     expect(events.events).toEqual([]);
     expect(readdirSync(join(home.home, "cache", "verify", "runs"))).toEqual([]);
@@ -581,7 +581,7 @@ describe("regressions against the last passing version (AX-04)", () => {
   );
 });
 
-describe("publish's gate (VR-09, D41, D137 items 5, 7)", () => {
+describe("publish's gate (VR-09, D41, D138 items 5, 7)", () => {
   it(
     "reuses the cached verdict and verify's build: no second build, no second render",
     async () => {

@@ -33,7 +33,7 @@ const params: z.ZodType<ArtifactVerifyParams> = z
 
 /**
  * `artifact/verify`: builds, type-checks, renders and exercises an artifact's source headlessly,
- * compares it with its last passing version, and returns one verdict (D29, D137). It never
+ * compares it with its last passing version, and returns one verdict (D29, D138). It never
  * publishes and never touches the home's drafts, state, events or deliveries.
  */
 export const artifactVerifyMethod: MethodDefinition<ArtifactVerifyParams, ArtifactVerifyResult> =

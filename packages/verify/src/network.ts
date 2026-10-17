@@ -1,5 +1,5 @@
 /**
- * What a verify render's page does on the network (D137 item 3): requests in flight (for the
+ * What a verify render's page does on the network (D138 item 3): requests in flight (for the
  * quiescence wait), failed requests for resources the artifact's frame loaded, the sandbox's
  * refusals of actions that didn't opt into `dryRun()`, and the field writes the page made.
  *

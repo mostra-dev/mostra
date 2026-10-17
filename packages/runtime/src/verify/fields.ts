@@ -1,5 +1,5 @@
 /**
- * Field-ID lint (AU-05, D52, D137 item 3): pure judgements over a version's static field scan
+ * Field-ID lint (AU-05, D52, D138 item 3): pure judgements over a version's static field scan
  * (`registry.json`'s `fields`, D109) and what the field probe saw mounted.
  *
  * - **Duplicate IDs**: one ID used with another hook kind, another scope or an initial value of
@@ -73,7 +73,7 @@ const literal = (coverage: FieldCoverage | undefined, id: string): boolean =>
   coverage?.entries.some((entry) => entry.id === id) ?? false;
 
 /**
- * IDs that differ between two boots with identical inputs (D137 item 3): mounted in one and not
+ * IDs that differ between two boots with identical inputs (D138 item 3): mounted in one and not
  * the other, and named by no literal ID of the scan.
  */
 export function unstableFieldLint(

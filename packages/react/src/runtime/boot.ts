@@ -204,7 +204,7 @@ export async function startRuntime(): Promise<Runtime> {
     channel: (name) =>
       typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel(name),
   });
-  // A verify run reads which fields the page mounts (D137); a viewer's page never records them.
+  // A verify run reads which fields the page mounts (D138); a viewer's page never records them.
   if (target === "verify") installVerifyProbe(store);
   store.start();
   wireLifecycle(store);

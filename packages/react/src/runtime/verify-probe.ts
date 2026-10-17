@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * `verify`'s field probe (D137 item 3): in the `verify` target only, the page keeps a record of
+ * `verify`'s field probe (D138 item 3): in the `verify` target only, the page keeps a record of
  * every field it mounts (the hook, the scope and the type of the initial value) and publishes it
  * on `globalThis[VERIFY_PROBE]`, where the verify runner reads it. Viewers' pages never install it.
  */

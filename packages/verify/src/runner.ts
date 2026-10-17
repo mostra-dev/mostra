@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The verify runner (ARCHITECTURE §1, ROUND-3 §9, D137): one warm headless Chromium that renders
+ * The verify runner (ARCHITECTURE §1, ROUND-3 §9, D138): one warm headless Chromium that renders
  * capability links the supervisor's sandbox minted, each in a fresh browser context, and reports
  * what the page did. It decides what a page's behavior means for the verdict (D72): definite
  * failures are errors, observations warnings or hints, and faults that follow from verify's own
@@ -130,7 +130,7 @@ function artifactFrame(page: Page): Frame | undefined {
   return page.frames().find((frame) => frame.parentFrame() === page.mainFrame());
 }
 
-/** What the frame shows: whether any element has a visible box of nonzero area (D137 item 3). */
+/** What the frame shows: whether any element has a visible box of nonzero area (D138 item 3). */
 function showsSomething(): boolean {
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect();
@@ -189,7 +189,7 @@ async function renderPage(
     reducedMotion: "reduce",
   });
   try {
-    // The same instant for every render of a run (D137 item 4): `Date` is fixed, timers run.
+    // The same instant for every render of a run (D138 item 4): `Date` is fixed, timers run.
     await context.clock.setFixedTime(request.clockMs);
     await context.addInitScript(recorder);
     const page = await context.newPage();
@@ -247,7 +247,7 @@ async function renderPage(
       screenshot = { path, width: request.viewport.width, height: request.viewport.height };
       timings["screenshot"] = Date.now() - started;
     }
-    // Blank only when nothing has a visible box and the picture is one color (D137 item 3).
+    // Blank only when nothing has a visible box and the picture is one color (D138 item 3).
     const shows = await frame.evaluate(showsSomething).catch(() => true);
     if (!shows && shot && uniform(shot)) {
       findings.push(
@@ -341,7 +341,7 @@ interface AxeResult {
 
 /**
  * axe-core's violations in the frame (axe's `incomplete` results aren't reported): critical and
- * serious are warnings, moderate and minor hints (D137 item 3). Injected unmodified.
+ * serious are warnings, moderate and minor hints (D138 item 3). Injected unmodified.
  */
 async function runAxe(frame: Frame, source: string, viewport: string): Promise<Diagnostic[]> {
   try {

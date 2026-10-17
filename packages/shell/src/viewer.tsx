@@ -769,7 +769,7 @@ export function ViewerPage(props: {
   const chooses = showsChoose(state) ? [...state.chooses.values()] : [];
   const versionLabel = `Version ${ticket.version.number}`;
 
-  // A `verify` run (D137) measures the page alone: the frame fills the viewport, at exactly the
+  // A `verify` run (D138) measures the page alone: the frame fills the viewport, at exactly the
   // size verify renders, with none of the shell's chrome. Sessions, tickets and the bridge are the
   // same as a viewer's, and `data-shell` still says when the page is ready.
   if (ticket.target === "verify") {

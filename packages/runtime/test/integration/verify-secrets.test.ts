@@ -1,5 +1,5 @@
 /**
- * Secrets stay out of everything verify keeps or shows (D44, AC-06, D137 item 1): server code
+ * Secrets stay out of everything verify keeps or shows (D44, AC-06, D138 item 1): server code
  * reads the real secrets in a verify run, and an action, a thrown error and a live source hand one
  * to the page, yet the page only ever receives it redacted (so no screenshot can show it), and the
  * verdict, its ARIA snapshots and every file verify wrote hold none of it.

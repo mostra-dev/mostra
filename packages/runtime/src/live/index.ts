@@ -100,7 +100,7 @@ export interface Live {
   start(): void;
   /** Stops checking; the pool stops the producers with their workers. */
   stop(): void;
-  /** The artifact's sources whose producers failed last, with the error each reported (verify, D137). */
+  /** The artifact's sources whose producers failed last, with the error each reported (verify, D138). */
   failures(artifactId: string): { readonly key: string; readonly error: WireError }[];
 }
 

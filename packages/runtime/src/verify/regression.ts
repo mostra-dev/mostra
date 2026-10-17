@@ -1,5 +1,5 @@
 /**
- * Regressions against the last passing version (AX-04, ROUND-3 §9, D137 item 4): contracts from
+ * Regressions against the last passing version (AX-04, ROUND-3 §9, D138 item 4): contracts from
  * the two versions' `registry.json`, the controls and landmarks of their ARIA snapshots, and the
  * share of pixels that differ. Every regression is a warning that says what was observed (D72):
  * a redesign may change any of them on purpose.

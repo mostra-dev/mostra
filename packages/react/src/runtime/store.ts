@@ -82,7 +82,7 @@ export interface Registration {
   readonly sensitive?: boolean;
   /** The validation message of its current value, if any. */
   readonly error?: string;
-  /** The hook that named it, for `verify`'s field-ID checks (D137): `useField` unless stated. */
+  /** The hook that named it, for `verify`'s field-ID checks (D138): `useField` unless stated. */
   readonly hook?: string;
 }
 
@@ -236,7 +236,7 @@ export class Store {
 
   // Mounted fields.
   readonly #registrations = new Map<FieldKey, { registration: Registration; count: number }>();
-  /** Who hears each mount and unmount: `verify`'s field probe (D137). */
+  /** Who hears each mount and unmount: `verify`'s field probe (D138). */
   readonly #mountObservers = new Set<(registration: Registration, mounted: boolean) => void>();
 
   #ready = false;
@@ -659,7 +659,7 @@ export class Store {
 
   /**
    * Hears every field mount and unmount, with the registration as the hook gave it; returns the
-   * function that stops. `verify`'s field probe uses it (D137). @internal
+   * function that stops. `verify`'s field probe uses it (D138). @internal
    */
   observeMounts(observer: (registration: Registration, mounted: boolean) => void): () => void {
     this.#mountObservers.add(observer);

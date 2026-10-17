@@ -3,7 +3,7 @@
  * The recorder every frame of a verify render starts with (Playwright's init script): it keeps the
  * page's own console errors and warnings, uncaught errors and unhandled rejections, each with the
  * diagnostic codes along its `cause` chain, so the runner can tell the artifact's faults from those
- * verify's synthetic refusal caused (D137 item 2). An unhandled rejection whose reason is that
+ * verify's synthetic refusal caused (D138 item 2). An unhandled rejection whose reason is that
  * refusal is dropped, as the browser would never meet it for a viewer.
  *
  * It runs in the page, so it is one self-contained function: nothing from this module's scope.

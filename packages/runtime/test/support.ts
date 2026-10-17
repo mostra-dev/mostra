@@ -73,7 +73,7 @@ export function testHome(): TestHome {
   const env = Object.fromEntries(
     Object.entries(inherited).filter(([name]) => !/^npm_config_/i.test(name)),
   );
-  // Suites of other features publish without verify's gate (D137); `verifiedHome` keeps it.
+  // Suites of other features publish without verify's gate (D138); `verifiedHome` keeps it.
   return {
     home: join(root, "home"),
     runtimeDir,
@@ -81,7 +81,7 @@ export function testHome(): TestHome {
   };
 }
 
-/** A test home whose publishes go through verify's gate, as a user's do (D41, D137). */
+/** A test home whose publishes go through verify's gate, as a user's do (D41, D138). */
 export function verifiedHome(): TestHome {
   const home = testHome();
   const { MOSTRA_TEST_UNVERIFIED_PUBLISH: _unverified, ...env } = home.env;

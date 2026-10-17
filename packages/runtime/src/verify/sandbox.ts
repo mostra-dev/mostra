@@ -1,5 +1,5 @@
 /**
- * A verify run's sandbox (D137 item 1): the real interaction, actions, live and gateway code over
+ * A verify run's sandbox (D138 item 1): the real interaction, actions, live and gateway code over
  * a scratch ledger in `cache/verify/runs/<run>/`, with its own worker pool and two short-lived
  * loopback listeners on ports the operating system assigns, so a run never touches the home's
  * drafts, state, events, hosts or deliveries, and the human-facing gateway never serves an
@@ -71,7 +71,7 @@ export interface SandboxOptions {
     readonly versionDir: string;
     readonly sourceDir?: string;
   }) => Promise<string>;
-  /** The real secrets, read-only from server code (D137 item 1). */
+  /** The real secrets, read-only from server code (D138 item 1). */
   readonly secrets: Secrets;
   /** The artifact allowlist environment every worker gets (D95). */
   readonly env: Environment;
@@ -101,7 +101,7 @@ export interface Sandbox {
 /** The directory every run's sandbox lives in. */
 export const sandboxRoot = (home: string): string => join(home, "cache", "verify", "runs");
 
-/** Removes the sandboxes a stopped instance left (D137 item 1); call it before any run starts. */
+/** Removes the sandboxes a stopped instance left (D138 item 1); call it before any run starts. */
 export async function recoverSandboxes(home: string, log: Log): Promise<void> {
   const root = sandboxRoot(home);
   let left: string[];
@@ -214,7 +214,7 @@ export async function startSandbox(
       ledger,
       log,
       faults: noFaults,
-      // No host is reached from a sandbox: nothing is delivered, mirrored or asked (D137 item 1).
+      // No host is reached from a sandbox: nothing is delivered, mirrored or asked (D138 item 1).
       hosts: {
         registrants: () => [],
         call: () => Promise.reject(new Error("A verify sandbox calls no host.")),
@@ -302,7 +302,7 @@ export async function startSandbox(
       pool,
       interaction,
       // Every render of the run reads the candidate's producers, so the baseline and the
-      // candidate show the same data (D137 item 4).
+      // candidate show the same data (D138 item 4).
       latest: (artifactId) =>
         artifactId === input.artifactId && sources.length > 0
           ? { versionId: candidate.versionId, sources }

@@ -127,7 +127,7 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
       "trustedControls",
       "secrets",
     ]);
-    // WP-09 added verify's progress (D137): sent only to a client that accepts it.
+    // WP-09 added verify's progress (D138): sent only to a client that accepts it.
     expect(result.capabilities.notifications).toEqual(["events/notify", "artifact/progress"]);
     // Unimplemented ports, the reserved `ai` included, are warnings, never silent (D84, D46).
     expect(result.warnings.map((warning) => [warning.code, warning.severity])).toEqual([

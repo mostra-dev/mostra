@@ -1,5 +1,5 @@
 /**
- * `verify` (D29, D41, D55, D72, D137; ARCHITECTURE §12, INTERFACES §13): one run over a prepared
+ * `verify` (D29, D41, D55, D72, D138; ARCHITECTURE §12, INTERFACES §13): one run over a prepared
  * source, giving one verdict. The stages, in order:
  *
  * 1. **compile**: the build (into `cache/builds/<versionId>/`, which publish promotes) and the type
@@ -54,7 +54,7 @@ export const VERIFY_REVISION: string = createHash("sha256")
   .digest("hex")
   .slice(0, 16);
 
-/** How long the stages after compile may take (FAILURE_MODEL §9, D137 item 6). */
+/** How long the stages after compile may take (FAILURE_MODEL §9, D138 item 6). */
 export const VERIFY_TIMEOUT_MS = 120_000;
 /** The smoke test's budget (ROUND-3 §9). */
 export const SMOKE_BUDGET = { maxInteractions: 200, maxMs: 60_000 } as const;
@@ -63,7 +63,7 @@ const BUILD_CACHE_BYTES = 5 * 1024 ** 3;
 /** How many verdicts the cache keeps. */
 const VERDICT_CACHE_ENTRIES = 200;
 
-/** Codes that say a run couldn't vouch for the page: its verdict is never cached (D137 item 5). */
+/** Codes that say a run couldn't vouch for the page: its verdict is never cached (D138 item 5). */
 const UNCACHEABLE =
   /^MOSTRA_(ENV|VERIFY_TIMEOUT|VERIFY_CRASHED|BUILD_TIMEOUT|BUILD_CRASHED|DEP_OFFLINE|DEP_TIMEOUT)/;
 
@@ -205,7 +205,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
     }
   };
 
-  /** The newest version of the artifact whose recorded verdict passed (D137 item 4). */
+  /** The newest version of the artifact whose recorded verdict passed (D138 item 4). */
   const baselineOf = (
     artifactId: string,
   ):
@@ -319,7 +319,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       }),
     ]);
     diagnostics.push(...(built.ok ? [] : built.diagnostics));
-    // A module the build already couldn't resolve isn't reported twice (D137 item 8). The type
+    // A module the build already couldn't resolve isn't reported twice (D138 item 8). The type
     // check's own callback may run before the build ends, so its TS2307s are matched again here.
     diagnostics.push(
       ...checked.diagnostics.filter((diagnostic) => {
@@ -712,7 +712,7 @@ export function errorCodes(verdict: VerifyVerdict): string[] {
   ];
 }
 
-/** Whether a verdict says the source didn't build, which `--force` can't publish (D137 item 7). */
+/** Whether a verdict says the source didn't build, which `--force` can't publish (D138 item 7). */
 export function didNotBuild(verdict: VerifyVerdict): Diagnostic | undefined {
   return verdict.diagnostics.find(
     (diagnostic) =>

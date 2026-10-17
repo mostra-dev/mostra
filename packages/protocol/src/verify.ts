@@ -1,5 +1,5 @@
 /**
- * `verify` (D29, D41, D55, D72, D137; INTERFACES §13): the verdict it returns, the viewports it
+ * `verify` (D29, D41, D55, D72, D138; INTERFACES §13): the verdict it returns, the viewports it
  * renders, and the image-token estimates every screenshot carries. Pure and free of I/O, so the
  * runtime, the verify runner, the CLI and the MCP server share one definition.
  */
@@ -74,7 +74,7 @@ export function viewportsFor(names: readonly string[] | undefined): {
   return { viewports: viewports.length > 0 ? viewports : DEFAULT_VIEWPORTS, unknown };
 }
 
-/** What one image costs each model family to read (D137 item 9). */
+/** What one image costs each model family to read (D138 item 9). */
 export interface TokenEstimate {
   /** Claude's high-resolution tier (Claude 4.7 and later). */
   readonly claude: number;
@@ -213,7 +213,7 @@ export interface VerifyVerdict {
   /** What changed since the last passing version; empty when there is none. */
   readonly regressions: {
     /**
-     * The last passing version: the newest whose recorded verdict passed (D137 item 4). When it is
+     * The last passing version: the newest whose recorded verdict passed (D138 item 4). When it is
      * this very source, nothing needed comparing.
      */
     readonly against?: string;
@@ -309,7 +309,7 @@ export const ArtifactProgressParams: z.ZodType<ArtifactProgressParams> = z
   });
 
 /**
- * What a verify run's page tells the runner about its fields (D137 item 3), on
+ * What a verify run's page tells the runner about its fields (D138 item 3), on
  * `globalThis[VERIFY_PROBE]` in the `verify` target only: every field it mounted, how, and with
  * which initial value's type; internal to Mostra.
  */
@@ -341,7 +341,7 @@ export const VERIFY_RUNNER_METHODS = {
 
 /** `verify/render`'s params; internal to Mostra. */
 export interface RenderRequest {
-  /** The capability link to open, as a viewer would (D137 item 1). */
+  /** The capability link to open, as a viewer would (D138 item 1). */
   readonly url: string;
   /** The viewport to render at, DPR 1. */
   readonly viewport: VerifyViewport;

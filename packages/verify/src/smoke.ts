@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The smoke test (ROUND-3 §9, D55, D72, D137): uses every enabled control of the rendered page
+ * The smoke test (ROUND-3 §9, D55, D72, D138): uses every enabled control of the rendered page
  * once, within 200 interactions or 60 s, and reports what it observed.
  *
  * - Buttons, tabs, menus and other triggers are clicked; tooltip and hover-card triggers hovered;

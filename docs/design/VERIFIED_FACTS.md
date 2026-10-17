@@ -371,7 +371,7 @@ Checked by the WP-08 session on 2026-10-16 against react.dev, the npm registry, 
 
 ## WP-09 re-verification (2026-10-17)
 
-Checked by the WP-09 session on 2026-10-17 against the providers' own documentation and the npm registry. The image-token formulas changed since research brief 6, which this section supersedes for `verify`'s estimates (D137 item 9).
+Checked by the WP-09 session on 2026-10-17 against the providers' own documentation and the npm registry. The image-token formulas changed since research brief 6, which this section supersedes for `verify`'s estimates (D138 item 9).
 
 **Screenshot token estimates**, as `verify` computes them per image:
 

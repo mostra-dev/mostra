@@ -1,5 +1,5 @@
 /**
- * The runner's judgements (D72, D137 items 2 and 3): what the page reported becomes errors,
+ * The runner's judgements (D72, D138 items 2 and 3): what the page reported becomes errors,
  * warnings or hints, faults verify's own refusal caused are attributed to it, and screenshots are
  * compared pixel by pixel.
  */
@@ -26,7 +26,7 @@ const entry = (kind: RecordedEntry["kind"], text: string, codes: string[] = []):
 
 const load = { kind: "load" } as const;
 
-describe("judging what the page reported (D137 items 2, 3)", () => {
+describe("judging what the page reported (D138 items 2, 3)", () => {
   it("makes the page's own faults errors and its warnings hints", () => {
     const found = judge(
       [

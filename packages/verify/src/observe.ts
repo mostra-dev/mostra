@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * How the runner observes a rendered page: the quiescence wait, the recorder's entries, and the
- * judgement of what the page reported (D72, D137 items 2 and 3).
+ * judgement of what the page reported (D72, D138 items 2 and 3).
  */
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { Frame } from "playwright-core";
@@ -84,7 +84,7 @@ const momentText = (moment: Moment): string =>
   moment.kind === "load" ? "while the page loaded" : `after the smoke test used ${moment.control}`;
 
 /**
- * Judges what the page reported in one moment (D137 items 2 and 3): its own faults are errors,
+ * Judges what the page reported in one moment (D138 items 2 and 3): its own faults are errors,
  * console warnings hints; a fault whose `cause` chain is verify's refusal, and any console error
  * in a moment when verify refused an action, is a hint naming the action; a missing secret is
  * the environment's, a warning.

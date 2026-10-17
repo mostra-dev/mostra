@@ -1896,7 +1896,7 @@ const SEEDS: readonly Seed[] = [
       "calls a server function in a worker started on first need",
     ),
   },
-  // WP-09: verify and publish's gate (AX-02, AX-04, AX-05, AU-05, VR-09, RT-02; D137).
+  // WP-09: verify and publish's gate (AX-02, AX-04, AX-05, AU-05, VR-09, RT-02; D138).
   {
     requirement: "VR-09-reuse",
     name: "a republished forced version's receipt forgets its forced codes",

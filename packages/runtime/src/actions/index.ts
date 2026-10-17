@@ -53,7 +53,7 @@ export interface ActionsOptions {
   /** What the pool needs to start a version's worker, or `undefined` for a version without server code. */
   readonly version: (versionId: string) => WorkerVersion | undefined;
   /**
-   * A verify run's dry-run policy (D55, D137). With it, a function that opted into `dryRun()` runs
+   * A verify run's dry-run policy (D55, D138). With it, a function that opted into `dryRun()` runs
    * with `dryRun: true`, and any other is refused with `MOSTRA_VERIFY_ACTION_SKIPPED` before a run
    * is recorded or a worker starts, for plain calls and runs alike. Absent for viewers' pages.
    */

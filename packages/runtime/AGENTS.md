@@ -135,7 +135,7 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   What a slow reader hasn't taken is coalesced (`bus.coalesce`): a source's newer value in latest
   mode replaces its older ones, and a run's contiguous deltas merge. Which artifacts have live
   sources is kept in memory (`instance`), so reconciling never scans every artifact.
-- **verify never touches the home, and publish never skips it (D41, D137).** A verify run serves
+- **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
   on ports the operating system assigns, reached only with links minted there. Nothing reaches
@@ -175,7 +175,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
 | `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
 | `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd) (D133) |
-| `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D137); `artifact/verify` is in `publish` |
+| `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads

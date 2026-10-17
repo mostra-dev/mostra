@@ -168,7 +168,7 @@ export function createAddressing(options: {
   readonly bind: BindOptions;
   /**
    * Listen on ports the operating system assigns and lease none: a `verify` run's short-lived
-   * listeners (D137). Ephemeral ports lie above the lease range (D99), so they never take a port
+   * listeners (D138). Ephemeral ports lie above the lease range (D99), so they never take a port
    * leased to an artifact whose listener isn't bound yet (D132).
    */
   readonly ephemeral?: boolean;

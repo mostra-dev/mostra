@@ -1,5 +1,5 @@
 /**
- * How verify fails (FAILURE_MODEL §2, §9, §10; D137 items 5, 6, 7): out of time, at the smoke
+ * How verify fails (FAILURE_MODEL §2, §9, §10; D138 items 5, 6, 7): out of time, at the smoke
  * test's budget, without a browser, and when its runner dies. A run that couldn't vouch for the
  * page is never cached, and the sandboxes a stopped instance left are removed at start.
  */
@@ -188,7 +188,7 @@ describe("verify's failures", () => {
   );
 
   it(
-    "removes the sandboxes a stopped instance left, at start (D137 item 1)",
+    "removes the sandboxes a stopped instance left, at start (D138 item 1)",
     async () => {
       await withDaemon(
         {},

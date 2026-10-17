@@ -120,7 +120,7 @@ export interface GatewayOptions {
   readonly parked?: (versionId: string) => boolean;
   /**
    * The delivery target the gateway serves pages for (D111): `live` for viewers, `verify` for a
-   * verify run's sandbox (D137), whose tickets name it and whose documents get
+   * verify run's sandbox (D138), whose tickets name it and whose documents get
    * `<meta name="mostra-target" content="verify">` as they are served. The stored build never
    * holds the tag, so what publish promotes is byte-identical to what verify built.
    */
@@ -1051,12 +1051,12 @@ export function createGateway(options: GatewayOptions): Gateway {
   };
 }
 
-/** The tag that tells the client runtime it runs for `verify` (D111, D137). */
+/** The tag that tells the client runtime it runs for `verify` (D111, D138). */
 const VERIFY_TARGET_TAG = '<meta name="mostra-target" content="verify" />';
 
 /**
  * A version's HTML document as a verify run's sandbox serves it: the stored file with the verify
- * target's tag added at the start of its head, so the build itself never carries it (D137).
+ * target's tag added at the start of its head, so the build itself never carries it (D138).
  */
 async function verifyDocument(
   path: string,

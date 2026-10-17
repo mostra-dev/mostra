@@ -1,5 +1,5 @@
 /**
- * verify's pure judgements in the supervisor (AU-05, AX-04, AX-05, D137): field-ID lint over the
+ * verify's pure judgements in the supervisor (AU-05, AX-04, AX-05, D138): field-ID lint over the
  * static scan and the probe, regressions against the baseline, `tsc`'s output, and the screenshot
  * token estimates of the providers' published rules.
  */
@@ -31,7 +31,7 @@ const probed = (id: string, extra: Partial<ProbedField> = {}): ProbedField => ({
   ...extra,
 });
 
-describe("field-ID lint (AU-05, D137 item 3)", () => {
+describe("field-ID lint (AU-05, D138 item 3)", () => {
   it("reports one literal ID used by two hooks or two scopes as an error, never one used twice the same way", () => {
     const found = staticFieldLint(
       coverage([
@@ -176,7 +176,7 @@ describe("regressions against the last passing version (AX-04)", () => {
   });
 });
 
-describe("the type check's output (D137 item 8)", () => {
+describe("the type check's output (D138 item 8)", () => {
   it("keeps errors in the artifact's files, makes TS7016 a warning, and drops imports already reported", () => {
     const found = parseTscOutput(
       [
@@ -198,7 +198,7 @@ describe("the type check's output (D137 item 8)", () => {
   });
 });
 
-describe("a module the build couldn't resolve is reported once (D137 item 8)", () => {
+describe("a module the build couldn't resolve is reported once (D138 item 8)", () => {
   const build = [
     {
       code: "MOSTRA_BUILD_UNRESOLVED",
@@ -216,7 +216,7 @@ describe("a module the build couldn't resolve is reported once (D137 item 8)", (
   });
 });
 
-describe("screenshot token estimates (AX-05, D137 item 9)", () => {
+describe("screenshot token estimates (AX-05, D138 item 9)", () => {
   it("matches the providers' rules at the default viewports", () => {
     expect(estimateImageTokens(1280, 800)).toEqual({ claude: 1334, gpt: 1200, gemini: 1120 });
     expect(estimateImageTokens(390, 844)).toEqual({ claude: 434, gpt: 422, gemini: 1120 });

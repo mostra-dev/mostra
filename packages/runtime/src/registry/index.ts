@@ -66,7 +66,7 @@ export interface VersionCommit {
   readonly homePolicy?: SubmissionPolicy | undefined;
   readonly forcedCodes: readonly string[];
   /**
-   * What verify found for this version (D137 item 4): `pass` only when its verdict had no error
+   * What verify found for this version (D138 item 4): `pass` only when its verdict had no error
    * and nothing was forced. Absent when no verify ran (a reuse, a repair).
    */
   readonly verify?: { readonly status: "pass" | "fail"; readonly verifyRevision: string };
@@ -104,7 +104,7 @@ export interface Registry {
   identityFor(bindingPath: string, manifestId: string | undefined, generate: () => string): string;
   /** The artifact a source path is bound to, if any (D51). */
   artifactAt(bindingPath: string): string | undefined;
-  /** The newest version of an artifact whose recorded verdict passed (D137 item 4). */
+  /** The newest version of an artifact whose recorded verdict passed (D138 item 4). */
   passedVersion(artifactId: string): string | undefined;
   /** The version row of `versionId`, if it was committed. */
   hasVersion(versionId: string): boolean;
@@ -121,7 +121,7 @@ export interface Registry {
         readonly manifest: ArtifactManifest;
         /** The error codes `--force` recorded when it was published (D41). */
         readonly forcedCodes: readonly string[];
-        /** The verdict it was published on (D137 item 4); absent before verify existed. */
+        /** The verdict it was published on (D138 item 4); absent before verify existed. */
         readonly verify?: { readonly status: "pass" | "fail"; readonly verifyRevision: string };
       }
     | undefined;

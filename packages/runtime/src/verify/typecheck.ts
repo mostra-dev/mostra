@@ -1,5 +1,5 @@
 /**
- * The type check (D137 item 8): TypeScript 7 `tsc --noEmit` over an artifact's snapshot, in a
+ * The type check (D138 item 8): TypeScript 7 `tsc --noEmit` over an artifact's snapshot, in a
  * child the process manager starts and records, beside the build and inside its 180 s. Imports
  * resolve as the build resolves them: the same `node_modules` layout (the warm set or the lock
  * layout), `@/*` at the snapshot's root, `@mostra/react`'s and `@mostra/server`'s types and the
@@ -22,7 +22,7 @@ import type { ProcessManager } from "../processes/index.ts";
 /** How long the check may take: the build's own limit, which it runs beside (FAILURE_MODEL §9). */
 export const TYPECHECK_TIMEOUT_MS = 180_000;
 
-/** The options Mostra sets when the artifact has no `tsconfig.json` (D137 item 8). */
+/** The options Mostra sets when the artifact has no `tsconfig.json` (D138 item 8). */
 const DEFAULT_OPTIONS = {
   strict: true,
   noUnusedLocals: false,
@@ -49,7 +49,7 @@ const FORCED_OPTIONS = {
 };
 
 /** What the files a build bundles are, for the checker: Vite's asset and MDX imports. */
-const AMBIENT = `// Written by Mostra for verify's type check (D137): what the build's imports are.
+const AMBIENT = `// Written by Mostra for verify's type check (D138): what the build's imports are.
 declare module "*.css" { const css: string; export default css; }
 declare module "*.svg" { const src: string; export default src; }
 declare module "*.png" { const src: string; export default src; }
@@ -79,7 +79,7 @@ interface ImportMeta { readonly env: ImportMetaEnv }
 
 /**
  * The check configuration's revision: its text, so a change to what verify checks never reuses a
- * verdict made under the old rules (D137 items 5 and 8).
+ * verdict made under the old rules (D138 items 5 and 8).
  */
 export const TYPECHECK_REVISION: string = createHash("sha256")
   .update(JSON.stringify({ DEFAULT_OPTIONS, FORCED_OPTIONS, AMBIENT, revision: 1 }))
