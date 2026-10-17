@@ -1898,6 +1898,68 @@ const SEEDS: readonly Seed[] = [
   },
   // WP-09: verify and publish's gate (AX-02, AX-04, AX-05, AU-05, VR-09, RT-02; D138).
   {
+    requirement: "wp09-gpt-1",
+    name: "a type check whose configuration the compiler refuses passes",
+    file: "src/verify/typecheck.ts",
+    from: '    if (file === "" || CONFIG_FILES.has(file)) {',
+    to: '    if (file === "\\u0000") {',
+    also: [
+      {
+        file: "src/verify/typecheck.ts",
+        from: '  if (exit.code !== 0 && !found.some((diagnostic) => diagnostic.severity === "error")) {',
+        to: "  if (exit.code === -12345) {",
+      },
+    ],
+    check: integration("verify.test.ts", "compiler refuses"),
+  },
+  {
+    requirement: "wp09-gpt-2",
+    name: "verify runs of one cache key race each other",
+    file: "src/verify/index.ts",
+    from: "    run: serialized,",
+    to: "    run: verify,",
+    also: [
+      {
+        file: "src/verify/index.ts",
+        from: "      const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`;",
+        to: "      const temporary = `${target}.tmp`;",
+      },
+    ],
+    check: integration("verify-failures.test.ts", "two paths at once"),
+  },
+  {
+    requirement: "wp09-gpt-3",
+    name: "the smoke test never uses controls an interaction revealed",
+    file: "../verify/src/smoke.ts",
+    from: "      if (depth < REVEAL_DEPTH) await exerciseRevealed(depth);",
+    to: "",
+    check: integration("verify.test.ts", "crash inside a dialog"),
+  },
+  {
+    requirement: "wp09-gpt-4",
+    name: "a fetch a control made isn't an effect",
+    file: "../verify/src/network.ts",
+    from: '    if (fromArtifact(request) && !url.pathname.startsWith("/_mostra/"))\n      log.push({ kind: "request" });',
+    to: "",
+    check: integration("verify.test.ts", "crash inside a dialog"),
+  },
+  {
+    requirement: "wp09-gpt-5",
+    name: "the blank check ignores an ancestor's opacity",
+    file: "../verify/src/runner.ts",
+    from: "    return element.checkVisibility({ opacityProperty: true, visibilityProperty: true });",
+    to: '    const style = getComputedStyle(element);\n    return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;',
+    check: integration("verify.test.ts", "opacity 0"),
+  },
+  {
+    requirement: "wp09-gpt-6",
+    name: "the field probe doesn't hear useChoice",
+    file: "../react/src/hooks.ts",
+    from: '    () => store.announceMount({ id, scope: "viewer", initial: undefined, hook: "useChoice" }),',
+    to: "    () => undefined,",
+    check: integration("verify.test.ts", "crash inside a dialog"),
+  },
+  {
     requirement: "VR-09-reuse",
     name: "a republished forced version's receipt forgets its forced codes",
     file: "src/publish/publisher.ts",

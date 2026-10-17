@@ -132,11 +132,14 @@ function artifactFrame(page: Page): Frame | undefined {
 
 /** What the frame shows: whether any element has a visible box of nonzero area (D138 item 3). */
 function showsSomething(): boolean {
+  // Visible through its ancestors too: `checkVisibility` with these options is false when the
+  // element has no box (an ancestor is `display: none`), is `visibility: hidden`, or it or any
+  // ancestor has opacity 0 (CSSOM View; GPT review finding 5: a wrapper at opacity 0 hides
+  // children whose own opacity is 1).
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return false;
-    const style = getComputedStyle(element);
-    return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
+    return element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
   };
   for (const element of document.querySelectorAll("img, svg, canvas, video")) {
     if (visible(element)) return true;

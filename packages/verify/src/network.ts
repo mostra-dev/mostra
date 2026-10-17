@@ -21,8 +21,11 @@ export interface NetworkWatch {
   mark(): number;
   /** Field ops the gateway applied since a mark. */
   writesSince(from: number): number;
-  /** Requests to Mostra's own protocol (fields, calls, runs, signals, submits) since a mark. */
-  protocolSince(from: number): number;
+  /**
+   * Requests the artifact's frame made since a mark, its event stream aside: Mostra's protocol
+   * (fields, calls, runs, signals, submits) and the page's own fetches alike, each an effect.
+   */
+  requestsSince(from: number): number;
   /** The failed-request findings so far. */
   findings(): Diagnostic[];
 }
@@ -42,6 +45,7 @@ export function watchNetwork(
     | { kind: "skip"; fn: string }
     | { kind: "write"; ops: number }
     | { kind: "protocol" }
+    | { kind: "request" }
   )[] = [];
   const failures = new Map<string, Diagnostic>();
   /** Protocol answers still being read: they count as in flight until their body is in. */
@@ -90,7 +94,12 @@ export function watchNetwork(
   };
 
   page.on("request", (request) => {
-    if (!isStream(new URL(request.url()))) open.add(request);
+    const url = new URL(request.url());
+    if (isStream(url)) return;
+    open.add(request);
+    // Any request the page's own code makes is something a control did (GPT review finding 4).
+    if (fromArtifact(request) && !url.pathname.startsWith("/_mostra/"))
+      log.push({ kind: "request" });
   });
   const done = (request: Request): void => {
     open.delete(request);
@@ -146,7 +155,7 @@ export function watchNetwork(
     ],
     writesSince: (from) =>
       log.slice(from).reduce((sum, entry) => sum + (entry.kind === "write" ? entry.ops : 0), 0),
-    protocolSince: (from) => log.slice(from).filter((entry) => entry.kind !== "write").length,
+    requestsSince: (from) => log.slice(from).filter((entry) => entry.kind !== "write").length,
     findings: () => [...failures.values()],
   };
 }

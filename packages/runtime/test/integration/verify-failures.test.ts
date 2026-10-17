@@ -289,4 +289,21 @@ export default function Page() {
       expect(codes(again, "error")).not.toContain("MOSTRA_VERIFY_CRASHED");
     });
   }, 120_000);
+  it(
+    "verifies identical sources at two paths at once, each getting its verdict (GPT review finding 2)",
+    async () => {
+      await withDaemon({}, async (client, home) => {
+        const sources = [single(), single(), single()];
+        const verdicts = await Promise.all(sources.map((path) => verifyOf(client, path)));
+        expect(new Set(verdicts.map((verdict) => verdict.artifact.sourceDigest)).size).toBe(1);
+        expect(verdicts.map((verdict) => verdict.status)).toEqual(["pass", "pass", "pass"]);
+        // One verdict for the shared key, and no temporary file left beside it.
+        expect(cachedVerdicts(home)).toHaveLength(1);
+        expect(
+          readdirSync(join(home.home, "cache", "verify")).filter((name) => name.endsWith(".tmp")),
+        ).toEqual([]);
+      });
+    },
+    VERIFY_MS,
+  );
 });

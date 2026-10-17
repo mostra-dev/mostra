@@ -436,6 +436,132 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", ()
   );
 });
 
+describe("the GPT review's smoke and probe findings, through a real page (GPT review findings 3 to 6)", () => {
+  it(
+    "finds a crash inside a dialog, counts a fetch as an effect, and sees a choice ID that changes",
+    async () => {
+      const dir = artifact("revealed", {
+        "index.tsx": `import { useState } from "react";
+import { useChoice } from "@mostra/react";
+
+function Choice() {
+  const [set] = useState(() => \`design-\${Math.random()}\`);
+  const { choice } = useChoice(set);
+  return <p>Chosen: {choice ?? "none"}</p>;
+}
+
+export default function Page() {
+  const [open, setOpen] = useState(false);
+  return (
+    <main>
+      <h1>Revealed</h1>
+      <button type="button" onClick={() => setOpen(true)}>Open the dialog</button>
+      {open && (
+        <div role="dialog" aria-label="Dialog">
+          <button type="button" onClick={() => { throw new Error("Crash inside the dialog"); }}>Crash inside</button>
+        </div>
+      )}
+      <button type="button" onClick={() => { void fetch("/data.json"); }}>Ping</button>
+      <Choice />
+    </main>
+  );
+}
+`,
+        "public/data.json": '{ "ok": true }\n',
+      });
+      const verdict = await verify(dir);
+      // 3: the dialog's button was used, and its crash is the page's error.
+      expect(
+        find(verdict, "MOSTRA_RUNTIME_PAGE_ERROR").some((d) =>
+          d.message.includes("Crash inside the dialog"),
+        ),
+      ).toBe(true);
+      // 4: a button whose effect is a request did something.
+      expect(
+        find(verdict, "MOSTRA_SMOKE_NO_EFFECT")
+          .map((d) => d.message)
+          .join("\n"),
+      ).not.toContain("Ping");
+      // 6: a review set named at mount changes between loads.
+      expect(find(verdict, "MOSTRA_FIELD_ID_UNSTABLE")[0]?.message).toContain("review.design-");
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "calls a page blank when a wrapper at opacity 0 hides all of it",
+    async () => {
+      const verdict = await verify(
+        join(
+          artifact("hidden", {
+            "page.tsx": `export default function Page() {
+  return <div style={{ opacity: 0 }}><main><h1>Here but hidden</h1><p>Nothing shows.</p></main></div>;
+}
+`,
+          }),
+          "page.tsx",
+        ),
+      );
+      expect(find(verdict, "MOSTRA_RUNTIME_BLANK")[0]?.severity).toBe("error");
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "doesn't call a hover-opened tooltip or the tab already selected ineffective (EVAL-01, D72)",
+    async () => {
+      const verdict = await verify(
+        join(
+          artifact("calibrated", {
+            "page.tsx": `import { useState } from "react";
+export default function Page() {
+  const [tip, setTip] = useState(false);
+  const [tab, setTab] = useState("one");
+  return (
+    <main>
+      <h1>Calibration</h1>
+      <span>
+        <button type="button" data-slot="tooltip-trigger" onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)}>Help</button>
+        {tip && <span role="tooltip">Shown on hover</span>}
+      </span>
+      <div role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "one"} onClick={() => setTab("one")}>One</button>
+        <button type="button" role="tab" aria-selected={tab === "two"} onClick={() => setTab("two")}>Two</button>
+      </div>
+      <section role="tabpanel">Panel {tab}</section>
+    </main>
+  );
+}
+`,
+          }),
+          "page.tsx",
+        ),
+      );
+      expect(find(verdict, "MOSTRA_SMOKE_NO_EFFECT")).toEqual([]);
+      expect(codes(verdict, "error")).toEqual([]);
+    },
+    VERIFY_MS,
+  );
+});
+
+describe("a type check that can't run fails the verdict (D138 item 8, GPT review finding 1)", () => {
+  it(
+    "reports a tsconfig.json the compiler refuses, instead of passing unchecked code",
+    async () => {
+      const dir = artifact("bad-config", {
+        "index.tsx": "export default function Page() { return <main><h1>Config</h1></main>; }\n",
+        "tsconfig.json": '{ "compilerOptions": { "baseUrl": "." } }\n',
+      });
+      const verdict = await verify(dir);
+      expect(verdict.status).toBe("fail");
+      const [error] = find(verdict, "MOSTRA_TYPE_ERROR");
+      expect(error?.message).toContain("TS5102");
+      expect(error?.location).toMatchObject({ file: "tsconfig.json" });
+    },
+    VERIFY_MS,
+  );
+});
+
 describe("stages that end a run early (AX-02)", () => {
   it(
     "compile: a source that doesn't build stops before the browser",

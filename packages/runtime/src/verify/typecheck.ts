@@ -93,6 +93,10 @@ function tscPath(): string {
 
 /** One line of `tsc --pretty false`: `file(line,col): error TS1234: message`. */
 const LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+/** A diagnostic without a file: `error TS5023: Unknown compiler option …`. */
+const GLOBAL = /^error (TS\d+): (.*)$/;
+/** The configuration files of a check: Mostra's, which extends the artifact's own. */
+const CONFIG_FILES = new Set(["tsconfig.verify.json", "source/tsconfig.json"]);
 
 /** What the check found. */
 export interface TypecheckOutcome {
@@ -106,11 +110,22 @@ export interface TypecheckOutcome {
 export function parseTscOutput(
   lines: readonly string[],
   alreadyReported: (specifier: string) => boolean,
+  /** Whether the artifact has its own `tsconfig.json`, which Mostra's configuration extends. */
+  ownConfig = false,
 ): Diagnostic[] {
   const found: { file: string; line: number; column: number; code: string; text: string }[] = [];
   for (const line of lines) {
     const match = LINE.exec(line);
-    if (match) {
+    const global = match ? undefined : GLOBAL.exec(line);
+    if (global) {
+      found.push({
+        file: "",
+        line: 1,
+        column: 1,
+        code: global[1] as string,
+        text: global[2] as string,
+      });
+    } else if (match) {
       found.push({
         file: match[1] as string,
         line: Number(match[2]),
@@ -126,6 +141,23 @@ export function parseTscOutput(
   const diagnostics: Diagnostic[] = [];
   for (const entry of found) {
     const file = entry.file.replace(/\\/g, "/");
+    // A configuration the compiler refuses means the source was never checked: an error, never
+    // a pass (it is the artifact's `tsconfig.json` against how Mostra builds, D138 item 8).
+    if (file === "" || CONFIG_FILES.has(file)) {
+      diagnostics.push(
+        createDiagnostic("MOSTRA_TYPE_ERROR", {
+          message: `The type check couldn't run with the artifact's tsconfig.json and Mostra's build settings (noEmit, skipLibCheck, moduleResolution "bundler", the @/* path): ${entry.code}: ${entry.text}`,
+          // The compiler reports options it inherits against the file that extends them, so an
+          // artifact with its own configuration is pointed at it.
+          ...(file === "source/tsconfig.json"
+            ? { location: { file: "tsconfig.json", line: entry.line, column: entry.column } }
+            : ownConfig
+              ? { location: { file: "tsconfig.json", line: 1, column: 1 } }
+              : {}),
+        }),
+      );
+      continue;
+    }
     if (!file.startsWith("source/") || file.includes("/node_modules/")) continue;
     const location = { file: file.slice("source/".length), line: entry.line, column: entry.column };
     if (entry.code === "TS7016") {
@@ -238,7 +270,8 @@ export async function typecheck(options: {
         ],
       };
     }
-    return { diagnostics: parseTscOutput(lines, options.alreadyReported) };
+    const diagnostics = parseTscOutput(lines, options.alreadyReported, own);
+    return { diagnostics: [...diagnostics, ...unexplainedExit(exit, lines, diagnostics)] };
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
@@ -252,4 +285,39 @@ export function reportedByBuild(diagnostics: readonly Diagnostic[], specifier: s
       diagnostic.message.includes(`'${specifier}'`) ||
       diagnostic.message.includes(`\`${specifier}\``),
   );
+}
+
+/**
+ * What a `tsc` exit says beyond the diagnostics it printed: a signal is a crash of the checker
+ * (never cached), and a failing exit with no error found means the source wasn't checked, which
+ * fails closed (an error) instead of passing.
+ */
+export function unexplainedExit(
+  exit: {
+    readonly code: number | null;
+    readonly signal: string | null;
+    readonly stderrTail: readonly string[];
+  },
+  lines: readonly string[],
+  found: readonly Diagnostic[],
+): Diagnostic[] {
+  const tail = [...lines, ...exit.stderrTail]
+    .filter((line) => line.trim() !== "")
+    .slice(-6)
+    .join("\n");
+  if (exit.signal !== null) {
+    return [
+      createDiagnostic("MOSTRA_VERIFY_CRASHED", {
+        message: `The type checker stopped (${exit.signal}) before it finished.${tail ? `\n${tail}` : ""}`,
+      }),
+    ];
+  }
+  if (exit.code !== 0 && !found.some((diagnostic) => diagnostic.severity === "error")) {
+    return [
+      createDiagnostic("MOSTRA_TYPE_ERROR", {
+        message: `The type check exited with code ${exit.code} without checking the source${tail ? `:\n${tail}` : "."}`,
+      }),
+    ];
+  }
+  return [];
 }

@@ -5,7 +5,7 @@
  * verdict, its ARIA snapshots and every file verify wrote hold none of it.
  * WP-08 left verify's output to repeat AC-06's grep (PROGRESS-WP-08, untested boundaries).
  */
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { type Dirent, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -27,20 +27,20 @@ const result = (message: Message): unknown => {
   return message.result;
 };
 
-/** Every file under `dir`, read as bytes. */
+/** Every file under `dir`, read as bytes (entries listed with their types: no stat, then read). */
 function files(dir: string): { path: string; bytes: Buffer }[] {
   const found: { path: string; bytes: Buffer }[] = [];
   const walk = (current: string): void => {
-    let names: string[];
+    let entries: Dirent[];
     try {
-      names = readdirSync(current);
+      entries = readdirSync(current, { withFileTypes: true });
     } catch {
       return;
     }
-    for (const name of names) {
-      const path = join(current, name);
-      if (statSync(path).isDirectory()) walk(path);
-      else found.push({ path, bytes: readFileSync(path) });
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) found.push({ path, bytes: readFileSync(path) });
     }
   };
   walk(dir);

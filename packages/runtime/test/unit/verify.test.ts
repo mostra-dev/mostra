@@ -13,7 +13,7 @@ import {
   pixelRegression,
   removedControls,
 } from "../../src/verify/regression.ts";
-import { parseTscOutput, reportedByBuild } from "../../src/verify/typecheck.ts";
+import { parseTscOutput, reportedByBuild, unexplainedExit } from "../../src/verify/typecheck.ts";
 
 const at = (line: number) => ({ file: "index.tsx", line, column: 3 });
 const coverage = (entries: FieldCoverage["entries"]): FieldCoverage => ({
@@ -195,6 +195,40 @@ describe("the type check's output (D138 item 8)", () => {
     ]);
     expect(found[0]?.message).toContain("TS2322");
     expect(found[0]?.message).toContain("The expected type comes from here.");
+  });
+});
+
+describe("a type check that couldn't run fails closed (D138 item 8, GPT review finding 1)", () => {
+  it("reports what the compiler refused in the configuration as type errors", () => {
+    const found = parseTscOutput(
+      [
+        "tsconfig.verify.json(1,40): error TS5102: Option 'baseUrl' has been removed. Please remove it from your configuration.",
+        "source/tsconfig.json(2,15): error TS5109: Option 'moduleResolution' must be set to 'NodeNext'.",
+        "error TS5023: Unknown compiler option 'nope'.",
+      ],
+      () => false,
+      true,
+    );
+    expect(found.map((d) => [d.code, d.severity])).toEqual([
+      ["MOSTRA_TYPE_ERROR", "error"],
+      ["MOSTRA_TYPE_ERROR", "error"],
+      ["MOSTRA_TYPE_ERROR", "error"],
+    ]);
+    expect(found[0]?.message).toContain("TS5102");
+    expect(found[0]?.location).toEqual({ file: "tsconfig.json", line: 1, column: 1 });
+    expect(found[1]?.location).toEqual({ file: "tsconfig.json", line: 2, column: 15 });
+    expect(found[2]?.message).toContain("TS5023");
+  });
+  it("fails a check that exited unsuccessfully with nothing found, and calls a signal a crash", () => {
+    const failed = { code: 1, signal: null, stderrTail: ["something went wrong"] };
+    expect(unexplainedExit(failed, [], []).map((d) => d.code)).toEqual(["MOSTRA_TYPE_ERROR"]);
+    expect(
+      unexplainedExit({ code: null, signal: "SIGKILL", stderrTail: [] }, [], []).map((d) => d.code),
+    ).toEqual(["MOSTRA_VERIFY_CRASHED"]);
+    // A clean exit, or a failing one whose errors were found, adds nothing.
+    expect(unexplainedExit({ code: 0, signal: null, stderrTail: [] }, [], [])).toEqual([]);
+    const typeError = parseTscOutput(["source/index.tsx(3,7): error TS2322: Nope."], () => false);
+    expect(unexplainedExit(failed, [], typeError)).toEqual([]);
   });
 });
 

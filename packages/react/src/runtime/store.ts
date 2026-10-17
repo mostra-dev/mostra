@@ -666,6 +666,22 @@ export class Store {
     return () => this.#mountObservers.delete(observer);
   }
 
+  /**
+   * Tells the mount observers about a field a hook reads and writes without registering it
+   * (`useChoice`'s choice field): `verify`'s field probe hears it, and nothing else changes, so
+   * no default is written for it (D110). Returns the function that announces its unmount.
+   */
+  announceMount(registration: Registration): () => void {
+    if (this.#mountObservers.size === 0) return () => undefined;
+    for (const observer of this.#mountObservers) observer(registration, true);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const observer of this.#mountObservers) observer(registration, false);
+    };
+  }
+
   /** Updates a mounted field's options or validation message. */
   updateRegistration(registration: Registration): void {
     const key = fieldKey(registration.scope, registration.id);

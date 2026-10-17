@@ -390,3 +390,11 @@ Checked by the WP-09 session on 2026-10-17 against the providers' own documentat
 | `pixelmatch` | 8.0.0 | 2026-10-06 | ISC; ESM; depends on `pngjs` ^7 | The pixel regression's comparison |
 | `pngjs` | 7.0.0 | 2023-02-20 | MIT | Decodes screenshots for `pixelmatch` |
 | `typescript` | 7.0.2 | 2026-07-08 | Apache-2.0 | The type check's `tsc`, the repository's catalog version; a platform package (`@typescript/typescript-<platform>`) holds the native compiler |
+
+**Browser behavior** (2026-10-17):
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| `Element.checkVisibility` | False when the element has no box, an ancestor has `content-visibility: hidden`, `opacityProperty` is set and the element *or an ancestor* has computed opacity 0, or `visibilityProperty` is set and the element is invisible | drafts.csswg.org/cssom-view (Editor's Draft, 8 October 2026), the `checkVisibility(options)` steps | The blank-page check counts an element as shown only when it is visible through its ancestors (GPT review finding 5) |
+| React 19.3's default error handlers | `react-dom/client` production: `defaultOnCaughtError` calls `console.error(error)`; uncaught errors go to `reportError` (an `error` event on `window`) | `react-dom` 19.3.0 `cjs/react-dom-client.production.js` | An error a boundary caught reaches verify's recorder as a console error and an uncaught one as a page error, both errors (D138 item 3) |
+| `tsc` 7.0.2 and a refused configuration | Options the compiler rejects (`baseUrl`, removed in TypeScript 7: TS5102; `moduleResolution: "bundler"` with `module: "NodeNext"`: TS5095, TS5109) are reported against the configuration file that extends them, and it exits 1 without checking any source | local run, `node_modules/typescript/bin/tsc -p` | The type check reports configuration errors and any failing exit as errors, never as a pass (GPT review finding 1) |

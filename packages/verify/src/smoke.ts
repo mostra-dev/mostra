@@ -51,9 +51,14 @@ export interface SmokeOutcome {
 }
 
 const MARK = "data-mostra-smoke";
+/** How many levels of revealed controls the smoke test follows: a dialog, then its menu. */
+const REVEAL_DEPTH = 2;
 
-/** Finds the page's controls and marks each with its index (runs in the frame). */
-function findControls(mark: string): Control[] {
+/**
+ * Finds the page's controls not marked yet and marks each with its index, numbering from `start`
+ * (runs in the frame): the page's controls at first, then those an interaction revealed.
+ */
+function findControls([mark, start]: readonly [string, number]): Control[] {
   const selector = [
     "button",
     "[role=button]",
@@ -77,7 +82,7 @@ function findControls(mark: string): Control[] {
   const controls: Control[] = [];
   const seen = new Set<Element>();
   for (const element of document.querySelectorAll(selector)) {
-    if (seen.has(element) || controls.length >= 400) continue;
+    if (seen.has(element) || controls.length >= 400 || element.hasAttribute(mark)) continue;
     seen.add(element);
     const html = element as HTMLElement;
     const tag = element.tagName.toLowerCase();
@@ -120,8 +125,9 @@ function findControls(mark: string): Control[] {
       else if (type === "file") use = "skip";
       else use = "fill";
     }
-    element.setAttribute(mark, String(controls.length));
-    controls.push({ index: controls.length, tag, role, type, name, use });
+    const index = start + controls.length;
+    element.setAttribute(mark, String(index));
+    controls.push({ index, tag, role, type, name, use });
   }
   return controls;
 }
@@ -226,11 +232,18 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
   let budget = false;
   let stopped = false;
   await frame.evaluate(countMutations).catch(() => undefined);
-  const controls = await frame.evaluate(findControls, MARK).catch(() => [] as Control[]);
+  const controls = await frame
+    .evaluate(findControls, [MARK, 0] as const)
+    .catch(() => [] as Control[]);
   const usable = controls.filter((control) => control.use !== "skip");
+  let next = controls.length;
 
-  /** Uses a control once and judges what the page reported meanwhile. */
-  const exercise = async (control: Control): Promise<Use> => {
+  /**
+   * Uses a control once and judges what the page reported meanwhile. Controls it revealed (a
+   * dialog's buttons, a menu's items, a tab's panel) are used too, before anything is dismissed,
+   * down to {@link REVEAL_DEPTH} levels (GPT review finding 3).
+   */
+  const exercise = async (control: Control, depth = 0): Promise<Use> => {
     const none: Use = {
       used: false,
       changed: false,
@@ -284,7 +297,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
       navigated ||
       newDocument ||
       reported ||
-      network.protocolSince(mark) > 0 ||
+      network.requestsSince(mark) > 0 ||
       afterAttributes !== beforeAttributes ||
       (afterMutations > beforeMutations && beforeMutations >= 0);
     const moment = { kind: "interaction" as const, control: describe(control) };
@@ -297,14 +310,49 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
       const entries = await recorded(frame, seen);
       seen += entries.length;
       findings.push(...judge(entries, moment, network.skippedSince(mark), viewport));
-      await page.keyboard.press("Escape").catch(() => undefined);
-      await page.mouse.move(0, 0).catch(() => undefined);
+      if (depth < REVEAL_DEPTH) await exerciseRevealed(depth);
+      if (depth === 0) {
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await page.mouse.move(0, 0).catch(() => undefined);
+      }
     }
     return { used: true, changed, writes: network.writesSince(mark), navigated, newDocument, mark };
   };
 
   const within = (): boolean =>
     !stopped && interactions < options.maxInteractions && Date.now() < options.deadline;
+
+  /**
+   * Uses the controls the last interaction revealed. They are judged for what the page reports
+   * and for inputs that save nothing, never for having no effect: a second try would need their
+   * container opened again, and silence is the conservative answer (D72).
+   */
+  const exerciseRevealed = async (depth: number): Promise<void> => {
+    if (!within() || frame.isDetached()) return;
+    const revealed = await frame
+      .evaluate(findControls, [MARK, next] as const)
+      .catch(() => [] as Control[]);
+    next += revealed.length;
+    for (const control of revealed) {
+      if (!within()) break;
+      if (control.use === "skip" || control.tag === "a") continue;
+      const outcome = await exercise(control, depth + 1);
+      if (!outcome.used) continue;
+      unbound(control, outcome);
+    }
+  };
+
+  /** Reports an input the smoke test changed whose value saved nothing (a hint). */
+  const unbound = (control: Control, outcome: Use): void => {
+    if (control.use !== "fill" && control.use !== "toggle" && control.use !== "select") return;
+    if (outcome.writes > 0 || outcome.navigated || outcome.newDocument) return;
+    findings.push(
+      createDiagnostic("MOSTRA_FIELD_UNBOUND", {
+        message: `The smoke test changed ${describe(control)} and the page saved nothing: the input isn't bound to a field.`,
+        location: { viewport, selector: `[${MARK}="${control.index}"]` },
+      }),
+    );
+  };
   /** Controls that changed nothing the first time: tried again once the others were used. */
   const again: Control[] = [];
   let used = 0;
@@ -315,16 +363,8 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     used += 1;
     const outcome = await exercise(control);
     if (!outcome.used) continue;
-    const location = { viewport, selector: `[${MARK}="${control.index}"]` };
     if (control.use === "fill" || control.use === "toggle" || control.use === "select") {
-      if (outcome.writes === 0 && !outcome.navigated && !outcome.newDocument) {
-        findings.push(
-          createDiagnostic("MOSTRA_FIELD_UNBOUND", {
-            message: `The smoke test changed ${describe(control)} and the page saved nothing: the input isn't bound to a field.`,
-            location,
-          }),
-        );
-      }
+      unbound(control, outcome);
     } else if (!outcome.changed) again.push(control);
   }
   // A control can rightly do nothing the first time: the option already chosen, the filter

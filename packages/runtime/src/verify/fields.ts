@@ -15,22 +15,35 @@ import type { FieldCoverage, FieldEntry } from "../builder/index.ts";
 const where = (entry: FieldEntry): string =>
   `${entry.location.file}:${entry.location.line}:${entry.location.column}`;
 
-/** Static duplicates: one literal ID named by two hooks, or with two literal scopes. */
-export function staticFieldLint(coverage: FieldCoverage | undefined): Diagnostic[] {
+/** The literal IDs the static scan names with two hooks or two scopes, with the two entries. */
+function staticConflicts(
+  coverage: FieldCoverage | undefined,
+): { readonly id: string; readonly first: FieldEntry; readonly other: FieldEntry }[] {
   if (!coverage) return [];
   const byId = new Map<string, FieldEntry[]>();
   for (const entry of coverage.entries) {
     if (entry.id === undefined) continue;
     byId.set(entry.id, [...(byId.get(entry.id) ?? []), entry]);
   }
-  const findings: Diagnostic[] = [];
+  const conflicts: { id: string; first: FieldEntry; other: FieldEntry }[] = [];
   for (const [id, entries] of byId) {
     const first = entries[0] as FieldEntry;
     const other = entries.find(
       (entry) =>
         entry.hook !== first.hook || (entry.scope ?? "viewer") !== (first.scope ?? "viewer"),
     );
-    if (!other) continue;
+    if (other) conflicts.push({ id, first, other });
+  }
+  return conflicts;
+}
+
+const staticConflictIds = (coverage: FieldCoverage | undefined): ReadonlySet<string> =>
+  new Set(staticConflicts(coverage).map((conflict) => conflict.id));
+
+/** Static duplicates: one literal ID named by two hooks, or with two literal scopes. */
+export function staticFieldLint(coverage: FieldCoverage | undefined): Diagnostic[] {
+  const findings: Diagnostic[] = [];
+  for (const { id, first, other } of staticConflicts(coverage)) {
     const how =
       other.hook !== first.hook
         ? `with ${first.hook} at ${where(first)} and ${other.hook} at ${where(other)}`
@@ -45,11 +58,20 @@ export function staticFieldLint(coverage: FieldCoverage | undefined): Diagnostic
   return findings;
 }
 
-/** What the probe saw: conflicting mounts (errors) and IDs mounted more than once (hints). */
-export function probedFieldLint(fields: readonly ProbedField[], viewport: string): Diagnostic[] {
+/**
+ * What the probe saw: conflicting mounts (errors) and IDs mounted more than once (hints). An ID
+ * the static scan already reported as a duplicate isn't reported again.
+ */
+export function probedFieldLint(
+  fields: readonly ProbedField[],
+  viewport: string,
+  coverage?: FieldCoverage,
+): Diagnostic[] {
+  const flagged = staticConflictIds(coverage);
   const findings: Diagnostic[] = [];
   for (const field of fields) {
     if (field.conflicts.length > 0) {
+      if (flagged.has(field.id)) continue;
       findings.push(
         createDiagnostic("MOSTRA_FIELD_DUPLICATE_ID", {
           message: `The page mounted the field ID "${field.id}" for two different fields: ${field.conflicts.join("; ")}.`,

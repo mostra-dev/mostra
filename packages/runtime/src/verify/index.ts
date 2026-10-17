@@ -14,7 +14,7 @@
  * error says the run couldn't vouch for the page (the environment, a timeout, a crash): publish
  * reuses it for the same digests (D41).
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -491,7 +491,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
         // The second boot with identical inputs, for field IDs that change between renders.
         const first = viewports[0] as VerifyViewport;
         const firstFields: readonly ProbedField[] = candidateShots.get(first.name)?.fields ?? [];
-        diagnostics.push(...probedFieldLint(firstFields, first.name));
+        diagnostics.push(...probedFieldLint(firstFields, first.name, coverage));
         stage = "field stability";
         const again = await render(prepared.versionId, first, `${first.name}-again`, {
           screenshot: false,
@@ -644,8 +644,9 @@ export function createVerifier(options: VerifierOptions): Verifier {
     ) {
       await mkdir(cacheDir, { recursive: true, mode: 0o700 });
       const target = join(cacheDir, `${key}.json`);
-      await writeFile(`${target}.tmp`, `${JSON.stringify(checkedVerdict, null, 2)}\n`);
-      await rename(`${target}.tmp`, target);
+      const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(checkedVerdict, null, 2)}\n`);
+      await rename(temporary, target);
       await pruneVerdicts();
     } else {
       await rm(join(cacheDir, `${key}.json`), { force: true });
@@ -660,9 +661,27 @@ export function createVerifier(options: VerifierOptions): Verifier {
     return checkedVerdict;
   };
 
+  // Runs that share a cache key (identical sources at two paths) share its verdict file and its
+  // screenshot directory, so they run one at a time (GPT review finding 2).
+  const running = new Map<string, Promise<unknown>>();
+  const serialized = (prepared: PreparedSource, run: VerifyRun): Promise<VerifyVerdict> => {
+    const key = verdictKey(prepared.sourceDigest, prepared.envDigest);
+    const previous = running.get(key) ?? Promise.resolve();
+    const next = previous.then(
+      () => verify(prepared, run),
+      () => verify(prepared, run),
+    );
+    const settled = next.catch(() => undefined);
+    running.set(key, settled);
+    void settled.then(() => {
+      if (running.get(key) === settled) running.delete(key);
+    });
+    return next;
+  };
+
   return {
     cacheDir,
-    run: verify,
+    run: serialized,
     cached(prepared) {
       const file = join(cacheDir, `${verdictKey(prepared.sourceDigest, prepared.envDigest)}.json`);
       let raw: unknown;
