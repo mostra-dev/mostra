@@ -1,4 +1,4 @@
-import { defineLive } from "@mostra/server";
+import { defineLive, secret } from "@mostra/server";
 
 let loads = 0;
 
@@ -23,5 +23,12 @@ export const watched = defineLive({
   load: async () => {
     const { readFile } = await import("node:fs/promises");
     return JSON.parse(await readFile("data/value.json", "utf8"));
+  },
+});
+
+/** Fails with a secret in its message: the page sees the error redacted (AC-06). */
+export const failing = defineLive({
+  load: async () => {
+    throw new Error(`upstream refused ${secret("MAIL_TOKEN")}`);
   },
 });

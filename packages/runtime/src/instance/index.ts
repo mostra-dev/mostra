@@ -593,7 +593,12 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         registry,
         publisher: getPublisher,
         link: (artifactId) => gateway.defaultLink(artifactId),
-        published: (artifactId) => pool.clear(artifactId),
+        // Any publish clears the artifact's park, a reused version too (FAILURE_MODEL §2): its
+        // calls and its live producers both start again.
+        published: (artifactId) => {
+          pool.clear(artifactId);
+          live.unpark(artifactId);
+        },
       }),
       ...gateway.methods(),
       ...interaction.methods(),

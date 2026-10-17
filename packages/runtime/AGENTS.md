@@ -104,16 +104,21 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   worker per version with server code, started through a `WorkerLauncher` that gets a version
   reference, never a path; `workers/launcher.ts` holds the local launcher (the process manager,
   `artifactEnvironment`, the heap limit, the channel on descriptor 4) and the socket launcher
-  tests use. A worker's crash, OOM or hang ends it alone: the pool restarts it with backoff,
-  parks it after more than five crashes in ten minutes, and appends `worker.crashed`.
+  tests use. A replacement starts only once a stopping worker has exited. A worker's crash, OOM
+  or hang ends it alone: the pool restarts it with backoff, parks it after more than five crashes
+  in ten minutes, and appends `worker.crashed`; a publish clears the park for calls (`pool.clear`)
+  and live producers (`live.unpark`) alike.
 - **A run is recorded before it starts, and ends once (AC-02, AC-03, D130).** `actions` inserts the
   run (`interaction/runs.ts`) before a worker sees it; keys and client keys join existing runs; a
   run cut off by a crash or a stop ends `failed` with reason `interrupted` and is never retried
-  (D24). A finished run and its result batches never change (triggers).
+  (D24). A finished run and its result batches never change (triggers). A page sees a run only
+  through a link that may run its function, and a run without a key only as its own viewer:
+  `runVisible` in `interaction` decides it, before anything is attached to the page.
 - **Secrets reach server code only as answers on its channel (D44, D124, D131).** `secrets` keeps
   values as 0600 files, never in the ledger; `secret()` asks the host's port, then the artifact's
   store, then the home's. Every value handed out is registered with the redactor, and logs, run
-  logs, errors, events, run results, action-written state and live values pass through it.
+  logs, run progress, errors (live sources' too), events, run results, action-written state and
+  live values pass through it. New output of server code goes through `redactValue` too.
 - **Live updates and run progress are never events (LL-04, D130).** They travel on the
   `interaction/ephemeral.ts` bus to the pages and polls that asked within the last minute, without
   an `id`; the ledger keeps the latest live value and the ring, and pages read again after a gap.

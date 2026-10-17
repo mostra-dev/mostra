@@ -184,6 +184,11 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
   it("backs off after each crash and parks a worker that keeps crashing, until a publish (RT-03)", async () => {
     ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
     const page = await openPage(actions.url);
+    // A live source the page shows: its producer runs in the same worker.
+    type Source = { revision?: string; error?: { code: string } };
+    const counter = async (): Promise<Source> =>
+      (await page.live([{ key: "counter" }])).json<{ sources: Source[] }>().sources[0] as Source;
+    await eventually(async () => (await counter()).revision !== undefined, 20_000);
     // Every event so far, read to the end: the crashes below come after this cursor.
     const { cursor } = ok<{ cursor: string }>(
       await gateway.client.call("events/read", {
@@ -239,10 +244,24 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
         )
       ).json<{ serverParked?: boolean }>();
     expect((await ticket()).serverParked).toBe(true);
-    // The next publish clears the park (FAILURE_MODEL §2).
-    ok(await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000));
+    // The live source says why it stopped.
+    await eventually(
+      async () => (await counter()).error?.code === "MOSTRA_RUNTIME_WORKER_PARKED",
+      20_000,
+    );
+    const stoppedAt = Number((await counter()).revision);
+    // The next publish clears the park (FAILURE_MODEL §2), also when it reuses the version: calls
+    // work again, and so do the live producers (GPT review finding 7).
+    const again = ok<{ versionId: string; reused: boolean }>(
+      await gateway.client.call("artifact/publish", { source: { path: actions.dir } }, 120_000),
+    );
+    expect(again).toMatchObject({ versionId: actions.versionId, reused: true });
     expect((await page.call("actions.ts#echo", ["back"])).end).toEqual({ status: "succeeded" });
     expect((await ticket()).serverParked).toBeUndefined();
+    await eventually(async () => {
+      const now = await counter();
+      return Number(now.revision) > stoppedAt && now.error === undefined;
+    }, 20_000);
   }, 120_000);
 });
 

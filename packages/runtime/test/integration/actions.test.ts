@@ -299,6 +299,26 @@ describe.each([
     const revealed = (await page.run("actions.ts#reveal", [])).json<RunState>();
     expect(await resultOf(await page.settled(revealed.runId))).toEqual({ token: "[redacted]" });
     expect((await page.call("actions.ts#reveal", [])).value).toEqual({ token: "[redacted]" });
+    // Progress and a live source's error are output too (GPT review findings 2 and 3).
+    const progressed = (await page.run("actions.ts#progressLeak", [])).json<RunState>();
+    let seenProgress: string | undefined;
+    await eventually(async () => {
+      const [now] = (await page.attach({ runIds: [progressed.runId] })).json<{
+        runs: RunState[];
+      }>().runs;
+      seenProgress = now?.progress?.message;
+      return seenProgress !== undefined;
+    });
+    expect(seenProgress).toBe("using [redacted]");
+    expect((await page.settled(progressed.runId)).progress?.message).toBe("using [redacted]");
+    let failure: { code?: string; message?: string } | undefined;
+    await eventually(async () => {
+      failure = (await page.live([{ key: "failing" }])).json<{
+        sources: { error?: { code?: string; message?: string } }[];
+      }>().sources[0]?.error;
+      return failure !== undefined;
+    });
+    expect(failure?.message).toContain("upstream refused [redacted]");
     const state = ok<{ fields: Record<string, { value: unknown }> }>(
       await gateway.client.call("state/get", { artifact: { artifactId: actions.artifactId } }),
     );
@@ -382,6 +402,23 @@ describe.each([
     const narrow = await openPage(one.url);
     expect((await narrow.call("actions.ts#echo", ["ok"])).end).toEqual({ status: "succeeded" });
     expect((await narrow.run("actions.ts#send", ["a", "b"])).status).toBe(403);
+    // Nor can it follow a run of another function, even knowing its ID (GPT review finding 1):
+    // it isn't attached, its updates never reach the narrow page, and it can't be cancelled.
+    const full = await openPage(actions.url);
+    const other = (
+      await full.run("actions.ts#slow", [1500], `scoped.${Date.now()}`)
+    ).json<RunState>();
+    const polled = (await narrow.poll()).json<{ cursor: string }>();
+    expect(
+      (await narrow.attach({ runIds: [other.runId] })).json<{ runs: RunState[] }>().runs,
+    ).toEqual([]);
+    expect(
+      (await narrow.attach({ keyed: [{ fnId: "actions.ts#slow", key: other.key ?? "" }] })).status,
+    ).toBe(403);
+    expect((await narrow.cancel(other.runId)).status).not.toBe(200);
+    expect((await full.settled(other.runId)).status).toBe("succeeded");
+    const heard = (await narrow.poll(polled.cursor, 1)).json<{ ephemeral?: unknown[] }>();
+    expect(JSON.stringify(heard.ephemeral ?? [])).not.toContain(other.runId);
   });
 
   it("keeps a version without server code free of workers (RT-05)", async () => {

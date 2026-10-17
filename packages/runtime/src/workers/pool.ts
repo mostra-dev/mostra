@@ -528,7 +528,16 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       if (stopped) throw crashed("The instance is stopping.");
       const slot = slotOf(version);
       for (;;) {
+        if (stopped) throw crashed("The instance is stopping.");
         if (slot.current && !slot.current.stopping) return slot.current.handle;
+        if (slot.current?.stopping) {
+          // An idle stop in progress: the version keeps one worker, so its replacement starts
+          // only once this one has gone (RT-03).
+          await slot.current.channel.ended;
+          await Promise.resolve();
+          if (slot.current?.stopping) delete slot.current;
+          continue;
+        }
         if (slot.state === "parked") {
           throw new RpcError(
             createDiagnostic("MOSTRA_RUNTIME_WORKER_PARKED", {
@@ -554,6 +563,9 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
           if (slot.current === undefined && !running.stopping) {
             slot.current = running;
             slot.state = "ready";
+          } else if (!running.stopping) {
+            // Never left running untracked: a worker the slot can't hold is stopped at once.
+            void stopRunning(running);
           }
           delete slot.retryAt;
         } catch (error) {

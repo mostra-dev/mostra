@@ -140,22 +140,31 @@ export function viewer(): { id: string; name?: string } | undefined {
 
 const idle = new AbortController().signal;
 
-/** Listeners as registered, by the bound copies that keep their call's context. */
-const boundListeners = new WeakMap<object, (event: Event) => void>();
+/**
+ * The bound copies of listeners, per signal: each call has its own signal, so a listener added in
+ * two calls (a module-level callback, say) gets a copy bound to each call's context, and removing
+ * it from one call's signal finds that call's copy.
+ */
+const boundListeners = new WeakMap<AbortSignal, WeakMap<object, (event: Event) => void>>();
 
 /** A listener that runs in the call it was added in, as `await`ed code does. */
-function bindListener(listener: unknown): unknown {
+function bindListener(target: AbortSignal, listener: unknown): unknown {
   if (typeof listener !== "function" && (typeof listener !== "object" || listener === null)) {
     return listener;
   }
-  let bound = boundListeners.get(listener);
+  let perSignal = boundListeners.get(target);
+  if (!perSignal) {
+    perSignal = new WeakMap();
+    boundListeners.set(target, perSignal);
+  }
+  let bound = perSignal.get(listener);
   if (!bound) {
     const handle =
       typeof listener === "function"
         ? (listener as (event: Event) => void)
         : (event: Event) => (listener as { handleEvent(event: Event): void }).handleEvent(event);
     bound = AsyncLocalStorage.bind(handle);
-    boundListeners.set(listener, bound);
+    perSignal.set(listener, bound);
   }
   return bound;
 }
@@ -175,7 +184,7 @@ export const abortSignal: AbortSignal = new Proxy(idle, {
         options?: unknown,
       ) => void;
       return (type: string, listener: unknown, options?: unknown) =>
-        method(type, bindListener(listener), options);
+        method(type, bindListener(target, listener), options);
     }
     const value: unknown = Reflect.get(target, property, target);
     return typeof value === "function" ? value.bind(target) : value;
@@ -185,7 +194,7 @@ export const abortSignal: AbortSignal = new Proxy(idle, {
     return Reflect.set(
       target,
       property,
-      property === "onabort" ? bindListener(value) : value,
+      property === "onabort" ? bindListener(target, value) : value,
       target,
     );
   },

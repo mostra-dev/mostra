@@ -38,6 +38,8 @@ class FakeServer {
   /** Answers to drop after the server applied the request. */
   loseAnswers = 0;
   liveRequests: { key: string; window?: number; refresh?: boolean }[][] = [];
+  /** Holds every live read's answer until it settles. */
+  liveGate: Promise<void> | undefined;
   #next = 1;
 
   transport(): Transport {
@@ -108,6 +110,7 @@ class FakeServer {
       },
       live: async (request) => {
         this.liveRequests.push([...request.keys]);
+        await this.liveGate;
         return {
           sources: request.keys.map((entry) => {
             const state = this.live.get(entry.key) ?? { key: entry.key };
@@ -367,6 +370,8 @@ describe("live sources (D56)", () => {
       kind: "live",
       live: { key: "inbox", error: { code: "MOSTRA_LIVE_SOURCE_FAILED", message: "down" } },
     });
+    // Applied in arrival order, after the values before it.
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(page.liveView("inbox")).toMatchObject({
       data: { unread: 4 },
       error: { message: "down" },
@@ -396,6 +401,40 @@ describe("live sources (D56)", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(page.liveView("cpu")?.ring).toEqual([2, 3, 4]);
+  });
+
+  it("keeps newer updates when an older read answers late (GPT review finding 6)", async () => {
+    const server = new FakeServer();
+    const ring = await Promise.all(
+      [1, 2, 3].map(async (n) => ({
+        revision: String(n),
+        at: "",
+        value: await serializeAll(n, { mode: "argument" }),
+      })),
+    );
+    server.live.set("cpu", { ...(await state("cpu", 3, 3)), ring });
+    let release = (): void => {};
+    server.liveGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const page = client(server);
+    page.watchLive("cpu", 3);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Updates 4 and 5 arrive on the stream while the read of revision 3 is still on its way.
+    for (const n of [4, 5]) {
+      page.receive({
+        kind: "live",
+        live: {
+          key: "cpu",
+          revision: String(n),
+          value: await serializeAll(n, { mode: "argument" }),
+        },
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(page.liveView("cpu")).toMatchObject({ data: 5, revision: "5", ring: [3, 4, 5] });
   });
 
   it("asks the producer to load again on refresh", async () => {

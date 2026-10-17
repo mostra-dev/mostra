@@ -89,6 +89,11 @@ export interface Live {
   crashed(crash: WorkerCrash): void;
   /** Checks the producers against who wants them now. */
   reconcile(): void;
+  /**
+   * A publish cleared the artifact's park (FAILURE_MODEL §2): its producers may start again,
+   * also when the publish reused the parked version.
+   */
+  unpark(artifactId: string): void;
   /** How many producers run: the daemon stays while any do (D62). */
   activity(): number;
   /** Starts checking producers. */
@@ -129,6 +134,8 @@ export function createLive(options: LiveOptions): Live {
   const failures = new Map<string, WireError>();
   /** Versions whose producers wait for their worker's backoff. */
   const retryAt = new Map<string, number>();
+  /** Versions whose producers stopped because their worker is parked, by version, to their artifact. */
+  const parkedVersions = new Map<string, string>();
   let timer: ReturnType<typeof setInterval> | undefined;
   let scheduled = false;
   let stopped = false;
@@ -205,7 +212,9 @@ export function createLive(options: LiveOptions): Live {
     });
   };
 
-  const fail = (artifactId: string, key: string, error: WireError): void => {
+  const fail = (artifactId: string, key: string, raw: WireError): void => {
+    // An error is output too: a producer's message may carry a secret it read (AC-06).
+    const error = options.redactor ? redactValue(raw, options.redactor) : raw;
     failures.set(keyOf(artifactId, key), error);
     bus.publishLive(artifactId, { kind: "live", live: { key, error } });
   };
@@ -442,6 +451,7 @@ export function createLive(options: LiveOptions): Live {
           });
         }
         retryAt.set(crash.versionId, Number.POSITIVE_INFINITY);
+        parkedVersions.set(crash.versionId, crash.artifactId);
         return;
       }
       retryAt.set(crash.versionId, Date.now() + crash.backoffMs);
@@ -452,6 +462,23 @@ export function createLive(options: LiveOptions): Live {
     },
 
     reconcile: schedule,
+
+    unpark(artifactId) {
+      let cleared = false;
+      for (const [versionId, owner] of parkedVersions) {
+        if (owner !== artifactId) continue;
+        parkedVersions.delete(versionId);
+        retryAt.delete(versionId);
+        cleared = true;
+      }
+      if (!cleared) return;
+      for (const [id, error] of failures) {
+        if (id.startsWith(keyOf(artifactId, "")) && error.code === "MOSTRA_RUNTIME_WORKER_PARKED") {
+          failures.delete(id);
+        }
+      }
+      schedule();
+    },
 
     activity() {
       return running.size + starting.size;

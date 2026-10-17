@@ -279,7 +279,7 @@ export function createActions(options: ActionsOptions): Actions {
             soon();
           },
           onProgress(progress) {
-            pendingProgress = progress;
+            pendingProgress = redactValue(progress, options.redactor);
             soon();
           },
           onLog(line) {

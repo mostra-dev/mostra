@@ -145,3 +145,10 @@ export async function huge(mib: number) {
 export async function environment() {
   return { env: { ...process.env }, argv: process.argv };
 }
+
+/** Reports a secret as its progress: Mostra redacts it before keeping or sending it (AC-06). */
+export async function progressLeak() {
+  progress({ message: `using ${secret("MAIL_TOKEN")}` });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return "done";
+}

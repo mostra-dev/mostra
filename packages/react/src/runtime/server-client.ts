@@ -97,6 +97,11 @@ interface TrackedLive {
   /** Revision numbers decoded or decoding, so an older value never replaces a newer one. */
   newest: number;
   ringRevisions: number[];
+  /**
+   * Every read and update of this source applies in the order it arrived, one at a time: values
+   * decode asynchronously, and two in flight must never land out of order.
+   */
+  applying: Promise<void>;
 }
 
 /** Options for {@link ServerClient}. */
@@ -413,6 +418,7 @@ export class ServerClient {
         watchers: new Map(),
         newest: 0,
         ringRevisions: [],
+        applying: Promise.resolve(),
       };
       this.#live.set(key, tracked);
     }
@@ -491,14 +497,42 @@ export class ServerClient {
     });
   }
 
-  async #applyLiveState(state: LiveState): Promise<void> {
-    const tracked = this.#live.get(state.key);
-    if (!tracked) return;
+  /** Applies `apply` to a source after everything that arrived for it before. */
+  #inOrder(key: string, apply: (tracked: TrackedLive) => Promise<void>): Promise<void> {
+    const tracked = this.#live.get(key);
+    if (!tracked) return Promise.resolve();
+    const next = tracked.applying.then(() => apply(tracked)).catch(() => {});
+    tracked.applying = next;
+    return next;
+  }
+
+  #applyLiveState(state: LiveState): Promise<void> {
+    return this.#inOrder(state.key, (tracked) => this.#applyLiveStateNow(tracked, state));
+  }
+
+  #applyLiveUpdate(update: LiveUpdate): Promise<void> {
+    return this.#inOrder(update.key, (tracked) => this.#applyLiveUpdateNow(tracked, update));
+  }
+
+  async #applyLiveStateNow(tracked: TrackedLive, state: LiveState): Promise<void> {
     const revision = Number(state.revision ?? 0);
     if (state.ring) {
       const values = await Promise.all(state.ring.map((entry) => decode(entry.value)));
-      tracked.ringRevisions = state.ring.map((entry) => Number(entry.revision));
-      tracked.view = { ...tracked.view, ring: values };
+      const revisions = state.ring.map((entry) => Number(entry.revision));
+      // A read answered after newer updates arrived keeps them: the ring only moves forward.
+      const last = revisions.at(-1) ?? 0;
+      const kept = tracked.ringRevisions.flatMap((held, index) =>
+        held > last ? [{ revision: held, value: tracked.view.ring[index] }] : [],
+      );
+      const window = this.#windowOf(tracked);
+      const merged = [...values, ...kept.map((entry) => entry.value)];
+      const mergedRevisions = [...revisions, ...kept.map((entry) => entry.revision)];
+      tracked.ringRevisions =
+        window === undefined ? mergedRevisions : mergedRevisions.slice(-window);
+      tracked.view = {
+        ...tracked.view,
+        ring: window === undefined ? merged : merged.slice(-window),
+      };
     }
     if (state.value && revision >= tracked.newest) {
       tracked.newest = revision;
@@ -523,9 +557,7 @@ export class ServerClient {
     this.#changed();
   }
 
-  async #applyLiveUpdate(update: LiveUpdate): Promise<void> {
-    const tracked = this.#live.get(update.key);
-    if (!tracked) return;
+  async #applyLiveUpdateNow(tracked: TrackedLive, update: LiveUpdate): Promise<void> {
     if (update.error && !update.value) {
       tracked.view = { ...tracked.view, loading: false, error: update.error };
       this.#changed();

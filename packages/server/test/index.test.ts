@@ -188,6 +188,33 @@ describe("abortSignal listeners", () => {
     controller.abort("viewer cancelled");
     expect(reasons).toEqual(["viewer cancelled", "l"]);
   });
+
+  it("run one shared listener in each call that added it (GPT review finding 5)", () => {
+    const first = new AbortController();
+    const second = new AbortController();
+    const seen: unknown[] = [];
+    // A module-level callback, added by two calls.
+    const onAbort = (): void => {
+      seen.push([currentCall()?.callId, abortSignal.reason]);
+    };
+    runWithContext(context("first", { signal: first.signal }), () => {
+      abortSignal.addEventListener("abort", onAbort);
+    });
+    runWithContext(context("second", { signal: second.signal }), () => {
+      abortSignal.addEventListener("abort", onAbort);
+    });
+    second.abort("second cancelled");
+    expect(seen).toEqual([["second", "second cancelled"]]);
+    // Removing it in one call leaves the other's.
+    runWithContext(context("second", { signal: second.signal }), () => {
+      abortSignal.removeEventListener("abort", onAbort);
+    });
+    first.abort("first cancelled");
+    expect(seen).toEqual([
+      ["second", "second cancelled"],
+      ["first", "first cancelled"],
+    ]);
+  });
 });
 
 describe("secrets, signals and host events", () => {

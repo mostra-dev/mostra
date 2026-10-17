@@ -11,6 +11,7 @@ import {
   ValueWriter,
   type ViewContext,
 } from "@mostra/protocol";
+import { useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeProvider } from "../../src/hooks.ts";
@@ -165,6 +166,28 @@ function Send(props: { readonly keyed?: boolean }) {
   );
 }
 
+/** A component whose action key changes while it stays mounted. */
+function Switching() {
+  const [key, setKey] = useState("send.a");
+  const action = useAction(send, { key });
+  return (
+    <div>
+      <button
+        type="button"
+        data-testid="send"
+        onClick={() => void action.run("m1").catch(() => {})}
+      >
+        Send
+      </button>
+      <button type="button" data-testid="switch" onClick={() => setKey("send.b")}>
+        Switch
+      </button>
+      <output data-testid="status">{action.status}</output>
+      <output data-testid="run">{action.runId ?? ""}</output>
+    </div>
+  );
+}
+
 describe("useAction (AC-02, AC-03, D54)", () => {
   it("joins the hook's run on a double click, renders its stream, and starts anew after it ends", async () => {
     const server = serverTransport(new FakeGateway());
@@ -222,6 +245,22 @@ describe("useAction (AC-02, AC-03, D54)", () => {
     await vi.waitFor(() => expect(server.starts).toHaveLength(2));
     // The second click joined the keyed run: no other run exists.
     expect(server.runs.size).toBe(1);
+  });
+
+  it("forgets the old key's run when the key changes, and starts the new key's own (GPT review finding 8)", async () => {
+    const server = serverTransport(new FakeGateway());
+    const page = await render(server.transport, <Switching />);
+    page.click("send");
+    await vi.waitFor(() => expect(page.text("status")).toBe("running"));
+    const first = page.text("run");
+    page.click("switch");
+    await vi.waitFor(() => expect(page.text("status")).toBe("idle"));
+    expect(page.text("run")).toBe("");
+    page.click("send");
+    await vi.waitFor(() => expect(page.text("status")).toBe("running"));
+    expect(server.starts).toHaveLength(2);
+    expect(page.text("run")).not.toBe(first);
+    expect(server.starts.at(-1)).toMatchObject({ key: "send.b" });
   });
 });
 

@@ -47,6 +47,16 @@ export interface ActionHandle<A extends unknown[], R> {
 
 const NO_LOG: readonly string[] = [];
 
+/** What `useAction` knows of one function and key. */
+interface IdentityState {
+  readonly runId?: string | undefined;
+  readonly starting: boolean;
+  readonly startError?: { code: string; message: string } | undefined;
+}
+
+const IDLE: IdentityState = { starting: false };
+const NO_STATES: ReadonlyMap<string, IdentityState> = new Map();
+
 /**
  * Runs a `"use server"` function as durable action runs (D24, D54): each call is recorded before
  * it runs, streams progress, log lines and partial results, survives the tab closing, and is
@@ -69,27 +79,38 @@ export function useAction<A extends unknown[], R>(
   const server = store.server;
   const fnId = serverFunctionId(fn);
   const key = options?.key;
-  const [runId, setRunId] = useState<string | undefined>();
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<{ code: string; message: string } | undefined>();
-  const inFlight = useRef<Promise<unknown> | undefined>(undefined);
+  // Everything the hook knows belongs to one function and key: a component that changes either
+  // shows the new one's run, never the old one's, and a late answer for the old one lands under
+  // the old identity, where the hook no longer looks.
+  const identity = `${fnId ?? ""}\u0000${key ?? ""}`;
+  const [states, setStates] = useState<ReadonlyMap<string, IdentityState>>(NO_STATES);
+  const current = states.get(identity) ?? IDLE;
+  const { runId, starting, startError } = current;
+  const update = useCallback((of: string, patch: Partial<IdentityState>): void => {
+    setStates((previous) => {
+      const next = new Map(previous);
+      next.set(of, { ...(previous.get(of) ?? IDLE), ...patch });
+      return next;
+    });
+  }, []);
+  const inFlight = useRef(new Map<string, Promise<unknown>>());
   useSyncExternalStore(server.subscribe, server.version, server.version);
 
   // A keyed run started earlier, in another tab or before a reload, is shown again (AC-02).
   useEffect(() => {
     if (key === undefined || fnId === undefined || store.mode !== "live") return;
-    let current = true;
+    let active = true;
     server.attach({ keyed: [{ fnId, key }] }).then(
       (runs) => {
         const [found] = runs;
-        if (current && found) setRunId(found.runId);
+        if (active && found) update(identity, { runId: found.runId });
       },
       () => {},
     );
     return () => {
-      current = false;
+      active = false;
     };
-  }, [server, store.mode, fnId, key]);
+  }, [server, store.mode, fnId, key, identity, update]);
 
   const view = runId === undefined ? undefined : server.run(runId);
 
@@ -102,40 +123,36 @@ export function useAction<A extends unknown[], R>(
           ),
         );
       }
-      // One run in flight per hook instance (D54): a second click joins it.
-      if (inFlight.current) return inFlight.current as Promise<Awaited<R>>;
-      setStarting(true);
-      setStartError(undefined);
+      // One run in flight per hook instance and function and key (D54): a second click joins it.
+      const joined = inFlight.current.get(identity);
+      if (joined) return joined as Promise<Awaited<R>>;
+      update(identity, { starting: true, startError: undefined });
       const started = (async () => {
         let state: Awaited<ReturnType<typeof server.startRun>>;
         try {
           state = await server.startRun(fnId, args, key);
         } catch (error) {
           // The run never started (a refused link, a parked worker, the network): say why.
-          setStartError(
-            error instanceof MostraError
-              ? { code: error.code, message: error.message }
-              : { code: "MOSTRA_ACTION_THREW", message: (error as Error).message },
-          );
+          update(identity, {
+            starting: false,
+            startError:
+              error instanceof MostraError
+                ? { code: error.code, message: error.message }
+                : { code: "MOSTRA_ACTION_THREW", message: (error as Error).message },
+          });
           throw error;
-        } finally {
-          setStarting(false);
         }
-        setRunId(state.runId);
+        update(identity, { starting: false, runId: state.runId });
         return server.settled(state.runId);
       })();
-      inFlight.current = started;
-      started.then(
-        () => {
-          if (inFlight.current === started) inFlight.current = undefined;
-        },
-        () => {
-          if (inFlight.current === started) inFlight.current = undefined;
-        },
-      );
+      inFlight.current.set(identity, started);
+      const settle = (): void => {
+        if (inFlight.current.get(identity) === started) inFlight.current.delete(identity);
+      };
+      started.then(settle, settle);
       return started as Promise<Awaited<R>>;
     },
-    [server, fnId, key],
+    [server, fnId, key, identity, update],
   );
 
   const cancel = useCallback(() => {
