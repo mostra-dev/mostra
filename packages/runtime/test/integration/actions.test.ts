@@ -6,7 +6,14 @@
  * name and never anything Mostra keeps; live sources flow without durable events.
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deserializeAll, type Frame } from "@mostra/protocol";
@@ -312,14 +319,18 @@ describe.each([
     const events = ok<{ events: unknown[] }>(
       await gateway.client.call("events/read", {
         filter: { artifacts: [actions.artifactId] },
-        limit: 100,
+        limit: 1000,
       }),
     );
     expect(JSON.stringify(events)).not.toContain(MAIL_TOKEN);
-    // The value only lives in the owner-only store.
-    expect(
-      readFileSync(join(gateway.home.home, "secrets", actions.artifactId, "MAIL_TOKEN"), "utf8"),
-    ).toBe(MAIL_TOKEN);
+    // The value only lives in the owner-only store: 0600 files in 0700 directories (D44).
+    const stored = join(gateway.home.home, "secrets", actions.artifactId, "MAIL_TOKEN");
+    expect(readFileSync(stored, "utf8")).toBe(MAIL_TOKEN);
+    expect(statSync(stored).mode & 0o777).toBe(0o600);
+    expect(statSync(join(gateway.home.home, "secrets", actions.artifactId)).mode & 0o777).toBe(
+      0o700,
+    );
+    expect(statSync(join(gateway.home.home, "secrets")).mode & 0o777).toBe(0o700);
   });
 
   it("gives server code no secret through its environment: only by name, through Mostra (D124)", async () => {
