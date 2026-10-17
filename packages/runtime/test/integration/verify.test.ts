@@ -114,6 +114,9 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
       expect(verdict.status).toBe("pass");
       // The smoke test used every option, and the one already chosen did change the page later.
       expect(verdict.smoke.interactions).toBeGreaterThanOrEqual(3);
+      // A passing verdict hands over no images by default (AX-05): the ARIA text says what's there.
+      expect(verdict.screenshots).toHaveLength(2);
+      expect(verdict.screenshots.every((shot) => !shot.returned)).toBe(true);
     },
     VERIFY_MS,
   );
