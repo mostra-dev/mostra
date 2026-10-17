@@ -1,6 +1,24 @@
 {
   "codes": [
     {
+      "code": "MOSTRA_A11Y_MINOR",
+      "severity": "hint",
+      "phase": "a11y",
+      "title": "Minor accessibility problem",
+      "hint": "Read axe's description of the rule in the message.",
+      "explanation": "axe-core found a problem it rates moderate or minor. The message names axe's rule and the elements.",
+      "fix": "Optionally follow the rule's advice."
+    },
+    {
+      "code": "MOSTRA_A11Y_SERIOUS",
+      "severity": "warning",
+      "phase": "a11y",
+      "title": "Serious accessibility problem",
+      "hint": "Read axe's description of the rule in the message; it names the elements it found.",
+      "explanation": "axe-core found a problem it rates critical or serious, such as a button with no accessible name or text with too little contrast. The message names axe's rule and the elements; `count` says how many.",
+      "fix": "Follow the rule's advice for each element named, for example add an `aria-label` to an icon button."
+    },
+    {
       "code": "MOSTRA_ACTION_CANCELLED",
       "severity": "warning",
       "phase": "runtime",
@@ -199,6 +217,24 @@
       "fix": "For a file, check the path and its extension against the artifact's files. For a package, check its name; packages outside the warm set install with `mostra add <package>`."
     },
     {
+      "code": "MOSTRA_CONSOLE_ERROR",
+      "severity": "error",
+      "phase": "console",
+      "title": "Error logged to the console",
+      "hint": "Fix what the logged error describes; React logs errors its boundaries catch here too.",
+      "explanation": "The page logged an error with `console.error` while verify rendered it or used its controls. Errors caught by React error boundaries, the root's included, are logged this way. A viewer's page would log the same.",
+      "fix": "Read the message and fix its cause in the artifact's code. Errors logged by a library usually name what it was given."
+    },
+    {
+      "code": "MOSTRA_CONSOLE_WARNING",
+      "severity": "hint",
+      "phase": "console",
+      "title": "Warning logged to the console",
+      "hint": "Read the warning; nothing is broken by it.",
+      "explanation": "The page logged a warning with `console.warn`. Warnings are often a library's advice, so they are hints.",
+      "fix": "Nothing is required."
+    },
+    {
       "code": "MOSTRA_DEP_INSTALL_FAILED",
       "severity": "error",
       "phase": "compile",
@@ -271,6 +307,15 @@
       "fix": "Omit `--bind` to serve on `127.0.0.1` only (the default). For a wider bind, pass an address of one of this machine's interfaces, and with `0.0.0.0` or `::` also `--url-host <name>`, the name viewers use to reach it."
     },
     {
+      "code": "MOSTRA_ENV_BROWSER_MISSING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Browser for verify missing",
+      "hint": "Install the browser verify uses with `npx playwright-core install chromium-headless-shell`, then verify again.",
+      "explanation": "Verify renders pages in Playwright's Chromium headless shell, which the runtime bundle includes. It wasn't found, so verify ran only the stages that need no browser (type check, build and the field-ID scan) and reported this error. Publishing needs `--force` until it is installed.",
+      "fix": "Run `npx playwright-core install chromium-headless-shell`, or reinstall Mostra's runtime, then verify again."
+    },
+    {
       "code": "MOSTRA_ENV_PORT_TAKEN",
       "severity": "warning",
       "phase": "host",
@@ -316,6 +361,15 @@
       "fix": "Read the key again and write the new value. For a counter or a list that many viewers change at once, store each viewer's part under its own key (`votes.<viewer>`) and combine them when reading."
     },
     {
+      "code": "MOSTRA_FIELD_DUPLICATE_ID",
+      "severity": "error",
+      "phase": "lint",
+      "title": "Field ID used for two different fields",
+      "hint": "Give each of these fields its own ID.",
+      "explanation": "One field ID is used for two different fields: with two hook kinds (`useField` and `useChoice`, say), two scopes (`viewer` and `artifact`), or initial values of two types. The two would overwrite each other's saved value. The same ID used the same way twice is a deliberately shared value and isn't reported here.",
+      "fix": "Rename one of them, for example `notes` and `notes.summary`, so each persisted value has its own ID."
+    },
+    {
       "code": "MOSTRA_FIELD_ID_INVALID",
       "severity": "error",
       "phase": "runtime",
@@ -323,6 +377,15 @@
       "hint": "Use a stable field ID of 1 to 256 characters: dot-separated parts, none empty.",
       "explanation": "Every persisted value has an explicit, stable field ID (D52). An ID is 1 to 256 characters with no control characters; dots separate the parts that nest in results (`reply.m1`), so it can't start or end with a dot or hold two in a row.",
       "fix": "Give the field a fixed ID such as `layout` or `reply.m1` (one per message, from its ID), and keep it the same across renders and versions so drafts carry over."
+    },
+    {
+      "code": "MOSTRA_FIELD_ID_UNSTABLE",
+      "severity": "error",
+      "phase": "lint",
+      "title": "Field ID changes between renders",
+      "hint": "Build the field's ID from stable data, such as a record's ID, never from random numbers or the time.",
+      "explanation": "Verify loaded the page twice with identical inputs and a fixed clock, and a field ID differed between the two loads. A viewer's saved answer would then be lost on every reload. IDs an interaction creates, such as a new list row's, are new fields and aren't reported.",
+      "fix": "Derive the ID from something stable, for example a template with the record's ID instead of one with `Math.random()`."
     },
     {
       "code": "MOSTRA_FIELD_MUTATION_ID_REUSED",
@@ -334,6 +397,15 @@
       "fix": "Create a fresh `mut_` ID for each change and reuse an ID only to retry exactly the same change."
     },
     {
+      "code": "MOSTRA_FIELD_SHARED",
+      "severity": "hint",
+      "phase": "lint",
+      "title": "Field ID shared by several controls",
+      "hint": "Nothing to fix if these controls are meant to edit one value; give each its own ID if not.",
+      "explanation": "Several mounted components use one field ID in the same way, so they all edit one saved value. That is how a value is shared deliberately; in a list, it can also mean every row edits the same answer.",
+      "fix": "If each row should keep its own answer, include the row's identity in the ID, such as a template that adds the task's ID after `done.`."
+    },
+    {
       "code": "MOSTRA_FIELD_TOO_LARGE",
       "severity": "error",
       "phase": "runtime",
@@ -341,6 +413,15 @@
       "hint": "Split large data across fields, keeping each value under 1 MiB and the whole document under 16 MiB.",
       "explanation": "A field value is at most 1 MiB of JSON and a draft or artifact state at most 16 MiB in all (DATA_MODEL §5). This write would pass one of those limits, so Mostra refused it whole: nothing was truncated, and the page keeps the value locally.",
       "fix": "Split the value across several fields under one dotted prefix (`report.part1`, `report.part2`); they nest again in results."
+    },
+    {
+      "code": "MOSTRA_FIELD_UNBOUND",
+      "severity": "hint",
+      "phase": "smoke",
+      "title": "Input not bound to a field",
+      "hint": "Bind the input with `useField` (or a kit input with an `id`) if its value should be saved and submitted.",
+      "explanation": "Verify's smoke test typed into an input and the page saved nothing: the input isn't bound to a field, so what a viewer types there is lost on reload and isn't part of a submission. A search box or a filter may be meant that way.",
+      "fix": "Use `const [value, setValue] = useField(\"<id>\", \"\")` for the input's value, or leave it if it isn't meant to persist."
     },
     {
       "code": "MOSTRA_HOME_DISK_FULL",
@@ -721,6 +802,24 @@
       "fix": "Check the key against the manifest fields (`id`, `title`, `description`, `family`, `links`, `mode`, `submission`, `kit`, `terminals`, `demos`, `limits`, `verify`) and fix the spelling, or remove it."
     },
     {
+      "code": "MOSTRA_NETWORK_EXTERNAL_FAILED",
+      "severity": "warning",
+      "phase": "network",
+      "title": "Request to another origin failed",
+      "hint": "A request to another origin failed while verify ran; check the URL and whether that service was reachable.",
+      "explanation": "A request the page made to another origin failed or answered 4xx or 5xx. It may be the environment (no network, a service that is down, a request the service refuses from this origin) rather than the code, so it is a warning.",
+      "fix": "Check the URL and the service. If the page depends on it, show a fallback when it fails."
+    },
+    {
+      "code": "MOSTRA_NETWORK_REQUEST_FAILED",
+      "severity": "error",
+      "phase": "network",
+      "title": "Request for the page's own resource failed",
+      "hint": "Check the path: a file the page loads from the artifact itself failed to load.",
+      "explanation": "A resource the page loaded from the artifact's own origin (the document, a script, a style, an image, a font, or a fetch by artifact code) failed or answered 4xx or 5xx. Requests the browser makes on its own, such as `/favicon.ico`, and Mostra's own protocol aren't counted.",
+      "fix": "Put the file in `public/` (served at the root) or import it from the code so the build includes it, and check the path's spelling."
+    },
+    {
       "code": "MOSTRA_PLATFORM_UNSUPPORTED",
       "severity": "error",
       "phase": "platform",
@@ -748,6 +847,96 @@
       "fix": "Wait until the files are saved and nothing else is publishing the same source, then publish again. If the manifest `id` was changed on purpose, the next publish uses the new one."
     },
     {
+      "code": "MOSTRA_PUBLISH_VERIFY_FAILED",
+      "severity": "error",
+      "phase": "publish",
+      "title": "Verify found errors",
+      "hint": "Run `mostra verify` to see the errors and fix them, or publish with `--force` to record them in the version.",
+      "explanation": "Publish runs verify (or reuses the verdict it cached for the same source and environment) and refuses when the verdict has errors (D41). The message lists their codes. Nothing was published. With `--force`, publish goes ahead and records the codes in the version, where hosts read them; a source that doesn't build can't be published either way.",
+      "fix": "Fix the errors `mostra verify` reports and publish again, or publish with `--force` if the version must ship as it is."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_ACTION_REMOVED",
+      "severity": "warning",
+      "phase": "contract",
+      "title": "Server function gone since the last passing version",
+      "hint": "Observed only: the last passing version had this server function and this source doesn't; check that this is intended.",
+      "explanation": "A `\"use server\"` export the last passing version had is gone. Pages of the older version still call it while they are open, and keyed runs started by it can't be started again.",
+      "fix": "If it was renamed by mistake, keep its name. If it was removed on purpose, nothing needs to change."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_ARIA",
+      "severity": "warning",
+      "phase": "regression",
+      "title": "Controls or landmarks gone since the last passing version",
+      "hint": "Observed only: the last passing version had these controls or landmarks and this source doesn't; check that this is intended.",
+      "explanation": "Verify compared this source's accessibility snapshot with the newest version whose verdict passed, rendered in the same run with the same data. The controls or landmarks the message lists (by role and name) were there and aren't now. A redesign may remove them on purpose.",
+      "fix": "If they should be gone, nothing needs to change. If not, look at what removed them."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_FIELD_REMOVED",
+      "severity": "warning",
+      "phase": "contract",
+      "title": "Field gone since the last passing version",
+      "hint": "Observed only: answers saved under these field IDs won't carry over to this version; check that this is intended.",
+      "explanation": "A field ID the last passing version used is gone from this source. Viewers' answers under it become orphans when they switch (D42): kept, shown read-only and delivered, but not editable. The message gives how many saved answers it affects.",
+      "fix": "If the field was renamed by mistake, keep its old ID. If it was removed on purpose, nothing needs to change."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_LIVE_REMOVED",
+      "severity": "warning",
+      "phase": "contract",
+      "title": "Live source gone since the last passing version",
+      "hint": "Observed only: the last passing version had this live source and this source doesn't; check that this is intended.",
+      "explanation": "A live source (`live.ts` export) the last passing version had is gone, so its producer stops and hosts that push to it push to a key no page reads.",
+      "fix": "If it was renamed by mistake, keep its name. If it was removed on purpose, nothing needs to change."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_PAGE_REMOVED",
+      "severity": "warning",
+      "phase": "contract",
+      "title": "Page route gone since the last passing version",
+      "hint": "Observed only: the last passing version had this page route and this source doesn't; check that this is intended.",
+      "explanation": "A route of `pages/` the last passing version had is gone, so links and bookmarks to it now open the artifact's fallback page.",
+      "fix": "If it was renamed by mistake, keep its path. If it was removed on purpose, nothing needs to change."
+    },
+    {
+      "code": "MOSTRA_REGRESSION_PIXELS",
+      "severity": "warning",
+      "phase": "regression",
+      "title": "Page looks different from the last passing version",
+      "hint": "Observed only: this viewport looks different from the last passing version; compare the two screenshots before changing anything.",
+      "explanation": "Verify rendered the newest version whose verdict passed and this source at the same viewport, clock and data, and the share of pixels the message gives differs between them. Any intended visual change shows here too.",
+      "fix": "Look at both screenshots. If the difference is intended, nothing needs to change."
+    },
+    {
+      "code": "MOSTRA_RUNTIME_BLANK",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Page rendered nothing",
+      "hint": "Make the page render something visible; check its first render and its imports.",
+      "explanation": "After the page reported ready, no element had a visible box (text, image, SVG, canvas or video) and the screenshot was one uniform color. Usually the page threw during its first render, rendered nothing until data arrived, or hid everything with CSS.",
+      "fix": "Look at the other diagnostics for an error during the first render, and make the page show content (or a loading state) right away."
+    },
+    {
+      "code": "MOSTRA_RUNTIME_NOT_READY",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Page never became ready",
+      "hint": "Make sure the entry's default export renders; check the other diagnostics for an error at load.",
+      "explanation": "The page never reported `mostra/ready`: the client runtime didn't mount it within the time verify allows, usually because the entry threw while loading or a module failed to load.",
+      "fix": "Fix the load error the other diagnostics report. A page that waits for data should render a loading state first."
+    },
+    {
+      "code": "MOSTRA_RUNTIME_PAGE_ERROR",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Uncaught error in the page",
+      "hint": "Fix the error the message names; it was thrown in the page and nothing caught it.",
+      "explanation": "The artifact's page threw an error that nothing caught, or a promise rejected with nothing handling it, while verify rendered it or while the smoke test used a control (the message says which). A viewer's page would meet the same error.",
+      "fix": "Find the stack's first frame in the artifact's code and fix the error there, or catch it where the page can recover."
+    },
+    {
       "code": "MOSTRA_RUNTIME_WORKER_CRASHED",
       "severity": "error",
       "phase": "runtime",
@@ -773,6 +962,24 @@
       "hint": "Set the secret with `mostra secret set NAME`, reading the value from stdin.",
       "explanation": "Server code called `secret(name)` for a secret that neither the host's `secrets` port, the artifact's own secrets nor the home's shared secrets hold (D44). The call throws, and an action run fails with this code.",
       "fix": "Set the secret for the artifact (`mostra secret set NAME --artifact <path|id>`) or for every artifact of the home (`mostra secret set NAME`), passing the value on stdin, then run the action again. Secret values never go into the artifact's source."
+    },
+    {
+      "code": "MOSTRA_SMOKE_BUDGET",
+      "severity": "hint",
+      "phase": "smoke",
+      "title": "Smoke test stopped at its budget",
+      "hint": "Nothing to fix: the smoke test stops after 200 interactions or 60 s.",
+      "explanation": "The page has more controls than the smoke test uses in one run, so it stopped at its budget. The controls it used are counted in `smoke.interactions`.",
+      "fix": "Nothing is required."
+    },
+    {
+      "code": "MOSTRA_SMOKE_NO_EFFECT",
+      "severity": "warning",
+      "phase": "smoke",
+      "title": "Control showed no effect",
+      "hint": "Observed only: using this control changed nothing verify could see; check it by hand before changing working code.",
+      "explanation": "Verify's smoke test clicked, hovered or filled the control the message names, and saw no change: no change to the page, no request, no saved field and no navigation. Controls that are disabled or already active (the selected tab), and those that open on hover, are classified before this is judged. A control can still be fine: it may act on something verify can't observe.",
+      "fix": "Use the control yourself. If it does what it should, nothing needs to change."
     },
     {
       "code": "MOSTRA_SUBMIT_ALREADY",
@@ -854,6 +1061,96 @@
       "hint": "Open the published version through Mostra to use this feature.",
       "explanation": "The page called something that needs Mostra's server, such as a server function, and this delivery target doesn't provide it: a static export, a file opened from disk, or a runtime without server support. The page keeps working without it.",
       "fix": "Open the artifact through its Mostra link, where server functions, submissions and live data are available. In a static export, handle the error so the page explains what isn't available."
+    },
+    {
+      "code": "MOSTRA_TYPE_ERROR",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Type error",
+      "hint": "Fix the type error at the reported location; the message carries TypeScript's code and text.",
+      "explanation": "TypeScript's checker (`tsc --noEmit`, TypeScript 7) found an error in the artifact's code. Verify checks with the artifact's own `tsconfig.json` when it has one, else in strict mode without the unused-variable rules, and resolves imports exactly as the build does. MDX isn't checked.",
+      "fix": "Open the file at the reported line and fix the code, for example a missing property, a wrong argument type or a misspelled import."
+    },
+    {
+      "code": "MOSTRA_TYPE_UNTYPED_PACKAGE",
+      "severity": "warning",
+      "phase": "compile",
+      "title": "Package without type declarations",
+      "hint": "Nothing breaks: the package works without types; declare a module for it if you want them checked.",
+      "explanation": "The artifact imports a package that ships no type declarations (TypeScript's TS7016). The package still builds and runs, so this is a warning: its values are typed `any`.",
+      "fix": "Optionally add a declaration file such as `declare module \"<package>\";`, or a typed wrapper, to the artifact."
+    },
+    {
+      "code": "MOSTRA_VERIFY_ACTION_SKIPPED",
+      "severity": "hint",
+      "phase": "smoke",
+      "title": "Action skipped in verify",
+      "hint": "To have verify run this action, check `dryRun()` from `@mostra/server` in it and return early without its side effects when it is true.",
+      "explanation": "Verify's smoke test never runs a server function that doesn't check `dryRun()` (D55). When the page called one, verify refused the call instead: the page's `run()` or server reference rejected with a `MostraError` carrying this code, as it would for any failed action. The verdict lists every such function in `smoke.skippedActions`. Nothing was sent, written or charged.",
+      "fix": "Nothing is wrong. To have verify exercise the action, add `if (dryRun()) return <a representative result>;` before its side effects; verify then runs it with `dryRun()` true."
+    },
+    {
+      "code": "MOSTRA_VERIFY_BASELINE_MISSING",
+      "severity": "hint",
+      "phase": "regression",
+      "title": "Baseline version's build is missing",
+      "hint": "Nothing to fix here; publish again to give later versions a baseline.",
+      "explanation": "The newest version that passed verify is recorded in the ledger, but its stored build isn't in the home any more, so verify couldn't render it and ran no regression stage.",
+      "fix": "Nothing is required. A version published from this source becomes the next baseline."
+    },
+    {
+      "code": "MOSTRA_VERIFY_CRASHED",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Verify runner crashed",
+      "hint": "Verify again; if it keeps crashing, report the message with `mostra doctor`'s output.",
+      "explanation": "The verify runner, the child process that drives the browser, stopped before it finished (FAILURE_MODEL §2). The message carries its last lines of output. Nothing was published, and the next verify starts a fresh runner.",
+      "fix": "Verify again. A crash that repeats for the same artifact can come from a page that exhausts the browser's memory; one that repeats for every artifact means the runtime's browser is damaged."
+    },
+    {
+      "code": "MOSTRA_VERIFY_LIVE_FAILED",
+      "severity": "warning",
+      "phase": "runtime",
+      "title": "Live source failed during verify",
+      "hint": "Check the live source's message: it failed while verify rendered the page, which may be the environment rather than the code.",
+      "explanation": "A live source's producer (`live.ts`) threw or couldn't reach its data while verify rendered the page. Verify runs producers for real, since they only read, so a failure can come from the environment (no network, a service that is down) as well as from the code. The page shows `useLive`'s `error` meanwhile.",
+      "fix": "Read the message. If the producer itself is wrong, fix it; if the data source was unreachable, verify again when it is back."
+    },
+    {
+      "code": "MOSTRA_VERIFY_NO_BASELINE",
+      "severity": "hint",
+      "phase": "regression",
+      "title": "No earlier passing version",
+      "hint": "Nothing to fix: the next version will be compared with this one once it is published.",
+      "explanation": "Verify compares a source with the newest published version of its artifact whose verdict passed. This artifact has none yet (it is new, or every earlier version was published with `--force`), so no regression stage ran.",
+      "fix": "Nothing is required."
+    },
+    {
+      "code": "MOSTRA_VERIFY_SECRET_MISSING",
+      "severity": "warning",
+      "phase": "runtime",
+      "title": "Secret missing during verify",
+      "hint": "Set the secret with `mostra secret set <NAME>` if the artifact needs it; verify reports it as the environment, not the code.",
+      "explanation": "Server code asked for a secret (`secret()`) that neither the host, the artifact's secrets nor the home's hold, while verify ran it. Secrets are part of the environment, so verify reports this as a warning rather than an error.",
+      "fix": "Run `mostra secret set <NAME>` (for the artifact or the home) with the value the code needs, then verify again."
+    },
+    {
+      "code": "MOSTRA_VERIFY_SKIP_CONSEQUENCE",
+      "severity": "hint",
+      "phase": "smoke",
+      "title": "Page reaction to a skipped action",
+      "hint": "Nothing to fix: this followed from verify skipping an action, which a viewer's page never meets.",
+      "explanation": "After verify refused a server function that doesn't check `dryRun()`, the page reported an error: an unhandled rejection, an error a boundary caught, or a console error while it settled. It follows from verify's synthetic refusal, not from a defect a viewer would meet, so it is reported as a hint naming the skipped action.",
+      "fix": "Nothing is required. To let verify see the action's real result, opt it into the smoke test with `dryRun()`."
+    },
+    {
+      "code": "MOSTRA_VERIFY_TIMEOUT",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "Verify ran out of time",
+      "hint": "Make the page render without waiting on slow work at load, then verify again.",
+      "explanation": "Verify allows 120 s for everything after the build: booting the sandbox, rendering each viewport, the smoke test and the regression stage. This run went past it, so its verdict is partial: the message names the stage it reached. A partial run can't vouch for the page, so this is an error, and the verdict isn't cached.",
+      "fix": "Look for work the page does at load that takes long (large data, long animations, requests that never answer) and defer it, then verify again. On a heavily loaded machine, verifying again may be enough."
     }
   ]
 }
