@@ -538,4 +538,17 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 8,
+    name: "verify verdicts on versions",
+    up(db) {
+      // D138 item 4: whether a version passed verify is a recorded fact, written with the version
+      // (it is write-once like the rest of the row), so the regression baseline is the newest
+      // version that passed even when its build is gone. NULL for versions published before
+      // verify, which never count as passing.
+      db.exec(`
+        ALTER TABLE version ADD COLUMN verify_json TEXT;
+      `);
+    },
+  },
 ];

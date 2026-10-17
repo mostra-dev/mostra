@@ -41,6 +41,8 @@ class FakeServer {
   /** Holds every live read's answer until it settles. */
   liveGate: Promise<void> | undefined;
   attachRequests: Parameters<NonNullable<Transport["attachRuns"]>>[0][] = [];
+  /** Holds every start's answer until it settles (the run exists on the server meanwhile). */
+  startGate: Promise<void> | undefined;
   #next = 1;
 
   transport(): Transport {
@@ -89,6 +91,7 @@ class FakeServer {
           this.loseAnswers -= 1;
           throw new NetworkError("the answer was lost");
         }
+        if (this.startGate) await this.startGate;
         return state;
       },
       attachRuns: async (request) => {
@@ -264,6 +267,29 @@ describe("action runs (AC-02, AC-03, AC-04)", () => {
       log: ["sending", "sent"],
       data: { sent: true },
     });
+  });
+
+  it("keeps a run's end that arrives before the answer that starts it (WP-09's Opus review)", async () => {
+    const server = new FakeServer();
+    const page = client(server);
+    let open!: () => void;
+    server.startGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    const starting = page.startRun("actions.ts#send", []);
+    while (server.started.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
+    const runId = server.started[0] as string;
+    // The worker was fast: its end reaches the page before the start's answer.
+    page.receive({
+      kind: "run",
+      run: await server.advance(runId, { status: "succeeded", log: ["done"], result: 7 }),
+    });
+    open();
+    await starting;
+    await expect(page.settled(runId)).resolves.toBe(7);
+    expect(page.run(runId)).toMatchObject({ status: "succeeded", log: ["done"] });
+    // Known at once, not at the next renewal.
+    expect(server.attachRequests).toEqual([]);
   });
 
   it("reads the run again when a delta skipped something (a dropped message)", async () => {

@@ -7,6 +7,12 @@
 import * as z from 'zod';
 
 // @public
+export type A11yDiagnosticCode = (typeof a11yDiagnosticCodes)[number];
+
+// @public
+export const a11yDiagnosticCodes: readonly ["MOSTRA_A11Y_SERIOUS", "MOSTRA_A11Y_MINOR"];
+
+// @public
 export const ACTION_ARGS_MAX: number;
 
 // @public
@@ -65,7 +71,13 @@ export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { read
 export const ARGUMENT_BIGINT_DIGITS_MAX = 1e4;
 
 // @public
+export function ariaSummary(text: string): string;
+
+// @public
 export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[];
+
+// @public
+export const ARTIFACT_PROGRESS = "artifact/progress";
 
 // @public
 export const artifactCreateMethod: MethodDefinition<ArtifactCreateParams, ArtifactCreateResult>;
@@ -179,6 +191,16 @@ export interface ArtifactManifest {
 export const ArtifactManifest: z.ZodType<ArtifactManifest>;
 
 // @public
+export interface ArtifactProgressParams {
+    readonly fraction?: number;
+    readonly progressToken: string;
+    readonly stage: string;
+}
+
+// @public
+export const ArtifactProgressParams: z.ZodType<ArtifactProgressParams>;
+
+// @public
 export const artifactPublishMethod: MethodDefinition<ArtifactPublishParams, ArtifactPublishResult>;
 
 // @public
@@ -218,6 +240,19 @@ export interface ArtifactSummary {
 
 // @public
 export const ArtifactSummary: z.ZodType<ArtifactSummary>;
+
+// @public
+export const artifactVerifyMethod: MethodDefinition<ArtifactVerifyParams, ArtifactVerifyResult>;
+
+// @public
+export interface ArtifactVerifyParams {
+    readonly progressToken?: string;
+    readonly screenshots?: ScreenshotPolicy;
+    readonly source: SourceRef;
+}
+
+// @public
+export type ArtifactVerifyResult = VerifyVerdict;
 
 // @public
 export type Batches = readonly (readonly Frame[])[];
@@ -458,7 +493,26 @@ export type CommentId = Id<"cmt">;
 export const CommentId: GeneratedIdKind<"cmt">;
 
 // @public
+export interface CompareRequest {
+    readonly a: string;
+    readonly b: string;
+    readonly diff: string;
+}
+
+// @public
+export interface CompareResult {
+    readonly ratio: number;
+    readonly sizeChanged: boolean;
+}
+
+// @public
 export function connectBridge(options: BridgeOptions): Bridge;
+
+// @public
+export type ConsoleDiagnosticCode = (typeof consoleDiagnosticCodes)[number];
+
+// @public
+export const consoleDiagnosticCodes: readonly ["MOSTRA_CONSOLE_ERROR", "MOSTRA_CONSOLE_WARNING"];
 
 // @public
 export const CONTROL_LABEL_MAX = 48;
@@ -518,6 +572,9 @@ export const Cursor: {
 
 // @public
 export const DEFAULT_DOCS_BASE: string;
+
+// @public
+export const DEFAULT_VIEWPORTS: readonly VerifyViewport[];
 
 // @public
 export const DEFAULT_WORKER_LIMITS: WorkerLimits;
@@ -744,7 +801,7 @@ export function encodeLine(message: JsonRpcMessage): string;
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING"];
 
 // @public
 export type EphemeralMessage = {
@@ -754,6 +811,9 @@ export type EphemeralMessage = {
     readonly kind: "live";
     readonly live: LiveUpdate;
 };
+
+// @public
+export function estimateImageTokens(width: number, height: number): TokenEstimate;
 
 // @public
 export interface EventFilter {
@@ -880,7 +940,7 @@ export const FieldConflict: z.ZodType<FieldConflict>;
 export type FieldDiagnosticCode = (typeof fieldDiagnosticCodes)[number];
 
 // @public
-export const fieldDiagnosticCodes: readonly ["MOSTRA_FIELD_TOO_LARGE", "MOSTRA_FIELD_ID_INVALID", "MOSTRA_FIELD_MUTATION_ID_REUSED", "MOSTRA_FIELD_CONFLICT"];
+export const fieldDiagnosticCodes: readonly ["MOSTRA_FIELD_TOO_LARGE", "MOSTRA_FIELD_ID_INVALID", "MOSTRA_FIELD_MUTATION_ID_REUSED", "MOSTRA_FIELD_CONFLICT", "MOSTRA_FIELD_DUPLICATE_ID", "MOSTRA_FIELD_ID_UNSTABLE", "MOSTRA_FIELD_SHARED", "MOSTRA_FIELD_UNBOUND"];
 
 // @public
 export interface FieldOp {
@@ -1196,7 +1256,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -1390,6 +1450,12 @@ export const MutationResult: z.ZodType<MutationResult>;
 export function negotiateRevision(offered: readonly string[], supported?: readonly Revision[], options?: CreateDiagnosticOptions): RevisionNegotiation;
 
 // @public
+export type NetworkDiagnosticCode = (typeof networkDiagnosticCodes)[number];
+
+// @public
+export const networkDiagnosticCodes: readonly ["MOSTRA_NETWORK_REQUEST_FAILED", "MOSTRA_NETWORK_EXTERNAL_FAILED"];
+
+// @public
 export function normalizeScopes(scopes: readonly CapabilityScope[]): CapabilityScope[];
 
 // @public
@@ -1477,10 +1543,20 @@ export interface PortTrustedControlsPolicyParams {
 export type PortTrustedControlsPolicyResult = ControlsPolicy;
 
 // @public
+export interface ProbedField {
+    readonly conflicts: readonly string[];
+    readonly hook: string;
+    readonly id: string;
+    readonly initialType: string;
+    readonly mounts: number;
+    readonly scope: "viewer" | "artifact";
+}
+
+// @public
 export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
 
 // @public
-export const publishDiagnosticCodes: readonly ["MOSTRA_PUBLISH_ID_CONFLICT", "MOSTRA_PUBLISH_SOURCE_CHANGED"];
+export const publishDiagnosticCodes: readonly ["MOSTRA_PUBLISH_ID_CONFLICT", "MOSTRA_PUBLISH_SOURCE_CHANGED", "MOSTRA_PUBLISH_VERIFY_FAILED"];
 
 // @public
 export interface PublishReceipt {
@@ -1518,9 +1594,59 @@ export interface Refusal {
 export function refusal(code: HygieneDiagnosticCode, message: string, status?: number): Refusal;
 
 // @public
+export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number];
+
+// @public
+export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
+
+// @public
 export class RemoteError extends Error {
     constructor(error: WireError);
     readonly code: string | undefined;
+}
+
+// @public
+export interface RenderRequest {
+    readonly clockMs: number;
+    readonly collect: {
+        readonly screenshot: boolean;
+        readonly aria: boolean;
+        readonly axe: boolean;
+        readonly fields: boolean;
+        readonly smoke?: {
+            readonly maxInteractions: number;
+            readonly maxMs: number;
+        };
+    };
+    readonly deadline: number;
+    readonly name: string;
+    readonly outDir: string;
+    readonly url: string;
+    readonly viewport: VerifyViewport;
+}
+
+// @public
+export interface RenderResult {
+    readonly aria?: {
+        readonly path: string;
+        readonly text: string;
+    };
+    readonly fields?: readonly ProbedField[];
+    readonly findings: readonly Diagnostic[];
+    readonly ready: boolean;
+    readonly screenshot?: {
+        readonly path: string;
+        readonly width: number;
+        readonly height: number;
+    };
+    readonly smoke?: {
+        readonly interactions: number;
+        readonly stateChanges: number;
+        readonly skipped: readonly string[];
+        readonly budget: boolean;
+    };
+    readonly timedOut: boolean;
+    readonly timingsMs: Readonly<Record<string, number>>;
 }
 
 // @public
@@ -1845,7 +1971,7 @@ export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed
 export type RuntimeDiagnosticCode = (typeof runtimeDiagnosticCodes)[number];
 
 // @public
-export const runtimeDiagnosticCodes: readonly ["MOSTRA_RUNTIME_WORKER_CRASHED", "MOSTRA_RUNTIME_WORKER_PARKED"];
+export const runtimeDiagnosticCodes: readonly ["MOSTRA_RUNTIME_WORKER_CRASHED", "MOSTRA_RUNTIME_WORKER_PARKED", "MOSTRA_RUNTIME_PAGE_ERROR", "MOSTRA_RUNTIME_BLANK", "MOSTRA_RUNTIME_NOT_READY"];
 
 // @public
 export function safeEqual(a: string, b: string): boolean;
@@ -1858,6 +1984,12 @@ export type SaveState = "saved" | "saving" | "offline" | "conflict";
 
 // @public
 export function scopeAllows(scopes: readonly CapabilityScope[], required: CapabilityScope): boolean;
+
+// @public
+export type ScreenshotPolicy = "on-failure" | "always" | "never";
+
+// @public
+export const ScreenshotPolicy: z.ZodType<ScreenshotPolicy, string>;
 
 // @public
 export const SECRET_NAME_PATTERN: RegExp;
@@ -2038,6 +2170,12 @@ export interface SignalRequest {
 export const SignalRequest: z.ZodType<SignalRequest>;
 
 // @public
+export type SmokeDiagnosticCode = (typeof smokeDiagnosticCodes)[number];
+
+// @public
+export const smokeDiagnosticCodes: readonly ["MOSTRA_SMOKE_NO_EFFECT", "MOSTRA_SMOKE_BUDGET"];
+
+// @public
 export type SourceRef = {
     readonly path: string;
 } | {
@@ -2206,6 +2344,13 @@ export const ThreadId: GeneratedIdKind<"thr">;
 export function toBase64(bytes: Uint8Array): string;
 
 // @public
+export interface TokenEstimate {
+    readonly claude: number;
+    readonly gemini: number;
+    readonly gpt: number;
+}
+
+// @public
 export type TokenId = Id<"tok">;
 
 // @public
@@ -2216,6 +2361,12 @@ export type TrustedControl = "submit" | "choose" | "approve" | (string & {});
 
 // @public
 export const TrustedControl: z.ZodType<TrustedControl>;
+
+// @public
+export type TypeDiagnosticCode = (typeof typeDiagnosticCodes)[number];
+
+// @public
+export const typeDiagnosticCodes: readonly ["MOSTRA_TYPE_ERROR", "MOSTRA_TYPE_UNTYPED_PACKAGE"];
 
 // @public
 export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>;
@@ -2289,6 +2440,81 @@ export interface ValueWriterOptions {
     readonly mode: SerializeMode;
     readonly onBatch: (batch: Frame[]) => void;
     readonly serverFunctionId?: (fn: AnyFunction) => string | undefined;
+}
+
+// @public
+export interface VerdictAria {
+    readonly path: string;
+    readonly summary: string;
+    readonly viewport: string;
+}
+
+// @public
+export interface VerdictScreenshot {
+    readonly height: number;
+    readonly path: string;
+    readonly returned: boolean;
+    readonly tokensEstimate: TokenEstimate;
+    readonly viewport: string;
+    readonly width: number;
+}
+
+// @public
+export const VERIFY_PROBE = "__mostraVerify";
+
+// @public
+export const VERIFY_REPORT = "__mostraVerifyReport";
+
+// @public
+export const VERIFY_RUNNER_METHODS: {
+    readonly render: "verify/render";
+    readonly compare: "verify/compare";
+};
+
+// @public
+export type VerifyDiagnosticCode = (typeof verifyDiagnosticCodes)[number];
+
+// @public
+export const verifyDiagnosticCodes: readonly ["MOSTRA_VERIFY_ACTION_SKIPPED", "MOSTRA_VERIFY_SKIP_CONSEQUENCE", "MOSTRA_VERIFY_TIMEOUT", "MOSTRA_VERIFY_CRASHED", "MOSTRA_VERIFY_NO_BASELINE", "MOSTRA_VERIFY_BASELINE_MISSING", "MOSTRA_VERIFY_LIVE_FAILED", "MOSTRA_VERIFY_SECRET_MISSING"];
+
+// @public
+export interface VerifyVerdict {
+    readonly aria: readonly VerdictAria[];
+    readonly artifact: {
+        readonly id?: string;
+        readonly path: string;
+        readonly sourceDigest: string;
+        readonly envDigest: string;
+        readonly versionId?: string;
+    };
+    readonly diagnostics: readonly Diagnostic[];
+    readonly regressions: {
+        readonly against?: string;
+        readonly aria?: string;
+        readonly pixels?: readonly {
+            readonly viewport: string;
+            readonly ratio: number;
+        }[];
+        readonly contracts?: readonly string[];
+    };
+    readonly screenshots: readonly VerdictScreenshot[];
+    readonly smoke: {
+        readonly interactions: number;
+        readonly skippedActions: readonly string[];
+        readonly stateChanges: number;
+    };
+    readonly status: "pass" | "fail";
+    readonly timingsMs: Readonly<Record<string, number>>;
+}
+
+// @public
+export const VerifyVerdict: z.ZodType<VerifyVerdict>;
+
+// @public
+export interface VerifyViewport {
+    readonly height: number;
+    readonly name: string;
+    readonly width: number;
 }
 
 // @public
@@ -2406,6 +2632,12 @@ export interface Viewport {
     readonly height: number;
     readonly width: number;
 }
+
+// @public
+export function viewportsFor(names: readonly string[] | undefined): {
+    readonly viewports: readonly VerifyViewport[];
+    readonly unknown: readonly string[];
+};
 
 // @public
 export const viewRevokeMethod: MethodDefinition<ViewRevokeParams, ViewRevokeResult>;

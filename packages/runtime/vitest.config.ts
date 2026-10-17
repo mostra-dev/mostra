@@ -1,4 +1,28 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+
+/**
+ * The integration suites in groups, each its own CI machine per platform (REPO_STANDARDS §6), so
+ * the job stays inside its time while verify's real-browser suites grow. `MOSTRA_TEST_GROUP`
+ * picks one; unset, every suite runs (`pnpm check --job integration` on a laptop). The groups
+ * partition the files by name, so a new suite always lands in exactly one: `verify*` suites in
+ * `verify` (but the failure suite, which has a group of its own), everything else in `core`.
+ */
+const VERIFY_SUITES = "test/integration/verify*.test.ts";
+const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
+const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
+  core: { include: ["test/integration/**/*.test.ts"], exclude: [VERIFY_SUITES] },
+  verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
+  "verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+};
+const group = process.env["MOSTRA_TEST_GROUP"];
+const integrationFiles = group
+  ? INTEGRATION_GROUPS[group]
+  : { include: ["test/integration/**/*.test.ts"], exclude: [] };
+if (!integrationFiles) {
+  throw new Error(
+    `MOSTRA_TEST_GROUP is "${group}"; the integration groups are ${Object.keys(INTEGRATION_GROUPS).join(", ")}.`,
+  );
+}
 
 // Tests import the package by name, resolved to source through the `@mostra/source` condition.
 // `unit` runs in-process; `integration` drives the built `mostra-runtime` binary as real
@@ -19,7 +43,8 @@ export default defineConfig({
         extends: true,
         test: {
           name: "integration",
-          include: ["test/integration/**/*.test.ts"],
+          include: integrationFiles.include,
+          exclude: [...configDefaults.exclude, ...integrationFiles.exclude],
           testTimeout: 60_000,
           hookTimeout: 60_000,
           // Real processes compete for the CPU; one file at a time keeps timings honest.

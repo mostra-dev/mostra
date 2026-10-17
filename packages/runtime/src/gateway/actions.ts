@@ -41,6 +41,8 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_HYGIENE_SCOPE_DENIED: 403,
   MOSTRA_RUNTIME_WORKER_PARKED: 503,
   MOSTRA_RUNTIME_WORKER_CRASHED: 503,
+  // A verify run's sandbox refuses an action that didn't opt into `dryRun()` (D55, D138).
+  MOSTRA_VERIFY_ACTION_SKIPPED: 409,
   MOSTRA_HOME_DISK_FULL: 507,
   MOSTRA_HOME_GONE: 503,
 };

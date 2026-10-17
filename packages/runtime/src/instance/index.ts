@@ -14,6 +14,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
+  ARTIFACT_PROGRESS,
   BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
   type Diagnostic,
@@ -89,6 +90,14 @@ import {
 import { openRegistry } from "../registry/index.ts";
 import { openSecrets, secretMethods } from "../secrets/index.ts";
 import { hasLoginService, type IdleWatch, watchIdle } from "../service/index.ts";
+import {
+  createRunnerClient,
+  createVerifier,
+  locateRunner,
+  type RunnerClient,
+  recoverVerify,
+  type Verifier,
+} from "../verify/index.ts";
 import {
   createWorkerPool,
   localLauncher,
@@ -245,6 +254,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log.info("publish.recovered", { ...recovered });
   }
   await recoverDependencies({ home: home.path, log });
+  // What a stopped instance left of verify: sandboxes, unfinished builds, orphan files (D138 item 1).
+  await recoverVerify(home.path, log);
   // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
   // first use, like the publisher, so a runtime missing its build packages still starts.
   let spa: RenderMode | undefined;
@@ -277,6 +288,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
         : {}),
     }));
+  // Suites of other features publish without verify's gate; the switch is loud (D138).
+  const unverifiedPublish = Boolean(environment["MOSTRA_TEST_UNVERIFIED_PUBLISH"]);
+  if (unverifiedPublish) log.warn("instance.test_unverified_publish", {});
   let publisher: Publisher | undefined;
   const getPublisher = (): Publisher => {
     if (publisher) return publisher;
@@ -289,8 +303,65 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       log,
       faults,
       homePolicy: () => readHomeSettings(home.path).submission,
+      verifier: getVerifier,
+      unverified: unverifiedPublish,
     });
     return publisher;
+  };
+  // verify (WP-09, D138): the runner child with its warm browser, and the sandbox each run serves
+  // its build from. Made on first use, like the publisher.
+  const revisions = servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log);
+  let runner: RunnerClient | undefined;
+  let verifier: Verifier | undefined;
+  const getVerifier = (): Verifier => {
+    if (verifier) return verifier;
+    const located = locateRunner(environment, runtimeRoot());
+    runner = createRunnerClient({
+      processes: manager,
+      log,
+      env: environment,
+      entry: located.entry,
+      nodeArgs: located.nodeArgs,
+    });
+    const workerLocation = locateWorker(environment, runtimeRoot());
+    verifier = createVerifier({
+      home: home.path,
+      ledger: home.ledger,
+      registry,
+      log,
+      redactor: home.redactor,
+      runner,
+      sandbox: {
+        home: home.path,
+        log,
+        redactor: home.redactor,
+        processes: manager,
+        runtimeVersion: runtimeVersion(),
+        worker: { entry: workerLocation.entry, nodeArgs: workerLocation.nodeArgs },
+        modules: (target) => getDependencies().runtimeModules(target),
+        secrets,
+        env: artifactEnvironment(environment),
+        shellDir: locateShell(environment),
+        revisions,
+        serverEntry: (dir) => renderMode().serverEntry(dir),
+        damage: (dir) => versionDamage(dir),
+      },
+      // Tests shorten verify's 120 s and its smoke test's 200 interactions.
+      limits: {
+        ...(Number(environment["MOSTRA_TEST_VERIFY_TIMEOUT_MS"]) > 0
+          ? { timeoutMs: Number(environment["MOSTRA_TEST_VERIFY_TIMEOUT_MS"]) }
+          : {}),
+        ...(Number(environment["MOSTRA_TEST_SMOKE_INTERACTIONS"]) > 0
+          ? { smokeInteractions: Number(environment["MOSTRA_TEST_SMOKE_INTERACTIONS"]) }
+          : {}),
+      },
+      // verify clears the artifact's park, for its calls and its live producers (D133).
+      clearPark: (artifactId) => {
+        pool.clear(artifactId);
+        live.unpark(artifactId);
+      },
+    });
+    return verifier;
   };
   // The gateway (WP-05): leased ports, capability links and sessions, static versions.
   const clockOffset = testClockOffset(environment["MOSTRA_TEST_CLOCK_OFFSET_MS"], log);
@@ -511,7 +582,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     bus,
     parked: (versionId) =>
       pool.status().some((w) => w.versionId === versionId && w.state === "parked"),
-    revisions: servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log),
+    revisions,
     controls: (artifact) =>
       controlsPolicy({
         artifact,
@@ -604,7 +675,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       });
     },
     supportedPorts: ["submissions", "drafts", "trustedControls", "secrets"],
-    notifications: [EVENTS_NOTIFY],
+    notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),
     redact: (text) => home.redactor.redact(text),
@@ -618,6 +689,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         published: (artifactId) => {
           pool.clear(artifactId);
           live.unpark(artifactId);
+        },
+        notify: (session, method, params) => {
+          server.notify(session, method, params as JsonRpcParams);
         },
       }),
       ...gateway.methods(),
@@ -665,6 +739,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         server.close();
         await gateway.close();
         await pool.stopAll();
+        await runner?.close();
         bus.close();
         stopRedactingEvents();
         try {

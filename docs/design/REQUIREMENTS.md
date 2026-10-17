@@ -175,7 +175,7 @@
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
 | AX-01 | Every CLI command has `--json`, documented exit codes and no prompts in non-interactive or JSON mode; logs go to stderr | v1 | D29 | M |
-| AX-02 | `verify` runs the full pipeline in ARCHITECTURE §15 and returns one JSON verdict | v1 | D29 | I, B |
+| AX-02 | `verify` runs the full pipeline in ARCHITECTURE §12 and returns one JSON verdict | v1 | D29 | I, B |
 | AX-03 | Diagnostics use one schema with stable codes (part of semver), hints, optional fixes and docs links | v1 | D29 | M |
 | AX-04 | `verify` detects regressions against the last passing version | v1 | D29 | I |
 | AX-05 | Screenshots default to DPR 1, carry token estimates and are returned only on failure or request | v1 | D29 | M |

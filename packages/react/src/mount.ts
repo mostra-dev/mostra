@@ -7,9 +7,9 @@
  * flashing its defaults; after a short wait it renders anyway and catches up when the gateway
  * answers.
  */
-import { mostraPage } from "@mostra/protocol";
+import { mostraPage, VERIFY_REPORT } from "@mostra/protocol";
 import { type ComponentType, createElement, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type RootOptions } from "react-dom/client";
 import { type ArtifactMode, RuntimeProvider } from "./hooks.ts";
 import { type Runtime, startRuntime } from "./runtime/boot.ts";
 import { setServerCallback } from "./server-reference.ts";
@@ -33,11 +33,23 @@ export async function prepareArtifact(): Promise<Runtime> {
   return runtime;
 }
 
+/**
+ * The root's error handlers: in the `verify` target, an error a boundary caught goes to verify's
+ * recorder with its `cause` chain (React's default logs it with `console.error`, which verify
+ * couldn't tell apart from the page's own logging); everywhere else, React's defaults.
+ */
+function rootOptions(mode: string): RootOptions | undefined {
+  if (mode !== "verify") return undefined;
+  const report = (globalThis as unknown as Record<string, unknown>)[VERIFY_REPORT];
+  if (typeof report !== "function") return undefined;
+  return { onCaughtError: (error: unknown) => (report as (error: unknown) => void)(error) };
+}
+
 /** Renders `node` inside the runtime into `#root`, and reports `mostra/ready`. */
 export function renderArtifact(runtime: Runtime, node: ReactNode): void {
   const root = document.getElementById("root");
   if (!root) throw new Error("The page has no #root element.");
-  createRoot(root).render(
+  createRoot(root, rootOptions(runtime.mode)).render(
     createElement(
       RuntimeProvider,
       { store: runtime.store, mode: runtime.mode as ArtifactMode },

@@ -117,6 +117,13 @@ catalog:
   fast-check: 4.10.2
   '@playwright/test': 1.64.0
   playwright: 1.64.0
+  # verify's runner (WP-09, D138): playwright-core with the Chromium headless shell 1.64.0 pins
+  # (Renovate moves it with playwright), axe-core injected unmodified, pixelmatch over pngjs
+  playwright-core: 1.64.0
+  axe-core: 4.14.0
+  pixelmatch: 8.0.0
+  pngjs: 7.0.0
+  '@types/pngjs': 6.0.5
   '@types/node': 24.19.1
   '@types/better-sqlite3': 9.6.0
 

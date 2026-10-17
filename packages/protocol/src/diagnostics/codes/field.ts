@@ -9,6 +9,10 @@ export const fieldDiagnosticCodes = [
   "MOSTRA_FIELD_ID_INVALID",
   "MOSTRA_FIELD_MUTATION_ID_REUSED",
   "MOSTRA_FIELD_CONFLICT",
+  "MOSTRA_FIELD_DUPLICATE_ID",
+  "MOSTRA_FIELD_ID_UNSTABLE",
+  "MOSTRA_FIELD_SHARED",
+  "MOSTRA_FIELD_UNBOUND",
   // gen:codes
 ] as const;
 
@@ -59,6 +63,50 @@ export const fieldDiagnostics: AreaCatalog<FieldDiagnosticCode> = {
       explanation:
         "Every write names the revision it was based on, and a field changed after it is a conflict, never overwritten silently (D22). `window.storage` writes end with the last write: on a conflict it writes again over the newer value, a few times. When another writer kept changing the field each time, the write is refused with this code, and the field keeps the other writer's value.",
       fix: "Read the key again and write the new value. For a counter or a list that many viewers change at once, store each viewer's part under its own key (`votes.<viewer>`) and combine them when reading.",
+    },
+  },
+  MOSTRA_FIELD_DUPLICATE_ID: {
+    severity: "error",
+    phase: "lint",
+    title: "Field ID used for two different fields",
+    hint: "Give each of these fields its own ID.",
+    docs: {
+      explanation:
+        "One field ID is used for two different fields: with two hook kinds (`useField` and `useChoice`, say), two scopes (`viewer` and `artifact`), or initial values of two types. The two would overwrite each other's saved value. The same ID used the same way twice is a deliberately shared value and isn't reported here.",
+      fix: "Rename one of them, for example `notes` and `notes.summary`, so each persisted value has its own ID.",
+    },
+  },
+  MOSTRA_FIELD_ID_UNSTABLE: {
+    severity: "error",
+    phase: "lint",
+    title: "Field ID changes between renders",
+    hint: "Build the field's ID from stable data, such as a record's ID, never from random numbers or the time.",
+    docs: {
+      explanation:
+        "Verify loaded the page twice with identical inputs and a fixed clock, and a field ID differed between the two loads. A viewer's saved answer would then be lost on every reload. IDs an interaction creates, such as a new list row's, are new fields and aren't reported.",
+      fix: "Derive the ID from something stable, for example a template with the record's ID instead of one with `Math.random()`.",
+    },
+  },
+  MOSTRA_FIELD_SHARED: {
+    severity: "hint",
+    phase: "lint",
+    title: "Field ID shared by several controls",
+    hint: "Nothing to fix if these controls are meant to edit one value; give each its own ID if not.",
+    docs: {
+      explanation:
+        "Several mounted components use one field ID in the same way, so they all edit one saved value. That is how a value is shared deliberately; in a list, it can also mean every row edits the same answer.",
+      fix: "If each row should keep its own answer, include the row's identity in the ID, such as a template that adds the task's ID after `done.`.",
+    },
+  },
+  MOSTRA_FIELD_UNBOUND: {
+    severity: "hint",
+    phase: "smoke",
+    title: "Input not bound to a field",
+    hint: "Bind the input with `useField` (or a kit input with an `id`) if its value should be saved and submitted.",
+    docs: {
+      explanation:
+        "Verify's smoke test typed into an input and the page saved nothing: the input isn't bound to a field, so what a viewer types there is lost on reload and isn't part of a submission. A search box or a filter may be meant that way.",
+      fix: 'Use `const [value, setValue] = useField("<id>", "")` for the input\'s value, or leave it if it isn\'t meant to persist.',
     },
   },
   // gen:entries

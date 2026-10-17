@@ -3,9 +3,11 @@
  * every module it loads recorded, hosts several artifacts through create, publish, list and get;
  * afterwards its module list holds no artifact file and no bundler, and side effects written into
  * the artifacts never ran in it. Action calls and live producers (WP-08) run the artifact's server
- * code, and only ever in its worker; verify runs (WP-09) extend this audit too (D93).
+ * code, and only ever in its worker. Verify (WP-09, D93) runs in the same audited daemon: every
+ * publish here goes through its gate, and an explicit verify runs the smoke test, so the browser,
+ * axe, the pixel comparison and the type checker must all stay in their children too.
  */
-import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
@@ -17,7 +19,7 @@ import {
   type Message,
   startDaemon,
   tempDir,
-  testHome,
+  verifiedHome,
 } from "../support.ts";
 
 const fixtures = fileURLToPath(new URL("../fixtures/", import.meta.url));
@@ -44,8 +46,8 @@ function trap(marker: string): string {
   return dir;
 }
 
-it("loads no artifact module and no bundler in the supervisor across create, publish, list, get, action calls and live sources (RT-02)", async () => {
-  const home = testHome();
+it("loads no artifact module, no bundler and no browser in the supervisor across create, verify, publish, list, get, action calls and live sources (RT-02)", async () => {
+  const home = verifiedHome();
   const audit = join(tempDir("audit"), "modules.json");
   const marker = join(tempDir("marker"), "executed.txt");
   const daemon = await startDaemon(home, {
@@ -68,10 +70,21 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
   };
   sources.push(created.dir);
 
+  // verify runs the whole pipeline on the trap: its build, type check, render and smoke test,
+  // which calls `archive` (it opts into dryRun()) in a sandbox worker.
+  const verdict = result(
+    await client.call("artifact/verify", { source: { path: trapped } }, 300_000),
+  ) as { status: string; smoke: { interactions: number } };
+  expect(verdict.status).toBe("pass");
+  expect(verdict.smoke.interactions).toBeGreaterThan(0);
+  const verifiedRuns = readFileSync(marker, "utf8").trim().split("\n");
+  expect(verifiedRuns.length).toBeGreaterThan(0);
+  for (const line of verifiedRuns) expect(line).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+
   const receipts = [];
   for (const path of [trapped, join(mdx, "page.mdx"), created.dir, trapped]) {
     receipts.push(
-      result(await client.call("artifact/publish", { source: { path } })) as {
+      result(await client.call("artifact/publish", { source: { path } }, 300_000)) as {
         artifactId: string;
         url: string;
       },
@@ -88,14 +101,16 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
   );
   sources.push(failing);
   expect(
-    (await client.call("artifact/publish", { source: { path: failing } })).error?.data.code,
+    (await client.call("artifact/publish", { source: { path: failing } }, 300_000)).error?.data
+      .code,
   ).toBe("MOSTRA_MANIFEST_NOT_LITERAL");
   const listed = result(await client.call("artifact/list", {})) as { artifacts: unknown[] };
   expect(listed.artifacts).toHaveLength(3);
   for (const receipt of receipts)
     result(await client.call("artifact/get", { artifact: { artifactId: receipt.artifactId } }));
-  // Building, publishing and reading ran no artifact code anywhere.
-  expect(existsSync(marker)).toBe(false);
+  // Building, publishing and reading ran no artifact code anywhere: the marker holds only what
+  // verify's worker wrote.
+  expect(readFileSync(marker, "utf8").trim().split("\n")).toEqual(verifiedRuns);
 
   // A page calls an action and reads a live source (WP-08): the server code runs, in a worker.
   const page = await openPage(receipts[3]?.url ?? "");
@@ -136,6 +151,18 @@ it("loads no artifact module and no bundler in the supervisor across create, pub
       /node_modules\/(vite|rolldown|@vitejs|@tailwindcss|@mdx-js)\//.test(path),
     ),
   ).toEqual([]);
+  // The browser, axe, the pixel comparison and the type checker stay in the verify runner and the
+  // type-check child (ARCHITECTURE §1).
+  expect(
+    paths.filter((path) =>
+      /node_modules\/(playwright-core|playwright|axe-core|pixelmatch|pngjs|typescript|@typescript)\//.test(
+        path,
+      ),
+    ),
+  ).toEqual([]);
+  expect(paths.filter((path) => /\/verify\/(dist|src)\/(main|runner|smoke)/.test(path))).toEqual(
+    [],
+  );
   // The trap works: the same statement, run by Node, writes the marker.
   const control = join(tempDir("control"), "executed.txt");
   new Function(

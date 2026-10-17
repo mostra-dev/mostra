@@ -441,6 +441,12 @@ export function useChoice(
     () => store.keyVersion(key),
   );
   const choice = store.value(key, undefined);
+  // verify's field probe hears the choice field too (GPT review finding 6); a viewer's page has
+  // no probe, and this does nothing there.
+  useEffect(
+    () => store.announceMount({ id, scope: "viewer", initial: undefined, hook: "useChoice" }),
+    [store, id],
+  );
   const candidates = options?.candidates;
   useControl(
     candidates && candidates.length > 0

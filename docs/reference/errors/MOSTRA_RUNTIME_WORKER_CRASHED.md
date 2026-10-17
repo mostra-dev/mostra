@@ -12,7 +12,7 @@ Artifact server code crashed. Severity: error. Phase: runtime.
 
 ## What it means
 
-The artifact version's worker process exited while serving a call: it threw outside any call, ran out of its heap (1 GiB by default), or kept its event loop blocked past the watchdog (10 s by default). Other artifacts and the gateway keep working (RT-04). Mostra appends `worker.crashed` with the cause and starts the worker again on the next request, waiting longer after each crash (1 s up to 60 s).
+The artifact version's worker process exited while serving a call: it threw outside any call, ran out of its heap (1 GiB by default), or kept its event loop blocked past the watchdog (10 s by default). Other artifacts and the gateway keep working (RT-04). Mostra appends `worker.crashed` with the cause and starts the worker again on the next request, waiting longer after each crash (1 s up to 60 s). `verify` reports it too when the source's server code crashes, fails to load or hangs while the page renders, even when the page handled the failed call.
 
 ## How to fix it
 

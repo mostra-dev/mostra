@@ -135,6 +135,19 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   What a slow reader hasn't taken is coalesced (`bus.coalesce`): a source's newer value in latest
   mode replaces its older ones, and a run's contiguous deltas merge. Which artifacts have live
   sources is kept in memory (`instance`), so reconciling never scans every artifact.
+- **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
+  its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
+  with the real interaction, actions, live and gateway code, its own worker pool and two listeners
+  on ports the operating system assigns, reached only with links minted there. Nothing reaches
+  the home's drafts, state, events, hosts or deliveries, and the human-facing gateway serves
+  published versions only. In the sandbox, a function that didn't opt into `dryRun()` is refused
+  before anything is recorded (`MOSTRA_VERIFY_ACTION_SKIPPED`), and documents get the verify
+  target as they are served, so verify's build stays byte-identical to what publish promotes.
+  Publish gets the verdict cached for its digests (`cache/verify/`) or runs verify, refuses on
+  errors, records error codes with `force`, never publishes what didn't build, and records
+  `verify: { status, verifyRevision }` on the version (migration 8): only a `pass` is ever a
+  regression baseline. Playwright, axe and the type checker run in children (`@mostra/verify`'s
+  runner, `typecheck`), never in the supervisor (RT-02's audit covers verify).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -162,6 +175,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
 | `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
 | `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd) (D133) |
+| `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -177,7 +191,7 @@ source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
 `MOSTRA_TEST_WORKER_HOST` sends every launch to a worker host listening on that socket
 (`test/fixtures/worker-host.mjs`, D124). `MOSTRA_WORKER_ENTRY` points at another build of
 `@mostra/worker` (default: `worker/dist/main.js`, or its source under `@mostra/source`).
-`MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
+`MOSTRA_VERIFY_ENTRY` points at another build of `@mostra/verify`'s runner (default: `verify/dist/main.js`); `MOSTRA_TEST_VERIFY_TIMEOUT_MS` shortens verify's 120 s, `MOSTRA_TEST_SMOKE_INTERACTIONS` the smoke test's 200 interactions, `MOSTRA_TEST_VERIFY_IDLE_MS` the runner's 10 idle minutes, and `MOSTRA_TEST_UNVERIFIED_PUBLISH` makes publish skip verify's gate, for the suites of other features only: such a version records no verdict and never counts as passing (`testHome` sets it; `verifiedHome` keeps the gate). `MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
 `shell/dist` beside the runtime package); without one the shell's pages answer
 `MOSTRA_ENV_SHELL_MISSING` and the instance still starts.
 
@@ -205,7 +219,15 @@ first module outside `protocol-server` needs it.
   through both launchers (`actions.test.ts`), worker and daemon lifecycles (`lifecycle.test.ts`),
   producers and the secrets port (`producers.test.ts`), and the five D19 seams (`seams.test.ts`).
   CI runs them on macOS and
-  Linux (`integration` job, D86).
+  Linux (`integration` job, D86), split into groups of suites, one machine each:
+  `MOSTRA_TEST_GROUP=core|verify|verify-failures` runs one group (`vitest.config.ts`), unset runs
+  them all. The groups partition the files by name, so a new suite lands in exactly one; a new
+  `verify*` suite joins `verify`.
+- `pnpm --filter @mostra/runtime test:integration -- verify audit`: verify through a real daemon
+  (`verify.test.ts`: WP-03's fixtures as negatives, a fixture per stage's faults, regressions, the
+  gate; `verify-failures.test.ts`: timeout, the smoke budget, no browser, a runner that dies,
+  sandboxes left at start) and the RT-02 audit across verify runs. It needs the Chromium headless
+  shell `playwright-core` pins (the install command above).
 - `pnpm --filter @mostra/runtime test:hygiene`: the hygiene checklist (ARCHITECTURE §10) as
   negative tests against a real gateway, through `test/browser-client.ts`, a cookie-jar HTTP
   client that behaves like a browser (`hygiene` job).

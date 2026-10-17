@@ -32,6 +32,9 @@ export const RENEW_MS = 20_000;
 
 /** How many times a run's start is retried after the network failed, with the same client key. */
 const START_ATTEMPTS = 6;
+/** How many runs' early updates a page keeps, and how many updates of each (see `#keepEarly`). */
+const EARLY_RUNS = 64;
+const EARLY_DELTAS_PER_RUN = 32;
 
 /** The function ID a server reference carries, or `undefined` for any other function. */
 export function serverFunctionId(fn: unknown): string | undefined {
@@ -129,6 +132,13 @@ export class ServerClient {
   #liveFlush: Promise<void> | undefined;
   #liveRefresh = new Set<string>();
   #notifyScheduled = false;
+  /** Plain calls whose value hasn't arrived yet. */
+  #callsInFlight = 0;
+  /**
+   * Updates for runs the page doesn't track yet: a fast run's end can arrive on the stream before
+   * the answer that starts it, and is applied when that answer is (bounded, oldest dropped).
+   */
+  readonly #early = new Map<string, RunDelta[]>();
 
   constructor(options: ServerClientOptions) {
     this.#options = options;
@@ -144,6 +154,21 @@ export class ServerClient {
 
   /** A number that changes with every change, for `useSyncExternalStore`. */
   version = (): number => this.#version;
+
+  /**
+   * Server work the page is waiting on: plain calls whose value hasn't arrived, runs that haven't
+   * ended, and live sources a component shows that have no first value yet. `verify`'s field
+   * probe reads it, so the runner judges the page once what it loads at mount has arrived (Opus
+   * review finding 1).
+   */
+  pending(): number {
+    let count = this.#callsInFlight;
+    for (const tracked of this.#runs.values())
+      if (!isFinalRunStatus(tracked.view.status)) count += 1;
+    for (const tracked of this.#live.values())
+      if (tracked.view.loading && tracked.watchers.size > 0) count += 1;
+    return count;
+  }
 
   /**
    * Notes a change. Listeners hear about it once per animation frame (FAILURE_MODEL §6), or in a
@@ -204,9 +229,14 @@ export class ServerClient {
     };
     const pumped = pump();
     // The value as soon as it exists; a failure before it rejects the call.
-    const root = await Promise.race([reader.root, pumped.then(() => reader.root)]);
-    pumped.catch((error: unknown) => reader.fail(error));
-    return root;
+    this.#callsInFlight += 1;
+    try {
+      const root = await Promise.race([reader.root, pumped.then(() => reader.root)]);
+      pumped.catch((error: unknown) => reader.fail(error));
+      return root;
+    } finally {
+      this.#callsInFlight -= 1;
+    }
   }
 
   /** The client stub of a server function a result refers to. */
@@ -337,6 +367,14 @@ export class ServerClient {
       ...(state.error ? { error: state.error } : {}),
       ...(state.finishedAt ? { finishedAt: state.finishedAt } : {}),
     });
+    // What the stream said of it before this answer arrived (a fast run's end).
+    const early = this.#early.get(state.runId);
+    if (early) {
+      this.#early.delete(state.runId);
+      const current = tracked;
+      if (!early.every((delta) => this.#merge(current, delta)))
+        void this.attach({ runIds: [state.runId] }).catch(() => {});
+    }
     this.#renewSoon();
     return tracked.view;
   }
@@ -636,12 +674,29 @@ export class ServerClient {
   receive(message: EphemeralMessage): void {
     if (message.kind === "run") {
       const tracked = this.#runs.get(message.run.runId);
-      if (!tracked) return;
+      if (!tracked) {
+        this.#keepEarly(message.run);
+        return;
+      }
       if (!this.#merge(tracked, message.run))
         void this.attach({ runIds: [message.run.runId] }).catch(() => {});
     } else {
       void this.#applyLiveUpdate(message.live);
     }
+  }
+
+  /** Keeps an update for a run the page will track once its start is answered. */
+  #keepEarly(delta: RunDelta): void {
+    const kept = this.#early.get(delta.runId);
+    if (kept) {
+      if (kept.length < EARLY_DELTAS_PER_RUN) kept.push(delta);
+      return;
+    }
+    if (this.#early.size >= EARLY_RUNS) {
+      const oldest = this.#early.keys().next().value;
+      if (oldest !== undefined) this.#early.delete(oldest);
+    }
+    this.#early.set(delta.runId, [delta]);
   }
 
   /** The stream came back after a gap: read again what may have been missed. */

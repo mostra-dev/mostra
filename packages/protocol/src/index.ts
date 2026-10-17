@@ -118,13 +118,17 @@ export {
   scopeAllows,
 } from "./capability.ts";
 export {
+  type A11yDiagnosticCode,
   type ActionDiagnosticCode,
   type ArtifactDiagnosticCode,
+  a11yDiagnosticCodes,
   actionDiagnosticCodes,
   artifactDiagnosticCodes,
   type BuildDiagnosticCode,
   buildDiagnosticCodes,
+  type ConsoleDiagnosticCode,
   type CreateDiagnosticOptions,
+  consoleDiagnosticCodes,
   createDiagnostic,
   type DepDiagnosticCode,
   depDiagnosticCodes,
@@ -144,18 +148,28 @@ export {
   liveDiagnosticCodes,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
+  type NetworkDiagnosticCode,
+  networkDiagnosticCodes,
   type PlatformDiagnosticCode,
   type PublishDiagnosticCode,
   platformDiagnosticCodes,
   publishDiagnosticCodes,
+  type RegressionDiagnosticCode,
   type RuntimeDiagnosticCode,
+  regressionDiagnosticCodes,
   runtimeDiagnosticCodes,
   type SecretDiagnosticCode,
+  type SmokeDiagnosticCode,
   type SubmitDiagnosticCode,
   secretDiagnosticCodes,
+  smokeDiagnosticCodes,
   submitDiagnosticCodes,
   type TargetDiagnosticCode,
+  type TypeDiagnosticCode,
   targetDiagnosticCodes,
+  typeDiagnosticCodes,
+  type VerifyDiagnosticCode,
+  verifyDiagnosticCodes,
 } from "./diagnostics/codes/index.ts";
 // gen:area-entry-exports (`pnpm gen diagnostic` adds a new area's exports here; Biome merges them)
 export {
@@ -273,6 +287,11 @@ export {
   type ArtifactPublishResult,
   artifactPublishMethod,
 } from "./methods/artifact/publish.ts";
+export {
+  type ArtifactVerifyParams,
+  type ArtifactVerifyResult,
+  artifactVerifyMethod,
+} from "./methods/artifact/verify.ts";
 export {
   AddedPackage,
   type DepsAddParams,
@@ -454,6 +473,28 @@ export {
   type WireError,
   wireError,
 } from "./serializer.ts";
+export {
+  ARTIFACT_PROGRESS,
+  ArtifactProgressParams,
+  ariaSummary,
+  type CompareRequest,
+  type CompareResult,
+  DEFAULT_VIEWPORTS,
+  estimateImageTokens,
+  type ProbedField,
+  type RenderRequest,
+  type RenderResult,
+  ScreenshotPolicy,
+  type TokenEstimate,
+  VERIFY_PROBE,
+  VERIFY_REPORT,
+  VERIFY_RUNNER_METHODS,
+  type VerdictAria,
+  type VerdictScreenshot,
+  VerifyVerdict,
+  type VerifyViewport,
+  viewportsFor,
+} from "./verify.ts";
 export {
   type CallContext,
   DEFAULT_WORKER_LIMITS,

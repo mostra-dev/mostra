@@ -458,6 +458,29 @@
       ],
       "description": "The artifact manifest (INTERFACES §2.2): literal metadata from the entry's defineArtifact call or MDX frontmatter."
     },
+    "ArtifactProgressParams": {
+      "type": "object",
+      "properties": {
+        "progressToken": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "progressToken",
+        "stage"
+      ],
+      "description": "One stage of a long request (artifact/verify) started."
+    },
     "ArtifactPublishParams": {
       "type": "object",
       "properties": {
@@ -568,6 +591,29 @@
         "createdAt"
       ],
       "description": "One artifact: metadata from its latest version, its source and latest version."
+    },
+    "ArtifactVerifyParams": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/SourceRef"
+        },
+        "screenshots": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ScreenshotPolicy"
+            }
+          ]
+        },
+        "progressToken": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source"
+      ]
     },
     "Batches": {
       "readOnly": true,
@@ -3227,6 +3273,15 @@
       ],
       "description": "An action run: status, progress, log and the result written so far."
     },
+    "ScreenshotPolicy": {
+      "type": "string",
+      "enum": [
+        "on-failure",
+        "always",
+        "never"
+      ],
+      "description": "When screenshots are returned: on failure (the default), always or never."
+    },
     "SecretDeleteParams": {
       "type": "object",
       "properties": {
@@ -3734,6 +3789,221 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,31}$",
       "description": "A trusted control the shell renders: submit, choose, approve; open for more."
+    },
+    "VerifyVerdict": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sourceDigest": {
+              "type": "string"
+            },
+            "envDigest": {
+              "type": "string"
+            },
+            "versionId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "sourceDigest",
+            "envDigest"
+          ]
+        },
+        "diagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "screenshots": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "viewport": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "tokensEstimate": {
+                "type": "object",
+                "properties": {
+                  "claude": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "gpt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "gemini": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "claude",
+                  "gpt",
+                  "gemini"
+                ]
+              },
+              "returned": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "viewport",
+              "path",
+              "width",
+              "height",
+              "tokensEstimate",
+              "returned"
+            ]
+          }
+        },
+        "aria": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "viewport": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "viewport",
+              "path",
+              "summary"
+            ]
+          }
+        },
+        "smoke": {
+          "type": "object",
+          "properties": {
+            "interactions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "skippedActions": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "stateChanges": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "interactions",
+            "skippedActions",
+            "stateChanges"
+          ]
+        },
+        "regressions": {
+          "type": "object",
+          "properties": {
+            "against": {
+              "type": "string"
+            },
+            "aria": {
+              "type": "string"
+            },
+            "pixels": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "viewport": {
+                    "type": "string"
+                  },
+                  "ratio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "viewport",
+                  "ratio"
+                ]
+              }
+            },
+            "contracts": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "timingsMs": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "status",
+        "artifact",
+        "diagnostics",
+        "screenshots",
+        "aria",
+        "smoke",
+        "regressions",
+        "timingsMs"
+      ],
+      "description": "The verdict of artifact/verify: pass or fail, diagnostics, screenshots with token estimates, ARIA snapshots, the smoke test, regressions and timings."
     },
     "VersionId": {
       "type": "string",
