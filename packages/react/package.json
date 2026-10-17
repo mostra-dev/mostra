@@ -100,7 +100,7 @@
         "react-hook-form",
         "zod"
       ],
-      "limit": "30.5 kB"
+      "limit": "31 kB"
     }
   ],
   "peerDependencies": {

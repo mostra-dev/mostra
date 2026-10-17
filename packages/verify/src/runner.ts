@@ -190,20 +190,27 @@ async function renderBounded(
   axeSource: string,
 ): Promise<RenderResult> {
   const created: { context?: BrowserContext } = {};
+  const outOfTime: RenderResult = { ready: false, findings: [], timedOut: true, timingsMs: {} };
+  let abandoning = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const abandoned = new Promise<RenderResult>((done) => {
     timer = setTimeout(
       () => {
+        abandoning = true;
         const closing = created.context?.close().catch(() => undefined);
         void Promise.race([closing, new Promise((wait) => setTimeout(wait, 2000))]).then(() =>
-          done({ ready: false, findings: [], timedOut: true, timingsMs: {} }),
+          done(outOfTime),
         );
       },
       Math.max(0, request.deadline - Date.now()) + RENDER_ABANDON_MS,
     );
   });
-  const rendering = renderPage(browser, request, axeSource, created);
-  rendering.catch(() => undefined);
+  // Closing the context makes the render's own calls fail at once: once it is abandoned, that is
+  // its timeout, never an error of the runner's.
+  const rendering = renderPage(browser, request, axeSource, created).catch((error: unknown) => {
+    if (abandoning) return outOfTime;
+    throw error;
+  });
   try {
     return await Promise.race([rendering, abandoned]);
   } finally {

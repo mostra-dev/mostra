@@ -32,6 +32,9 @@ export const RENEW_MS = 20_000;
 
 /** How many times a run's start is retried after the network failed, with the same client key. */
 const START_ATTEMPTS = 6;
+/** How many runs' early updates a page keeps, and how many updates of each (see `#keepEarly`). */
+const EARLY_RUNS = 64;
+const EARLY_DELTAS_PER_RUN = 32;
 
 /** The function ID a server reference carries, or `undefined` for any other function. */
 export function serverFunctionId(fn: unknown): string | undefined {
@@ -131,6 +134,11 @@ export class ServerClient {
   #notifyScheduled = false;
   /** Plain calls whose value hasn't arrived yet. */
   #callsInFlight = 0;
+  /**
+   * Updates for runs the page doesn't track yet: a fast run's end can arrive on the stream before
+   * the answer that starts it, and is applied when that answer is (bounded, oldest dropped).
+   */
+  readonly #early = new Map<string, RunDelta[]>();
 
   constructor(options: ServerClientOptions) {
     this.#options = options;
@@ -359,6 +367,14 @@ export class ServerClient {
       ...(state.error ? { error: state.error } : {}),
       ...(state.finishedAt ? { finishedAt: state.finishedAt } : {}),
     });
+    // What the stream said of it before this answer arrived (a fast run's end).
+    const early = this.#early.get(state.runId);
+    if (early) {
+      this.#early.delete(state.runId);
+      const current = tracked;
+      if (!early.every((delta) => this.#merge(current, delta)))
+        void this.attach({ runIds: [state.runId] }).catch(() => {});
+    }
     this.#renewSoon();
     return tracked.view;
   }
@@ -658,12 +674,29 @@ export class ServerClient {
   receive(message: EphemeralMessage): void {
     if (message.kind === "run") {
       const tracked = this.#runs.get(message.run.runId);
-      if (!tracked) return;
+      if (!tracked) {
+        this.#keepEarly(message.run);
+        return;
+      }
       if (!this.#merge(tracked, message.run))
         void this.attach({ runIds: [message.run.runId] }).catch(() => {});
     } else {
       void this.#applyLiveUpdate(message.live);
     }
+  }
+
+  /** Keeps an update for a run the page will track once its start is answered. */
+  #keepEarly(delta: RunDelta): void {
+    const kept = this.#early.get(delta.runId);
+    if (kept) {
+      if (kept.length < EARLY_DELTAS_PER_RUN) kept.push(delta);
+      return;
+    }
+    if (this.#early.size >= EARLY_RUNS) {
+      const oldest = this.#early.keys().next().value;
+      if (oldest !== undefined) this.#early.delete(oldest);
+    }
+    this.#early.set(delta.runId, [delta]);
   }
 
   /** The stream came back after a gap: read again what may have been missed. */

@@ -743,12 +743,14 @@ describe("a type check that can't run fails the verdict (D138 item 8, GPT review
     async () => {
       const dir = artifact("bad-config", {
         "index.tsx": "export default function Page() { return <main><h1>Config</h1></main>; }\n",
-        "tsconfig.json": '{ "compilerOptions": { "notAnOption": true } }\n',
+        // Refused on the options as a whole, so tsc reports it against Mostra's configuration:
+        // what the first version of the check dropped (GPT review finding 1).
+        "tsconfig.json": '{ "compilerOptions": { "emitDeclarationOnly": true } }\n',
       });
       const verdict = await verify(dir);
       expect(verdict.status).toBe("fail");
       const [error] = find(verdict, "MOSTRA_TYPE_ERROR");
-      expect(error?.message).toContain("TS5023");
+      expect(error?.message).toContain("TS5069");
       expect(error?.location).toMatchObject({ file: "tsconfig.json" });
     },
     VERIFY_MS,
