@@ -57,6 +57,9 @@ describe.each([
       env: {
         MOSTRA_TEST_WORKER_IDLE_MS: "4000",
         ...(host ? { MOSTRA_TEST_WORKER_HOST: host.socket } : {}),
+        // The supervisor's own environment, which no worker may inherit (D124, AC-06).
+        MOSTRA_TEST_SUPERVISOR_ONLY: "supervisor-only-value",
+        GITHUB_TOKEN: "ghp_supervisor_environment_token",
       },
     });
     actions = await gateway.publish("actions");
@@ -317,6 +320,30 @@ describe.each([
     expect(
       readFileSync(join(gateway.home.home, "secrets", actions.artifactId, "MAIL_TOKEN"), "utf8"),
     ).toBe(MAIL_TOKEN);
+  });
+
+  it("gives server code no secret through its environment: only by name, through Mostra (D124)", async () => {
+    const page = await openPage(actions.url);
+    const env = (await page.call("actions.ts#environment", [])).value as Record<string, string>;
+    expect(Object.keys(env)).not.toContain("MOSTRA_TEST_SUPERVISOR_ONLY");
+    expect(Object.keys(env)).not.toContain("GITHUB_TOKEN");
+    expect(JSON.stringify(env)).not.toContain(MAIL_TOKEN);
+    expect(JSON.stringify(env)).not.toContain("ghp_supervisor_environment_token");
+    // Nothing was hidden on the way either: the environment never held a secret to redact.
+    expect(JSON.stringify(env)).not.toContain("[redacted]");
+    // The same code reads the secret by name.
+    expect((await page.call("actions.ts#holds", ["MAIL_TOKEN", MAIL_TOKEN])).value).toBe(true);
+  });
+
+  it("redacts a secret written into the home's store by hand while it ran (AC-06)", async () => {
+    const dir = join(gateway.home.home, "secrets", "home");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(dir, "HAND_SET"), "hand-written-value-123", { mode: 0o600 });
+    const page = await openPage(actions.url);
+    expect(
+      (await page.call("actions.ts#holds", ["HAND_SET", "hand-written-value-123"])).value,
+    ).toBe(true);
+    expect((await page.call("actions.ts#named", ["HAND_SET"])).value).toBe("[redacted]");
   });
 
   it("refuses a link without the action's scope (D97 item 4)", async () => {

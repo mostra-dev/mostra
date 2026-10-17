@@ -140,3 +140,8 @@ export async function whoAfter(ms: number) {
 export async function huge(mib: number) {
   return "x".repeat(mib * 1024 * 1024);
 }
+
+/** The worker's environment, to show that no secret reaches it that way (D124). */
+export async function environment() {
+  return { ...process.env };
+}

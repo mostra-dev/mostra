@@ -188,11 +188,12 @@ export function openSecrets(options: SecretsOptions): Secrets {
           return value;
         }
       }
-      const own = read(dirOf({ kind: "artifact", artifactId }), name);
-      if (own !== undefined) return own;
-      const shared = read(dirOf({ kind: "home" }), name);
-      if (shared !== undefined) return shared;
-      throw missing(name);
+      const value =
+        read(dirOf({ kind: "artifact", artifactId }), name) ?? read(dirOf({ kind: "home" }), name);
+      if (value === undefined) throw missing(name);
+      // A file written into the store by hand since start-up is protected before it leaves.
+      options.redactor.protectSecret(value);
+      return value;
     },
   };
 }
