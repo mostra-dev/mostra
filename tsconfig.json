@@ -25,6 +25,9 @@
     },
     {
       "path": "packages/worker"
+    },
+    {
+      "path": "packages/verify"
     }
   ]
 }
