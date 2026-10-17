@@ -367,3 +367,26 @@ Checked by the WP-08 session on 2026-10-16 against react.dev, the npm registry, 
 | Rolldown and directives | A module-level `"use client"` in a bundled module logs `MODULE_LEVEL_DIRECTIVE` ("may not be preserved"); an entry's own directive is kept at the top of its output file | tsdown 0.23.0 build of `@mostra/react` | `@mostra/react`'s entries carry `"use client"` (D19 seam 4); the build filters that one warning |
 | `Symbol.for` and garbage collection (2026-10-17) | One million `Symbol.for` names stay on the heap after forced collections (108 MiB on Node 24.12.0), while the same strings unreferenced leave nothing: the global symbol registry keeps every name for the life of the process | local run, `node --expose-gc` | A registered symbol is refused as an argument a page sends (D136); results may still carry one |
 | React's Flight result path (2026-10-17) | `react-server-dom-parcel` 19.3.0's `renderToReadableStream` and `createFromReadableStream` carry every case the reply codec carries, plus registered symbols; a Node `Buffer` crosses through its `toJSON` (`{ type: "Buffer", data }`) with a warning to pass a `Uint8Array`; a `FormData`'s files arrive as Blobs named `blob`; class instances, null-prototype objects, functions, unregistered symbols and `RegExp` are refused | `packages/protocol/test/fixtures/react-flight-results.mjs` run under `--conditions=react-server` | The serializer's conformance suite compares results with React's result path too, and records the `Buffer` and file-name divergences (D136) |
+
+
+## WP-09 re-verification (2026-10-17)
+
+Checked by the WP-09 session on 2026-10-17 against the providers' own documentation and the npm registry. The image-token formulas changed since research brief 6, which this section supersedes for `verify`'s estimates (D137 item 9).
+
+**Screenshot token estimates**, as `verify` computes them per image:
+
+| Provider | Rule | 1280×800 | 390×844 | Source |
+|---|---|---|---|---|
+| Claude | One visual token per 28×28 patch: `⌈w/28⌉ × ⌈h/28⌉`, after downscaling to the largest aspect-preserving size within the tier's limits (each side rounded up to a multiple of 28 within the edge limit, tokens within the budget; the reference implementation binary-searches the long edge). High-resolution tier (Claude 4.7 and later): 2576 px, 4784 tokens. Standard tier: 1568 px, 1568 tokens. Padding to a multiple of 28 adds no tokens | 1334 | 434 | platform.claude.com/docs/en/build-with-claude/vision and its "vision-coordinates" page |
+| GPT (gpt-5.5, gpt-5.6-sol/terra/luna, gpt-6-astra) | 32×32 patches, `⌈w/32⌉ × ⌈h/32⌉`, times the model multiplier 1.2, rounded up. At `detail: high` the image first fits 2048 × 2048 (gpt-5.5, gpt-5.6) and a 2,500-patch budget (shrink by `sqrt(32² × 2500 / (w × h))`, adjusted to whole patches); `auto` behaves like `original` on these models | 1200 | 422 | developers.openai.com/api/docs/guides/images-vision ("Calculating costs", "Model sizing behavior") |
+| Gemini 3 and 4 | A flat allocation per image by `media_resolution`: 1120 tokens at the default (unspecified) and `high`, 280 `low`, 560 `medium`, 2240 `ultra_high`. The 258-per-768-px-tile rule applies to earlier models | 1120 | 1120 | ai.google.dev/gemini-api/docs/media-resolution |
+
+**Packages** (npm registry, 2026-10-17; the 7-day release-age rule of `pnpm-workspace.yaml` applies):
+
+| Package | Version | Published | License | Consequence |
+|---|---|---|---|---|
+| `playwright-core` | 1.64.0 | 2026-10-07 | Apache-2.0 | `@mostra/verify`'s browser driver, with the Chromium headless shell revision 1.64.0 pins; 1.64.1 (2026-10-14) is inside the cooldown. It has the same API as `playwright` and no browser-management install hooks |
+| `axe-core` | 4.14.0 | 2026-10-05 | MPL-2.0 (OSI, file-level copyleft; the license audit allows it) | Injected unmodified into each rendered frame (`axe.min.js`), its license in NOTICE; no dependencies. `@axe-core/playwright` isn't used |
+| `pixelmatch` | 8.0.0 | 2026-10-06 | ISC; ESM; depends on `pngjs` ^7 | The pixel regression's comparison |
+| `pngjs` | 7.0.0 | 2023-02-20 | MIT | Decodes screenshots for `pixelmatch` |
+| `typescript` | 7.0.2 | 2026-07-08 | Apache-2.0 | The type check's `tsc`, the repository's catalog version; a platform package (`@typescript/typescript-<platform>`) holds the native compiler |
