@@ -129,6 +129,8 @@ export class ServerClient {
   #liveFlush: Promise<void> | undefined;
   #liveRefresh = new Set<string>();
   #notifyScheduled = false;
+  /** Plain calls whose value hasn't arrived yet. */
+  #callsInFlight = 0;
 
   constructor(options: ServerClientOptions) {
     this.#options = options;
@@ -144,6 +146,21 @@ export class ServerClient {
 
   /** A number that changes with every change, for `useSyncExternalStore`. */
   version = (): number => this.#version;
+
+  /**
+   * Server work the page is waiting on: plain calls whose value hasn't arrived, runs that haven't
+   * ended, and live sources a component shows that have no first value yet. `verify`'s field
+   * probe reads it, so the runner judges the page once what it loads at mount has arrived (Opus
+   * review finding 1).
+   */
+  pending(): number {
+    let count = this.#callsInFlight;
+    for (const tracked of this.#runs.values())
+      if (!isFinalRunStatus(tracked.view.status)) count += 1;
+    for (const tracked of this.#live.values())
+      if (tracked.view.loading && tracked.watchers.size > 0) count += 1;
+    return count;
+  }
 
   /**
    * Notes a change. Listeners hear about it once per animation frame (FAILURE_MODEL §6), or in a
@@ -204,9 +221,14 @@ export class ServerClient {
     };
     const pumped = pump();
     // The value as soon as it exists; a failure before it rejects the call.
-    const root = await Promise.race([reader.root, pumped.then(() => reader.root)]);
-    pumped.catch((error: unknown) => reader.fail(error));
-    return root;
+    this.#callsInFlight += 1;
+    try {
+      const root = await Promise.race([reader.root, pumped.then(() => reader.root)]);
+      pumped.catch((error: unknown) => reader.fail(error));
+      return root;
+    } finally {
+      this.#callsInFlight -= 1;
+    }
   }
 
   /** The client stub of a server function a result refers to. */

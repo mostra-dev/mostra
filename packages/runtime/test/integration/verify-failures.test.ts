@@ -194,11 +194,28 @@ describe("verify's failures", () => {
         {},
         async (_client, home) => {
           expect(readdirSync(join(home.home, "cache", "verify", "runs"))).toEqual([]);
+          // A build cut off before it was complete, a verdict's temporary file and a screenshot
+          // directory no verdict names go too (Opus review finding 9); a cached verdict stays.
+          expect(readdirSync(join(home.home, "cache", "builds"))).toEqual([]);
+          expect(readdirSync(join(home.home, "cache", "verify")).sort()).toEqual([
+            "kept",
+            "kept.json",
+            "runs",
+          ]);
         },
         (home) => {
           const left = join(home.home, "cache", "verify", "runs", "run_LEFTOVER", "store");
           mkdirSync(left, { recursive: true });
           writeFileSync(join(left, "ledger.sqlite"), "left behind");
+          mkdirSync(join(home.home, "cache", "builds", "ver_X.tmp-1-2", "client"), {
+            recursive: true,
+          });
+          const cache = join(home.home, "cache", "verify");
+          mkdirSync(join(cache, "orphan"), { recursive: true });
+          writeFileSync(join(cache, "orphan", "desktop.png"), "left behind");
+          writeFileSync(join(cache, "half.json.1-2.tmp"), "left behind");
+          mkdirSync(join(cache, "kept"), { recursive: true });
+          writeFileSync(join(cache, "kept.json"), "{}");
         },
       );
     },
@@ -302,6 +319,55 @@ export default function Page() {
         expect(
           readdirSync(join(home.home, "cache", "verify")).filter((name) => name.endsWith(".tmp")),
         ).toEqual([]);
+      });
+    },
+    VERIFY_MS,
+  );
+  it(
+    "keeps other runs going when one page blocks the browser: only its own render ends (Opus review finding 5)",
+    async () => {
+      await withDaemon({ MOSTRA_TEST_VERIFY_TIMEOUT_MS: "20000" }, async (client) => {
+        const dir = join(tempDir("verify-busy-2"), "busy");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+          join(dir, "index.tsx"),
+          `import { useEffect } from "react";
+export default function Page() {
+  useEffect(() => { setTimeout(() => { for (;;) {} }, 300); }, []);
+  return <main><h1>Busy</h1></main>;
+}
+`,
+        );
+        const busy = verifyOf(client, dir);
+        await new Promise((resolve) => setTimeout(resolve, 12_000));
+        const fine = await verifyOf(client, single());
+        const blocked = await busy;
+        expect(codes(blocked, "error")).toContain("MOSTRA_VERIFY_TIMEOUT");
+        expect(codes(fine, "error")).toEqual([]);
+        expect(fine.status).toBe("pass");
+      });
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "stops a smoke test at the run's deadline with the budget's hint, never a timeout (Opus review finding 6)",
+    async () => {
+      await withDaemon({ MOSTRA_TEST_VERIFY_TIMEOUT_MS: "30000" }, async (client) => {
+        const dir = join(tempDir("verify-buttons"), "buttons");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+          join(dir, "index.tsx"),
+          `import { useState } from "react";
+export default function Page() {
+  const [count, setCount] = useState(0);
+  return <main><h1>Buttons {count}</h1>{Array.from({ length: 150 }, (_, i) => <button type="button" key={i} onClick={() => setCount(i)}>Button {i}</button>)}</main>;
+}
+`,
+        );
+        const verdict = await verifyOf(client, dir);
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(verdict.diagnostics.map((d) => d.code)).toContain("MOSTRA_SMOKE_BUDGET");
       });
     },
     VERIFY_MS,

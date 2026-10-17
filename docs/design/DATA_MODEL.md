@@ -22,10 +22,13 @@
   deps/cache/, deps/state/     the installer's registry metadata (read when offline) and its own state
   deps/tmp/                    scratch projects of resolutions in progress; emptied at every start
   cache/builds/<versionId>/    verify's builds, laid out as version directories, which publish promotes when its own
-                               version ID matches (D138 item 5); LRU-capped at 5 GB (D47)
+                               version ID matches (D138 item 5); capped at 5 GB, least recently used first, never one
+                               a running verify serves (D47); unfinished `*.tmp-*` builds removed at every start
   cache/staging/               one directory per publish in progress (snapshot copy, build output); emptied at every start
-  cache/verify/<key>.json      cached verdicts, keyed by sourceDigest, envDigest and the verify revision (D41, D138)
-  cache/verify/<key>/          that verdict's screenshots, ARIA snapshots and pixel diffs
+  cache/verify/<key>.json      cached verdicts, keyed by sourceDigest, envDigest and the verify revision (D41, D138),
+                               each with whether compile produced a build, which `--force` needs (D138 item 7)
+  cache/verify/<key>/          that verdict's screenshots, ARIA snapshots (written redacted) and pixel diffs; a
+                               directory no cached verdict names is removed after an hour and at every start
   cache/verify/runs/<run>/     a running verify's sandbox (its scratch ledger); removed when the run ends, and at
                                every start (D138 item 1)
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)

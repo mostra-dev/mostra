@@ -9,7 +9,7 @@
  * it), so it never races the builder, which links its own `node_modules` into the staging root.
  */
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -22,11 +22,12 @@ import type { ProcessManager } from "../processes/index.ts";
 /** How long the check may take: the build's own limit, which it runs beside (FAILURE_MODEL §9). */
 export const TYPECHECK_TIMEOUT_MS = 180_000;
 
-/** The options Mostra sets when the artifact has no `tsconfig.json` (D138 item 8). */
-const DEFAULT_OPTIONS = {
-  strict: true,
-  noUnusedLocals: false,
-  noUnusedParameters: false,
+/**
+ * How the build compiles, which every check starts from, under an artifact's own `tsconfig.json`
+ * too: its options override these (Opus review finding 2: without them a `tsconfig.json` that
+ * sets only `strict` failed every JSX file the build compiles).
+ */
+const BUILD_OPTIONS = {
   target: "ES2022",
   lib: ["ES2023", "DOM", "DOM.Iterable"],
   jsx: "react-jsx",
@@ -40,41 +41,54 @@ const DEFAULT_OPTIONS = {
   types: ["node"],
 };
 
-/** The options Mostra's check always sets, over an artifact's own `tsconfig.json` too. */
+/** What an artifact without a `tsconfig.json` is checked with besides (D138 item 8). */
+const DEFAULT_OPTIONS = {
+  strict: true,
+  noUnusedLocals: false,
+  noUnusedParameters: false,
+};
+
+/**
+ * The options Mostra's check always sets, over an artifact's own `tsconfig.json` too. `baseUrl`
+ * is cleared: the build doesn't use it and TypeScript 7 refuses it (TS5102), so a configuration
+ * copied from a TypeScript 5 project (shadcn's Vite setup has one) checks like the build builds.
+ */
 const FORCED_OPTIONS = {
   noEmit: true,
   skipLibCheck: true,
+  // The build is a bundler: it resolves and emits modules as one, whatever `module` says.
+  module: "ESNext",
   moduleResolution: "bundler",
+  baseUrl: null,
   paths: { "@/*": ["./source/*"] },
 };
 
-/** What the files a build bundles are, for the checker: Vite's asset and MDX imports. */
+/** Vite's own declarations of what imports are (assets, CSS modules, `?raw`, `import.meta`). */
+function viteClientTypes(): { readonly path: string; readonly version: string } | undefined {
+  try {
+    const require = createRequire(import.meta.url);
+    const manifest = require.resolve("vite/package.json");
+    const version = (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
+    const path = join(dirname(manifest), "client.d.ts");
+    return existsSync(path) ? { path, version } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What the files a build bundles are, for the checker: Vite's own client declarations for the
+ * pinned release (every asset type, CSS modules as class maps, `?raw`, `?url`, `?inline`,
+ * `?worker`, `import.meta.env`, `.glob` and `.hot`; Opus review finding 2), and MDX, which
+ * Mostra's build adds.
+ */
+const VITE_CLIENT = viteClientTypes();
 const AMBIENT = `// Written by Mostra for verify's type check (D138): what the build's imports are.
-declare module "*.css" { const css: string; export default css; }
-declare module "*.svg" { const src: string; export default src; }
-declare module "*.png" { const src: string; export default src; }
-declare module "*.jpg" { const src: string; export default src; }
-declare module "*.jpeg" { const src: string; export default src; }
-declare module "*.gif" { const src: string; export default src; }
-declare module "*.webp" { const src: string; export default src; }
-declare module "*.avif" { const src: string; export default src; }
-declare module "*.ico" { const src: string; export default src; }
-declare module "*.woff" { const src: string; export default src; }
-declare module "*.woff2" { const src: string; export default src; }
-declare module "*.mp4" { const src: string; export default src; }
-declare module "*.webm" { const src: string; export default src; }
-declare module "*.mp3" { const src: string; export default src; }
-declare module "*.wav" { const src: string; export default src; }
-declare module "*.txt" { const text: string; export default text; }
-declare module "*?raw" { const text: string; export default text; }
-declare module "*?url" { const src: string; export default src; }
-declare module "*.mdx" {
+${VITE_CLIENT ? `/// <reference path=${JSON.stringify(VITE_CLIENT.path)} />\n` : ""}declare module "*.mdx" {
   const Content: (props: Record<string, unknown>) => unknown;
   export default Content;
   export const frontmatter: Record<string, unknown>;
 }
-interface ImportMetaEnv { readonly [key: string]: string | boolean | undefined }
-interface ImportMeta { readonly env: ImportMetaEnv }
 `;
 
 /**
@@ -82,7 +96,17 @@ interface ImportMeta { readonly env: ImportMetaEnv }
  * verdict made under the old rules (D138 items 5 and 8).
  */
 export const TYPECHECK_REVISION: string = createHash("sha256")
-  .update(JSON.stringify({ DEFAULT_OPTIONS, FORCED_OPTIONS, AMBIENT, revision: 1 }))
+  .update(
+    JSON.stringify({
+      BUILD_OPTIONS,
+      DEFAULT_OPTIONS,
+      FORCED_OPTIONS,
+      // The declarations' text without this machine's path to them.
+      AMBIENT: AMBIENT.replace(VITE_CLIENT?.path ?? "\u0000", "vite/client.d.ts"),
+      vite: VITE_CLIENT?.version ?? null,
+      revision: 2,
+    }),
+  )
   .digest("hex");
 
 /** Where TypeScript 7's `tsc` is. */
@@ -96,7 +120,11 @@ const LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 /** A diagnostic without a file: `error TS5023: Unknown compiler option …`. */
 const GLOBAL = /^error (TS\d+): (.*)$/;
 /** The configuration files of a check: Mostra's, which extends the artifact's own. */
-const CONFIG_FILES = new Set(["tsconfig.verify.json", "source/tsconfig.json"]);
+const CONFIG_FILES = new Set([
+  "tsconfig.verify.json",
+  ".mostra-check/build.json",
+  "source/tsconfig.json",
+]);
 
 /** What the check found. */
 export interface TypecheckOutcome {
@@ -227,9 +255,17 @@ export async function typecheck(options: {
       ...FORCED_OPTIONS,
       paths: { ...FORCED_OPTIONS.paths, ...(server ? { "@mostra/server": [server] } : {}) },
     };
+    // The build's options first, the artifact's own configuration over them, Mostra's forced
+    // ones last (an `extends` array applies in order).
+    await writeFile(
+      join(workDir, ".mostra-check", "build.json"),
+      `${JSON.stringify({ compilerOptions: own ? BUILD_OPTIONS : { ...BUILD_OPTIONS, ...DEFAULT_OPTIONS } }, null, 2)}\n`,
+    );
     const config = {
-      ...(own ? { extends: "./source/tsconfig.json" } : {}),
-      compilerOptions: own ? forced : { ...DEFAULT_OPTIONS, ...forced },
+      extends: own
+        ? ["./.mostra-check/build.json", "./source/tsconfig.json"]
+        : "./.mostra-check/build.json",
+      compilerOptions: forced,
       include: ["source/**/*.ts", "source/**/*.tsx", ".mostra-check/*.d.ts"],
       exclude: ["source/**/node_modules"],
     };

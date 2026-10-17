@@ -37,7 +37,7 @@ export type Moment = {
 export interface RecordedEntry {
     readonly codes: readonly string[];
     readonly dropped?: true;
-    readonly kind: "error" | "warn" | "uncaught" | "rejection";
+    readonly kind: "error" | "warn" | "uncaught" | "rejection" | "caught";
     readonly seq: number;
     readonly text: string;
 }

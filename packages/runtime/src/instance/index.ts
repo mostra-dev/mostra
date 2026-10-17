@@ -95,7 +95,7 @@ import {
   createVerifier,
   locateRunner,
   type RunnerClient,
-  recoverSandboxes,
+  recoverVerify,
   type Verifier,
 } from "../verify/index.ts";
 import {
@@ -254,8 +254,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log.info("publish.recovered", { ...recovered });
   }
   await recoverDependencies({ home: home.path, log });
-  // Sandboxes of verify runs a stopped instance left behind (D138 item 1).
-  await recoverSandboxes(home.path, log);
+  // What a stopped instance left of verify: sandboxes, unfinished builds, orphan files (D138 item 1).
+  await recoverVerify(home.path, log);
   // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
   // first use, like the publisher, so a runtime missing its build packages still starts.
   let spa: RenderMode | undefined;

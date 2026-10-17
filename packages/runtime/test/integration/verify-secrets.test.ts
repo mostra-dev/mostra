@@ -146,3 +146,37 @@ export const key = defineLive({ load: async () => secret("API_KEY") });
     await daemon.exited;
   }
 }, 300_000);
+
+it("writes the last passing version's ARIA snapshots through the redactor too (Opus review finding 8)", async () => {
+  const home = verifiedHome();
+  const daemon = await startDaemon(home);
+  const client = await connectTo(daemon.status.socket as string);
+  try {
+    result(await client.call("mostra/initialize", initializeParams()));
+    result(await client.call("secret/set", { name: "API_KEY", value: SECRET }));
+    const dir = join(tempDir("verify-secret-baseline"), "shown");
+    mkdirSync(dir, { recursive: true });
+    const page = (heading: string): string => `import { defineArtifact } from "@mostra/react";
+export const artifact = defineArtifact({ id: "${ID}", title: "Shown" });
+export default function Page() { return <main><h1>${heading}</h1><p>Key ${SECRET}</p></main>; }
+`;
+    const ID = ArtifactId.create();
+    writeFileSync(join(dir, "index.tsx"), page("First"));
+    result(await client.call("artifact/publish", { source: { path: dir } }, 300_000));
+    writeFileSync(join(dir, "index.tsx"), page("Second"));
+    const verdict = result(
+      await client.call("artifact/verify", { source: { path: dir } }, 300_000),
+    ) as { regressions: { against?: string } };
+    expect(verdict.regressions.against).toBeDefined();
+    const aria = files(join(home.home, "cache", "verify")).filter((file) =>
+      file.path.endsWith(".aria.yml"),
+    );
+    expect(aria.some((file) => file.path.includes("baseline-"))).toBe(true);
+    expect(
+      aria.filter((file) => file.bytes.includes(Buffer.from(SECRET))).map((file) => file.path),
+    ).toEqual([]);
+  } finally {
+    await client.call("mostra/shutdown", {});
+    await daemon.exited;
+  }
+}, 300_000);

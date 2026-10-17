@@ -2,8 +2,9 @@
 
 /**
  * `verify`'s field probe (D138 item 3): in the `verify` target only, the page keeps a record of
- * every field it mounts (the hook, the scope and the type of the initial value) and publishes it
- * on `globalThis[VERIFY_PROBE]`, where the verify runner reads it. Viewers' pages never install it.
+ * every field it mounts (the hook, the scope and the type of the initial value) and how much
+ * server work it waits on, and publishes both on `globalThis[VERIFY_PROBE]`, where the verify
+ * runner reads them. Viewers' pages never install it.
  */
 import { type ProbedField, VERIFY_PROBE } from "@mostra/protocol";
 import type { Registration, Store } from "./store.ts";
@@ -56,5 +57,11 @@ export function installVerifyProbe(store: Store): void {
       mounts: entry.mounts,
       conflicts: [...entry.conflicts],
     }));
-  Object.defineProperty(globalThis, VERIFY_PROBE, { value: { fields }, configurable: true });
+  // `pending`: the server work the page waits on (calls, runs, first live values), which the
+  // runner's quiescence wait includes (Opus review finding 1).
+  const pending = (): number => store.server.pending();
+  Object.defineProperty(globalThis, VERIFY_PROBE, {
+    value: { fields, pending },
+    configurable: true,
+  });
 }

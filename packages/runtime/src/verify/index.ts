@@ -16,7 +16,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type ArtifactManifest,
@@ -42,15 +42,22 @@ import type { Registry } from "../registry/index.ts";
 import { probedFieldLint, staticFieldLint, unstableFieldLint } from "./fields.ts";
 import { ariaRegression, contractRegressions, pixelRegression } from "./regression.ts";
 import type { RunnerClient } from "./runner.ts";
-import { type Sandbox, type SandboxOptions, type SandboxVersion, startSandbox } from "./sandbox.ts";
+import {
+  recoverSandboxes,
+  type Sandbox,
+  type SandboxOptions,
+  type SandboxVersion,
+  sandboxRoot,
+  startSandbox,
+} from "./sandbox.ts";
 import { reportedByBuild, TYPECHECK_REVISION, typecheck } from "./typecheck.ts";
 
 export { createRunnerClient, locateRunner, type RunnerClient } from "./runner.ts";
-export { recoverSandboxes, type SandboxOptions } from "./sandbox.ts";
+export type { SandboxOptions } from "./sandbox.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
-  .update(`verify 1 ${TYPECHECK_REVISION}`)
+  .update(`verify 2 ${TYPECHECK_REVISION}`)
   .digest("hex")
   .slice(0, 16);
 
@@ -117,12 +124,22 @@ export interface VerifyRun {
   readonly progress?: (stage: string) => void;
 }
 
+/** What a run found: its verdict, and whether compile produced a build (D138 item 7). */
+export interface VerifyOutcome {
+  readonly verdict: VerifyVerdict;
+  /**
+   * Whether the source built. `--force` never publishes a source that didn't, whatever codes its
+   * verdict carries (Opus review finding 7).
+   */
+  readonly built: boolean;
+}
+
 /** The verifier of one instance. */
 export interface Verifier {
   /** Runs verify; replaces the cached verdict for the same digests. */
-  run(prepared: PreparedSource, run: VerifyRun): Promise<VerifyVerdict>;
+  run(prepared: PreparedSource, run: VerifyRun): Promise<VerifyOutcome>;
   /** The cached verdict for these digests, if one was made for this artifact (or none named). */
-  cached(prepared: PreparedSource): VerifyVerdict | undefined;
+  cached(prepared: PreparedSource): VerifyOutcome | undefined;
   /** Verify's build of a version, when the cache still holds it complete. */
   builtVersion(versionId: string): string | undefined;
   /** `cache/verify/`: the verdicts, and each verdict's screenshots, ARIA snapshots and diffs. */
@@ -153,11 +170,37 @@ async function sizeOf(dir: string): Promise<number> {
   return total;
 }
 
+/**
+ * Removes what a stopped instance left of verify (D138 item 1): sandboxes, builds cut off before
+ * they were complete, verdicts' temporary files and the screenshot directories no verdict names
+ * (Opus review finding 9). Call it before any run starts.
+ */
+export async function recoverVerify(home: string, log: Log): Promise<void> {
+  await recoverSandboxes(home, log);
+  const buildsDir = join(home, "cache", "builds");
+  for (const name of await readdir(buildsDir).catch(() => [] as string[])) {
+    if (name.includes(".tmp-")) await rm(join(buildsDir, name), { recursive: true, force: true });
+  }
+  const cacheDir = join(home, "cache", "verify");
+  const entries = await readdir(cacheDir, { withFileTypes: true }).catch(() => []);
+  const verdicts = new Set(
+    entries.filter((entry) => entry.name.endsWith(".json")).map((entry) => entry.name.slice(0, -5)),
+  );
+  for (const entry of entries) {
+    const path = join(cacheDir, entry.name);
+    if (entry.name.endsWith(".tmp")) await rm(path, { force: true });
+    else if (entry.isDirectory() && path !== sandboxRoot(home) && !verdicts.has(entry.name))
+      await rm(path, { recursive: true, force: true });
+  }
+}
+
 /** Creates the verifier. */
 export function createVerifier(options: VerifierOptions): Verifier {
   const { home, log, registry } = options;
   const buildsDir = join(home, "cache", "builds");
   const cacheDir = join(home, "cache", "verify");
+  /** Builds a run is serving from its sandbox: the cap never removes them (finding 9). */
+  const inUse = new Map<string, number>();
   const completeBuild = (versionId: string): string | undefined => {
     const dir = join(buildsDir, versionId);
     return existsSync(join(dir, "manifest.json")) ? dir : undefined;
@@ -182,17 +225,29 @@ export function createVerifier(options: VerifierOptions): Verifier {
     let total = builds.reduce((acc, build) => acc + build.size, 0);
     for (const build of builds.sort((a, b) => a.mtime - b.mtime)) {
       if (total <= BUILD_CACHE_BYTES) break;
-      if (build.name === keep) continue;
+      if (build.name === keep || (inUse.get(build.name) ?? 0) > 0) continue;
       await rm(build.dir, { recursive: true, force: true });
       total -= build.size;
     }
   };
 
-  /** Keeps the newest verdicts. */
+  /**
+   * Keeps the newest verdicts, and removes screenshot directories no verdict names (an uncached
+   * run's) once they are an hour old and no run is writing them (finding 9).
+   */
   const pruneVerdicts = async (): Promise<void> => {
-    const names = (await readdir(cacheDir).catch(() => [])).filter((name) =>
-      name.endsWith(".json"),
+    const all = await readdir(cacheDir, { withFileTypes: true }).catch(() => []);
+    const verdicts = new Set(
+      all.filter((entry) => entry.name.endsWith(".json")).map((entry) => entry.name.slice(0, -5)),
     );
+    for (const entry of all) {
+      if (!entry.isDirectory() || verdicts.has(entry.name) || running.has(entry.name)) continue;
+      const path = join(cacheDir, entry.name);
+      if (path === sandboxRoot(home)) continue;
+      const age = Date.now() - ((await stat(path).catch(() => undefined))?.mtimeMs ?? Date.now());
+      if (age > 60 * 60 * 1000) await rm(path, { recursive: true, force: true });
+    }
+    const names = [...verdicts].map((name) => `${name}.json`);
     if (names.length <= VERDICT_CACHE_ENTRIES) return;
     const dated = await Promise.all(
       names.map(async (name) => ({ name, mtime: (await stat(join(cacheDir, name))).mtimeMs })),
@@ -255,6 +310,9 @@ export function createVerifier(options: VerifierOptions): Verifier {
   const buildInto = async (prepared: PreparedSource, run: VerifyRun): Promise<BuildOutcome> => {
     const existing = completeBuild(prepared.versionId);
     if (existing && (await options.sandbox.damage(existing)) === undefined) {
+      // Used again: newest for the cap, which goes by the time a build was last used.
+      const now = new Date();
+      await utimes(existing, now, now).catch(() => undefined);
       return {
         ok: true,
         outputDigest: (
@@ -279,7 +337,18 @@ export function createVerifier(options: VerifierOptions): Verifier {
     }
   };
 
-  const verify = async (prepared: PreparedSource, run: VerifyRun): Promise<VerifyVerdict> => {
+  const verify = async (prepared: PreparedSource, run: VerifyRun): Promise<VerifyOutcome> => {
+    inUse.set(prepared.versionId, (inUse.get(prepared.versionId) ?? 0) + 1);
+    try {
+      return await verifyInUse(prepared, run);
+    } finally {
+      const count = (inUse.get(prepared.versionId) ?? 1) - 1;
+      if (count > 0) inUse.set(prepared.versionId, count);
+      else inUse.delete(prepared.versionId);
+    }
+  };
+
+  const verifyInUse = async (prepared: PreparedSource, run: VerifyRun): Promise<VerifyOutcome> => {
     const started = Date.now();
     const timings: Record<string, number> = {};
     const time = (stage: string, since: number): void => {
@@ -411,6 +480,16 @@ export function createVerifier(options: VerifierOptions): Verifier {
                 return { timedOut: true } as RenderResult;
               throw error;
             });
+          // Every ARIA snapshot verify keeps is written through the redactor, the baseline's too
+          // (D138 item 1, Opus review finding 8); the runner only reads it.
+          if (result.aria) {
+            const text = options.redactor.redact(result.aria.text);
+            await writeFile(result.aria.path, text);
+            (result as { aria: { path: string; text: string } }).aria = {
+              path: result.aria.path,
+              text,
+            };
+          }
           if (result.timedOut) {
             throw new RpcError(
               createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
@@ -451,12 +530,10 @@ export function createVerifier(options: VerifierOptions): Verifier {
             });
           }
           if (result.aria) {
-            const text = options.redactor.redact(result.aria.text);
-            await writeFile(result.aria.path, text);
             aria.push({
               viewport: viewport.name,
               path: result.aria.path,
-              summary: ariaSummary(text),
+              summary: ariaSummary(result.aria.text),
             });
           }
           return result;
@@ -499,9 +576,21 @@ export function createVerifier(options: VerifierOptions): Verifier {
           axe: false,
           fields: true,
         });
-        diagnostics.push(
-          ...unstableFieldLint(firstFields, again.fields ?? [], coverage, first.name),
-        );
+        // A difference is confirmed by a third boot before it is reported: an ID that changes is
+        // different every time, while one that only arrived late on the first, cold boot (a run
+        // started at mount, a worker starting) is the same on the two warm ones (Opus review
+        // finding 1).
+        if (unstableFieldLint(firstFields, again.fields ?? [], coverage, first.name).length > 0) {
+          const third = await render(prepared.versionId, first, `${first.name}-third`, {
+            screenshot: false,
+            aria: false,
+            axe: false,
+            fields: true,
+          });
+          diagnostics.push(
+            ...unstableFieldLint(again.fields ?? [], third.fields ?? [], coverage, first.name),
+          );
+        }
 
         if (prepared.manifest.verify?.smoke !== false) {
           stage = "smoke";
@@ -570,6 +659,14 @@ export function createVerifier(options: VerifierOptions): Verifier {
         }
         time("regression", regressionStart);
 
+        for (const crash of sandbox.crashes()) {
+          if (crash.versionId !== prepared.versionId) continue; // the baseline's isn't this source's
+          diagnostics.push(
+            createDiagnostic("MOSTRA_RUNTIME_WORKER_CRASHED", {
+              message: `The source's server code crashed while verify rendered the page (${crash.kind}): ${crash.cause}`,
+            }),
+          );
+        }
         for (const failure of sandbox.liveFailures()) {
           diagnostics.push(
             createDiagnostic(
@@ -645,11 +742,17 @@ export function createVerifier(options: VerifierOptions): Verifier {
       await mkdir(cacheDir, { recursive: true, mode: 0o700 });
       const target = join(cacheDir, `${key}.json`);
       const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(checkedVerdict, null, 2)}\n`);
+      await writeFile(
+        temporary,
+        `${JSON.stringify({ verdict: checkedVerdict, built: built.ok }, null, 2)}\n`,
+      );
       await rename(temporary, target);
       await pruneVerdicts();
     } else {
+      // Its screenshots stay for the caller who reads this verdict; the cache's pruning removes
+      // them later, as no cached verdict names them (finding 9).
       await rm(join(cacheDir, `${key}.json`), { force: true });
+      await pruneVerdicts();
     }
     log.info("verify.finished", {
       status: verdict.status,
@@ -658,13 +761,13 @@ export function createVerifier(options: VerifierOptions): Verifier {
         .map((diagnostic) => diagnostic.code),
       totalMs: timings["total"],
     });
-    return checkedVerdict;
+    return { verdict: checkedVerdict, built: built.ok };
   };
 
   // Runs that share a cache key (identical sources at two paths) share its verdict file and its
   // screenshot directory, so they run one at a time (GPT review finding 2).
   const running = new Map<string, Promise<unknown>>();
-  const serialized = (prepared: PreparedSource, run: VerifyRun): Promise<VerifyVerdict> => {
+  const serialized = (prepared: PreparedSource, run: VerifyRun): Promise<VerifyOutcome> => {
     const key = verdictKey(prepared.sourceDigest, prepared.envDigest);
     const previous = running.get(key) ?? Promise.resolve();
     const next = previous.then(
@@ -690,13 +793,15 @@ export function createVerifier(options: VerifierOptions): Verifier {
       } catch {
         return undefined;
       }
-      const parsed = VerifyVerdict.safeParse(raw);
+      const entry = raw as { verdict?: unknown; built?: unknown } | null;
+      if (typeof entry?.built !== "boolean") return undefined;
+      const parsed = VerifyVerdict.safeParse(entry.verdict);
       if (!parsed.success) return undefined;
       const id = parsed.data.artifact.id;
       // A verdict made for another artifact (a copy with the same files) isn't this one's.
       if (id !== undefined && prepared.identityKnown && id !== prepared.artifactId)
         return undefined;
-      return parsed.data;
+      return { verdict: parsed.data, built: entry.built };
     },
     builtVersion: completeBuild,
   };
@@ -729,15 +834,4 @@ export function errorCodes(verdict: VerifyVerdict): string[] {
         .map((diagnostic) => diagnostic.code),
     ),
   ];
-}
-
-/** Whether a verdict says the source didn't build, which `--force` can't publish (D138 item 7). */
-export function didNotBuild(verdict: VerifyVerdict): Diagnostic | undefined {
-  return verdict.diagnostics.find(
-    (diagnostic) =>
-      diagnostic.severity === "error" &&
-      (diagnostic.code.startsWith("MOSTRA_BUILD_") ||
-        diagnostic.code.startsWith("MOSTRA_DEP_") ||
-        diagnostic.code.startsWith("MOSTRA_ARTIFACT_")),
-  );
 }

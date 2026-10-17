@@ -94,6 +94,15 @@ export interface Sandbox {
   readonly skipped: ReadonlySet<string>;
   /** The live sources whose producers failed, with their messages. */
   liveFailures(): { readonly key: string; readonly message: string; readonly code?: string }[];
+  /**
+   * The workers that crashed, couldn't start, ran out of memory or hung, by version: a definite
+   * failure of server code even when the page handled the failed call (Opus review finding 4).
+   */
+  crashes(): readonly {
+    readonly versionId: string;
+    readonly kind: string;
+    readonly cause: string;
+  }[];
   /** Stops everything and deletes the run's directory. */
   close(): Promise<void>;
 }
@@ -231,6 +240,7 @@ export async function startSandbox(
 
     const optIns = new Map<string, ReadonlySet<string>>();
     const skipped = new Set<string>();
+    const crashes: { versionId: string; kind: string; cause: string }[] = [];
     const workerVersion = (versionId: string): WorkerVersion | undefined => {
       const dir = dirs.get(versionId);
       const version = input.versions.find((entry) => entry.versionId === versionId);
@@ -266,6 +276,8 @@ export async function startSandbox(
         liveValue: (worker, params) => live.produced(worker, params),
       },
       onCrash: (crash) => {
+        if (crashes.length < 20)
+          crashes.push({ versionId: crash.versionId, kind: crash.kind, cause: crash.cause });
         actions.crashed(crash);
         live.crashed(crash);
         interaction.workerCrashed(crash);
@@ -347,6 +359,7 @@ export async function startSandbox(
           version: numbers.get(versionId) as number,
         }),
       skipped,
+      crashes: () => [...crashes],
       liveFailures: () =>
         live.failures(input.artifactId).map(({ key, error }) => ({
           key,

@@ -65,7 +65,6 @@ import type { Log } from "../log.ts";
 import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
 import {
   type BuildOutcome,
-  didNotBuild,
   errorCodes,
   type PreparedSource,
   VERIFY_REVISION,
@@ -357,6 +356,21 @@ function failedVerdict(path: string, diagnostic: Diagnostic): VerifyVerdict {
   };
 }
 
+const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/**
+ * Verify's stand-in artifact ID for a source no manifest `id` or binding names yet: derived from
+ * its real path, shaped like a ULID (D77's alphabet), and never committed anywhere.
+ */
+function stableProvisional(bindingPath: string): string {
+  const hash = createHash("sha256")
+    .update(`mostra verify provisional\u0000${bindingPath}`)
+    .digest();
+  let body = CROCKFORD[(hash[0] as number) % 8] as string;
+  for (let index = 1; index < 26; index += 1) body += CROCKFORD[(hash[index] as number) % 32];
+  return ArtifactId.parse(`art_${body}`);
+}
+
 /** Creates the publisher of one instance. */
 export function createPublisher(options: PublisherOptions): Publisher {
   const { registry, ledger, renderMode, dependencies, log, verifier } = options;
@@ -564,6 +578,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       readonly identityKnown: boolean;
       readonly staging: string;
     }) => Promise<T>,
+    how?: { readonly stableProvisional?: boolean },
   ): Promise<T> => {
     const path = pathOf(ref);
     const source = await resolveSource(path);
@@ -576,7 +591,12 @@ export function createPublisher(options: PublisherOptions): Publisher {
         peeked = undefined;
       }
       const known = peeked ?? registry.artifactAt(source.bindingPath);
-      const provisional = known ?? ArtifactId.create();
+      // An unbound source's artifact is decided at its first publish (D51). Verify's stand-in is
+      // derived from the path, so verifying unchanged source again reuses its build; a publish's
+      // is new, as the artifact's real ID (Opus review finding 9).
+      const provisional =
+        known ??
+        (how?.stableProvisional ? stableProvisional(source.bindingPath) : ArtifactId.create());
       return queue.run(`artifact:${provisional}`, async () => {
         const staging = await mkdtemp(join(registry.store.stagingDir, "publish-"));
         try {
@@ -596,38 +616,43 @@ export function createPublisher(options: PublisherOptions): Publisher {
   };
 
   const verifyOnce = (params: ArtifactVerifyParams, progress?: (stage: string) => void) =>
-    staged(params.source, async ({ path, source, provisional, identityKnown, staging }) => {
-      progress?.("prepare");
-      let ready: Staged;
-      try {
-        ready = await prepare(path, source, provisional, identityKnown, staging);
-      } catch (error) {
-        // A manifest or the dependencies that can't be read are the verdict, not a failure of verify.
-        if (
-          error instanceof RpcError &&
-          /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD)_/.test(error.diagnostic.code)
-        ) {
-          return failedVerdict(path, error.diagnostic);
+    staged(
+      params.source,
+      async ({ path, source, provisional, identityKnown, staging }) => {
+        progress?.("prepare");
+        let ready: Staged;
+        try {
+          ready = await prepare(path, source, provisional, identityKnown, staging);
+        } catch (error) {
+          // A manifest or the dependencies that can't be read are the verdict, not a failure of verify.
+          if (
+            error instanceof RpcError &&
+            /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD)_/.test(error.diagnostic.code)
+          ) {
+            return failedVerdict(path, error.diagnostic);
+          }
+          throw error;
         }
-        throw error;
-      }
-      // Verify records the working lockfile like publish (D95), so the publish that follows
-      // resolves the same versions and its environment digest matches the cached verdict.
-      ledger.write((db) =>
-        ready.deps.save(
-          db,
-          lockKey(
-            ready.prepared.manifest.id ?? registry.artifactAt(source.bindingPath),
-            source.bindingPath,
+        // Verify records the working lockfile like publish (D95), so the publish that follows
+        // resolves the same versions and its environment digest matches the cached verdict.
+        ledger.write((db) =>
+          ready.deps.save(
+            db,
+            lockKey(
+              ready.prepared.manifest.id ?? registry.artifactAt(source.bindingPath),
+              source.bindingPath,
+            ),
           ),
-        ),
-      );
-      return verifier().run(ready.prepared, {
-        build: (out) => stageBuild(ready, out),
-        ...(params.screenshots ? { screenshots: params.screenshots } : {}),
-        ...(progress ? { progress } : {}),
-      });
-    });
+        );
+        const outcome = await verifier().run(ready.prepared, {
+          build: (out) => stageBuild(ready, out),
+          ...(params.screenshots ? { screenshots: params.screenshots } : {}),
+          ...(progress ? { progress } : {}),
+        });
+        return outcome.verdict;
+      },
+      { stableProvisional: true },
+    );
 
   const publishOnce = (params: ArtifactPublishParams): Promise<PublishReceipt> =>
     staged(params.source, async ({ path, source, provisional, identityKnown, staging }) => {
@@ -677,11 +702,21 @@ export function createPublisher(options: PublisherOptions): Publisher {
             }
           } else {
             // 4. The gate (D41, D138): the verdict cached for these digests, or a run now.
-            const verdict =
+            const outcome =
               verifier().cached(prepared) ??
               (await verifier().run(prepared, { build: (dir) => stageBuild(ready, dir) }));
-            const unbuilt = didNotBuild(verdict);
-            if (unbuilt) throw new RpcError(unbuilt);
+            const { verdict } = outcome;
+            // What didn't build can't be published, whatever the flags (D138 item 7): the run
+            // recorded whether compile produced a build, so no code is matched to decide it.
+            if (!outcome.built) {
+              throw new RpcError(
+                verdict.diagnostics.find(
+                  (diagnostic) => diagnostic.severity === "error" && diagnostic.phase === "compile",
+                ) ??
+                  verdict.diagnostics.find((diagnostic) => diagnostic.severity === "error") ??
+                  createDiagnostic("MOSTRA_BUILD_FAILED", { message: "The build failed." }),
+              );
+            }
             const errors = errorCodes(verdict);
             // Verify couldn't run (no browser): without --force, publish fails with that
             // environment error itself, so the caller knows it isn't the artifact (D138 item 7).

@@ -2463,6 +2463,9 @@ export interface VerdictScreenshot {
 export const VERIFY_PROBE = "__mostraVerify";
 
 // @public
+export const VERIFY_REPORT = "__mostraVerifyReport";
+
+// @public
 export const VERIFY_RUNNER_METHODS: {
     readonly render: "verify/render";
     readonly compare: "verify/compare";

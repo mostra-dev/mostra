@@ -309,6 +309,14 @@ export const ArtifactProgressParams: z.ZodType<ArtifactProgressParams> = z
   });
 
 /**
+ * The global the verify runner's recorder installs in every frame of a render: a page in the
+ * `verify` target reports errors its React error boundaries caught through it, with their
+ * `cause` chains, so the runner judges each by its cause (D138 items 2 and 3, Opus review finding
+ * 3). Viewers' pages never have it.
+ */
+export const VERIFY_REPORT = "__mostraVerifyReport";
+
+/**
  * What a verify run's page tells the runner about its fields (D138 item 3), on
  * `globalThis[VERIFY_PROBE]` in the `verify` target only: every field it mounted, how, and with
  * which initial value's type; internal to Mostra.

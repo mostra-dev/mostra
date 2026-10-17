@@ -3,23 +3,28 @@
  * How the runner observes a rendered page: the quiescence wait, the recorder's entries, and the
  * judgement of what the page reported (D72, D138 items 2 and 3).
  */
-import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
+import { createDiagnostic, type Diagnostic, VERIFY_PROBE } from "@mostra/protocol";
 import type { Frame } from "playwright-core";
 import type { NetworkWatch } from "./network.ts";
 import { RECORDER_GLOBAL, type RecordedEntry } from "./recorder.ts";
 
 /**
- * Waits until the frame's document has had no mutation for 200 ms and no request is in flight
- * (the page's event stream aside), at most `maxMs`. A quiescence wait, never a fixed sleep: it
- * returns as soon as the page is still (EVAL-01b).
+ * Waits until the frame's document has had no mutation for 200 ms, no request is in flight (the
+ * page's event stream aside) and the client runtime waits on no server work (calls, runs, first
+ * live values: the probe's `pending`, whose answers arrive on the event stream), at most `maxMs`,
+ * or `serverMaxMs` while server work is still pending. A quiescence wait, never a fixed sleep: it
+ * returns as soon as the page is still (EVAL-01b; Opus review finding 1).
  */
 export async function settle(
   frame: Frame,
   network: NetworkWatch,
   deadline: number,
   maxMs = 3000,
+  serverMaxMs = 10_000,
 ): Promise<boolean> {
-  const end = Math.min(Date.now() + maxMs, deadline);
+  const start = Date.now();
+  const end = (pending: boolean): number =>
+    Math.min(start + (pending ? Math.max(maxMs, serverMaxMs) : maxMs), deadline);
   try {
     await frame.evaluate(() => {
       const scope = globalThis as unknown as { __mostraQuiet?: () => number };
@@ -35,11 +40,15 @@ export async function settle(
       });
       scope.__mostraQuiet = () => performance.now() - last;
     });
-    while (Date.now() < end) {
-      const quiet = await frame.evaluate(() =>
-        (globalThis as unknown as { __mostraQuiet: () => number }).__mostraQuiet(),
-      );
-      if (quiet >= 200 && network.inflight() === 0) return true;
+    for (;;) {
+      const state = await frame.evaluate((probe) => {
+        const scope = globalThis as unknown as Record<string, unknown>;
+        const quiet = (scope["__mostraQuiet"] as () => number)();
+        const pending = (scope[probe] as { pending?: () => number } | undefined)?.pending?.() ?? 0;
+        return { quiet, pending };
+      }, VERIFY_PROBE);
+      if (state.quiet >= 200 && network.inflight() === 0 && state.pending === 0) return true;
+      if (Date.now() >= end(state.pending > 0)) return false;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   } catch {
@@ -102,7 +111,10 @@ export function judge(
     const text = entry.text.split("\n").slice(0, 6).join("\n");
     const ownSkip = entry.codes.includes("MOSTRA_VERIFY_ACTION_SKIPPED");
     const action = skipped.length > 0 ? skipped.join(", ") : "an action";
-    if (ownSkip || (entry.kind === "error" && skipped.length > 0)) {
+    // By its cause chain always; by the window (a console error after a click that produced a
+    // skip) only during an interaction, never for the whole load (Opus review finding 3).
+    const inWindow = moment.kind === "interaction" && entry.kind === "error" && skipped.length > 0;
+    if (ownSkip || inWindow) {
       findings.push(
         createDiagnostic("MOSTRA_VERIFY_SKIP_CONSEQUENCE", {
           message: `After verify skipped ${action} ${momentText(moment)}, the page reported: ${text}`,
@@ -137,7 +149,7 @@ export function judge(
     } else {
       findings.push(
         createDiagnostic("MOSTRA_RUNTIME_PAGE_ERROR", {
-          message: `${entry.kind === "rejection" ? "A promise rejected with nothing to handle it" : "An error was thrown and nothing caught it"} ${momentText(moment)}: ${text}`,
+          message: `${entry.kind === "rejection" ? "A promise rejected with nothing to handle it" : entry.kind === "caught" ? "An error boundary caught an error" : "An error was thrown and nothing caught it"} ${momentText(moment)}: ${text}`,
           location,
         }),
       );

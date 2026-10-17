@@ -36,10 +36,11 @@ export function locateRunner(
 }
 
 /**
- * How long past its deadline a runner may take to answer: a render checks its deadline between
- * steps, so an answer slightly late is normal, and only a runner this late is stuck.
+ * How long past its deadline a runner may take to answer: the runner abandons a render 1 s past
+ * its deadline itself (closing that render's context, which ends a page that blocks its main
+ * thread), so only a runner this late is stuck as a whole and is stopped.
  */
-const OVERDUE_GRACE_MS = 5_000;
+const OVERDUE_GRACE_MS = 8_000;
 
 /** The runner as the verify pipeline uses it. */
 export interface RunnerClient {
@@ -115,7 +116,15 @@ export function createRunnerClient(options: {
     return child;
   };
 
-  const ask = async (method: string, params: object, deadline: number): Promise<unknown> => {
+  /** Runners this client stopped because a run was overdue: the others' renders are retried. */
+  const recycled = new WeakSet<object>();
+
+  const ask = async (
+    method: string,
+    params: object,
+    deadline: number,
+    retried = false,
+  ): Promise<unknown> => {
     const handle = await start();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const overdue = new Promise<{ kind: "overdue" }>((done) => {
@@ -140,7 +149,9 @@ export function createRunnerClient(options: {
       if (child) {
         const stuck = child;
         child = undefined;
-        await (await stuck.catch(() => undefined))?.stop(2000);
+        const stopped = await stuck.catch(() => undefined);
+        if (stopped) recycled.add(stopped);
+        await stopped?.stop(2000);
       }
       throw new RpcError(
         createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
@@ -155,6 +166,12 @@ export function createRunnerClient(options: {
       const code = outcome.error.diagnostic.code;
       if (code !== "MOSTRA_HOST_INTERNAL_ERROR" && !code.startsWith("MOSTRA_HOST_CONNECTION"))
         throw outcome.error;
+    }
+    // Another run's recovery stopped the runner under this request: it isn't this page's fault,
+    // so the request runs once more on a fresh runner (Opus review finding 5).
+    if (recycled.has(handle) && !retried && Date.now() < deadline) {
+      options.log.info("verify.runner_retry", { method });
+      return ask(method, params, deadline, true);
     }
     const exit =
       outcome.kind === "exit"

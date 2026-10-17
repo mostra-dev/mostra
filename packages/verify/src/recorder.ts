@@ -13,8 +13,11 @@
 export interface RecordedEntry {
   /** Its place in the page's order of entries, from 0. */
   readonly seq: number;
-  /** `error` and `warn` (the console), `uncaught` (an error event) or `rejection`. */
-  readonly kind: "error" | "warn" | "uncaught" | "rejection";
+  /**
+   * `error` and `warn` (the console), `uncaught` (an error event), `rejection`, or `caught`
+   * (an error a React error boundary caught, reported by the page's root).
+   */
+  readonly kind: "error" | "warn" | "uncaught" | "rejection" | "caught";
   /** The message, or the error's name and message, as the page gave it. */
   readonly text: string;
   /** The `code`s of the value and its `cause` chain: `MostraError`s carry one. */
@@ -83,6 +86,12 @@ export function recorder(): void {
       codes,
       ...(dropped ? { dropped: true } : {}),
     });
+  });
+  // A page in the verify target reports what its error boundaries caught here (VERIFY_REPORT in
+  // @mostra/protocol; the recorder runs in the page, so the name is written out).
+  Object.defineProperty(scope, "__mostraVerifyReport", {
+    value: (error: unknown) =>
+      record({ kind: "caught", text: describe(error).slice(0, 2000), codes: codesOf(error) }),
   });
   Object.defineProperty(scope, "__mostraVerifyLog", { value: entries });
 }

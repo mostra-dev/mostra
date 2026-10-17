@@ -284,7 +284,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
       return none; // Covered, moving or gone: not a control the smoke test could use.
     }
     interactions += 1;
-    await settle(frame, network, options.deadline, 2000);
+    await settle(frame, network, options.deadline, 2000, 5000);
     const navigated = frame.url() !== beforeUrl;
     const afterMutations = await mutations(frame);
     const newDocument = afterMutations === -1;

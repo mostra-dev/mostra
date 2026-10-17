@@ -41,6 +41,13 @@ export const RUNNER_IDLE_MS: number = 10 * 60 * 1000;
 
 /** The longest a page may take to report `mostra/ready` before it is judged never ready. */
 const READY_WAIT_MS = 15_000;
+/**
+ * How long after its deadline a render is abandoned: its browser context is closed, which ends a
+ * page that blocks its own main thread without touching other runs' pages (Opus review finding 5).
+ */
+const RENDER_ABANDON_MS = 1_000;
+/** The time the smoke test leaves before the run's deadline, for the regression stage after it. */
+const SMOKE_RESERVE_MS = 5_000;
 
 /** Options for {@link createRunner}. */
 export interface RunnerOptions {
@@ -113,7 +120,7 @@ export function createRunner(options: RunnerOptions = {}): Runner {
     render: (request) =>
       work(async () => {
         axeSource ??= await readFile(require.resolve("axe-core/axe.min.js"), "utf8");
-        return renderPage(await launch(), request, axeSource);
+        return renderBounded(await launch(), request, axeSource);
       }),
     compare: (request) => work(() => compareImages(request)),
     async close() {
@@ -173,11 +180,43 @@ export function uniform(png: Buffer): boolean {
   return true;
 }
 
+/**
+ * Renders one capability link, and abandons it when it is still running past its deadline: its
+ * context is closed (the page's renderer with it), and the render reports it ran out of time.
+ */
+async function renderBounded(
+  browser: Browser,
+  request: RenderRequest,
+  axeSource: string,
+): Promise<RenderResult> {
+  const created: { context?: BrowserContext } = {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const abandoned = new Promise<RenderResult>((done) => {
+    timer = setTimeout(
+      () => {
+        const closing = created.context?.close().catch(() => undefined);
+        void Promise.race([closing, new Promise((wait) => setTimeout(wait, 2000))]).then(() =>
+          done({ ready: false, findings: [], timedOut: true, timingsMs: {} }),
+        );
+      },
+      Math.max(0, request.deadline - Date.now()) + RENDER_ABANDON_MS,
+    );
+  });
+  const rendering = renderPage(browser, request, axeSource, created);
+  rendering.catch(() => undefined);
+  try {
+    return await Promise.race([rendering, abandoned]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Renders one capability link and reports what the page did. */
 async function renderPage(
   browser: Browser,
   request: RenderRequest,
   axeSource: string,
+  created: { context?: BrowserContext },
 ): Promise<RenderResult> {
   const started = Date.now();
   const timings: Record<string, number> = {};
@@ -191,6 +230,7 @@ async function renderPage(
     deviceScaleFactor: 1,
     reducedMotion: "reduce",
   });
+  created.context = context;
   try {
     // The same instant for every render of a run (D138 item 4): `Date` is fixed, timers run.
     await context.clock.setFixedTime(request.clockMs);
@@ -267,9 +307,12 @@ async function renderPage(
       const text = await frame
         .locator("body")
         .ariaSnapshot({ timeout: Math.max(1000, Math.min(10_000, left())) })
-        .catch(() => "");
+        .catch(() => {
+          if (left() <= 0) timedOut = true;
+          return "";
+        });
+      // The supervisor writes it, through the instance's redactor (Opus review finding 8).
       const path = join(request.outDir, `${request.name}.aria.yml`);
-      await writeFile(path, text);
       aria = { path, text };
       timings["aria"] = Date.now() - started;
     }
@@ -287,6 +330,7 @@ async function renderPage(
         .catch(() => []);
     }
 
+    if (request.collect.axe && left() <= 0) timedOut = true;
     if (request.collect.axe && left() > 0) {
       findings.push(...(await runAxe(frame, axeSource, viewport)));
       timings["axe"] = Date.now() - started;
@@ -305,7 +349,13 @@ async function renderPage(
         viewport,
         from: loadEntries.length,
         maxInteractions: request.collect.smoke.maxInteractions,
-        deadline: Math.min(request.deadline, Date.now() + request.collect.smoke.maxMs),
+        // The smoke test stops between interactions at its budget, which leaves the regression
+        // stage its time: stopping there is the budget's hint, never a timeout (Opus review
+        // finding 6).
+        deadline: Math.min(
+          request.deadline - SMOKE_RESERVE_MS,
+          Date.now() + request.collect.smoke.maxMs,
+        ),
       });
       findings.push(...outcome.findings);
       smoke = {
@@ -317,7 +367,6 @@ async function renderPage(
       timings["smoke"] = Date.now() - started;
     }
     findings.push(...network.findings());
-    if (left() <= 0) timedOut = true;
     return {
       ready: true,
       findings: dedupe(findings),

@@ -322,7 +322,11 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", ()
     expect(
       find(verdict, "MOSTRA_RUNTIME_PAGE_ERROR").some((d) => d.message.includes("Crash on click")),
     ).toBe(true);
-    expect(find(verdict, "MOSTRA_RUNTIME_PAGE_ERROR")[0]?.message).toContain('button "Crash"');
+    // The click's crash names the control that caused it.
+    expect(
+      find(verdict, "MOSTRA_RUNTIME_PAGE_ERROR").find((d) => d.message.includes("Crash on click"))
+        ?.message,
+    ).toContain('button "Crash"');
     expect(
       find(verdict, "MOSTRA_CONSOLE_ERROR").some((d) => d.message.includes("Load-time failure")),
     ).toBe(true);
@@ -431,6 +435,195 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", ()
       const quiet = await verify(source, { screenshots: "never" });
       expect(quiet.status).toBe("fail");
       expect(quiet.screenshots.every((shot) => !shot.returned)).toBe(true);
+    },
+    VERIFY_MS,
+  );
+});
+
+describe("the Claude Opus review's findings, through a real page (Opus review)", () => {
+  it(
+    "1: rows a run loads at mount are the same fields on every boot, not unstable IDs",
+    async () => {
+      const dir = artifact("rows", {
+        "index.tsx": `import { useEffect, useState } from "react";
+import { useAction, useField } from "@mostra/react";
+import { rows } from "./actions";
+
+function Row({ id }: { id: string }) {
+  const [done, setDone] = useField(\`todo.\${id}.done\`, false);
+  return <label><input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} /> {id}</label>;
+}
+export default function Page() {
+  const loading = useAction(rows);
+  const [items, setItems] = useState<string[]>([]);
+  useEffect(() => { void loading.run().then(setItems); }, []);
+  return <main><h1>Todos</h1>{items.map((id) => <Row key={id} id={id} />)}</main>;
+}
+`,
+        // Slow on the worker's first call only, as a cold start is: the first boot's rows arrive
+        // late, the later boots' at once (the reviewer saw this on Linux; 4 s makes it certain).
+        "actions.ts": `"use server";
+import { dryRun } from "@mostra/server";
+let calls = 0;
+export async function rows(): Promise<string[]> {
+  calls += 1;
+  if (calls === 1) await new Promise((resolve) => setTimeout(resolve, 4000));
+  if (dryRun()) return ["alpha", "beta", "gamma"];
+  return ["alpha", "beta", "gamma"];
+}
+`,
+      });
+      const verdict = await verify(dir);
+      expect(find(verdict, "MOSTRA_FIELD_ID_UNSTABLE")).toEqual([]);
+      expect(codes(verdict, "error")).toEqual([]);
+      // The rows were there when the page was judged: the smoke test ticked them.
+      expect(verdict.smoke.stateChanges).toBeGreaterThan(0);
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "2: CSS modules, fonts, import.meta.glob and a TypeScript 5 tsconfig.json type-check as they build",
+    async () => {
+      const dir = artifact("vite-types", {
+        "index.tsx": `import styles from "./card.module.css";
+import font from "./inter.ttf";
+const data = import.meta.glob("./data/*.json", { eager: true });
+export default function Page() {
+  return <main className={styles.card}><h1>Types</h1><p>{Object.keys(data).length} files, {font.length > 0 ? "font" : "none"}</p></main>;
+}
+`,
+        "card.module.css": ".card { padding: 1rem; }\n",
+        "inter.ttf": "not really a font",
+        "data/a.json": '{ "a": 1 }\n',
+        "tsconfig.json":
+          '{ "compilerOptions": { "strict": true, "module": "NodeNext", "baseUrl": ".", "paths": { "@/*": ["./*"] } } }\n',
+      });
+      const verdict = await verify(dir);
+      expect(find(verdict, "MOSTRA_TYPE_ERROR")).toEqual([]);
+      expect(codes(verdict, "error")).toEqual([]);
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "3: a skip at load excuses only its own consequence: a boundary's crash and an unrelated console error stay errors",
+    async () => {
+      const dir = artifact("skip-at-load", {
+        "index.tsx": `import { Component, type ReactNode, useEffect, useState } from "react";
+import { useAction } from "@mostra/react";
+import { load } from "./actions";
+
+class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override render() { return this.state.failed ? <p>The chart failed.</p> : this.props.children; }
+}
+function Chart(): ReactNode {
+  const rows = (undefined as unknown as { map(f: (x: number) => number): number[] });
+  return <p>{rows.map((x) => x).length}</p>;
+}
+function Details(): ReactNode {
+  throw new TypeError("The details broke while rendering");
+}
+export default function Page() {
+  const loading = useAction(load);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    void loading.run().catch(() => undefined);
+    console.error("Unrelated: the analytics script failed to initialise");
+  }, []);
+  return (
+    <main>
+      <h1>Load</h1>
+      <Boundary><Chart /></Boundary>
+      <button type="button" onClick={() => { void loading.run().catch(() => undefined); setShow(true); }}>Show details</button>
+      {show && <Boundary><Details /></Boundary>}
+    </main>
+  );
+}
+`,
+        "actions.ts": `"use server";
+export async function load(): Promise<string> { return "data"; }
+`,
+      });
+      const verdict = await verify(dir);
+      expect(verdict.status).toBe("fail");
+      expect(verdict.smoke.skippedActions).toContain("actions.ts#load");
+      const errors = verdict.diagnostics.filter((d) => d.severity === "error");
+      expect(
+        errors.some(
+          (d) =>
+            d.code === "MOSTRA_RUNTIME_PAGE_ERROR" && d.message.includes("error boundary caught"),
+        ),
+      ).toBe(true);
+      expect(
+        errors.some((d) => d.code === "MOSTRA_CONSOLE_ERROR" && d.message.includes("Unrelated")),
+      ).toBe(true);
+      // A boundary's catch after a click that produced a skip is judged by its cause, which isn't
+      // the skip: still an error.
+      expect(errors.some((d) => d.message.includes("The details broke while rendering"))).toBe(
+        true,
+      );
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "4: server code that crashes is an error even when the page handles the failure",
+    async () => {
+      const dir = artifact("crashing-server", {
+        "index.tsx": `import { useState } from "react";
+import { save } from "./actions";
+export default function Page() {
+  const [message, setMessage] = useState("");
+  return <main><h1>Save</h1><button type="button" onClick={() => { save().then(setMessage, () => setMessage("Couldn't save, try later")); }}>Save</button><p>{message}</p></main>;
+}
+`,
+        "actions.ts": `"use server";
+import { dryRun } from "@mostra/server";
+const config = JSON.parse("{not json") as { ok: boolean };
+export async function save(): Promise<string> { return dryRun() ? "dry" : String(config.ok); }
+`,
+      });
+      const verdict = await verify(dir);
+      expect(verdict.status).toBe("fail");
+      expect(find(verdict, "MOSTRA_RUNTIME_WORKER_CRASHED")[0]?.severity).toBe("error");
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "7: a source that didn't build is refused with --force at once, with no second build",
+    async () => {
+      const dir = artifact("export-invalid", {
+        "index.tsx": `import { defineArtifact } from "@mostra/react";
+import { LIMIT } from "./actions";
+export const artifact = defineArtifact({ id: "${ArtifactId.create()}", title: "Invalid" });
+export default function Page() { return <main><h1>Limit {LIMIT}</h1></main>; }
+`,
+        "actions.ts": `"use server";
+export const LIMIT = 3;
+`,
+      });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toContain("MOSTRA_ACTION_EXPORT_INVALID");
+      const builds = started("builder");
+      const forced = await publish(dir, { force: true });
+      expect(forced.error?.data.code).toBe("MOSTRA_ACTION_EXPORT_INVALID");
+      expect(started("builder")).toBe(builds);
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "9: verifying an unchanged source no manifest id names reuses its build",
+    async () => {
+      const path = join(copy("single-tsx"), "page.tsx");
+      await verify(path);
+      const builds = started("builder");
+      await verify(path);
+      expect(started("builder")).toBe(builds);
     },
     VERIFY_MS,
   );
@@ -550,12 +743,12 @@ describe("a type check that can't run fails the verdict (D138 item 8, GPT review
     async () => {
       const dir = artifact("bad-config", {
         "index.tsx": "export default function Page() { return <main><h1>Config</h1></main>; }\n",
-        "tsconfig.json": '{ "compilerOptions": { "baseUrl": "." } }\n',
+        "tsconfig.json": '{ "compilerOptions": { "notAnOption": true } }\n',
       });
       const verdict = await verify(dir);
       expect(verdict.status).toBe("fail");
       const [error] = find(verdict, "MOSTRA_TYPE_ERROR");
-      expect(error?.message).toContain("TS5102");
+      expect(error?.message).toContain("TS5023");
       expect(error?.location).toMatchObject({ file: "tsconfig.json" });
     },
     VERIFY_MS,

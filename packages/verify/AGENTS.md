@@ -9,9 +9,10 @@ Renders artifact pages in one warm Chromium headless shell and reports what it s
 ## Invariants it owns
 
 - **Judgement follows D72 and D138 item 3.** Definite failures are errors. Smoke observations are warnings that start with "Observed:" and say what was seen. `observe.ts` (`judge`) is the one place a recorded page entry becomes a diagnostic.
-- **verify's own refusal is never the artifact's fault** (D138 item 2). A rejection carrying `MOSTRA_VERIFY_ACTION_SKIPPED` is dropped, a fault whose cause chain holds it is a hint, and a console error in a moment that produced a skip is a hint naming the action. The recorder (`recorder.ts`) runs before the page's own scripts and keeps `code` and `cause` chains.
-- **Renders are deterministic** (D138 item 4): one fixed `Date` per run, `reducedMotion: "reduce"`, `document.fonts.ready`, animations off and the caret hidden in screenshots, DPR 1. Readiness is the shell's `data-shell` marker and quiescence (EVAL-01b).
-- **Each render gets a fresh browser context**, so sessions, storage and cookies stay with their render.
+- **verify's own refusal is never the artifact's fault** (D138 item 2). A rejection carrying `MOSTRA_VERIFY_ACTION_SKIPPED` is dropped, and a fault whose cause chain holds it is a hint. A console error is excused by its moment only during an interaction that produced a skip, never for a whole load. The recorder (`recorder.ts`) runs before the page's own scripts and keeps `code` and `cause` chains; a page in the verify target reports its error boundaries' catches to it (`VERIFY_REPORT`), so they are judged by cause, never by the console.
+- **Renders are deterministic** (D138 item 4): one fixed `Date` per run, `reducedMotion: "reduce"`, `document.fonts.ready`, animations off and the caret hidden in screenshots, DPR 1. Readiness is the shell's `data-shell` marker and quiescence (EVAL-01b), which includes the server work the page waits on (the field probe's `pending`: calls, runs, first live values).
+- **A render ends by its deadline.** One that is still running 1 s past it is abandoned: its context is closed, which ends a page that blocks its own main thread, and other runs' pages in the same browser carry on. The smoke test stops 5 s before the deadline, leaving the regression stage its time; stopping there is the budget's hint, never a timeout.
+- **Each render gets a fresh browser context**, so sessions, storage and cookies stay with their render. The runner returns ARIA text and never writes it: the supervisor writes every snapshot through the instance's redactor.
 - **The smoke test stays on the page**: it uses links to the artifact's own origin only, skips new tabs and downloads, and reports a control with no effect only after a second try.
 
 ## Public interface

@@ -487,6 +487,7 @@ export {
   ScreenshotPolicy,
   type TokenEstimate,
   VERIFY_PROBE,
+  VERIFY_REPORT,
   VERIFY_RUNNER_METHODS,
   type VerdictAria,
   type VerdictScreenshot,
