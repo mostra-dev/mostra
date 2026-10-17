@@ -43,6 +43,7 @@ interface VersionRow {
   manifest_json: string;
   forced_codes_json: string | null;
   published_at: string;
+  verify_json?: string | null;
 }
 
 /** A version to commit (ARCHITECTURE §3 step 6). */
@@ -118,6 +119,10 @@ export interface Registry {
         readonly number: number;
         readonly outputDigest: string;
         readonly manifest: ArtifactManifest;
+        /** The error codes `--force` recorded when it was published (D41). */
+        readonly forcedCodes: readonly string[];
+        /** The verdict it was published on (D137 item 4); absent before verify existed. */
+        readonly verify?: { readonly status: "pass" | "fail"; readonly verifyRevision: string };
       }
     | undefined;
   /** Every artifact's latest version, by artifact ID. */
@@ -364,6 +369,17 @@ export async function openRegistry(options: {
               number: row.number,
               outputDigest: row.output_digest,
               manifest: JSON.parse(row.manifest_json) as ArtifactManifest,
+              forcedCodes: row.forced_codes_json
+                ? (JSON.parse(row.forced_codes_json) as string[])
+                : [],
+              ...(row.verify_json
+                ? {
+                    verify: JSON.parse(row.verify_json) as {
+                      status: "pass" | "fail";
+                      verifyRevision: string;
+                    },
+                  }
+                : {}),
             }
           : undefined;
       });

@@ -647,7 +647,14 @@ export function createPublisher(options: PublisherOptions): Publisher {
         let outputDigest: string | undefined;
         let forcedCodes: string[] = [];
         let verifyRecord: { status: "pass" | "fail"; verifyRevision: string } | undefined;
-        const exists = registry.hasVersion(versionId);
+        const recorded = registry.version(versionId);
+        const exists = recorded !== undefined;
+        // An existing version keeps what it was published with: its forced codes reach this
+        // receipt and event too, and a repaired directory gets them back (D41, D137).
+        if (recorded) {
+          forcedCodes = [...recorded.forcedCodes];
+          verifyRecord = recorded.verify;
+        }
         const damage = exists
           ? await versionDamage(registry.store.versionDir(versionId))
           : undefined;
@@ -660,6 +667,14 @@ export function createPublisher(options: PublisherOptions): Publisher {
             const built = await stageBuild(ready, out);
             if (!built.ok) throw new RpcError(firstDiagnostic(built.diagnostics));
             outputDigest = built.outputDigest;
+            if (exists) {
+              await writeVersionManifest(out, ready, {
+                outputDigest,
+                server: existsSync(join(out, "server", "entry.mjs")),
+                forcedCodes,
+                ...(verifyRecord ? { verify: verifyRecord } : {}),
+              });
+            }
           } else {
             // 4. The gate (D41, D137): the verdict cached for these digests, or a run now.
             const verdict =

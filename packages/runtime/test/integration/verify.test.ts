@@ -6,7 +6,15 @@
  * Every check that reports something has a negative here too: WP-03's fixtures, correct code,
  * raise no error or warning (EVAL-01: false positives make agents break working code).
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ArtifactId, VerifyVerdict } from "@mostra/protocol";
@@ -640,6 +648,27 @@ export default function Page() { return <main><h1>Count {count}</h1></main>; }
       ) as { verify?: { status: string }; forcedCodes: string[] };
       expect(manifest.forcedCodes).toEqual(["MOSTRA_TYPE_ERROR"]);
       expect(manifest.verify?.status).toBe("fail");
+      // Published again unchanged, it is the same version, and its receipt still says what was
+      // forced; with its directory damaged, the repair keeps the record too.
+      const again = result(await publish(dir)) as { reused: boolean; forcedDiagnostics?: string[] };
+      expect(again.reused).toBe(true);
+      expect(again.forcedDiagnostics).toEqual(["MOSTRA_TYPE_ERROR"]);
+      const versionDir = join(home.home, "versions", forced.versionId);
+      chmodSync(join(versionDir, "client"), 0o755);
+      chmodSync(join(versionDir, "client", "index.html"), 0o644);
+      writeFileSync(join(versionDir, "client", "index.html"), "damaged");
+      const repaired = result(await publish(dir)) as {
+        reused: boolean;
+        forcedDiagnostics?: string[];
+      };
+      expect(repaired.forcedDiagnostics).toEqual(["MOSTRA_TYPE_ERROR"]);
+      const after = JSON.parse(readFileSync(join(versionDir, "manifest.json"), "utf8")) as {
+        verify?: { status: string };
+        forcedCodes: string[];
+      };
+      expect(after.forcedCodes).toEqual(["MOSTRA_TYPE_ERROR"]);
+      expect(after.verify?.status).toBe("fail");
+      expect(readFileSync(join(versionDir, "client", "index.html"), "utf8")).not.toBe("damaged");
       // A forced version never counts as passing: the next verify has no baseline.
       const next = await verify(dir);
       expect(codes(next, "hint")).toContain("MOSTRA_VERIFY_NO_BASELINE");

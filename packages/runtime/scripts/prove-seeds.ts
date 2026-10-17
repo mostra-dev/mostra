@@ -1898,6 +1898,14 @@ const SEEDS: readonly Seed[] = [
   },
   // WP-09: verify and publish's gate (AX-02, AX-04, AX-05, AU-05, VR-09, RT-02; D137).
   {
+    requirement: "VR-09-reuse",
+    name: "a republished forced version's receipt forgets its forced codes",
+    file: "src/publish/publisher.ts",
+    from: "          forcedCodes = [...recorded.forcedCodes];",
+    to: "          forcedCodes = [];",
+    check: integration("verify.test.ts", "records them with --force"),
+  },
+  {
     requirement: "AX-02-hang",
     name: "a runner stuck on a page that blocks the browser is waited for without end",
     file: "src/verify/runner.ts",
