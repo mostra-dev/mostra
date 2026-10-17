@@ -168,8 +168,9 @@ export function createRunnerClient(options: {
         throw outcome.error;
     }
     // Another run's recovery stopped the runner under this request: it isn't this page's fault,
-    // so the request runs once more on a fresh runner (Opus review finding 5).
-    if (recycled.has(handle) && !retried && Date.now() < deadline) {
+    // so the request runs once more on a fresh runner (Opus review finding 5). The retry keeps the
+    // request's deadline, so one cut off with no time left ends as a timeout, never as a crash.
+    if (recycled.has(handle) && !retried) {
       options.log.info("verify.runner_retry", { method });
       return ask(method, params, deadline, true);
     }

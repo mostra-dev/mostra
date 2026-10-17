@@ -1981,8 +1981,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp09-opus-5",
     name: "a render another run's recovery cut off isn't retried",
     file: "src/verify/runner.ts",
-    from: "    if (recycled.has(handle) && !retried && Date.now() < deadline) {",
-    to: "    if (recycled.has(handle) && retried && Date.now() < deadline) {",
+    from: "    if (recycled.has(handle) && !retried) {",
+    to: "    if (recycled.has(handle) && retried) {",
     check: integration("verify-failures.test.ts", "never answers"),
   },
   {

@@ -421,7 +421,10 @@ export default function Page() {
       async (client) => {
         const started = Date.now();
         const stuck = verifyOf(client, single());
-        await new Promise((resolve) => setTimeout(resolve, 10_000));
+        // The second run's first render must be in flight when the supervisor stops the stuck
+        // runner (about 28 s after the first run's browser stages began), and the second run's
+        // own deadline must not have passed by then: 18 s leaves several seconds either side.
+        await new Promise((resolve) => setTimeout(resolve, 18_000));
         const other = join(tempDir("verify-other"), "other");
         mkdirSync(other, { recursive: true });
         writeFileSync(
