@@ -5,6 +5,7 @@
  * off stdout. J1 runs through it end to end: new, verify, publish, open, a viewer's submission,
  * wait and results (WP-10's handoff).
  */
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   artifactCreateMethod,
@@ -18,7 +19,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
-import { cli, envelope, type Ran, type TestHome, testHome, Viewer } from "../support.ts";
+import {
+  cli,
+  envelope,
+  eventually,
+  type Ran,
+  type TestHome,
+  testHome,
+  Viewer,
+} from "../support.ts";
 
 let home: TestHome;
 const covered = new Set<string>();
@@ -176,6 +185,30 @@ describe("every command, with --json and no terminal", () => {
     });
     const replacement = CapabilityLink.parse(rotated.result);
     await run(["open", artifactId, "--revoke", replacement.tokenId], { code: 0, ok: true });
+  });
+
+  it("open --browser hands the browser a one-time launch URL, never the link's secret", async () => {
+    // A stand-in browser: it records the arguments it was started with.
+    const record = join(home.root, "browser-argv.txt");
+    const opener = join(home.root, "fake-browser.sh");
+    writeFileSync(opener, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, { mode: 0o755 });
+    const opened = await cli(["open", artifactId, "--browser", "--json"], {
+      env: { ...home.env, BROWSER: opener },
+    });
+    const value = envelope(opened);
+    expect(value.result).toMatchObject({ opened: true });
+    const linkSecret = new URL((value.result as { url: string }).url).hash;
+    await eventually(() => existsSync(record));
+    const argv = readFileSync(record, "utf8").trim();
+    expect(argv).toMatch(
+      /^http:\/\/127\.0\.0\.1:\d+\/a\/art_[0-9A-Z]{26}#l=[0-9A-HJKMNP-TV-Z]{26}$/,
+    );
+    expect(argv).not.toContain(linkSecret.slice(1));
+    expect(argv).not.toContain("#t=");
+    // The ticket opens the artifact once, as the link would; a second use is refused.
+    const viewer = await new Viewer().open(argv);
+    expect(viewer.viewId).toMatch(/^vw_/);
+    await expect(new Viewer().open(argv)).rejects.toThrow(/exchange: 4\d\d/);
   });
 
   it("gc lists, then collects, exactly the same versions; doctor and docs", async () => {
