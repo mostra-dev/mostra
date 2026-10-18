@@ -26,9 +26,9 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | VR-03 | WP-05 | B | No viewer URL reaches dev or unpublished content (route enumeration test); viewers only open versions | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | VR-04 | WP-07 | B | Open view shows the banner within one event after a publish (browser, three engines) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | VR-05 | WP-07 | I, B | Version with removed field: banner counts orphans, panel shows values read-only, results include `orphaned` (browser + integration) | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
-| VR-06 | WP-10 | I | gc property test never removes a version referenced by a submission, view, review set or follow; dry run lists candidates | unverified |
+| VR-06 | WP-10 | I | gc property test never removes a version referenced by a submission, view, review set or follow; dry run lists candidates | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | VR-07 | WP-24 | I, B | Each export class produced from fixtures; static and html open from disk; snapshot marks actions unavailable; bundle runs via `mostra run` | unverified |
-| VR-08 | WP-10 | I | `mostra dev` hot-reloads on a separate port and is unreachable through capability URLs | unverified |
+| VR-08 | WP-10 | I | `mostra dev` hot-reloads on a separate port and is unreachable through capability URLs | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | DP-01 | WP-04 | I | Warm-set imports resolve without install; runtime check shows one React instance with an on-demand peer-dependent package | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-02 | WP-04 | I, X | Unknown import installs into the shared store with a per-artifact lockfile; explicit policy returns MOSTRA_DEP_MISSING with the command; external: real npm | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
 | DP-03 | WP-04 | I | Lockfile change changes envDigest; frozen version rebuilds offline from the store | verified ([WP-04](../progress/PROGRESS-WP-04.md)) |
@@ -95,7 +95,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | KT-09 | WP-26 | R | Mirza's review of the gallery for beautiful by default | unverified |
 | KT-11 | WP-19 | B, R | Each component renders from fixtures in both themes and accepts `className` | unverified |
 | TM-08 | WP-24 | I, B | Vite and Next.js demos proxied with HTTP and WebSocket passthrough and HMR; framing headers stripped for that demo only; device frames and screenshots | unverified |
-| AX-01 | WP-10 | M | Contract test per command: --json schema, exit codes, no prompts without a TTY, logs on stderr | unverified |
+| AX-01 | WP-10 | M | Contract test per command: --json schema, exit codes, no prompts without a TTY, logs on stderr | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | AX-02 | WP-09 | I, B | Pipeline stage fixtures each produce their diagnostics; verdict validates; timings recorded | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
@@ -125,7 +125,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
 | EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| EN-08 | WP-10 | M, I | Seeded: a host-spawned instance (`mostra host`) sends nothing; `DO_NOT_TRACK=1` sends nothing; payloads match the documented schema and contain no paths or tokens. WP-11 adds the SDK-spawned case to the same test | unverified |
+| EN-08 | WP-10 | M, I | Seeded: a host-spawned instance (`mostra host`) sends nothing; `DO_NOT_TRACK=1` sends nothing; payloads match the documented schema and contain no paths or tokens. WP-11 adds the SDK-spawned case to the same test | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | EN-09 | WP-11 | M | Seeded import from core into `ee/` fails the boundary check; a packed core tarball contains no `ee/` file | unverified |
 | CO-01 | WP-31 | I, B | Roster of five yields five links mapping to five viewers; roster changes are events | unverified |
 | CO-02 | WP-31 | I, C | Property test over interleavings: satisfied exactly when the last respondent submits, under `once` per-viewer and `epochs` | unverified |
@@ -150,7 +150,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | unverified |
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
-| AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | unverified |
+| AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | unverified |
 | EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | RV-06 | WP-21 | B | Comments on a Timeline, a video and a deck slide anchor to time plus region or slide plus step and re-resolve after reload | unverified |
