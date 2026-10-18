@@ -954,6 +954,9 @@ importers:
 
   tests/e2e:
     devDependencies:
+      '@mostra/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
