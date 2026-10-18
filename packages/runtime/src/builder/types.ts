@@ -73,6 +73,11 @@ export interface BuildRequest {
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */
   readonly outDir: string;
+  /**
+   * Tests only (`MOSTRA_TEST_FAULTS=builder:build:hang`, issue #18): the child never answers,
+   * as a builder stuck in a plugin would, so the build limit or a kill ends it.
+   */
+  readonly hang?: true;
 }
 
 /** The builder child's answer. */

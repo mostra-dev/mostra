@@ -3,8 +3,8 @@
  * processes sets `MOSTRA_TEST_FAULTS` to a comma-separated list of `<point>:<action>` entries, and
  * the instance stops at those points: `throw` fails the operation there, `crash` kills the
  * supervisor with SIGKILL there, as a power cut or `kill -9` would, and `hang` makes the child the
- * point names hang (the module asks {@link Faults.hangs}; a builder stopped before its build, so a
- * test of the build limit never races a fast build, issue #18). Without the variable every point
+ * point names hang (the module asks {@link Faults.hangs}; a builder told never to answer, so a test
+ * of the build limit never races a fast build, issue #18). Without the variable every point
  * is a no-op. The points are named in the modules that call {@link Faults.at}.
  *
  * ```ts
