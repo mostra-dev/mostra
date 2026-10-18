@@ -242,25 +242,28 @@ describe("EN-08: telemetry from the standalone CLI", () => {
   // Root writes anywhere: these need a directory the user can't write.
   const asRoot = process.getuid?.() === 0;
 
-  it.skipIf(asRoot)(
-    "refuses telemetry on and off it can't record, and changes nothing (Opus review finding 6)",
-    async () => {
-      // A directory another user (root) owns, which this user can read but not write.
-      const home = telemetryHome({ MOSTRA_CONFIG_DIR: "/usr/share" });
-      for (const choice of ["off", "on"]) {
-        const ran = await cli(["telemetry", choice, "--json"], { env: home.env });
-        const value = envelope(ran) as { ok: boolean; error?: { code: string } };
-        expect(value.ok, choice).toBe(false);
-        expect(value.error?.code).toBe("MOSTRA_CLI_CONFIG_UNWRITABLE");
-        expect(ran.code).toBe(3);
-        expect(ran.stdout).not.toContain("were deleted");
-      }
-      const status = envelope(await cli(["telemetry", "status", "--json"], { env: home.env })) as {
-        result: { reason: string };
-      };
-      expect(status.result.reason).toBe("default");
-    },
-  );
+  it("refuses telemetry on and off it can't record, and changes nothing (Opus review finding 6)", async () => {
+    // A config directory that can't exist: a part of its path is a file. Unlike a directory
+    // another user owns, this can't be written by anyone, root included, on every system.
+    const home = telemetryHome();
+    mkdirSync(home.root, { recursive: true });
+    const blocker = join(home.root, "not-a-directory");
+    writeFileSync(blocker, "");
+    const env = { ...home.env, MOSTRA_CONFIG_DIR: join(blocker, "mostra") };
+    for (const choice of ["off", "on"]) {
+      const ran = await cli(["telemetry", choice, "--json"], { env });
+      const value = envelope(ran) as { ok: boolean; error?: { code: string } };
+      expect(value.ok, choice).toBe(false);
+      expect(value.error?.code).toBe("MOSTRA_CLI_CONFIG_UNWRITABLE");
+      expect(ran.code).toBe(3);
+      expect(ran.stdout).not.toContain("were deleted");
+    }
+    // Nothing was recorded, and status says nothing is sent from a store it can't read.
+    const status = envelope(await cli(["telemetry", "status", "--json"], { env })) as {
+      result: { enabled: boolean; reason: string };
+    };
+    expect(status.result).toMatchObject({ enabled: false, reason: "unreadable" });
+  });
 
   it("telemetry status agrees with the runner on a home whose config.json can't be read (Opus review finding 6)", async () => {
     const home = telemetryHome({ MOSTRA_TELEMETRY_DEBUG: "1" });
