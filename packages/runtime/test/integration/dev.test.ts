@@ -140,6 +140,47 @@ describe("mostra dev (VR-08)", () => {
     await page.close();
   }, 180_000);
 
+  it("starts live producers again in the new worker when server code changes (GPT review finding 3)", async () => {
+    const liveDir = join(tempDir("dev-live"), "preview");
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(
+      join(liveDir, "index.tsx"),
+      `import { defineArtifact, useLive } from "@mostra/react";\nexport const artifact = defineArtifact({ title: "Live" });\nexport default function Page() {\n  const { data } = useLive("reading");\n  return <p id="reading">{String(data ?? "")}</p>;\n}\n`,
+    );
+    const writeLive = (value: string): void =>
+      writeFileSync(
+        join(liveDir, "live.ts"),
+        `import { defineLive } from "@mostra/server";\nexport const reading = defineLive({ refresh: "1s", load: async () => "${value}" });\n`,
+      );
+    writeLive("LIVE-ONE");
+    const owner = await devClient();
+    const started = ok<{ url: string; sessionId: string }>(
+      await owner.call("dev/start", { source: { path: liveDir } }, 120_000),
+    );
+    const page = await browser.newPage();
+    await page.goto(started.url);
+    const frame = page.frameLocator("iframe");
+    const reading = (): Promise<string> =>
+      frame
+        .locator("#reading")
+        .innerText({ timeout: 5000 })
+        .catch(() => "");
+    await expect.poll(reading, { timeout: 30_000 }).toBe("LIVE-ONE");
+    writeLive("LIVE-TWO");
+    await eventually(
+      () =>
+        events.some(
+          (event) => event.sessionId === started.sessionId && event.kind === "server-restarted",
+        ),
+      60_000,
+      "the server restarted",
+    );
+    await expect.poll(reading, { timeout: 30_000 }).toBe("LIVE-TWO");
+    await page.close();
+    ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
+    owner.close();
+  }, 180_000);
+
   it("reports server code that doesn't build, and runs it again once it does", async () => {
     const owner = await devClient();
     const started = ok<{ url: string; sessionId: string }>(

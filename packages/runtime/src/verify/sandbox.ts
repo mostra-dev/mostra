@@ -330,7 +330,8 @@ export async function startSandbox(
             },
           }),
     });
-    const sources = readLiveSources(candidate.dir);
+    // A dev session's server code builds again, and its sources with it (D140 item 12).
+    let sources = readLiveSources(candidate.dir);
     const live = createLive({
       ledger,
       log,
@@ -387,6 +388,8 @@ export async function startSandbox(
       replaceServer: async () => {
         const version = workerVersion(candidate.versionId);
         if (version) await pool.replace(version);
+        sources = readLiveSources(candidate.dir);
+        live.replaced(candidate.versionId);
       },
       onSubmission: (listener) => interaction.onSubmission(listener),
       liveFailures: () =>
