@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, parseLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
-import { runBin, testHome } from "../support.ts";
+import { listening, runBin, testHome } from "../support.ts";
 
 const DAY = 86_400_000;
 
@@ -35,28 +35,6 @@ function descendants(pid: number): { pid: number; command: string }[] {
     }
   }
   return found;
-}
-
-/** The TCP addresses a process listens on, from the operating system (`lsof` or `ss`). */
-function listening(pid: number): string[] {
-  if (process.platform === "darwin") {
-    const out = execFileSync(
-      "lsof",
-      ["-nP", "-a", "-p", String(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
-      {
-        encoding: "utf8",
-      },
-    );
-    return out
-      .split("\n")
-      .filter((line) => line.startsWith("n"))
-      .map((line) => line.slice(1));
-  }
-  const out = execFileSync("ss", ["-Hltnp"], { encoding: "utf8" });
-  return out
-    .split("\n")
-    .filter((line) => line.includes(`pid=${pid},`))
-    .map((line) => line.trim().split(/\s+/)[3] ?? "");
 }
 
 /** The supervisor's log lines, parsed. */
@@ -148,6 +126,59 @@ describe("serving versions (RT-05, VR-03)", () => {
       expect([400, 404], path).toContain(answer.status);
     }
   });
+
+  it("reaches no part of a mostra dev preview of the same source (VR-03, VR-08, D96)", async () => {
+    const started = ok<{ url: string; port: number; sessionId: string }>(
+      await gateway.client.call("dev/start", { source: { path: receipt.dir } }, 120_000),
+    );
+    try {
+      const devShell = new URL(started.url).origin;
+      const devOpened = await openLink(new Browser(), started.url);
+      const devPorts = new Set([
+        Number(new URL(devShell).port),
+        Number(new URL(devOpened.frameOrigin).port),
+      ]);
+      // The viewer's link opens the published build, never the preview, while the preview runs.
+      const browser = new Browser();
+      const opened = await openLink(browser, receipt.url);
+      expect(devPorts.has(Number(new URL(opened.frameOrigin).port))).toBe(false);
+      expect(devPorts.has(Number(new URL(opened.link.shell).port))).toBe(false);
+      expect(opened.page.body).not.toContain("@vite/client");
+      // What the dev server serves isn't on any viewer origin.
+      for (const path of [
+        "/@vite/client",
+        "/@react-refresh",
+        "/source/index.tsx",
+        "/.mostra-build/entry.js",
+        "/@fs/",
+        "/@id/react",
+        "/__vite_ping",
+      ]) {
+        for (const origin of [opened.frameOrigin, opened.link.shell]) {
+          const answer = await browser.ask({
+            url: `${origin}${path}`,
+            headers: { accept: "application/javascript" },
+          });
+          expect([400, 404], `${origin}${path}`).toContain(answer.status);
+          expect(answer.body, path).not.toMatch(
+            /import\.meta\.hot|createHotContext|export default/,
+          );
+        }
+      }
+      // A viewer's link is no key to the preview: its secret is unknown at the dev shell.
+      const crossed = await new Browser().fetchJson(
+        devShell,
+        `/a/${receipt.artifactId}/_mostra/session`,
+        { body: { token: opened.link.secret } },
+      );
+      expect(crossed.status).toBe(401);
+      // And the instance lists no dev listener among the gateway's artifact origins.
+      const listed = (await gateway.status()).gateway.artifacts.map((entry) => entry.origin);
+      for (const origin of listed) expect(devPorts.has(Number(new URL(origin).port))).toBe(false);
+    } finally {
+      ok(await gateway.client.call("dev/stop", { sessionId: started.sessionId }));
+    }
+  }, 120_000);
 
   it("never shows source edits until they are published (VR-03, D09)", async () => {
     const browser = new Browser();

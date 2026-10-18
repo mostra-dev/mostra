@@ -163,6 +163,9 @@ body,
 .mostra-warn {
   color: var(--mostra-wait);
 }
+.mostra-dev {
+  font-weight: 600;
+}
 .mostra-actions {
   display: flex;
   gap: 1rem;

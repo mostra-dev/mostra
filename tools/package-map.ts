@@ -197,6 +197,7 @@ export const RUNTIME_MODULES: readonly string[] = [
   "service",
   "verify",
   "gc",
+  "dev",
   "share",
   "protocol-server",
   "builder",

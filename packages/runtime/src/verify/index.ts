@@ -53,7 +53,11 @@ import {
 import { reportedByBuild, TYPECHECK_REVISION, typecheck } from "./typecheck.ts";
 
 export { createRunnerClient, locateRunner, type RunnerClient } from "./runner.ts";
-export type { SandboxOptions } from "./sandbox.ts";
+export {
+  type Sandbox,
+  type SandboxOptions,
+  startSandbox,
+} from "./sandbox.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")

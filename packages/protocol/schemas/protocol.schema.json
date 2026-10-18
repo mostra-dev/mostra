@@ -1734,6 +1734,10 @@
         "serverParked": {
           "type": "boolean",
           "const": true
+        },
+        "devPreview": {
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [

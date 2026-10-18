@@ -15,6 +15,11 @@ export const SAVE_WORDS: Readonly<
   conflict: "Changed elsewhere",
 };
 
+/** The mark of a `mostra dev` preview (D140 item 12), shown as long as the view lasts. */
+export const DEV_WORDS = {
+  preview: "Development preview, not published",
+} as const;
+
 /** What the shell says when the view's server code keeps crashing (WP-08, FAILURE_MODEL §2). */
 export const SERVER_WORDS = {
   parked: "This artifact's server code keeps crashing.",

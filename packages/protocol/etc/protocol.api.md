@@ -1096,6 +1096,7 @@ export type Frame = {
 // @public
 export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
+    readonly devPreview?: true;
     readonly follow: boolean;
     readonly pinned: boolean;
     readonly serverParked?: true;

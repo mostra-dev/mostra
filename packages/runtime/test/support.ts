@@ -3,7 +3,7 @@
  * line-level host protocol client that speaks to an instance exactly as an SDK would, using only
  * `@mostra/protocol`.
  */
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
   type Dirent,
@@ -293,4 +293,26 @@ export async function eventually(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for ${what}.`);
+}
+
+/** The TCP addresses a process listens on, from the operating system (`lsof` or `ss`). */
+export function listening(pid: number): string[] {
+  if (process.platform === "darwin") {
+    const out = execFileSync(
+      "lsof",
+      ["-nP", "-a", "-p", String(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+      {
+        encoding: "utf8",
+      },
+    );
+    return out
+      .split("\n")
+      .filter((line) => line.startsWith("n"))
+      .map((line) => line.slice(1));
+  }
+  const out = execFileSync("ss", ["-Hltnp"], { encoding: "utf8" });
+  return out
+    .split("\n")
+    .filter((line) => line.includes(`pid=${pid},`))
+    .map((line) => line.trim().split(/\s+/)[3] ?? "");
 }

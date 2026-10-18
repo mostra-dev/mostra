@@ -17,6 +17,7 @@ import {
   ARTIFACT_PROGRESS,
   BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
+  DEV_NOTIFY,
   type Diagnostic,
   EVENTS_NOTIFY,
   type InstanceInfo,
@@ -45,6 +46,7 @@ import {
   recoverDependencies,
   runtimeRoot,
 } from "../deps/index.ts";
+import { createDev, type Dev, recoverDev } from "../dev/index.ts";
 import { faultsFrom } from "../faults.ts";
 import { Gate } from "../gate.ts";
 import {
@@ -100,6 +102,7 @@ import {
   locateRunner,
   type RunnerClient,
   recoverVerify,
+  type SandboxOptions,
   type Verifier,
 } from "../verify/index.ts";
 import {
@@ -260,6 +263,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   await recoverDependencies({ home: home.path, log });
   // What a stopped instance left of verify: sandboxes, unfinished builds, orphan files (D138 item 1).
   await recoverVerify(home.path, log);
+  // And of `mostra dev`: its sessions' mirrors, builds and scratch ledgers (D140 item 12).
+  await recoverDev(home.path, log);
   // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
   // first use, like the publisher, so a runtime missing its build packages still starts.
   let spa: RenderMode | undefined;
@@ -321,6 +326,25 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   const revisions = servedRevisions(environment["MOSTRA_TEST_BROWSER_REVISION_NEXT"], log);
   let runner: RunnerClient | undefined;
   let verifier: Verifier | undefined;
+  // What a sandbox needs of the instance: verify's runs and `mostra dev`'s sessions (D138, D140).
+  const sandboxOptions = (): SandboxOptions => {
+    const workerLocation = locateWorker(environment, runtimeRoot());
+    return {
+      home: home.path,
+      log,
+      redactor: home.redactor,
+      processes: manager,
+      runtimeVersion: runtimeVersion(),
+      worker: { entry: workerLocation.entry, nodeArgs: workerLocation.nodeArgs },
+      modules: (target) => getDependencies().runtimeModules(target),
+      secrets,
+      env: artifactEnvironment(environment),
+      shellDir: locateShell(environment),
+      revisions,
+      serverEntry: (dir) => renderMode().serverEntry(dir),
+      damage: (dir) => versionDamage(dir),
+    };
+  };
   const getVerifier = (): Verifier => {
     if (verifier) return verifier;
     const located = locateRunner(environment, runtimeRoot());
@@ -331,7 +355,6 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       entry: located.entry,
       nodeArgs: located.nodeArgs,
     });
-    const workerLocation = locateWorker(environment, runtimeRoot());
     verifier = createVerifier({
       home: home.path,
       ledger: home.ledger,
@@ -339,21 +362,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       log,
       redactor: home.redactor,
       runner,
-      sandbox: {
-        home: home.path,
-        log,
-        redactor: home.redactor,
-        processes: manager,
-        runtimeVersion: runtimeVersion(),
-        worker: { entry: workerLocation.entry, nodeArgs: workerLocation.nodeArgs },
-        modules: (target) => getDependencies().runtimeModules(target),
-        secrets,
-        env: artifactEnvironment(environment),
-        shellDir: locateShell(environment),
-        revisions,
-        serverEntry: (dir) => renderMode().serverEntry(dir),
-        damage: (dir) => versionDamage(dir),
-      },
+      sandbox: sandboxOptions(),
       // Tests shorten verify's 120 s and its smoke test's 200 interactions.
       limits: {
         ...(Number(environment["MOSTRA_TEST_VERIFY_TIMEOUT_MS"]) > 0
@@ -651,6 +660,19 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     markStopped = done;
   });
 
+  // `mostra dev`'s sessions (D140 item 12), each owned by the connection that started it.
+  const dev: Dev = createDev({
+    home: home.path,
+    log,
+    registry,
+    renderMode,
+    dependencies: getDependencies,
+    gate,
+    sandbox: sandboxOptions,
+    bindAddress: addressing.bindAddress,
+    notify: (session, method, params) =>
+      server.notify(session, method, params as unknown as JsonRpcParams),
+  });
   const server: ProtocolServer = new ProtocolServer({
     log,
     describe: () => info,
@@ -688,7 +710,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         log.info("home.host_configured", { client: client.name });
     },
     supportedPorts: ["submissions", "drafts", "trustedControls", "secrets"],
-    notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS],
+    notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS, DEV_NOTIFY],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),
     redact: (text) => home.redactor.redact(text),
@@ -706,7 +728,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         notify: (session, method, params) => {
           server.notify(session, method, params as JsonRpcParams);
         },
+        dependenciesAdded: (artifact) => dev.dependenciesChanged(artifact),
       }),
+      ...dev.methods(),
       ...gateway.methods(),
       ...interaction.methods(),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
@@ -771,6 +795,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         live.stop();
         interaction.stop();
         server.close();
+        await dev.stopAll();
         await gateway.close();
         await pool.stopAll();
         await runner?.close();
@@ -830,6 +855,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         runs: actions.activity(),
         producers: live.activity(),
         subscriptions: interaction.subscriptionCount(),
+        devSessions: dev.count(),
         // A home with a login service is always-on, whoever started its daemon (D133).
         loginService: hasLoginService(home.path, environment) ? 1 : 0,
       }),

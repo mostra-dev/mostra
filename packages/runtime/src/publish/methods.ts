@@ -13,6 +13,7 @@ import {
   artifactPublishMethod,
   artifactVerifyMethod,
   depsAddMethod,
+  type SourceRef,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import type { Registry } from "../registry/index.ts";
@@ -59,6 +60,8 @@ export function artifactMethods(options: {
    * parked workers (FAILURE_MODEL §2).
    */
   readonly published?: (artifactId: string) => void;
+  /** `deps/add` changed an artifact's working lockfile: its `mostra dev` sessions resolve again. */
+  readonly dependenciesAdded?: (artifact: SourceRef) => void;
   /** Sends a notification on a session's connection (`artifact/progress`). */
   readonly notify?: (session: number, method: string, params: Record<string, unknown>) => void;
 }): MethodHandler[] {
@@ -70,7 +73,11 @@ export function artifactMethods(options: {
       options.published?.(receipt.artifactId);
       return options.link ? { ...receipt, ...options.link(receipt.artifactId) } : receipt;
     }),
-    handler(depsAddMethod, (params) => options.publisher().addDependencies(params)),
+    handler(depsAddMethod, async (params) => {
+      const added = await options.publisher().addDependencies(params);
+      options.dependenciesAdded?.(params.artifact);
+      return added;
+    }),
     handler(artifactVerifyMethod, (params, session) => {
       const token = params.progressToken;
       // Progress only to a client that asked for it and accepts the notification (D84).

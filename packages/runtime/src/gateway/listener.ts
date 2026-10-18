@@ -2,8 +2,8 @@
  * One gateway listener: a Node HTTP server on a leased port with a Hono app behind it. Every
  * request's envelope (exact `Host`, plain path, single headers) is checked before routing,
  * methods other than GET, HEAD and POST are refused, upgrades are refused after their `Origin`
- * check (no WebSocket endpoint exists yet; terminals add one, WP-21), and every response leaves
- * with the base headers.
+ * check unless the listener takes them (a dev sandbox's HMR WebSocket, D140 item 12; terminals add
+ * theirs, WP-22), and every response leaves with the base headers.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
@@ -85,6 +85,15 @@ export function createListener(options: {
   readonly log: Log;
   readonly frameAncestors: () => string;
   readonly configure: (app: Hono<HttpEnv>) => void;
+  /**
+   * Takes an upgrade whose Host, target and Origin passed the checks (a dev sandbox's HMR
+   * WebSocket, D140 item 12), or answers why it is refused. Without it every upgrade is refused.
+   */
+  readonly upgrade?: (
+    incoming: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => Refusal | undefined;
 }): Listener {
   const app = new Hono<HttpEnv>();
   options.configure(app);
@@ -170,15 +179,20 @@ export function createListener(options: {
       refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "The request couldn't be parsed."),
     );
   });
-  server.on("upgrade", (incoming: IncomingMessage, socket: Duplex) => {
+  server.on("upgrade", (incoming: IncomingMessage, socket: Duplex, head: Buffer) => {
     const policy = options.policy();
+    const checked = checkRequest(policy, {
+      method: incoming.method ?? "",
+      target: incoming.url ?? "",
+      headers: headerPairs(incoming),
+      intent: "upgrade",
+    });
     const refused =
-      checkRequest(policy, {
-        method: incoming.method ?? "",
-        target: incoming.url ?? "",
-        headers: headerPairs(incoming),
-        intent: "upgrade",
-      }) ?? refusal("MOSTRA_HYGIENE_NOT_SERVED", "This gateway serves no WebSocket here.");
+      checked ??
+      (options.upgrade
+        ? options.upgrade(incoming, socket, head)
+        : refusal("MOSTRA_HYGIENE_NOT_SERVED", "This gateway serves no WebSocket here."));
+    if (refused === undefined) return;
     options.log.warn("gateway.refused", {
       code: refused.diagnostic.code,
       status: refused.status,
