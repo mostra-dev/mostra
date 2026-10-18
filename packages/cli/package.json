@@ -1,0 +1,63 @@
+{
+  "name": "@mostra/cli",
+  "version": "0.0.0",
+  "description": "The mostra command: author, verify, publish, share and wait on agent artifacts, as a thin client of the Mostra host protocol.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run --project unit",
+    "api": "mostra-tools api",
+    "test:integration": "vitest run --project integration"
+  },
+  "dependencies": {
+    "@mostra/protocol": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "bin": {
+    "mostra": "./dist/bin.js"
+  },
+  "keywords": [
+    "mostra",
+    "agent",
+    "artifact",
+    "cli"
+  ]
+}

@@ -1058,7 +1058,7 @@
       "severity": "error",
       "phase": "runtime",
       "title": "No such submission",
-      "hint": "Wait for a submission with `mostra wait --until submitted`, or name one that exists.",
+      "hint": "Wait for a submission with `mostra wait <artifact> --until submitted`, or name one that exists.",
       "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",
       "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events."
     },

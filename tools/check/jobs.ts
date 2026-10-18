@@ -120,7 +120,10 @@ export const JOBS: readonly Job[] = [
     // D86: only when the runtime or the protocol it speaks is affected (dependents included).
     applies: (plan) =>
       plan.packages === "all" ||
-      plan.packages.some((name) => name === "@mostra/runtime" || name === "@mostra/protocol"),
+      plan.packages.some(
+        (name) =>
+          name === "@mostra/runtime" || name === "@mostra/protocol" || name === "@mostra/cli",
+      ),
     tasks: ["test:integration"],
   },
   {
@@ -205,12 +208,18 @@ export const JOBS: readonly Job[] = [
         /^tools\/design\//,
         /^tools\/docs\//,
         /^packages\/protocol\/src\/diagnostics\//,
+        /^packages\/cli\/src\//,
       ]),
     steps: () => [
       {
         label: "diagnostic catalog",
         command: "node",
         args: ["tools/docs/diagnostics.ts", "check"],
+      },
+      {
+        label: "CLI reference",
+        command: "node",
+        args: ["--conditions=@mostra/source", "tools/docs/cli.ts", "check"],
       },
       {
         label: "evidence matrix",

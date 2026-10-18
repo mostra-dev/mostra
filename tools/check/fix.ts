@@ -16,6 +16,7 @@ const steps: [string, string, string[], string?][] = [
     ["--config", "tools/ts6/eslint.config.mjs", "--fix", "."],
   ],
   ["diagnostic references", "node", ["tools/docs/diagnostics.ts", "write"]],
+  ["CLI reference", "node", ["--conditions=@mostra/source", "tools/docs/cli.ts", "write"]],
 ];
 if (existsSync(fromRoot("Cargo.toml"))) steps.push(["cargo fmt", "cargo", ["fmt", "--all"]]);
 for (const pkg of listPackages()) {
