@@ -49,7 +49,16 @@ describe("the exit codes (D140 item 16)", () => {
     expect(exitCodeFor("MOSTRA_CLI_USAGE")).toBe(EXIT.usage);
     expect(exitCodeFor("MOSTRA_CLI_UNKNOWN_COMMAND")).toBe(EXIT.usage);
     expect(exitCodeFor("MOSTRA_HOST_TIMEOUT")).toBe(EXIT.timeout);
-    expect(exitCodeFor("MOSTRA_SUBMIT_ALREADY")).toBe(EXIT.conflict);
+    // INTERFACES §9: 6 is a conflict, `once` already submitted or a compare-and-set mismatch.
+    for (const conflict of [
+      "MOSTRA_SUBMIT_ALREADY",
+      "MOSTRA_SUBMIT_REVISION_MOVED",
+      "MOSTRA_FIELD_CONFLICT",
+      "MOSTRA_FIELD_MUTATION_ID_REUSED",
+      "MOSTRA_HOST_REQUEST_ID_REUSED",
+    ]) {
+      expect(exitCodeFor(conflict), conflict).toBe(EXIT.conflict);
+    }
     expect(exitCodeFor("MOSTRA_PUBLISH_VERIFY_FAILED")).toBe(EXIT.failure);
     expect(exitCodeFor("MOSTRA_PLATFORM_UNSUPPORTED")).toBe(EXIT.environment);
     expect(exitCodeFor("MOSTRA_HOME_LOCKED")).toBe(EXIT.environment);

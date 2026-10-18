@@ -164,7 +164,9 @@ export function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
         ),
       ),
     );
-    child.on("exit", (code) =>
+    // `close`, not `exit`: a daemon that found another one prints `attached` and exits at once,
+    // and its line may still be in the pipe when `exit` fires.
+    child.on("close", (code) =>
       finish(() =>
         reject(
           new RpcError(
