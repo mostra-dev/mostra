@@ -40,17 +40,31 @@ function flagLine(flag: FlagDef): string {
   return `  ${name.padEnd(28)} ${flag.summary}${choices}${fallback}`;
 }
 
-/** The global flags a command doesn't define again (`wait --timeout` is the wait's own). */
+/** Commands that run until their connection or Ctrl-C ends them: `--timeout` doesn't bound them. */
+export const UNBOUNDED: ReadonlySet<string> = new Set(["host", "dev"]);
+
+/**
+ * The global flags a command doesn't define again (`wait --timeout` is the wait's own); a command
+ * `--timeout` doesn't bound has no `--timeout`.
+ */
 function globalFlagsOf(command: CommandDef): FlagDef[] {
   const own = new Set((command.flags ?? []).map((flag) => flag.name));
+  if (UNBOUNDED.has(command.path[0] ?? "")) own.add("timeout");
   return GLOBAL_FLAGS.filter((flag) => !own.has(flag.name));
 }
 
-/** Every exit code a command can end with, sorted. */
+/** Every exit code a command can end with, sorted: `--timeout` can end any it bounds with 4. */
 export function exitCodes(command: CommandDef): number[] {
-  return [...new Set([EXIT.ok, ...command.exits, EXIT.usage, EXIT.environment])].sort(
-    (a, b) => a - b,
-  );
+  const bounded = !UNBOUNDED.has(command.path[0] ?? "") && command.path[0] !== "wait";
+  return [
+    ...new Set([
+      EXIT.ok,
+      ...command.exits,
+      EXIT.usage,
+      EXIT.environment,
+      ...(bounded ? [EXIT.timeout] : []),
+    ]),
+  ].sort((a, b) => a - b);
 }
 
 /** One command's help, for people. */

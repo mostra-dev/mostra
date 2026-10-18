@@ -237,6 +237,28 @@ describe("--json (D140 item 16)", () => {
     expect(JSON.parse(out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
   });
 
+  it("documents exit 4 wherever --timeout applies, and refuses --timeout where it doesn't", async () => {
+    for (const command of COMMANDS) {
+      const unbounded = command.path[0] === "host" || command.path[0] === "dev";
+      const help = await inProcess([...command.path, "--help", "--json"]);
+      const definition = JSON.parse(help.out[0] as string).result as {
+        exitCodes: { code: number }[];
+      };
+      const codes = definition.exitCodes.map((exit) => exit.code);
+      if (unbounded || command.path[0] === "wait")
+        expect(codes, command.path.join(" ")).not.toContain(EXIT.timeout);
+      else expect(codes, command.path.join(" ")).toContain(EXIT.timeout);
+    }
+    for (const argv of [
+      ["dev", "./a", "--timeout", "5s", "--json"],
+      ["host", "--timeout", "5s", "--json"],
+    ]) {
+      const { code, out } = await inProcess(argv);
+      expect(code, argv.join(" ")).toBe(EXIT.usage);
+      expect(JSON.parse(out[0] as string).error.code).toBe("MOSTRA_CLI_USAGE");
+    }
+  });
+
   it("prints --version and --help --json as envelopes", async () => {
     const version = await inProcess(["--version", "--json"]);
     expect(version.code).toBe(0);

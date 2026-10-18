@@ -23,7 +23,7 @@ import {
 } from "./command.ts";
 import { COMMANDS } from "./commands/index.ts";
 import { EXIT, exitCodeFor } from "./exit.ts";
-import { commandDefinition, commandHelp, groupHelp, topHelp } from "./help.ts";
+import { commandDefinition, commandHelp, groupHelp, topHelp, UNBOUNDED } from "./help.ts";
 import { configDir, type Environment, locateRuntime, readHomeMarks, resolveHome } from "./home.ts";
 import { globalFlags, parseCommandLine } from "./parse.ts";
 import { telemetrySession } from "./telemetry/index.ts";
@@ -175,6 +175,13 @@ export async function run(io: RunnerIo): Promise<number> {
   }
 
   const { command } = parsed;
+  if (global.timeoutMs !== undefined && UNBOUNDED.has(command.path[0] ?? "")) {
+    return fail(
+      createDiagnostic("MOSTRA_CLI_USAGE", {
+        message: `mostra ${commandName(command)} runs until Ctrl-C or its connection ends, so --timeout doesn't apply to it.`,
+      }),
+    );
+  }
   // `wait --timeout` is the wait's own length, which ends with still_waiting (exit 5), never exit 4.
   const timeoutMs = command.path[0] === "wait" ? undefined : global.timeoutMs;
   const cwd = global.cwd !== undefined ? resolve(io.cwd, global.cwd) : io.cwd;
@@ -298,13 +305,17 @@ export async function run(io: RunnerIo): Promise<number> {
   return exit;
 }
 
-/** Runs a command, bounded by `--timeout` (exit 4 with `MOSTRA_HOST_TIMEOUT`). */
+/**
+ * Runs a command, bounded by `--timeout` (exit 4 with `MOSTRA_HOST_TIMEOUT`). `host` and `dev` run
+ * until their connection or Ctrl-C ends them, so `--timeout` bounds neither.
+ */
 async function withTimeout(
   command: CommandDef,
   context: CommandContext,
   timeoutMs: number | undefined,
 ): Promise<CommandOutcome> {
-  if (timeoutMs === undefined || command.path[0] === "host") return command.run(context);
+  if (timeoutMs === undefined || command.path[0] === "host" || command.path[0] === "dev")
+    return command.run(context);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -348,6 +359,7 @@ function runRuntime(
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => io.stderr(chunk));
     child.on("error", () => resolve({ code: EXIT.environment, stdout }));
-    child.on("exit", (code) => resolve({ code: code ?? EXIT.environment, stdout }));
+    // `close`, not `exit`: the line may still be in the pipe when the process has exited.
+    child.on("close", (code) => resolve({ code: code ?? EXIT.environment, stdout }));
   });
 }

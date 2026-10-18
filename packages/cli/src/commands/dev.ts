@@ -5,11 +5,13 @@
  * envelopes with `--json`, lines otherwise. Viewers never reach a preview; it isn't a version.
  */
 import {
+  createDiagnostic,
   DEV_NOTIFY,
   type DevNotifyParams,
   type Diagnostic,
   devStartMethod,
   devStopMethod,
+  RpcError,
 } from "@mostra/protocol";
 import { type CommandDef, defineCommand } from "../command.ts";
 import { EXIT } from "../exit.ts";
@@ -48,7 +50,7 @@ export const devCommand: CommandDef = defineCommand({
     },
   ],
   output: { type: "DevStartResult", topic: "cli" },
-  exits: [EXIT.failure],
+  exits: [EXIT.failure, EXIT.environment],
   example: "dev ./sidebar-review",
   streams: true,
   async run(context) {
@@ -78,19 +80,27 @@ export const devCommand: CommandDef = defineCommand({
     );
     for (const event of early.splice(0)) if (event.sessionId === sessionId) show(event);
     // The session lasts until Ctrl-C (or SIGTERM), or until the instance ends it.
+    let stop: () => void = () => {};
     const ended = await new Promise<"signal" | "closed">((done) => {
-      const stop = (): void => done("signal");
+      stop = (): void => done("signal");
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
       void connection?.closed.then(() => done("closed"));
     });
-    if (ended === "signal") {
-      await context.call(devStopMethod, { sessionId }).catch(() => undefined);
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    if (ended === "closed") {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+          message: "The instance ended the development preview (it stopped or restarted).",
+          hint: "Run mostra dev again.",
+        }),
+      );
     }
+    await context.call(devStopMethod, { sessionId }).catch(() => undefined);
     return {
-      result: { sessionId, stopped: ended === "signal" ? "signal" : "instance" },
+      result: { sessionId, stopped: "signal" },
       human: "Stopped.\n",
-      exit: ended === "signal" ? EXIT.ok : EXIT.environment,
     };
   },
 });

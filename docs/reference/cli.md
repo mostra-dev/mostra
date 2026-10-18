@@ -36,6 +36,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra new ./sidebar-review --title 'Sidebar review'
@@ -59,7 +60,6 @@ Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).
   --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
   --cwd <dir>                  Resolve relative paths from this directory.
-  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
   --help                       Show this command's help; with --json, its definition.
 
 Output: DevStartResult (mostra docs cli)
@@ -102,6 +102,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra verify ./sidebar-review
@@ -137,6 +138,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
   6  conflict (already submitted, a compare-and-set mismatch, a reused request ID)
 
 Example:
@@ -181,6 +183,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra open ./sidebar-review
@@ -250,6 +253,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra results ./sidebar-review
@@ -281,6 +285,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra state get ./tasks priorities
@@ -318,6 +323,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
   6  conflict (already submitted, a compare-and-set mismatch, a reused request ID)
 
 Example:
@@ -357,6 +363,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
   6  conflict (already submitted, a compare-and-set mismatch, a reused request ID)
 
 Example:
@@ -396,6 +403,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra push ./dashboard prices --value '{"btc": 64000}'
@@ -430,6 +438,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra add recharts@3 --artifact ./dashboard
@@ -463,6 +472,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra secret set MAIL_TOKEN --artifact ./inbox < token.txt
@@ -493,6 +503,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra secret list --artifact ./inbox
@@ -526,6 +537,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra secret rm MAIL_TOKEN --artifact ./inbox
@@ -555,6 +567,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra list --family dashboard
@@ -585,6 +598,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra status ./sidebar-review
@@ -611,6 +625,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon start
@@ -637,6 +652,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon stop
@@ -663,6 +679,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon restart
@@ -689,6 +706,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon status
@@ -718,6 +736,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon install
@@ -747,6 +766,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra daemon uninstall
@@ -768,7 +788,6 @@ Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).
   --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
   --cwd <dir>                  Resolve relative paths from this directory.
-  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
   --help                       Show this command's help; with --json, its definition.
 
 Output: the host protocol (INTERFACES §6) (mostra docs cli)
@@ -806,6 +825,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra docs MOSTRA_DEP_MISSING
@@ -836,6 +856,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra doctor
@@ -868,6 +889,7 @@ Exit codes:
   1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra gc --dry-run
@@ -894,6 +916,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra telemetry status
@@ -920,6 +943,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra telemetry on
@@ -946,6 +970,7 @@ Exit codes:
   0  success
   2  usage error
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
 
 Example:
   mostra telemetry off
