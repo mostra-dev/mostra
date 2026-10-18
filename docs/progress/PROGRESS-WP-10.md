@@ -1,7 +1,6 @@
 # WP-10 progress: the CLI
 
-**Status:** In progress. This report grows during the session and is finalized after acceptance
-(work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-18 ("absolutely incredible work. 100% approved.", 19:26Z), merged to `main` as `c7918f4`, finalized after the merge (work-packages/README.md §4).
 
 ## Baseline
 
@@ -13,7 +12,7 @@
 | `pnpm check` | uncached (`TURBO_FORCE=true`, 26 min 13 s, macOS arm64): format-lint, types, integration, hygiene, build, boundaries, api, licenses, rust, docs and commits green; two load-bound failures already known from WP-09's report ("Untested boundaries"): `@mostra/protocol`'s `LineSplitter` linear-time test (508 ms against its 500 ms bound) in `unit`, and one Firefox test in `e2e` (`client.spec.ts`, IN-03, timed out). Each passes run alone: `pnpm --filter @mostra/protocol test` 226 of 226, `playwright test specs/client.spec.ts --project firefox` 9 of 9 |
 | Predecessors | WP-09 done ([PROGRESS-WP-09](PROGRESS-WP-09.md) on `origin/main`); no `RECOVERY-WP-10-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, macOS 26.2 arm64 |
-| Pull request | [#29](https://github.com/mostra-dev/mostra/pull/29) (draft) |
+| Pull request | [#29](https://github.com/mostra-dev/mostra/pull/29), merged as `c7918f4` |
 
 ## What was built
 
@@ -95,3 +94,13 @@ Its environment notes are taken too: `listening()` in the runtime's tests reads 
 - **`mostra open --browser`** is proven with a stand-in `BROWSER` that records its arguments; the page it was handed is then opened from disk in Chromium, Firefox and WebKit (`tests/e2e/specs/open.spec.ts`), which follow it to the shell and spend the ticket once. No browser was started by the operating system's own opener (`open`, `xdg-open`).
 - **`mostra dev`** is proven in Chromium; a page of a `pages/` artifact that lazily loads a route while an update arrives could miss that update until its next edit (the catch-up covers the entry's module graph).
 - **The SDK-spawned telemetry case** is WP-11's, on the same test.
+
+## Commits and publication
+
+- **Range:** `b817479..c7918f4` on `main`: 46 signed-off commits on `wp/10-cli` (`e929e2c` to `ab165dc`) and the merge commit `c7918f4` of [#29](https://github.com/mostra-dev/mostra/pull/29), merged with CI green on `ab165dc` (27 of 27 checks on macOS and Linux), no open code-scanning alert and every review thread resolved. This report lands through its own pull request (D79).
+- **Packages:** nothing published; the changesets record minor releases of `@mostra/protocol`, `@mostra/runtime` and `@mostra/shell` and the first release of `@mostra/cli` (the release pipeline is WP-11's). No docs site exists yet to deploy (AX-07); `docs/reference/cli.md` and `docs/reference/telemetry.md` wait for it.
+- **Remaining dirty paths:** none in the repository. Outside it: logs, edit scripts, seed logs, the review prompts and texts and the EDPB guidelines' PDF in `$JCODE_SCRATCH_DIR/wp10`.
+
+## Next
+
+WP-11, distribution: the runtime bundle, the SDK and the release pipeline (`docs/design/work-packages/WP-11.md`). It extends EN-08's test to an SDK-spawned instance, sets the release's telemetry endpoint constant at bundle time (empty until the collector exists, which the `no-collector` checks prove on the built binary today and should prove on the packed package), and gives the CLI its bundle in place of `MOSTRA_RUNTIME_BIN` and the workspace lookup.
