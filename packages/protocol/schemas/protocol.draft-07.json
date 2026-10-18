@@ -2040,6 +2040,13 @@
             "artifacts",
             "removed"
           ]
+        },
+        "warnings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
         }
       },
       "required": [

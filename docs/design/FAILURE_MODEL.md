@@ -111,6 +111,7 @@
 | Old version's client runtime meets a newer gateway | The gateway serves every browser-protocol revision it ever shipped. Removing a revision needs a 12-month deprecation and a new major version (D32) |
 | `mostra gc` | Collects only versions referenced by no submission, view, review set or follow (VR-06). A dry run lists what it would remove. A collected version keeps its ledger row, ID and number; links to it answer `MOSTRA_ARTIFACT_VERSION_COLLECTED`, and publishing its exact source again restores it (D140 item 14) |
 | gc meets a publish, a verify run or an install | They never overlap: gc holds the instance's gate alone, the others share it, and a waiting gc goes before work that arrives after it (D140 item 14) |
+| A gc step fails (a file it can't remove, the package store's prune) | That step leaves its files and is reported as a `MOSTRA_HOME_GC_INCOMPLETE` warning beside what the run did remove; the other steps run, and the store's index keeps every package the failed prune left. A later `mostra gc` picks up the rest (Opus review of WP-10, finding 1) |
 | The process dies during gc | gc marks the versions it collects in one transaction and removes their files after the commit. A crash before the commit leaves everything; one after it leaves files of marked versions, which recovery at the next start removes |
 | Artifact source moved or deleted after publish | Versions, submissions and results stay readable from `sources/` and `versions/` (HO-08). The next publish from a new path binds by manifest `id` |
 

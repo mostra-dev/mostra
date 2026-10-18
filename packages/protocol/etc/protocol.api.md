@@ -1161,6 +1161,7 @@ export interface GcRunResult {
     readonly snapshots: GcCount;
     readonly storePackages: GcCount;
     readonly versions: readonly GcVersion[];
+    readonly warnings?: readonly Diagnostic[];
 }
 
 // @public
@@ -1195,7 +1196,7 @@ export const HomeConfig: z.ZodType<HomeConfig>;
 export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 
 // @public
-export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON"];
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE"];
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];

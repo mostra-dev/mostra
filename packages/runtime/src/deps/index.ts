@@ -29,6 +29,7 @@ import {
   createDiagnostic,
   type DependencyPolicy,
   type DepsAddResult,
+  type Diagnostic,
   RpcError,
 } from "@mostra/protocol";
 import semver from "semver";
@@ -123,6 +124,8 @@ export interface DependencyCollection {
     readonly count: number;
     readonly bytes: number;
     readonly packages: readonly string[];
+    /** Why the store couldn't be pruned; its packages then stay, still indexed. */
+    readonly failed?: Diagnostic;
   };
 }
 
@@ -673,12 +676,31 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       .filter((id) => !needed.has(id))
       .sort();
     let storeBytes = 0;
+    let failed: Diagnostic | undefined;
+    let pruned = unneeded;
     if (!input.dryRun) {
       for (const name of layouts) {
         await rm(join(dirs.locks, name), { recursive: true, force: true });
         log.info("deps.layout_collected", { layout: name });
       }
-      if (unneeded.length > 0) {
+      if (existsSync(dirs.store) && (layouts.length > 0 || unneeded.length > 0)) {
+        const before = await apparentBytes(dirs.store);
+        const scratch = join(dirs.tmp, `prune-${randomBytes(6).toString("hex")}`);
+        await mkdir(scratch, { recursive: true });
+        try {
+          const outcome = await install().prune({ dir: scratch, ownerRef: "gc" });
+          if (!outcome.ok) failed = outcome.diagnostic;
+        } finally {
+          await rm(scratch, { recursive: true, force: true });
+        }
+        storeBytes = Math.max(0, before - (await apparentBytes(dirs.store)));
+      }
+      // The index says what the store holds (offline answers, DP-04): a package leaves it only
+      // once the prune that removed it succeeded.
+      if (failed) {
+        log.warn("deps.prune_failed", { diagnostic: failed });
+        pruned = [];
+      } else if (unneeded.length > 0) {
         ledger.write((db) => {
           for (const id of unneeded) {
             const at = id.lastIndexOf("@");
@@ -690,29 +712,15 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           }
         });
       }
-      if (existsSync(dirs.store) && (layouts.length > 0 || unneeded.length > 0)) {
-        const before = await apparentBytes(dirs.store);
-        const scratch = join(dirs.tmp, `prune-${randomBytes(6).toString("hex")}`);
-        await mkdir(scratch, { recursive: true });
-        try {
-          const outcome = await install().run({
-            command: ["store", "prune"],
-            dir: scratch,
-            cwd: scratch,
-            offline: true,
-            releaseAge: false,
-            ownerRef: "gc",
-          });
-          if (!outcome.ok) throw new RpcError(outcome.diagnostic);
-        } finally {
-          await rm(scratch, { recursive: true, force: true });
-        }
-        storeBytes = Math.max(0, before - (await apparentBytes(dirs.store)));
-      }
     }
     return {
       lockLayouts: { count: layouts.length, bytes: layoutBytes, names: layouts },
-      storePackages: { count: unneeded.length, bytes: storeBytes, packages: unneeded },
+      storePackages: {
+        count: pruned.length,
+        bytes: storeBytes,
+        packages: pruned,
+        ...(failed ? { failed } : {}),
+      },
     };
   };
 

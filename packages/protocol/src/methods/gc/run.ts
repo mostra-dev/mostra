@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { Diagnostic } from "../../diagnostics/diagnostic.ts";
 import { ArtifactId, VersionId } from "../../ids.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
@@ -63,6 +64,11 @@ export interface GcRunResult {
   readonly bytes: number;
   /** Present when `compactEvents` was given. */
   readonly compacted?: GcCompacted;
+  /**
+   * A step that couldn't finish (`MOSTRA_HOME_GC_INCOMPLETE`): it left its files in place, and
+   * the counts above say what this run did remove. Absent when every step finished.
+   */
+  readonly warnings?: readonly Diagnostic[];
 }
 
 const count = z.object({ count: z.int().min(0), bytes: z.int().min(0) });
@@ -100,6 +106,7 @@ const result: z.ZodType<GcRunResult> = z
         removed: z.int().min(0),
       })
       .exactOptional(),
+    warnings: z.array(Diagnostic).readonly().exactOptional(),
   })
   .register(wireRegistry, { id: "GcRunResult", description: "What gc reclaimed." });
 

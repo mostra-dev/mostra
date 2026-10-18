@@ -748,6 +748,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           caches: (dryRun) =>
             verifier ? verifier.collect(dryRun) : collectVerifyCaches(home.path, { dryRun }),
           now: () => Date.now() + clockOffset,
+          faults,
         }),
       ),
       ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),

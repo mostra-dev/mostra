@@ -15,13 +15,17 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  createDiagnostic,
+  type Diagnostic,
   type GcCompacted,
   type GcRunParams,
   type GcRunResult,
   type GcVersion,
   gcRunMethod,
+  RpcError,
 } from "@mostra/protocol";
 import type { Dependencies } from "../deps/index.ts";
+import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import { compactEvents } from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
@@ -240,6 +244,8 @@ export interface GcOptions {
   readonly caches: (dryRun: boolean) => Promise<{ readonly count: number; readonly bytes: number }>;
   /** The clock (tests move it); default `Date.now`. */
   readonly now?: () => number;
+  /** Test fault points: `gc:dependencies` fails the dependency step. */
+  readonly faults?: Faults;
 }
 
 /** The home's garbage collector. */
@@ -303,6 +309,24 @@ export function createGc(options: GcOptions): Gc {
               .filter((key) => !keptSnapshots.has(key)),
           ),
         ];
+        // A step that fails leaves its files and becomes a warning; what earlier steps removed
+        // is still reported (Opus review finding 1). The tombstones are committed: recovery at
+        // start removes any version file a failed removal left.
+        const warnings: Diagnostic[] = [];
+        const incomplete = (step: string, error: unknown): void => {
+          const cause =
+            error instanceof RpcError
+              ? `${error.diagnostic.code}: ${error.diagnostic.message}`
+              : error instanceof Error
+                ? error.message
+                : String(error);
+          warnings.push(
+            createDiagnostic("MOSTRA_HOME_GC_INCOMPLETE", {
+              message: `gc couldn't finish ${step}: ${cause}`,
+            }),
+          );
+          log.warn("gc.incomplete", { step, cause });
+        };
         // 2. Sizes, then the files: after the commit, so a crash leaves only what recovery removes.
         const versions: GcVersion[] = [];
         for (const candidate of chosen) {
@@ -313,14 +337,20 @@ export function createGc(options: GcOptions): Gc {
             number: candidate.number,
             bytes: await sizeOf(dir),
           });
-          if (!dryRun) await removeTree(dir);
+          if (!dryRun)
+            await removeTree(dir).catch((error: unknown) =>
+              incomplete(`removing ${candidate.versionId}'s files`, error),
+            );
         }
         let snapshotBytes = 0;
         for (const key of snapshots) {
           const [artifactId, sourceDigest] = key.split("/") as [string, string];
           const path = registry.store.snapshotPath(artifactId, sourceDigest);
           snapshotBytes += await sizeOf(path);
-          if (!dryRun) await removeTree(path);
+          if (!dryRun)
+            await removeTree(path).catch((error: unknown) =>
+              incomplete("removing a source snapshot", error),
+            );
         }
         // 3. Lock layouts and the store: what the versions that keep their files still need.
         const keep: string[] = [];
@@ -331,9 +361,26 @@ export function createGc(options: GcOptions): Gc {
           ).catch(() => undefined);
           if (text !== undefined) keep.push(text);
         }
-        const deps = await options.dependencies().collect({ keep, dryRun });
+        const none = { count: 0, bytes: 0 };
+        const deps = await Promise.resolve()
+          .then(() => {
+            options.faults?.at("gc:dependencies");
+            return options.dependencies().collect({ keep, dryRun });
+          })
+          .catch((error: unknown) => {
+            incomplete("collecting lock layouts and the package store", error);
+            return {
+              lockLayouts: { ...none, names: [] as string[] },
+              storePackages: { ...none, packages: [] as string[] },
+            };
+          });
+        if ("failed" in deps.storePackages && deps.storePackages.failed)
+          incomplete("pruning the package store", new RpcError(deps.storePackages.failed));
         // 4. Verify's caches.
-        const caches = await options.caches(dryRun);
+        const caches = await options.caches(dryRun).catch((error: unknown) => {
+          incomplete("collecting verify's caches", error);
+          return none;
+        });
         // 5. Events, only when asked (D47).
         let compacted: GcCompacted | undefined;
         if (params.compactEvents !== undefined) {
@@ -357,7 +404,11 @@ export function createGc(options: GcOptions): Gc {
             }
             return { artifacts: done, removed: done.reduce((acc, item) => acc + item.removed, 0) };
           };
-          compacted = dryRun ? ledger.read(compact) : ledger.write(compact);
+          try {
+            compacted = dryRun ? ledger.read(compact) : ledger.write(compact);
+          } catch (error) {
+            incomplete("compacting events", error);
+          }
         }
         const result: GcRunResult = {
           dryRun,
@@ -373,6 +424,7 @@ export function createGc(options: GcOptions): Gc {
             deps.storePackages.bytes +
             caches.bytes,
           ...(compacted ? { compacted } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
         };
         log.info(dryRun ? "gc.planned" : "gc.collected", {
           versions: versions.length,

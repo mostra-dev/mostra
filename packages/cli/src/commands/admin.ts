@@ -407,6 +407,8 @@ export const gcCommand: CommandDef = defineCommand({
       ...(context.flags["dry-run"] === true ? { dryRun: true } : {}),
       ...(before !== undefined ? { compactEvents: { before } } : {}),
     });
+    // A step gc couldn't finish is a warning beside what it did (MOSTRA_HOME_GC_INCOMPLETE).
+    for (const warning of result.warnings ?? []) context.warn(warning);
     const verb = result.dryRun ? "Would remove" : "Removed";
     const lines = [
       `${verb} ${result.versions.length} versions' files, ${result.snapshots.count} snapshots, ${result.lockLayouts.count} lock layouts, ${result.storePackages.count} store packages and ${result.caches.count} cache entries (${result.bytes} bytes).`,
