@@ -11,12 +11,14 @@
 import { randomUUID } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
+  fstatSync,
   linkSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -284,12 +286,17 @@ export class TelemetryStore {
    * breaking it one gets it), and a lock that turns out to be another, live owner's goes back.
    */
   #breakStale(): boolean {
+    // One descriptor for the age and the contents, so both describe the same file.
     let seen: string;
+    let handle: number | undefined;
     try {
-      if (Date.now() - statSync(this.#lockFile).mtimeMs <= STALE_LOCK_MS) return false;
-      seen = readFileSync(this.#lockFile, "utf8");
+      handle = openSync(this.#lockFile, "r");
+      if (Date.now() - fstatSync(handle).mtimeMs <= STALE_LOCK_MS) return false;
+      seen = readFileSync(handle, "utf8");
     } catch {
       return true;
+    } finally {
+      if (handle !== undefined) closeSync(handle);
     }
     if (ownerAlive(seen)) return false;
     const aside = `${this.#lockFile}.${process.pid}.${randomUUID()}.stale`;
