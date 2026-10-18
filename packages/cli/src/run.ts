@@ -198,8 +198,11 @@ export async function run(io: RunnerIo): Promise<number> {
     ask: (question, timeoutMs) => ask(io, question, timeoutMs),
   });
 
+  let connectionClosed = false;
   const getConnection = async (autostart = true): Promise<InstanceConnection | undefined> => {
-    if (connection) return connection;
+    // A session the instance ended (`daemon stop` before `daemon restart`) is opened again.
+    if (connection && !connectionClosed) return connection;
+    connectionClosed = false;
     const opened = await connect({
       home,
       env: io.env,
@@ -208,6 +211,9 @@ export async function run(io: RunnerIo): Promise<number> {
     });
     if (!opened) return undefined;
     connection = opened;
+    void opened.closed.then(() => {
+      if (connection === opened) connectionClosed = true;
+    });
     summary = opened.summary;
     for (const warning of opened.warnings) {
       warnings.push(warning);
