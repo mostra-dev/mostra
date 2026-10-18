@@ -32,8 +32,18 @@ export interface TelemetrySettings {
    * Read from `telemetry-id`, never written into `telemetry.json`.
    */
   readonly installId?: string;
-  /** When the notice (or the question) was shown. */
+  /**
+   * When the notice of what is sent was shown where sending follows: the default notice, the
+   * question, or `mostra telemetry on`'s. A `default`-consent event needs it (Opus review
+   * finding 3).
+   */
   readonly noticeShownAt?: string;
+  /**
+   * When the ask-first notice ("Nothing is sent unless you run: mostra telemetry on") was
+   * shown. It never stands for the default notice: a later run where telemetry is on by default
+   * still shows that one before anything is sent.
+   */
+  readonly askFirstNoticeShownAt?: string;
   /** When a flush last started. */
   readonly lastFlushAt?: string;
 }
@@ -43,8 +53,14 @@ export type ReadSettings =
   | { readonly ok: true; readonly settings: TelemetrySettings }
   | { readonly ok: false; readonly file: string };
 
-/** The longest a lock is held before another process takes it over as stale. */
+/** A lock older than this whose owner no longer runs is taken over as stale. */
 const STALE_LOCK_MS = 10_000;
+/**
+ * A lock older than this is taken over whoever it names: a held section takes milliseconds, and
+ * a PID can name an unrelated live process once the owner died (in a container, PID 1 always
+ * runs), which would otherwise hold every later command up forever (Opus review finding 5).
+ */
+const DEAD_LOCK_MS = 60_000;
 /** The queue's bounds (D140 item 6). */
 export const QUEUE_MAX_EVENTS = 1000;
 export const QUEUE_MAX_AGE_MS: number = 7 * 24 * 60 * 60 * 1000;
@@ -82,12 +98,14 @@ export class TelemetryStore {
     try {
       const data = JSON.parse(text) as Record<string, unknown>;
       if (typeof data !== "object" || data === null || Array.isArray(data)) throw new Error();
-      const { choice, noticeShownAt, lastFlushAt } = data;
+      const { choice, noticeShownAt, askFirstNoticeShownAt, lastFlushAt } = data;
       const installId = id;
       if (choice !== undefined && choice !== "on" && choice !== "off") throw new Error();
       // An install ID belongs in `telemetry-id`; one here is a file Mostra didn't write.
       if (data["installId"] !== undefined) throw new Error();
       if (noticeShownAt !== undefined && typeof noticeShownAt !== "string") throw new Error();
+      if (askFirstNoticeShownAt !== undefined && typeof askFirstNoticeShownAt !== "string")
+        throw new Error();
       if (lastFlushAt !== undefined && typeof lastFlushAt !== "string") throw new Error();
       return {
         ok: true,
@@ -95,6 +113,7 @@ export class TelemetryStore {
           ...(choice !== undefined ? { choice } : {}),
           ...(installId !== undefined ? { installId } : {}),
           ...(noticeShownAt !== undefined ? { noticeShownAt } : {}),
+          ...(askFirstNoticeShownAt !== undefined ? { askFirstNoticeShownAt } : {}),
           ...(lastFlushAt !== undefined ? { lastFlushAt } : {}),
         },
       };
@@ -256,7 +275,8 @@ export class TelemetryStore {
    * directory or a file in it can't be written (a full disk, a directory someone else owns):
    * telemetry never stops a command (D140 item 5). The lock
    * holds its owner's PID and a token of its own, is released only by its owner, and is taken
-   * over only when it is older than 10 s and its owner is no longer running (a crash).
+   * over when it is older than 10 s and its owner is no longer running (a crash), or older than
+   * 60 s whoever it names.
    */
   locked<T>(fn: () => T): T | undefined {
     try {
@@ -303,17 +323,19 @@ export class TelemetryStore {
   #breakStale(): boolean {
     // One descriptor for the age and the contents, so both describe the same file.
     let seen: string;
+    let age: number;
     let handle: number | undefined;
     try {
       handle = openSync(this.#lockFile, "r");
-      if (Date.now() - fstatSync(handle).mtimeMs <= STALE_LOCK_MS) return false;
+      age = Date.now() - fstatSync(handle).mtimeMs;
+      if (age <= STALE_LOCK_MS) return false;
       seen = readFileSync(handle, "utf8");
     } catch {
       return true;
     } finally {
       if (handle !== undefined) closeSync(handle);
     }
-    if (ownerAlive(seen)) return false;
+    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return false;
     const aside = `${this.#lockFile}.${process.pid}.${randomUUID()}.stale`;
     try {
       renameSync(this.#lockFile, aside);

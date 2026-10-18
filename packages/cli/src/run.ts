@@ -24,7 +24,14 @@ import {
 import { COMMANDS } from "./commands/index.ts";
 import { EXIT, exitCodeFor } from "./exit.ts";
 import { commandDefinition, commandHelp, groupHelp, topHelp, UNBOUNDED } from "./help.ts";
-import { configDir, type Environment, locateRuntime, readHomeMarks, resolveHome } from "./home.ts";
+import {
+  configDir,
+  type Environment,
+  embeddedHome,
+  locateRuntime,
+  readHomeMarks,
+  resolveHome,
+} from "./home.ts";
 import { globalFlags, parseCommandLine } from "./parse.ts";
 import { telemetrySession } from "./telemetry/index.ts";
 import { cliVersion } from "./version.ts";
@@ -200,7 +207,7 @@ export async function run(io: RunnerIo): Promise<number> {
     tty: io.tty,
     readsStdin,
     quiet: command.quiet === true,
-    hostHome: marks.hostConfigured !== undefined || marks.unreadable === true,
+    hostHome: embeddedHome(marks),
     stderr: io.stderr,
     ask: (question, timeoutMs) => ask(io, question, timeoutMs),
   });

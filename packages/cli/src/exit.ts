@@ -64,6 +64,8 @@ const BY_AREA: Readonly<Record<DiagnosticArea, ExitCode>> = {
 /** Codes whose exit code isn't their area's. */
 const BY_CODE: Readonly<Record<string, ExitCode>> = {
   MOSTRA_HOST_TIMEOUT: EXIT.timeout,
+  // The CLI can't record a choice: its environment, not its command line.
+  MOSTRA_CLI_CONFIG_UNWRITABLE: EXIT.environment,
   MOSTRA_HOST_INVALID_PARAMS: EXIT.usage,
   MOSTRA_HOST_REQUEST_ID_REUSED: EXIT.conflict,
   MOSTRA_HOST_CURSOR_COMPACTED: EXIT.failure,

@@ -6,7 +6,7 @@
  * command never waits for the network, and its stdout is closed when it exits.
  */
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -239,23 +239,63 @@ describe("EN-08: telemetry from the standalone CLI", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
-  it("never stops a command when its config directory can't be written (GPT review finding 2)", async () => {
-    const parent = join(telemetryHome().root, "locked");
-    mkdirSync(parent, { mode: 0o500 });
-    chmodSync(parent, 0o500);
-    const home = telemetryHome({ MOSTRA_CONFIG_DIR: join(parent, "mostra") });
-    for (const argv of [
-      ["docs", "--json"],
-      ["list", "--json"],
-      ["telemetry", "status", "--json"],
-    ]) {
-      const ran = await cli(argv, { env: home.env });
-      expect(ran.code, argv.join(" ")).toBe(0);
-      expect(envelope(ran).ok, argv.join(" ")).toBe(true);
-      // Nothing it can't record: no notice, and so nothing sent.
-      expect(ran.stderr).not.toContain("usage data");
-    }
-    await settle();
-    expect(fake.requests).toHaveLength(0);
+  // Root writes anywhere: these need a directory the user can't write.
+  const asRoot = process.getuid?.() === 0;
+
+  it.skipIf(asRoot)(
+    "refuses telemetry on and off it can't record, and changes nothing (Opus review finding 6)",
+    async () => {
+      // A directory another user (root) owns, which this user can read but not write.
+      const home = telemetryHome({ MOSTRA_CONFIG_DIR: "/usr/share" });
+      for (const choice of ["off", "on"]) {
+        const ran = await cli(["telemetry", choice, "--json"], { env: home.env });
+        const value = envelope(ran) as { ok: boolean; error?: { code: string } };
+        expect(value.ok, choice).toBe(false);
+        expect(value.error?.code).toBe("MOSTRA_CLI_CONFIG_UNWRITABLE");
+        expect(ran.code).toBe(3);
+        expect(ran.stdout).not.toContain("were deleted");
+      }
+      const status = envelope(await cli(["telemetry", "status", "--json"], { env: home.env })) as {
+        result: { reason: string };
+      };
+      expect(status.result.reason).toBe("default");
+    },
+  );
+
+  it("telemetry status agrees with the runner on a home whose config.json can't be read (Opus review finding 6)", async () => {
+    const home = telemetryHome({ MOSTRA_TELEMETRY_DEBUG: "1" });
+    mkdirSync(home.home, { recursive: true, mode: 0o700 });
+    writeFileSync(join(home.home, "config.json"), "{not json");
+    const status = envelope(await cli(["telemetry", "status", "--json"], { env: home.env })) as {
+      result: { enabled: boolean; reason: string; unreadableFile?: string };
+    };
+    expect(status.result.enabled).toBe(false);
+    expect(status.result.reason).toBe("unreadable");
+    expect(status.result.unreadableFile).toBe(join(home.home, "config.json"));
+    const ran = await cli(["docs", "--json"], { env: home.env });
+    expect(ran.stderr).not.toContain("debug, not sent");
   });
+
+  it.skipIf(asRoot)(
+    "never stops a command when its config directory can't be written (GPT review finding 2)",
+    async () => {
+      const parent = join(telemetryHome().root, "locked");
+      mkdirSync(parent, { mode: 0o500 });
+      chmodSync(parent, 0o500);
+      const home = telemetryHome({ MOSTRA_CONFIG_DIR: join(parent, "mostra") });
+      for (const argv of [
+        ["docs", "--json"],
+        ["list", "--json"],
+        ["telemetry", "status", "--json"],
+      ]) {
+        const ran = await cli(argv, { env: home.env });
+        expect(ran.code, argv.join(" ")).toBe(0);
+        expect(envelope(ran).ok, argv.join(" ")).toBe(true);
+        // Nothing it can't record: no notice, and so nothing sent.
+        expect(ran.stderr).not.toContain("usage data");
+      }
+      await settle();
+      expect(fake.requests).toHaveLength(0);
+    },
+  );
 });

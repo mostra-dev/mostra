@@ -87,6 +87,15 @@ export interface HomeMarks {
 }
 
 /**
+ * Whether the CLI treats the home as a host's, which sends no telemetry (D140 item 4): a host
+ * marked it, or its `config.json` can't be read as settings (fail closed). One rule for the
+ * runner and for `mostra telemetry` (Opus review finding 6).
+ */
+export function embeddedHome(marks: HomeMarks): boolean {
+  return marks.hostConfigured !== undefined || marks.unreadable === true;
+}
+
+/**
  * The home's host mark, read from `config.json` without the instance, for commands that never
  * reach one. A file that can't be read as JSON counts as a host's home, so telemetry fails closed.
  */

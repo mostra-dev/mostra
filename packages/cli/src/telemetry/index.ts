@@ -156,7 +156,6 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
         return true;
       }
       if (current.reason !== "default" || !current.askFirst) return true;
-      if (shown()) return true;
       const canAsk =
         options.tty.stdin &&
         options.tty.stderr &&
@@ -165,9 +164,18 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
         harness === "none" &&
         !options.readsStdin;
       if (!canAsk) {
-        if (markShown()) options.stderr(NOTICE_ASK_FIRST);
+        // Once, and on its own record: it never stands for the default notice.
+        const read = store.read();
+        if (read.ok && read.settings.askFirstNoticeShownAt === undefined) {
+          const marked = store.update((settings) => ({
+            ...settings,
+            askFirstNoticeShownAt: new Date(now()).toISOString(),
+          }));
+          if (marked !== undefined) options.stderr(NOTICE_ASK_FIRST);
+        }
         return true;
       }
+      // A person who can answer and never did is asked, whatever notices they saw before.
       const answer = await options.ask(QUESTION, QUESTION_TIMEOUT_MS);
       const yes = typeof answer === "string" && /^\s*y(es)?\s*$/i.test(answer);
       const stored = store.update((settings) => ({
@@ -258,6 +266,8 @@ export interface TelemetryStatus {
   readonly queued: number;
   readonly noticeShownAt?: string;
   readonly settingsFile: string;
+  /** With reason `unreadable`: the file that can't be read (the home's `config.json`, or this). */
+  readonly unreadableFile?: string;
 }
 
 /** `mostra telemetry status`: the decision, the install ID and the queue. */
@@ -265,10 +275,25 @@ export function telemetryStatus(options: {
   readonly env: Environment;
   readonly configDir: string;
   readonly embedded: boolean;
+  /**
+   * The home's `config.json` when it can't be read: the runner sends nothing then, as for a
+   * host's home, and status says so (Opus review finding 6).
+   */
+  readonly homeConfigUnreadable?: string;
   readonly now?: number;
 }): { readonly status: TelemetryStatus; readonly text: string } {
   const store = new TelemetryStore(options.configDir);
-  const decision = currentDecision({ env: options.env, store, embedded: options.embedded });
+  const decided = currentDecision({ env: options.env, store, embedded: options.embedded });
+  const homeBlocks =
+    options.homeConfigUnreadable !== undefined && decided.reason !== "no-collector";
+  const decision = homeBlocks
+    ? { ...decided, enabled: false, reason: "unreadable" as const }
+    : decided;
+  const unreadableFile = homeBlocks
+    ? options.homeConfigUnreadable
+    : decision.reason === "unreadable"
+      ? store.settingsFile
+      : undefined;
   const read = store.read();
   const settings = read.ok ? read.settings : {};
   const queued = read.ok ? store.queued(options.now ?? Date.now()).length : 0;
@@ -281,9 +306,10 @@ export function telemetryStatus(options: {
     queued,
     ...(settings.noticeShownAt !== undefined ? { noticeShownAt: settings.noticeShownAt } : {}),
     settingsFile: store.settingsFile,
+    ...(unreadableFile !== undefined ? { unreadableFile } : {}),
   };
   const lines = [
-    statusLine({ ...decision, settingsFile: store.settingsFile }),
+    statusLine({ ...decision, settingsFile: unreadableFile ?? store.settingsFile }),
     ...(status.installId !== undefined ? [`Install ID: ${status.installId}`] : []),
     `Queued events: ${queued}`,
     `Settings: ${store.settingsFile}`,

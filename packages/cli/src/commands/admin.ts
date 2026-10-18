@@ -24,7 +24,7 @@ import {
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
 import { docsIndex, indexMarkdown, nearestTopics } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
-import { locateRuntime, readHomeMarks } from "../home.ts";
+import { embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
 import { usage } from "../parse.ts";
 import { TelemetryStore, TURNED, telemetryStatus } from "../telemetry/index.ts";
 import { NOTICE_DEFAULT } from "../telemetry/words.ts";
@@ -665,18 +665,36 @@ export const telemetryStatusCommand: CommandDef = defineCommand({
     const { status, text } = telemetryStatus({
       env: context.env,
       configDir: context.configDir,
-      embedded: readHomeMarks(context.home).hostConfigured !== undefined,
+      ...homeTelemetry(context.home),
     });
     return { result: status, human: `${text}\n` };
   },
 });
+
+/** How the home bears on telemetry: a host's home, or one whose `config.json` can't be read. */
+function homeTelemetry(home: string): { embedded: boolean; homeConfigUnreadable?: string } {
+  const marks = readHomeMarks(home);
+  return {
+    embedded: embeddedHome(marks) && marks.unreadable !== true,
+    ...(marks.unreadable === true ? { homeConfigUnreadable: join(home, "config.json") } : {}),
+  };
+}
+
+/** The choice couldn't be recorded: nothing changed (Opus review finding 6). */
+function unwritable(store: TelemetryStore): RpcError {
+  return new RpcError(
+    createDiagnostic("MOSTRA_CLI_CONFIG_UNWRITABLE", {
+      message: `${store.settingsFile} can't be written, so the choice wasn't recorded and nothing changed.`,
+    }),
+  );
+}
 
 /** `mostra telemetry on`. */
 export const telemetryOnCommand: CommandDef = defineCommand({
   path: ["telemetry", "on"],
   summary: "Send anonymous usage data from this CLI; the notice says what it contains.",
   output: { type: "TelemetryStatus", topic: "telemetry" },
-  exits: [],
+  exits: [EXIT.environment],
   example: "telemetry on",
   local: true,
   quiet: true,
@@ -692,11 +710,11 @@ export const telemetryOnCommand: CommandDef = defineCommand({
         choice: "on",
         noticeShownAt: current.noticeShownAt ?? now,
       })) ?? store.locked(() => store.reset({ choice: "on", noticeShownAt: now }));
-    if (written === undefined) throw usage(`${store.settingsFile} can't be written.`);
+    if (written === undefined) throw unwritable(store);
     const { status } = telemetryStatus({
       env: context.env,
       configDir: context.configDir,
-      embedded: readHomeMarks(context.home).hostConfigured !== undefined,
+      ...homeTelemetry(context.home),
     });
     return { result: status, human: `${TURNED.on}\n` };
   },
@@ -707,17 +725,19 @@ export const telemetryOffCommand: CommandDef = defineCommand({
   path: ["telemetry", "off"],
   summary: "Stop sending usage data, and delete the install ID and any unsent events.",
   output: { type: "TelemetryStatus", topic: "telemetry" },
-  exits: [],
+  exits: [EXIT.environment],
   example: "telemetry off",
   local: true,
   quiet: true,
   async run(context) {
     const store = new TelemetryStore(context.configDir);
-    if (!store.turnOff()) store.locked(() => store.reset({ choice: "off" }));
+    const done =
+      store.turnOff() || store.locked(() => store.reset({ choice: "off" })) !== undefined;
+    if (!done) throw unwritable(store);
     const { status } = telemetryStatus({
       env: context.env,
       configDir: context.configDir,
-      embedded: readHomeMarks(context.home).hostConfigured !== undefined,
+      ...homeTelemetry(context.home),
     });
     return { result: status, human: `${TURNED.off}\n` };
   },

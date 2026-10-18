@@ -338,6 +338,26 @@ describe("the store (D140 item 5)", () => {
     expect(readFileSync(fresh.settingsFile, "utf8")).not.toContain(made?.id ?? "-");
   });
 
+  it("takes over an hour-old lock even when its PID names a live process, and respects a recent one (Opus review finding 5)", () => {
+    const dir = configDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const lock = join(dir, "telemetry.lock");
+    // A live PID (this test's own process), as a reused PID in a container would be.
+    writeFileSync(lock, `${process.pid} reused`, { mode: 0o600 });
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    utimesSync(lock, hourAgo, hourAgo);
+    const store = new TelemetryStore(dir);
+    const started = Date.now();
+    expect(store.update((current) => ({ ...current, choice: "on" }))).toBeDefined();
+    expect(Date.now() - started).toBeLessThan(1000);
+    // A lock 20 s old whose owner runs is someone's: it is waited for, never taken.
+    writeFileSync(lock, `${process.pid} busy`, { mode: 0o600 });
+    const recent = new Date(Date.now() - 20_000);
+    utimesSync(lock, recent, recent);
+    expect(store.update((current) => ({ ...current, choice: "off" }))).toBeUndefined();
+    expect(readFileSync(lock, "utf8")).toBe(`${process.pid} busy`);
+  });
+
   it.each([
     ["no lock", false],
     ["a lock a crashed process left", true],
@@ -482,6 +502,25 @@ describe("the notice, the question and the queue (D140 items 6, 11)", () => {
     const again = session({ dir: run.dir, env: { TZ: "Europe/Berlin" } });
     await again.telemetry.begin();
     expect(again.printed).toEqual([]);
+  });
+
+  it("after the ask-first notice, a run where it is on by default shows the default notice before it sends (Opus review finding 3)", async () => {
+    const berlin = session({ env: { TZ: "Europe/Berlin" } });
+    await berlin.telemetry.begin();
+    berlin.telemetry.end(END);
+    expect(berlin.printed).toEqual([NOTICE_ASK_FIRST]);
+    // The same person's shell, now where telemetry is on by default (travel, another context).
+    const newYork = session({ dir: berlin.dir, env: { TZ: "America/New_York" } });
+    await newYork.telemetry.begin();
+    expect(newYork.printed).toEqual([NOTICE_DEFAULT]);
+    newYork.telemetry.end(END);
+    const events = queued(newYork.store) as { consent: string }[];
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((event) => event.consent === "default")).toBe(true);
+    // Back in an ask-first zone, at a terminal: never asked, so asked now.
+    const paris = session({ dir: berlin.dir, env: { TZ: "Europe/Paris" }, tty: true, answer: "" });
+    await paris.telemetry.begin();
+    expect(paris.asked).toEqual([QUESTION]);
   });
 
   it("in a Europe time zone at a terminal: an explicit y turns it on; Enter, n, no answer and Ctrl-C don't", async () => {

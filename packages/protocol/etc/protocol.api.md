@@ -476,7 +476,7 @@ export const CLI_CLIENT_NAME = "mostra-cli";
 export type CliDiagnosticCode = (typeof cliDiagnosticCodes)[number];
 
 // @public
-export const cliDiagnosticCodes: readonly ["MOSTRA_CLI_USAGE", "MOSTRA_CLI_UNKNOWN_COMMAND"];
+export const cliDiagnosticCodes: readonly ["MOSTRA_CLI_USAGE", "MOSTRA_CLI_UNKNOWN_COMMAND", "MOSTRA_CLI_CONFIG_UNWRITABLE"];
 
 // @public
 export interface ClientCapabilities {
