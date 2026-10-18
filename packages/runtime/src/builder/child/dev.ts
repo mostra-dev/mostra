@@ -61,6 +61,9 @@ export interface DevServer {
   close(): Promise<void>;
 }
 
+/** The custom HMR event a dev page sends with the time it was served. */
+const LOADED_EVENT = "mostra:dev.loaded";
+
 /** Whether a request carries the session's secret (compared in constant time). */
 function hasSecret(headers: IncomingMessage["headers"], secret: string): boolean {
   const given = headers[DEV_SECRET_HEADER];
@@ -95,10 +98,13 @@ export async function startDev(
   await symlink(request.nodeModules, join(root, "node_modules"), "dir");
   await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
   await mkdir(request.outDir, { recursive: true });
+  // Vite's pre-bundled dependencies live in the session's root (`cacheDir` below); they are
+  // packages the build may import, as the layout they were bundled from is.
+  const viteCache = join(root, ".vite");
   const inputs: BuildInputs = {
     sourceDir,
     generatedDir: generated,
-    packageRoots: await packageRoots(request.nodeModules),
+    packageRoots: [...(await packageRoots(request.nodeModules)), viteCache],
   };
 
   let scan = await scanArtifact(sourceDir);
@@ -116,12 +122,17 @@ export async function startDev(
     if (scan.hasLive) await writeFile(join(generated, "mostra-env.d.ts"), LIVE_DECLARATION);
   };
   await writeEntry();
+  await writeFile(
+    join(generated, "dev-loaded.js"),
+    `const served = Number(document.querySelector('meta[name="mostra-dev-served"]')?.content);\nimport.meta.hot?.send(${JSON.stringify(LOADED_EVENT)}, served);\n`,
+  );
   const indexHtml = html(request.manifest.title, request.versionId);
 
   /** Builds the server bundle and `registry.json` into the dev version's directory. */
   let lastBundle = "";
   const buildServer = async (): Promise<DevServerBuild> => {
-    if (scan.diagnostics.length > 0) return { ok: false, diagnostics: scan.diagnostics };
+    if (scan.diagnostics.length > 0 || scan.unparsed.length > 0)
+      return { ok: false, diagnostics: [...scan.diagnostics, ...scan.unparsed] };
     const server = scan.serverModules.size > 0 || scan.hasLive;
     if (server) {
       await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
@@ -187,6 +198,9 @@ export async function startDev(
     ]),
     mode: "development",
     appType: "custom",
+    // Vite's pre-bundled dependencies stay in the session's own root, never in the shared warm
+    // set or a lock layout behind `node_modules`, which other sessions and builds read.
+    cacheDir: viteCache,
     publicDir: join(sourceDir, "public"),
     server: {
       middlewareMode: true,
@@ -203,8 +217,28 @@ export async function startDev(
     optimizeDeps: { entries: [`${GENERATED}/entry.js`] },
   });
 
+  // A page reports when it was served once its modules have run; one served before the last
+  // change (that update reached it before its modules accepted updates, or before its socket
+  // opened, as after a new dev server) loads again. Vite's own client drops such updates. Times,
+  // not a counter, so a page a previous dev server of the session served compares too.
+  let changedAt = 0;
+  vite.ws.on(LOADED_EVENT, (served: unknown, client) => {
+    if (typeof served === "number" && served <= changedAt) client.send({ type: "full-reload" });
+  });
   const serveHtml = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const page = await vite.transformIndexHtml(req.url ?? "/", indexHtml);
+    // The time is a meta tag the report module reads: an inline module would be cached by Vite
+    // (and by the browser, behind its ETag) with the first page's time. The report runs after the
+    // entry's module graph has run (module scripts run in document order, each after its
+    // imports), so every module that accepts updates has said so: an update that arrived before
+    // that was dropped by Vite's client, and the report makes the page load again.
+    const served = `<meta name="mostra-dev-served" content="${Date.now()}" />`;
+    const report = `<script type="module" src="/${GENERATED}/dev-loaded.js"></script>`;
+    const page = await vite.transformIndexHtml(
+      req.url ?? "/",
+      indexHtml
+        .replace("</head>", `  ${served}\n  </head>`)
+        .replace("</body>", `  ${report}\n  </body>`),
+    );
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" });
     res.end(page);
   };
@@ -249,6 +283,7 @@ export async function startDev(
   let running: Promise<void> = Promise.resolve();
   const settle = async (changes: readonly DevChange[]): Promise<void> => {
     const files = changes.map((change) => change.file);
+    changedAt = Date.now();
     for (const change of changes)
       vite.watcher.emit(change.kind, join(sourceDir, ...change.file.split("/")));
     const before = { pages: pageShape(scan), server: serverShape(scan) };
@@ -259,7 +294,7 @@ export async function startDev(
       await writeEntry();
       if (serverChanged) vite.moduleGraph.invalidateAll();
     }
-    const hasServer = scan.serverModules.size > 0 || scan.hasLive;
+    const hasServer = scan.serverModules.size > 0 || scan.hasLive || scan.unparsed.length > 0;
     if (hasServer || serverChanged) {
       // The server bundle is built again; only a bundle that changed restarts the worker and
       // loads the pages again. A client edit stays a hot update.

@@ -62,6 +62,12 @@ export interface ScanResult {
   /** The field IDs the artifact's own code can use (D109). */
   readonly fields: FieldCoverage;
   readonly diagnostics: readonly Diagnostic[];
+  /**
+   * Server-code candidates (a script naming `"use server"`, or `live.ts`) that don't parse. A
+   * build's bundler reports them with full context; `mostra dev`, which bundles server code only
+   * from what the scan found, reports them itself.
+   */
+  readonly unparsed: readonly Diagnostic[];
 }
 
 async function walk(dir: string, prefix: string, out: string[]): Promise<void> {
@@ -394,13 +400,30 @@ export async function scanArtifact(sourceDir: string): Promise<ScanResult> {
   await walk(sourceDir, "", files);
   const diagnostics: Diagnostic[] = [];
   const serverModules = new Map<string, ServerFunctionEntry[]>();
+  const unparsed: Diagnostic[] = [];
   let liveSources: { key: string; always?: boolean }[] = [];
   for (const file of files.sort()) {
     if (!SCRIPT.has(extname(file))) continue;
     const text = await readFile(join(sourceDir, file), "utf8");
     if (!text.includes("use server") && file !== "live.ts") continue;
     const parsed = parseSync(file, text, { lang: langOf(file) });
-    if (parsed.errors.length > 0) continue; // The bundler reports syntax errors with full context.
+    if (parsed.errors.length > 0) {
+      // The bundler reports syntax errors with full context; dev reports them from here.
+      const first = parsed.errors[0];
+      const offset = first?.labels[0]?.start ?? 0;
+      const before = text.slice(0, offset).split("\n");
+      unparsed.push(
+        createDiagnostic("MOSTRA_BUILD_FAILED", {
+          message: `${file}: ${first?.message ?? "a syntax error"}.`,
+          location: {
+            file,
+            line: before.length,
+            column: (before.at(-1)?.length ?? 0) + 1,
+          },
+        }),
+      );
+      continue;
+    }
     const program = parsed.program as unknown as Node;
     if (file === "live.ts") liveSources = liveExports(program);
     if (isServerModule(program))
@@ -431,5 +454,6 @@ export async function scanArtifact(sourceDir: string): Promise<ScanResult> {
     pages,
     fields,
     diagnostics,
+    unparsed,
   };
 }

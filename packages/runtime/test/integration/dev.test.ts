@@ -6,11 +6,12 @@
  * leaves nothing behind. What viewers can and can't reach is VR-03's enumeration in
  * `gateway.test.ts`.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser as Client, openLink, raw } from "../browser-client.ts";
+import { writeDevFixture } from "../dev-fixture.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
 import { FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
@@ -22,38 +23,6 @@ import {
   tempDir,
   testHome,
 } from "../support.ts";
-
-/** The dev fixture: a page with a field, a server function and a Submit. */
-export function writeDevFixture(dir: string, heading = "HEADING-ONE", server = "SERVER-ONE"): void {
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    join(dir, "index.tsx"),
-    `import { defineArtifact, useAction, useField, useSubmit } from "@mostra/react";
-import { whoAmI } from "./actions";
-
-export const artifact = defineArtifact({ title: "Dev fixture" });
-
-export default function Page() {
-  const [answer, setAnswer] = useField("answer", "");
-  const { submit } = useSubmit();
-  const action = useAction(whoAmI);
-  return (
-    <main>
-      <h1 id="title">${heading}</h1>
-      <input id="answer" value={answer} onChange={(event) => setAnswer(event.target.value)} />
-      <button id="call" type="button" onClick={() => void action.run()}>Call</button>
-      <p id="server">{String(action.data ?? "")}</p>
-      <button id="submit" type="button" onClick={() => void submit()}>Submit</button>
-    </main>
-  );
-}
-`,
-  );
-  writeFileSync(
-    join(dir, "actions.ts"),
-    `"use server";\nexport async function whoAmI() {\n  return "${server}";\n}\n`,
-  );
-}
 
 interface DevEvent {
   readonly sessionId: string;
@@ -74,6 +43,7 @@ describe("mostra dev (VR-08)", () => {
     browser = await chromium.launch();
     dir = join(tempDir("dev"), "preview");
     writeDevFixture(dir);
+    client = await devClient();
   }, 120_000);
   afterAll(async () => {
     await browser?.close();
@@ -102,7 +72,6 @@ describe("mostra dev (VR-08)", () => {
   }
 
   it("previews the source in a browser and updates it in place when the source changes", async () => {
-    client = await devClient();
     const started = ok<{ url: string; port: number; sessionId: string }>(
       await client.call("dev/start", { source: { path: dir } }, 120_000),
     );
@@ -171,6 +140,28 @@ describe("mostra dev (VR-08)", () => {
     await page.close();
   }, 180_000);
 
+  it("reports server code that doesn't build, and runs it again once it does", async () => {
+    const owner = await devClient();
+    const started = ok<{ url: string; sessionId: string }>(
+      await owner.call("dev/start", { source: { path: dir } }, 120_000),
+    );
+    const mine = (kind: string): boolean =>
+      events.some((event) => event.sessionId === started.sessionId && event.kind === kind);
+    writeFileSync(
+      join(dir, "actions.ts"),
+      `"use server";\nexport async function whoAmI() {\n  return (;\n}\n`,
+    );
+    await eventually(() => mine("diagnostics"), 60_000, "the build's diagnostics");
+    const reported = events.find(
+      (event) => event.sessionId === started.sessionId && event.kind === "diagnostics",
+    ) as unknown as { diagnostics: { code: string }[] };
+    expect(reported.diagnostics.length).toBeGreaterThan(0);
+    writeDevFixture(dir, "HEADING-TWO", "SERVER-THREE");
+    await eventually(() => mine("server-restarted"), 60_000, "the server's restart");
+    ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
+    owner.close();
+  }, 180_000);
+
   it("reports a submission with its Results, and delivers nothing to the home", async () => {
     const page = await browser.newPage();
     const url = ok<{ url: string }>(
@@ -193,19 +184,22 @@ describe("mostra dev (VR-08)", () => {
   }, 120_000);
 
   it("ends with its connection and leaves nothing behind", async () => {
-    const sessions = join(gateway.home.home, "cache", "dev");
-    expect(readdirSync(sessions).length).toBeGreaterThan(0);
-    const started = ok<{ url: string }>(
-      await client.call("dev/start", { source: { path: dir } }, 120_000),
+    const owner = await devClient();
+    const started = ok<{ url: string; sessionId: string }>(
+      await owner.call("dev/start", { source: { path: dir } }, 120_000),
     );
+    const session = join(gateway.home.home, "cache", "dev", started.sessionId);
+    expect(existsSync(session)).toBe(true);
     const shell = new URL(started.url).origin;
-    client.close();
-    await eventually(() => !existsSync(sessions) || readdirSync(sessions).length === 0, 30_000);
+    owner.close();
+    await eventually(() => !existsSync(session), 30_000);
     await expect(fetch(`${shell}/a/x`)).rejects.toThrow();
-    // No builder or worker of a session outlives it.
+    // No builder or worker of the session outlives it (the others' sessions keep theirs).
     await eventually(async () => {
-      const status = ok<{ processes: unknown[] }>(await gateway.client.call("instance/status", {}));
-      return status.processes.length === 0;
+      const status = ok<{ processes: { ownerRef: string }[] }>(
+        await gateway.client.call("instance/status", {}),
+      );
+      return !status.processes.some((process) => process.ownerRef.includes(started.sessionId));
     }, 30_000);
   }, 120_000);
 
@@ -378,7 +372,7 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
               .locator("#label")
               .innerText()
               .catch(() => ""),
-          { timeout: 60_000 },
+          { timeout: 20_000 },
         )
         .toBe("clicks");
       ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
