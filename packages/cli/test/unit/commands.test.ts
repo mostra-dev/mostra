@@ -130,10 +130,11 @@ describe("the command line (AX-01)", () => {
       "telemetry status",
       "telemetry on",
       "telemetry off",
+      "dev",
     ]) {
       expect(names).toContain(name);
     }
-    for (const later of ["share", "review", "export", "mcp", "plugin", "term", "run", "dev"]) {
+    for (const later of ["share", "review", "export", "mcp", "plugin", "term", "run"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
     }
   });

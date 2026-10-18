@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `docs`, `doctor`, `gc`, `host`, `list`, `new`, `open`, `publish`, `push`, `results`, `secret`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `new`, `open`, `publish`, `push`, `results`, `secret`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -39,6 +39,39 @@ Exit codes:
 
 Example:
   mostra new ./sidebar-review --title 'Sidebar review'
+```
+
+## mostra dev
+
+```text
+Preview an artifact's unpublished source with hot reload, until Ctrl-C; viewers never see it.
+
+Usage:
+  mostra dev <path> [flags]
+
+Arguments:
+  <path>                       The artifact's source: a file, a directory, or its ID.
+
+Flags:
+  --port <port>                The preview's port on 127.0.0.1; default one the system picks.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: DevStartResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+
+Example:
+  mostra dev ./sidebar-review
 ```
 
 ## mostra verify

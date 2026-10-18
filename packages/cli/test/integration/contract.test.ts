@@ -5,6 +5,7 @@
  * off stdout. J1 runs through it end to end: new, verify, publish, open, a viewer's submission,
  * wait and results (WP-10's handoff).
  */
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -20,6 +21,7 @@ import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
 import {
+  BIN,
   cli,
   envelope,
   eventually,
@@ -291,6 +293,44 @@ describe("every command, with --json and no terminal", () => {
       await other.cleanup();
     }
   });
+
+  it("dev streams NDJSON envelopes until Ctrl-C, then its result (VR-08, D140 items 12 and 15)", async () => {
+    const child = spawn(process.execPath, [BIN, "dev", artifactDir, "--json"], {
+      env: home.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    child.stdin.end();
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    const closed = new Promise<number>((done) => child.on("close", (code) => done(code ?? -1)));
+    await eventually(() => stdout.includes('"kind":"started"'), 90_000);
+    const first = JSON.parse(stdout.split("\n")[0] as string) as {
+      ok: boolean;
+      event: { kind: string; url: string };
+      instance?: { home: string };
+    };
+    expect(first.ok).toBe(true);
+    expect(first.event.kind).toBe("started");
+    expect(first.event.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/);
+    expect(first.instance?.home).toBeDefined();
+    child.kill("SIGINT");
+    const code = await closed;
+    expect(code).toBe(0);
+    const lines = stdout
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line));
+    for (const line of lines) expect(line.ok).toBe(true);
+    // `instance` on the first line only; the stream ends at the line with `result`.
+    expect(lines.slice(1).some((line) => "instance" in line)).toBe(false);
+    const last = lines.at(-1) as { result?: { stopped: string } };
+    expect(last.result?.stopped).toBe("signal");
+    expect(lines.slice(0, -1).every((line) => "event" in line)).toBe(true);
+    covered.add("dev");
+  }, 120_000);
 
   it("a usage error, an unknown command and a timeout end with their codes", async () => {
     await run(["verify"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });

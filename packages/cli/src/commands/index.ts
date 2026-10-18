@@ -25,6 +25,7 @@ import {
   telemetryStatusCommand,
 } from "./admin.ts";
 import { addCommand, newCommand, publishCommand, verifyCommand } from "./authoring.ts";
+import { devCommand } from "./dev.ts";
 import {
   pushCommand,
   resultsCommand,
@@ -38,6 +39,7 @@ import { openCommand } from "./viewing.ts";
 /** The commands, in help's order: the authoring loop first. */
 export const COMMANDS: readonly CommandDef[] = [
   newCommand,
+  devCommand,
   verifyCommand,
   publishCommand,
   openCommand,
