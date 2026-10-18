@@ -14,6 +14,7 @@
  * A session belongs to the connection that started it and ends with it (or `dev/stop`); open
  * sessions keep a daemon from its idle exit (D133). Recovery at start removes leftovers.
  */
+
 import { createHash, randomBytes } from "node:crypto";
 import { type FSWatcher, watch } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
@@ -34,6 +35,7 @@ import {
 } from "@mostra/protocol";
 import type { DevChange, DevChild, DevServerBuild, RenderMode } from "../builder/index.ts";
 import { type Dependencies, lockKey } from "../deps/index.ts";
+import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import type { Log } from "../log.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
@@ -66,6 +68,8 @@ export interface DevOptions {
   readonly bindAddress: string;
   /** Sends a notification to one connection; false when it couldn't. */
   readonly notify: (session: number, method: string, params: DevNotifyParams) => boolean;
+  /** Test fault points (`dev:after-child`: setting up a dev server that started fails). */
+  readonly faults?: Faults;
 }
 
 /** The dev sessions of an instance. */
@@ -297,9 +301,17 @@ export function createDev(options: DevOptions): Dev {
           });
         }
       });
-      if (started.ready.build.ok)
-        await writeVersion(described.manifest, described.artifactId, started.ready.build.server);
-      else reported(started.ready.build);
+      // A dev server this function can't hand back (its version's manifest can't be written,
+      // because a stop removed the session meanwhile) is stopped here: nobody else knows it.
+      try {
+        options.faults?.at("dev:after-child");
+        if (started.ready.build.ok)
+          await writeVersion(described.manifest, described.artifactId, started.ready.build.server);
+        else reported(started.ready.build);
+      } catch (error) {
+        await started.stop().catch(() => {});
+        throw error;
+      }
       return started;
     };
 

@@ -671,6 +671,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     gate,
     sandbox: sandboxOptions,
     bindAddress: addressing.bindAddress,
+    faults,
     notify: (session, method, params) =>
       server.notify(session, method, params as unknown as JsonRpcParams),
   });

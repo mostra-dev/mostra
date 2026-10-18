@@ -517,6 +517,36 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
     }
   }, 240_000);
 
+  it("stops a dev server whose setup fails after it started, and leaves nothing behind", async () => {
+    const home = testHome();
+    const gateway = new GatewayHome(home);
+    await gateway.start({ env: { MOSTRA_TEST_FAULTS: "dev:after-child:throw" } });
+    try {
+      const dir = join(tempDir("dev-fault"), "preview");
+      writeDevFixture(dir);
+      const answer = await gateway.client.call("dev/start", { source: { path: dir } }, 120_000);
+      expect(answer.error).toBeDefined();
+      const devDir = join(home.home, "cache", "dev");
+      await eventually(
+        () => !existsSync(devDir) || readdirSync(devDir).length === 0,
+        20_000,
+        "the session's directory gone",
+      );
+      await eventually(
+        async () =>
+          !ok<{ processes: { kind: string }[] }>(
+            await gateway.client.call("instance/status", {}),
+          ).processes.some((process) => process.kind === "builder"),
+        20_000,
+        "no dev server left",
+      );
+      await new Promise((done) => setTimeout(done, 3000));
+      expect(!existsSync(devDir) || readdirSync(devDir).length === 0).toBe(true);
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
+
   it("removes what a stopped instance left of its sessions at the next start", async () => {
     const home = testHome();
     const first = await new GatewayHome(home).start();
