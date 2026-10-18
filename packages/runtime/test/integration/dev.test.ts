@@ -6,7 +6,7 @@
  * leaves nothing behind. What viewers can and can't reach is VR-03's enumeration in
  * `gateway.test.ts`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -202,6 +202,39 @@ describe("mostra dev (VR-08)", () => {
       return !status.processes.some((process) => process.ownerRef.includes(started.sessionId));
     }, 30_000);
   }, 120_000);
+
+  it.each([150, 600, 1500])(
+    "leaves nothing behind when its connection closes while it starts (%i ms in, GPT review finding 1)",
+    async (delayMs) => {
+      const devDir = join(gateway.home.home, "cache", "dev");
+      const before = new Set(existsSync(devDir) ? readdirSync(devDir) : []);
+      const builders = async (): Promise<string[]> =>
+        ok<{ processes: { kind: string; ownerRef: string }[] }>(
+          await gateway.client.call("instance/status", {}),
+        )
+          .processes.filter((process) => process.kind === "builder")
+          .map((process) => process.ownerRef);
+      const running = new Set(await builders());
+      const owner = await devClient();
+      // The answer never arrives: the connection is gone before it.
+      void owner.call("dev/start", { source: { path: dir } }, 120_000).catch(() => undefined);
+      await new Promise((done) => setTimeout(done, delayMs));
+      owner.close();
+      const added = (): string[] =>
+        (existsSync(devDir) ? readdirSync(devDir) : []).filter((name) => !before.has(name));
+      await eventually(() => added().length === 0, 30_000, "the session's directory gone");
+      await eventually(
+        async () => (await builders()).every((ref) => running.has(ref)),
+        30_000,
+        "no dev server of the session",
+      );
+      // Still none a little later: nothing finished starting after the cleanup.
+      await new Promise((done) => setTimeout(done, 3000));
+      expect(added()).toEqual([]);
+      expect((await builders()).every((ref) => running.has(ref))).toBe(true);
+    },
+    120_000,
+  );
 
   it("refuses dev/stop from a connection that didn't start the session", async () => {
     const owner = await devClient();

@@ -337,10 +337,8 @@ export function createDev(options: DevOptions): Dev {
         .catch((error: unknown) => log.warn("dev.sync_failed", { sessionId, error }));
     };
 
-    const stop = async (): Promise<void> => {
-      if (closed) return;
-      closed = true;
-      sessions.delete(sessionId);
+    /** Releases everything the session holds; safe to run again, and while it still starts. */
+    const release = async (): Promise<void> => {
       clearInterval(poll);
       clearTimeout(settleTimer);
       watcher?.close();
@@ -348,16 +346,34 @@ export function createDev(options: DevOptions): Dev {
       await child?.stop().catch(() => {});
       await sandbox?.close().catch(() => {});
       await rm(dir, { recursive: true, force: true });
+    };
+    const stop = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      sessions.delete(sessionId);
+      await release();
       log.info("dev.stopped", { sessionId });
     };
+    /** The connection that started the session closed while it started: nothing may outlive it. */
+    const abandoned = (): RpcError =>
+      new RpcError(
+        createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+          message: "The connection that started this dev session closed while it started.",
+        }),
+      );
 
+    // The session ends with its connection (D140 item 12), from the first moment: a connection
+    // that closes while packages resolve or the dev server starts leaves nothing running.
+    connection.signal.addEventListener("abort", () => void stop(), { once: true });
     try {
+      if (connection.signal.aborted) throw abandoned();
       await sync();
       const described = await describe();
       manifestKey = JSON.stringify(described.manifest);
       nodeModules = await resolve(described.manifest.id);
       artifactId = described.artifactId;
       child = await startChild(described);
+      if (closed) throw abandoned();
       const upstream = (): { port: number; secret: string } | undefined =>
         child ? { port: child.ready.port, secret } : undefined;
       sandbox = await startSandbox(options.sandbox(), {
@@ -379,9 +395,14 @@ export function createDev(options: DevOptions): Dev {
         dev: { upstream },
         ...(params.port !== undefined ? { shellPort: params.port } : {}),
       });
+      if (closed) throw abandoned();
       sandbox.onSubmission((results) => notify("submission", { results }));
     } catch (error) {
-      await stop();
+      closed = true;
+      sessions.delete(sessionId);
+      // Again, after whatever a stop that ran meanwhile couldn't see yet (a child or sandbox
+      // that finished starting after it).
+      await release();
       throw error;
     }
 
@@ -410,8 +431,6 @@ export function createDev(options: DevOptions): Dev {
       stop,
       resolveAgain: () => catchUp(true),
     });
-    // The session ends with its connection (D140 item 12).
-    connection.signal.addEventListener("abort", () => void stop(), { once: true });
     const url = sandbox.link(versionId);
     log.info("dev.started", { sessionId, artifactId });
     notify("built");
