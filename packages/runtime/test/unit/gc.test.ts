@@ -13,7 +13,8 @@ import {
   keptVersions,
   REFERENCE_SOURCES,
 } from "../../src/gc/index.ts";
-import { type LedgerDb, MIGRATIONS, type MigrationDb } from "../../src/ledger/index.ts";
+import { MIGRATIONS } from "../../src/ledger/index.ts";
+import type { LedgerDb, MigrationDb } from "../../src/ledger/types.ts";
 
 const Database = createRequire(import.meta.url)(
   "better-sqlite3",
