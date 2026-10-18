@@ -13,12 +13,15 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { decide, endpointOf } from "../../src/telemetry/decision.ts";
 import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/events.ts";
+import { flush } from "../../src/telemetry/flush.ts";
 import { detectHarness } from "../../src/telemetry/harness.ts";
 import { telemetrySession } from "../../src/telemetry/index.ts";
 import { TelemetryStore } from "../../src/telemetry/store.ts";
@@ -570,5 +573,51 @@ describe("the notice, the question and the queue (D140 items 6, 11)", () => {
     run.telemetry.end(END);
     const text = run.store.queued(Date.now()).join("\n");
     expect(text).not.toMatch(/America|New_York|TZ|zone/);
+  });
+});
+
+describe("the flusher (D140 item 6)", () => {
+  it("sends each event once even when the queue's head expired, and stops when nothing is removed (GPT review finding 5)", async () => {
+    const bodies: string[] = [];
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      request.on("end", () => {
+        bodies.push(body);
+        response.writeHead(204).end();
+      });
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    try {
+      const store = new TelemetryStore(configDir());
+      const now = Date.now();
+      const event = (at: number, extra: Record<string, unknown> = {}): string =>
+        JSON.stringify({ ...common, event: "cli.first_run", at: minute(new Date(at)), ...extra });
+      // Queued when the oldest was still within its 7 days, which ran out before this flush;
+      // then one the schema refuses (an extra field), then one to send.
+      const week = 7 * 86_400_000;
+      store.append(
+        [event(now - week - 120_000), event(now, { path: "/Users/someone" }), event(now)],
+        now - week,
+      );
+      expect(store.queued(now - week)).toHaveLength(3);
+      const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const flushed = flush(store, { MOSTRA_TELEMETRY_ENDPOINT: endpoint }, () => now);
+      const outcome = await Promise.race([
+        flushed.then(() => "done"),
+        new Promise((done) => setTimeout(() => done("still sending"), 3000)),
+      ]);
+      expect(outcome).toBe("done");
+      expect(bodies).toHaveLength(1);
+      const sent = (JSON.parse(bodies[0] as string) as { events: { path?: string }[] }).events;
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.path).toBeUndefined();
+      expect(store.queued(now)).toEqual([]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((done) => server.close(done));
+    }
   });
 });

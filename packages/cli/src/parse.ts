@@ -147,6 +147,7 @@ export function parseCommandLine(commands: readonly CommandDef[], argv: readonly
       index += 1;
       continue;
     }
+    if (/^--(home|cwd|timeout)=/.test(word)) continue;
     if (word.startsWith("-")) break;
     words.push(word);
     pathAt.push(index);

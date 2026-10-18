@@ -6,7 +6,7 @@
  * command never waits for the network, and its stdout is closed when it exits.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -234,6 +234,26 @@ describe("EN-08: telemetry from the standalone CLI", () => {
           JSON.parse(line.slice("mostra telemetry (debug, not sent): ".length)),
         ).success,
       ).toBe(true);
+    }
+    await settle();
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("never stops a command when its config directory can't be written (GPT review finding 2)", async () => {
+    const parent = join(telemetryHome().root, "locked");
+    mkdirSync(parent, { mode: 0o500 });
+    chmodSync(parent, 0o500);
+    const home = telemetryHome({ MOSTRA_CONFIG_DIR: join(parent, "mostra") });
+    for (const argv of [
+      ["docs", "--json"],
+      ["list", "--json"],
+      ["telemetry", "status", "--json"],
+    ]) {
+      const ran = await cli(argv, { env: home.env });
+      expect(ran.code, argv.join(" ")).toBe(0);
+      expect(envelope(ran).ok, argv.join(" ")).toBe(true);
+      // Nothing it can't record: no notice, and so nothing sent.
+      expect(ran.stderr).not.toContain("usage data");
     }
     await settle();
     expect(fake.requests).toHaveLength(0);

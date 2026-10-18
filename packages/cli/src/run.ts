@@ -273,7 +273,8 @@ export async function run(io: RunnerIo): Promise<number> {
   let exit: number;
   let error: string | undefined;
   try {
-    if (!(await telemetry.begin())) return 130;
+    // Telemetry never stops a command: a failure in it is a run without telemetry.
+    if (!(await telemetry.begin().catch(() => true))) return 130;
     const outcome: CommandOutcome = await withTimeout(command, context, timeoutMs);
     exit = outcome.exit ?? EXIT.ok;
     if (outcome.raw) return exit;

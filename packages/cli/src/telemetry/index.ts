@@ -136,9 +136,10 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
     const read = store.read();
     return read.ok && read.settings.noticeShownAt !== undefined;
   };
-  const markShown = (): void => {
-    store.update((current) => ({ ...current, noticeShownAt: new Date(now()).toISOString() }));
-  };
+  /** Records that the notice was shown; `false` when the store can't be written. */
+  const markShown = (): boolean =>
+    store.update((current) => ({ ...current, noticeShownAt: new Date(now()).toISOString() })) !==
+    undefined;
   const harness = detectHarness(options.env);
   const ci = inCi(options.env);
 
@@ -148,11 +149,10 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
       const current = decision(options.hostHome);
       // No collector, a host's home, or a person who said no: nothing to say (D140 item 7).
       if (current.reason === "no-collector" || current.reason === "embedded") return true;
+      // The notice is recorded before it is printed: a store that can't record it (a directory
+      // that can't be written) means no notice, and so nothing ever sent.
       if (current.enabled) {
-        if (!shown()) {
-          options.stderr(NOTICE_DEFAULT);
-          markShown();
-        }
+        if (!shown() && markShown()) options.stderr(NOTICE_DEFAULT);
         return true;
       }
       if (current.reason !== "default" || !current.askFirst) return true;
@@ -165,18 +165,25 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
         harness === "none" &&
         !options.readsStdin;
       if (!canAsk) {
-        options.stderr(NOTICE_ASK_FIRST);
-        markShown();
+        if (markShown()) options.stderr(NOTICE_ASK_FIRST);
         return true;
       }
       const answer = await options.ask(QUESTION, QUESTION_TIMEOUT_MS);
       const yes = typeof answer === "string" && /^\s*y(es)?\s*$/i.test(answer);
-      store.update((settings) => ({
+      const stored = store.update((settings) => ({
         ...settings,
         choice: yes ? "on" : "off",
         noticeShownAt: new Date(now()).toISOString(),
       }));
-      options.stderr(yes ? ANSWER.yes : answer === undefined ? ANSWER.timeout : ANSWER.no);
+      options.stderr(
+        stored === undefined
+          ? `${statusLine({ enabled: false, reason: "unreadable", askFirst: true, settingsFile: store.settingsFile })}\n`
+          : yes
+            ? ANSWER.yes
+            : answer === undefined
+              ? ANSWER.timeout
+              : ANSWER.no,
+      );
       return answer !== "interrupt";
     },
 

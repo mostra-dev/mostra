@@ -13,7 +13,7 @@ import type { Environment } from "../home.ts";
 import { cliVersion, fromSource, packageRoot } from "../version.ts";
 import { buildEndpoint, decide } from "./decision.ts";
 import { TelemetryEvent } from "./events.ts";
-import type { TelemetryStore } from "./store.ts";
+import { QUEUE_MAX_EVENTS, type TelemetryStore } from "./store.ts";
 
 /** At most this many events per request. */
 export const BATCH = 100;
@@ -78,10 +78,11 @@ export async function flush(
   });
   if (!decision.enabled || decision.endpoint === undefined) {
     // Consent withdrawn (or never given) since the events were queued: they go unsent.
-    if (decision.reason !== "no-collector" && settings.ok) store.drop(store.queued(now()));
+    if (decision.reason !== "no-collector" && settings.ok) store.drop(store.queued(now()), now());
     return;
   }
-  for (;;) {
+  // The queue holds at most QUEUE_MAX_EVENTS, so a flush needs at most this many batches.
+  for (let round = 0; round <= Math.ceil(QUEUE_MAX_EVENTS / BATCH); round += 1) {
     const lines = store.queued(now()).slice(0, BATCH);
     if (lines.length === 0) return;
     const events: unknown[] = [];
@@ -95,7 +96,9 @@ export async function flush(
     }
     const sent = events.length === 0 || (await post(decision.endpoint, JSON.stringify({ events })));
     if (!sent) return;
-    store.drop(lines);
+    // Nothing removed (another process changed the queue, or the lock was out of reach): stop
+    // rather than send the same batch again.
+    if (store.drop(lines, now()) === 0) return;
   }
 }
 

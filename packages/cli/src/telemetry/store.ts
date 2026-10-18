@@ -124,15 +124,15 @@ export class TelemetryStore {
    * settings can't be read.
    */
   installId(): { readonly id: string; readonly created: boolean } | undefined {
-    this.#prepareDir();
     const current = this.read();
     if (!current.ok) return undefined;
     if (current.settings.installId !== undefined)
       return { id: current.settings.installId, created: false };
     const candidate = `${this.idFile}.${process.pid}.${randomUUID()}.tmp`;
     const id = randomUUID();
-    writeFileSync(candidate, `${id}\n`, { mode: 0o600 });
     try {
+      this.#prepareDir();
+      writeFileSync(candidate, `${id}\n`, { mode: 0o600 });
       linkSync(candidate, this.idFile);
       return { id, created: true };
     } catch (error) {
@@ -198,14 +198,21 @@ export class TelemetryStore {
     return bounded(this.#queued(), now);
   }
 
-  /** Removes the first `count` queued lines, which a flush sent. */
-  drop(sent: readonly string[]): void {
-    this.locked(() => {
-      const queued = this.#queued();
-      let index = 0;
-      while (index < sent.length && queued[index] === sent[index]) index += 1;
-      this.#writeQueue(queued.slice(index));
-    });
+  /**
+   * Removes the lines a flush sent from the head of the queue, after pruning what expired or
+   * fell outside the bounds, as {@link queued} did; how many sent lines were removed (0 when the
+   * lock can't be had). A flusher stops when this is 0, so it never sends a batch twice.
+   */
+  drop(sent: readonly string[], now: number): number {
+    return (
+      this.locked(() => {
+        const queued = bounded(this.#queued(), now);
+        let index = 0;
+        while (index < sent.length && queued[index] === sent[index]) index += 1;
+        this.#writeQueue(queued.slice(index));
+        return index;
+      }) ?? 0
+    );
   }
 
   #queued(): string[] {
@@ -245,12 +252,18 @@ export class TelemetryStore {
   }
 
   /**
-   * Runs `fn` holding the lock file; `undefined` when the lock can't be had within 2 s. The lock
+   * Runs `fn` holding the lock file; `undefined` when the lock can't be had within 2 s, or the
+   * directory or a file in it can't be written (a full disk, a directory someone else owns):
+   * telemetry never stops a command (D140 item 5). The lock
    * holds its owner's PID and a token of its own, is released only by its owner, and is taken
    * over only when it is older than 10 s and its owner is no longer running (a crash).
    */
   locked<T>(fn: () => T): T | undefined {
-    this.#prepareDir();
+    try {
+      this.#prepareDir();
+    } catch {
+      return undefined;
+    }
     const token = `${process.pid} ${randomUUID()}`;
     const deadline = Date.now() + 2000;
     for (;;) {
@@ -266,6 +279,8 @@ export class TelemetryStore {
     }
     try {
       return fn();
+    } catch {
+      return undefined;
     } finally {
       this.#release(token);
     }

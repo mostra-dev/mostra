@@ -167,6 +167,15 @@ describe("the command line (AX-01)", () => {
       "y",
     ]);
     expect(parsed.kind === "run" && parsed.args).toEqual({ artifact: "./a", id: ["x", "y"] });
+    // The = forms stand before the command too (GPT review finding 6).
+    for (const argv of [
+      ["--home=/h", "list"],
+      ["--cwd=/c", "--timeout=10s", "state", "get", "./a"],
+      ["--json", "--timeout=5s", "daemon", "status"],
+    ]) {
+      const equals = parseCommandLine(COMMANDS, argv);
+      expect(equals.kind, argv.join(" ")).toBe("run");
+    }
   });
 
   it("gives each command help with usage, output, exit codes and an example, and a definition for --help --json", () => {
