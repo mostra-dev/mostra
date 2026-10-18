@@ -303,12 +303,15 @@ describe("the store (D140 item 5)", () => {
       Date.now(),
     );
     expect(statSync(store.queueFile).mode & 0o777).toBe(0o600);
-    writeFileSync(store.settingsFile, "{ not json");
-    expect(store.read().ok).toBe(false);
-    expect(store.update((current) => current)).toBeUndefined();
-    expect(readFileSync(store.settingsFile, "utf8")).toBe("{ not json");
-    writeFileSync(store.settingsFile, JSON.stringify({ installId: "my-hostname" }));
-    expect(store.read().ok).toBe(false);
+    // A damaged file, in a store of its own.
+    const damaged = new TelemetryStore(configDir());
+    writeFileSync(damaged.settingsFile, "{ not json");
+    expect(damaged.read().ok).toBe(false);
+    expect(damaged.update((current) => current)).toBeUndefined();
+    expect(readFileSync(damaged.settingsFile, "utf8")).toBe("{ not json");
+    const invalid = new TelemetryStore(configDir());
+    writeFileSync(invalid.settingsFile, JSON.stringify({ installId: "my-hostname" }));
+    expect(invalid.read().ok).toBe(false);
   });
 
   it("gives two processes on a first run one install ID", async () => {
