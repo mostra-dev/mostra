@@ -482,6 +482,9 @@ importers:
         specifier: 'catalog:'
         version: 4.6.5
     devDependencies:
+      '@mostra/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@mostra/tools':
         specifier: workspace:*
         version: link:../../tools

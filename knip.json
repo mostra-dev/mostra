@@ -47,6 +47,11 @@
       ],
       "ignoreBinaries": ["ss", "lsof", "ps", "plutil"]
     },
+    "packages/cli": {
+      "entry": ["src/index.ts", "src/bin.ts", "src/telemetry/flush-main.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
+    },
     "packages/warm": {
       "entry": [],
       "project": [],

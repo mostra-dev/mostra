@@ -45,6 +45,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@mostra/runtime": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
