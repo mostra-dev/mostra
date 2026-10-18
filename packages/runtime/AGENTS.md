@@ -189,8 +189,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
-`MOSTRA_TEST_FAULTS` (`<point>:throw|crash`, comma-separated), the fault points tests use to fail
-or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …);
+`MOSTRA_TEST_FAULTS` (`<point>:throw|crash|hang`, comma-separated), the fault points tests use to fail
+or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …), or to
+hang a child (`builder:build:hang` stops each builder before it builds, issue #18);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
 (token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10). These are for tests only. `MOSTRA_OFFLINE` (not a
