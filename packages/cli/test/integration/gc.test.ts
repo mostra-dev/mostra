@@ -5,7 +5,7 @@
  * source is published again (D140 item 14). doctor warns about artifacts with submission policy
  * `none` in a home without a login service, and stops once `daemon install` wrote one (D96).
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cli, envelope, type TestHome, testHome, Viewer } from "../support.ts";
@@ -115,6 +115,32 @@ describe("VR-06: gc keeps every referenced version", () => {
     // It is the latest again, so gc keeps it; v4 is now the unreferenced one.
     const next = (await json(["gc", "--dry-run"])).result as { versions: { number: number }[] };
     expect(next.versions.map((version) => version.number)).toEqual([4]);
+  });
+
+  it("collects verify's caches before any verify ran in the instance (GPT review finding 7)", async () => {
+    const fresh = testHome();
+    try {
+      const run = async (args: string[]) =>
+        envelope(await cli([...args, "--json"], { env: fresh.env })) as {
+          ok: boolean;
+          result: { caches: { count: number; bytes: number } };
+        };
+      expect((await run(["daemon", "start"])).ok).toBe(true);
+      // Screenshots no cached verdict names, left by an earlier instance's verify, written after
+      // this instance's start (whose recovery would remove them itself).
+      const shots = join(fresh.home, "cache", "verify", "0".repeat(64));
+      mkdirSync(shots, { recursive: true });
+      writeFileSync(join(shots, "desktop.png"), Buffer.alloc(4096));
+      const planned = await run(["gc", "--dry-run"]);
+      expect(planned.result.caches).toEqual({ count: 1, bytes: 4096 });
+      expect(existsSync(shots)).toBe(true);
+      const collected = await run(["gc"]);
+      expect(collected.result.caches).toEqual(planned.result.caches);
+      expect(existsSync(shots)).toBe(false);
+      await run(["daemon", "stop"]);
+    } finally {
+      await fresh.cleanup();
+    }
   });
 
   it("doctor doesn't report a collected version as damaged", async () => {

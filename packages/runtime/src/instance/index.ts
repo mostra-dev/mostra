@@ -97,6 +97,7 @@ import { openRegistry } from "../registry/index.ts";
 import { openSecrets, secretMethods } from "../secrets/index.ts";
 import { hasLoginService, type IdleWatch, watchIdle } from "../service/index.ts";
 import {
+  collectVerifyCaches,
   createRunnerClient,
   createVerifier,
   locateRunner,
@@ -741,9 +742,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           log,
           gate,
           dependencies: getDependencies,
-          // Verify's caches exist only once verify ran; nothing to collect before.
+          // Verify's caches outlive the process that wrote them: gc reads them from the home
+          // whether or not verify ran since this instance started (GPT review finding 7).
           caches: (dryRun) =>
-            verifier ? verifier.collect(dryRun) : Promise.resolve({ count: 0, bytes: 0 }),
+            verifier ? verifier.collect(dryRun) : collectVerifyCaches(home.path, { dryRun }),
           now: () => Date.now() + clockOffset,
         }),
       ),
