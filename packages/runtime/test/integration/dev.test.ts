@@ -181,6 +181,65 @@ describe("mostra dev (VR-08)", () => {
     owner.close();
   }, 180_000);
 
+  it("serves a page added under pages/ without a restart (GPT review finding 4)", async () => {
+    const pagesDir = join(tempDir("dev-pages"), "preview");
+    mkdirSync(join(pagesDir, "pages"), { recursive: true });
+    writeFileSync(
+      join(pagesDir, "index.tsx"),
+      `import { defineArtifact } from "@mostra/react";\nexport const artifact = defineArtifact({ title: "Pages" });\n`,
+    );
+    writeFileSync(
+      join(pagesDir, "pages", "index.tsx"),
+      `export default function Home() {\n  return <h1 id="page">HOME</h1>;\n}\n`,
+    );
+    const owner = await devClient();
+    const started = ok<{ url: string; sessionId: string }>(
+      await owner.call("dev/start", { source: { path: pagesDir } }, 120_000),
+    );
+    const page = await browser.newPage();
+    await page.goto(started.url);
+    const frame = page.frameLocator("iframe");
+    const heading = (): Promise<string> =>
+      frame
+        .locator("#page")
+        .innerText({ timeout: 5000 })
+        .catch(() => "");
+    await expect.poll(heading, { timeout: 30_000 }).toBe("HOME");
+    writeFileSync(
+      join(pagesDir, "pages", "about.tsx"),
+      `export default function About() {\n  return <h1 id="page">ABOUT</h1>;\n}\n`,
+    );
+    await eventually(
+      () =>
+        events.some(
+          (event) =>
+            event.sessionId === started.sessionId &&
+            event.kind === "built" &&
+            (event.files ?? []).includes("pages/about.tsx"),
+        ),
+      30_000,
+      "the new page built",
+    );
+    // The open page follows its route table without being told: a link to the new page works.
+    await expect
+      .poll(
+        async () => {
+          await frame
+            .locator("body")
+            .evaluate(() => {
+              if (location.pathname !== "/about") location.assign("/about");
+            })
+            .catch(() => {});
+          return heading();
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("ABOUT");
+    await page.close();
+    ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
+    owner.close();
+  }, 180_000);
+
   it("reports server code that doesn't build, and runs it again once it does", async () => {
     const owner = await devClient();
     const started = ok<{ url: string; sessionId: string }>(

@@ -289,11 +289,16 @@ export async function startDev(
     const before = { pages: pageShape(scan), server: serverShape(scan) };
     scan = await scanArtifact(sourceDir);
     const serverChanged = before.server !== serverShape(scan);
-    if (before.pages !== pageShape(scan) || serverChanged) {
+    const pagesChanged = before.pages !== pageShape(scan);
+    if (pagesChanged || serverChanged) {
       refreshServerModules();
       await writeEntry();
+      // Vite watches nothing, so it hears of the rewritten entry from here: the route table
+      // (or the server stubs) it imports changed, and every page loads it again.
+      vite.watcher.emit("change", join(generated, "entry.js"));
       if (serverChanged) vite.moduleGraph.invalidateAll();
     }
+    if (pagesChanged && !serverChanged) vite.ws.send({ type: "full-reload" });
     const hasServer = scan.serverModules.size > 0 || scan.hasLive || scan.unparsed.length > 0;
     if (hasServer || serverChanged) {
       // The server bundle is built again; only a bundle that changed restarts the worker and
