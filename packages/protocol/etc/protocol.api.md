@@ -470,10 +470,13 @@ export type ClassifiedMessage = {
 export function classifyMessage(value: unknown): ClassifiedMessage;
 
 // @public
+export const CLI_CLIENT_NAME = "mostra-cli";
+
+// @public
 export type CliDiagnosticCode = (typeof cliDiagnosticCodes)[number];
 
 // @public
-export const cliDiagnosticCodes: readonly ["MOSTRA_CLI_USAGE", "MOSTRA_CLI_UNKNOWN_COMMAND", "MOSTRA_CLI_TIMEOUT"];
+export const cliDiagnosticCodes: readonly ["MOSTRA_CLI_USAGE", "MOSTRA_CLI_UNKNOWN_COMMAND"];
 
 // @public
 export interface ClientCapabilities {

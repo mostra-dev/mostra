@@ -7,7 +7,6 @@ import type { AreaCatalog } from "../spec.ts";
 export const cliDiagnosticCodes = [
   "MOSTRA_CLI_USAGE",
   "MOSTRA_CLI_UNKNOWN_COMMAND",
-  "MOSTRA_CLI_TIMEOUT",
   // gen:codes
 ] as const;
 
@@ -36,17 +35,6 @@ export const cliDiagnostics: AreaCatalog<CliDiagnosticCode> = {
       explanation:
         "The first word after `mostra` isn't a command this CLI has. The message lists the commands that exist. Commands that later releases add (sharing, export, plugins, terminals) appear only once they exist, never as placeholders.",
       fix: "Run one of the listed commands. `mostra --help` lists every command with a one-line summary.",
-    },
-  },
-  MOSTRA_CLI_TIMEOUT: {
-    severity: "error",
-    phase: "host",
-    title: "Command timed out",
-    hint: "Run the command again with a longer `--timeout`, or without one; work it already committed keeps its IDs.",
-    docs: {
-      explanation:
-        "The command's `--timeout` passed before the instance answered. The CLI stopped waiting; the instance may still finish the request, and anything it committed stays committed (a publish, a state change). Exit code 4. `mostra wait` is different: its `--timeout` ends the wait with `still_waiting` and exit 5.",
-      fix: "Repeat the command with a longer `--timeout`. Mutating commands that take `--request-id` return the recorded result when repeated with the same ID.",
     },
   },
   // gen:entries
