@@ -213,7 +213,8 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
       const end = out.indexOf("\n");
       if (end >= 0) resolve(out.slice(0, end));
     });
-    child.once("exit", (code) =>
+    // `close` comes after stdout was read to its end; `exit` can come before the status line is.
+    child.once("close", (code) =>
       reject(new Error(`the daemon exited (${code}) before it started`)),
     );
   });

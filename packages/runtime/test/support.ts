@@ -251,9 +251,14 @@ export async function startDaemon(
       const [line] = splitter.push(chunk);
       if (line !== undefined) resolve(JSON.parse(line) as DaemonStatus);
     });
-    void started.exited.then(({ code }) =>
-      reject(new Error(`daemon exited (${code}) before a status line: ${started.stderr()}`)),
-    );
+    // `exit` can come before the last of stdout is read (an attached starter prints its line and
+    // exits at once): only the end of stdout means no line is coming. Seen on Linux CI after
+    // WP-10's merge, as the CLI's daemon start saw it (its own fix, WP-10).
+    started.child.stdout?.on("end", () => {
+      void started.exited.then(({ code }) =>
+        reject(new Error(`daemon exited (${code}) before a status line: ${started.stderr()}`)),
+      );
+    });
   });
   return { ...started, status };
 }
