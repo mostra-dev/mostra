@@ -110,7 +110,7 @@ export const ArtifactDetail: z.ZodType<ArtifactDetail>;
 export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
 
 // @public
-export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND"];
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED"];
 
 // @public
 export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
@@ -470,6 +470,12 @@ export type ClassifiedMessage = {
 export function classifyMessage(value: unknown): ClassifiedMessage;
 
 // @public
+export type CliDiagnosticCode = (typeof cliDiagnosticCodes)[number];
+
+// @public
+export const cliDiagnosticCodes: readonly ["MOSTRA_CLI_USAGE", "MOSTRA_CLI_UNKNOWN_COMMAND", "MOSTRA_CLI_TIMEOUT"];
+
+// @public
 export interface ClientCapabilities {
     readonly notifications?: readonly string[];
 }
@@ -664,6 +670,52 @@ export interface DepsAddResult {
 export function deserializeAll(batches: readonly unknown[], options?: ValueReaderOptions): Promise<unknown>;
 
 // @public
+export const DEV_NOTIFY = "dev/notify";
+
+// @public
+export type DevEventKind = "built" | "reloaded" | "server-restarted" | "submission" | "diagnostics";
+
+// @public
+export interface DevNotifyParams {
+    readonly at: string;
+    readonly diagnostics?: readonly Diagnostic[];
+    readonly files?: readonly string[];
+    readonly kind: DevEventKind;
+    readonly results?: unknown;
+    readonly sessionId: string;
+}
+
+// @public
+export const DevNotifyParams: z.ZodType<DevNotifyParams>;
+
+// @public
+export const devStartMethod: MethodDefinition<DevStartParams, DevStartResult>;
+
+// @public
+export interface DevStartParams {
+    readonly port?: number;
+    readonly source: SourceRef;
+}
+
+// @public
+export interface DevStartResult {
+    readonly port: number;
+    readonly sessionId: string;
+    readonly url: string;
+}
+
+// @public
+export const devStopMethod: MethodDefinition<DevStopParams, DevStopResult>;
+
+// @public
+export interface DevStopParams {
+    readonly sessionId: string;
+}
+
+// @public
+export type DevStopResult = Record<string, never>;
+
+// @public
 export interface Diagnostic {
     readonly code: DiagnosticCode;
     readonly count?: number;
@@ -683,7 +735,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -801,7 +853,7 @@ export function encodeLine(message: JsonRpcMessage): string;
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING", "MOSTRA_ENV_RUNTIME_MISSING"];
 
 // @public
 export type EphemeralMessage = {
@@ -1067,6 +1119,55 @@ export interface GatewayStatus {
 export const GatewayStatus: z.ZodType<GatewayStatus>;
 
 // @public
+export interface GcCompacted {
+    readonly artifacts: readonly {
+        readonly artifactId: string;
+        readonly removed: number;
+    }[];
+    readonly removed: number;
+}
+
+// @public
+export interface GcCompactEvents {
+    readonly before: string;
+}
+
+// @public
+export interface GcCount {
+    readonly bytes: number;
+    readonly count: number;
+}
+
+// @public
+export const gcRunMethod: MethodDefinition<GcRunParams, GcRunResult>;
+
+// @public
+export interface GcRunParams {
+    readonly compactEvents?: GcCompactEvents;
+    readonly dryRun?: boolean;
+}
+
+// @public
+export interface GcRunResult {
+    readonly bytes: number;
+    readonly caches: GcCount;
+    readonly compacted?: GcCompacted;
+    readonly dryRun: boolean;
+    readonly lockLayouts: GcCount;
+    readonly snapshots: GcCount;
+    readonly storePackages: GcCount;
+    readonly versions: readonly GcVersion[];
+}
+
+// @public
+export interface GcVersion {
+    readonly artifactId: string;
+    readonly bytes: number;
+    readonly number: number;
+    readonly versionId: string;
+}
+
+// @public
 export interface GeneratedIdKind<P extends IdPrefix> extends IdKind<P> {
     create(): Id<P>;
 }
@@ -1090,7 +1191,7 @@ export const HomeConfig: z.ZodType<HomeConfig>;
 export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 
 // @public
-export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY"];
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON"];
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
@@ -1141,6 +1242,26 @@ export interface InstanceCapabilities {
 
 // @public
 export const InstanceCapabilities: z.ZodType<InstanceCapabilities>;
+
+// @public
+export interface InstanceCheck {
+    readonly diagnostic?: Diagnostic;
+    readonly name: string;
+    readonly status: "ok" | "warning" | "error";
+}
+
+// @public
+export const instanceCheckMethod: MethodDefinition<InstanceCheckParams, InstanceCheckResult>;
+
+// @public
+export interface InstanceCheckParams {
+    readonly deep?: boolean;
+}
+
+// @public
+export interface InstanceCheckResult {
+    readonly checks: readonly InstanceCheck[];
+}
 
 // @public
 export interface InstanceInfo {
@@ -1256,7 +1377,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -2546,6 +2667,7 @@ export const VersionRef: z.ZodType<VersionRef>;
 
 // @public
 export interface VersionSummary {
+    readonly collected?: string;
     readonly envDigest: string;
     readonly forcedDiagnostics?: readonly string[];
     readonly id: string;
@@ -2592,6 +2714,17 @@ export interface ViewContextWire {
 export const ViewContextWire: z.ZodType<ViewContextWire>;
 
 // @public
+export const viewDefaultMethod: MethodDefinition<ViewDefaultParams, ViewDefaultResult>;
+
+// @public
+export interface ViewDefaultParams {
+    readonly artifact: ArtifactRef;
+}
+
+// @public
+export type ViewDefaultResult = CapabilityLink;
+
+// @public
 export interface Viewer {
     readonly id: string;
     readonly kind: ViewerKind;
@@ -2625,6 +2758,20 @@ export type ViewId = Id<"vw">;
 
 // @public
 export const ViewId: GeneratedIdKind<"vw">;
+
+// @public
+export const viewLaunchMethod: MethodDefinition<ViewLaunchParams, ViewLaunchResult>;
+
+// @public
+export interface ViewLaunchParams {
+    readonly tokenId: string;
+}
+
+// @public
+export interface ViewLaunchResult {
+    readonly expiresAt: string;
+    readonly url: string;
+}
 
 // @public
 export interface Viewport {

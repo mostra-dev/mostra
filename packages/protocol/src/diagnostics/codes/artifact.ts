@@ -14,6 +14,7 @@ export const artifactDiagnosticCodes = [
   "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
   "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN",
   "MOSTRA_ARTIFACT_VERSION_NOT_FOUND",
+  "MOSTRA_ARTIFACT_VERSION_COLLECTED",
   // gen:codes
 ] as const;
 
@@ -119,6 +120,17 @@ export const artifactDiagnostics: AreaCatalog<ArtifactDiagnosticCode> = {
       explanation:
         "The request named a version number or version ID that this artifact never published in this home. Viewers only ever open published versions (D09), so there is nothing to show.",
       fix: "List the artifact's versions with `artifact/get` and pick one, or omit the version to open the latest. A link to `/a/<artifactId>/v/<number>` needs a number from that list.",
+    },
+  },
+  MOSTRA_ARTIFACT_VERSION_COLLECTED: {
+    severity: "error",
+    phase: "host",
+    title: "Version collected",
+    hint: "Open the artifact's latest version, or publish this version's source again to restore its files.",
+    docs: {
+      explanation:
+        "`mostra gc` removed this version's files because nothing referenced it (D140). Its ID and number stay in the ledger forever, so history and events still name it, but it can't be opened or linked.",
+      fix: "Open a version that still exists (`artifact/get` marks collected ones), or publish the exact source of this version again: publish restores its files under the same ID and number.",
     },
   },
   // gen:entries

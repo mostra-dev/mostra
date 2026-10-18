@@ -126,8 +126,10 @@ export {
   artifactDiagnosticCodes,
   type BuildDiagnosticCode,
   buildDiagnosticCodes,
+  type CliDiagnosticCode,
   type ConsoleDiagnosticCode,
   type CreateDiagnosticOptions,
+  cliDiagnosticCodes,
   consoleDiagnosticCodes,
   createDiagnostic,
   type DepDiagnosticCode,
@@ -299,6 +301,15 @@ export {
   depsAddMethod,
 } from "./methods/deps/add.ts";
 export {
+  DEV_NOTIFY,
+  type DevEventKind,
+  DevNotifyParams,
+  type DevStartParams,
+  type DevStartResult,
+  devStartMethod,
+} from "./methods/dev/start.ts";
+export { type DevStopParams, type DevStopResult, devStopMethod } from "./methods/dev/stop.ts";
+export {
   type EventsAckParams,
   type EventsAckResult,
   eventsAckMethod,
@@ -321,7 +332,22 @@ export {
   type EventsUnsubscribeResult,
   eventsUnsubscribeMethod,
 } from "./methods/events/unsubscribe.ts";
+export {
+  type GcCompactEvents,
+  type GcCompacted,
+  type GcCount,
+  type GcRunParams,
+  type GcRunResult,
+  type GcVersion,
+  gcRunMethod,
+} from "./methods/gc/run.ts";
 export { hostMethods } from "./methods/index.ts";
+export {
+  type InstanceCheck,
+  type InstanceCheckParams,
+  type InstanceCheckResult,
+  instanceCheckMethod,
+} from "./methods/instance/check.ts";
 export {
   ChildProcessStatus,
   DeliveryCounts,
@@ -402,6 +428,16 @@ export {
   type StatePatchResult,
   statePatchMethod,
 } from "./methods/state/patch.ts";
+export {
+  type ViewDefaultParams,
+  type ViewDefaultResult,
+  viewDefaultMethod,
+} from "./methods/view/default.ts";
+export {
+  type ViewLaunchParams,
+  type ViewLaunchResult,
+  viewLaunchMethod,
+} from "./methods/view/launch.ts";
 export {
   type ViewRevokeParams,
   type ViewRevokeResult,

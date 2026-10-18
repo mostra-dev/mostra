@@ -9,10 +9,14 @@ import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
 import { depsAddMethod } from "./deps/add.ts";
+import { devStartMethod } from "./dev/start.ts";
+import { devStopMethod } from "./dev/stop.ts";
 import { eventsAckMethod } from "./events/ack.ts";
 import { eventsReadMethod } from "./events/read.ts";
 import { eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
+import { gcRunMethod } from "./gc/run.ts";
+import { instanceCheckMethod } from "./instance/check.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
@@ -28,6 +32,8 @@ import { secretListMethod } from "./secret/list.ts";
 import { secretSetMethod } from "./secret/set.ts";
 import { stateGetMethod } from "./state/get.ts";
 import { statePatchMethod } from "./state/patch.ts";
+import { viewDefaultMethod } from "./view/default.ts";
+import { viewLaunchMethod } from "./view/launch.ts";
 import { viewRevokeMethod } from "./view/revoke.ts";
 import { viewRotateMethod } from "./view/rotate.ts";
 import { viewUrlMethod } from "./view/url.ts";
@@ -65,5 +71,11 @@ export const hostMethods: readonly AnyMethod[] = [
   livePushMethod,
   portSecretsGetMethod,
   artifactVerifyMethod,
+  viewDefaultMethod,
+  viewLaunchMethod,
+  gcRunMethod,
+  instanceCheckMethod,
+  devStartMethod,
+  devStopMethod,
   // gen:methods
 ];

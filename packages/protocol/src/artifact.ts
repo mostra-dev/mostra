@@ -52,6 +52,11 @@ export interface VersionSummary {
   readonly outputDigest: string;
   /** Diagnostic codes a forced publish recorded (D41); absent when none. */
   readonly forcedDiagnostics?: readonly string[];
+  /**
+   * When `mostra gc` removed the version's files (D140): its ID and number stay, but it can't be
+   * opened until its exact source is published again. Absent for a version whose files exist.
+   */
+  readonly collected?: string;
 }
 
 /** One artifact, as `artifact/list` returns it. Metadata comes from the latest version's manifest. */
@@ -126,6 +131,7 @@ export const VersionSummary: z.ZodType<VersionSummary> = z
     envDigest: z.string().regex(/^[0-9a-f]{64}$/),
     outputDigest: z.string().regex(/^[0-9a-f]{64}$/),
     forcedDiagnostics: z.array(z.string()).readonly().exactOptional(),
+    collected: z.iso.datetime().exactOptional(),
   })
   .register(wireRegistry, { id: "VersionSummary", description: "One published version." });
 

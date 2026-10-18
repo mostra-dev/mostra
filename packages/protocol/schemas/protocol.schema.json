@@ -945,6 +945,107 @@
         "lockDigest"
       ]
     },
+    "DevNotifyParams": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "built",
+            "reloaded",
+            "server-restarted",
+            "submission",
+            "diagnostics"
+          ]
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "diagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        },
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "results": {}
+      },
+      "required": [
+        "sessionId",
+        "kind",
+        "at"
+      ],
+      "description": "One event of a dev session."
+    },
+    "DevStartParams": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
+    "DevStartResult": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "url",
+        "port",
+        "sessionId"
+      ],
+      "description": "A running dev session."
+    },
+    "DevStopParams": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "sessionId"
+      ]
+    },
+    "DevStopResult": {
+      "type": "object",
+      "properties": {}
+    },
     "Diagnostic": {
       "type": "object",
       "properties": {
@@ -1687,6 +1788,191 @@
       ],
       "description": "Where the gateway listens."
     },
+    "GcRunParams": {
+      "type": "object",
+      "properties": {
+        "dryRun": {
+          "type": "boolean"
+        },
+        "compactEvents": {
+          "type": "object",
+          "properties": {
+            "before": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          },
+          "required": [
+            "before"
+          ]
+        }
+      }
+    },
+    "GcRunResult": {
+      "type": "object",
+      "properties": {
+        "dryRun": {
+          "type": "boolean"
+        },
+        "versions": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "artifactId": {
+                "$ref": "#/$defs/ArtifactId"
+              },
+              "versionId": {
+                "$ref": "#/$defs/VersionId"
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "artifactId",
+              "versionId",
+              "number",
+              "bytes"
+            ]
+          }
+        },
+        "snapshots": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "count",
+            "bytes"
+          ]
+        },
+        "lockLayouts": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "count",
+            "bytes"
+          ]
+        },
+        "storePackages": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "count",
+            "bytes"
+          ]
+        },
+        "caches": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "count",
+            "bytes"
+          ]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "compacted": {
+          "type": "object",
+          "properties": {
+            "artifacts": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "artifactId": {
+                    "$ref": "#/$defs/ArtifactId"
+                  },
+                  "removed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "artifactId",
+                  "removed"
+                ]
+              }
+            },
+            "removed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "artifacts",
+            "removed"
+          ]
+        }
+      },
+      "required": [
+        "dryRun",
+        "versions",
+        "snapshots",
+        "lockLayouts",
+        "storePackages",
+        "caches",
+        "bytes"
+      ],
+      "description": "What gc reclaimed."
+    },
     "HomeConfig": {
       "type": "object",
       "properties": {
@@ -1751,6 +2037,51 @@
         "ports"
       ],
       "description": "What the instance offers: methods, notifications and supported ports."
+    },
+    "InstanceCheckParams": {
+      "type": "object",
+      "properties": {
+        "deep": {
+          "type": "boolean"
+        }
+      }
+    },
+    "InstanceCheckResult": {
+      "type": "object",
+      "properties": {
+        "checks": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "warning",
+                  "error"
+                ]
+              },
+              "diagnostic": {
+                "$ref": "#/$defs/Diagnostic"
+              }
+            },
+            "required": [
+              "name",
+              "status"
+            ]
+          }
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "description": "The supervisor's own checks of its home."
     },
     "InstanceInfo": {
       "type": "object",
@@ -3922,6 +4253,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "collected": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
         }
       },
       "required": [
@@ -3991,10 +4327,51 @@
       ],
       "description": "What one view is: its artifact, view ID, version, latest version, policy, channels and controls."
     },
+    "ViewDefaultParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
     "ViewId": {
       "type": "string",
       "pattern": "^vw_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "View ID: \"vw_\" followed by a 26-character ULID."
+    },
+    "ViewLaunchParams": {
+      "type": "object",
+      "properties": {
+        "tokenId": {
+          "$ref": "#/$defs/TokenId"
+        }
+      },
+      "required": [
+        "tokenId"
+      ]
+    },
+    "ViewLaunchResult": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "url",
+        "expiresAt"
+      ],
+      "description": "A one-time launch URL for a browser."
     },
     "ViewRevokeParams": {
       "type": "object",
