@@ -20,4 +20,4 @@ Run `mostra wait <artifact> --until submitted` to block until the viewer submits
 
 ## Hint
 
-Wait for a submission with `mostra wait --until submitted`, or name one that exists.
+Wait for a submission with `mostra wait <artifact> --until submitted`, or name one that exists.

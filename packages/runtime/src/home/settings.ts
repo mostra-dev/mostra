@@ -25,6 +25,11 @@ export interface HomeSettings {
   readonly expectedPorts?: Readonly<Record<string, readonly string[]>>;
   /** The submit channels the home accepts, when a host narrowed them (D108). */
   readonly submitChannels?: readonly ("shell" | "artifact")[];
+  /**
+   * The first host that configured this home (D140 item 4): written once, never removed. The
+   * standalone CLI sends no telemetry for a home that carries it.
+   */
+  readonly hostConfigured?: { readonly client: string; readonly at: string };
 }
 
 const Settings = z.looseObject({
@@ -36,6 +41,7 @@ const Settings = z.looseObject({
     .min(1)
     .max(2)
     .optional(),
+  hostConfigured: z.object({ client: z.string(), at: z.string() }).optional(),
 });
 
 /** The settings file of a home. */
@@ -94,4 +100,14 @@ export function writeHomeSettings(home: string, change: HomeSettings): void {
   } finally {
     closeSync(dir);
   }
+}
+
+/**
+ * Marks the home as configured by a host (D140 item 4), once: the first host's client name and
+ * when. A home already marked keeps its mark.
+ */
+export function markHostConfigured(home: string, client: string, at: Date = new Date()): boolean {
+  if (readHomeSettings(home).hostConfigured !== undefined) return false;
+  writeHomeSettings(home, { hostConfigured: { client, at: at.toISOString() } });
+  return true;
 }

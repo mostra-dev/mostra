@@ -25,6 +25,7 @@
 | A plain call's or a run's result grows past 16 MiB | The worker's call is cancelled and the call or run ends `MOSTRA_ACTION_TOO_LARGE` (`too-large`); arguments past 16 MiB are refused (413) before a worker sees them (D131) |
 | A worker can't be started (its version is damaged, the runtime lacks `@mostra/worker`, its bundle throws while loading) | The call or run fails with `MOSTRA_RUNTIME_WORKER_CRASHED` naming why, and counts as one crash for backoff and parking, its kind (`oom` while loading) included (D136) |
 | Builder or verify runner crashes | The operation fails with `MOSTRA_BUILD_CRASHED` or `MOSTRA_VERIFY_CRASHED` plus the child's last stderr lines. Nothing is published. The next operation starts a fresh child |
+| A `mostra dev` session's dev server stops, or the source doesn't build (D140 item 12) | The session reports it on `dev/notify` (`diagnostics`, `MOSTRA_BUILD_CRASHED` or the build's codes); a client module that doesn't build shows Vite's error overlay in the page, and server code that doesn't build leaves the last good bundle running. The next change of the source builds again. The connection that started the session closing, `dev/stop` or the instance stopping ends it: its children stop and `cache/dev/<session>/` is removed, and a start removes what a killed instance left |
 | PTY host crashes | Live terminals show "Session ended unexpectedly", recordings keep their bytes up to the crash, and a reconnect starts a new PTY host. Other features are unaffected |
 | Demo dev server exits | `<WebDemo>` shows the exit code and the last log lines. `mostra open` or a reload restarts it |
 | CLI version differs from the daemon's | Protocol negotiation picks the highest common revision. If none exists, the CLI reports `MOSTRA_HOST_REVISION_UNSUPPORTED` with `mostra daemon restart` as the fix. Restarting is safe: everything durable survives, and open views reconnect |
@@ -108,7 +109,10 @@
 |---|---|
 | New version published while a view is open | The banner appears, with the orphan count. A following viewer switches automatically, unless unsaved edits or orphans would result (D63) |
 | Old version's client runtime meets a newer gateway | The gateway serves every browser-protocol revision it ever shipped. Removing a revision needs a 12-month deprecation and a new major version (D32) |
-| `mostra gc` | Collects only versions referenced by no submission, view, review set or follow (VR-06). A dry run lists what it would remove |
+| `mostra gc` | Collects only versions referenced by no submission, view, review set or follow (VR-06). A dry run lists what it would remove. A collected version keeps its ledger row, ID and number; links to it answer `MOSTRA_ARTIFACT_VERSION_COLLECTED`, and publishing its exact source again restores it (D140 item 14) |
+| gc meets a publish, a verify run or an install | They never overlap: gc holds the instance's gate alone, the others share it, and a waiting gc goes before work that arrives after it (D140 item 14) |
+| A gc step fails (a file it can't remove, the package store's prune) | That step leaves its files and is reported as a `MOSTRA_HOME_GC_INCOMPLETE` warning beside what the run did remove; the other steps run, and the store's index keeps every package the failed prune left. A later `mostra gc` picks up the rest (Opus review of WP-10, finding 1) |
+| The process dies during gc | gc marks the versions it collects in one transaction and removes their files after the commit. A crash before the commit leaves everything; one after it leaves files of marked versions, which recovery at the next start removes |
 | Artifact source moved or deleted after publish | Versions, submissions and results stay readable from `sources/` and `versions/` (HO-08). The next publish from a new path binds by manifest `id` |
 
 ## 8. Network, sessions and addressing
@@ -142,6 +146,8 @@
 
 | Case | Behavior |
 |---|---|
+| The CLI's telemetry settings file can't be read or parsed | Telemetry is off: nothing is sent, nothing crashes, no exit code changes, and `mostra telemetry status` names the file (D140 item 5). Only `mostra telemetry on` or `off` writes over it |
+| The telemetry collector can't be reached, or answers slowly | No command waits for it: a detached flusher posts the queue after the command, and keeps what it couldn't send for the next flush; past 1,000 events or 7 days the oldest are dropped (D140 item 6) |
 | Manifest isn't a literal, or is invalid | `verify` and `publish` report `MOSTRA_MANIFEST_*` with the location and a fix. Unknown keys are warnings, so manifests evolve additively |
 | Unknown import with `dependencies: "explicit"` | `MOSTRA_DEP_MISSING` with the exact `mostra add` command (D43) |
 | Package lifecycle script fails | The install fails with `MOSTRA_DEP_INSTALL_FAILED` and the script's output; nothing is published. It runs in an install child with the artifact's directory and environment, never in the supervisor (DP-05) |

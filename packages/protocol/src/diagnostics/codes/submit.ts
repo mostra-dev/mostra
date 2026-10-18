@@ -58,7 +58,7 @@ export const submitDiagnostics: AreaCatalog<SubmitDiagnosticCode> = {
     severity: "error",
     phase: "runtime",
     title: "No such submission",
-    hint: "Wait for a submission with `mostra wait --until submitted`, or name one that exists.",
+    hint: "Wait for a submission with `mostra wait <artifact> --until submitted`, or name one that exists.",
     docs: {
       explanation:
         "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",

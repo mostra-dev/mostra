@@ -15,7 +15,9 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
 import { join, resolve } from "node:path";
+import type { Duplex } from "node:stream";
 import {
   type ArtifactDetail,
   ArtifactId,
@@ -25,6 +27,7 @@ import {
   type CapabilityScope,
   type ControlsPolicy,
   createDiagnostic,
+  type Diagnostic,
   durationMs,
   type FrameTicket,
   type Refusal,
@@ -32,6 +35,8 @@ import {
   refusal,
   safePath,
   scopeAllows,
+  viewDefaultMethod,
+  viewLaunchMethod,
   viewRevokeMethod,
   viewRotateMethod,
   viewUrlMethod,
@@ -59,6 +64,7 @@ import {
   type MintedToken,
   SESSION_MAX_AGE_S,
 } from "./capabilities.ts";
+import { type DevUpstream, devFetch, devUpgrade } from "./dev.ts";
 import {
   BASE_HEADERS,
   cookieValues,
@@ -77,6 +83,7 @@ import { fileResponse, findFile } from "./serve.ts";
 
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
+export type { DevUpstream } from "./dev.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -125,6 +132,12 @@ export interface GatewayOptions {
    * holds the tag, so what publish promotes is byte-identical to what verify built.
    */
   readonly target?: "live" | "verify";
+  /**
+   * `mostra dev`'s sandbox (D140 item 12): the artifact origin's files and its HMR WebSocket come
+   * from the session's Vite server, behind the same checks, and frame tickets say the page is a
+   * development preview. `upstream` is where that server listens now.
+   */
+  readonly dev?: { readonly upstream: () => DevUpstream | undefined };
 }
 
 /** The gateway of one instance. */
@@ -260,7 +273,13 @@ export function createGateway(options: GatewayOptions): Gateway {
     log,
     versionOf: (artifactId, number) => {
       const found = artifacts.get({ artifactId }).versions.find((v) => v.number === number);
-      return found ? { id: found.id, number: found.number } : undefined;
+      return found
+        ? {
+            id: found.id,
+            number: found.number,
+            ...(found.collected !== undefined ? { collected: found.collected } : {}),
+          }
+        : undefined;
     },
     activated: options.activated,
     ...(options.revisions ? { revisions: options.revisions } : {}),
@@ -312,14 +331,20 @@ export function createGateway(options: GatewayOptions): Gateway {
   const versionOf = (
     detail: ArtifactDetail,
     wanted: number | string | undefined,
-  ): { readonly id: string; readonly number: number } | undefined => {
+  ): { readonly id: string; readonly number: number; readonly collected?: string } | undefined => {
     const found =
       wanted === undefined
         ? (detail.latestVersion ?? detail.versions[0])
         : detail.versions.find((version) =>
             typeof wanted === "number" ? version.number === wanted : version.id === wanted,
           );
-    return found ? { id: found.id, number: found.number } : undefined;
+    return found
+      ? {
+          id: found.id,
+          number: found.number,
+          ...(found.collected !== undefined ? { collected: found.collected } : {}),
+        }
+      : undefined;
   };
 
   // ── The shell ────────────────────────────────────────────────────────────────────────────
@@ -414,7 +439,12 @@ export function createGateway(options: GatewayOptions): Gateway {
     const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
     const body = await readJsonObject(context.request);
     if (isRefusal(body)) return refuse(shellChecks, body, meta);
-    const grant = capabilities.presentToken(body["token"], artifactId);
+    // A link's token, or a one-time launch ticket from `mostra open` (D140 item 15), which is
+    // spent only once it started (or reused) a session.
+    const launch = body["token"] === undefined && body["launch"] !== undefined;
+    const grant = launch
+      ? capabilities.presentLaunch(body["launch"], artifactId, false)
+      : capabilities.presentToken(body["token"], artifactId);
     if (isRefusal(grant)) return refuse(shellChecks, grant, meta);
     // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
     // could send the viewer to its own, narrower link and take over their tabs.
@@ -425,6 +455,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     );
     if (!isRefusal(existing)) {
       if (existing.grant.tokenId === grant.tokenId) {
+        if (launch) capabilities.spendLaunch(body["launch"]);
         return jsonResponse({ csrf: existing.csrf, ...sessionFacts(artifactId, existing.grant) });
       }
       if (body["replace"] !== true) {
@@ -443,6 +474,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       }
     }
     const session = capabilities.createSession({ tokenId: grant.tokenId, origin: shellOrigin() });
+    if (launch) capabilities.spendLaunch(body["launch"]);
     log.info("gateway.session_started", {
       origin: shellOrigin(),
       artifactId,
@@ -509,8 +541,13 @@ export function createGateway(options: GatewayOptions): Gateway {
         { status: 404 },
       );
     }
+    // A collected version's files are gone until its source is published again (D140 item 14).
+    if (version.collected !== undefined) {
+      return jsonResponse(collectedDiagnostic(version.number), { status: 410 });
+    }
     // A damaged version is never shown (FAILURE_MODEL §3).
-    const damage = await integrity.check(version.id);
+    // A dev preview has no stored build to check: Vite serves the source (D140 item 12).
+    const damage = options.dev ? undefined : await integrity.check(version.id);
     if (damage !== undefined) return damaged(version.number, damage, false);
     const port = await openArtifact(artifactId);
     const artifactOrigin = addressing.origin(port);
@@ -562,6 +599,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       follow: interaction.following({ artifactId, viewerId }),
       pinned: pinned !== undefined,
       ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
+      ...(options.dev ? { devPreview: true as const } : {}),
     };
     return jsonResponse(answer);
   };
@@ -756,8 +794,36 @@ export function createGateway(options: GatewayOptions): Gateway {
           meta,
         );
       }
-      const root = (versionId: string): string => join(artifacts.versionDir(versionId), "client");
       const headers = { ...documentHeaders(kind(), "") };
+      if (options.dev) {
+        // A development preview: the session's Vite server answers, never a stored version.
+        const upstream = options.dev.upstream();
+        if (!upstream) {
+          return refuse(
+            checks(),
+            refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server isn't running.", 503),
+            meta,
+          );
+        }
+        const answered = await devFetch(upstream, context.request, url.pathname + url.search).catch(
+          () => undefined,
+        );
+        if (!answered) {
+          return refuse(
+            checks(),
+            refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server didn't answer.", 502),
+            meta,
+          );
+        }
+        // Statuses that carry no body (a 304 to a revalidation above all, RFC 9110 §15.4.5).
+        const bodiless =
+          context.request.method === "HEAD" || [204, 205, 304].includes(answered.status);
+        return new Response(bodiless ? null : new Uint8Array(answered.body), {
+          status: answered.status,
+          headers: { ...answered.headers, ...headers, "cache-control": "no-cache" },
+        });
+      }
+      const root = (versionId: string): string => join(artifacts.versionDir(versionId), "client");
       const versionId = session.versionId;
       let file = await findFile(root(versionId), path);
       let from = versionId;
@@ -846,6 +912,27 @@ export function createGateway(options: GatewayOptions): Gateway {
     artifactOf: () => artifactId,
   });
 
+  /**
+   * The HMR WebSocket of a dev sandbox's artifact origin (D140 item 12): after the listener checked
+   * Host and Origin, only a live frame session of this origin reaches the dev server.
+   */
+  const devSocket =
+    (artifactId: string, port: () => number) =>
+    (incoming: IncomingMessage, socket: Duplex, head: Buffer): Refusal | undefined => {
+      const upstream = options.dev?.upstream();
+      if (!upstream)
+        return refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server isn't running.", 503);
+      const cookie = incoming.headers.cookie;
+      const session = capabilities.session(
+        cookieValues(typeof cookie === "string" ? cookie : null, `mostra-${port()}`),
+        addressing.origin(port()),
+        artifactId,
+      );
+      if (isRefusal(session)) return session;
+      devUpgrade(upstream, incoming, socket, head);
+      return undefined;
+    };
+
   /** Binds the artifact's listener on its leased port, once; resolves with the port. */
   const openArtifact = (artifactId: string): Promise<number> => {
     const bound = artifactListeners.get(artifactId);
@@ -864,6 +951,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             artifactChecks(artifactId, () => port),
             artifactRoutes(artifactId, () => port),
           ),
+        ...(options.dev ? { upgrade: devSocket(artifactId, () => port) } : {}),
       });
       port = await addressing.listen(listener.server, { purpose: "artifact", owner: artifactId });
       artifactListeners.set(artifactId, { listener, port });
@@ -981,6 +1069,8 @@ export function createGateway(options: GatewayOptions): Gateway {
             }),
           );
         }
+        if (version.collected !== undefined)
+          throw new RpcError(collectedDiagnostic(version.number));
         return recorded(requestKey("view/url", params), (db) =>
           capabilities.mint(
             {
@@ -996,6 +1086,34 @@ export function createGateway(options: GatewayOptions): Gateway {
             db,
           ),
         );
+      }),
+      handler(viewDefaultMethod, (params) => {
+        const detail = artifacts.get(params.artifact);
+        return link(capabilities.defaultLink(detail.id));
+      }),
+      handler(viewLaunchMethod, (params) => {
+        const minted = capabilities.mintLaunch(params.tokenId);
+        if (minted === undefined) {
+          return fail(
+            refusal(
+              "MOSTRA_HYGIENE_TOKEN_INVALID",
+              `No capability token ${params.tokenId} exists in this home.`,
+            ),
+          );
+        }
+        if (minted === "dead") {
+          return fail(
+            refusal(
+              "MOSTRA_HYGIENE_TOKEN_REVOKED",
+              `The token ${params.tokenId} was revoked, has expired, or was made for another address.`,
+            ),
+          );
+        }
+        const { grant } = minted;
+        return {
+          url: `${shellOrigin()}/a/${grant.artifactId}${grant.pinnedVersion !== undefined ? `/v/${grant.pinnedVersion}` : ""}#l=${minted.ticket}`,
+          expiresAt: minted.expiresAt,
+        };
       }),
       handler(viewRotateMethod, (params) =>
         recorded(requestKey("view/rotate", params), (db) => {
@@ -1049,6 +1167,13 @@ export function createGateway(options: GatewayOptions): Gateway {
       ]);
     },
   };
+}
+
+/** The answer for a version `mostra gc` collected (D140 item 14). */
+function collectedDiagnostic(number: number): Diagnostic {
+  return createDiagnostic("MOSTRA_ARTIFACT_VERSION_COLLECTED", {
+    message: `Version ${number} of this artifact was collected by gc; its files are gone until its source is published again.`,
+  });
 }
 
 /** The tag that tells the client runtime it runs for `verify` (D111, D138). */

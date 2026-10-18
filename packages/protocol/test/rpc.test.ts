@@ -271,16 +271,29 @@ describe("LineSplitter", () => {
 
 describe("LineSplitter on long lines (WP-08)", () => {
   it("splits a 32 MiB line sent in 64 KiB chunks in linear time, and keeps every character", () => {
-    const splitter = new LineSplitter();
     const chunk = "x".repeat(64 * 1024);
+    // The same work done once, measured on the same machine at the same moment: building the
+    // 32 MiB string and searching it for a newline a single time. A load that slows this run
+    // slows the reference too.
+    const referenceStarted = performance.now();
+    let reference = "";
+    for (let i = 0; i < 512; i++) reference += chunk;
+    expect(reference.indexOf("\n")).toBe(-1);
+    const referenceMs = performance.now() - referenceStarted;
+
+    const splitter = new LineSplitter();
     const started = performance.now();
-    for (let i = 0; i < 512; i++) expect(splitter.push(chunk)).toEqual([]);
-    expect(splitter.rest.length).toBe(32 * 1024 * 1024);
+    const pushed: string[][] = [];
+    for (let i = 0; i < 512; i++) pushed.push(splitter.push(chunk));
     const [line, ...others] = splitter.push("y\nnext");
-    // Searching every buffered character again per chunk took 1.6 s here; one pass takes 20 ms.
-    expect(performance.now() - started).toBeLessThan(500);
+    const elapsed = performance.now() - started;
+    expect(pushed.every((lines) => lines.length === 0)).toBe(true);
+    expect(splitter.rest).toBe("next");
+    // Searching every buffered character again per chunk scans 256 times the reference's
+    // characters (1.6 s here against 20 ms for one pass); a linear splitter stays within a few
+    // times the reference, or 500 ms on a quiet machine.
+    expect(elapsed).toBeLessThan(Math.max(500, referenceMs * 20));
     expect(line?.length).toBe(32 * 1024 * 1024 + 1);
     expect(others).toEqual([]);
-    expect(splitter.rest).toBe("next");
   });
 });

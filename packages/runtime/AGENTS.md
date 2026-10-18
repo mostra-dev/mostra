@@ -148,6 +148,14 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   `verify: { status, verifyRevision }` on the version (migration 8): only a `pass` is ever a
   regression baseline. Playwright, axe and the type checker run in children (`@mostra/verify`'s
   runner, `typecheck`), never in the supervisor (RT-02's audit covers verify).
+- **A dev preview is never a viewer's path (VR-03, VR-08, D140 item 12).** `mostra dev` serves
+  unpublished source only from its session's sandbox: listeners on loopback ports the operating
+  system picks, a link minted in the session's scratch ledger, the gateway's route table and
+  checks in front of the dev server (`gateway/dev.ts` proxies files and the HMR WebSocket, without
+  Mostra's cookies), and a dev server that answers only requests carrying the session's secret.
+  The home's gateway never proxies to it, no home link opens it, and a non-loopback `--bind`
+  refuses it. A session belongs to the connection that started it, keeps a daemon from its idle
+  exit, and its directory is removed when it ends and at every start.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -175,6 +183,8 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
 | `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
 | `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd) (D133) |
+| `gc` | What keeps a version (`REFERENCE_SOURCES`, one named source per rule, checked against every ledger column that names a version by `test/unit/gc.test.ts`), the collection that marks versions in `version_collected` and removes their files, unreferenced snapshots, lock layouts, store packages and verify caches, serialized against publish, verify and installs by the instance's `Gate` (`src/gate.ts`), and `gc/run` (D140 item 14) |
+| `dev` | `mostra dev`'s sessions (D140 item 12): the source mirrored into `cache/dev/<session>/root`, the dev server in a builder child (`builder/child/dev.ts`, Vite in middleware mode, answering only with the session's secret), the sandbox the preview is served from (`verify/sandbox.ts` with `dev`), and `dev/start`, `dev/stop` and `dev/notify` |
 | `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
@@ -217,7 +227,9 @@ first module outside `protocol-server` needs it.
   the versions frozen at every browser-protocol revision against today's gateway and the next
   (`browser-revisions.test.ts`, VR-10), and WP-08's suites: calls, runs, secrets and live sources
   through both launchers (`actions.test.ts`), worker and daemon lifecycles (`lifecycle.test.ts`),
-  producers and the secrets port (`producers.test.ts`), and the five D19 seams (`seams.test.ts`).
+  producers and the secrets port (`producers.test.ts`), and the five D19 seams (`seams.test.ts`),
+  and WP-10's `mostra dev` sessions in Chromium (`dev.test.ts`: hot updates, server code, scratch
+  submissions, the session's end, its listeners and secrets).
   CI runs them on macOS and
   Linux (`integration` job, D86), split into groups of suites, one machine each:
   `MOSTRA_TEST_GROUP=core|verify|verify-failures` runs one group (`vitest.config.ts`), unset runs
@@ -239,7 +251,8 @@ first module outside `protocol-server` needs it.
   the current browser-protocol revision into `test/fixtures/browser-revisions/<revision>/`, once
   per revision; it refuses to overwrite one (D111).
 - `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
-  violations: red with the seed, green without it.
+  violations: red with the seed, green without it. `--name <text>` narrows them to the seeds whose
+  names contain it (`--only VR-06 --name "Opus review"`).
 
 ## Gotchas
 

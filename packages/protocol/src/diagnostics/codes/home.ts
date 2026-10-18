@@ -15,6 +15,8 @@ export const homeDiagnosticCodes = [
   "MOSTRA_HOME_GONE",
   "MOSTRA_HOME_MISMATCH",
   "MOSTRA_HOME_INTEGRITY",
+  "MOSTRA_HOME_NOT_ALWAYS_ON",
+  "MOSTRA_HOME_GC_INCOMPLETE",
   // gen:codes
 ] as const;
 
@@ -120,6 +122,28 @@ export const homeDiagnostics: AreaCatalog<HomeDiagnosticCode> = {
       explanation:
         "Mostra checks stored versions, source snapshots and blobs against their recorded content digests before using them. This code means a stored object is missing or its content changed after it was written, for example after a disk error or a manual edit inside the home. The message names the object.",
       fix: "Leave files inside the home unchanged. To repair a version, publish the same source again: Mostra rebuilds the version's directory and puts it back under the same version ID, and the artifact keeps its version number. If the source has changed since, the publish makes a new version and the damaged one stays as it is; its source snapshot in the home holds the original files. `mostra doctor` lists other damaged objects.",
+    },
+  },
+  MOSTRA_HOME_NOT_ALWAYS_ON: {
+    severity: "warning",
+    phase: "host",
+    title: "Long-lived artifacts without an always-on daemon",
+    hint: "Run `mostra daemon install` so the home's daemon runs as a login service and these artifacts answer at any hour.",
+    docs: {
+      explanation:
+        "The home has artifacts with submission policy `none`, which are meant to stay open (dashboards, task managers, D63), but no login service runs its daemon. Without one, the daemon exits after 30 idle minutes and their links stop answering until a command starts it again.",
+      fix: "Run `mostra daemon install`. It registers a launchd or systemd user service that keeps the home's daemon running; `mostra daemon uninstall` removes it.",
+    },
+  },
+  MOSTRA_HOME_GC_INCOMPLETE: {
+    severity: "warning",
+    phase: "host",
+    title: "gc didn't finish a step",
+    hint: "Run `mostra gc` again: what this run removed is in its result, and the next run picks up what it left.",
+    docs: {
+      explanation:
+        "`mostra gc` removes what nothing references in steps: version files, source snapshots, lock layouts, the package store, verify's caches and, when asked, events. One step failed (the message names it and why), so it left that step's files in place. Everything an earlier step removed is listed in the result, and the versions it collected stay collected. The home is consistent: what gc left is still recorded as there.",
+      fix: "Run `mostra gc` again; a failure that repeats names its cause in the message (for example, a file the user can't remove).",
     },
   },
   // gen:entries

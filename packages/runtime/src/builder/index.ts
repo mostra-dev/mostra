@@ -13,16 +13,35 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDiagnostic } from "@mostra/protocol";
+import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import type { FieldCoverage } from "./coverage.ts";
-import { BUILD_METHOD, type BuildRequest, type BuildResponse, STAGING_FILES } from "./types.ts";
+import {
+  BUILD_METHOD,
+  type BuildRequest,
+  type BuildResponse,
+  DEV_CHANGED_METHOD,
+  DEV_METHOD,
+  DEV_RELOAD_METHOD,
+  DEV_SERVER_NOTIFICATION,
+  DEV_UPDATE_NOTIFICATION,
+  type DevChange,
+  type DevReady,
+  type DevRequest,
+  type DevServerBuild,
+  STAGING_FILES,
+} from "./types.ts";
 
 export { coverageMatcher, type FieldCoverage, type FieldEntry } from "./coverage.ts";
 export {
   type BuildRequest,
   type BuildResponse,
+  DEV_SECRET_HEADER,
+  type DevChange,
+  type DevReady,
+  type DevRequest,
+  type DevServerBuild,
   LIVE_DECLARATION,
   type VersionRegistry,
 } from "./types.ts";
@@ -67,6 +86,32 @@ export interface RenderMode {
   build(request: BuildRequest): Promise<BuildResponse>;
   /** The server bundle a worker loads from a version directory, when the version has one. */
   serverEntry(versionDir: string): string | undefined;
+  /**
+   * `mostra dev` (VR-08, D140 item 12): a dev server in a builder child of its own, over the dev
+   * root's mirror of the source, until {@link DevChild.stop}. Throws `MOSTRA_BUILD_CRASHED` when
+   * the child can't start it.
+   */
+  dev(request: DevRequest, events: DevEvents): Promise<DevChild>;
+}
+
+/** What a dev child tells the supervisor as the source changes. */
+export interface DevEvents {
+  /** The server bundle was built again, or failed to build; `files` changed. */
+  server(build: DevServerBuild, files: readonly string[]): void;
+  /** Client modules of `files` were updated in place. */
+  update(files: readonly string[]): void;
+}
+
+/** A running dev child. */
+export interface DevChild {
+  readonly ready: DevReady;
+  /** Tells every page to load again. */
+  reload(): Promise<void>;
+  /** These files of the mirror changed; resolves once the child acted on them. */
+  changed(changes: readonly DevChange[]): Promise<void>;
+  /** Resolves when the child ended, for whatever reason. */
+  readonly exited: Promise<{ readonly stderrTail: readonly string[] }>;
+  stop(): Promise<void>;
 }
 
 /** The directory of `@mostra/runtime`'s package.json. */
@@ -156,6 +201,65 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
     serverEntry(versionDir) {
       const entry = spaServerEntry(versionDir);
       return entry === undefined ? undefined : join(versionDir, entry);
+    },
+    async dev(request, events) {
+      const child = await options.processes.spawn({
+        kind: "builder",
+        ownerRef: request.root,
+        command: process.execPath,
+        args: [childEntry(root)],
+        cwd: request.root,
+        // A dev server builds for development; nothing else of the supervisor's environment.
+        env: { ...childEnv, NODE_ENV: "development" },
+        ipc: {
+          onNotification: (method, params) => {
+            const body = (params ?? {}) as { build?: DevServerBuild; files?: string[] };
+            if (method === DEV_SERVER_NOTIFICATION && body.build)
+              events.server(body.build, body.files ?? []);
+            if (method === DEV_UPDATE_NOTIFICATION) events.update(body.files ?? []);
+          },
+        },
+      });
+      const outcome = await Promise.race([
+        child
+          .request(DEV_METHOD, request as unknown as Record<string, unknown>, {
+            timeoutMs: timeoutMs + 1000,
+          })
+          .then(
+            (ready) => ({ kind: "ready" as const, ready: ready as DevReady }),
+            (error: unknown) => ({ kind: "error" as const, error }),
+          ),
+        child.exited.then((exit) => ({ kind: "exit" as const, exit })),
+      ]);
+      if (outcome.kind !== "ready") {
+        await child.stop(2000);
+        const why =
+          outcome.kind === "error"
+            ? ((outcome.error as Error).message ?? String(outcome.error))
+            : `it exited (${outcome.exit.signal ?? `code ${outcome.exit.code}`})${outcome.exit.stderrTail.length > 0 ? `\n${outcome.exit.stderrTail.slice(-10).join("\n")}` : ""}`;
+        throw new RpcError(
+          createDiagnostic("MOSTRA_BUILD_CRASHED", {
+            message: `The dev server couldn't start: ${why}`,
+          }),
+        );
+      }
+      return {
+        ready: outcome.ready,
+        reload: async () => {
+          await child.request(DEV_RELOAD_METHOD, {}, { timeoutMs: 5000 });
+        },
+        changed: async (changes) => {
+          await child.request(
+            DEV_CHANGED_METHOD,
+            { changes: changes as unknown as Record<string, unknown>[] },
+            { timeoutMs: timeoutMs + 1000 },
+          );
+        },
+        exited: child.exited,
+        stop: async () => {
+          await child.stop(3000);
+        },
+      };
     },
     async build(request) {
       const child = await options.processes.spawn({

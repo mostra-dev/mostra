@@ -551,4 +551,33 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 9,
+    name: "collected versions",
+    up(db) {
+      // D140 item 14: `mostra gc` removes an unreferenced version's files and keeps its row, ID
+      // and number forever, so a content-addressed ID never gets a second number. The collection
+      // is a row here, never a change to `version`: inserted once, never updated, and deleted only
+      // when a publish of the exact source restores the files.
+      db.exec(`
+        CREATE TABLE version_collected (
+          version_id TEXT PRIMARY KEY REFERENCES version(id),
+          collected_at TEXT NOT NULL
+        );
+        CREATE TRIGGER version_collected_write_once BEFORE UPDATE ON version_collected
+        BEGIN
+          SELECT RAISE(ABORT, 'a collection record never changes');
+        END;
+        CREATE TRIGGER version_collected_not_replaced BEFORE INSERT ON version_collected
+        WHEN EXISTS (SELECT 1 FROM version_collected WHERE version_id = NEW.version_id)
+        BEGIN
+          SELECT RAISE(ABORT, 'a version is collected once');
+        END;
+        CREATE TRIGGER version_kept BEFORE DELETE ON version
+        BEGIN
+          SELECT RAISE(ABORT, 'a version row is kept forever, collected or not');
+        END;
+      `);
+    },
+  },
 ];

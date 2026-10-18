@@ -114,10 +114,17 @@ export function localLauncher(options: LocalLauncherOptions): WorkerLauncher {
         throw new Error(`The local launcher can't reach ${spec.version.locator}.`);
       }
       const versionDir = resolve(options.home, spec.version.locator.slice("home:".length));
-      // A published version, or a build a verify run made and serves from its sandbox (D138).
-      const roots = [resolve(options.home, "versions"), resolve(options.home, "cache", "builds")];
+      // A published version, a build a verify run made and serves from its sandbox (D138), or a
+      // `mostra dev` session's server bundle (D140 item 12).
+      const roots = [
+        resolve(options.home, "versions"),
+        resolve(options.home, "cache", "builds"),
+        resolve(options.home, "cache", "dev"),
+      ];
       if (!roots.some((root) => versionDir.startsWith(`${root}/`))) {
-        throw new Error("A home: locator names a version directory or a verify build of the home.");
+        throw new Error(
+          "A home: locator names a version directory, a verify build or a dev session of the home.",
+        );
       }
       const modules = await options.modules?.({
         artifactId: spec.artifactId,

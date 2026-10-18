@@ -88,6 +88,17 @@ rules.push(
     to: { path: "^packages/runtime/src/builder/child/" },
   },
   {
+    name: "telemetry-cli-only",
+    comment:
+      "Telemetry is the standalone CLI's alone (D119, D140): nothing outside @mostra/cli imports its telemetry module, so embedded use (the SDK, the runtime, hosts) can't send an event by construction.",
+    severity: "error",
+    from: {
+      path: "^(packages|plugins|apps|tests|tools)/",
+      pathNot: "^packages/cli/(src|test|scripts)/",
+    },
+    to: { path: "^packages/cli/src/telemetry/" },
+  },
+  {
     name: "no-circular",
     comment: "Circular imports hide the real dependency direction.",
     severity: "error",

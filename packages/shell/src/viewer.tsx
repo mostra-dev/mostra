@@ -71,6 +71,7 @@ import {
   BANNER_WORDS,
   BLOCKER_WORDS,
   CONTROL_WORDS,
+  DEV_WORDS,
   ORPHAN_WORDS,
   RECEIPT_WORDS,
   SAVE_WORDS,
@@ -869,6 +870,13 @@ export function ViewerPage(props: {
           </div>
         )}
       </header>
+      {state.ticket.devPreview && (
+        <div className="mostra-banner mostra-dev" data-mostra-dev-preview="" role="status">
+          <div>
+            <strong>{DEV_WORDS.preview}</strong>
+          </div>
+        </div>
+      )}
       {state.serverParked && (
         <div className="mostra-banner mostra-warn" data-mostra-server-notice="parked" role="alert">
           <div>

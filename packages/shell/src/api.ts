@@ -4,6 +4,7 @@
  * Choose, follow and what a version carries over. Every call is same-origin JSON; mutations carry
  * the session's CSRF token, which only this page can read.
  */
+
 import {
   BROWSER_PROTOCOL_REVISION,
   type CarryOver,
@@ -12,6 +13,7 @@ import {
   type MutationResult,
   type SubmissionSummary,
 } from "@mostra/protocol";
+import type { Credential } from "./location.ts";
 
 export type { FrameTicket } from "@mostra/protocol";
 
@@ -81,15 +83,19 @@ export interface Conflict {
 }
 
 /**
- * Exchanges the link's capability token for a session cookie. When this browser already has a
+ * Exchanges the link's capability token, or a one-time launch ticket (D140), for a session cookie. When this browser already has a
  * session from another link, the gateway answers `MOSTRA_HYGIENE_SESSION_CONFLICT` (a
  * {@link ShellError} whose body is a {@link Conflict}) unless `replace` is set (D98 item 8).
  */
-export function exchange(apiBase: string, token: string, replace = false): Promise<ShellSession> {
+export function exchange(
+  apiBase: string,
+  credential: Credential,
+  replace = false,
+): Promise<ShellSession> {
   return call(`${apiBase}/session`, {
     method: "POST",
     headers: JSON_HEADERS,
-    body: JSON.stringify(replace ? { token, replace: true } : { token }),
+    body: JSON.stringify(replace ? { ...credential, replace: true } : credential),
   });
 }
 

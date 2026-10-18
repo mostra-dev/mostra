@@ -172,6 +172,15 @@
       "fix": "Leave out the template, or use one of the templates of this release."
     },
     {
+      "code": "MOSTRA_ARTIFACT_VERSION_COLLECTED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Version collected",
+      "hint": "Open the artifact's latest version, or publish this version's source again to restore its files.",
+      "explanation": "`mostra gc` removed this version's files because nothing referenced it (D140). Its ID and number stay in the ledger forever, so history and events still name it, but it can't be opened or linked.",
+      "fix": "Open a version that still exists (`artifact/get` marks collected ones), or publish the exact source of this version again: publish restores its files under the same ID and number."
+    },
+    {
       "code": "MOSTRA_ARTIFACT_VERSION_NOT_FOUND",
       "severity": "error",
       "phase": "host",
@@ -215,6 +224,33 @@
       "hint": "Correct the import path, or import the package from the warm set or add it with `mostra add`.",
       "explanation": "An import in the artifact names a file or package the builder can't find. Relative imports resolve inside the artifact's own files, `@/...` resolves from the artifact's root, and package imports resolve from Mostra's warm set and the artifact's installed packages. The message names the import and the file that contains it.",
       "fix": "For a file, check the path and its extension against the artifact's files. For a package, check its name; packages outside the warm set install with `mostra add <package>`."
+    },
+    {
+      "code": "MOSTRA_CLI_CONFIG_UNWRITABLE",
+      "severity": "error",
+      "phase": "platform",
+      "title": "The CLI's config directory can't be written",
+      "hint": "Make the directory the message names yours and writable (or point MOSTRA_CONFIG_DIR at one that is), then run the command again; DO_NOT_TRACK=1 turns telemetry off without writing anything.",
+      "explanation": "`mostra telemetry on` and `off` record the choice in the CLI's config directory (`MOSTRA_CONFIG_DIR`, else `${XDG_CONFIG_HOME:-~/.config}/mostra`). The directory or its `telemetry.json` can't be written (another user owns it, the disk is full, it's read-only), so the choice wasn't recorded and nothing changed. Telemetry never stops another command for this: a store that can't be written means nothing is sent.",
+      "fix": "Fix the directory's owner or mode, or set `MOSTRA_CONFIG_DIR` to a directory you own, and run the command again. `DO_NOT_TRACK=1` or `MOSTRA_TELEMETRY=0` in your environment turn telemetry off without a file."
+    },
+    {
+      "code": "MOSTRA_CLI_UNKNOWN_COMMAND",
+      "severity": "error",
+      "phase": "host",
+      "title": "Unknown command",
+      "hint": "Pick one of the commands this message lists; `mostra --help` describes each.",
+      "explanation": "The first word after `mostra` isn't a command this CLI has. The message lists the commands that exist. Commands that later releases add (sharing, export, plugins, terminals) appear only once they exist, never as placeholders.",
+      "fix": "Run one of the listed commands. `mostra --help` lists every command with a one-line summary."
+    },
+    {
+      "code": "MOSTRA_CLI_USAGE",
+      "severity": "error",
+      "phase": "host",
+      "title": "Command used wrongly",
+      "hint": "Run `mostra <command> --help` for the command's arguments and flags, then run it again.",
+      "explanation": "The command line didn't fit the command's definition: a missing or extra argument, an unknown flag, a flag without its value, or a value of the wrong form (a duration, a number, JSON). Nothing ran. In `--json` mode the error is the envelope's `error`, and the exit code is 2.",
+      "fix": "Read `mostra <command> --help` (or `--help --json` for the machine-readable definition) and correct the arguments."
     },
     {
       "code": "MOSTRA_CONSOLE_ERROR",
@@ -325,6 +361,15 @@
       "fix": "Mint new links with `view/url` (the publish receipt of the next publish carries the new default link too). Stop the program that took the port if you want the old links back; `mostra doctor` names it where it can."
     },
     {
+      "code": "MOSTRA_ENV_RUNTIME_MISSING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Runtime not found",
+      "hint": "Reinstall Mostra, or set `MOSTRA_RUNTIME_BIN` to the runtime's `mostra-runtime` entry.",
+      "explanation": "The CLI starts and attaches to the home's instance through the runtime binary (`mostra-runtime`, D85). It looked for it at `MOSTRA_RUNTIME_BIN`, then beside the CLI, and found nothing it could run.",
+      "fix": "Reinstall Mostra so the CLI and its runtime are complete, or point `MOSTRA_RUNTIME_BIN` at a `mostra-runtime` entry (its `dist/bin.js`)."
+    },
+    {
       "code": "MOSTRA_ENV_SERVICE_FAILED",
       "severity": "error",
       "phase": "host",
@@ -433,6 +478,15 @@
       "fix": "Free space on that disk (`mostra gc` removes unreferenced versions; build caches can be deleted), then retry the operation. Retries with the same request or mutation ID are safe."
     },
     {
+      "code": "MOSTRA_HOME_GC_INCOMPLETE",
+      "severity": "warning",
+      "phase": "host",
+      "title": "gc didn't finish a step",
+      "hint": "Run `mostra gc` again: what this run removed is in its result, and the next run picks up what it left.",
+      "explanation": "`mostra gc` removes what nothing references in steps: version files, source snapshots, lock layouts, the package store, verify's caches and, when asked, events. One step failed (the message names it and why), so it left that step's files in place. Everything an earlier step removed is listed in the result, and the versions it collected stay collected. The home is consistent: what gc left is still recorded as there.",
+      "fix": "Run `mostra gc` again; a failure that repeats names its cause in the message (for example, a file the user can't remove)."
+    },
+    {
       "code": "MOSTRA_HOME_GONE",
       "severity": "error",
       "phase": "host",
@@ -476,6 +530,15 @@
       "hint": "Connect to the instance for the home you expect, or start it with `--home` set to that home.",
       "explanation": "A client sent `home.path` in `mostra/initialize`, and it names a different home from the one the instance locked at start-up. The home is chosen when the instance starts (`--home`, then `MOSTRA_HOME`, then the platform default), so `home.path` is a check: it stops a client from writing to a home it didn't mean.",
       "fix": "Start the instance with `--home` set to the home the client expects, or connect to the socket of the instance that serves it. Leave `home.path` out to accept whichever home the instance serves."
+    },
+    {
+      "code": "MOSTRA_HOME_NOT_ALWAYS_ON",
+      "severity": "warning",
+      "phase": "host",
+      "title": "Long-lived artifacts without an always-on daemon",
+      "hint": "Run `mostra daemon install` so the home's daemon runs as a login service and these artifacts answer at any hour.",
+      "explanation": "The home has artifacts with submission policy `none`, which are meant to stay open (dashboards, task managers, D63), but no login service runs its daemon. Without one, the daemon exits after 30 idle minutes and their links stop answering until a command starts it again.",
+      "fix": "Run `mostra daemon install`. It registers a launchd or systemd user service that keeps the home's daemon running; `mostra daemon uninstall` removes it."
     },
     {
       "code": "MOSTRA_HOME_NOT_OWNED",
@@ -1013,7 +1076,7 @@
       "severity": "error",
       "phase": "runtime",
       "title": "No such submission",
-      "hint": "Wait for a submission with `mostra wait --until submitted`, or name one that exists.",
+      "hint": "Wait for a submission with `mostra wait <artifact> --until submitted`, or name one that exists.",
       "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",
       "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events."
     },

@@ -127,8 +127,13 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
       "trustedControls",
       "secrets",
     ]);
-    // WP-09 added verify's progress (D138): sent only to a client that accepts it.
-    expect(result.capabilities.notifications).toEqual(["events/notify", "artifact/progress"]);
+    // WP-09 added verify's progress (D138), WP-10 the dev sessions' events (D140 item 12): each
+    // sent only to a client that accepts it.
+    expect(result.capabilities.notifications).toEqual([
+      "events/notify",
+      "artifact/progress",
+      "dev/notify",
+    ]);
     // Unimplemented ports, the reserved `ai` included, are warnings, never silent (D84, D46).
     expect(result.warnings.map((warning) => [warning.code, warning.severity])).toEqual([
       ["MOSTRA_HOST_PORT_UNSUPPORTED", "warning"],

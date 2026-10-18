@@ -33,9 +33,9 @@ import {
 import { type ScanResult, scanArtifact } from "./scan.ts";
 
 /** Where generated build files live inside the staging directory (never in the snapshot). */
-const GENERATED = ".mostra-build";
+export const GENERATED = ".mostra-build";
 
-const html = (title: string, versionId: string): string =>
+export const html = (title: string, versionId: string): string =>
   `<!doctype html>
 <html lang="en">
   <head>
@@ -57,7 +57,10 @@ const html = (title: string, versionId: string): string =>
  * shell over the bridge, reports the current page and `mostra/ready` (SH-04), and installs
  * `window.storage` (D53). A single page never loads React Router.
  */
-function clientEntry(request: BuildRequest, scan: ScanResult): string {
+export function clientEntry(
+  request: Pick<BuildRequest, "entry" | "entryHasDefault">,
+  scan: ScanResult,
+): string {
   const source = (file: string): string => JSON.stringify(`../source/${file}`);
   const lines = [`import "./styles.css";`];
   if (scan.pages.length === 0) {
@@ -86,7 +89,10 @@ function clientEntry(request: BuildRequest, scan: ScanResult): string {
 }
 
 /** The field coverage, opened by every package outside the artifact that uses the field hooks. */
-function withPackageUses(fields: FieldCoverage, uses: readonly FieldHookUse[]): FieldCoverage {
+export function withPackageUses(
+  fields: FieldCoverage,
+  uses: readonly FieldHookUse[],
+): FieldCoverage {
   const packageOf = (file: string): string => {
     const names = [...file.matchAll(/node_modules\/((?:@[^/]+\/)?[^/]+)/g)];
     return names.at(-1)?.[1] ?? file;
@@ -101,7 +107,7 @@ function withPackageUses(fields: FieldCoverage, uses: readonly FieldHookUse[]): 
 }
 
 /** The server entry: every server function by ID, and the live sources (loaded by WP-08's worker). */
-function serverEntry(scan: ScanResult): string {
+export function serverEntry(scan: ScanResult): string {
   const lines: string[] = [];
   const functions: string[] = [];
   [...scan.serverModules.entries()].forEach(([module, entries], index) => {
@@ -119,7 +125,7 @@ function serverEntry(scan: ScanResult): string {
 }
 
 /** Turns a bundler error into a diagnostic with the file relative to the artifact. */
-function diagnose(error: unknown, sourceDir: string): Diagnostic {
+export function diagnose(error: unknown, sourceDir: string): Diagnostic {
   const failure = error as {
     message?: string;
     code?: string;
@@ -152,8 +158,8 @@ function diagnose(error: unknown, sourceDir: string): Diagnostic {
   });
 }
 
-function baseConfig(
-  request: BuildRequest,
+export function baseConfig(
+  request: Pick<BuildRequest, "stagingDir">,
   sourceDir: string,
   plugins: PluginOption[],
 ): InlineConfig {
@@ -184,7 +190,7 @@ function baseConfig(
  * directory (a workspace link such as `@mostra/react`), followed by the packages it depends on in
  * turn (`@mostra/protocol`, say).
  */
-async function packageRoots(nodeModules: string): Promise<string[]> {
+export async function packageRoots(nodeModules: string): Promise<string[]> {
   const roots = new Set<string>();
   const visit = async (modules: string): Promise<void> => {
     let entries: Dirent[];

@@ -53,7 +53,11 @@ import {
 import { reportedByBuild, TYPECHECK_REVISION, typecheck } from "./typecheck.ts";
 
 export { createRunnerClient, locateRunner, type RunnerClient } from "./runner.ts";
-export type { SandboxOptions } from "./sandbox.ts";
+export {
+  type Sandbox,
+  type SandboxOptions,
+  startSandbox,
+} from "./sandbox.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
@@ -144,6 +148,12 @@ export interface Verifier {
   builtVersion(versionId: string): string | undefined;
   /** `cache/verify/`: the verdicts, and each verdict's screenshots, ARIA snapshots and diffs. */
   readonly cacheDir: string;
+  /**
+   * gc's part (D140 item 14): verify's builds past the 5 GB cap, oldest first, and screenshot
+   * directories no cached verdict names. A dry run lists them; a real run removes them. The
+   * caller holds the instance's gate alone, so no verify run serves a build meanwhile.
+   */
+  collect(dryRun: boolean): Promise<{ readonly count: number; readonly bytes: number }>;
 }
 
 /** The source's page never got ready: the browser stages after its first render can't run. */
@@ -804,6 +814,72 @@ export function createVerifier(options: VerifierOptions): Verifier {
       return { verdict: parsed.data, built: entry.built };
     },
     builtVersion: completeBuild,
+    collect: (dryRun) =>
+      collectVerifyCaches(home, {
+        dryRun,
+        inUse: (name) => (inUse.get(name) ?? 0) > 0,
+        running: (name) => running.has(name),
+      }),
+  };
+}
+
+/**
+ * What gc may take from verify's caches (D140 item 14): least recently used builds past the 5 GB
+ * cap and screenshot directories no cached verdict names, never one a run uses. It reads only the
+ * home's files, so it works before any verify ran in this process; the caller holds the
+ * instance's gate alone, so no run starts meanwhile.
+ */
+export async function collectVerifyCaches(
+  home: string,
+  options: {
+    readonly dryRun: boolean;
+    readonly inUse?: (build: string) => boolean;
+    readonly running?: (key: string) => boolean;
+  },
+): Promise<{ readonly count: number; readonly bytes: number }> {
+  const buildsDir = join(home, "cache", "builds");
+  const cacheDir = join(home, "cache", "verify");
+  const inUse = options.inUse ?? (() => false);
+  const running = options.running ?? (() => false);
+  const dryRun = options.dryRun;
+  const removable: { readonly dir: string; readonly size: number }[] = [];
+  const entries = await readdir(buildsDir, { withFileTypes: true }).catch(() => []);
+  const builds = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && !entry.name.includes(".tmp-"))
+      .map(async (entry) => {
+        const dir = join(buildsDir, entry.name);
+        return {
+          dir,
+          name: entry.name,
+          mtime: (await stat(dir)).mtimeMs,
+          size: await sizeOf(dir),
+        };
+      }),
+  );
+  let total = builds.reduce((acc, build) => acc + build.size, 0);
+  for (const build of builds.sort((a, b) => a.mtime - b.mtime || (a.name < b.name ? -1 : 1))) {
+    if (total <= BUILD_CACHE_BYTES) break;
+    if (inUse(build.name)) continue;
+    removable.push(build);
+    total -= build.size;
+  }
+  const all = await readdir(cacheDir, { withFileTypes: true }).catch(() => []);
+  const verdicts = new Set(
+    all.filter((entry) => entry.name.endsWith(".json")).map((entry) => entry.name.slice(0, -5)),
+  );
+  for (const entry of all.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    if (!entry.isDirectory() || verdicts.has(entry.name) || running(entry.name)) continue;
+    const dir = join(cacheDir, entry.name);
+    if (dir === sandboxRoot(home)) continue;
+    removable.push({ dir, size: await sizeOf(dir) });
+  }
+  if (!dryRun) {
+    for (const { dir } of removable) await rm(dir, { recursive: true, force: true });
+  }
+  return {
+    count: removable.length,
+    bytes: removable.reduce((acc, item) => acc + item.size, 0),
   };
 }
 

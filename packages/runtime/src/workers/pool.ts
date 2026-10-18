@@ -149,6 +149,12 @@ export interface WorkerPool {
   release(versionId: string): void;
   /** Clears the park and crash history of every version of an artifact (a publish, `verify`). */
   clear(artifactId: string): void;
+  /**
+   * Replaces a version's server bundle (`mostra dev` only, D140 item 12): stops its worker, busy
+   * or not, so the next call starts `version`, the same version ID with a new output digest, and
+   * clears its crash history.
+   */
+  replace(version: WorkerVersion): Promise<void>;
   /** Every version's worker state, for `instance/status`. */
   status(): WorkerStatus[];
   /** How many calls and producers run in all workers: the daemon stays while any do (D62). */
@@ -163,7 +169,7 @@ const BACKOFF_MAX_MS = 60_000;
 const START_TIMEOUT_MS = 60_000;
 
 interface Slot {
-  readonly version: WorkerVersion;
+  version: WorkerVersion;
   state: WorkerStatus["state"];
   crashes: number[];
   lastCause?: string;
@@ -621,6 +627,20 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
       if (!current || current.stopping || current.calls.size > 0 || current.live.size > 0) return;
       options.log.info("worker.idle_stop", { versionId, reason: "released" });
       void stopRunning(current);
+    },
+    async replace(version) {
+      const slot = slots.get(version.ref.versionId);
+      if (!slot) return;
+      slot.version = version;
+      slot.crashes = [];
+      delete slot.retryAt;
+      if (slot.state === "parked" || slot.state === "backoff") slot.state = "stopped";
+      await slot.starting?.catch(() => {});
+      const current = slot.current;
+      if (current && !current.stopping) {
+        options.log.info("worker.replaced", { versionId: version.ref.versionId });
+        await stopRunning(current);
+      }
     },
     clear(artifactId) {
       for (const slot of slots.values()) {

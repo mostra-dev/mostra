@@ -23,6 +23,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 /** The runtime's binary, built by `pnpm --filter @mostra/runtime build`. */
 export const BIN = join(ROOT, "packages", "runtime", "dist", "bin.js");
+/** The built `mostra` CLI. */
+export const CLI = join(ROOT, "packages", "cli", "dist", "bin.js");
 /** The shell's built files, which the gateway serves. */
 export const SHELL = join(ROOT, "packages", "shell", "dist", "index.html");
 /** The artifacts WP-03 rendered from a test server; here they go through the gateway. */
