@@ -10,10 +10,12 @@
  * const result = await spa.build({ stagingDir, entry: "index.tsx", entryHasDefault: true, manifest, nodeModules, … });
  * ```
  */
+
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
+import type { Faults } from "../faults.ts";
 import type { Environment, Log } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import type { FieldCoverage } from "./coverage.ts";
@@ -161,6 +163,8 @@ export interface SpaRenderModeOptions {
   readonly timeoutMs?: number;
   /** The environment the builder's minimal environment takes `PATH` and `HOME` from. */
   readonly env?: Environment;
+  /** Test fault points: `builder:build` with `hang` stops each build's child before it builds. */
+  readonly faults?: Faults;
 }
 
 /** The SPA render mode (D19): every build in its own builder child. */
@@ -271,6 +275,15 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
         env: childEnv,
         ipc: {},
       });
+      // A builder that hangs (issue #18): stopped before its request, so the limit is what ends it.
+      // A child already gone (killed by the test) is left to the exit handling below.
+      if (options.faults?.hangs("builder:build")) {
+        try {
+          process.kill(child.pid, "SIGSTOP");
+        } catch {
+          // Already exited.
+        }
+      }
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const outcome = await Promise.race([

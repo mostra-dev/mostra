@@ -274,6 +274,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       processes: manager,
       log,
       env: environment,
+      faults,
       // Tests shorten the 180 s build limit to exercise MOSTRA_BUILD_TIMEOUT.
       ...(Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) > 0
         ? { timeoutMs: Number(environment["MOSTRA_TEST_BUILD_TIMEOUT_MS"]) }
