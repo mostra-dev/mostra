@@ -6,12 +6,13 @@
  * leaves nothing behind. What viewers can and can't reach is VR-03's enumeration in
  * `gateway.test.ts`.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser as Client, openLink, raw } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
+import { FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   connectTo,
   eventually,
@@ -144,6 +145,10 @@ describe("mostra dev (VR-08)", () => {
     await expect
       .poll(() => frame.locator("#server").innerText(), { timeout: 30_000 })
       .toBe("SERVER-ONE");
+    // A value the page saved survives the reload a server change causes: the session's scratch
+    // ledger holds it for the session's life.
+    await frame.locator("#answer").fill("kept across reloads");
+    await page.waitForTimeout(800);
     writeDevFixture(dir, "HEADING-TWO", "SERVER-TWO");
     await eventually(() => events.some((event) => event.kind === "server-restarted"), 60_000);
     // The page loaded again with the new server code behind it.
@@ -162,6 +167,7 @@ describe("mostra dev (VR-08)", () => {
         { timeout: 60_000 },
       )
       .toBe("SERVER-TWO");
+    expect(await frame.locator("#answer").inputValue()).toBe("kept across reloads");
     await page.close();
   }, 180_000);
 
@@ -298,6 +304,104 @@ describe("mostra dev (VR-08)", () => {
       expect(answer.error?.data.code).toBe("MOSTRA_ENV_BIND_FAILED");
     } finally {
       await wide.stop();
+    }
+  }, 120_000);
+});
+
+describe("mostra dev's packages and leftovers (VR-08)", () => {
+  it("loads every page again when mostra add changes the packages, and the new package resolves", async () => {
+    const registry = await startRegistry(FIXTURE_PACKAGES);
+    const home = testHome();
+    const gateway = new GatewayHome(home);
+    const browser = await chromium.launch();
+    try {
+      await gateway.start({
+        env: { HOME: tempDir("dev-user"), npm_config_registry: registry.url },
+      });
+      const dir = join(tempDir("dev-add"), "preview");
+      writeDevFixture(dir);
+      const events: DevEvent[] = [];
+      const owner = await connectTo(gateway.daemon.status.socket as string);
+      ok(
+        await owner.call(
+          "mostra/initialize",
+          initializeParams({ capabilities: { notifications: ["dev/notify"] } }),
+        ),
+      );
+      void (async () => {
+        for (;;) {
+          const message = await owner
+            .next((m) => m.method === "dev/notify", 600_000)
+            .catch(() => undefined);
+          if (!message) return;
+          events.push((message as unknown as { params: DevEvent }).params);
+        }
+      })();
+      const started = ok<{ url: string; sessionId: string }>(
+        await owner.call("dev/start", { source: { path: dir } }, 120_000),
+      );
+      const page = await browser.newPage();
+      await page.goto(started.url);
+      const frame = page.frameLocator("iframe");
+      await expect
+        .poll(() => frame.locator("#title").innerText(), { timeout: 30_000 })
+        .toBe("HEADING-ONE");
+      ok(
+        await gateway.client.call(
+          "deps/add",
+          { artifact: { path: dir }, packages: ["mostra-fixture-util@1.0.0"] },
+          120_000,
+        ),
+      );
+      await eventually(() => events.some((event) => event.kind === "reloaded"), 60_000, "a reload");
+      // The page uses the package it just got.
+      writeFileSync(
+        join(dir, "label.tsx"),
+        `import { label } from "mostra-fixture-util";\nexport function Label() {\n  return <p id="label">{label}</p>;\n}\n`,
+      );
+      writeDevFixture(dir, "HEADING-THREE");
+      const entry = join(dir, "index.tsx");
+      const text = readFileSync(entry, "utf8");
+      writeFileSync(
+        entry,
+        text
+          .replace(
+            'import { whoAmI } from "./actions";',
+            'import { whoAmI } from "./actions";\nimport { Label } from "./label";',
+          )
+          .replace("</main>", "<Label /></main>"),
+      );
+      await expect
+        .poll(
+          () =>
+            frame
+              .locator("#label")
+              .innerText()
+              .catch(() => ""),
+          { timeout: 60_000 },
+        )
+        .toBe("clicks");
+      ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
+      owner.close();
+    } finally {
+      await browser.close();
+      await gateway.stop();
+      await registry.close();
+    }
+  }, 240_000);
+
+  it("removes what a stopped instance left of its sessions at the next start", async () => {
+    const home = testHome();
+    const first = await new GatewayHome(home).start();
+    await first.stop();
+    const left = join(home.home, "cache", "dev", "dev_LEFTOVER", "root", "source");
+    mkdirSync(left, { recursive: true });
+    writeFileSync(join(left, "index.tsx"), "export default () => null;\n");
+    const second = await new GatewayHome(home).start();
+    try {
+      expect(existsSync(join(home.home, "cache", "dev", "dev_LEFTOVER"))).toBe(false);
+    } finally {
+      await second.stop();
     }
   }, 120_000);
 });
