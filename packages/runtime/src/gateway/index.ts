@@ -328,7 +328,13 @@ export function createGateway(options: GatewayOptions): Gateway {
         : detail.versions.find((version) =>
             typeof wanted === "number" ? version.number === wanted : version.id === wanted,
           );
-    return found ? { id: found.id, number: found.number } : undefined;
+    return found
+      ? {
+          id: found.id,
+          number: found.number,
+          ...(found.collected !== undefined ? { collected: found.collected } : {}),
+        }
+      : undefined;
   };
 
   // ── The shell ────────────────────────────────────────────────────────────────────────────

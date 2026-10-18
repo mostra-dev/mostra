@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage } from "node:http";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
@@ -49,6 +50,13 @@ function baseEnv(): Record<string, string> {
   return env;
 }
 
+/** Where Playwright keeps its browsers by default (playwright-core's registry). */
+function playwrightBrowsers(): string {
+  return process.platform === "darwin"
+    ? join(homedir(), "Library", "Caches", "ms-playwright")
+    : join(process.env["XDG_CACHE_HOME"] || join(homedir(), ".cache"), "ms-playwright");
+}
+
 /** Makes a fresh home. Tests of other features than telemetry run with no collector. */
 export function testHome(extra: Record<string, string> = {}): TestHome {
   const root = mkdtempSync("/tmp/mcli-");
@@ -56,6 +64,10 @@ export function testHome(extra: Record<string, string> = {}): TestHome {
   const config = join(root, "config");
   const env = {
     ...baseEnv(),
+    // The test's own user home, so `daemon install` writes its launchd agent or systemd unit there,
+    // never into the developer's; Playwright's browsers stay where they were installed.
+    HOME: join(root, "user"),
+    PLAYWRIGHT_BROWSERS_PATH: process.env["PLAYWRIGHT_BROWSERS_PATH"] ?? playwrightBrowsers(),
     MOSTRA_HOME: home,
     MOSTRA_RUNTIME_DIR: join(root, "run"),
     MOSTRA_CONFIG_DIR: config,

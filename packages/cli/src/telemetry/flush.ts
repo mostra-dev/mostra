@@ -19,6 +19,12 @@ import type { TelemetryStore } from "./store.ts";
 export const BATCH = 100;
 /** A flush starts at most this often. */
 export const FLUSH_INTERVAL_MS = 60_000;
+/** The flush interval; `MOSTRA_TEST_FLUSH_INTERVAL_MS` shortens it, for tests only. */
+function flushInterval(env: Environment): number {
+  const test = Number(env["MOSTRA_TEST_FLUSH_INTERVAL_MS"]);
+  return Number.isInteger(test) && test >= 0 && test < FLUSH_INTERVAL_MS ? test : FLUSH_INTERVAL_MS;
+}
+
 /** One request's limit. */
 const REQUEST_TIMEOUT_MS = 5000;
 
@@ -114,7 +120,7 @@ export function startFlusher(store: TelemetryStore, env: Environment, now: numbe
   let due = false;
   store.update((current) => {
     const last = current.lastFlushAt === undefined ? 0 : Date.parse(current.lastFlushAt);
-    if (Number.isFinite(last) && now - last < FLUSH_INTERVAL_MS) return current;
+    if (Number.isFinite(last) && now - last < flushInterval(env)) return current;
     due = true;
     return { ...current, lastFlushAt: new Date(now).toISOString() };
   });

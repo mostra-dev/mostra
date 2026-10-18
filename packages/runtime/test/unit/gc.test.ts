@@ -371,4 +371,47 @@ describe("gc collects exactly what nothing references (VR-06)", () => {
       ),
     ).toThrow(/never changes/);
   });
+
+  it("after a collected version's source is published again, keeps it as the latest and offers the others", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 2, max: 6 }), fc.nat(), (count, pick) => {
+        const { db } = migrated();
+        const ids = Array.from({ length: count }, (_, n) => {
+          const digest = new Uint8Array(32);
+          digest[0] = 201;
+          digest[1] = n;
+          return VersionId.fromSha256(digest);
+        });
+        insert(db, "artifact", {
+          id: "art_REPUBLISHED",
+          latest_version_id: ids[count - 1] as string,
+        });
+        for (const [n, id] of ids.entries()) {
+          insert(db, "version", {
+            id,
+            artifact_id: "art_REPUBLISHED",
+            number: n + 1,
+            verify_json: null,
+          });
+        }
+        // gc collects every version but the latest.
+        const first = collectableVersions(db, NOW).map((version) => version.versionId);
+        expect(first).toEqual(ids.slice(0, -1));
+        for (const id of first) {
+          db.run("INSERT INTO version_collected (version_id, collected_at) VALUES (?, ?)", id, NOW);
+        }
+        // Publishing one collected version's exact source again: the mark goes in the publish's
+        // transaction, and the version is the latest (registry's existing-version path).
+        const back = ids[pick % (count - 1)] as string;
+        db.run("DELETE FROM version_collected WHERE version_id = ?", back);
+        db.run("UPDATE artifact SET latest_version_id = ? WHERE id = ?", back, "art_REPUBLISHED");
+        const next = collectableVersions(db, NOW).map((version) => version.versionId);
+        // The republished version is kept; the old latest is now the only one to collect; the
+        // others stay collected and are never offered twice.
+        expect(next).toEqual([ids[count - 1]]);
+        expect(next).not.toContain(back);
+      }),
+      { numRuns: 100 },
+    );
+  });
 });
