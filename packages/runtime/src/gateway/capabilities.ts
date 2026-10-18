@@ -229,6 +229,8 @@ export class Capabilities {
   readonly #now: () => number;
   readonly #shellOrigin: () => string;
   readonly #tickets = new Map<string, TicketGrant & { readonly expires: number }>();
+  /** One-time launch tickets (D140 item 15), by the SHA-256 of their secret. */
+  readonly #launches = new Map<string, { readonly tokenId: string; readonly expires: number }>();
   /** Failure times per artifact (`""` for tokens of no artifact in this home). */
   readonly #failures = new Map<string, number[]>();
   readonly #touched = new Map<string, number>();
@@ -661,6 +663,70 @@ export class Capabilities {
   #sweepTickets(): void {
     const now = this.#now();
     for (const [key, entry] of this.#tickets) if (entry.expires <= now) this.#tickets.delete(key);
+    for (const [key, entry] of this.#launches) if (entry.expires <= now) this.#launches.delete(key);
+  }
+
+  /**
+   * Mints a one-time launch ticket for a live link (D140 item 15): a browser opened from a command
+   * line gets it instead of the link's secret, which other local users could read there. It lives
+   * 60 s in memory and is never recorded. `undefined` for an unknown token, `"dead"` for a
+   * revoked or expired one, or one minted for another shell address.
+   */
+  mintLaunch(
+    tokenId: string,
+  ):
+    | { readonly ticket: string; readonly grant: Grant; readonly expiresAt: string }
+    | "dead"
+    | undefined {
+    const grant = this.grant(tokenId);
+    if (!grant) return undefined;
+    if (!grant.live || grant.shellOrigin !== this.#shellOrigin()) return "dead";
+    this.#sweepTickets();
+    const ticket = randomSecret();
+    const expires = this.#now() + TICKET_TTL_MS;
+    this.#launches.set(hashSecret(ticket), { tokenId, expires });
+    const { live: _live, ...rest } = grant;
+    return { ticket, grant: rest, expiresAt: this.#iso(expires) };
+  }
+
+  /**
+   * Checks a launch ticket presented for `artifactId` like a token (the guessing limit applies,
+   * and unknown tickets count), and spends it when `spend` is set. The exchange spends it only
+   * once a session exists, so a viewer who chooses between two links (D98 item 8) can still use it
+   * within its minute.
+   */
+  presentLaunch(
+    ticket: unknown,
+    artifactId: string,
+    spend: boolean,
+  ): Grant | (Refusal & { readonly retryAfter?: number }) {
+    const limited = this.limited(artifactId);
+    if (limited) return limited;
+    this.#sweepTickets();
+    const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
+    const entry = key === undefined ? undefined : this.#launches.get(key);
+    const grant = entry ? this.grant(entry.tokenId) : undefined;
+    if (!entry || !grant || grant.artifactId !== artifactId) {
+      this.#fail(artifactId);
+      return refusal(
+        "MOSTRA_HYGIENE_TOKEN_INVALID",
+        "The launch ticket is unknown, used or expired.",
+      );
+    }
+    if (!grant.live || grant.shellOrigin !== this.#shellOrigin()) {
+      return refusal(
+        "MOSTRA_HYGIENE_TOKEN_REVOKED",
+        "The link behind this launch ticket was revoked or has expired.",
+      );
+    }
+    if (spend && key !== undefined) this.#launches.delete(key);
+    const { live: _live, ...rest } = grant;
+    return rest;
+  }
+
+  /** Spends a launch ticket that started a session. */
+  spendLaunch(ticket: unknown): void {
+    if (looksLikeSecret(ticket)) this.#launches.delete(hashSecret(ticket));
   }
 
   /** Removes sessions unseen for longer than their cookie lives; no browser holds them any more. */

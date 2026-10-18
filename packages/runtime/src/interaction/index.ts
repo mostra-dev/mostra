@@ -95,7 +95,7 @@ import {
 import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
-export { appendEvent, redactEvents } from "./events.ts";
+export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
 export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";

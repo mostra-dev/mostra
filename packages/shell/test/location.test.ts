@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTarget, tokenFrom } from "../src/location.ts";
+import { credentialFrom, parseTarget, tokenFrom } from "../src/location.ts";
 import { explain } from "../src/messages.ts";
 
 const ID = "art_01JB8Z3QF6S7W3N8D5K2C4V9XG";
@@ -48,5 +48,15 @@ describe("what the shell tells a person (FAILURE_MODEL §8)", () => {
       expect(title.length).toBeGreaterThan(0);
       expect(detail.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("credentialFrom (D140)", () => {
+  it("reads a link's token or a one-time launch ticket, the token first", () => {
+    expect(credentialFrom("#t=ABC")).toEqual({ token: "ABC" });
+    expect(credentialFrom("#l=XYZ")).toEqual({ launch: "XYZ" });
+    expect(credentialFrom("#t=ABC&l=XYZ")).toEqual({ token: "ABC" });
+    expect(credentialFrom("#l=")).toBeUndefined();
+    expect(credentialFrom("")).toBeUndefined();
   });
 });

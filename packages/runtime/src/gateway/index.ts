@@ -25,6 +25,7 @@ import {
   type CapabilityScope,
   type ControlsPolicy,
   createDiagnostic,
+  type Diagnostic,
   durationMs,
   type FrameTicket,
   type Refusal,
@@ -32,6 +33,8 @@ import {
   refusal,
   safePath,
   scopeAllows,
+  viewDefaultMethod,
+  viewLaunchMethod,
   viewRevokeMethod,
   viewRotateMethod,
   viewUrlMethod,
@@ -260,7 +263,13 @@ export function createGateway(options: GatewayOptions): Gateway {
     log,
     versionOf: (artifactId, number) => {
       const found = artifacts.get({ artifactId }).versions.find((v) => v.number === number);
-      return found ? { id: found.id, number: found.number } : undefined;
+      return found
+        ? {
+            id: found.id,
+            number: found.number,
+            ...(found.collected !== undefined ? { collected: found.collected } : {}),
+          }
+        : undefined;
     },
     activated: options.activated,
     ...(options.revisions ? { revisions: options.revisions } : {}),
@@ -312,7 +321,7 @@ export function createGateway(options: GatewayOptions): Gateway {
   const versionOf = (
     detail: ArtifactDetail,
     wanted: number | string | undefined,
-  ): { readonly id: string; readonly number: number } | undefined => {
+  ): { readonly id: string; readonly number: number; readonly collected?: string } | undefined => {
     const found =
       wanted === undefined
         ? (detail.latestVersion ?? detail.versions[0])
@@ -414,7 +423,12 @@ export function createGateway(options: GatewayOptions): Gateway {
     const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
     const body = await readJsonObject(context.request);
     if (isRefusal(body)) return refuse(shellChecks, body, meta);
-    const grant = capabilities.presentToken(body["token"], artifactId);
+    // A link's token, or a one-time launch ticket from `mostra open` (D140 item 15), which is
+    // spent only once it started (or reused) a session.
+    const launch = body["token"] === undefined && body["launch"] !== undefined;
+    const grant = launch
+      ? capabilities.presentLaunch(body["launch"], artifactId, false)
+      : capabilities.presentToken(body["token"], artifactId);
     if (isRefusal(grant)) return refuse(shellChecks, grant, meta);
     // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
     // could send the viewer to its own, narrower link and take over their tabs.
@@ -425,6 +439,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     );
     if (!isRefusal(existing)) {
       if (existing.grant.tokenId === grant.tokenId) {
+        if (launch) capabilities.spendLaunch(body["launch"]);
         return jsonResponse({ csrf: existing.csrf, ...sessionFacts(artifactId, existing.grant) });
       }
       if (body["replace"] !== true) {
@@ -443,6 +458,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       }
     }
     const session = capabilities.createSession({ tokenId: grant.tokenId, origin: shellOrigin() });
+    if (launch) capabilities.spendLaunch(body["launch"]);
     log.info("gateway.session_started", {
       origin: shellOrigin(),
       artifactId,
@@ -508,6 +524,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         }),
         { status: 404 },
       );
+    }
+    // A collected version's files are gone until its source is published again (D140 item 14).
+    if (version.collected !== undefined) {
+      return jsonResponse(collectedDiagnostic(version.number), { status: 410 });
     }
     // A damaged version is never shown (FAILURE_MODEL §3).
     const damage = await integrity.check(version.id);
@@ -981,6 +1001,8 @@ export function createGateway(options: GatewayOptions): Gateway {
             }),
           );
         }
+        if (version.collected !== undefined)
+          throw new RpcError(collectedDiagnostic(version.number));
         return recorded(requestKey("view/url", params), (db) =>
           capabilities.mint(
             {
@@ -996,6 +1018,34 @@ export function createGateway(options: GatewayOptions): Gateway {
             db,
           ),
         );
+      }),
+      handler(viewDefaultMethod, (params) => {
+        const detail = artifacts.get(params.artifact);
+        return link(capabilities.defaultLink(detail.id));
+      }),
+      handler(viewLaunchMethod, (params) => {
+        const minted = capabilities.mintLaunch(params.tokenId);
+        if (minted === undefined) {
+          return fail(
+            refusal(
+              "MOSTRA_HYGIENE_TOKEN_INVALID",
+              `No capability token ${params.tokenId} exists in this home.`,
+            ),
+          );
+        }
+        if (minted === "dead") {
+          return fail(
+            refusal(
+              "MOSTRA_HYGIENE_TOKEN_REVOKED",
+              `The token ${params.tokenId} was revoked, has expired, or was made for another address.`,
+            ),
+          );
+        }
+        const { grant } = minted;
+        return {
+          url: `${shellOrigin()}/a/${grant.artifactId}${grant.pinnedVersion !== undefined ? `/v/${grant.pinnedVersion}` : ""}#l=${minted.ticket}`,
+          expiresAt: minted.expiresAt,
+        };
       }),
       handler(viewRotateMethod, (params) =>
         recorded(requestKey("view/rotate", params), (db) => {
@@ -1049,6 +1099,13 @@ export function createGateway(options: GatewayOptions): Gateway {
       ]);
     },
   };
+}
+
+/** The answer for a version `mostra gc` collected (D140 item 14). */
+function collectedDiagnostic(number: number): Diagnostic {
+  return createDiagnostic("MOSTRA_ARTIFACT_VERSION_COLLECTED", {
+    message: `Version ${number} of this artifact was collected by gc; its files are gone until its source is published again.`,
+  });
 }
 
 /** The tag that tells the client runtime it runs for `verify` (D111, D138). */

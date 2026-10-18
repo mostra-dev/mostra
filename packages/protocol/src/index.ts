@@ -359,6 +359,7 @@ export {
 } from "./methods/instance/status.ts";
 export { type LivePushParams, type LivePushResult, livePushMethod } from "./methods/live/push.ts";
 export {
+  CLI_CLIENT_NAME,
   ClientCapabilities,
   ClientInfo,
   DependencyPolicy,

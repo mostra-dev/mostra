@@ -16,7 +16,7 @@ import {
   ShellError,
   type ShellSession,
 } from "./api.ts";
-import { parseTarget, type ShellTarget, tokenFrom } from "./location.ts";
+import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
 import { describeAccess, explain } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
 
@@ -33,7 +33,7 @@ type State =
   | {
       readonly kind: "choosing";
       readonly target: ShellTarget;
-      readonly token: string;
+      readonly token: Credential;
       readonly conflict: Conflict;
     }
   | {
@@ -63,9 +63,9 @@ async function frame(target: ShellTarget, session: ShellSession): Promise<State>
 async function open(): Promise<State> {
   const target = parseTarget(location.pathname);
   if (!target) return { kind: "error", code: "NO_ARTIFACT" };
-  const token = tokenFrom(location.hash);
-  // The token leaves the address bar before anything else happens, so it isn't kept in history,
-  // bookmarks or screenshots of this page (D97).
+  const token = credentialFrom(location.hash);
+  // The token (or launch ticket) leaves the address bar before anything else happens, so it isn't
+  // kept in history, bookmarks or screenshots of this page (D97).
   if (token !== undefined) history.replaceState(null, "", location.pathname + location.search);
   try {
     const session =

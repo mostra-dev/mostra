@@ -144,6 +144,12 @@ export interface Verifier {
   builtVersion(versionId: string): string | undefined;
   /** `cache/verify/`: the verdicts, and each verdict's screenshots, ARIA snapshots and diffs. */
   readonly cacheDir: string;
+  /**
+   * gc's part (D140 item 14): verify's builds past the 5 GB cap, oldest first, and screenshot
+   * directories no cached verdict names. A dry run lists them; a real run removes them. The
+   * caller holds the instance's gate alone, so no verify run serves a build meanwhile.
+   */
+  collect(dryRun: boolean): Promise<{ readonly count: number; readonly bytes: number }>;
 }
 
 /** The source's page never got ready: the browser stages after its first render can't run. */
@@ -804,6 +810,47 @@ export function createVerifier(options: VerifierOptions): Verifier {
       return { verdict: parsed.data, built: entry.built };
     },
     builtVersion: completeBuild,
+    async collect(dryRun) {
+      const removable: { readonly dir: string; readonly size: number }[] = [];
+      const entries = await readdir(buildsDir, { withFileTypes: true }).catch(() => []);
+      const builds = await Promise.all(
+        entries
+          .filter((entry) => entry.isDirectory() && !entry.name.includes(".tmp-"))
+          .map(async (entry) => {
+            const dir = join(buildsDir, entry.name);
+            return {
+              dir,
+              name: entry.name,
+              mtime: (await stat(dir)).mtimeMs,
+              size: await sizeOf(dir),
+            };
+          }),
+      );
+      let total = builds.reduce((acc, build) => acc + build.size, 0);
+      for (const build of builds.sort((a, b) => a.mtime - b.mtime || (a.name < b.name ? -1 : 1))) {
+        if (total <= BUILD_CACHE_BYTES) break;
+        if ((inUse.get(build.name) ?? 0) > 0) continue;
+        removable.push(build);
+        total -= build.size;
+      }
+      const all = await readdir(cacheDir, { withFileTypes: true }).catch(() => []);
+      const verdicts = new Set(
+        all.filter((entry) => entry.name.endsWith(".json")).map((entry) => entry.name.slice(0, -5)),
+      );
+      for (const entry of all.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+        if (!entry.isDirectory() || verdicts.has(entry.name) || running.has(entry.name)) continue;
+        const dir = join(cacheDir, entry.name);
+        if (dir === sandboxRoot(home)) continue;
+        removable.push({ dir, size: await sizeOf(dir) });
+      }
+      if (!dryRun) {
+        for (const { dir } of removable) await rm(dir, { recursive: true, force: true });
+      }
+      return {
+        count: removable.length,
+        bytes: removable.reduce((acc, item) => acc + item.size, 0),
+      };
+    },
   };
 }
 

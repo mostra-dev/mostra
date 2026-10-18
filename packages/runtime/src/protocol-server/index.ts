@@ -7,8 +7,10 @@ import {
   createDiagnostic,
   type DeliveryCounts,
   type GatewayStatus,
+  type InstanceCheck,
   type InstanceInfo,
   type InstanceStatusResult,
+  instanceCheckMethod,
   instanceStatusMethod,
   mostraShutdownMethod,
   RpcError,
@@ -36,6 +38,11 @@ export interface SessionMethodsOptions {
   /** When an idle daemon exits (WP-08); `undefined` while busy or for an instance that never does. */
   idleExitAt?(): string | undefined;
   /**
+   * The supervisor's own checks of its home (`instance/check`, D140 item 18), in order; `deep`
+   * also hashes every version against its output digest.
+   */
+  checks?(deep: boolean): Promise<readonly InstanceCheck[]>;
+  /**
    * Stops the instance. Called after the `mostra/shutdown` response is on its way (D87).
    */
   shutdown(reason: string): void;
@@ -61,6 +68,9 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         })(),
       };
     }),
+    handler(instanceCheckMethod, async (params) => ({
+      checks: [...((await options.checks?.(params.deep === true)) ?? [])],
+    })),
     handler(mostraShutdownMethod, (_params, session) => {
       // A host-spawned instance lives as long as its host's stdio; attached clients can't end it
       // (D87). A daemon stops for any attached client: its socket is owner-only.

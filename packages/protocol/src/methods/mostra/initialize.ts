@@ -34,6 +34,13 @@ export const PortName: z.ZodType<PortName, string> = z
       "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports.",
   });
 
+/**
+ * The standalone CLI's client name (D140 item 4). The supervisor marks a home as configured by a
+ * host when any other client sends `home` or `ports`, and the CLI never sends telemetry for such a
+ * home. A host that uses this name as its own is out of scope.
+ */
+export const CLI_CLIENT_NAME = "mostra-cli";
+
 /** The client that opens a connection. */
 export interface ClientInfo {
   /** The client's name, for logs and status (`mostra-cli`, `jcode`). */

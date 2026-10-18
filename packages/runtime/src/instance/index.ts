@@ -46,6 +46,7 @@ import {
   runtimeRoot,
 } from "../deps/index.ts";
 import { faultsFrom } from "../faults.ts";
+import { Gate } from "../gate.ts";
 import {
   Capabilities,
   CONTROLS_POLICY_TIMEOUT_MS,
@@ -55,10 +56,12 @@ import {
   type Gateway,
   locateShell,
 } from "../gateway/index.ts";
+import { createGc, gcMethods } from "../gc/index.ts";
 import {
   acquireHome,
   checkPlatform,
   type InstanceRecord,
+  markHostConfigured,
   type OwnedHome,
   platformName,
   readHomeSettings,
@@ -84,6 +87,7 @@ import {
   artifactMethods,
   canonicalRef,
   createPublisher,
+  instanceChecks,
   type Publisher,
   versionDamage,
 } from "../publish/index.ts";
@@ -273,8 +277,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   };
   // Built on first use: a runtime without its warm set still starts and says what's missing.
   let dependencies: Dependencies | undefined;
+  // gc runs alone; publishes, verify runs and installs share the gate (D140 item 14).
+  const gate = new Gate();
   const getDependencies = (): Dependencies =>
     (dependencies ??= createDependencies({
+      gate,
       home: home.path,
       ledger: home.ledger,
       processes: manager,
@@ -295,6 +302,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   const getPublisher = (): Publisher => {
     if (publisher) return publisher;
     publisher = createPublisher({
+      gate,
       registry,
       ledger: home.ledger,
       dependencies: getDependencies(),
@@ -674,6 +682,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
       });
     },
+    // A host's home never sends the standalone CLI's telemetry (D140 item 4).
+    markHostConfigured: (client) => {
+      if (markHostConfigured(home.path, client.name))
+        log.info("home.host_configured", { client: client.name });
+    },
     supportedPorts: ["submissions", "drafts", "trustedControls", "secrets"],
     notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS],
     onInitialized: (session) => interaction.connected(session),
@@ -697,6 +710,19 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ...gateway.methods(),
       ...interaction.methods(),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
+      ...gcMethods(
+        createGc({
+          ledger: home.ledger,
+          registry,
+          log,
+          gate,
+          dependencies: getDependencies,
+          // Verify's caches exist only once verify ran; nothing to collect before.
+          caches: (dryRun) =>
+            verifier ? verifier.collect(dryRun) : Promise.resolve({ count: 0, bytes: 0 }),
+          now: () => Date.now() + clockOffset,
+        }),
+      ),
       ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
       ...sessionMethods({
         describe: () => info,
@@ -718,6 +744,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         deliveries: () => interaction.deliveries(),
         workers: () => pool.status(),
         idleExitAt: () => idle?.exitAt(),
+        checks: (deep) =>
+          instanceChecks({
+            deep,
+            ledger: home.ledger,
+            registry,
+            shellDir,
+            warm: () => locateWarmSet(environment),
+          }),
         shutdown: (reason) => void instance.stop(reason, 0),
       }),
     ],
@@ -768,6 +802,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
     live.start();
     home.publish(options.mode);
+    // A host-spawned instance marks its home as a host's (D140 item 4).
+    if (options.mode === "host" && markHostConfigured(home.path, "mostra-runtime host"))
+      log.info("home.host_configured", { client: "mostra-runtime host" });
   } catch (error) {
     // Undo what started before the home is released, so no listener or child outlives it.
     live.stop();
