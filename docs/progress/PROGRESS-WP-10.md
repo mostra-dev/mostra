@@ -49,6 +49,24 @@ Every check runs the built `mostra` binary (`packages/cli/dist/bin.js`) against 
 - **IN-10** (WP-06): the CLI's `wait` ends `still_waiting` with exit 5 and its cursor, and a later wait returns the viewer's submission (contract suite; seed above).
 - **VR-03** (WP-05): `mostra dev` joins the route enumeration (above).
 
+## Reviews (D80)
+
+- **My own review of the full diff** found, besides the dev fixes above: `mostra dev` ended an instance's loss with exit 3 but `ok: true`, kept its signal listeners and was bounded by `--timeout`; the runtime's output was read at `exit` rather than `close`, so a short status line could be lost; and with a lock a crashed process left, two processes on a first run could take the lock over at once and make two install IDs (1 run in 10). Each is fixed with a test that fails on the old code; the install ID is now an exclusive link (above). CodeQL then flagged the new takeover's check-then-read (`js/file-system-race`), fixed by reading the lock's age and owner through one descriptor.
+- **GPT-6.1-Sol through `codex review --base origin/main`** (OpenAI, ChatGPT sign-in), effort high, on 2026-10-18 against `dfa7d46`: 7,543,722 input tokens (7,127,808 cached), 19,040 output (10,103 reasoning). A GPT-only run, announced (D34). 7 findings, all P2, all valid, all fixed, each with a regression test red on the old code and green on the fix:
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 A dev session's connection that closed while it started (packages resolving, the dev server starting) left an orphan session: the abort listener was added after the asynchronous work | The listener is registered first, a start that finds its connection gone stops, and the cleanup runs again for a dev server or sandbox that finished starting after a stop | Integration: closing the connection 150, 600 and 1500 ms into `dev/start` leaves no session directory and no dev server, then or 3 s later (red at 150 and 600 ms on the old code) |
+| 2 A config directory that can't be written made `telemetry.begin()` throw, so the command failed with `MOSTRA_HOST_INTERNAL_ERROR` | The store's writes fail soft and the runner treats any telemetry failure as a run without telemetry; the notice is printed only once it is recorded, so nothing is ever sent from such a directory | Integration: `docs`, `list` and `telemetry status` under an unwritable parent succeed, print no notice, send nothing |
+| 3 A dev worker replaced after a server rebuild kept its live producers in the old worker's place, so a preview's live value froze | The sandbox reads the rebuilt version's sources, and `Live.replaced` starts its producers in the new worker | Integration: a `live.ts` changed from `LIVE-ONE` to `LIVE-TWO` reaches the open page |
+| 4 A page added under `pages/` never reached an open preview: Vite, which watches nothing, never heard of the rewritten entry | The entry's rewrite is announced to Vite's watcher, and pages load again when the routes change | Integration: `pages/about.tsx` written into a running preview opens at `/about` |
+| 5 An event that expired between queueing and flushing made `drop()` miss the head of the queue, so a flush sent the same batch again and again | `drop()` prunes as `queued()` does before it matches, and a flush stops when nothing was removed (and after the batches a full queue needs) | Unit: an expired head, an event the schema refuses and one to send: one POST with one event, an empty queue, the flush ends (the old code was still sending after 3 s) |
+| 6 `--home=`, `--cwd=` and `--timeout=` before the command were a usage error | Command discovery skips the `=` forms too | Unit: `--home=/h list` and two more parse |
+| 7 gc reported no verify caches until a verify ran in the instance | `collectVerifyCaches` reads the home's caches directly | Integration: a fresh daemon's `gc --dry-run` lists an orphaned screenshot directory, and `gc` removes it |
+
+- **Copilot:** requested on every push; its quota is used up, as on earlier packages, so it reviewed nothing.
+- **Claude Opus 5.5** (approved at M28 item 9, the seventh of ten, D114): pending; the account's session limit was reached at 16:00Z (a one-call pilot answered `usage_limit_reached`), so the review starts after its reset at 17:20Z, against `9c4adad`, in a private clone.
+
 ## Deviations
 
 - **The protocol's size budget** rose from 44 kB to 46 kB (45.22 kB measured) for WP-10's methods and codes.
