@@ -65,7 +65,7 @@ Every check runs the built `mostra` binary (`packages/cli/dist/bin.js`) against 
 | 7 gc reported no verify caches until a verify ran in the instance | `collectVerifyCaches` reads the home's caches directly | Integration: a fresh daemon's `gc --dry-run` lists an orphaned screenshot directory, and `gc` removes it |
 
 - **Copilot:** requested on every push; its quota is used up, as on earlier packages, so it reviewed nothing.
-- **Claude Opus 5.5** (approved at M28 item 9, the seventh of ten, D114): pending; the account's session limit was reached at 16:00Z (a one-call pilot answered `usage_limit_reached`), so the review starts after its reset at 17:20Z, against `9c4adad`, in a private clone.
+- **Claude Opus 5.5** (approved at M28 item 9, the seventh of ten, D114): run by Mirza through Claude Code on the web, as for earlier packages, on the pull request's head; pending. (A local run was set up first; its one-call pilot met the account's session limit, and it was cancelled before it ran.)
 
 ## Deviations
 
