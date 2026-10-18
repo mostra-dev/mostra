@@ -398,3 +398,15 @@ Checked by the WP-09 session on 2026-10-17 against the providers' own documentat
 | `Element.checkVisibility` | False when the element has no box, an ancestor has `content-visibility: hidden`, `opacityProperty` is set and the element *or an ancestor* has computed opacity 0, or `visibilityProperty` is set and the element is invisible | drafts.csswg.org/cssom-view (Editor's Draft, 8 October 2026), the `checkVisibility(options)` steps | The blank-page check counts an element as shown only when it is visible through its ancestors (GPT review finding 5) |
 | React 19.3's default error handlers | `react-dom/client` production: `defaultOnCaughtError` calls `console.error(error)`; uncaught errors go to `reportError` (an `error` event on `window`) | `react-dom` 19.3.0 `cjs/react-dom-client.production.js` | An error a boundary caught reaches verify's recorder as a console error and an uncaught one as a page error, both errors (D138 item 3) |
 | `tsc` 7.0.2 and a refused configuration | Options the compiler rejects (`baseUrl`, removed in TypeScript 7: TS5102; `moduleResolution: "bundler"` with `module: "NodeNext"`: TS5095, TS5109) are reported against the configuration file that extends them, and it exits 1 without checking any source | local run, `node_modules/typescript/bin/tsc -p` | The type check reports configuration errors and any failing exit as errors, never as a pass (GPT review finding 1) |
+
+## Default theme (2026-10-18)
+
+Checked for D141 on 2026-10-18. WP-18 re-checks the package versions before pinning.
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| Figtree | By Erik Kennedy; SIL Open Font License 1.1; variable `wght` 300 to 900 | github.com/google/fonts `ofl/figtree` (`OFL.txt`, `METADATA.pb`); upstream github.com/erikdkennedy/figtree | Studio's interface face (`--font-sans`) |
+| Spline Sans Mono | By Eben Sorkin and Mirko Velimirović; OFL 1.1; variable `wght` 300 to 700 | github.com/google/fonts `ofl/splinesansmono`; upstream github.com/SorkinType/SplineSansMono | Studio's code face (`--font-mono`) |
+| OFL 1.1 | On the Open Source Initiative's license list | opensource.org/license/ofl-1-1 | The license audit can allow the fonts; their license text ships in NOTICE |
+| `@fontsource-variable/figtree`, `@fontsource-variable/spline-sans-mono` | 5.3.0 each, OFL-1.1, last modified 2026-07-19 | npm registry | Self-hosted font files for the kit, with no third-party requests |
+| WCAG 2.2 contrast minimum | 4.5 to 1 for text, 3 to 1 for large text | w3.org/TR/WCAG22 (1.4.3) | The contrast figures in D141 item 2 |

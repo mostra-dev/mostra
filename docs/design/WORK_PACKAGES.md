@@ -354,7 +354,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - per-base registry packs (Base UI, Radix), type-checked in CI;
   - resolution without copying, and `mostra add` copying;
   - the default base, Base UI (D72);
-  - one OKLCH token system with dark mode and host brand themes, mapped to the MCP Apps variables;
+  - one OKLCH token system with dark mode and host brand themes, mapped to the MCP Apps variables, with Studio as its default values (D141);
   - the questionnaire and form components on fields;
   - the "write this, not that" guidance and lint autofixes, including the wrong-base diagnostic.
 - **Depends on:** WP-16, WP-17.
