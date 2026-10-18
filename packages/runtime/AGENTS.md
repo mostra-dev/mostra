@@ -251,7 +251,8 @@ first module outside `protocol-server` needs it.
   the current browser-protocol revision into `test/fixtures/browser-revisions/<revision>/`, once
   per revision; it refuses to overwrite one (D111).
 - `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
-  violations: red with the seed, green without it.
+  violations: red with the seed, green without it. `--name <text>` narrows them to the seeds whose
+  names contain it (`--only VR-06 --name "Opus review"`).
 
 ## Gotchas
 

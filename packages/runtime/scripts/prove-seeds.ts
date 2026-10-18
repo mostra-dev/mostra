@@ -2595,11 +2595,72 @@ const SEEDS: readonly Seed[] = [
     check: unit("telemetry.test.ts", "crashed process"),
     cwd: "../cli",
   },
+  // The Opus review of WP-10 (D80, D114): each finding's regression test, red with its seed.
+  {
+    requirement: "VR-06",
+    name: "gc prunes the store with a network flag pnpm 10 refuses (Opus review 1)",
+    file: "src/deps/installer.ts",
+    from: "    ...(spec.network ? [spec.network] : []),",
+    to: '    ...(spec.network ? [spec.network] : ["--offline"]),',
+    check: integration("deps.test.ts", "gc and the dependency"),
+  },
+  {
+    requirement: "VR-06",
+    name: "gc takes an open dev session's packages (Opus review 2)",
+    file: "src/gc/index.ts",
+    from: "        const keep: string[] = [...(options.locksInUse?.() ?? [])];",
+    to: "        const keep: string[] = [];",
+    check: integration("dev.test.ts", "keeps the packages an open session"),
+  },
+  {
+    requirement: "EN-08",
+    name: "the ask-first notice stands for the default one (Opus review 3)",
+    file: "../cli/src/telemetry/index.ts",
+    from: "        if (read.ok && read.settings.askFirstNoticeShownAt === undefined) {",
+    to: "        if (read.ok && read.settings.noticeShownAt === undefined) {",
+    also: [
+      {
+        file: "../cli/src/telemetry/index.ts",
+        from: "            askFirstNoticeShownAt: new Date(now()).toISOString(),",
+        to: "            noticeShownAt: new Date(now()).toISOString(),",
+      },
+    ],
+    check: unit("telemetry.test.ts", "Opus review finding 3"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "AX-09",
+    name: "open puts the launch URL on the browser's command line (Opus review 4)",
+    file: "../cli/src/browser.ts",
+    from: "    page = writeLaunchPage(url);",
+    to: "    page = url;",
+    check: integration("contract.test.ts"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "EN-08",
+    name: "a lock a reused PID names holds every command up (Opus review 5)",
+    file: "../cli/src/telemetry/store.ts",
+    from: "    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return false;",
+    to: "    if (ownerAlive(seen)) return false;",
+    check: unit("telemetry.test.ts", "Opus review finding 5"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "EN-08",
+    name: "telemetry off says done when nothing was recorded (Opus review 6)",
+    file: "../cli/src/commands/admin.ts",
+    from: "    if (!done) throw unwritable(store);",
+    to: "",
+    check: integration("telemetry.test.ts", "Opus review finding 6"),
+    cwd: "../cli",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
 const root = join(runtime, "../..");
-const { values } = parseArgs({ options: { only: { type: "string" } } });
+// --only <requirement> replays its seeds; --name <text> narrows them to names containing it.
+const { values } = parseArgs({ options: { only: { type: "string" }, name: { type: "string" } } });
 
 function build(): void {
   for (const name of [
@@ -2644,6 +2705,7 @@ process.on("SIGINT", () => {
 let missed = 0;
 for (const seed of SEEDS) {
   if (values.only && seed.requirement !== values.only) continue;
+  if (values.name && !seed.name.includes(values.name)) continue;
   const edits = [{ file: seed.file, from: seed.from, to: seed.to }, ...(seed.also ?? [])];
   const originals = edits.map((edit) => {
     const path = join(runtime, edit.file);
