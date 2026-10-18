@@ -275,20 +275,16 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
         env: childEnv,
         ipc: {},
       });
-      // A builder that hangs (issue #18): stopped before its request, so the limit is what ends it.
-      // A child already gone (killed by the test) is left to the exit handling below.
-      if (options.faults?.hangs("builder:build")) {
-        try {
-          process.kill(child.pid, "SIGSTOP");
-        } catch {
-          // Already exited.
-        }
-      }
+      // A builder that hangs (issue #18): told to, so it never answers and the limit ends it. A
+      // signal from outside raced a fast build; the child itself can't.
+      const wire: BuildRequest = options.faults?.hangs("builder:build")
+        ? { ...request, hang: true }
+        : request;
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const outcome = await Promise.race([
           child
-            .request(BUILD_METHOD, request as unknown as Record<string, unknown>, {
+            .request(BUILD_METHOD, wire as unknown as Record<string, unknown>, {
               timeoutMs: timeoutMs + 1000,
             })
             .then(

@@ -230,8 +230,7 @@ describe("builder failures (FAILURE_MODEL §2, §9)", () => {
 
   it("stops a builder that hangs with MOSTRA_BUILD_TIMEOUT, and publishes nothing", async () => {
     const home = testHome();
-    // The builder is stopped before it builds (a fault point), so a fast build can't finish
-    // before the hang begins (issue #18).
+    // The builder never answers (a fault point), so a fast build can't finish first (issue #18).
     const { daemon, client } = await session(home, undefined, {
       MOSTRA_TEST_BUILD_TIMEOUT_MS: "3000",
       MOSTRA_TEST_FAULTS: "builder:build:hang",

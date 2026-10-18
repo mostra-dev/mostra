@@ -23,7 +23,12 @@ let dev: DevServer | undefined;
 
 const supervisor = connectToSupervisor({
   onRequest: async (method, params) => {
-    if (method === BUILD_METHOD) return buildSpa(params as BuildRequest);
+    if (method === BUILD_METHOD) {
+      const request = params as BuildRequest;
+      // A test's hung builder (issue #18): it never answers.
+      if (request.hang === true) return new Promise<never>(() => {});
+      return buildSpa(request);
+    }
     if (method === DEV_METHOD) {
       if (dev) throw new Error("This builder child already serves a dev session.");
       dev = await startDev(params as DevRequest, supervisor);
