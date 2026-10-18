@@ -6,7 +6,15 @@
  * wait and results (WP-10's handoff).
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import {
   artifactCreateMethod,
@@ -209,9 +217,13 @@ describe("every command, with --json and no terminal", () => {
     expect(argv.join(" ")).not.toContain("#l=");
     expect(argv.join(" ")).not.toContain("#t=");
     expect(argv.join(" ")).not.toContain(linkSecret);
-    expect(statSync(page).mode & 0o777).toBe(0o600);
+    // One descriptor for the mode and the text, so both describe the same file.
+    const handle = openSync(page, "r");
+    const mode = fstatSync(handle).mode & 0o777;
+    const text = readFileSync(handle, "utf8");
+    closeSync(handle);
+    expect(mode).toBe(0o600);
     expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
-    const text = readFileSync(page, "utf8");
     expect(text).not.toContain(linkSecret);
     const launch = /location\.replace\("([^"]+)"\)/.exec(text)?.[1] as string;
     expect(launch).toMatch(

@@ -1,5 +1,13 @@
 /** How `mostra open` hands a launch URL to a browser (D140 item 15, Opus review findings 4, 7). */
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -47,9 +55,13 @@ describe("the launch page (Opus review finding 4)", () => {
     const base = freshBase();
     const url = 'http://127.0.0.1:20000/a/art_X#l=ABC"</script><b>';
     const file = writeLaunchPage(url, base);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // One descriptor for the mode and the text, so both describe the same file.
+    const handle = openSync(file, "r");
+    const mode = fstatSync(handle).mode & 0o777;
+    const text = readFileSync(handle, "utf8");
+    closeSync(handle);
+    expect(mode).toBe(0o600);
     expect(statSync(dirname(file)).mode & 0o777).toBe(0o700);
-    const text = readFileSync(file, "utf8");
     expect(text).toBe(launchPage(url));
     expect(text).not.toContain("</script><b>");
     expect(text).toContain("\\u003c/script>");
