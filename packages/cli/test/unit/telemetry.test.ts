@@ -3,7 +3,16 @@
  * time zones, the harness, the schema, the store, the question and the queue.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -310,32 +319,61 @@ describe("the store (D140 item 5)", () => {
     expect(damaged.update((current) => current)).toBeUndefined();
     expect(readFileSync(damaged.settingsFile, "utf8")).toBe("{ not json");
     const invalid = new TelemetryStore(configDir());
-    writeFileSync(invalid.settingsFile, JSON.stringify({ installId: "my-hostname" }));
+    writeFileSync(invalid.idFile, "my-hostname\n");
     expect(invalid.read().ok).toBe(false);
+    expect(invalid.installId()).toBeUndefined();
+    const planted = new TelemetryStore(configDir());
+    writeFileSync(planted.settingsFile, JSON.stringify({ installId: randomUUID() }));
+    expect(planted.read().ok).toBe(false);
+    // The install ID is its own file, 0600, and never in telemetry.json.
+    const fresh = new TelemetryStore(configDir());
+    const made = fresh.installId();
+    expect(made?.created).toBe(true);
+    expect(statSync(fresh.idFile).mode & 0o777).toBe(0o600);
+    expect(fresh.read()).toMatchObject({ ok: true, settings: { installId: made?.id } });
+    fresh.update((current) => ({ ...current, choice: "on" }));
+    expect(readFileSync(fresh.settingsFile, "utf8")).not.toContain(made?.id ?? "-");
   });
 
-  it("gives two processes on a first run one install ID", async () => {
+  it.each([
+    ["no lock", false],
+    ["a lock a crashed process left", true],
+  ])("gives processes on a first run one install ID (%s)", async (_, staleLock) => {
     const dir = configDir();
+    if (staleLock) {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const lock = join(dir, "telemetry.lock");
+      // The lock of a process that no longer runs (PID 2^22 + 1 is above every default pid_max).
+      writeFileSync(lock, "4194305 crashed", { mode: 0o600 });
+      const old = new Date(Date.now() - 60_000);
+      utimesSync(lock, old, old);
+    }
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    const script = `import { TelemetryStore } from ${JSON.stringify(entry)}; const id = new TelemetryStore(process.argv[1]).installId(); process.stdout.write(id ? id.id : "none");`;
-    const ids = await Promise.all(
-      Array.from(
-        { length: 8 },
-        () =>
-          new Promise<string>((resolve) => {
-            const child = spawn(process.execPath, ["--input-type=module", "-e", script, dir], {
-              stdio: ["ignore", "pipe", "inherit"],
-            });
-            let out = "";
-            child.stdout.on("data", (chunk: Buffer) => {
-              out += chunk.toString();
-            });
-            child.on("exit", () => resolve(out));
-          }),
-      ),
+    const script = `import { TelemetryStore } from ${JSON.stringify(entry)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
+    // Every process waits for one start signal, so they make their IDs at the same moment.
+    const go = join(dir, "..", `go-${randomUUID()}`);
+    const running = Array.from(
+      { length: 12 },
+      () =>
+        new Promise<string>((resolve) => {
+          const child = spawn(process.execPath, ["--input-type=module", "-e", script, dir, go], {
+            stdio: ["ignore", "pipe", "inherit"],
+          });
+          let out = "";
+          child.stdout.on("data", (chunk: Buffer) => {
+            out += chunk.toString();
+          });
+          child.on("close", () => resolve(out));
+        }),
     );
+    await new Promise((done) => setTimeout(done, 600));
+    writeFileSync(go, "");
+    const ids = await Promise.all(running);
     expect(new Set(ids).size).toBe(1);
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+    // Every process got the lock (a crashed owner's lock was taken over), and the lock is gone
+    // with nothing left beside it.
+    expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
   });
 
   it("deletes the install ID and the queue when telemetry turns off, and bounds the queue", () => {
