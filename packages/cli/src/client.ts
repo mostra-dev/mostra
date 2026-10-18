@@ -140,18 +140,21 @@ export function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
       child.unref();
       outcome();
     };
+    // The limit is the start's own or the command's --timeout, whichever is shorter, and the
+    // message names the one in force (Opus review finding 7).
+    const limitMs = Math.min(START_TIMEOUT_MS, options.timeoutMs ?? START_TIMEOUT_MS);
     const timer = setTimeout(
       () =>
         finish(() =>
           reject(
             new RpcError(
               createDiagnostic("MOSTRA_HOST_TIMEOUT", {
-                message: `The home's daemon didn't start within ${START_TIMEOUT_MS / 1000} s.`,
+                message: `The home's daemon didn't start within ${formatDuration(limitMs)}${limitMs < START_TIMEOUT_MS ? " (--timeout)" : ""}.`,
               }),
             ),
           ),
         ),
-      Math.min(START_TIMEOUT_MS, options.timeoutMs ?? START_TIMEOUT_MS),
+      limitMs,
     );
     child.on("error", (error) =>
       finish(() =>
@@ -294,4 +297,11 @@ function closed(path: string, why: string): RpcError {
       message: `Couldn't reach the instance at ${path} (${why}).`,
     }),
   );
+}
+
+/** A limit as people write it: `250 ms`, `5 s`, `1.5 s`. */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = ms / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} s`;
 }

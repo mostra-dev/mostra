@@ -6,8 +6,8 @@
  * wait and results (WP-10's handoff).
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   artifactCreateMethod,
   CapabilityLink,
@@ -189,28 +189,43 @@ describe("every command, with --json and no terminal", () => {
     await run(["open", artifactId, "--revoke", replacement.tokenId], { code: 0, ok: true });
   });
 
-  it("open --browser hands the browser a one-time launch URL, never the link's secret", async () => {
+  it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
     // A stand-in browser: it records the arguments it was started with.
     const record = join(home.root, "browser-argv.txt");
     const opener = join(home.root, "fake-browser.sh");
     writeFileSync(opener, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, { mode: 0o755 });
+    // A `$BROWSER` list whose first entry doesn't exist, and whose second takes the page by %s.
     const opened = await cli(["open", artifactId, "--browser", "--json"], {
-      env: { ...home.env, BROWSER: opener },
+      env: { ...home.env, BROWSER: `${join(home.root, "missing-browser")}:${opener} --new %s` },
     });
     const value = envelope(opened);
     expect(value.result).toMatchObject({ opened: true });
-    const linkSecret = new URL((value.result as { url: string }).url).hash;
+    const linkSecret = new URL((value.result as { url: string }).url).hash.slice(1);
     await eventually(() => existsSync(record));
-    const argv = readFileSync(record, "utf8").trim();
-    expect(argv).toMatch(
+    const argv = readFileSync(record, "utf8").trim().split("\n");
+    expect(argv[0]).toBe("--new");
+    const page = argv[1] as string;
+    // Nothing on the command line but a path: no ticket, no secret.
+    expect(argv.join(" ")).not.toContain("#l=");
+    expect(argv.join(" ")).not.toContain("#t=");
+    expect(argv.join(" ")).not.toContain(linkSecret);
+    expect(statSync(page).mode & 0o777).toBe(0o600);
+    expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
+    const text = readFileSync(page, "utf8");
+    expect(text).not.toContain(linkSecret);
+    const launch = /location\.replace\("([^"]+)"\)/.exec(text)?.[1] as string;
+    expect(launch).toMatch(
       /^http:\/\/127\.0\.0\.1:\d+\/a\/art_[0-9A-Z]{26}#l=[0-9A-HJKMNP-TV-Z]{26}$/,
     );
-    expect(argv).not.toContain(linkSecret.slice(1));
-    expect(argv).not.toContain("#t=");
     // The ticket opens the artifact once, as the link would; a second use is refused.
-    const viewer = await new Viewer().open(argv);
+    const viewer = await new Viewer().open(launch);
     expect(viewer.viewId).toMatch(/^vw_/);
-    await expect(new Viewer().open(argv)).rejects.toThrow(/exchange: 4\d\d/);
+    await expect(new Viewer().open(launch)).rejects.toThrow(/exchange: 4\d\d/);
+    // No browser could start: `opened` says so.
+    const none = await cli(["open", artifactId, "--browser", "--json"], {
+      env: { ...home.env, BROWSER: join(home.root, "missing-browser") },
+    });
+    expect(envelope(none).result).toMatchObject({ opened: false });
   });
 
   it("gc lists, then collects, exactly the same versions; doctor and docs", async () => {
@@ -343,6 +358,18 @@ describe("every command, with --json and no terminal", () => {
     });
     expect(slow.code).toBe(4);
     expect(envelope(slow).error?.code).toBe("MOSTRA_HOST_TIMEOUT");
+    // With no daemon, the start is bounded by --timeout too, and says so (Opus review finding 7).
+    const down = testHome();
+    try {
+      const starting = await cli(["list", "--timeout", "1ms", "--json"], { env: down.env });
+      expect(starting.code).toBe(4);
+      const error = envelope(starting).error as { code: string; message: string };
+      expect(error.code).toBe("MOSTRA_HOST_TIMEOUT");
+      expect(error.message).toContain("1 ms (--timeout)");
+    } finally {
+      await cli(["daemon", "stop", "--json"], { env: down.env });
+      await down.cleanup();
+    }
   });
 
   it("covers every command", () => {

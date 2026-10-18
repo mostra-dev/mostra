@@ -1,9 +1,9 @@
 /**
  * `mostra open`: the artifact's link on stdout, and a browser opened on a one-time launch URL that
- * never carries the link's secret (D140 item 15). A client of `view/default`, `view/url`,
+ * never carries the link's secret (D140 item 15), handed over in a page, never on a command line
+ * (`browser.ts`). A client of `view/default`, `view/url`,
  * `view/rotate`, `view/revoke` and `view/launch`.
  */
-import { spawn } from "node:child_process";
 import {
   type CapabilityLink,
   type CapabilityScope,
@@ -13,6 +13,7 @@ import {
   viewRotateMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
+import { openInBrowser } from "../browser.ts";
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
 import { EXIT } from "../exit.ts";
 import type { Environment } from "../home.ts";
@@ -24,28 +25,6 @@ export function hasDisplay(env: Environment, platform: string = process.platform
   const ssh = env["SSH_CONNECTION"] !== undefined || env["SSH_TTY"] !== undefined;
   if (platform === "darwin") return !ssh;
   return env["DISPLAY"] !== undefined || env["WAYLAND_DISPLAY"] !== undefined;
-}
-
-/**
- * Opens a URL in a browser: `$BROWSER` when set (the convention `xdg-open` follows too), else the
- * platform's opener, run with direct arguments, never through a shell.
- */
-function openBrowser(url: string, env: Environment): boolean {
-  const chosen = env["BROWSER"];
-  const opener =
-    chosen !== undefined && chosen !== ""
-      ? chosen
-      : process.platform === "darwin"
-        ? "open"
-        : "xdg-open";
-  try {
-    const child = spawn(opener, [url], { detached: true, stdio: "ignore" });
-    child.on("error", () => {});
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** Whether `open` should launch a browser: a terminal without `--json`, or `--browser`. */
@@ -63,7 +42,8 @@ async function show(
   let opened = false;
   if (wantsBrowser(context)) {
     const launch = await context.call(viewLaunchMethod, { tokenId: link.tokenId });
-    opened = openBrowser(launch.url, context.env);
+    // The launch URL reaches the browser through a 0600 page, never its arguments.
+    opened = await openInBrowser(launch.url, context.env);
   }
   return { result: { ...link, opened }, human: `${link.url}\n` };
 }
