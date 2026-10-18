@@ -244,6 +244,11 @@ export interface GcOptions {
   readonly caches: (dryRun: boolean) => Promise<{ readonly count: number; readonly bytes: number }>;
   /** The clock (tests move it); default `Date.now`. */
   readonly now?: () => number;
+  /**
+   * Lockfiles in use outside the ledger: open dev sessions run on them (Opus review finding 2).
+   * Read under the gate, which a session's resolution shares, so none appears mid-run.
+   */
+  readonly locksInUse?: () => readonly string[];
   /** Test fault points: `gc:dependencies` fails the dependency step. */
   readonly faults?: Faults;
 }
@@ -353,7 +358,7 @@ export function createGc(options: GcOptions): Gc {
             );
         }
         // 3. Lock layouts and the store: what the versions that keep their files still need.
-        const keep: string[] = [];
+        const keep: string[] = [...(options.locksInUse?.() ?? [])];
         for (const row of keptRows) {
           const text = await readFile(
             join(registry.store.versionDir(row.id), "lock.yaml"),

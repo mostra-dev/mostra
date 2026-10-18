@@ -6,7 +6,14 @@
  * leaves nothing behind. What viewers can and can't reach is VR-03's enumeration in
  * `gateway.test.ts`.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -512,6 +519,49 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
       owner.close();
     } finally {
       await browser.close();
+      await gateway.stop();
+      await registry.close();
+    }
+  }, 240_000);
+
+  it("keeps the packages an open session runs on from gc, and gives them up when it stops (Opus review finding 2)", async () => {
+    const registry = await startRegistry(FIXTURE_PACKAGES);
+    const home = testHome();
+    const gateway = new GatewayHome(home);
+    try {
+      await gateway.start({
+        env: { HOME: tempDir("dev-user"), npm_config_registry: registry.url },
+      });
+      const dir = join(tempDir("dev-gc"), "preview");
+      mkdirSync(dir, { recursive: true });
+      // An import no `mostra add` recorded: under the `auto` policy only the session names it.
+      writeFileSync(
+        join(dir, "index.tsx"),
+        `import { label } from "mostra-fixture-util";\nexport default function Page() {\n  return <p id="label">{label}</p>;\n}\n`,
+      );
+      const owner = await connectTo(gateway.daemon.status.socket as string);
+      ok(await owner.call("mostra/initialize", initializeParams()));
+      const started = ok<{ sessionId: string }>(
+        await owner.call("dev/start", { source: { path: dir } }, 120_000),
+      );
+      const linked = join(home.home, "cache", "dev", started.sessionId, "root", "node_modules");
+      const layout = realpathSync(linked);
+      expect(layout).toContain(join("deps", "locks"));
+      interface Collected {
+        readonly lockLayouts: { readonly count: number };
+        readonly storePackages: { readonly count: number };
+      }
+      const kept = ok<Collected>(await gateway.client.call("gc/run", {}, 120_000));
+      expect(kept.lockLayouts.count).toBe(0);
+      expect(kept.storePackages.count).toBe(0);
+      expect(existsSync(join(layout, "mostra-fixture-util", "package.json"))).toBe(true);
+      ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
+      owner.close();
+      // Nothing names the layout any more: the next gc takes it.
+      const freed = ok<Collected>(await gateway.client.call("gc/run", {}, 120_000));
+      expect(freed.lockLayouts.count).toBe(1);
+      expect(existsSync(layout)).toBe(false);
+    } finally {
       await gateway.stop();
       await registry.close();
     }

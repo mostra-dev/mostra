@@ -79,6 +79,11 @@ export interface Dev {
   count(): number;
   /** An artifact's dependencies changed (`deps/add`): its sessions resolve them again. */
   dependenciesChanged(artifact: SourceRef): void;
+  /**
+   * The lockfiles open sessions run on, which gc keeps (Opus review finding 2): a session's
+   * packages may be named by no working lockfile and no version.
+   */
+  locks(): string[];
   stopAll(): Promise<void>;
 }
 
@@ -112,6 +117,8 @@ interface Running {
 export function createDev(options: DevOptions): Dev {
   const { log } = options;
   const sessions = new Map<string, Running>();
+  /** Each session's current lockfile, from its resolution until its dev server stopped. */
+  const locksInUse = new Map<string, string>();
 
   const start = async (
     params: {
@@ -228,8 +235,10 @@ export function createDev(options: DevOptions): Dev {
 
     /** Resolves the packages, and writes the lockfile the worker resolves server packages by. */
     const resolve = async (manifestId: string | undefined): Promise<string> => {
-      const resolution = await options.gate.shared(() =>
-        options.dependencies().resolve({
+      // The lock is known to gc before the gate is released, so no gc can take its layout
+      // between the resolution and the dev server's start.
+      const resolution = await options.gate.shared(async () => {
+        const resolved = await options.dependencies().resolve({
           key: lockKey(
             manifestId ?? options.registry.artifactAt(source.bindingPath),
             source.bindingPath,
@@ -237,8 +246,10 @@ export function createDev(options: DevOptions): Dev {
           sourceDir: join(root, "source"),
           artifactDir: source.root,
           artifactPath: path,
-        }),
-      );
+        });
+        if (!closed) locksInUse.set(sessionId, resolved.lock);
+        return resolved;
+      });
       await writeFile(join(versionDir, "lock.yaml"), resolution.lock);
       return resolution.nodeModules;
     };
@@ -357,6 +368,7 @@ export function createDev(options: DevOptions): Dev {
       await catching.catch(() => {});
       await child?.stop().catch(() => {});
       await sandbox?.close().catch(() => {});
+      locksInUse.delete(sessionId);
       await rm(dir, { recursive: true, force: true });
     };
     const stop = async (): Promise<void> => {
@@ -466,6 +478,7 @@ export function createDev(options: DevOptions): Dev {
       }),
     ],
     count: () => sessions.size,
+    locks: () => [...locksInUse.values()],
     dependenciesChanged: (artifact) => {
       void (async () => {
         const bindingPath =
