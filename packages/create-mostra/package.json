@@ -1,0 +1,62 @@
+{
+  "name": "create-mostra",
+  "version": "0.0.0",
+  "description": "npm create mostra: create a Mostra artifact, installing the Mostra runtime on first use.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/create-mostra#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/create-mostra"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run --project unit",
+    "api": "mostra-tools api",
+    "test:integration": "vitest run --project integration"
+  },
+  "dependencies": {
+    "@mostra/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "bin": {
+    "create-mostra": "./dist/bin.js"
+  },
+  "keywords": [
+    "mostra",
+    "create",
+    "agent",
+    "artifact"
+  ]
+}

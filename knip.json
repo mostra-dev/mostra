@@ -74,6 +74,10 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@mostra/runtime"]
     },
+    "packages/create-mostra": {
+      "entry": ["src/index.ts", "src/bin.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
     "packages/shell": {
       "entry": ["src/main.tsx", "index.html", "vite.config.ts"],
       "project": ["src/**/*.{ts,tsx}", "test/**/*.ts"]

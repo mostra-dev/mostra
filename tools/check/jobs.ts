@@ -7,6 +7,15 @@ import { existsSync } from "node:fs";
 import { fromRoot } from "../lib/repo.ts";
 import { affectsPackages, type Plan, touches } from "./plan.ts";
 
+/** Packages whose suites run real Mostra processes: the runtime, its protocol and its clients. */
+const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
+  "@mostra/runtime",
+  "@mostra/protocol",
+  "@mostra/cli",
+  "@mostra/sdk",
+  "create-mostra",
+]);
+
 /** The names of the jobs, in REPO_STANDARDS §6 order. */
 export const JOB_NAMES = [
   "format-lint",
@@ -117,13 +126,10 @@ export const JOBS: readonly Job[] = [
     name: "integration",
     summary:
       "Suites through real Mostra processes (sockets, process groups), on macOS and Linux in CI",
-    // D86: only when the runtime or the protocol it speaks is affected (dependents included).
+    // D86: only when the runtime, the protocol it speaks or a client that spawns it is affected
+    // (dependents included).
     applies: (plan) =>
-      plan.packages === "all" ||
-      plan.packages.some(
-        (name) =>
-          name === "@mostra/runtime" || name === "@mostra/protocol" || name === "@mostra/cli",
-      ),
+      plan.packages === "all" || plan.packages.some((name) => INTEGRATION_PACKAGES.has(name)),
     tasks: ["test:integration"],
   },
   {
