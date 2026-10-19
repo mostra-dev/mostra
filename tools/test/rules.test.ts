@@ -3,6 +3,7 @@
  * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05) and Markdown links.
  */
 import { describe, expect, it } from "vitest";
+import { eeLeaks } from "../api/pack.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
 import { releaseGroupProblems, workflowProblems } from "../repo-lint/cli.ts";
@@ -356,5 +357,35 @@ describe("the release group (RT-01, EN-05)", () => {
         packages,
       ),
     ).toEqual([expect.stringContaining("privatePackages")]);
+  });
+});
+
+describe("the ee/ packing check (D118, EN-09)", () => {
+  const root = "/repo";
+  const dir = "/repo/packages/sdk";
+  const maps: Record<string, string> = {
+    "dist/index.js.map": JSON.stringify({ sources: ["../src/index.ts"] }),
+    "dist/leaky.js.map": JSON.stringify({ sources: ["../../../ee/sso/src/index.ts"] }),
+    "dist/rooted.js.map": JSON.stringify({ sourceRoot: "../../..", sources: ["ee/audit/log.ts"] }),
+    "dist/broken.js.map": "{",
+  };
+  const leaks = (files: string[]) => eeLeaks(dir, files, (path) => maps[path], root);
+
+  it("passes a package built from its own sources", () => {
+    expect(leaks(["dist/index.js", "dist/index.js.map", "README.md"])).toEqual([]);
+    // A file merely named like ee isn't under ee/.
+    expect(leaks(["dist/free.js", "dist/ee.js", "docs/fee/x.md"])).toEqual([]);
+  });
+
+  it("refuses an ee/ file in the tarball and a bundle built from ee/ sources", () => {
+    expect(leaks(["ee/sso/index.js"])).toEqual([expect.stringContaining("packs ee/sso/index.js")]);
+    expect(leaks(["dist/ee/sso.js"])).toEqual([expect.stringContaining("packs dist/ee/sso.js")]);
+    expect(leaks(["dist/leaky.js.map"])).toEqual([
+      expect.stringContaining("built from ee/sso/src/index.ts"),
+    ]);
+    expect(leaks(["dist/rooted.js.map"])).toEqual([
+      expect.stringContaining("built from ee/audit/log.ts"),
+    ]);
+    expect(leaks(["dist/broken.js.map"])).toEqual([expect.stringContaining("isn't JSON")]);
   });
 });

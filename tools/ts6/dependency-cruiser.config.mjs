@@ -99,6 +99,14 @@ rules.push(
     to: { path: "^packages/cli/src/telemetry/" },
   },
   {
+    name: "core-never-imports-ee",
+    comment:
+      "The core never imports ee/ (D118, EN-09): everything outside ee/ that users install, embed or self-host stays Apache-2.0, so no core module may reach source-available code.",
+    severity: "error",
+    from: { path: "^(packages|plugins|apps|tests|tools)/" },
+    to: { path: "^ee/" },
+  },
+  {
     name: "no-circular",
     comment: "Circular imports hide the real dependency direction.",
     severity: "error",

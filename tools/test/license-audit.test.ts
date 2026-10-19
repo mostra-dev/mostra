@@ -3,7 +3,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -193,5 +193,141 @@ describe("license audit", () => {
     expect(spdxAllowed("GPL-3.0-only")).toBe(false);
     expect(spdxAllowed("SEE LICENSE IN LICENSE")).toBe(false);
     expect(spdxAllowed("Apache-2.0 WITH LLVM-exception")).toBe(true);
+  });
+});
+
+/** An `ee/sso` package (commercial license) beside the fixture workspace, with its own deps. */
+function withEe(root: string, deps: readonly Dep[], linkFromCore: boolean): void {
+  const ee = join(root, "ee/sso");
+  mkdirSync(join(ee, "node_modules"), { recursive: true });
+  writeFileSync(
+    join(ee, "package.json"),
+    JSON.stringify({
+      name: "@mostra/ee-sso",
+      version: "0.0.0",
+      license: "LicenseRef-Mostra-Enterprise",
+      dependencies: Object.fromEntries(deps.map((dep) => [dep.name, "1.0.0"])),
+    }),
+  );
+  for (const dep of deps) {
+    const dir = join(root, "vendor", dep.name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: dep.name, version: "1.0.0", license: dep.license }),
+    );
+    symlinkSync(dir, join(ee, "node_modules", dep.name));
+  }
+  if (linkFromCore) {
+    const core = join(root, "packages/core");
+    const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
+    manifest.dependencies["@mostra/ee-sso"] = "workspace:*";
+    writeFileSync(join(core, "package.json"), JSON.stringify(manifest));
+    mkdirSync(join(core, "node_modules/@mostra"), { recursive: true });
+    symlinkSync(ee, join(core, "node_modules/@mostra/ee-sso"));
+  }
+}
+
+describe("license audit: ee/ apart from the core (D118, EN-09)", () => {
+  it("refuses a core package whose closure reaches ee/", () => {
+    const root = workspace([{ name: "fine", license: "MIT" }]);
+    withEe(root, [], true);
+    const result = audit(root);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("reaches @mostra/ee-sso, a package in ee/");
+    // The same ee/ package, unreferenced by the core: its own commercial license is accepted.
+    const apart = workspace([{ name: "fine", license: "MIT" }]);
+    withEe(apart, [{ name: "oss-helper", license: "MIT" }], false);
+    expect(audit(apart).code).toBe(0);
+  });
+
+  it("holds ee/'s third-party dependencies to the same OSI rules", () => {
+    const root = workspace([{ name: "fine", license: "MIT" }]);
+    withEe(root, [{ name: "closed-engine", license: "BUSL-1.1" }], false);
+    const result = audit(root);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      'closed-engine@1.0.0 (@mostra/ee-sso > closed-engine) is licensed "BUSL-1.1"',
+    );
+  });
+});
+
+/** A runtime bundle's shape: Node.js's license, LICENSE and NOTICE, and `lib/node_modules`. */
+function bundleTree(packages: readonly Dep[]): string {
+  const root = mkdtempSync(join(tmpdir(), "mostra-bundle-audit-"));
+  created.push(root);
+  mkdirSync(join(root, "node"), { recursive: true });
+  writeFileSync(join(root, "node/LICENSE"), "Node.js is licensed for use as follows: MIT\n");
+  writeFileSync(join(root, "LICENSE"), "Apache License\n");
+  writeFileSync(join(root, "NOTICE"), "Mostra\n");
+  for (const dep of packages) {
+    const dir = join(root, "lib/node_modules", dep.name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: dep.name, version: "1.0.0", license: dep.license }),
+    );
+    for (const [file, text] of Object.entries(dep.files ?? {}))
+      writeFileSync(join(dir, file), text);
+  }
+  // The warm set, and a package inside its isolated layout, as pnpm writes it.
+  mkdirSync(join(root, "lib/node_modules/@mostra/warm"), { recursive: true });
+  writeFileSync(
+    join(root, "lib/node_modules/@mostra/warm/package.json"),
+    JSON.stringify({
+      name: "@mostra/warm",
+      version: "0.0.0",
+      private: true,
+      license: "Apache-2.0",
+    }),
+  );
+  const warm = join(
+    root,
+    "lib/node_modules/@mostra/warm/node_modules/.pnpm/warm-dep@1.0.0/node_modules/warm-dep",
+  );
+  mkdirSync(warm, { recursive: true });
+  writeFileSync(
+    join(warm, "package.json"),
+    JSON.stringify({ name: "warm-dep", version: "1.0.0", license: "ISC" }),
+  );
+  return root;
+}
+
+const auditBundle = (dir: string) => {
+  const result = spawnSync("node", [CLI, "--bundle", dir], { encoding: "utf8" });
+  return { code: result.status, output: `${result.stdout}${result.stderr}` };
+};
+
+describe("license audit of a runtime bundle (--bundle, RT-01)", () => {
+  it("passes on an OSI tree, warm set included", () => {
+    const result = auditBundle(bundleTree([{ name: "fine", license: "MIT" }]));
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain("2 third-party packages OSI-licensed");
+  });
+
+  it("refuses what a platform's own packages could bring: a non-OSI license or PolyForm terms", () => {
+    const bad = auditBundle(
+      bundleTree([
+        { name: "native-binding-linux", license: "BUSL-1.1" },
+        {
+          name: "hidden",
+          license: "MIT",
+          files: { "LICENSE.md": "PolyForm Shield License 1.0.0" },
+        },
+      ]),
+    );
+    expect(bad.code).toBe(1);
+    expect(bad.output).toContain("native-binding-linux@1.0.0");
+    expect(bad.output).toContain("ships PolyForm terms");
+  });
+
+  it("refuses a bundle without its license files, and Node.js license texts it mustn't carry", () => {
+    const root = bundleTree([]);
+    rmSync(join(root, "NOTICE"));
+    writeFileSync(join(root, "node/LICENSE"), "Server Side Public License\n");
+    const result = auditBundle(root);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("The bundle has no NOTICE");
+    expect(result.output).toContain("Node.js LICENSE carries SSPL terms");
   });
 });
