@@ -83,6 +83,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        id: setup
         if: steps.gate.outputs.run
         with:
           job: ${{ matrix.job }}
@@ -102,7 +103,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-unit-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-unit-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install the Playwright Chromium headless shell
         if: steps.gate.outputs.run && matrix.job == 'unit'
         run: pnpm --filter @mostra/react exec playwright install --with-deps --only-shell chromium
@@ -160,6 +161,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        id: setup
         with:
           job: integration
       # Built versions are rendered in Chromium (WP-03, AU-01, AU-02).
@@ -167,7 +169,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install the Playwright Chromium headless shell
         run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
       - name: pnpm check --job integration
@@ -191,13 +193,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        id: setup
         with:
           job: e2e
       - name: Cache the Playwright browsers
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-e2e-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium, Firefox and WebKit
         run: pnpm --filter @mostra/e2e exec playwright install --with-deps chromium firefox webkit
       - name: pnpm check --job e2e
