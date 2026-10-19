@@ -975,7 +975,7 @@ D68 gives artifacts no imposed look and asks the kit for a baseline that makes a
 2. **Tokens** keep shadcn's names (the kit builds on shadcn, so templates and agents' knowledge carry over) and add `--success`, `--warning`, `--answer` and a sixth chart colour. Values are given in OKLCH, with the hex they were derived from:
 
    | Token | Light, `oklch()` (hex) | Dark, `oklch()` (hex) |
-|---|---|---|
+   |---|---|---|
    | `--background` | `1.000 0 0` (#ffffff) | `0.178 0.006 271.0` (#101114) |
    | `--foreground` | `0.191 0 0` (#141414) | `0.960 0.004 106.5` (#f2f2ef) |
    | `--card` | `1.000 0 0` (#ffffff) | `0.205 0.008 274.5` (#16171b) |
