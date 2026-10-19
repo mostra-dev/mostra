@@ -5,9 +5,10 @@
  * request fails it with `MOSTRA_VERIFY_CRASHED` and its last lines; the next request starts a
  * fresh one. The supervisor never loads Playwright (RT-02).
  */
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
+  BUNDLE_NAME,
   type CompareRequest,
   type CompareResult,
   createDiagnostic,
@@ -19,19 +20,42 @@ import {
 import type { Environment, Log } from "../log.ts";
 import type { ChildHandle, ProcessManager } from "../processes/index.ts";
 
+/** Where the runner child is and where its browser lives. */
+export interface RunnerLocation {
+  readonly entry: string;
+  readonly nodeArgs: readonly string[];
+  /**
+   * The runtime bundle's own browsers (`<bundle>/browsers`, D142), when this runtime runs from a
+   * bundle: the runner uses exactly the browser the bundle's setup fetched and checked, whatever
+   * `PLAYWRIGHT_BROWSERS_PATH` the environment names.
+   */
+  readonly browsers?: string;
+}
+
+/** The runtime bundle this runtime sits in (four levels above its package), if any. */
+export function enclosingBundle(runtimeRoot: string): string | undefined {
+  const root = resolve(runtimeRoot, "..", "..", "..", "..");
+  try {
+    const info = JSON.parse(readFileSync(join(root, "bundle.json"), "utf8")) as { name?: unknown };
+    return info.name === BUNDLE_NAME ? root : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The runner child's entry and Node arguments: `MOSTRA_VERIFY_ENTRY`, else beside the runtime. */
-export function locateRunner(
-  env: Environment,
-  runtimeRoot: string,
-): { readonly entry: string; readonly nodeArgs: readonly string[] } {
+export function locateRunner(env: Environment, runtimeRoot: string): RunnerLocation {
+  const bundle = enclosingBundle(runtimeRoot);
+  const browsers = bundle !== undefined ? { browsers: join(bundle, "browsers") } : {};
   const override = env["MOSTRA_VERIFY_ENTRY"];
-  if (override) return { entry: override, nodeArgs: [] };
+  if (override) return { entry: override, nodeArgs: [], ...browsers };
   const fromSource = import.meta.url.endsWith(".ts");
   const built = resolve(runtimeRoot, "..", "verify", "dist", "main.js");
-  if (!fromSource || existsSync(built)) return { entry: built, nodeArgs: [] };
+  if (!fromSource || existsSync(built)) return { entry: built, nodeArgs: [], ...browsers };
   return {
     entry: resolve(runtimeRoot, "..", "verify", "src", "main.ts"),
     nodeArgs: ["--conditions=@mostra/source"],
+    ...browsers,
   };
 }
 
@@ -57,7 +81,7 @@ export interface RunnerClient {
 }
 
 /** The variables the runner child gets: where Playwright's browsers are, and nothing secret. */
-function runnerEnvironment(env: Environment): Environment {
+export function runnerEnvironment(env: Environment, browsers?: string): Environment {
   const keep = [
     "PATH",
     "HOME",
@@ -73,6 +97,7 @@ function runnerEnvironment(env: Environment): Environment {
     const value = env[name];
     if (value !== undefined) out[name] = value;
   }
+  if (browsers !== undefined) out["PLAYWRIGHT_BROWSERS_PATH"] = browsers;
   const idle = env["MOSTRA_TEST_VERIFY_IDLE_MS"];
   if (idle) out["MOSTRA_TEST_VERIFY_IDLE_MS"] = idle;
   return out;
@@ -85,6 +110,8 @@ export function createRunnerClient(options: {
   readonly env: Environment;
   readonly entry: string;
   readonly nodeArgs: readonly string[];
+  /** The bundle's browsers directory, when the runtime runs from a bundle. */
+  readonly browsers?: string | undefined;
 }): RunnerClient {
   let child: Promise<ChildHandle> | undefined;
 
@@ -95,7 +122,7 @@ export function createRunnerClient(options: {
         ownerRef: "verify-runner",
         command: process.execPath,
         args: [...options.nodeArgs, options.entry],
-        env: runnerEnvironment(options.env),
+        env: runnerEnvironment(options.env, options.browsers),
         ipc: {},
       })
       .then((handle) => {
