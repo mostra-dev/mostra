@@ -20,3 +20,6 @@ playwright-report/
 .env.*
 *.log
 __pycache__/
+
+# The runtime bundle assembler's downloads (tools/bundle)
+/.cache/
