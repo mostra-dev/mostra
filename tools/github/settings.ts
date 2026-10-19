@@ -35,6 +35,13 @@ const SECURITY = {
   secret_scanning_push_protection: "enabled",
 } as const;
 
+/**
+ * The environment the release workflow publishes from (D67, EN-05): only `main` may deploy to it,
+ * so only a merged version pull request reaches npm, crates.io and the GitHub release.
+ */
+const RELEASE_ENVIRONMENT = "release";
+const RELEASE_BRANCHES = ["main"];
+
 interface Ruleset {
   readonly name: string;
   readonly [key: string]: unknown;
@@ -97,6 +104,28 @@ function verify(): string[] {
     problems.push("the default workflow token is not read-only");
   if (workflow.can_approve_pull_request_reviews)
     problems.push("workflows can approve pull requests");
+  const environments = gh([`repos/${REPO}/environments`]) as {
+    environments: {
+      name: string;
+      deployment_branch_policy: { custom_branch_policies: boolean } | null;
+    }[];
+  };
+  const release = environments.environments.find((env) => env.name === RELEASE_ENVIRONMENT);
+  if (!release) problems.push(`the "${RELEASE_ENVIRONMENT}" environment is missing`);
+  else if (release.deployment_branch_policy?.custom_branch_policies !== true)
+    problems.push(`the "${RELEASE_ENVIRONMENT}" environment lets any branch deploy`);
+  else {
+    const policies = gh([
+      `repos/${REPO}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies`,
+    ]) as { branch_policies: { name: string; type?: string }[] };
+    const names = policies.branch_policies.map((policy) => policy.name).sort();
+    if (JSON.stringify(names) !== JSON.stringify(RELEASE_BRANCHES))
+      problems.push(
+        `the "${RELEASE_ENVIRONMENT}" environment deploys from ${names.join(", ") || "nothing"}, want ${RELEASE_BRANCHES.join(", ")}`,
+      );
+  }
+  const immutable = gh([`repos/${REPO}/immutable-releases`]) as { enabled: boolean };
+  if (!immutable.enabled) problems.push("immutable releases are off");
   const live = gh([`repos/${REPO}/rulesets`]) as { id: number; name: string }[];
   for (const ruleset of desiredRulesets()) {
     const match = live.find((candidate) => candidate.name === ruleset.name);
@@ -143,6 +172,37 @@ function apply(): void {
     "-F",
     "can_approve_pull_request_reviews=false",
   ]);
+  gh(
+    ["-X", "PUT", `repos/${REPO}/environments/${RELEASE_ENVIRONMENT}`, "--input", "-"],
+    JSON.stringify({
+      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+    }),
+  );
+  const policies = gh([
+    `repos/${REPO}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies`,
+  ]) as { branch_policies: { id: number; name: string }[] };
+  for (const policy of policies.branch_policies) {
+    if (!RELEASE_BRANCHES.includes(policy.name))
+      gh([
+        "-X",
+        "DELETE",
+        `repos/${REPO}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies/${policy.id}`,
+      ]);
+  }
+  for (const branch of RELEASE_BRANCHES) {
+    if (policies.branch_policies.some((policy) => policy.name === branch)) continue;
+    gh(
+      [
+        "-X",
+        "POST",
+        `repos/${REPO}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies`,
+        "--input",
+        "-",
+      ],
+      JSON.stringify({ name: branch, type: "branch" }),
+    );
+  }
+  gh(["-X", "PUT", `repos/${REPO}/immutable-releases`]);
   const live = gh([`repos/${REPO}/rulesets`]) as { id: number; name: string }[];
   for (const ruleset of desiredRulesets()) {
     const match = live.find((candidate) => candidate.name === ruleset.name);

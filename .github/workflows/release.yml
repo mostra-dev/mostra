@@ -1,0 +1,297 @@
+# Releases (EN-05, D67, REPO_STANDARDS §9). One workflow builds, proves and publishes a Mostra
+# release:
+#
+#   plan        the release's version, and whether this run publishes it
+#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01)
+#   smoke       each bundle on a fresh runner with no Node.js on PATH: checked, tampering refused,
+#               set up, new, verify, publish, moved, published again
+#   packages    the bundle pins in @mostra/sdk, every npm package packed and checked, and
+#               `npm publish --dry-run` of each: the release dry run
+#   npm-smoke   the packed packages through npm on an older Node.js: create-mostra, verify, publish
+#   publish     only for a version with no changeset pending and no tag yet, on main, in the
+#               protected `release` environment: attestations, the GitHub release with the bundles
+#               and SHA256SUMS, npm trusted publishing (provenance, no token), crates.io when a
+#               crate is publishable
+#
+# A release starts when the version pull request (`changeset version`, which the accepting
+# session opens, docs/agents/release.md) merges. Pull requests that touch distribution run
+# everything but publish.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/actions/setup/**
+      - .changeset/config.json
+      - packages/bundle/**
+      - packages/sdk/src/**
+      - packages/cli/src/bootstrap.ts
+      - packages/cli/src/bin.ts
+      - packages/create-mostra/src/**
+      - packages/runtime/src/verify/runner.ts
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  # A run on main may be publishing: never cancel it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  LEFTHOOK: "0"
+  TURBO_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+  FORCE_COLOR: "0"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+      node: ${{ steps.plan.outputs.node }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The version, and whether to publish it
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          version=$(node -p 'require("./packages/sdk/package.json").version')
+          node=$(node -p 'require("./packages/bundle/node.json").version')
+          pending=$(find .changeset -name '*.md' ! -name README.md | wc -l | tr -d ' ')
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null 2>&1; then tagged=yes; else tagged=no; fi
+          publish=false
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ] && [ "$version" != 0.0.0 ] && [ "$pending" = 0 ] && [ "$tagged" = no ]; then
+            publish=true
+          fi
+          {
+            echo "version=$version"
+            echo "node=$node"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release plan"
+            echo "Mostra $version (Node.js $node in the bundles); $pending changesets pending; tag v$version exists: $tagged; publish: **$publish**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  bundle:
+    name: bundle (${{ matrix.platform }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-arm64, runner: macos-15 }
+          - { platform: darwin-x64, runner: macos-15-intel }
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: bundle
+      - name: Build the bundle
+        run: node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
+      - name: Audit what it ships
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: node tools/license-audit/cli.ts --bundle "$RUNNER_TEMP/bundle/stage/mostra-$VERSION-$PLATFORM"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/bundle/mostra-*.tar.gz
+            ${{ runner.temp }}/bundle/mostra-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # A fresh runner per platform, with no Node.js set up and none on the PATH the test uses.
+  smoke:
+    name: smoke (${{ matrix.platform }}, no Node.js)
+    needs: [plan, bundle]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-arm64, runner: macos-15 }
+          - { platform: darwin-x64, runner: macos-15-intel }
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packages/bundle/scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: ${{ runner.temp }}/assets
+      - name: new, verify and publish with no Node.js
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          record="$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.json"
+          sha=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$record")
+          sh packages/bundle/scripts/smoke.sh "$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.tar.gz" "$sha"
+
+  packages:
+    name: packages (pins, pack, npm publish --dry-run)
+    needs: [plan, bundle]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: release-packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundle-*
+          path: ${{ runner.temp }}/assets
+          merge-multiple: true
+      - name: Build the published packages
+        run: pnpm exec turbo run build --filter=./packages/*
+      - name: Pin the bundles in @mostra/sdk
+        run: node packages/bundle/scripts/pins.ts --assets "$RUNNER_TEMP/assets"
+      - name: Pack and check every package
+        run: node packages/bundle/scripts/publish-npm.ts pack --out "$RUNNER_TEMP/npm"
+      - name: The release dry run
+        run: node packages/bundle/scripts/publish-npm.ts publish --from "$RUNNER_TEMP/npm" --dry-run
+      - name: Release notes
+        run: node packages/bundle/scripts/notes.ts > "$RUNNER_TEMP/npm/notes.md"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-packages
+          path: |
+            ${{ runner.temp }}/npm
+            ${{ runner.temp }}/assets/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  npm-smoke:
+    name: npm-smoke (${{ matrix.platform }}, Node.js 22)
+    needs: [plan, packages]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: darwin-arm64, runner: macos-15 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packages/bundle/scripts
+      # An older Node.js line than the bundle's, as many machines have: Mostra runs on its own.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: ${{ runner.temp }}/assets
+      - name: create-mostra, verify and publish through npm
+        env:
+          NODE_VERSION: ${{ needs.plan.outputs.node }}
+        run: sh packages/bundle/scripts/npm-smoke.sh "$RUNNER_TEMP/release/npm" "$RUNNER_TEMP/assets" "$NODE_VERSION"
+
+  publish:
+    name: publish
+    needs: [plan, bundle, smoke, packages, npm-smoke]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Only main may deploy to this environment (tools/github/settings.ts), and only a version
+    # pull request's merge reaches this job.
+    environment: release
+    permissions:
+      contents: write # the tag and the GitHub release
+      id-token: write # npm trusted publishing, crates.io trusted publishing, attestations
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundle-*
+          path: ${{ runner.temp }}/assets
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: ${{ runner.temp }}/release
+      - name: Attest the bundles
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/assets/mostra-*.tar.gz
+      - name: The GitHub release, as a draft with its assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "The release v$VERSION exists: a rerun, which finishes it."
+          else
+            gh release create "v$VERSION" --draft --target "$SHA" --title "Mostra $VERSION" \
+              --notes-file "$RUNNER_TEMP/release/npm/notes.md"
+          fi
+          gh release upload "v$VERSION" --clobber "$RUNNER_TEMP"/assets/mostra-*.tar.gz "$RUNNER_TEMP/release/assets/SHA256SUMS"
+      - name: npm (trusted publishing, provenance)
+        run: node packages/bundle/scripts/publish-npm.ts publish --from "$RUNNER_TEMP/release/npm"
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh release edit "v$VERSION" --draft=false --latest
+      - name: The crates to publish
+        id: crates
+        run: |
+          crates=$(cargo metadata --no-deps --format-version 1 | node -e 'const m=JSON.parse(require("fs").readFileSync(0));console.log(m.packages.filter((p)=>!(Array.isArray(p.publish)&&p.publish.length===0)).map((p)=>p.name).join(" "))')
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
+          echo "Crates to publish: ${crates:-none}" >> "$GITHUB_STEP_SUMMARY"
+      - name: crates.io (trusted publishing)
+        if: steps.crates.outputs.crates != ''
+        id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+      - name: Publish the crates
+        if: steps.crates.outputs.crates != ''
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CRATES: ${{ steps.crates.outputs.crates }}
+        run: for crate in $CRATES; do cargo publish --locked -p "$crate"; done
