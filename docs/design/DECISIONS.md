@@ -36,6 +36,7 @@
 | M26 | 2026-10-17T22:47:48.705Z | WP-09's two open points after the Claude Opus review: the type check's configuration (amend D138 item 8 or keep it) and the wording of the seven warning-level smoke and regression hints. Delegated both with `<ITU/>` ("I trust you to make the most robust … optimal decisions"). Recorded as D139. |
 | M27 | 2026-10-17T23:47:43.836Z | WP-10's assignment, with two addenda on telemetry consent (public-safe): ask first where the machine's time zone is in the EU, EEA, UK or Switzerland, or is UTC or unknown (no pre-selected yes; no TTY means nothing is sent until the enable command runs, with the notice once on stderr); on by default elsewhere; the time zone checked locally and never sent; `DO_NOT_TRACK=1` always wins; embedded use sends nothing. The reason: the EDPB's Guidelines 2/2023 (v2.0, 7 October 2024), paragraph 33, put software that proactively calls an API endpoint within Article 5(3) of the ePrivacy Directive, so usage analytics needs prior consent there. Starting proposals for D119's deferred choices: one random install ID, JSON mode as non-interactive, `mostra telemetry on\|off\|status` and `MOSTRA_TELEMETRY`, an event list, harness detection, no live endpoint in this package, the notice text. Recorded with M28 as D140. |
 | M28 | 2026-10-18T00:42:02.436Z | WP-10's nine questions and two findings: "Go with your recommendations, with the changes and additions below", with the telemetry decision order, storage, sending, schema and time-zone rules, `mostra dev` as a protocol feature with verify-grade session security, `daemon restart` and `uninstall` and a `CLI` diagnostic area, gc tombstones instead of row deletion, `view/default` and one-time launch tickets, the `--json` envelope, `mostra docs`, the approved notice, question, status and docs-page wording, and the reviews (Claude Opus as the seventh of ten). Recorded as D140. |
+| M29 | 2026-10-18T13:45:08Z / 13:59:11Z | Chose a visual direction for Mostra (Italian modernism, "Mostra!") and asked for it to be refined rigorously. Then approved the three open calls on the refined draft: "I agree with your recommendation on all three." The answer dot appears only on the app icon and in big moments, Figtree is the interface face, and the default artifact theme stays as quiet as shown. Recorded as D141. |
 
 ## Program-level decisions
 
@@ -964,6 +965,51 @@ Mirza answered WP-10's questions at M28, on top of the consent model he set at M
 19. **Reviews.** GPT-6.1-Sol through `codex review` and Claude Opus 5.5 as the seventh of ten (D114), each announced (D34).
 
 *Source:* M27, M28. *Amends* D60 (the command set), D119 (decided here) and D133 (idle exit).
+
+## Visual identity decisions
+
+### D141. Studio, the kit's default theme (M29)
+D68 gives artifacts no imposed look and asks the kit for a baseline that makes an unstyled artifact beautiful. **Studio** is that baseline's values. WP-18 builds them into the token system (KT-04), and WP-20's final pass on the shell starts from the same tokens and faces, keeping the shell quiet.
+
+1. **Quiet by design.** White and warm grey surfaces, near-black text, one blue for the main action and focus, and a yellow `--answer` that marks only what a person answered or chose. Colour is spent on the agent's content, not on Mostra. Mostra's own brand (its logo, site and marketing) is louder, and none of it appears in an artifact by default.
+2. **Tokens** keep shadcn's names (the kit builds on shadcn, so templates and agents' knowledge carry over) and add `--success`, `--warning`, `--answer` and a sixth chart colour. Values are given in OKLCH, with the hex they were derived from:
+
+   | Token | Light, `oklch()` (hex) | Dark, `oklch()` (hex) |
+   |---|---|---|
+   | `--background` | `1.000 0 0` (#ffffff) | `0.178 0.006 271.0` (#101114) |
+   | `--foreground` | `0.191 0 0` (#141414) | `0.960 0.004 106.5` (#f2f2ef) |
+   | `--card` | `1.000 0 0` (#ffffff) | `0.205 0.008 274.5` (#16171b) |
+   | `--muted` | `0.972 0.004 106.5` (#f6f6f3) | `0.223 0.010 276.6` (#1a1b20) |
+   | `--muted-foreground` | `0.466 0.008 106.7` (#5a5a55) | `0.717 0.007 286.2` (#a3a3a8) |
+   | `--border` | `0.917 0.008 106.6` (#e4e4de) | `0.290 0.011 278.2` (#2a2b31) |
+   | `--input` | `0.880 0.009 106.6` (#d8d8d1) | `0.331 0.012 279.2` (#34353c) |
+   | `--primary` | `0.450 0.212 267.0` (#2340c8) | `0.662 0.180 272.8` (#7086ff) |
+   | `--primary-foreground` | `1.000 0 0` (#ffffff) | `0.165 0.009 274.3` (#0d0e12) |
+   | `--secondary` | `0.957 0.004 106.5` (#f1f1ee) | `0.258 0.013 279.0` (#22232a) |
+   | `--secondary-foreground` | `0.191 0 0` (#141414) | `0.960 0.004 106.5` (#f2f2ef) |
+   | `--accent` | `0.959 0.015 273.9` (#eef1fc) | `0.265 0.055 271.9` (#1c2340) |
+   | `--accent-foreground` | `0.370 0.173 267.5` (#1a2f99) | `0.855 0.072 277.0` (#c3ccff) |
+   | `--destructive` | `0.541 0.198 32.0` (#c8290c) | `0.706 0.188 32.9` (#ff6a4d) |
+   | `--ring` | `0.450 0.212 267.0` (#2340c8) | `0.662 0.180 272.8` (#7086ff) |
+   | `--success` | `0.513 0.111 161.3` (#0b7a52) | `0.797 0.164 159.7` (#3ddc97) |
+   | `--warning` | `0.528 0.109 82.4` (#8a6400) | `0.861 0.163 87.1` (#ffc933) |
+   | `--answer` | `0.814 0.167 83.9` (#f5b700) | `0.861 0.163 87.1` (#ffc933) |
+   | `--chart-1` | `0.450 0.212 267.0` (#2340c8) | `0.657 0.182 273.1` (#6f84ff) |
+   | `--chart-2` | `0.627 0.201 33.0` (#e8492a) | `0.636 0.186 35.5` (#e5552f) |
+   | `--chart-3` | `0.559 0.192 301.5` (#8a4fd0) | `0.630 0.182 299.0` (#9a6ae6) |
+   | `--chart-4` | `0.561 0.121 160.3` (#138a5c) | `0.627 0.133 159.6` (#22a06b) |
+   | `--chart-5` | `0.651 0.135 80.9` (#b98500) | `0.645 0.131 81.9` (#b58408) |
+   | `--chart-6` | `0.586 0.176 358.8` (#c9437a) | `0.630 0.169 355.6` (#d4558d) |
+
+   - `--radius` is `0.625rem` (10 px), and the primary button is a pill.
+   - `--answer` is never used for text (1.8 to 1 on white). Text on it uses `--foreground`.
+   - Every text token meets WCAG 2.2 AA (4.5 to 1) on the surface it is meant for, in both modes. On `--background`, light then dark: `--foreground` 18.4 and 16.8, `--primary` 8.0 and 5.9, `--muted-foreground` 6.9 and 7.5, `--destructive` 5.6 and 6.7, `--success` 5.4 and 10.7, `--warning` 5.4 and 12.3. `--primary-foreground` on `--primary` is 8.0 and 6.0.
+3. **Charts: six colours in a fixed order** (blue, red, violet, green, ochre, pink), assigned in order and never cycled. Both sets pass a colour-vision check for lightness, chroma, separation of adjacent pairs under common colour blindness, and contrast against their surface. Kit charts label series directly or with a legend, so identity never rests on colour alone. *Amends* ROUND-3 §1.3, which named five chart variables.
+4. **Faces.** **Figtree** for interface text (`--font-sans`, weights 400 to 650) and **Spline Sans Mono** for code (`--font-mono`). Both are SIL Open Font License 1.1 (VERIFIED_FACTS, Default theme). They ship inside the kit as self-hosted variable fonts, so a page makes no third-party request and renders offline, with the system UI and monospace stacks as fallbacks. They map onto the MCP Apps `--font-*` variables like every other token, so a host's faces win inline.
+5. **Motion defaults:** a press scales to .97 over 140 ms, and hover and state changes take 180 ms and change colour only. Everything stops under `prefers-reduced-motion`.
+6. **Nothing here is enforced** (D68, KT-10). A host brand theme, an agent's own tokens, `className` or copied components replace any of it.
+
+*Why:* a default that looks like Mostra would turn every unstyled artifact into an advert for the tool and compete with the content people came to answer. Figtree keeps a geometric look with a larger x-height than geometric display faces, so 13 to 15 px table and form text stays readable, and it isn't Inter, the default that makes generated pages look alike. OKLCH steps keep light and dark consistent. *Source:* M29. *Rejected:* the brand's full palette in charts and headers by default (competes with the content); a geometric display face for interfaces (a small x-height reads poorly at form sizes); Inter or the system stack alone (indistinguishable from other generated pages); loading fonts from a CDN (third-party requests from every artifact, and no offline rendering).
 
 ## Research consensus adopted
 

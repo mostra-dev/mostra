@@ -435,3 +435,15 @@ Checked by the WP-09 session on 2026-10-17 against the providers' own documentat
 | On Linux, a process's descriptor links for sockets read `socket:[inode]`, and `/proc/net/tcp` and `tcp6` list each socket's local address (little-endian hex), state (`0A` is LISTEN) and inode | proc(5); checked against `ss -Hltnp` in `node:24.12.0-bookworm` on 2026-10-18: the same listeners, except that `ss` writes a dual-stack wildcard as `*` | The test helper `listening()` reads them where `ss` (iproute2) isn't installed |
 
 **Login services in tests:** launchd agents live in `~/Library/LaunchAgents`, systemd user units in `${XDG_CONFIG_HOME:-~/.config}/systemd/user`, both under the user's `HOME` (`packages/runtime/src/service/unit.ts`); the CLI's tests give every home its own `HOME`, so no test writes a login service for the developer.
+
+## Default theme (2026-10-18)
+
+Checked for D141 on 2026-10-18. WP-18 re-checks the package versions before pinning.
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| Figtree | By Erik Kennedy; SIL Open Font License 1.1; variable `wght` 300 to 900 | github.com/google/fonts `ofl/figtree` (`OFL.txt`, `METADATA.pb`); upstream github.com/erikdkennedy/figtree | Studio's interface face (`--font-sans`) |
+| Spline Sans Mono | By Eben Sorkin and Mirko Velimirović; OFL 1.1; variable `wght` 300 to 700 | github.com/google/fonts `ofl/splinesansmono`; upstream github.com/SorkinType/SplineSansMono | Studio's code face (`--font-mono`) |
+| OFL 1.1 | On the Open Source Initiative's license list | opensource.org/license/ofl-1-1 | The license audit can allow the fonts; their license text ships in NOTICE |
+| `@fontsource-variable/figtree`, `@fontsource-variable/spline-sans-mono` | 5.3.0 each, OFL-1.1, last modified 2026-07-19 | npm registry | Self-hosted font files for the kit, with no third-party requests |
+| WCAG 2.2 contrast minimum | 4.5 to 1 for text, 3 to 1 for large text | w3.org/TR/WCAG22 (1.4.3) | The contrast figures in D141 item 2 |
