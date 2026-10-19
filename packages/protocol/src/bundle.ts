@@ -59,8 +59,11 @@ export const BundlePlatformSchema: z.ZodType<BundlePlatform> = z
 
 /** One regular file of a bundle or of its browser. */
 export interface BundleFileEntry {
+  /** Relative to the bundle's root (or to `browsers/` for the browser), `/`-separated. */
   readonly path: string;
+  /** Its length in bytes. */
   readonly size: number;
+  /** The SHA-256 of its bytes, lowercase hex. */
   readonly sha256: string;
   /** Whether its owner may execute it (mode 0755 rather than 0644 once extracted). */
   readonly executable: boolean;
@@ -78,7 +81,9 @@ export const BundleFileEntry: z.ZodType<BundleFileEntry> = z
 
 /** One symbolic link of a bundle. Its target is relative and resolves inside the bundle. */
 export interface BundleLinkEntry {
+  /** The link itself, relative to the bundle's root. */
   readonly path: string;
+  /** What the link holds, exactly as written (relative). */
   readonly target: string;
 }
 
@@ -89,8 +94,11 @@ export const BundleLinkEntry: z.ZodType<BundleLinkEntry> = z
 
 /** `files.json`: everything in the archive besides `bundle.json`, each list sorted by path. */
 export interface BundleFiles {
+  /** The format's version; 1 today. */
   readonly schemaVersion: 1;
+  /** Every regular file, sorted by path. */
   readonly files: readonly BundleFileEntry[];
+  /** Every symbolic link, sorted by path. */
   readonly links: readonly BundleLinkEntry[];
 }
 
@@ -105,9 +113,11 @@ export const BundleFiles: z.ZodType<BundleFiles> = z
 
 /** The verify browser a bundle pins: fetched at setup, checked file by file (D142). */
 export interface BundleBrowser {
+  /** Playwright's name for the browser. */
   readonly name: "chromium-headless-shell";
   /** Playwright's revision, the directory `browsers/chromium_headless_shell-<revision>`. */
   readonly revision: string;
+  /** The browser's own version, for people and diagnostics. */
   readonly browserVersion: string;
   /** The bundle's Playwright CLI, run with the bundle's Node: `install chromium-headless-shell`. */
   readonly installer: string;
@@ -128,10 +138,13 @@ export const BundleBrowser: z.ZodType<BundleBrowser> = z
 
 /** `bundle.json`: a bundle's identity and entry points. */
 export interface BundleInfo {
+  /** The format's version; 1 today. */
   readonly schemaVersion: 1;
+  /** Always {@link BUNDLE_NAME}, so a stray `bundle.json` isn't taken for one. */
   readonly name: typeof BUNDLE_NAME;
   /** The Mostra release: every Mostra package in the bundle has this version. */
   readonly version: string;
+  /** The platform it was built on and for. */
   readonly platform: BundlePlatform;
   /** The private Node.js the bundle runs on (RT-01), and its executable. */
   readonly node: { readonly version: string; readonly path: string };
@@ -146,6 +159,7 @@ export interface BundleInfo {
   };
   /** `files.json` and its SHA-256, which ties every other file to this one. */
   readonly files: { readonly path: string; readonly sha256: string };
+  /** The verify browser setup fetches and checks (D142 item 2). */
   readonly browser: BundleBrowser;
   /** Where it was built from. */
   readonly source?: { readonly repository: string; readonly commit: string };
@@ -170,6 +184,7 @@ export const BundleInfo: z.ZodType<BundleInfo> = z
 export interface BundleAsset {
   /** The file name, {@link bundleAssetName}. */
   readonly file: string;
+  /** The SHA-256 of the archive's bytes, lowercase hex. */
   readonly sha256: string;
   /** Bytes of the archive. */
   readonly size: number;
@@ -192,10 +207,13 @@ export const BundleAsset: z.ZodType<BundleAsset> = z
  * `@mostra/sdk` before the package is published, so an npm install pins exactly what it fetches.
  */
 export interface BundlePins {
+  /** The format's version; 1 today. */
   readonly schemaVersion: 1;
+  /** The release these archives belong to: the SDK's own version. */
   readonly version: string;
   /** The base URL the archives are under: the GitHub release's download path. */
   readonly release: string;
+  /** Each platform's archive. */
   readonly assets: Partial<Record<BundlePlatform, BundleAsset>>;
 }
 
@@ -211,11 +229,15 @@ export const BundlePins: z.ZodType<BundlePins> = z
 
 /** `.mostra-setup.json`: written by setup once the files and the browser are verified. */
 export interface BundleSetup {
+  /** The format's version; 1 today. */
   readonly schemaVersion: 1;
+  /** The bundle's release. */
   readonly version: string;
+  /** The bundle's platform. */
   readonly platform: BundlePlatform;
   /** `BundleInfo.files.sha256` of the bundle it describes. */
   readonly files: string;
+  /** The browser revision setup fetched and checked. */
   readonly browser: { readonly revision: string };
   /** When setup finished (RFC 3339). */
   readonly at: string;

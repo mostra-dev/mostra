@@ -353,6 +353,132 @@ export type BuildDiagnosticCode = (typeof buildDiagnosticCodes)[number];
 export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUILD_UNRESOLVED", "MOSTRA_BUILD_CRASHED", "MOSTRA_BUILD_TIMEOUT"];
 
 // @public
+export const BUNDLE_NAME = "mostra-runtime-bundle";
+
+// @public
+export const BUNDLE_PLATFORMS: readonly ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"];
+
+// @public
+export const BUNDLE_SETUP_MARKER = ".mostra-setup.json";
+
+// @public
+export interface BundleAsset {
+    readonly file: string;
+    readonly sha256: string;
+    readonly size: number;
+    readonly unpackedSize: number;
+}
+
+// @public
+export const BundleAsset: z.ZodType<BundleAsset>;
+
+// @public
+export function bundleAssetName(version: string, platform: BundlePlatform): string;
+
+// @public
+export interface BundleBrowser {
+    readonly browserVersion: string;
+    readonly files: readonly BundleFileEntry[];
+    readonly installer: string;
+    readonly name: "chromium-headless-shell";
+    readonly revision: string;
+}
+
+// @public
+export const BundleBrowser: z.ZodType<BundleBrowser>;
+
+// @public
+export interface BundleFileEntry {
+    readonly executable: boolean;
+    readonly path: string;
+    readonly sha256: string;
+    readonly size: number;
+}
+
+// @public
+export const BundleFileEntry: z.ZodType<BundleFileEntry>;
+
+// @public
+export interface BundleFiles {
+    readonly files: readonly BundleFileEntry[];
+    readonly links: readonly BundleLinkEntry[];
+    readonly schemaVersion: 1;
+}
+
+// @public
+export const BundleFiles: z.ZodType<BundleFiles>;
+
+// @public
+export interface BundleInfo {
+    readonly browser: BundleBrowser;
+    readonly entries: {
+        readonly runtime: string;
+        readonly cli: string;
+        readonly setup: string;
+    };
+    readonly files: {
+        readonly path: string;
+        readonly sha256: string;
+    };
+    readonly name: typeof BUNDLE_NAME;
+    readonly node: {
+        readonly version: string;
+        readonly path: string;
+    };
+    readonly platform: BundlePlatform;
+    readonly schemaVersion: 1;
+    readonly source?: {
+        readonly repository: string;
+        readonly commit: string;
+    };
+    readonly version: string;
+}
+
+// @public
+export const BundleInfo: z.ZodType<BundleInfo>;
+
+// @public
+export interface BundleLinkEntry {
+    readonly path: string;
+    readonly target: string;
+}
+
+// @public
+export const BundleLinkEntry: z.ZodType<BundleLinkEntry>;
+
+// @public
+export interface BundlePins {
+    readonly assets: Partial<Record<BundlePlatform, BundleAsset>>;
+    readonly release: string;
+    readonly schemaVersion: 1;
+    readonly version: string;
+}
+
+// @public
+export const BundlePins: z.ZodType<BundlePins>;
+
+// @public
+export type BundlePlatform = (typeof BUNDLE_PLATFORMS)[number];
+
+// @public
+export const BundlePlatformSchema: z.ZodType<BundlePlatform>;
+
+// @public
+export interface BundleSetup {
+    readonly at: string;
+    readonly browser: {
+        readonly revision: string;
+    };
+    readonly files: string;
+    readonly platform: BundlePlatform;
+    readonly schemaVersion: 1;
+    readonly version: string;
+}
+
+// @public
+export const BundleSetup: z.ZodType<BundleSetup>;
+
+// @public
 export interface CallContext {
     readonly dryRun: boolean;
     readonly kind: "call" | "run";
@@ -856,7 +982,7 @@ export function encodeLine(message: JsonRpcMessage): string;
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING", "MOSTRA_ENV_RUNTIME_MISSING"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING", "MOSTRA_ENV_RUNTIME_MISSING", "MOSTRA_ENV_BUNDLE_INVALID", "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED", "MOSTRA_ENV_BUNDLE_UNAVAILABLE"];
 
 // @public
 export type EphemeralMessage = {
