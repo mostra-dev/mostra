@@ -512,6 +512,9 @@ importers:
       tar:
         specifier: 'catalog:'
         version: 7.5.22
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/cli:
     dependencies:

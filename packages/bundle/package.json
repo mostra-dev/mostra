@@ -8,7 +8,8 @@
   "type": "module",
   "scripts": {
     "bundle": "node scripts/build.ts",
-    "smoke": "sh scripts/smoke.sh"
+    "smoke": "sh scripts/smoke.sh",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@mostra/cli": "workspace:*",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "tar": "catalog:"
+    "tar": "catalog:",
+    "typescript": "catalog:"
   }
 }

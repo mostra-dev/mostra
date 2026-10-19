@@ -37,6 +37,9 @@
     },
     {
       "path": "packages/create-mostra"
+    },
+    {
+      "path": "packages/bundle"
     }
   ]
 }

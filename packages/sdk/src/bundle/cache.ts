@@ -7,7 +7,7 @@
  * directory the next install removes, never a half-ready bundle.
  */
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, stat, statfs } from "node:fs/promises";
+import { link, mkdir, open, readdir, readFile, rename, rm, stat, statfs } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -150,7 +150,7 @@ async function fetchInto(
   try {
     const archive = join(scratch, asset.file);
     const base = options.env["MOSTRA_BUNDLE_MIRROR"] || pins.release;
-    const url = `${base.replace(/\/+$/, "")}/${encodeURIComponent(asset.file)}`;
+    const url = `${withoutTrailingSlashes(base)}/${encodeURIComponent(asset.file)}`;
     await download(url, archive, asset, {
       signal: options.signal,
       onProgress: (progress) => options.onProgress?.({ step: "download", ...progress }),
@@ -236,6 +236,54 @@ function alive(pid: number): boolean {
 /** How old a lock may get before another installer takes it over whatever its owner. */
 const STALE_LOCK_MS = 60 * 60_000;
 
+/** `url` without trailing slashes, in linear time (a regex would be quadratic on many slashes). */
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
+}
+
+/**
+ * Removes the lock at `path` when it is stale (its owner gone, or older than an hour) and says
+ * whether it did. The lock is read and judged through one descriptor, then moved aside, and only
+ * the file judged is removed: a fresh lock another installer took in between is put back (or,
+ * if a third took one meanwhile, left to the next round). The lock only saves a second download;
+ * the scratch directory and its rename keep the cache correct whatever happens here.
+ */
+async function takeOverIfStale(path: string): Promise<boolean> {
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(path, "r");
+  } catch {
+    return true; // gone already: try to take it
+  }
+  let judged: { ino: number; dev: number };
+  try {
+    const info = await handle.stat();
+    const owner = Number.parseInt(await handle.readFile("utf8"), 10);
+    const stale =
+      Date.now() - info.mtimeMs > STALE_LOCK_MS ||
+      (Number.isInteger(owner) && owner > 0 && !alive(owner));
+    if (!stale) return false;
+    judged = { ino: info.ino, dev: info.dev };
+  } finally {
+    await handle.close();
+  }
+  const aside = `${path}.stale-${randomBytes(6).toString("hex")}`;
+  try {
+    await rename(path, aside);
+  } catch {
+    return true; // someone else moved or removed it
+  }
+  const moved = await stat(aside).catch(() => undefined);
+  if (moved && (moved.ino !== judged.ino || moved.dev !== judged.dev)) {
+    // Not the file judged stale: a fresh lock. Put it back unless a newer one exists.
+    await link(aside, path).catch(() => undefined);
+  }
+  await rm(aside, { force: true });
+  return true;
+}
+
 /**
  * Takes the install lock at `path`: an exclusive create holding the owner's PID. A lock whose
  * owner is gone, or older than an hour, is taken over; otherwise the caller waits for it.
@@ -248,26 +296,24 @@ async function lock(path: string, signal: AbortSignal | undefined): Promise<() =
       const handle = await open(path, "wx", 0o600);
       await handle.writeFile(`${process.pid} ${token}\n`);
       await handle.close();
+      // Released by moving it aside and removing it only if it is still this installer's own.
       return async () => {
-        const text = await readFile(path, "utf8").catch(() => "");
-        if (text.includes(token)) await rm(path, { force: true });
+        const aside = `${path}.done-${randomBytes(6).toString("hex")}`;
+        if (
+          !(await rename(path, aside).then(
+            () => true,
+            () => false,
+          ))
+        )
+          return;
+        const text = await readFile(aside, "utf8").catch(() => "");
+        if (!text.includes(token)) await link(aside, path).catch(() => undefined);
+        await rm(aside, { force: true });
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    const [text, info] = await Promise.all([
-      readFile(path, "utf8").catch(() => ""),
-      stat(path).catch(() => undefined),
-    ]);
-    const owner = Number.parseInt(text, 10);
-    const stale =
-      info === undefined ||
-      Date.now() - info.mtimeMs > STALE_LOCK_MS ||
-      (Number.isInteger(owner) && owner > 0 && !alive(owner));
-    if (stale && info !== undefined) {
-      await rm(path, { force: true });
-      continue;
-    }
+    if (await takeOverIfStale(path)) continue;
     await new Promise((done) => setTimeout(done, 250));
   }
 }

@@ -20,7 +20,17 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -131,23 +141,34 @@ async function nodeArchive(platform: string): Promise<{ file: string; version: s
     archives: Record<string, string>;
   };
   const expected = pins.archives[platform];
-  if (!expected) fail([`packages/bundle/node.json pins no Node.js for ${platform}.`], "bundle");
+  if (!expected || !/^[0-9a-f]{64}$/.test(expected))
+    fail([`packages/bundle/node.json pins no SHA-256 for ${platform}.`], "bundle");
+  if (!/^\d+\.\d+\.\d+$/.test(pins.version) || !/^(darwin|linux)-(arm64|x64)$/.test(platform))
+    fail([`packages/bundle/node.json names no release ${pins.version} for ${platform}.`], "bundle");
   const name = `node-v${pins.version}-${platform}.tar.gz`;
   const file = values["node-archive"] ?? fromRoot(".cache", "bundle", name);
-  if (!existsSync(file)) {
-    step(`downloading ${name}`);
-    await mkdir(fromRoot(".cache", "bundle"), { recursive: true });
-    const response = await fetch(`https://nodejs.org/dist/v${pins.version}/${name}`);
-    if (!response.ok || !response.body)
-      fail([`nodejs.org answered ${response.status} for ${name}.`], "bundle");
-    await writeFile(file, Buffer.from(await response.arrayBuffer()));
-  }
-  const actual = await sha256(file);
-  if (actual !== expected) {
-    await rm(file, { force: true });
+  // A cached archive is used only if it matches the pin; anything else is fetched again.
+  const cached = await readFile(file).catch(() => undefined);
+  if (cached !== undefined && digest(cached) === expected) return { file, version: pins.version };
+  if (values["node-archive"]) fail([`${file} isn't the pinned ${name} (${expected}).`], "bundle");
+  step(`downloading ${name}`);
+  const response = await fetch(`https://nodejs.org/dist/v${pins.version}/${name}`);
+  if (!response.ok) fail([`nodejs.org answered ${response.status} for ${name}.`], "bundle");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  // Checked before anything is written: only the pinned bytes ever reach the disk.
+  const actual = digest(bytes);
+  if (actual !== expected)
     fail([`${name} has SHA-256 ${actual}, not the pinned ${expected}.`], "bundle");
-  }
+  await mkdir(dirname(file), { recursive: true });
+  const partial = `${file}.${process.pid}.partial`;
+  await writeFile(partial, bytes);
+  await rename(partial, file);
   return { file, version: pins.version };
+}
+
+/** The SHA-256 of `bytes`, lowercase hex. */
+function digest(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 /** The launchers in `bin/`: each runs its entry with the bundle's own Node.js, from any path. */
@@ -258,13 +279,8 @@ function checkMachinePaths(root: string): void {
 }
 
 async function main(): Promise<void> {
-  const { bundlePlatform, describeTree } = await import("@mostra/sdk");
-  const protocol = await import("@mostra/protocol");
-  const platform = bundlePlatform();
   const version = await releaseVersion();
-  const top = protocol.bundleAssetName(version, platform).replace(/\.tar\.gz$/, "");
-  step(`Mostra ${version} for ${platform}`);
-
+  step(`Mostra ${version}`);
   if (!values["skip-build"]) {
     step("building the packages it carries");
     await run("pnpm", [
@@ -276,6 +292,12 @@ async function main(): Promise<void> {
       "--filter=@mostra/warm...",
     ]);
   }
+  // Only now: on a fresh checkout the SDK and the protocol have no dist/ until the build above.
+  const { bundlePlatform, describeTree } = await import("@mostra/sdk");
+  const protocol = await import("@mostra/protocol");
+  const platform = bundlePlatform();
+  const top = protocol.bundleAssetName(version, platform).replace(/\.tar\.gz$/, "");
+  step(`for ${platform}`);
 
   const stageParent = join(out, "stage");
   const stage = join(stageParent, top);
