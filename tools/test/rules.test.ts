@@ -1,11 +1,11 @@
 /**
  * Unit tests for the pure rules behind the gates: schema compatibility (HO-07), commit messages
- * (EN-01), action pinning (EN-06) and Markdown links.
+ * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05) and Markdown links.
  */
 import { describe, expect, it } from "vitest";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
-import { workflowProblems } from "../repo-lint/cli.ts";
+import { releaseGroupProblems, workflowProblems } from "../repo-lint/cli.ts";
 import { type Bundle, compareBundles, compareSnapshots, type Schema } from "../schemas/compat.ts";
 
 const bundle = (defs: Record<string, Schema>, revision = "2026-10-10"): Bundle => ({
@@ -302,5 +302,59 @@ describe("Markdown links", () => {
     expect(brokenLinks("docs/a.md", text, (path) => path === "docs/b.md")).toEqual([
       "docs/a.md: link to missing.md#x does not resolve",
     ]);
+  });
+});
+
+describe("the release group (RT-01, EN-05)", () => {
+  const pkg = (name: string, isPrivate = false) => ({
+    name,
+    dir: `packages/${name}`,
+    private: isPrivate,
+    scripts: {},
+    dependencies: [],
+    manifest: {},
+  });
+  const packages = [
+    pkg("@mostra/cli"),
+    pkg("@mostra/runtime"),
+    pkg("create-mostra"),
+    pkg("@mostra/contract-exporter"),
+    pkg("@mostra/warm", true),
+  ];
+  const privatePackages = { version: false, tag: false };
+
+  it("accepts one fixed group of every published package but the contracts", () => {
+    const fixed = [["@mostra/cli", "@mostra/runtime", "create-mostra"]];
+    expect(releaseGroupProblems({ fixed, privatePackages }, packages)).toEqual([]);
+  });
+
+  it("refuses a missing package, a stray one, a second group and versioned private packages", () => {
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "create-mostra"]], privatePackages },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("lacks @mostra/runtime")]);
+    expect(
+      releaseGroupProblems(
+        {
+          fixed: [["@mostra/cli", "@mostra/runtime", "create-mostra", "@mostra/contract-exporter"]],
+          privatePackages,
+        },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("names @mostra/contract-exporter")]);
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "@mostra/runtime"], ["create-mostra"]], privatePackages },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("exactly one fixed group")]);
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "@mostra/runtime", "create-mostra"]] },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("privatePackages")]);
   });
 });

@@ -1,11 +1,33 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "mostra-dev/mostra" }],
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "mostra-dev/mostra"
+    }
+  ],
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@mostra/cli",
+      "@mostra/protocol",
+      "@mostra/react",
+      "@mostra/runtime",
+      "@mostra/sdk",
+      "@mostra/server",
+      "@mostra/shell",
+      "@mostra/verify",
+      "@mostra/worker",
+      "create-mostra"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [],
+  "privatePackages": {
+    "version": false,
+    "tag": false
+  }
 }

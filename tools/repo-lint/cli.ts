@@ -7,7 +7,10 @@
  *   AGENTS.md, and, when published, names this repository exactly (npm trusted publishing);
  * - `LICENSE` is the canonical Apache-2.0 text and `NOTICE` exists (D14);
  * - every GitHub Action is pinned to a full commit SHA with a version comment, and every workflow
- *   sets top-level permissions.
+ *   sets top-level permissions;
+ * - Changesets releases every published package but the extension contracts (versioned on their
+ *   own, D30) as one fixed group, so one Mostra version names one runtime bundle (RT-01), and
+ *   never versions or tags a private package.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -53,6 +56,42 @@ export function specifierProblems(pkg: WorkspacePackage): string[] {
       }
     }
   }
+  return problems;
+}
+
+/** Packages released on their own versions: the extension contracts (D30). */
+const OWN_VERSION = /^@mostra\/contract-/;
+
+/** Problems with the release configuration: one fixed group of every core package published. */
+export function releaseGroupProblems(
+  config: { fixed?: unknown; privatePackages?: unknown },
+  packages: readonly WorkspacePackage[],
+): string[] {
+  const problems: string[] = [];
+  const core = packages
+    .filter((pkg) => !pkg.private && !OWN_VERSION.test(pkg.name))
+    .map((pkg) => pkg.name)
+    .sort();
+  const fixed = Array.isArray(config.fixed) ? (config.fixed as unknown[]) : [];
+  const group =
+    fixed.length === 1 && Array.isArray(fixed[0]) ? [...(fixed[0] as string[])].sort() : undefined;
+  if (group === undefined) {
+    problems.push(
+      ".changeset/config.json must have exactly one fixed group: Mostra's published packages share one version (RT-01).",
+    );
+  } else {
+    for (const name of core.filter((name) => !group.includes(name)))
+      problems.push(`.changeset/config.json's fixed group lacks ${name}, a published package.`);
+    for (const name of group.filter((name) => !core.includes(name)))
+      problems.push(
+        `.changeset/config.json's fixed group names ${name}, which isn't a published core package.`,
+      );
+  }
+  const privates = config.privatePackages as { version?: unknown; tag?: unknown } | undefined;
+  if (privates?.version !== false || privates?.tag !== false)
+    problems.push(
+      '.changeset/config.json must set "privatePackages": { "version": false, "tag": false }.',
+    );
   return problems;
 }
 
@@ -184,9 +223,14 @@ function main(): void {
   for (const file of yamlFiles(join(root, ".github"))) {
     problems.push(...workflowProblems(relative(root, file), readFileSync(file, "utf8")));
   }
+  const changesets = JSON.parse(readFileSync(join(root, ".changeset", "config.json"), "utf8")) as {
+    fixed?: unknown;
+    privatePackages?: unknown;
+  };
+  problems.push(...releaseGroupProblems(changesets, listPackages(root)));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
-    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions`,
+    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group`,
   );
 }
 
