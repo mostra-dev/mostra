@@ -19,7 +19,7 @@ the protocol over its stdio.
 - **The cache is keyed by digest** (`<cache>/bundles/<archive sha256>/`). Concurrent installers of
   one bundle share a lock, but correctness never rests on it: an installer that loses the rename
   uses the winner's directory, which was checked before it was renamed.
-- **One definition of a bundle's files.** `describeTree` (the assembler in `tools/bundle`) and
+- **One definition of a bundle's files.** `describeTree` (the assembler, `packages/bundle/scripts/build.ts`) and
   `checkTree` (setup) share one walk, so writing and checking can't disagree.
 - **Ports are checked both ways.** Each port call's params are parsed with its method's schema
   before the host's handler sees them, and the answer is parsed before it goes back. Anything else
