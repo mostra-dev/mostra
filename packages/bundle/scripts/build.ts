@@ -19,7 +19,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -213,6 +213,12 @@ async function entries(base: string, dir: string): Promise<string[]> {
 async function pruneDeploy(stage: string, version: string): Promise<void> {
   const lib = join(stage, "lib");
   const warm = join(lib, "node_modules", "@mostra", "warm");
+  // Deploy copies the deployed package's whole directory (the assembler's own scripts, docs and
+  // build caches) beside node_modules: only node_modules and the manifest belong in a bundle.
+  for (const entry of await readdir(lib)) {
+    if (entry !== "node_modules" && entry !== "package.json")
+      await rm(join(lib, entry), { recursive: true, force: true });
+  }
   for (const path of [
     join(lib, "pnpm-lock.yaml"),
     join(lib, "node_modules", ".modules.yaml"),
@@ -224,6 +230,8 @@ async function pruneDeploy(stage: string, version: string): Promise<void> {
   ]) {
     await rm(path, { recursive: true, force: true });
   }
+  // pnpm's own install state, which names the directory it deployed into, wherever deploy left it.
+  await removeEverywhere(lib, (name) => /^\.pnpm-workspace-state(-v\d+)?\.json$/.test(name));
   const store = join(warm, "node_modules", ".pnpm");
   for (const entry of await readdir(store)) {
     if (/^@[^+@]*$/.test(entry)) await rm(join(store, entry), { recursive: true, force: true });
@@ -239,6 +247,15 @@ async function pruneDeploy(stage: string, version: string): Promise<void> {
     }
     delete data["devDependencies"];
     await writeFile(manifest, `${JSON.stringify(data, null, 2)}\n`);
+  }
+}
+
+/** Removes every file under `dir` whose name `match`es, without following links. */
+async function removeEverywhere(dir: string, match: (name: string) => boolean): Promise<void> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isFile() && match(entry.name)) await rm(path, { force: true });
+    else if (entry.isDirectory() && !entry.isSymbolicLink()) await removeEverywhere(path, match);
   }
 }
 
@@ -262,20 +279,73 @@ async function checkLinks(root: string): Promise<void> {
     fail(broken.slice(0, 50), `bundle: ${broken.length} links don't resolve inside it`);
 }
 
-/** Fails when a text file in the tree names the build machine's checkout, home or pnpm store. */
+/**
+ * Fails when a text file in the tree names the build machine: its checkout, the build's output
+ * directory, or pnpm's store or cache (each as given and as its real path). A third-party file
+ * that is byte-identical to the same package's installed copy is upstream content (a source map or
+ * workflow file a package's own CI wrote, `/home/runner/...` on GitHub's runners), not a leak of
+ * this build, and passes; anything else that matches fails closed.
+ */
 function checkMachinePaths(root: string): void {
-  const store = spawnSync("pnpm", ["store", "path"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
-  const home = process.env["HOME"] ?? "";
-  const needles = [ROOT, store, home].filter((needle) => needle.length > 1);
+  const pnpmValue = (key: string): string =>
+    spawnSync("pnpm", key === "store" ? ["store", "path"] : ["config", "get", key], {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).stdout.trim();
+  const candidates = [ROOT, out, pnpmValue("store"), pnpmValue("cache-dir")];
+  const needles = [
+    ...new Set(
+      candidates
+        .filter((path) => path.length > 1 && path !== "undefined")
+        .flatMap((path) => [path, existsSync(path) ? realpathSync(path) : path]),
+    ),
+  ];
   const args = ["-rlIF", ...needles.flatMap((needle) => ["-e", needle]), root];
   const found = spawnSync("grep", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  if (found.status === 0) {
+  if (found.status !== 0 && found.status !== 1)
+    fail([`grep exited ${found.status}: ${found.stderr.trim()}`], "bundle");
+  const flagged = found.status === 0 ? found.stdout.trim().split("\n") : [];
+  const leaks = flagged.filter((path) => !upstreamCopy(root, path));
+  if (leaks.length > 0) {
     fail(
-      found.stdout.trim().split("\n").slice(0, 50),
-      "bundle: files name the build machine's paths (checkout, home or pnpm store)",
+      leaks.slice(0, 50),
+      "bundle: files name the build machine's paths (checkout, output, pnpm store or cache)",
     );
   }
-  if (found.status !== 1) fail([`grep exited ${found.status}: ${found.stderr.trim()}`], "bundle");
+  if (flagged.length > 0)
+    step(`${flagged.length} third-party files name a path only as their published copies do`);
+}
+
+/**
+ * Whether `path` (a file in the staged tree) is byte-identical to the same file of the same
+ * package version in the checkout's installed packages, found through pnpm's virtual store.
+ */
+function upstreamCopy(root: string, path: string): boolean {
+  let dir = dirname(path);
+  while (dir.startsWith(root) && dir !== root) {
+    const manifestPath = join(dir, "package.json");
+    if (existsSync(manifestPath)) {
+      let manifest: { name?: string; version?: string };
+      try {
+        manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      } catch {
+        return false;
+      }
+      if (!manifest.name || !manifest.version || manifest.name.startsWith("@mostra/")) return false;
+      const inside = relative(dir, path);
+      const store = join(ROOT, "node_modules", ".pnpm");
+      const prefix = `${manifest.name.replace("/", "+")}@${manifest.version}`;
+      const staged = readFileSync(path);
+      for (const entry of existsSync(store) ? readdirSync(store) : []) {
+        if (entry !== prefix && !entry.startsWith(`${prefix}_`)) continue;
+        const original = join(store, entry, "node_modules", manifest.name, inside);
+        if (existsSync(original) && readFileSync(original).equals(staged)) return true;
+      }
+      return false;
+    }
+    dir = dirname(dir);
+  }
+  return false;
 }
 
 async function main(): Promise<void> {
