@@ -447,3 +447,45 @@ Checked for D141 on 2026-10-18. WP-18 re-checks the package versions before pinn
 | OFL 1.1 | On the Open Source Initiative's license list | opensource.org/license/ofl-1-1 | The license audit can allow the fonts; their license text ships in NOTICE |
 | `@fontsource-variable/figtree`, `@fontsource-variable/spline-sans-mono` | 5.3.0 each, OFL-1.1, last modified 2026-07-19 | npm registry | Self-hosted font files for the kit, with no third-party requests |
 | WCAG 2.2 contrast minimum | 4.5 to 1 for text, 3 to 1 for large text | w3.org/TR/WCAG22 (1.4.3) | The contrast figures in D141 item 2 |
+
+## WP-11 re-verification (2026-10-19)
+
+Checked by the WP-11 session on 2026-10-19 against the primary sources named and local runs on macOS 26.2 arm64. Pins follow the 7-day release age: the newest release published on or before 2026-10-12.
+
+**Publishing:**
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| npm trusted publishing | Configured per package on npmjs.com or with `npm trust`; up to 10 publishers; a new configuration must publish within **2 days** or it expires; configurations created after 2026-09-03 allow `npm stage publish` and need "Allow npm publish" chosen for direct publishing; provenance is automatic from public GitHub repositories with GitHub-hosted runners; npm CLI 11.5.1 and Node.js 22.14.0 or later; the workflow file name must match exactly, and a `workflow_call` is checked against the calling workflow; `package.json` `repository.url` must match the repository | docs.npmjs.com/trusted-publishers | `release.yml` publishes directly from the `release` environment (D67, D142 item 9) |
+| `npm trust` | `npm trust github [package] --file <workflow> --repo <owner/repo> --env <environment> --allow-publish`; npm 11.15.0 or later; 2FA on the account; **"The package you're configuring must already exist on the npm registry"**; one configuration per package; after the first 2FA, npm's website can skip 2FA for 5 minutes for bulk use | `npm help trust`, npm 12.2.0 (September 2026) | `tools/release/npm-setup.sh` publishes a placeholder for each new package first; the first-crate-token analogue holds for npm too |
+| `npm access set mfa=publish` | Sets `publish_requires_tfa: true` and `automation_token_overrides_tfa: false`: "Require two-factor authentication and disallow tokens" | `libnpmaccess` `lib/index.js` in npm 12.2.0 | The setup script's last step per package |
+| npm releases | 12.2.0 is `latest` (2026-09-30; Node.js ^22.22.2, ^24.15.0 or 26+); 11.21.0 (2026-09-30; Node.js ^20.17 or 22.9+); 11.21.1 (2026-10-15) waits for the cooldown | npm registry `time`, `engines` | The setup script runs `npx npm@11.21.0`, which this machine's Node.js 24.12 runs |
+| The `@mostra` scope and `create-mostra` | `registry.npmjs.org/-/org/mostra/package` answers 200 with no packages (a missing scope answers 404 "Scope not found"); `create-mostra` 0.0.1 is Mirza's placeholder; the bare `mostra` is a 2016 package with one version | npm registry, 2026-10-19 | Packages publish under `@mostra`; docs never say `npx mostra` |
+| crates.io trusted publishing | "the initial publication requires an API token"; afterwards GitHub Actions (and GitLab, in beta) exchange an OIDC token through `rust-lang/crates-io-auth-action` (v1.0.5, 2026-06-16, `c6f97d42`) for a token that expires after 30 minutes and is revoked by the action's post step; configured per crate with owner, repository, workflow file and optional environment | rust-lang/crates.io `svelte/src/routes/docs/trusted-publishing/+page.svelte`; the action's README and releases | REPO_STANDARDS §9's hypothesis holds: each crate's first release needs one token from Mirza (WP-12) |
+| GitHub release assets and immutable releases | Up to 1,000 assets per release, each under 2 GiB; with immutable releases on, a published release's assets and tag can't change and GitHub attests the release; draft, attach, then publish | docs.github.com (releases; immutable releases) | `release.yml` drafts, uploads, publishes last; immutable releases enabled on 2026-10-19 (`tools/github/settings.ts`) |
+| `actions/attest` | v4.2.2 `1e69f48a`; needs `id-token: write` and `attestations: write`; `subject-path` takes globs | github.com/actions/attest | The bundles' attestations |
+| `actions/download-artifact` | v8.0.2 `9000827c`; `pattern` with `merge-multiple` | github.com/actions/download-artifact | Jobs share the bundles and tarballs |
+| Pull requests from `GITHUB_TOKEN` | The repository disallows Actions creating or approving pull requests, and events a workflow's `GITHUB_TOKEN` causes start no new workflow runs, so such a pull request would get no required checks | `gh api repos/mostra-dev/mostra/actions/permissions/workflow`; docs.github.com (`GITHUB_TOKEN`) | The accepting session opens the version pull request (D142 item 9) |
+| GitHub-hosted runners | Free and unlimited for public repositories: `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64), `macos-15-intel` (x64), `macos-15` (arm64) | docs.github.com/en/actions/reference/runners/github-hosted-runners | One runner per platform builds and smoke-tests its bundle |
+| Deployment environments | `PUT /repos/{owner}/{repo}/environments/{name}` with `deployment_branch_policy: { protected_branches: false, custom_branch_policies: true }`, then branch policies by name | docs.github.com/en/rest/deployments/environments | `release` deploys from `main` only (applied 2026-10-19) |
+
+**The bundle's contents:**
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| Node.js 24 | 24.21.0 (2026-09-07, npm 11.19.0); 24.22.0 (2026-10-14) waits for the cooldown; maintenance from 2026-10-20; Node.js 26 LTS from 2026-10-28 | nodejs.org/dist/index.json; github.com/nodejs/Release `schedule.json` | The bundles carry 24.21.0 (D48: 26 in a later release) |
+| Node.js 24.21.0's archives | `SHASUMS256.txt` signed by Antoine du Hamel's key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356`, the signature verified with `gpgv` (GnuPG 2.5.24) against the Node.js release keys; darwin-arm64 `bed7eea5…6057`, darwin-x64 `1462cb3b…8097`, linux-arm64 `724282c3…d5e5`, linux-x64 `6e1db87e…c5ff` (`.tar.gz`) | nodejs.org/dist/v24.21.0/SHASUMS256.txt(.asc) | Pinned in full in `packages/bundle/node.json`; the assembler refuses any other bytes before writing them |
+| Node.js 20 and the npm bootstrap | Node.js 20.20.2 loading `undici` 8.11.2 throws in `webidl.util.markAsUncloneable`; npm only warns about `engines` | local run, Node.js 20.20.2 (its archive checked against nodejs.org's SHASUMS256.txt) | `mostra` refuses Node.js before 22.19 with `MOSTRA_ENV_NODE_UNSUPPORTED` before loading anything |
+| Chrome Headless Shell | Playwright 1.64.0's `browsers.json`: `chromium-headless-shell` revision 1248, browser 156.0.8078.4, fetched from `cdn.playwright.dev` under `builds/cft/<version>/` (Chrome for Testing); its `ABOUT` reads "Google Chrome … Copyright 2026 Google LLC. All rights reserved" and points to `chrome://terms`; `LICENSE.headless_shell` (2,151,339 bytes) lists Chromium's third-party licenses; Chrome for Testing's README and Google's download page grant no redistribution right for the binaries (their CC-BY and Apache notices cover the pages and samples) | `playwright-core` 1.64.0 `browsers.json`, `lib/coreBundle.js`; the installed files; GoogleChromeLabs/chrome-for-testing README; developer.chrome.com | Not redistributed: setup fetches it and checks it against the bundle's pin (D142 item 2) |
+| Two installs of the headless shell | Two `install chromium-headless-shell` runs into fresh directories gave the same 23 files, byte for byte; Playwright also fetches `ffmpeg-1013`, which verify doesn't use | local runs, 2026-10-19 | A per-file pin is stable for a revision |
+| `pnpm deploy` (pnpm 12.9.0) | `--prod --config.node-linker=hoisted` gives real package directories, `@mostra/*` beside each other; deploys leave lockfiles, `.modules.yaml` and `.pnpm/@` trees that name the build machine's paths and that nothing links to | local deploys and a link walk | The assembler prunes them and fails on any file naming the checkout, the home or the store, and on any link leaving the bundle |
+| macOS `tar` | Writes AppleDouble `._*` entries for extended attributes unless `COPYFILE_DISABLE=1` | local run (the CLI's bootstrap test) | Bundles are packed with node-tar, which writes none; an installer refuses such entries |
+| A darwin-arm64 bundle | 199 MB gzip, 782 MB unpacked, 49,481 files, 1,444 links | `packages/bundle/scripts/build.ts` output, 2026-10-19 | Within GitHub's 2 GiB per asset |
+
+**Packages** (npm registry, 2026-10-19):
+
+| Package | Version | Published | License | Consequence |
+|---|---|---|---|---|
+| `undici` | 8.11.2 | 2026-09-24 | MIT; Node.js 22.19 or later | The SDK's downloads (`EnvHttpProxyAgent` honors the proxy variables); 8.12 waits for the cooldown |
+| `tar` | 7.5.22 | 2026-07-24 | BlueOak-1.0.0 (OSI) | The SDK's extraction (strict, no absolute paths, no owners) and the assembler's packing |
+| `@changesets/cli` | 3.0.3, config schema 4.0.1 | | MIT | `fixed` groups and `privatePackages: { version: false, tag: false }` (D142 item 7) |

@@ -169,6 +169,15 @@ const SEEDS: readonly Seed[] = [
     cwd: "../sdk",
   },
   {
+    requirement: "RT-01",
+    name: "mostra starts on any Node.js (Node.js 20 then crashed inside undici)",
+    file: "../cli/src/node-gate.ts",
+    from: "  return major < MINIMUM_NODE[0] || (major === MINIMUM_NODE[0] && minor < MINIMUM_NODE[1]);",
+    to: "  return major < 0 && minor < 0;",
+    check: unit("node-gate.test.ts", "refuses releases before 22.19"),
+    cwd: "../cli",
+  },
+  {
     requirement: "AX-01",
     name: "a --timeout during the daemon's start says the command didn't finish (found on macOS CI)",
     file: "../cli/src/run.ts",
