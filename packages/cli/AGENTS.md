@@ -70,6 +70,7 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   (progress on stderr; with `--json` a failure is still one envelope) and runs the bundle's own
   `mostra` with the same arguments, passing on its exit code and signals. Nothing else of the CLI
   loads on the system's Node.js, so `bootstrap.ts` must keep to Node.js 22.19's features.
-- **One deadline covers a daemon's start, finding the runtime included** (`startDaemon`): the
-  runtime lookup is mostly synchronous reads, and a lookup that finishes in the same turn as the
-  deadline expires clears the timer before it fires, so the deadline is checked again after it.
+- **One timer per deadline.** `--timeout` belongs to the command's one timer (`withTimeout` in
+  `run.ts`), which names what was underway when it runs out: starting the home's daemon (the
+  connection reports it through `onStarting`) or the command itself. `startDaemon` keeps only its
+  own 30 s limit. Two timers for one deadline raced, and which one fired decided the message.

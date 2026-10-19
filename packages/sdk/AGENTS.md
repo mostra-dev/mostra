@@ -50,3 +50,13 @@ the bundle's `bin/mostra-setup` runs.
 - The browser is fetched at setup, never shipped in the archive (D142). Playwright's headless
   shell is Google's Chrome for Testing build, which names Google's terms of service rather than an
   OSI license, so the bundle never carries it (invariant 8).
+- **A notification can overtake the answer it follows.** The instance sends `events/subscribe`'s
+  answer before the subscription's first page, but both can reach the session in one chunk, and
+  the page is dispatched before the code awaiting the answer resumes. `events.ts` keeps pages of
+  a subscription it doesn't know yet while a subscribe is in flight. Any client (the Rust crate,
+  WP-12) meets the same ordering.
+- **An acknowledgement needs a live subscription.** `events/ack` under a subscription whose
+  `events/unsubscribe` is already on its way is refused, so a pause acknowledges what was handled
+  before it unsubscribes, `next()` never acknowledges during a pause, and a stream that ends while
+  paused subscribes once more just to acknowledge. `test/unit/events.test.ts` sweeps the timings
+  against a fake instance that answers a round trip later.

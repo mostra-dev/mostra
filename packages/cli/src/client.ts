@@ -64,8 +64,11 @@ export interface ConnectOptions {
   readonly env: Environment;
   /** Start the daemon when none runs. Default true. */
   readonly autostart?: boolean;
-  /** The whole connection's limit (`--timeout`). */
-  readonly timeoutMs?: number | undefined;
+  /**
+   * Told when this connection starts the home's daemon (`true`) and when the start ends
+   * (`false`), so the command's own `--timeout` names the start if it runs out during it.
+   */
+  readonly onStarting?: (starting: boolean) => void;
 }
 
 /** How long one attempt to reach a recorded socket waits. */
@@ -85,7 +88,13 @@ export async function connect(options: ConnectOptions): Promise<InstanceConnecti
     if (session) return session;
   }
   if (options.autostart === false) return undefined;
-  const started = await startDaemon(options);
+  options.onStarting?.(true);
+  let started: DaemonLine;
+  try {
+    started = await startDaemon(options);
+  } finally {
+    options.onStarting?.(false);
+  }
   return open(started.socket, options, started.status === "started");
 }
 
@@ -114,26 +123,16 @@ interface DaemonLine {
  * it listens, or why it couldn't start. A daemon another starter won prints `attached` and exits.
  */
 export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
-  // The limit is the start's own or the command's --timeout, whichever is shorter, and the
-  // message names the one in force (Opus review finding 7). It covers finding the runtime too,
-  // so a slow lookup can't let the command's own timer answer with another message first.
-  const limitMs = Math.min(START_TIMEOUT_MS, options.timeoutMs ?? START_TIMEOUT_MS);
-  const deadlineAt = Date.now() + limitMs;
+  // The start's own limit. A shorter `--timeout` is the command's: its one timer names the
+  // start when it runs out during it (run.ts), so two timers never race for one deadline.
+  const deadlineAt = Date.now() + START_TIMEOUT_MS;
   const timedOut = (): RpcError =>
     new RpcError(
       createDiagnostic("MOSTRA_HOST_TIMEOUT", {
-        message: `The home's daemon didn't start within ${formatDuration(limitMs)}${limitMs < START_TIMEOUT_MS ? " (--timeout)" : ""}.`,
+        message: `The home's daemon didn't start within ${formatDuration(START_TIMEOUT_MS)}.`,
       }),
     );
-  let lookupTimer: NodeJS.Timeout | undefined;
-  const runtime = await Promise.race([
-    locateRuntime(options.env),
-    new Promise<never>((_resolve, reject) => {
-      lookupTimer = setTimeout(() => reject(timedOut()), limitMs);
-    }),
-  ]).finally(() => clearTimeout(lookupTimer));
-  // A lookup that finished in the same turn as its timer expired (its reads are mostly
-  // synchronous) cleared that timer unfired: the deadline decides, and no daemon starts after it.
+  const runtime = await locateRuntime(options.env);
   if (Date.now() >= deadlineAt) throw timedOut();
   const args = [
     runtime.entry,
