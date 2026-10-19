@@ -230,6 +230,27 @@ describe("a type check that couldn't run fails closed (D138 item 8, GPT review f
     const typeError = parseTscOutput(["source/index.tsx(3,7): error TS2322: Nope."], () => false);
     expect(unexplainedExit(failed, [], typeError)).toEqual([]);
   });
+  it("lets an untyped package's TS7016 explain tsc's failing exit: a warning, never MOSTRA_TYPE_ERROR", () => {
+    // tsc exits 1 for TS7016 alone; Mostra makes it the warning MOSTRA_TYPE_UNTYPED_PACKAGE (D138
+    // item 8), so the verdict must not add an error for an exit only that warning explains.
+    const lines = [
+      "source/index.tsx(2,16): error TS7016: Could not find a declaration file for module 'ms'. '/h/deps/locks/x/node_modules/ms/index.js' implicitly has an 'any' type.",
+    ];
+    const found = parseTscOutput(lines, () => false);
+    expect(found.map((d) => [d.code, d.severity])).toEqual([
+      ["MOSTRA_TYPE_UNTYPED_PACKAGE", "warning"],
+    ]);
+    expect(unexplainedExit({ code: 1, signal: null, stderrTail: [] }, lines, found)).toEqual([]);
+    // A TS2307 the build already reported is dropped, and still explains the exit.
+    const missing = ["source/index.tsx(1,20): error TS2307: Cannot find module 'nope'."];
+    expect(
+      unexplainedExit(
+        { code: 1, signal: null, stderrTail: [] },
+        missing,
+        parseTscOutput(missing, () => true),
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("a module the build couldn't resolve is reported once (D138 item 8)", () => {

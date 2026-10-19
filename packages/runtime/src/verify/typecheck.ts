@@ -350,7 +350,17 @@ export function unexplainedExit(
       }),
     ];
   }
-  if (exit.code !== 0 && !found.some((diagnostic) => diagnostic.severity === "error")) {
+  // An exit is explained by any error `tsc` printed in its own format, whatever the check made of
+  // it: TS7016 becomes the warning MOSTRA_TYPE_UNTYPED_PACKAGE, a TS2307 the build already
+  // reported is dropped, and errors outside the artifact's own files are dropped (D138 item 8).
+  // Requiring an error-severity diagnostic instead failed every artifact that imports an untyped
+  // package (found by WP-11's bundle smoke test, an on-demand `ms`).
+  const printedErrors = lines.some((line) => LINE.test(line) || GLOBAL.test(line));
+  if (
+    exit.code !== 0 &&
+    !printedErrors &&
+    !found.some((diagnostic) => diagnostic.severity === "error")
+  ) {
     return [
       createDiagnostic("MOSTRA_TYPE_ERROR", {
         message: `The type check exited with code ${exit.code} without checking the source${tail ? `:\n${tail}` : "."}`,
