@@ -19,7 +19,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { type ArtifactManifest, RunId } from "@mostra/protocol";
+import { type ArtifactManifest, type Results, RunId } from "@mostra/protocol";
 import { createActions } from "../actions/index.ts";
 import { createAddressing } from "../addressing/index.ts";
 import {
@@ -29,7 +29,7 @@ import {
   readServerFunctions,
 } from "../builder/index.ts";
 import { noFaults } from "../faults.ts";
-import { Capabilities, createGateway } from "../gateway/index.ts";
+import { Capabilities, createGateway, type DevUpstream } from "../gateway/index.ts";
 import { createEphemeralBus, createInteraction } from "../interaction/index.ts";
 import { openLedger } from "../ledger/index.ts";
 import { createLive } from "../live/index.ts";
@@ -103,6 +103,13 @@ export interface Sandbox {
     readonly kind: string;
     readonly cause: string;
   }[];
+  /**
+   * `mostra dev` only (D140 item 12): the candidate's server bundle changed in place; its worker
+   * stops so the next call loads the new bundle.
+   */
+  replaceServer(): Promise<void>;
+  /** Hears every submission made in the sandbox, with its Results (D140 item 12). */
+  onSubmission(listener: (results: Results) => void): () => void;
   /** Stops everything and deletes the run's directory. */
   close(): Promise<void>;
 }
@@ -149,10 +156,20 @@ export async function startSandbox(
     readonly artifactId: string;
     readonly versions: readonly SandboxVersion[];
     readonly sourceDir?: string;
+    /** The run's directory; default a new one in {@link sandboxRoot}. */
+    readonly runDir?: string;
+    /**
+     * A `mostra dev` session's sandbox (D140 item 12) instead of a verify run's: the artifact
+     * origin serves the session's Vite server (`upstream`), pages run as live pages, and actions
+     * run for real with the real secrets. Nothing is delivered to hosts or ports either way.
+     */
+    readonly dev?: { readonly upstream: () => DevUpstream | undefined };
+    /** The shell's port, instead of one the operating system assigns (`mostra dev --port`). */
+    readonly shellPort?: number;
   },
 ): Promise<Sandbox> {
   const { log } = options;
-  const runDir = join(sandboxRoot(options.home), RunId.create());
+  const runDir = input.runDir ?? join(sandboxRoot(options.home), RunId.create());
   await mkdir(runDir, { recursive: true, mode: 0o700 });
   const opening = openLedger({
     storeDir: join(runDir, "store"),
@@ -211,6 +228,7 @@ export async function startSandbox(
       log,
       bind: { address: "127.0.0.1" },
       ephemeral: true,
+      ...(input.shellPort !== undefined ? { shellPort: input.shellPort } : {}),
     });
     const capabilities = new Capabilities({
       ledger,
@@ -292,21 +310,28 @@ export async function startSandbox(
       redactor: options.redactor,
       log,
       version: workerVersion,
-      dryRun: {
-        optedIn: (versionId, fnId) => {
-          let opted = optIns.get(versionId);
-          if (!opted) {
-            opted = dryRunFunctions(dirOf(versionId));
-            optIns.set(versionId, opted);
-          }
-          return opted.has(fnId);
-        },
-        skipped: (fnId) => {
-          skipped.add(fnId);
-        },
-      },
+      // In dev, the developer's own code runs for real on their own machine, as any dev server's
+      // does (D140 item 12); in verify, only what opted into dryRun() runs (D55).
+      ...(input.dev
+        ? {}
+        : {
+            dryRun: {
+              optedIn: (versionId: string, fnId: string) => {
+                let opted = optIns.get(versionId);
+                if (!opted) {
+                  opted = dryRunFunctions(dirOf(versionId));
+                  optIns.set(versionId, opted);
+                }
+                return opted.has(fnId);
+              },
+              skipped: (fnId: string) => {
+                skipped.add(fnId);
+              },
+            },
+          }),
     });
-    const sources = readLiveSources(candidate.dir);
+    // A dev session's server code builds again, and its sources with it (D140 item 12).
+    let sources = readLiveSources(candidate.dir);
     const live = createLive({
       ledger,
       log,
@@ -346,7 +371,7 @@ export async function startSandbox(
       live,
       bus,
       parked: () => false,
-      target: "verify",
+      ...(input.dev ? { target: "live" as const, dev: input.dev } : { target: "verify" as const }),
     });
     await gateway.start();
     stops.push(() => gateway.close());
@@ -360,6 +385,13 @@ export async function startSandbox(
         }),
       skipped,
       crashes: () => [...crashes],
+      replaceServer: async () => {
+        const version = workerVersion(candidate.versionId);
+        if (version) await pool.replace(version);
+        sources = readLiveSources(candidate.dir);
+        live.replaced(candidate.versionId);
+      },
+      onSubmission: (listener) => interaction.onSubmission(listener),
       liveFailures: () =>
         live.failures(input.artifactId).map(({ key, error }) => ({
           key,

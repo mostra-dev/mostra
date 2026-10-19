@@ -44,7 +44,13 @@ interface VersionRow {
   forced_codes_json: string | null;
   published_at: string;
   verify_json?: string | null;
+  /** When gc collected its files (D140), from `version_collected`; absent or null otherwise. */
+  collected_at?: string | null;
 }
+
+/** Version rows with their collection, if any (D140 item 14). */
+const VERSION_ROWS =
+  "SELECT version.*, (SELECT collected_at FROM version_collected WHERE version_id = version.id) AS collected_at FROM version";
 
 /** A version to commit (ARCHITECTURE §3 step 6). */
 export interface VersionCommit {
@@ -152,6 +158,7 @@ const versionSummary = (row: VersionRow): VersionSummary => {
     envDigest: row.env_digest,
     outputDigest: row.output_digest,
     ...(forced.length > 0 ? { forcedDiagnostics: forced } : {}),
+    ...(row.collected_at ? { collected: row.collected_at } : {}),
   };
 };
 
@@ -172,7 +179,7 @@ export async function openRegistry(options: {
     row: ArtifactRow,
   ): { summary: ArtifactSummary; latest: VersionRow | undefined } => {
     const latest = row.latest_version_id
-      ? db.get<VersionRow>("SELECT * FROM version WHERE id = ?", row.latest_version_id)
+      ? db.get<VersionRow>(`${VERSION_ROWS} WHERE id = ?`, row.latest_version_id)
       : undefined;
     const manifest = latest ? (JSON.parse(latest.manifest_json) as ArtifactManifest) : undefined;
     const source = db.get<{ path: string }>(
@@ -274,6 +281,8 @@ export async function openRegistry(options: {
         let cursor: string | undefined;
         if (existing) {
           number = existing.number;
+          // Publishing a collected version's exact source restored its files (D140 item 14).
+          db.run("DELETE FROM version_collected WHERE version_id = ?", input.versionId);
           if (artifact.latest_version_id === input.versionId) {
             cursor = db
               .get<{ cursor: number }>(
@@ -436,10 +445,7 @@ export async function openRegistry(options: {
         }
         const { summary: base, latest } = summary(db, row);
         const versions = db
-          .all<VersionRow>(
-            "SELECT * FROM version WHERE artifact_id = ? ORDER BY number DESC",
-            row.id,
-          )
+          .all<VersionRow>(`${VERSION_ROWS} WHERE artifact_id = ? ORDER BY number DESC`, row.id)
           .map(versionSummary);
         return {
           ...base,
@@ -452,11 +458,19 @@ export async function openRegistry(options: {
     },
     async recover() {
       const known = ledger.read((db) => ({
-        versions: new Set(db.all<{ id: string }>("SELECT id FROM version").map((row) => row.id)),
+        // A collected version's files are what gc removes; one an interrupted gc left behind goes
+        // now (D140 item 14).
+        versions: new Set(
+          db
+            .all<{ id: string }>(
+              "SELECT id FROM version WHERE id NOT IN (SELECT version_id FROM version_collected)",
+            )
+            .map((row) => row.id),
+        ),
         snapshots: new Set(
           db
             .all<{ artifact_id: string; source_digest: string }>(
-              "SELECT artifact_id, source_digest FROM version",
+              "SELECT artifact_id, source_digest FROM version WHERE id NOT IN (SELECT version_id FROM version_collected)",
             )
             .map((row) => `${row.artifact_id}/${row.source_digest}.tar.zst`),
         ),

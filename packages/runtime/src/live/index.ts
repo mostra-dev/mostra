@@ -94,6 +94,12 @@ export interface Live {
    * also when the publish reused the parked version.
    */
   unpark(artifactId: string): void;
+  /**
+   * A version's worker was replaced on purpose (a dev session's server code built again, D140
+   * item 12): its producers ran in the old worker, so they start again in the new one, from the
+   * sources it describes.
+   */
+  replaced(versionId: string): void;
   /** How many producers run: the daemon stays while any do (D62). */
   activity(): number;
   /** Starts checking producers. */
@@ -500,6 +506,15 @@ export function createLive(options: LiveOptions): Live {
     },
 
     reconcile: schedule,
+
+    replaced(versionId) {
+      for (const [id, producer] of running) {
+        if (producer.versionId === versionId) running.delete(id);
+      }
+      described.delete(versionId);
+      retryAt.delete(versionId);
+      schedule();
+    },
 
     unpark(artifactId) {
       let cleared = false;

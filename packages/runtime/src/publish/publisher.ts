@@ -53,6 +53,7 @@ import {
 import type { RenderMode } from "../builder/index.ts";
 import { type Dependencies, lockKey, type Resolution } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
+import type { Gate } from "../gate.ts";
 import {
   InflightRequests,
   type Ledger,
@@ -110,6 +111,11 @@ export interface PublisherOptions {
    * Such a version records no verdict, so it never counts as passing (D138 item 4).
    */
   readonly unverified?: boolean;
+  /**
+   * The instance's gate (D140 item 14): publishes, verify runs and dependency additions hold it
+   * shared, so `gc` never removes files they use.
+   */
+  readonly gate?: Gate;
 }
 
 /** Publishes and creates artifacts. */
@@ -827,19 +833,28 @@ export function createPublisher(options: PublisherOptions): Publisher {
       }
     });
 
+  const gated = <T>(fn: () => Promise<T>): Promise<T> =>
+    options.gate ? options.gate.shared(fn) : fn();
+
   return {
     publish: (params) =>
-      idempotent(requestKey("artifact/publish", params), async () => {
-        // The receipt is recorded inside the commit's transaction (Registry.commit).
-        return publishOnce(params);
-      }),
-    verify: (params, progress) => verifyOnce(params, progress),
+      gated(() =>
+        idempotent(requestKey("artifact/publish", params), async () => {
+          // The receipt is recorded inside the commit's transaction (Registry.commit).
+          return publishOnce(params);
+        }),
+      ),
+    verify: (params, progress) => gated(() => verifyOnce(params, progress)),
     // Creates run one at a time: two requests for one directory, or one request sent twice, can
     // never both find it empty.
     create: (params) => queue.run("create", () => create(params)),
     // Runs in the source path's queue, like its publishes, so a publish that binds the path never
     // races an addition to the path-keyed lockfile it re-keys.
-    addDependencies: async (params) => {
+    addDependencies: (params) => gated(() => addDependencies(params)),
+  };
+
+  async function addDependencies(params: DepsAddParams): Promise<DepsAddResult> {
+    {
       const path = pathOf(params.artifact);
       const source = await resolveSource(path);
       return queue.run(`path:${source.bindingPath}`, async () => {
@@ -852,8 +867,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
           request: requestKey("deps/add", params),
         });
       });
-    },
-  };
+    }
+  }
 
   async function create(params: ArtifactCreateParams): Promise<ArtifactCreateResult> {
     // A retried request completes what the first attempt recorded (H-03): the entry is written

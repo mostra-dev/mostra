@@ -3,13 +3,15 @@
  * line-level host protocol client that speaks to an instance exactly as an SDK would, using only
  * `@mostra/protocol`.
  */
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
   type Dirent,
   existsSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
 } from "node:fs";
@@ -249,9 +251,14 @@ export async function startDaemon(
       const [line] = splitter.push(chunk);
       if (line !== undefined) resolve(JSON.parse(line) as DaemonStatus);
     });
-    void started.exited.then(({ code }) =>
-      reject(new Error(`daemon exited (${code}) before a status line: ${started.stderr()}`)),
-    );
+    // `exit` can come before the last of stdout is read (an attached starter prints its line and
+    // exits at once): only the end of stdout means no line is coming. Seen on Linux CI after
+    // WP-10's merge, as the CLI's daemon start saw it (its own fix, WP-10).
+    started.child.stdout?.on("end", () => {
+      void started.exited.then(({ code }) =>
+        reject(new Error(`daemon exited (${code}) before a status line: ${started.stderr()}`)),
+      );
+    });
   });
   return { ...started, status };
 }
@@ -293,4 +300,89 @@ export async function eventually(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for ${what}.`);
+}
+
+/** The TCP addresses a process listens on, from the operating system (`lsof` or `ss`). */
+export function listening(pid: number): string[] {
+  if (process.platform === "darwin") {
+    const out = execFileSync(
+      "lsof",
+      ["-nP", "-a", "-p", String(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+      {
+        encoding: "utf8",
+      },
+    );
+    return out
+      .split("\n")
+      .filter((line) => line.startsWith("n"))
+      .map((line) => line.slice(1));
+  }
+  let out: string;
+  try {
+    out = execFileSync("ss", ["-Hltnp"], { encoding: "utf8" });
+  } catch (error) {
+    // A machine without iproute2 (a minimal container): the kernel's own tables.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return listeningFromProc(pid);
+    throw error;
+  }
+  return out
+    .split("\n")
+    .filter((line) => line.includes(`pid=${pid},`))
+    .map((line) => line.trim().split(/\s+/)[3] ?? "");
+}
+
+/** Linux: the TCP listeners of `pid`, from its descriptors and `/proc/net/tcp{,6}` (proc(5)). */
+function listeningFromProc(pid: number): string[] {
+  const fds = join("/proc", String(pid), "fd");
+  const inodes = new Set<string>();
+  for (const fd of readdirSync(fds)) {
+    try {
+      const match = /^socket:\[(\d+)\]$/.exec(readlinkSync(join(fds, fd)));
+      if (match?.[1]) inodes.add(match[1]);
+    } catch {
+      // Closed meanwhile.
+    }
+  }
+  const found: string[] = [];
+  for (const [file, v6] of [
+    ["/proc/net/tcp", false],
+    ["/proc/net/tcp6", true],
+  ] as const) {
+    let text = "";
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split("\n").slice(1)) {
+      const fields = line.trim().split(/\s+/);
+      // local_address, state (0A is LISTEN) and inode, as proc(5) lays them out.
+      const [local, state, inode] = [fields[1], fields[3], fields[9]];
+      if (!local || state !== "0A" || !inode || !inodes.has(inode)) continue;
+      const [hexAddress = "", hexPort = "0"] = local.split(":");
+      const port = Number.parseInt(hexPort, 16);
+      found.push(`${v6 ? `[${procAddress6(hexAddress)}]` : procAddress4(hexAddress)}:${port}`);
+    }
+  }
+  return found;
+}
+
+/** An IPv4 address as /proc/net/tcp writes it: four bytes, little-endian, in hex. */
+function procAddress4(hex: string): string {
+  const bytes = (hex.match(/../g) ?? []).map((byte) => Number.parseInt(byte, 16));
+  return bytes.reverse().join(".");
+}
+
+/** An IPv6 address as /proc/net/tcp6 writes it: four 32-bit words, each little-endian. */
+function procAddress6(hex: string): string {
+  const words = (hex.match(/.{8}/g) ?? []).map((word) =>
+    (word.match(/../g) ?? []).reverse().join(""),
+  );
+  const groups = (words.join("").match(/.{4}/g) ?? []).map((group) =>
+    group.replace(/^0+(?=.)/, ""),
+  );
+  const text = groups.join(":");
+  if (text === "0:0:0:0:0:0:0:0") return "::";
+  if (text === "0:0:0:0:0:0:0:1") return "::1";
+  return text;
 }

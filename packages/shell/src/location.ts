@@ -1,6 +1,7 @@
 /**
  * What a shell URL names (D97): `/a/<artifactId>` for the latest version, `/a/<artifactId>/v/<n>`
- * for one version, and the capability token in the fragment (`#t=<secret>`) on first open.
+ * for one version, and on first open the capability token in the fragment (`#t=<secret>`), or a
+ * one-time launch ticket (`#l=<ticket>`, D140) that `mostra open` hands a browser.
  */
 
 /** The artifact and version a shell page shows. */
@@ -32,4 +33,16 @@ export function tokenFrom(hash: string): string | undefined {
   const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
   const token = params.get("t");
   return token !== null && token.length > 0 ? token : undefined;
+}
+
+/** What a fragment carries on first open: the link's token, or a one-time launch ticket (D140). */
+export type Credential = { readonly token: string } | { readonly launch: string };
+
+/** The token (`#t=`) or launch ticket (`#l=`) in a fragment, if any; the token wins. */
+export function credentialFrom(hash: string): Credential | undefined {
+  const token = tokenFrom(hash);
+  if (token !== undefined) return { token };
+  const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+  const launch = params.get("l");
+  return launch !== null && launch.length > 0 ? { launch } : undefined;
 }

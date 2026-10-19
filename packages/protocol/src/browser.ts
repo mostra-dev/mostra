@@ -226,6 +226,11 @@ export interface FrameTicket extends ViewContext {
    * says so, since the page's actions and live data won't work until a new publish.
    */
   readonly serverParked?: true;
+  /**
+   * The frame shows `mostra dev`'s development preview of unpublished source (D140 item 12): the
+   * shell says so, and it is never a published version.
+   */
+  readonly devPreview?: true;
 }
 
 /** The Zod schema of the `FrameTicket` type. */
@@ -244,6 +249,7 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
     follow: z.boolean(),
     pinned: z.boolean(),
     serverParked: z.literal(true).exactOptional(),
+    devPreview: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",

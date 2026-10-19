@@ -73,6 +73,11 @@ export interface BuildRequest {
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */
   readonly outDir: string;
+  /**
+   * Tests only (`MOSTRA_TEST_FAULTS=builder:build:hang`, issue #18): the child never answers,
+   * as a builder stuck in a plugin would, so the build limit or a kill ends it.
+   */
+  readonly hang?: true;
 }
 
 /** The builder child's answer. */
@@ -82,6 +87,60 @@ export type BuildResponse =
 
 /** The IPC method the supervisor calls on the builder child. */
 export const BUILD_METHOD = "builder/build";
+
+/**
+ * `mostra dev`'s child (D140 item 12): the supervisor asks the builder child for a Vite dev
+ * server over a mirror of the artifact's source, reached only through the dev sandbox's gateway.
+ */
+export const DEV_METHOD = "builder/dev";
+/**
+ * Supervisor to child: these files of the mirror changed (`{ changes: DevChange[] }`). The child
+ * watches nothing itself: the supervisor, which keeps the mirror, says exactly what changed.
+ */
+export const DEV_CHANGED_METHOD = "builder/dev.changed";
+
+/** One file of the mirror that changed, relative to its `source/`. */
+export interface DevChange {
+  readonly file: string;
+  readonly kind: "add" | "change" | "unlink";
+}
+
+/** Supervisor to child: tell every page to load again (a new server bundle runs now). */
+export const DEV_RELOAD_METHOD = "builder/dev.reload";
+/** Child to supervisor: the server bundle was built again (or failed to build). */
+export const DEV_SERVER_NOTIFICATION = "builder/dev.server";
+/** Child to supervisor: the client modules of these files were updated in place (HMR). */
+export const DEV_UPDATE_NOTIFICATION = "builder/dev.update";
+
+/** What the dev child serves. */
+export interface DevRequest {
+  /** The dev root: generated files, `node_modules`, and the mirror of the source in `source/`. */
+  readonly root: string;
+  readonly entry: string;
+  readonly entryHasDefault: boolean;
+  readonly manifest: ArtifactManifest;
+  /** The dev version's ID, in every page's `mostra-version` meta (D115). */
+  readonly versionId: string;
+  readonly nodeModules: string;
+  /** Where the server bundle and `registry.json` go: the dev version's directory. */
+  readonly outDir: string;
+  /** The secret every request from the gateway carries; nothing else reaches the dev server. */
+  readonly secret: string;
+}
+
+/** The header that carries {@link DevRequest.secret}. */
+export const DEV_SECRET_HEADER = "x-mostra-dev-secret";
+
+/** A server build of the dev child: what `registry.json` now holds, or why it failed. */
+export type DevServerBuild =
+  | { readonly ok: true; readonly registry: VersionRegistry; readonly server: boolean }
+  | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
+
+/** The dev child's answer to {@link DEV_METHOD}: its loopback port and its first server build. */
+export interface DevReady {
+  readonly port: number;
+  readonly build: DevServerBuild;
+}
 
 /**
  * The files written into the staging root so the bundler's upward searches stop there instead of

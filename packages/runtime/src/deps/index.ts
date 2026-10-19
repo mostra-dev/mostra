@@ -21,7 +21,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { existsSync, readlinkSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import {
@@ -29,10 +29,12 @@ import {
   createDiagnostic,
   type DependencyPolicy,
   type DepsAddResult,
+  type Diagnostic,
   RpcError,
 } from "@mostra/protocol";
 import semver from "semver";
 import { type Faults, noFaults } from "../faults.ts";
+import type { Gate } from "../gate.ts";
 import {
   type Ledger,
   type LedgerDb,
@@ -58,6 +60,8 @@ const LAYOUT_MARKER = ".mostra-layout";
 
 /** Options for {@link createDependencies}. */
 export interface DependenciesOptions {
+  /** The instance's gate: layout installs hold it shared, so gc never runs beside one (D140). */
+  readonly gate?: Gate;
   /** The home's real path; `deps/` lives in it. */
   readonly home: string;
   readonly ledger: Ledger;
@@ -104,6 +108,27 @@ export interface DependencyTarget {
   readonly artifactPath: string;
 }
 
+/** What gc collects of the dependency state (D140 item 14). */
+export interface DependencyCollection {
+  /** The lock layouts, and the bytes only they hold (files the store doesn't share). */
+  readonly lockLayouts: {
+    readonly count: number;
+    readonly bytes: number;
+    readonly names: readonly string[];
+  };
+  /**
+   * The store packages no kept lockfile needs. `bytes` is what the store shrank by in a real run
+   * (its files are shared between packages, so a dry run can't attribute them) and 0 in a dry run.
+   */
+  readonly storePackages: {
+    readonly count: number;
+    readonly bytes: number;
+    readonly packages: readonly string[];
+    /** Why the store couldn't be pruned; its packages then stay, still indexed. */
+    readonly failed?: Diagnostic;
+  };
+}
+
 /** The dependencies of one instance. */
 export interface Dependencies {
   readonly warm: WarmSet;
@@ -130,6 +155,19 @@ export interface Dependencies {
     /** The artifact's source directory, when it still exists: lifecycle scripts run there. */
     readonly sourceDir?: string;
   }): Promise<string>;
+  /**
+   * gc's part (D95, D135, D140 item 14): the lock layouts in `deps/locks` that no working
+   * lockfile and no lock text in `keep` names (a `pinned-*` layout counts as named by the
+   * `lockDigest` its marker records), and the store packages only they need. A dry run lists them;
+   * a real run removes the layouts, drops the packages from the store index and runs
+   * `pnpm store prune` in the install child. The caller holds the instance's gate alone, so no
+   * install runs meanwhile.
+   */
+  collect(input: {
+    /** The `lock.yaml` texts of every version gc keeps. */
+    readonly keep: readonly string[];
+    readonly dryRun: boolean;
+  }): Promise<DependencyCollection>;
   /** `deps/add`: adds packages to the artifact's working lockfile and installs them. */
   add(
     target: DependencyTarget & {
@@ -565,22 +603,134 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     return { lock: text, lockDigest: digest, nodeModules };
   };
 
+  const runtimeModules = async (target: {
+    readonly artifactId: string;
+    readonly versionDir: string;
+    readonly sourceDir?: string;
+  }): Promise<string> => {
+    const text = await readFile(join(target.versionDir, "lock.yaml"), "utf8");
+    const lock = parseLock(text);
+    const digest = lockDigest(text);
+    const where = { key: target.artifactId, artifactDir: target.sourceDir ?? target.versionDir };
+    // Mostra's own packages always come from this runtime: they aren't on a registry to pin.
+    const drifted = Object.keys(lock.warm)
+      .filter((pkg) => !pkg.startsWith("@mostra/"))
+      .filter((pkg) => warm.packages[pkg] !== lock.warm[pkg]);
+    if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);
+    if (Object.keys(lock.packages).length === 0) return warm.nodeModules;
+    return ensureLayout(lock, digest, where);
+  };
+
+  /** gc's part (D140 item 14); see {@link Dependencies.collect}. */
+  const collect = async (input: {
+    readonly keep: readonly string[];
+    readonly dryRun: boolean;
+  }): Promise<DependencyCollection> => {
+    const working = ledger.read((db) =>
+      db
+        .all<{ lock_text: string }>("SELECT lock_text FROM dependency_lock")
+        .map((row) => row.lock_text),
+    );
+    const texts = [...working, ...input.keep];
+    const named = new Set(texts.map((text) => lockDigest(text)));
+    const needed = new Set<string>();
+    const need = (pnpm: string | undefined): void => {
+      if (pnpm === undefined) return;
+      for (const { name, version } of pinnedPackages(pnpm)) needed.add(`${name}@${version}`);
+    };
+    for (const text of texts) {
+      try {
+        need(parseLock(text).pnpm);
+      } catch {
+        // A lockfile Mostra can't read names no package it could keep.
+      }
+    }
+    const entries = await readdir(dirs.locks).catch(() => [] as string[]);
+    const layouts: string[] = [];
+    let layoutBytes = 0;
+    for (const name of entries.sort()) {
+      const dir = join(dirs.locks, name);
+      let digest = name;
+      try {
+        const marker = JSON.parse(await readFile(join(dir, LAYOUT_MARKER), "utf8")) as {
+          lockDigest?: unknown;
+        };
+        if (typeof marker.lockDigest === "string") digest = marker.lockDigest;
+      } catch {
+        // Unfinished: recovery at start removes it, never gc.
+        continue;
+      }
+      if (named.has(digest)) {
+        // A kept pinned layout needs its own installer lockfile's packages too.
+        need(await readFile(join(dir, "pnpm-lock.yaml"), "utf8").catch(() => undefined));
+        continue;
+      }
+      layouts.push(name);
+      layoutBytes += await unsharedBytes(dir);
+    }
+    const unneeded = ledger
+      .read((db) =>
+        db.all<{ name: string; version: string }>("SELECT name, version FROM dependency_package"),
+      )
+      .map((row) => `${row.name}@${row.version}`)
+      .filter((id) => !needed.has(id))
+      .sort();
+    let storeBytes = 0;
+    let failed: Diagnostic | undefined;
+    let pruned = unneeded;
+    if (!input.dryRun) {
+      for (const name of layouts) {
+        await rm(join(dirs.locks, name), { recursive: true, force: true });
+        log.info("deps.layout_collected", { layout: name });
+      }
+      if (existsSync(dirs.store) && (layouts.length > 0 || unneeded.length > 0)) {
+        const before = await apparentBytes(dirs.store);
+        const scratch = join(dirs.tmp, `prune-${randomBytes(6).toString("hex")}`);
+        await mkdir(scratch, { recursive: true });
+        try {
+          const outcome = await install().prune({ dir: scratch, ownerRef: "gc" });
+          if (!outcome.ok) failed = outcome.diagnostic;
+        } finally {
+          await rm(scratch, { recursive: true, force: true });
+        }
+        storeBytes = Math.max(0, before - (await apparentBytes(dirs.store)));
+      }
+      // The index says what the store holds (offline answers, DP-04): a package leaves it only
+      // once the prune that removed it succeeded.
+      if (failed) {
+        log.warn("deps.prune_failed", { diagnostic: failed });
+        pruned = [];
+      } else if (unneeded.length > 0) {
+        ledger.write((db) => {
+          for (const id of unneeded) {
+            const at = id.lastIndexOf("@");
+            db.run(
+              "DELETE FROM dependency_package WHERE name = ? AND version = ?",
+              id.slice(0, at),
+              id.slice(at + 1),
+            );
+          }
+        });
+      }
+    }
+    return {
+      lockLayouts: { count: layouts.length, bytes: layoutBytes, names: layouts },
+      storePackages: {
+        count: pruned.length,
+        bytes: storeBytes,
+        packages: pruned,
+        ...(failed ? { failed } : {}),
+      },
+    };
+  };
+
   return {
     warm,
 
-    async runtimeModules(target) {
-      const text = await readFile(join(target.versionDir, "lock.yaml"), "utf8");
-      const lock = parseLock(text);
-      const digest = lockDigest(text);
-      const where = { key: target.artifactId, artifactDir: target.sourceDir ?? target.versionDir };
-      // Mostra's own packages always come from this runtime: they aren't on a registry to pin.
-      const drifted = Object.keys(lock.warm)
-        .filter((pkg) => !pkg.startsWith("@mostra/"))
-        .filter((pkg) => warm.packages[pkg] !== lock.warm[pkg]);
-      if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);
-      if (Object.keys(lock.packages).length === 0) return warm.nodeModules;
-      return ensureLayout(lock, digest, where);
-    },
+    runtimeModules: (target) =>
+      options.gate ? options.gate.shared(() => runtimeModules(target)) : runtimeModules(target),
+
+    collect,
 
     resolve: (target) =>
       byArtifact.run(target.key, async () => {
@@ -728,4 +878,41 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         return result;
       }),
   };
+}
+
+/** The bytes of the files under `dir` that nothing else links to (a layout's own files). */
+async function unsharedBytes(dir: string): Promise<number> {
+  let total = 0;
+  for (const info of await files(dir)) if (info.nlink <= 1) total += info.size;
+  return total;
+}
+
+/** The apparent size of a tree, counting each inode once. */
+async function apparentBytes(dir: string): Promise<number> {
+  const seen = new Set<number>();
+  let total = 0;
+  for (const info of await files(dir)) {
+    if (seen.has(info.ino)) continue;
+    seen.add(info.ino);
+    total += info.size;
+  }
+  return total;
+}
+
+/** The regular files under `dir`, as `lstat` sees them; symbolic links are never followed. */
+async function files(dir: string): Promise<{ size: number; nlink: number; ino: number }[]> {
+  const found: { size: number; nlink: number; ino: number }[] = [];
+  const walk = async (path: string): Promise<void> => {
+    const entries = await readdir(path, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) await walk(child);
+      else if (entry.isFile()) {
+        const info = await lstat(child).catch(() => undefined);
+        if (info) found.push({ size: info.size, nlink: info.nlink, ino: info.ino });
+      }
+    }
+  };
+  await walk(dir);
+  return found;
 }

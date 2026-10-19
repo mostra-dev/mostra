@@ -6,7 +6,9 @@
 
 ```text
 <home>/                        default ~/.mostra (macOS), ${XDG_DATA_HOME:-~/.local/share}/mostra (Linux); mode 0700 (D85)
-  config.json                  home settings written by `mostra` and by hosts through HomeConfig (the dependency policy, D95)
+  config.json                  home settings written by `mostra` and by hosts through HomeConfig (the dependency policy, D95);
+                               `hostConfigured: { client, at }`, written once when a host first configures the home or a
+                               `mostra-runtime host` instance owns it, and never removed (D140 item 4)
   instance.json                discovery record of the running supervisor (D81): pid, start time, socket, runtime version, revisions; never a lock
   store/ledger.sqlite          the ledger (WAL, synchronous=FULL, locking_mode=EXCLUSIVE: no -shm file), with -wal
   store/ledger.sqlite.bak-<from>-<to>   backup written before a migration (§6)
@@ -34,10 +36,14 @@
   secrets/<scope>/<name>       one file per secret, mode 0600 (D44)
   keys/capability              32 random bytes, mode 0600: the key capability secrets are derived under (D97)
   logs/                        rotated supervisor and child logs, capability URLs redacted
+  cache/dev/<session>/         a `mostra dev` session's scratch state; deleted when the session ends, and at every start
+                               (D140 item 12)
 <runtime dir>/<home-hash>.sock control socket (ARCHITECTURE §4, D82): runtime dir is MOSTRA_RUNTIME_DIR, else ~/.mostra/run (macOS),
                                $XDG_RUNTIME_DIR/mostra when owned and 0700, else ${XDG_STATE_HOME:-~/.local/state}/mostra/run (Linux);
                                home-hash is 16 Crockford base32 characters of SHA-256(realpath(home))
 ```
+
+**The CLI's own directory** (D140 item 5) is per operating-system user, not per home: `MOSTRA_CONFIG_DIR`, else `${XDG_CONFIG_HOME:-~/.config}/mostra`, mode 0700, holding `telemetry.json` (0600, written by rename: the telemetry choice, when the notice of what is sent was shown where sending follows, when the ask-first notice was shown (a separate record, so it never stands for the other), when a flush last started), `telemetry-id` (0600: the random install ID, made by D140's exclusive create, a hard link that fails when the file exists, so processes on a first run agree on one ID without the lock), `telemetry-queue.ndjson` (0600, at most 1,000 events, none older than 7 days) and, while a change is made, `telemetry.lock` (its owner's PID and a token; released only by its owner, taken over when it is older than 10 s and its owner no longer runs, or older than 60 s whoever it names, since a dead owner's PID can name an unrelated live process). Only `@mostra/cli` reads or writes it.
 
 **Who owns the home** (D81). The supervisor holding the ledger's exclusive SQLite lock owns the home. The operating system releases the lock when the process dies. The socket and `instance.json` are only how clients find that owner. Because the lock excludes every other connection, any other ledger reader (including `mostra doctor`'s integrity check) goes through the supervisor, or runs only when no supervisor holds the lock. Within the supervisor, nothing but SQLite opens the ledger file: POSIX releases a process's locks on a file when any descriptor for it closes.
 
@@ -141,6 +147,12 @@ ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- wri
 dependency_lock(key PK, lock_text, added_json, updated_at)   -- an artifact's working lockfile; key: its artifact ID, or
                                                              -- 'path:<real path>' until its first publish binds it
 dependency_package(name, version, stored_at, PRIMARY KEY(name, version))   -- what deps/store holds, for offline answers (DP-04)
+
+-- gc (D140 item 14, migration 9)
+version_collected(version_id PK FK, collected_at)   -- a version gc removed the files of; write-once (a trigger refuses
+                                                    -- UPDATE and an insert over a row); deleted only by the publish that
+                                                    -- restores the version's files. The version row itself is never
+                                                    -- deleted (a trigger), so its ID and number stay forever
 ```
 
 Invariants carried by constraints:

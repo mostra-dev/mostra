@@ -38,7 +38,8 @@ export type DiagnosticArea =
   | "TARGET"
   | "ENV"
   | "PLATFORM"
-  | "ARTIFACT";
+  | "ARTIFACT"
+  | "CLI";
 
 /** Every diagnostic area, in INTERFACES §13 order. */
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
@@ -71,6 +72,7 @@ export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
   "ENV",
   "PLATFORM",
   "ARTIFACT",
+  "CLI",
 ];
 
 /**

@@ -215,7 +215,10 @@ describe("builder failures (FAILURE_MODEL §2, §9)", () => {
 
   it("reports a builder that dies as MOSTRA_BUILD_CRASHED, and publishes nothing", async () => {
     const home = testHome();
-    const { daemon, client } = await session(home);
+    // Held before it builds (a fault point), so the build can't finish before it is killed.
+    const { daemon, client } = await session(home, undefined, {
+      MOSTRA_TEST_FAULTS: "builder:build:hang",
+    });
     const publishing = client.call("artifact/publish", { source: { path: artifact() } });
     process.kill(await builderPid(client), "SIGKILL");
     const response = await publishing;
@@ -227,13 +230,12 @@ describe("builder failures (FAILURE_MODEL §2, §9)", () => {
 
   it("stops a builder that hangs with MOSTRA_BUILD_TIMEOUT, and publishes nothing", async () => {
     const home = testHome();
+    // The builder never answers (a fault point), so a fast build can't finish first (issue #18).
     const { daemon, client } = await session(home, undefined, {
       MOSTRA_TEST_BUILD_TIMEOUT_MS: "3000",
+      MOSTRA_TEST_FAULTS: "builder:build:hang",
     });
-    const publishing = client.call("artifact/publish", { source: { path: artifact() } });
-    const pid = await builderPid(client);
-    process.kill(pid, "SIGSTOP");
-    const response = await publishing;
+    const response = await client.call("artifact/publish", { source: { path: artifact() } });
     expect(response.error?.data.code).toBe("MOSTRA_BUILD_TIMEOUT");
     await eventually(
       async () => {

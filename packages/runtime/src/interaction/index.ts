@@ -30,6 +30,7 @@ import {
   type FieldState,
   MutationId,
   type MutationResult,
+  type Results,
   RpcError,
   type RunState,
   refusal,
@@ -95,7 +96,7 @@ import {
 import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
-export { appendEvent, redactEvents } from "./events.ts";
+export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
 export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
@@ -326,6 +327,11 @@ export interface Interaction {
   }): string;
   /** Hears every `version.published` once it commits, by artifact; returns the stop. */
   onPublished(listener: (artifactId: string, versionId: string) => void): () => void;
+  /**
+   * Hears every submission once it commits, with its Results (INTERFACES §8): how a `mostra dev`
+   * session reports what its preview's submits would deliver (D140 item 12). Returns the stop.
+   */
+  onSubmission(listener: (results: Results) => void): () => void;
   /** How many host subscriptions are open. */
   subscriptionCount(): number;
 }
@@ -960,6 +966,27 @@ export function createInteraction(options: InteractionOptions): Interaction {
           },
         }),
       );
+    },
+    onSubmission(listener) {
+      let position = ledger.read(
+        (db) =>
+          db.get<{ last: number | null }>("SELECT MAX(position) AS last FROM submission")?.last ??
+          0,
+      );
+      return ledger.onCommit(() => {
+        const made = ledger.read((db) =>
+          db
+            .all<SubmissionRow>(
+              "SELECT * FROM submission WHERE position > ? ORDER BY position",
+              position,
+            )
+            .map((row) => ({ position: row.position, results: buildResults(db, row) })),
+        );
+        for (const { position: at, results } of made) {
+          position = at;
+          listener(results);
+        }
+      });
     },
     onPublished(listener) {
       let cursor = ledger.read((db) => latestCursor(db));

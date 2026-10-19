@@ -8,13 +8,13 @@
 | **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
 | **Plan update** | 2026-10-16 (M20, D116 to D127): the remote server, relay and team features join v1; Windows and the terminal packages follow the first release as `v1.1`; new packages WP-28 to WP-32. |
-| **Next unit** | WP-10 (work-package mode; WP-09 is done, see [PROGRESS-WP-09](../progress/PROGRESS-WP-09.md)). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
+| **Next unit** | WP-11 (work-package mode; WP-10 is done, see [PROGRESS-WP-10](../progress/PROGRESS-WP-10.md)). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
 
 ## Reading order
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D139, with source messages M1 to M26. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D140, with source messages M1 to M28. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J14, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, and the resolution of every seed open question (§15).

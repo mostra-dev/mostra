@@ -631,3 +631,101 @@ describe("lifecycle scripts (DP-05)", () => {
     expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
   });
 });
+
+describe("gc and the dependency state (VR-06, D140 item 14)", () => {
+  interface GcResult {
+    readonly dryRun: boolean;
+    readonly versions: readonly { readonly number: number }[];
+    readonly lockLayouts: { readonly count: number };
+    readonly storePackages: { readonly count: number; readonly bytes: number };
+    readonly caches: { readonly count: number };
+    readonly warnings?: readonly { readonly code: string }[];
+  }
+  const metadata = (target: Running): string[] => {
+    const dir = join(target.home.home, "deps", "cache");
+    return existsSync(dir) ? readdirSync(dir).filter((name) => name.startsWith("metadata")) : [];
+  };
+
+  it("collects a package only the collected version used, prunes the store through the real installer, and keeps the metadata cache (Opus review finding 1)", async () => {
+    const target = await start();
+    const dir = artifact({
+      "index.tsx":
+        'import { label } from "mostra-fixture-util";\nexport default function Page() { return <p>{label}</p>; }\n',
+    });
+    const v1 = ok<Receipt>(await publish(target, dir));
+    expect(lockOf(target, v1.versionId)).toContain("mostra-fixture-util");
+    writeFileSync(
+      join(dir, "index.tsx"),
+      "export default function Page() { return <p>plain</p>; }\n",
+    );
+    const v2 = ok<Receipt>(await publish(target, dir));
+    expect(v2.version).toBe(2);
+    const storeFiles = (): number => {
+      let total = 0;
+      const walk = (path: string): void => {
+        for (const entry of readdirSync(path, { withFileTypes: true })) {
+          if (entry.isDirectory()) walk(join(path, entry.name));
+          else total += 1;
+        }
+      };
+      walk(join(target.home.home, "deps", "store"));
+      return total;
+    };
+    const cacheBefore = metadata(target);
+    expect(cacheBefore.length).toBeGreaterThan(0);
+    const filesBefore = storeFiles();
+    const planned = ok<GcResult>(await target.client.call("gc/run", { dryRun: true }));
+    expect(planned.versions.map((version) => version.number)).toEqual([1]);
+    expect(planned.lockLayouts.count).toBe(1);
+    expect(planned.storePackages.count).toBeGreaterThan(0);
+    const collected = ok<GcResult>(await target.client.call("gc/run", {}));
+    expect(collected.warnings).toBeUndefined();
+    expect(collected.versions).toEqual(planned.versions);
+    expect(collected.lockLayouts.count).toBe(planned.lockLayouts.count);
+    expect(collected.storePackages.count).toBe(planned.storePackages.count);
+    expect(collected.storePackages.bytes).toBeGreaterThan(0);
+    expect(storeFiles()).toBeLessThan(filesBefore);
+    expect(layouts(target)).toEqual([]);
+    // pnpm's prune empties the metadata cache it's given; the home's, which offline
+    // resolution reads (D95), is never it.
+    expect(metadata(target)).toEqual(cacheBefore);
+    // Nothing is left to collect, and the store's index agrees with the store.
+    const again = ok<GcResult>(await target.client.call("gc/run", {}));
+    expect(again.storePackages.count).toBe(0);
+    expect(again.lockLayouts.count).toBe(0);
+    // The collected version comes back on republish, its package installed again.
+    writeFileSync(
+      join(dir, "index.tsx"),
+      'import { label } from "mostra-fixture-util";\nexport default function Page() { return <p>{label}</p>; }\n',
+    );
+    const back = ok<Receipt>(await publish(target, dir));
+    expect(back.versionId).toBe(v1.versionId);
+    expect(back.version).toBe(1);
+    expect(layouts(target).length).toBe(1);
+  }, 180_000);
+
+  it("reports a step it couldn't finish as a warning beside what it removed, and runs the rest (Opus review finding 1)", async () => {
+    const target = await start({ env: { MOSTRA_TEST_FAULTS: "gc:dependencies:throw" } });
+    const dir = artifact({
+      "index.tsx": "export default function Page() { return <p>one</p>; }\n",
+    });
+    ok<Receipt>(await publish(target, dir));
+    writeFileSync(
+      join(dir, "index.tsx"),
+      "export default function Page() { return <p>two</p>; }\n",
+    );
+    ok<Receipt>(await publish(target, dir));
+    const collected = ok<GcResult>(await target.client.call("gc/run", {}));
+    expect(collected.versions.map((version) => version.number)).toEqual([1]);
+    expect(collected.warnings?.map((warning) => warning.code)).toEqual([
+      "MOSTRA_HOME_GC_INCOMPLETE",
+    ]);
+    expect(collected.lockLayouts.count).toBe(0);
+    // The steps after it still ran.
+    expect(collected.caches).toBeDefined();
+    const detail = ok<{ versions: { number: number; collected?: string }[] }>(
+      await target.client.call("artifact/get", { artifact: { path: dir } }),
+    );
+    expect(detail.versions.find((version) => version.number === 1)?.collected).toBeDefined();
+  }, 120_000);
+});

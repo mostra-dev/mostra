@@ -172,6 +172,8 @@ export function createAddressing(options: {
    * leased to an artifact whose listener isn't bound yet (D132).
    */
   readonly ephemeral?: boolean;
+  /** With `ephemeral`: the port the shell listens on instead of one assigned (`mostra dev --port`). */
+  readonly shellPort?: number;
 }): Addressing {
   const { ledger, log } = options;
   const bindAddress = options.bind.address;
@@ -228,8 +230,13 @@ export function createAddressing(options: {
         .map((row) => ({ port: row.port, purpose: row.purpose, owner: row.owner_ref })),
     async listen(server, owner) {
       if (options.ephemeral) {
-        if (!(await tryListen(server, 0, bindAddress))) {
-          throw bindFailed(`No ephemeral port is free on ${bindAddress}.`);
+        const wanted = owner.purpose === "shell" ? (options.shellPort ?? 0) : 0;
+        if (!(await tryListen(server, wanted, bindAddress))) {
+          throw bindFailed(
+            wanted === 0
+              ? `No ephemeral port is free on ${bindAddress}.`
+              : `The port ${wanted} on ${bindAddress} is taken.`,
+          );
         }
         const address = server.address();
         if (address === null || typeof address === "string") throw new Error("not a TCP listener");

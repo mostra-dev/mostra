@@ -2,6 +2,8 @@
  * Publish (ARCHITECTURE §3, VR-01, VR-02, VR-11): snapshots, digests, the source archive and the
  * atomic publish pipeline, and the authoring methods of the host protocol.
  */
+
+export { instanceChecks } from "./checks.ts";
 export {
   canonicalJson,
   environmentDigest,
@@ -17,4 +19,5 @@ export {
   versionDamage,
   versionOutputDigest,
 } from "./publisher.ts";
+export { listSource, type ResolvedSource, resolveSource } from "./source.ts";
 export { readTar } from "./tar.ts";

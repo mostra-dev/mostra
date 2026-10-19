@@ -11,6 +11,7 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_SHELL_MISSING",
   "MOSTRA_ENV_SERVICE_FAILED",
   "MOSTRA_ENV_BROWSER_MISSING",
+  "MOSTRA_ENV_RUNTIME_MISSING",
   // gen:codes
 ] as const;
 
@@ -83,6 +84,17 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
       explanation:
         "Verify renders pages in Playwright's Chromium headless shell, which the runtime bundle includes. It wasn't found, so verify ran only the stages that need no browser (type check, build and the field-ID scan) and reported this error. Publishing needs `--force` until it is installed.",
       fix: "Run `npx playwright-core install chromium-headless-shell`, or reinstall Mostra's runtime, then verify again.",
+    },
+  },
+  MOSTRA_ENV_RUNTIME_MISSING: {
+    severity: "error",
+    phase: "host",
+    title: "Runtime not found",
+    hint: "Reinstall Mostra, or set `MOSTRA_RUNTIME_BIN` to the runtime's `mostra-runtime` entry.",
+    docs: {
+      explanation:
+        "The CLI starts and attaches to the home's instance through the runtime binary (`mostra-runtime`, D85). It looked for it at `MOSTRA_RUNTIME_BIN`, then beside the CLI, and found nothing it could run.",
+      fix: "Reinstall Mostra so the CLI and its runtime are complete, or point `MOSTRA_RUNTIME_BIN` at a `mostra-runtime` entry (its `dist/bin.js`).",
     },
   },
   // gen:entries

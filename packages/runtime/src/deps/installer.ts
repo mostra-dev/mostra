@@ -59,6 +59,13 @@ export type InstallOutcome =
 export interface Installer {
   readonly version: string;
   run(run: InstallRun): Promise<InstallOutcome>;
+  /**
+   * `pnpm store prune` (gc, D140 item 14): removes what no layout links from the store. `dir` is
+   * an empty scratch directory the prune works in, and its registry metadata cache: pnpm's prune
+   * empties the metadata cache it is given, and the home's (`deps/cache`) is what offline
+   * resolution reads (D95), so it never sees that one. A store command takes no network flag.
+   */
+  prune(input: { readonly dir: string; readonly ownerRef: string }): Promise<InstallOutcome>;
 }
 
 /** Connection failures: the registry can't be reached at all, so Mostra is offline (D95). */
@@ -135,96 +142,137 @@ export function createInstaller(options: InstallerOptions): Installer {
   // its own; every run says what it wants.
   const env = artifactEnvironment(options.env);
 
+  /** The arguments every pnpm run takes; `network` is absent for a store command. */
+  const argsFor = (spec: {
+    readonly command: readonly string[];
+    readonly dir: string;
+    readonly cacheDir: string;
+    readonly network?: "--offline" | "--prefer-offline";
+  }): string[] => [
+    // The install child connects to the supervisor and runs pnpm in its own process group.
+    entry,
+    pnpm.entry,
+    ...spec.command,
+    "--dir",
+    spec.dir,
+    `--config.store-dir=${options.dirs.store}`,
+    `--config.cache-dir=${spec.cacheDir}`,
+    `--config.state-dir=${options.dirs.state}`,
+    // Settings a user's .npmrc could change, which these layouts depend on.
+    "--config.lockfile=true",
+    "--config.modules-dir=node_modules",
+    "--config.virtual-store-dir=node_modules/.pnpm",
+    "--config.shamefully-hoist=false",
+    "--config.enable-global-virtual-store=false",
+    "--reporter=ndjson",
+    ...(spec.network ? [spec.network] : []),
+    "--config.update-notifier=false",
+    // Every on-demand package's lifecycle scripts run, here in the install child (D95).
+    "--config.dangerously-allow-all-builds=true",
+    "--config.ignore-scripts=false",
+    "--config.auto-install-peers=true",
+    "--config.strict-peer-dependencies=false",
+    "--config.node-linker=isolated",
+    "--config.fetch-retries=2",
+    "--config.fetch-retry-mintimeout=1000",
+    "--config.fetch-retry-maxtimeout=8000",
+  ];
+
+  /** Runs pnpm in an install child, bounded by the install limit. */
+  const execute = async (run: {
+    readonly args: readonly string[];
+    readonly dir: string;
+    readonly cwd: string;
+    readonly releaseAge: InstallRun["releaseAge"];
+    readonly ownerRef: string;
+  }): Promise<InstallOutcome> => {
+    const args = [...run.args];
+    // pnpm 10 reads the release age's exemptions only from the project's pnpm-workspace.yaml, and
+    // reads that file only when the project is its own workspace root (VERIFIED_FACTS, WP-04);
+    // being the root also stops pnpm's upward search for a workspace above the home.
+    await writeFile(join(run.dir, "pnpm-workspace.yaml"), workspaceSettings(run.releaseAge));
+    const errors: { code: string; message: string; record: Record<string, unknown> }[] = [];
+    const scriptLines: string[] = [];
+    const child = await options.processes.spawn({
+      kind: "install",
+      ownerRef: run.ownerRef,
+      command: process.execPath,
+      args,
+      cwd: run.cwd,
+      env,
+      // The IPC channel is the child's lifeline: when the supervisor dies, it ends its group.
+      ipc: {},
+      onStdout: (line) => {
+        let record: Record<string, unknown>;
+        try {
+          record = JSON.parse(line) as Record<string, unknown>;
+        } catch {
+          return;
+        }
+        if (record["name"] === "pnpm:lifecycle" && typeof record["line"] === "string") {
+          scriptLines.push(record["line"]);
+          if (scriptLines.length > 20) scriptLines.shift();
+        }
+        if (record["level"] !== "error") return;
+        const err = (record["err"] ?? {}) as { code?: unknown; message?: unknown };
+        const code = String(record["code"] ?? err.code ?? "");
+        const message = String(err.message ?? record["message"] ?? "");
+        errors.push({ code, message, record });
+      },
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await Promise.race([
+      child.exited.then((exit) => ({ kind: "exit" as const, exit })),
+      new Promise<{ kind: "timeout" }>((done) => {
+        timer = setTimeout(() => done({ kind: "timeout" }), timeoutMs);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (outcome.kind === "timeout") {
+      await child.stop(2000);
+      return {
+        ok: false,
+        diagnostic: createDiagnostic("MOSTRA_DEP_TIMEOUT", {
+          message: `Installing packages took longer than ${Math.round(timeoutMs / 1000)} s and was stopped.`,
+        }),
+      };
+    }
+    if (outcome.exit.code === 0) return { ok: true };
+    options.log.warn("deps.install_failed", {
+      code: outcome.exit.code,
+      signal: outcome.exit.signal,
+      errors: errors.map(({ code, message }) => ({ code, message })),
+    });
+    return { ok: false, diagnostic: diagnose(errors, scriptLines, outcome.exit.stderrTail) };
+  };
+
   return {
     version: pnpm.version,
-    async run(run) {
-      const args = [
-        // The install child connects to the supervisor and runs pnpm in its own process group.
-        entry,
-        pnpm.entry,
-        ...run.command,
-        "--dir",
-        run.dir,
-        `--config.store-dir=${options.dirs.store}`,
-        `--config.cache-dir=${options.dirs.cache}`,
-        `--config.state-dir=${options.dirs.state}`,
-        // Settings a user's .npmrc could change, which these layouts depend on.
-        "--config.lockfile=true",
-        "--config.modules-dir=node_modules",
-        "--config.virtual-store-dir=node_modules/.pnpm",
-        "--config.shamefully-hoist=false",
-        "--config.enable-global-virtual-store=false",
-        "--reporter=ndjson",
-        run.offline ? "--offline" : "--prefer-offline",
-        "--config.update-notifier=false",
-        // Every on-demand package's lifecycle scripts run, here in the install child (D95).
-        "--config.dangerously-allow-all-builds=true",
-        "--config.ignore-scripts=false",
-        "--config.auto-install-peers=true",
-        "--config.strict-peer-dependencies=false",
-        "--config.node-linker=isolated",
-        "--config.fetch-retries=2",
-        "--config.fetch-retry-mintimeout=1000",
-        "--config.fetch-retry-maxtimeout=8000",
-      ];
-      // pnpm 10 reads the release age's exemptions only from the project's pnpm-workspace.yaml, and
-      // reads that file only when the project is its own workspace root (VERIFIED_FACTS, WP-04);
-      // being the root also stops pnpm's upward search for a workspace above the home.
-      await writeFile(join(run.dir, "pnpm-workspace.yaml"), workspaceSettings(run.releaseAge));
-      const errors: { code: string; message: string; record: Record<string, unknown> }[] = [];
-      const scriptLines: string[] = [];
-      const child = await options.processes.spawn({
-        kind: "install",
-        ownerRef: run.ownerRef,
-        command: process.execPath,
-        args,
-        cwd: run.cwd,
-        env,
-        // The IPC channel is the child's lifeline: when the supervisor dies, it ends its group.
-        ipc: {},
-        onStdout: (line) => {
-          let record: Record<string, unknown>;
-          try {
-            record = JSON.parse(line) as Record<string, unknown>;
-          } catch {
-            return;
-          }
-          if (record["name"] === "pnpm:lifecycle" && typeof record["line"] === "string") {
-            scriptLines.push(record["line"]);
-            if (scriptLines.length > 20) scriptLines.shift();
-          }
-          if (record["level"] !== "error") return;
-          const err = (record["err"] ?? {}) as { code?: unknown; message?: unknown };
-          const code = String(record["code"] ?? err.code ?? "");
-          const message = String(err.message ?? record["message"] ?? "");
-          errors.push({ code, message, record });
-        },
-      });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const outcome = await Promise.race([
-        child.exited.then((exit) => ({ kind: "exit" as const, exit })),
-        new Promise<{ kind: "timeout" }>((done) => {
-          timer = setTimeout(() => done({ kind: "timeout" }), timeoutMs);
+    run: (run) =>
+      execute({
+        args: argsFor({
+          command: run.command,
+          dir: run.dir,
+          cacheDir: options.dirs.cache,
+          network: run.offline ? "--offline" : "--prefer-offline",
         }),
-      ]);
-      clearTimeout(timer);
-      if (outcome.kind === "timeout") {
-        await child.stop(2000);
-        return {
-          ok: false,
-          diagnostic: createDiagnostic("MOSTRA_DEP_TIMEOUT", {
-            message: `Installing packages took longer than ${Math.round(timeoutMs / 1000)} s and was stopped.`,
-          }),
-        };
-      }
-      if (outcome.exit.code === 0) return { ok: true };
-      options.log.warn("deps.install_failed", {
-        code: outcome.exit.code,
-        signal: outcome.exit.signal,
-        errors: errors.map(({ code, message }) => ({ code, message })),
-      });
-      return { ok: false, diagnostic: diagnose(errors, scriptLines, outcome.exit.stderrTail) };
-    },
+        dir: run.dir,
+        cwd: run.cwd,
+        releaseAge: run.releaseAge,
+        ownerRef: run.ownerRef,
+      }),
+    prune: (input) =>
+      execute({
+        args: argsFor({
+          command: ["store", "prune"],
+          dir: input.dir,
+          cacheDir: join(input.dir, "metadata-cache"),
+        }),
+        dir: input.dir,
+        cwd: input.dir,
+        releaseAge: false,
+        ownerRef: input.ownerRef,
+      }),
   };
 }
 

@@ -9,6 +9,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import {
+  CLI_CLIENT_NAME,
   type ClientInfo,
   createDiagnostic,
   type Diagnostic,
@@ -74,6 +75,11 @@ export interface ProtocolServerOptions {
    * (D95). Runs during `mostra/initialize`, after the home check; a throw refuses the session.
    */
   configureHome?(home: HomeConfig, client: ClientInfo): void;
+  /**
+   * Marks the home as configured by a host (D140 item 4): called when a client other than the
+   * standalone CLI sends `home` or `ports` in `mostra/initialize`.
+   */
+  markHostConfigured?(client: ClientInfo): void;
   /** Every method besides `mostra/initialize`. */
   readonly handlers: readonly MethodHandler[];
   /** The ports this instance calls when a client registers them. */
@@ -445,6 +451,12 @@ export class ProtocolServer {
       );
     }
     if (params.home !== undefined) this.#options.configureHome?.(params.home, params.client);
+    if (
+      (params.home !== undefined || params.ports.length > 0) &&
+      params.client.name !== CLI_CLIENT_NAME
+    ) {
+      this.#options.markHostConfigured?.(params.client);
+    }
     const supported = new Set(this.#options.supportedPorts);
     const warnings: Diagnostic[] = [];
     for (const port of new Set(params.ports)) {
