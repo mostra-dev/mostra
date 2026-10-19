@@ -62,5 +62,14 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   none), because CI machines' zone is UTC, an ask-first zone.
 - `wait --timeout` is the wait's own length (exit 5, `still_waiting`), not the global request
   limit (exit 4).
-- The runtime is found through `MOSTRA_RUNTIME_BIN`, else `../runtime/dist/bin.js`; the runtime
-  bundle (WP-11) lays them out the same way.
+- The runtime is found as the SDK finds it (`resolveRuntime`): `MOSTRA_BUNDLE`, then
+  `MOSTRA_RUNTIME_BIN`, then the runtime bundle the CLI sits in, then a development checkout's
+  `../runtime/dist/bin.js`; the runtime runs on that bundle's own Node.js.
+- **A copy installed from npm bootstraps** (`src/bootstrap.ts`, RT-01): outside a bundle, with the
+  release's pins in `@mostra/sdk`'s `dist/bundles.json`, `bin.ts` installs the pinned bundle
+  (progress on stderr; with `--json` a failure is still one envelope) and runs the bundle's own
+  `mostra` with the same arguments, passing on its exit code and signals. Nothing else of the CLI
+  loads on the system's Node.js, so `bootstrap.ts` must keep to Node.js 22.19's features.
+- **One deadline covers a daemon's start, finding the runtime included** (`startDaemon`): the
+  runtime lookup is mostly synchronous reads, and a lookup that finishes in the same turn as the
+  deadline expires clears the timer before it fires, so the deadline is checked again after it.

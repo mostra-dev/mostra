@@ -348,14 +348,14 @@ async function withTimeout(
 }
 
 /** Runs `mostra-runtime …` and collects its stdout. */
-function runRuntime(
+async function runRuntime(
   io: RunnerIo,
   args: readonly string[],
   stdio: "pipe" | "inherit",
 ): Promise<{ code: number; stdout: string }> {
-  const runtime = locateRuntime(io.env);
+  const runtime = await locateRuntime(io.env);
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [...runtime.nodeArgs, runtime.entry, ...args], {
+    const child = spawn(runtime.node, [runtime.entry, ...args], {
       stdio: stdio === "inherit" ? "inherit" : ["ignore", "pipe", "pipe"],
       env: io.env as NodeJS.ProcessEnv,
     });

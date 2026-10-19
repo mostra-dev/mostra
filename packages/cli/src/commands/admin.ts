@@ -21,6 +21,7 @@ import {
   secretListMethod,
   secretSetMethod,
 } from "@mostra/protocol";
+import { checkBrowser, checkFiles, enclosingBundle, readBundle, readSetup } from "@mostra/sdk";
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
 import { docsIndex, indexMarkdown, nearestTopics } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
@@ -344,14 +345,13 @@ export const hostCommand: CommandDef = defineCommand({
   quiet: true,
   readsStdin: true,
   async run(context) {
-    const runtime = locateRuntime(context.env);
+    const runtime = await locateRuntime(context.env);
     const bind = flag(context, "bind");
     const urlHost = flag(context, "url-host");
     const code = await new Promise<number>((resolve) => {
       const child = spawn(
-        process.execPath,
+        runtime.node,
         [
-          ...runtime.nodeArgs,
           runtime.entry,
           "host",
           "--home",
@@ -472,11 +472,12 @@ export const doctorCommand: CommandDef = defineCommand({
       });
     }
     try {
-      const runtime = locateRuntime(context.env);
+      const runtime = await locateRuntime(context.env);
       checks.push({ name: "runtime", status: "ok", detail: runtime.entry });
     } catch (error) {
       checks.push({ name: "runtime", status: "error", diagnostic: (error as RpcError).diagnostic });
     }
+    checks.push(await bundleCheck(context.env, context.flags["deep"] === true));
     checks.push(homeCheck(context.home));
     let connection: Awaited<ReturnType<CommandContext["connection"]>>;
     try {
@@ -548,6 +549,52 @@ export const doctorCommand: CommandDef = defineCommand({
     };
   },
 });
+
+/**
+ * The runtime bundle this CLI runs from (RT-01): set up and matching its files. Outside a bundle
+ * (a development checkout, `MOSTRA_RUNTIME_BIN`) there is nothing to check. `--deep` hashes every
+ * file against the bundle's file list and the browser against its pin, as setup does.
+ */
+async function bundleCheck(env: CommandContext["env"], deep: boolean): Promise<DoctorCheck> {
+  const root = env["MOSTRA_BUNDLE"] || enclosingBundle();
+  if (!root)
+    return { name: "bundle", status: "ok", detail: "No runtime bundle: a development runtime." };
+  try {
+    const bundle = await readBundle(root);
+    const label = `Mostra ${bundle.info.version} for ${bundle.info.platform} at ${root}`;
+    if (!(await readSetup(bundle))) {
+      return {
+        name: "bundle",
+        status: "error",
+        diagnostic: createDiagnostic("MOSTRA_ENV_BUNDLE_UNAVAILABLE", {
+          message: `The runtime bundle at ${root} isn't set up; run its bin/mostra-setup.`,
+        }),
+      };
+    }
+    if (!deep) return { name: "bundle", status: "ok", detail: label };
+    await checkFiles(bundle);
+    const browser = await checkBrowser(bundle);
+    if (browser.length > 0) {
+      return {
+        name: "bundle",
+        status: "error",
+        diagnostic: createDiagnostic("MOSTRA_ENV_BUNDLE_INVALID", {
+          message: `The verify browser of the bundle at ${root} differs from its pin: ${browser.join("; ")}.`,
+        }),
+      };
+    }
+    return { name: "bundle", status: "ok", detail: `${label}; every file matches its SHA-256` };
+  } catch (error) {
+    return {
+      name: "bundle",
+      status: "error",
+      diagnostic:
+        error instanceof RpcError
+          ? error.diagnostic
+          : createDiagnostic("MOSTRA_ENV_BUNDLE_INVALID", { message: (error as Error).message }),
+    };
+  }
+}
 
 /** The home: absent (it is made on first use), a directory the user owns, or not. */
 function homeCheck(home: string): DoctorCheck {
