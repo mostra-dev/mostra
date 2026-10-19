@@ -75,7 +75,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "46 kB"
+      "limit": "48 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",

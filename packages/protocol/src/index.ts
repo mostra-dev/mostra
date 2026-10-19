@@ -108,6 +108,22 @@ export {
   ViewContext,
   ViewContextWire,
 } from "./browser.ts";
+export {
+  BUNDLE_NAME,
+  BUNDLE_PLATFORMS,
+  BUNDLE_SETUP_MARKER,
+  BundleAsset,
+  BundleBrowser,
+  BundleFileEntry,
+  BundleFiles,
+  BundleInfo,
+  BundleLinkEntry,
+  BundlePins,
+  type BundlePlatform,
+  BundlePlatformSchema,
+  BundleSetup,
+  bundleAssetName,
+} from "./bundle.ts";
 export { canonicalJson } from "./canonical.ts";
 export {
   ALL_SCOPES,
