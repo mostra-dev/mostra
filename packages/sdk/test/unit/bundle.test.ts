@@ -90,6 +90,28 @@ describe("installing a pinned bundle (RT-01)", () => {
     expect(cached(env)).toEqual([]);
   });
 
+  it("refuses a well-formed archive of the pinned size whose SHA-256 isn't the pinned one", async () => {
+    // Nothing but the digest check can refuse it: the archive extracts and checks cleanly.
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const pins = synthetic.pins(release);
+    const platform = bundlePlatform();
+    const asset = pins.assets[platform];
+    if (!asset) throw new Error("no asset for this platform");
+    const wrong = { ...pins, assets: { [platform]: { ...asset, sha256: "0".repeat(64) } } };
+    const env = pinsEnv(dir.path, synthetic, release);
+    let message = "";
+    try {
+      await installPinned(wrong, { env, platform });
+    } catch (error) {
+      if (!(error instanceof RpcError)) throw error;
+      expect(error.diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+      message = error.diagnostic.message;
+    }
+    expect(message).toContain("not the pinned");
+    expect(cached(env)).toEqual([]);
+  });
+
   it("refuses an archive larger than its pin as soon as it passes it", async () => {
     const synthetic = await syntheticBundle(dir.path);
     const pins = synthetic.pins(pathToFileURL(dir.path).href);

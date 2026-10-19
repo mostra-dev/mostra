@@ -1,14 +1,24 @@
 /**
  * EN-08 through the built `mostra` against a fake collector on loopback (D119, D140): what is
- * sent, when, and never. A host-spawned instance and a home a host configured send nothing;
+ * sent, when, and never. A host-spawned instance, an SDK-spawned one (WP-11) and a home a host
+ * configured send nothing;
  * DO_NOT_TRACK=1 sends nothing; an ask-first time zone with no terminal sends nothing and says so
  * once; payloads match the published schema and carry no path, token, ID, name or time zone; the
  * command never waits for the network, and its stdout is closed when it exits.
  */
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
 import { hostname, userInfo } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createMostra } from "@mostra/sdk";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { TelemetryEvent } from "../../src/telemetry/events.ts";
 import { NOTICE_ASK_FIRST, NOTICE_DEFAULT } from "../../src/telemetry/words.ts";
@@ -22,6 +32,9 @@ import {
   type TestHome,
   testHome,
 } from "../support.ts";
+
+/** The SDK package this CLI depends on, as installed. */
+const SDK_ROOT = dirname(createRequire(import.meta.url).resolve("@mostra/sdk/package.json"));
 
 let fake: Collector;
 const homes: TestHome[] = [];
@@ -177,6 +190,48 @@ describe("EN-08: telemetry from the standalone CLI", () => {
     expect(fake.requests).toHaveLength(0);
     const status = envelope(await cli(["telemetry", "status", "--json"], { env: home.env }));
     expect(status.result).toMatchObject({ enabled: false, reason: "embedded" });
+  });
+
+  it("sends nothing from an SDK-spawned instance, nor later from the home the SDK configured (EN-08, WP-11)", async () => {
+    const home = telemetryHome();
+    // A JavaScript host embeds Mostra through the SDK, with the collector's endpoint in the
+    // environment it hands the instance: the SDK has no code that could send (telemetry-cli-only),
+    // and the instance it spawns is a host instance.
+    const mostra = await createMostra({
+      home: home.home,
+      env: home.env,
+      client: { name: "telemetry-test-host", version: "1" },
+      ports: { submissions: { deliver: async () => ({ accepted: true }) } },
+    });
+    try {
+      expect(mostra.instance.mode).toBe("host");
+      // The CLI in the host's environment attaches to that instance and sends nothing either.
+      const attached = await cli(["list", "--json"], { env: home.env });
+      expect(envelope(attached).instance?.mode).toBe("host");
+      await settle();
+      expect(fake.requests).toHaveLength(0);
+    } finally {
+      await mostra.close();
+    }
+    const settings = JSON.parse(readFileSync(join(home.home, "config.json"), "utf8")) as {
+      hostConfigured?: { client: string };
+    };
+    expect(settings.hostConfigured).toBeDefined();
+    const later = await cli(["list", "--json"], { env: home.env });
+    expect(envelope(later).instance?.mode).toBe("daemon");
+    await settle();
+    expect(fake.requests).toHaveLength(0);
+    const status = envelope(await cli(["telemetry", "status", "--json"], { env: home.env }));
+    expect(status.result).toMatchObject({ enabled: false, reason: "embedded" });
+  });
+
+  it("ships no code in the SDK that could send telemetry (D140 item 1)", () => {
+    const dist = join(SDK_ROOT, "dist");
+    const text = readdirSync(dist)
+      .filter((file) => file.endsWith(".js"))
+      .map((file) => readFileSync(join(dist, file), "utf8"))
+      .join("\n");
+    expect(text).not.toMatch(/telemetry|MOSTRA_TELEMETRY|installId|cli\.first_run/i);
   });
 
   it("in an ask-first zone with no terminal: the notice once, naming the command, and nothing sent", async () => {
