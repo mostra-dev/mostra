@@ -58,7 +58,7 @@
       "ignoreDependencies": [".+"]
     },
     "packages/bundle": {
-      "entry": ["scripts/build.ts"],
+      "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"],
       "ignoreDependencies": [
         "@mostra/cli",

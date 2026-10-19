@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readdir, readlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { BundleFileEntry, BundleFiles, BundleLinkEntry } from "@mostra/protocol";
 
 /** The SHA-256 and size of one file, read as a stream. */
@@ -173,9 +173,4 @@ export async function checkTree(
   });
   for (const result of results) if (result !== undefined) add(result);
   return problems;
-}
-
-/** `path` relative to `root`, `/`-separated. */
-export function relativePath(root: string, path: string): string {
-  return relative(root, path).split(sep).join("/");
 }
