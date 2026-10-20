@@ -28,39 +28,43 @@ async function refuseOldNode(): Promise<number> {
 const code = nodeTooOld(process.versions.node) ? await refuseOldNode() : await start();
 
 async function start(): Promise<number> {
-  const { bootstrap, needsBootstrap } = await import("./bootstrap.ts");
-  return needsBootstrap(process.env)
-    ? await bootstrap({
-        argv: process.argv.slice(2),
-        env: process.env,
-        stdout: (text) => {
-          process.stdout.write(text);
-        },
-        stderr: (text) => {
-          process.stderr.write(text);
-        },
-        stderrTty: process.stderr.isTTY === true,
-        terminal:
-          process.stdin.isTTY === true ||
-          process.stdout.isTTY === true ||
-          process.stderr.isTTY === true,
-      })
-    : await (await import("./run.ts")).run({
-        argv: process.argv.slice(2),
-        env: process.env,
-        cwd: process.cwd(),
-        stdout: (text) => {
-          process.stdout.write(text);
-        },
-        stderr: (text) => {
-          process.stderr.write(text);
-        },
-        stdin: process.stdin,
-        tty: {
-          stdin: process.stdin.isTTY === true,
-          stdout: process.stdout.isTTY === true,
-          stderr: process.stderr.isTTY === true,
-        },
-      });
+  const { bootstrap } = await import("./bootstrap.ts");
+  const booted = await bootstrap({
+    argv: process.argv.slice(2),
+    env: process.env,
+    stdout: (text) => {
+      process.stdout.write(text);
+    },
+    stderr: (text) => {
+      process.stderr.write(text);
+    },
+    stderrTty: process.stderr.isTTY === true,
+    terminal:
+      process.stdin.isTTY === true ||
+      process.stdout.isTTY === true ||
+      process.stderr.isTTY === true,
+  });
+  return (
+    booted ??
+    (await (
+      await import("./run.ts")
+    ).run({
+      argv: process.argv.slice(2),
+      env: process.env,
+      cwd: process.cwd(),
+      stdout: (text) => {
+        process.stdout.write(text);
+      },
+      stderr: (text) => {
+        process.stderr.write(text);
+      },
+      stdin: process.stdin,
+      tty: {
+        stdin: process.stdin.isTTY === true,
+        stdout: process.stdout.isTTY === true,
+        stderr: process.stderr.isTTY === true,
+      },
+    }))
+  );
 }
 process.stdout.write("", () => process.exit(code));

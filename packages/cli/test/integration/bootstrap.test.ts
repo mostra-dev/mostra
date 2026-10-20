@@ -209,6 +209,23 @@ describe("the npm bootstrap (RT-01)", () => {
     expect(interrupted.code, interrupted.stderr).toBe(128 + (constants.signals.SIGINT as number));
   });
 
+  it("answers pins it can't read with one --json envelope, never a stack trace", async () => {
+    for (const text of ["{not json", JSON.stringify({ schemaVersion: 1, version: 3 })]) {
+      const broken = join(dir, `pins-broken-${Math.random().toString(36).slice(2)}.json`);
+      writeFileSync(broken, text);
+      const answered = await mostra(["list", "--json"], broken, join(dir, "cache-broken"));
+      expect(answered.code, answered.stderr).toBe(3);
+      const lines = answered.stdout.trim().split("\n");
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0] as string)).toMatchObject({
+        ok: false,
+        error: { code: "MOSTRA_ENV_BUNDLE_INVALID" },
+      });
+      expect(answered.stderr).not.toMatch(/at .*\.(js|ts):\d+/);
+      expect(answered.log).toBe("");
+    }
+  });
+
   it("refuses a bundle whose SHA-256 isn't the pinned one, with one --json envelope, and runs nothing", async () => {
     const refused = await mostra(["list", "--json"], wrongPins, join(dir, "cache-wrong"));
     expect(refused.code).toBe(3);

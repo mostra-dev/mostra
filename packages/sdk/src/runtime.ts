@@ -55,7 +55,13 @@ export interface RuntimeOptions {
 export function readPins(env: Environment): BundlePins | undefined {
   const file = env["MOSTRA_TEST_BUNDLE_PINS"] || join(packageRoot(), "dist", "bundles.json");
   if (!existsSync(file)) return undefined;
-  const parsed = BundlePins.safeParse(JSON.parse(readFileSync(file, "utf8")));
+  let data: unknown;
+  try {
+    data = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    data = undefined; // not JSON (or unreadable): the same refusal as a file of the wrong shape
+  }
+  const parsed = BundlePins.safeParse(data);
   if (!parsed.success) {
     throw new RpcError(
       createDiagnostic("MOSTRA_ENV_BUNDLE_INVALID", {

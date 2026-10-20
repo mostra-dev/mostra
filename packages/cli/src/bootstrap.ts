@@ -87,11 +87,16 @@ function failed(io: BootstrapIo, diagnostic: Diagnostic): number {
 }
 
 /**
- * Runs the bundle's `mostra` with `io.argv` and resolves with its exit code, or fails with the
- * reason no bundle could be found. Signals this process gets are passed on to the child.
+ * When this copy needs the bundle its release pins (`needsBootstrap`), runs the bundle's
+ * `mostra` with `io.argv` and resolves with its exit code; otherwise resolves `undefined`, and the
+ * caller runs the command itself. Any failure, deciding included, is a diagnostic (one envelope
+ * with `--json`) and its exit code. Signals this process gets are passed on to the child.
  */
-export async function bootstrap(io: BootstrapIo): Promise<number> {
+export async function bootstrap(io: BootstrapIo): Promise<number | undefined> {
   try {
+    // Deciding is inside the boundary too: pins that can't be read are a diagnostic, never a
+    // stack trace (GPT review finding 3).
+    if (!needsBootstrap(io.env)) return undefined;
     return await runInBundle(io);
   } catch (error) {
     // Whatever goes wrong, `--json` still gets exactly one envelope (D140 item 16).
