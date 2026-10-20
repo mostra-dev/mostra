@@ -84,6 +84,8 @@ class EventStream implements AsyncIterator<EventPage> {
   #early: EventsNotifyParams[] | undefined;
   /** The unsubscribe of a pause; its answer means no page of that subscription follows. */
   #pausing: Promise<void> | undefined;
+  /** A subscribe whose answer is on its way (`#subscribe`). */
+  #subscribing: Promise<void> | undefined;
   #started = false;
   #ended: { error?: unknown } | undefined;
   #wake: (() => void) | undefined;
@@ -123,7 +125,19 @@ class EventStream implements AsyncIterator<EventPage> {
     this.#wake?.();
   }
 
-  async #subscribe(after: string | undefined): Promise<void> {
+  /**
+   * Subscribes after `after`. While the answer is on its way the call is `#subscribing`, so
+   * `return()` can wait for it and end the subscription it names (GPT review finding 5).
+   */
+  #subscribe(after: string | undefined): Promise<void> {
+    const opening = this.#open(after);
+    this.#subscribing = opening;
+    return opening.finally(() => {
+      if (this.#subscribing === opening) this.#subscribing = undefined;
+    });
+  }
+
+  async #open(after: string | undefined): Promise<void> {
     this.#early = [];
     let answer: { subscriptionId: string; cursor: string };
     let early: EventsNotifyParams[];
@@ -226,11 +240,15 @@ class EventStream implements AsyncIterator<EventPage> {
    * consumer handled, never the last one handed out (the loop may have stopped inside it).
    */
   async return(): Promise<IteratorResult<EventPage>> {
-    const id = this.#subscription;
     this.#end();
     this.#queue.length = 0;
     await this.#pausing;
-    if (id !== undefined && this.#subscription === id) {
+    // A subscribe on its way names a subscription that exists on the instance once it is
+    // answered: wait for it, so it is ended below like any other.
+    await this.#subscribing?.catch(() => undefined);
+    const id = this.#subscription;
+    if (id !== undefined) {
+      this.#subscription = undefined;
       const acked = this.#sendAck(id);
       await this.#session
         .call(eventsUnsubscribeMethod, { subscriptionId: id })
@@ -241,7 +259,8 @@ class EventStream implements AsyncIterator<EventPage> {
       // enough to acknowledge them (its pages are ignored; the handler is gone).
       await this.#subscribe(this.#received).catch(() => undefined);
       const again = this.#subscription;
-      if (again !== undefined && again !== id) {
+      if (again !== undefined) {
+        this.#subscription = undefined;
         const acked = this.#sendAck(again);
         await this.#session
           .call(eventsUnsubscribeMethod, { subscriptionId: again })

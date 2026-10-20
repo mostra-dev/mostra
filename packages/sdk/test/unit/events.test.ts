@@ -211,3 +211,39 @@ describe("the event stream's pauses and acknowledgements (IN-08)", () => {
     },
   );
 });
+
+describe("ending the stream (IN-08)", () => {
+  it("ends a subscription whose answer arrives after the stream was aborted (GPT review finding 5)", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    let answer: ((value: unknown) => void) | undefined;
+    const session: EventSession = {
+      call: (method, params) => {
+        calls.push({ method: method.method, params });
+        if (method.method === "events/subscribe") {
+          return new Promise((done) => {
+            answer = done as (value: unknown) => void;
+          }) as never;
+        }
+        return Promise.resolve({} as never);
+      },
+      onNotification: () => () => {},
+      closed: new Promise(() => {}),
+    };
+    const controller = new AbortController();
+    const iterator = openEventStream(session, { signal: controller.signal })[
+      Symbol.asyncIterator
+    ]();
+    const pending = iterator.next();
+    await new Promise((done) => setTimeout(done, 10));
+    expect(calls.map((call) => call.method)).toEqual(["events/subscribe"]);
+    // Aborted while the subscribe is on its way: the stream ends …
+    controller.abort();
+    await new Promise((done) => setTimeout(done, 10));
+    // … and the subscription its answer names is ended too, not left running on the instance.
+    answer?.({ subscriptionId: "sub-late", cursor: "0" });
+    expect(await pending).toEqual({ done: true, value: undefined });
+    await new Promise((done) => setTimeout(done, 10));
+    expect(calls.map((call) => call.method)).toEqual(["events/subscribe", "events/unsubscribe"]);
+    expect(calls[1]?.params).toEqual({ subscriptionId: "sub-late" });
+  });
+});
