@@ -152,6 +152,7 @@ async function fetchInto(
     const base = options.env["MOSTRA_BUNDLE_MIRROR"] || pins.release;
     const url = `${withoutTrailingSlashes(base)}/${encodeURIComponent(asset.file)}`;
     await download(url, archive, asset, {
+      env: options.env,
       signal: options.signal,
       onProgress: (progress) => options.onProgress?.({ step: "download", ...progress }),
     });

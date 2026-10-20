@@ -28,6 +28,11 @@ export interface DownloadProgress {
 
 /** Options of {@link download}. */
 export interface DownloadOptions {
+  /**
+   * The environment whose proxy settings apply (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, either
+   * case): a host's own, never silently `process.env`'s. Default `process.env`.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly onProgress?: ((progress: DownloadProgress) => void) | undefined;
   /** How long the connection may stay silent. Default 60 s. */
@@ -73,7 +78,7 @@ export async function download(
   if (options.signal?.aborted) throw options.signal.reason;
   throw new RpcError(
     createDiagnostic("MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED", {
-      message: `Couldn't download ${redactUrl(url)}: ${describe(last)}`,
+      message: `Couldn't download ${redactUrl(url)}: ${scrubUrls(describe(last))}`,
     }),
   );
 }
@@ -100,7 +105,7 @@ async function once(
   };
   try {
     arm();
-    const body = await open(url, controller.signal);
+    const body = await open(url, controller.signal, options.env ?? process.env);
     const counter = async function* (source: AsyncIterable<Uint8Array>) {
       for await (const chunk of source) {
         arm();
@@ -137,7 +142,11 @@ async function once(
 }
 
 /** The body of `url` as a stream. */
-async function open(url: string, signal: AbortSignal): Promise<AsyncIterable<Uint8Array>> {
+async function open(
+  url: string,
+  signal: AbortSignal,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<AsyncIterable<Uint8Array>> {
   const parsed = new URL(url);
   if (parsed.protocol === "file:") {
     return createReadStream(fileURLToPath(parsed), { signal }) as AsyncIterable<Uint8Array>;
@@ -145,11 +154,24 @@ async function open(url: string, signal: AbortSignal): Promise<AsyncIterable<Uin
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Final(`${parsed.protocol} URLs aren't supported`);
   }
-  const response = await fetch(url, {
-    dispatcher: proxyAgent(),
+  // fetch refuses a URL with credentials, so a mirror's (`https://user:pass@host/…`) travel as
+  // Basic authorization, which fetch drops on a redirect to another origin.
+  const headers: Record<string, string> = {
+    "user-agent": "mostra-sdk",
+    accept: "application/octet-stream",
+  };
+  if (parsed.username !== "" || parsed.password !== "") {
+    const user = decodeURIComponent(parsed.username);
+    const password = decodeURIComponent(parsed.password);
+    headers["authorization"] = `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
+    parsed.username = "";
+    parsed.password = "";
+  }
+  const response = await fetch(parsed, {
+    dispatcher: proxyAgent(env),
     redirect: "follow",
     signal,
-    headers: { "user-agent": "mostra-sdk", accept: "application/octet-stream" },
+    headers,
   });
   if (!response.ok || response.body === null) {
     const status = response.status;
@@ -161,11 +183,34 @@ async function open(url: string, signal: AbortSignal): Promise<AsyncIterable<Uin
   return Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>);
 }
 
-let agent: EnvHttpProxyAgent | undefined;
-/** One agent that honors `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, as curl does. */
-function proxyAgent(): EnvHttpProxyAgent {
-  agent ??= new EnvHttpProxyAgent();
+const agents = new Map<string, EnvHttpProxyAgent>();
+/**
+ * The agent for `env`'s `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (lowercase first, as curl
+ * reads them), one per distinct setting. Each is passed explicitly, an empty one included, so
+ * undici never falls back to `process.env` (GPT review finding 6).
+ */
+function proxyAgent(env: Readonly<Record<string, string | undefined>>): EnvHttpProxyAgent {
+  const settings = {
+    httpProxy: env["http_proxy"] ?? env["HTTP_PROXY"] ?? "",
+    httpsProxy: env["https_proxy"] ?? env["HTTPS_PROXY"] ?? "",
+    noProxy: env["no_proxy"] ?? env["NO_PROXY"] ?? "",
+  };
+  const key = JSON.stringify(settings);
+  let agent = agents.get(key);
+  if (agent === undefined) {
+    agent = new EnvHttpProxyAgent(settings);
+    agents.set(key, agent);
+  }
   return agent;
+}
+
+/**
+ * `text` with every URL in it reduced to {@link redactUrl}'s form: an error from the network stack
+ * repeats the URL it failed on, credentials, query and all (a mirror's or a proxy's), and a
+ * diagnostic is printed (GPT review finding 2).
+ */
+export function scrubUrls(text: string): string {
+  return text.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>()]+/gi, (url) => redactUrl(url));
 }
 
 function invalid(message: string): RpcError {
