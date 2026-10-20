@@ -551,7 +551,7 @@ Setup adds `browsers/` (the verify browser, fetched and checked against `BundleB
 5. a development checkout's built `packages/runtime/dist/bin.js` beside the package;
 6. otherwise `MOSTRA_ENV_BUNDLE_UNAVAILABLE`.
 
-**Variables.** `MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, `MOSTRA_CACHE_DIR`, `MOSTRA_BUNDLE_MIRROR` (a base URL, `https:`, `http:` or `file:`, holding the archives under their names), `MOSTRA_OFFLINE` (only the cache serves), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`) and Playwright's own download mirror for the browser (`PLAYWRIGHT_DOWNLOAD_HOST`).
+**Variables.** `MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, `MOSTRA_CACHE_DIR`, `MOSTRA_BUNDLE_MIRROR` (a base URL, `https:`, `http:` or `file:`, holding the archives under their names; a user and password in it are sent as Basic authorization and never printed), `MOSTRA_OFFLINE` (only the cache serves), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, either case, read from the environment the caller passes: the SDK's `env` option, else the process's) and Playwright's own download mirror for the browser (`PLAYWRIGHT_DOWNLOAD_HOST`).
 
 **Diagnostics.** `MOSTRA_ENV_BUNDLE_INVALID` (a size, digest, file, link or browser that differs from its pin; nothing installed), `MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED` (the network, a proxy, a mirror, the disk), `MOSTRA_ENV_BUNDLE_UNAVAILABLE` (offline without a cached bundle, or no bundle for this release and platform), and `MOSTRA_PLATFORM_UNSUPPORTED` before any download on another platform.
 
