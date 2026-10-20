@@ -155,7 +155,8 @@ export const JOBS: readonly Job[] = [
   },
   {
     name: "boundaries",
-    summary: "dependency-cruiser package-map rules and knip",
+    summary:
+      "dependency-cruiser package-map rules, knip, and every seeded violation still plantable",
     applies: () => true,
     fast: true,
     steps: () => [
@@ -169,6 +170,13 @@ export const JOBS: readonly Job[] = [
         ],
       },
       { label: "knip", command: `${BIN}/knip`, args: ["--no-progress", "--no-config-hints"] },
+      // A seed (packages/runtime/scripts/prove-seeds.ts) whose anchor moved proves nothing and
+      // fails no test, so the anchors are checked on every change (found in WP-11: ten had gone).
+      {
+        label: "seed anchors",
+        command: "node",
+        args: ["packages/runtime/scripts/prove-seeds.ts", "--anchors"],
+      },
     ],
   },
   {

@@ -10,7 +10,7 @@
  * with uncommitted edits to the seeded files.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
@@ -94,9 +94,18 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-01",
     name: "the bootstrap swallows the bundle's exit code",
     file: "../cli/src/bootstrap.ts",
-    from: "      resolve(code ?? 128 + (signal ? (numbers[signal] ?? 1) : 1));",
-    to: "      resolve(0);",
+    from: "      settle(code ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),",
+    to: "      settle(0),",
     check: integration("bootstrap.test.ts", "installs the pinned bundle once"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-01",
+    name: "a bundle's mostra ended by a signal exits 129 whatever the signal (own review)",
+    file: "../cli/src/bootstrap.ts",
+    from: "      settle(code ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),",
+    to: "      settle(code ?? 128 + (signal ? 1 : 0)),",
+    check: integration("bootstrap.test.ts", "exits as the bundle's mostra was ended"),
     cwd: "../cli",
   },
   {
@@ -292,7 +301,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "wp05-claude-4",
     name: "the frame is not sandboxed and can replace the shell",
-    file: "../shell/src/shell.tsx",
+    file: "../shell/src/viewer.tsx",
     from: "      sandbox={frameSandbox()}",
     to: "",
     check: e2e("neither itself nor through a popup"),
@@ -671,7 +680,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "AU-02",
     name: "server modules reach the browser unchanged",
     file: "src/builder/child/spa.ts",
-    from: "serverClientStubPlugin(serverModules),",
+    from: "serverClientStubPlugin(serverModules, sourceDir),",
     to: "",
     check: integration("publish.test.ts", "publishes a directory"),
   },
@@ -759,7 +768,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "VR-02",
     name: "a publish's receipt isn't recorded with its commit",
     file: "src/registry/index.ts",
-    from: "if (input.requestId !== undefined) {",
+    from: "if (input.request !== undefined) {",
     to: "if (false) {",
     check: integration("publish-faults.test.ts", "replays the committed receipt"),
   },
@@ -800,7 +809,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "review-5",
     name: "imports from outside the artifact are built",
     file: "src/builder/child/plugins.ts",
-    from: 'if (file.startsWith("\\0") || inside(file) || !existsSync(file)) return resolved;',
+    from: 'if (id.startsWith("\\0") || !isAbsolute(id) || !existsSync(id)) return resolved;',
     to: "return resolved;",
     check: integration("publish.test.ts", "refuses imports from outside"),
   },
@@ -905,15 +914,15 @@ const SEEDS: readonly Seed[] = [
     requirement: "DP-05",
     name: "the install child gets the supervisor's environment",
     file: "src/deps/installer.ts",
-    from: "        env,\n        onStdout:",
-    to: "        env: options.env,\n        onStdout:",
+    from: "      env,\n      // The IPC channel is the child's lifeline",
+    to: "      env: options.env,\n      // The IPC channel is the child's lifeline",
     check: integration("deps.test.ts", "lifecycle scripts"),
   },
   {
     requirement: "DP-05",
     name: "a user's ignore-scripts setting stops lifecycle scripts",
     file: "src/deps/installer.ts",
-    from: '        "--config.ignore-scripts=false",',
+    from: '    "--config.ignore-scripts=false",',
     to: "",
     check: integration("deps.test.ts", "lifecycle scripts"),
   },
@@ -938,8 +947,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp04-review-2",
     name: "the working lockfile changes before the publish commits",
     file: "src/publish/publisher.ts",
-    from: '          faults.at("publish:after-dependencies");',
-    to: '          ledger.write((db) => deps.save(db, key));\n          faults.at("publish:after-dependencies");',
+    from: '    faults.at("publish:after-dependencies");',
+    to: '    ledger.write((db) => deps.save(db, lockKey(manifest.id ?? registry.artifactAt(source.bindingPath), source.bindingPath)));\n    faults.at("publish:after-dependencies");',
     check: integration("deps.test.ts", "review finding 2"),
   },
   {
@@ -2069,16 +2078,16 @@ const SEEDS: readonly Seed[] = [
     requirement: "D135",
     name: "a removed layout isn't installed again before the worker starts",
     file: "src/deps/index.ts",
-    from: "      return ensureLayout(lock, digest, where);",
-    to: '      return join(dirs.locks, digest, "node_modules");',
+    from: "    return ensureLayout(lock, digest, where);",
+    to: '    return join(dirs.locks, digest, "node_modules");',
     check: integration("server-packages.test.ts", "installs a removed layout again"),
   },
   {
     requirement: "D135",
     name: "a version runs against today's warm set, not the packages it locked",
     file: "src/deps/index.ts",
-    from: "      if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);",
-    to: "      if (drifted.length < 0) return ensurePinnedLayout(lock, digest, drifted, where);",
+    from: "    if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);",
+    to: "    if (drifted.length < 0) return ensurePinnedLayout(lock, digest, drifted, where);",
     check: integration("server-packages.test.ts", "after the runtime's moved on"),
   },
   {
@@ -2246,8 +2255,8 @@ const SEEDS: readonly Seed[] = [
     also: [
       {
         file: "src/verify/typecheck.ts",
-        from: '  if (exit.code !== 0 && !found.some((diagnostic) => diagnostic.severity === "error")) {',
-        to: "  if (exit.code === -12345) {",
+        from: "    exit.code !== 0 &&\n    !printedErrors &&",
+        to: "    exit.code === -12345 &&\n    !printedErrors &&",
       },
     ],
     check: integration("verify.test.ts", "compiler refuses"),
@@ -2856,7 +2865,41 @@ const SEEDS: readonly Seed[] = [
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
 const root = join(runtime, "../..");
 // --only <requirement> replays its seeds; --name <text> narrows them to names containing it.
-const { values } = parseArgs({ options: { only: { type: "string" }, name: { type: "string" } } });
+const { values } = parseArgs({
+  options: {
+    only: { type: "string" },
+    name: { type: "string" },
+    // Checks that every seed still finds what it plants into, and runs nothing: a seed whose
+    // anchor moved is a proof that silently stopped proving (the boundaries job runs this).
+    anchors: { type: "boolean", default: false },
+  },
+});
+
+if (values.anchors) {
+  const stale: string[] = [];
+  const ambiguous: string[] = [];
+  for (const seed of SEEDS) {
+    for (const edit of [{ file: seed.file, from: seed.from }, ...(seed.also ?? [])]) {
+      const path = join(runtime, edit.file);
+      const text = existsSync(path) ? readFileSync(path, "utf8") : "";
+      const count = text.split(edit.from).length - 1;
+      const where = `${seed.requirement} | ${seed.name} (${edit.file})`;
+      if (count === 0) stale.push(where);
+      // Planted at the first match, which still proves something, but which one is luck.
+      else if (count > 1) ambiguous.push(`${where}: ${count} matches`);
+    }
+  }
+  for (const line of ambiguous) console.log(`  ! ${line}`);
+  if (stale.length > 0) {
+    console.error(`✗ seed anchors: ${stale.length} of ${SEEDS.length} seeds can't be planted`);
+    for (const line of stale) console.error(`  - ${line}`);
+    process.exit(1);
+  }
+  console.log(
+    `✓ seed anchors: all ${SEEDS.length} seeds can be planted${ambiguous.length > 0 ? ` (${ambiguous.length} at the first of several matches)` : ""}`,
+  );
+  process.exit(0);
+}
 
 function build(): void {
   for (const name of [

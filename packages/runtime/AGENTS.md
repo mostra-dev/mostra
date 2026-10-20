@@ -253,7 +253,9 @@ first module outside `protocol-server` needs it.
   per revision; it refuses to overwrite one (D111).
 - `node packages/runtime/scripts/prove-seeds.ts --only DP-03` replays a requirement's seeded
   violations: red with the seed, green without it. `--name <text>` narrows them to the seeds whose
-  names contain it (`--only VR-06 --name "Opus review"`).
+  names contain it (`--only VR-06 --name "Opus review"`). `--anchors` runs nothing and checks that
+  every seed still finds the text it plants into (the `boundaries` job runs it on every change):
+  when a refactor moves an anchor, re-anchor the seed on the same behavior and replay it.
 
 ## Gotchas
 
