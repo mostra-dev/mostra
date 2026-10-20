@@ -19,22 +19,36 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    `pnpm check --affected`. Commit `chore(release): Mostra <version>` with `git commit -s`, push,
    and open the pull request with the version's changelog. Every package of the group moves to
    one version; nothing else changes.
-4. **Merge it when CI is green.** On `main` the `Release` workflow sees a version with no changeset
-   pending and no `v<version>` tag, and its `publish` job runs in the `release` environment
-   (only `main` may deploy there): it attests the bundles, creates the draft GitHub release with
-   the bundles and `SHA256SUMS`, publishes the npm packages with provenance, then publishes the
-   GitHub release (tag `v<version>`, immutable once published).
-5. **A failure part-way** is finished by re-running the failed jobs: a version already on npm is
-   skipped and an existing draft release is completed. Never delete a tag or a published
-   release: both are immutable (the release-tags ruleset, immutable releases); a broken release is
-   fixed by the next version.
+4. **Merge it when CI is green.** On `main` the `Release` workflow's `plan` job
+   (`packages/bundle/scripts/github-release.ts state`) sees a version with no changeset pending
+   and no published release, and the `publish` job runs in the `release` environment (only `main`
+   may deploy there, one run at a time). In this order: it attests the bundles; publishes the
+   GitHub release `v<version>` with the four archives, their asset records and `SHA256SUMS`
+   (immutable from then on); checks from outside that the release holds exactly those bytes and
+   that each pinned URL downloads; and only then publishes the npm packages with provenance. So
+   the `@mostra/sdk` npm serves always pins archives that exist.
+5. **A failure part-way** finishes by itself, never by hand:
+   - **Before the release is published** (a draft, nothing on npm): re-run the failed jobs, or let
+     the next push to `main` run; the draft's assets are replaced by that run's, since nothing
+     published names them yet.
+   - **After the release is published, with npm incomplete:** re-run the failed jobs, or let the
+     next push to `main` run. `plan` reports `finish`: the run builds every package from the
+     release's tag, pins the release's own archives (never a new build), smoke-tests them, and
+     publishes only what npm lacks. A package npm already has is skipped only when npm holds
+     exactly that tarball; anything else fails the run before a byte is published.
+   - **npm has the version but the release isn't published** can't happen in this order; `plan`
+     fails closed. Look before publishing anything by hand.
+
+   Never delete a tag or a published release: both are immutable (the release-tags ruleset,
+   immutable releases); a release that can't be finished is replaced by the next version.
 6. **Check it from outside** (external evidence for the progress report):
    - `npm view @mostra/cli@<version> dist.attestations` names a provenance attestation, and
      `npm audit signatures` in a project that installed it verifies;
-   - `gh release view v<version>` lists four `mostra-<version>-<platform>.tar.gz` and `SHA256SUMS`;
+   - `gh release view v<version>` lists four `mostra-<version>-<platform>.tar.gz`, their `.json`
+     asset records and `SHA256SUMS`;
      `gh attestation verify <archive> --repo mostra-dev/mostra` passes for one of them;
    - on a clean machine, `npm create mostra@latest my-artifact`, then
      `npx @mostra/cli verify my-artifact` and `npx @mostra/cli publish my-artifact`.
 
-**Done when** the `publish` job is green, the release is published with its five assets, every
+**Done when** the `publish` job is green, the release is published with its nine assets, every
 package of the group shows `<version>` on npm with provenance, and the clean-machine check passed.

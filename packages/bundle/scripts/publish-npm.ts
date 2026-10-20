@@ -17,6 +17,7 @@
  * is published. `--dry-run` runs `npm publish --dry-run`.
  */
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,23 +167,51 @@ function registered(name: string): Registered {
   return { versions, ...(latest !== undefined ? { latest } : {}) };
 }
 
+/** The `dist.integrity` npm records for `name`@version. */
+function integrity(name: string): string | undefined {
+  const view = spawnSync("npm", ["view", `${name}@${version}`, "dist.integrity", "--json"], {
+    encoding: "utf8",
+  });
+  if (view.status !== 0) fail(`npm view ${name}@${version} failed: ${view.stderr.trim()}`);
+  const text = view.stdout.trim();
+  return text === "" ? undefined : (JSON.parse(text) as string);
+}
+
 /**
  * What publishing does for each package, decided for all of them before anything is published,
  * so a release never stops half-way on a refusal it could have known: a version already on npm is
- * skipped (a re-run finishes a release that failed part-way), and every other package must pass
+ * skipped if npm holds exactly this tarball (a re-run finishes a release that failed part-way; other bytes fail it), and every other package must pass
  * `npm publish --dry-run`, npm's own checks (moving `latest` backwards among them), before the
  * first real publish. A dry run of the unreleased 0.0.0 (a pull request's tree, before
  * `changeset version`) rehearses a package npm already has under the tag `dry-run`, since 0.0.0
  * is older than anything published. No dependency: this runs in the job that holds the OIDC token.
  */
 function plan(from: string): { member: (typeof group)[number]; tag?: string; skip?: true }[] {
+  const differs: string[] = [];
   const steps = group.map((member) => {
     const known = registered(member.name);
-    if (known.versions.includes(version)) return { member, skip: true as const };
+    if (known.versions.includes(version)) {
+      // Skipped only when npm holds exactly this tarball (Opus review finding 1): a version npm
+      // has from other bytes means this run would finish a release with a set that doesn't
+      // belong together (another bundle pinned, another build), which nothing could repair.
+      const published = integrity(member.name);
+      const local = `sha512-${createHash("sha512")
+        .update(readFileSync(join(from, tarballName(member.name, version))))
+        .digest("base64")}`;
+      if (published !== local)
+        differs.push(
+          `${member.name}@${version} (npm ${published ?? "has no integrity"}, here ${local})`,
+        );
+      return { member, skip: true as const };
+    }
     if (dryRun && version === "0.0.0" && known.latest !== undefined)
       return { member, tag: "dry-run" };
     return { member };
   });
+  if (differs.length > 0)
+    fail(
+      `nothing published; npm already has other bytes for ${differs.join("; ")}. A release is finished only from the source and bundles it was published from.`,
+    );
   if (!dryRun) {
     const refused: string[] = [];
     for (const step of steps) {

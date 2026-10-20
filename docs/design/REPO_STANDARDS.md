@@ -112,7 +112,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | rust | crates affected | `cargo nextest` on macOS and Linux; `cargo-deny` |
 | licenses | lockfile or Cargo.lock changed | license audit |
 | docs | docs or generated references affected | build `apps/docs`, check generated references are current, check links |
-| release (`release.yml`) | pull requests touching distribution; every push to `main` | the four runtime bundles built, audited and smoke-tested with no Node.js, the npm path smoke-tested, the release dry run; publishing on `main` only (§9) |
+| release (`release.yml`) | pull requests touching any package, the license audit, the api gate, the lockfile or the workflow (docs alone don't); every push to `main` | the four runtime bundles built, audited and smoke-tested with no Node.js, the npm path smoke-tested, the release dry run; publishing on `main` only (§9) |
 | supply-chain | pull requests | dependency review, CodeQL (weekly and on PR), OpenSSF Scorecard (weekly) |
 
 - **Target:** under 10 minutes wall-clock for a typical pull request (D50). The plan job prints the critical path, so slow jobs are visible.
@@ -147,13 +147,13 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 ## 9. Releases
 
 - **One version per release** (D142 item 7): every published package but the extension contracts is one Changesets `fixed` group, so a release names one runtime bundle per platform.
-- **The version pull request** (`changeset version`) is opened by the session that finishes an accepted package (`docs/agents/release.md`). Its merge to `main` runs `.github/workflows/release.yml` (D67, D142 item 9). Every run builds a bundle per platform on its own runner (macOS arm64 and x64, Linux x64 and arm64; Windows from v1.1, D120), audits and smoke-tests each with no Node.js, packs every package and dry-runs its publish, and smoke-tests the npm path. For a version with no changeset pending and no tag, it then publishes in the protected `release` environment (only `main` deploys there):
-  - a GitHub artifact attestation per bundle, and the GitHub release (tag `v` plus the version, immutable) with the bundles and `SHA256SUMS`;
+- **The version pull request** (`changeset version`) is opened by the session that finishes an accepted package (`docs/agents/release.md`). Its merge to `main` runs `.github/workflows/release.yml` (D67, D142 item 9). Every run builds a bundle per platform on its own runner (macOS arm64 and x64, Linux x64 and arm64; Windows from v1.1, D120), audits and smoke-tests each with no Node.js, packs every package and dry-runs its publish, and smoke-tests the npm path. For a version with no changeset pending and no published release, it then publishes in the protected `release` environment (only `main` deploys there, one run at a time), in this order:
+  - a GitHub artifact attestation per bundle, and the GitHub release (tag `v` plus the version, immutable) with the bundles, their asset records and `SHA256SUMS`, checked from outside before anything goes to npm;
   - npm with trusted publishing, direct, provenance, tokens disallowed per package, from exactly the tarballs the smoke tests used;
   - crates.io with `rust-lang/crates-io-auth-action`, once a crate is publishable (WP-12);
   - the docs site, once it exists (WP-26).
 
-  Pull requests that touch distribution run everything but the publish.
+  Pull requests that touch distribution run everything but the publish. A release that failed after it was published is finished by the next run (re-run or push), from the release's own tag and archives, never a new build (`docs/agents/release.md`, D142 item 9).
 - **One-time account steps** are Mirza's, before the first release: `tools/release/npm-setup.sh` publishes a placeholder for each new package (npm configures trusted publishing only for a package that exists), configures its trusted publisher and sets "Require two-factor authentication and disallow tokens"; each configuration must publish within 2 days. A crate's first release needs one crates.io token (VERIFIED_FACTS, WP-11), then its trusted publisher (WP-12).
 - **Authority.** Accepting a WP authorizes its publication (D36). The worker asks only when something is genuinely uncertain.
 
