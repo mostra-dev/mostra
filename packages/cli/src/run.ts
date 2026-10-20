@@ -213,6 +213,8 @@ export async function run(io: RunnerIo): Promise<number> {
   });
 
   let connectionClosed = false;
+  // Whether this command is starting the home's daemon: a --timeout that runs out then says so.
+  let startingDaemon = false;
   const getConnection = async (autostart = true): Promise<InstanceConnection | undefined> => {
     // A session the instance ended (`daemon stop` before `daemon restart`) is opened again.
     if (connection && !connectionClosed) return connection;
@@ -221,7 +223,9 @@ export async function run(io: RunnerIo): Promise<number> {
       home,
       env: io.env,
       autostart,
-      timeoutMs,
+      onStarting: (starting) => {
+        startingDaemon = starting;
+      },
     });
     if (!opened) return undefined;
     connection = opened;
@@ -282,7 +286,12 @@ export async function run(io: RunnerIo): Promise<number> {
   try {
     // Telemetry never stops a command: a failure in it is a run without telemetry.
     if (!(await telemetry.begin().catch(() => true))) return 130;
-    const outcome: CommandOutcome = await withTimeout(command, context, timeoutMs);
+    const outcome: CommandOutcome = await withTimeout(
+      command,
+      context,
+      timeoutMs,
+      () => startingDaemon,
+    );
     exit = outcome.exit ?? EXIT.ok;
     if (outcome.raw) return exit;
     if (json) {
@@ -321,6 +330,7 @@ async function withTimeout(
   command: CommandDef,
   context: CommandContext,
   timeoutMs: number | undefined,
+  startingDaemon: () => boolean,
 ): Promise<CommandOutcome> {
   if (timeoutMs === undefined || command.path[0] === "host" || command.path[0] === "dev")
     return command.run(context);
@@ -334,7 +344,11 @@ async function withTimeout(
             reject(
               new RpcError(
                 createDiagnostic("MOSTRA_HOST_TIMEOUT", {
-                  message: `mostra ${commandName(command)} didn't finish within --timeout (${timeoutMs} ms); what it asked for may still take effect.`,
+                  // One timer owns the deadline and names what was underway (Opus review
+                  // finding 7): starting the daemon, or the command itself.
+                  message: startingDaemon()
+                    ? `The home's daemon didn't start within ${timeoutMs} ms (--timeout).`
+                    : `mostra ${commandName(command)} didn't finish within --timeout (${timeoutMs} ms); what it asked for may still take effect.`,
                 }),
               ),
             ),
@@ -348,14 +362,14 @@ async function withTimeout(
 }
 
 /** Runs `mostra-runtime …` and collects its stdout. */
-function runRuntime(
+async function runRuntime(
   io: RunnerIo,
   args: readonly string[],
   stdio: "pipe" | "inherit",
 ): Promise<{ code: number; stdout: string }> {
-  const runtime = locateRuntime(io.env);
+  const runtime = await locateRuntime(io.env);
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [...runtime.nodeArgs, runtime.entry, ...args], {
+    const child = spawn(runtime.node, [runtime.entry, ...args], {
       stdio: stdio === "inherit" ? "inherit" : ["ignore", "pipe", "pipe"],
       env: io.env as NodeJS.ProcessEnv,
     });

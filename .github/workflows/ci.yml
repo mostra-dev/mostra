@@ -139,9 +139,11 @@ jobs:
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
 
   # Suites through real Mostra processes (sockets, process groups, start times) on both v1
-  # platforms (D86). The plan runs it only when the runtime or the protocol is affected. The
-  # suites run in groups, one machine each (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts),
-  # so the job stays inside the 10-minute target (D50) as verify's real-browser suites grow.
+  # platforms (D86). The plan runs it when the runtime, the protocol or a client package (CLI,
+  # SDK, create-mostra) is affected. The suites run in groups, one machine each
+  # (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts), so the job stays inside the
+  # 10-minute target (D50): the clients' suites have their own (WP-11), so their instances never
+  # starve the runtime's.
   integration:
     name: integration (${{ matrix.os }}, ${{ matrix.group }})
     needs: plan
@@ -150,7 +152,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        group: [core, verify, verify-failures]
+        group: [core, verify, verify-failures, clients]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:

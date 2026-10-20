@@ -10,7 +10,7 @@
  * with uncommitted edits to the seeded files.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
@@ -53,6 +53,317 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-11: the runtime bundle, the bootstrap, the SDK and embedded telemetry.
+  {
+    requirement: "RT-01",
+    name: "a download whose SHA-256 isn't the pinned one is accepted",
+    file: "../sdk/src/bundle/download.ts",
+    from: "      if (actual !== expected.sha256) {",
+    to: "      if (false) {",
+    check: unit("bundle.test.ts", "SHA-256 isn't the pinned"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a bundle file whose SHA-256 differs from files.json passes",
+    file: "../sdk/src/bundle/tree.ts",
+    from: "    if (sha256 !== entry.sha256) return `${entry.path}: its SHA-256 differs`;",
+    to: "    if (false) return `${entry.path}: its SHA-256 differs`;",
+    check: unit("bundle.test.ts", "files differ from its own file list"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a verify browser that differs from its pin is accepted",
+    file: "../sdk/src/bundle/setup.ts",
+    from: "    const problems = await checkBrowser(bundle);\n    if (problems.length > 0) {",
+    to: "    const problems = await checkBrowser(bundle);\n    if (false) {",
+    check: unit("bundle.test.ts", "browser whose files differ"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "an npm-installed CLI never moves into its pinned bundle",
+    file: "../cli/src/bootstrap.ts",
+    from: "  return readPins(env) !== undefined;",
+    to: "  return false;",
+    check: integration("bootstrap.test.ts", "installs the pinned bundle once"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-01",
+    name: "the bootstrap swallows the bundle's exit code",
+    file: "../cli/src/bootstrap.ts",
+    from: "      settle(code ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),",
+    to: "      settle(0),",
+    check: integration("bootstrap.test.ts", "installs the pinned bundle once"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-01",
+    name: "a bundle's mostra ended by a signal exits 129 whatever the signal (own review)",
+    file: "../cli/src/bootstrap.ts",
+    from: "      settle(code ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),",
+    to: "      settle(code ?? 128 + (signal ? 1 : 0)),",
+    check: integration("bootstrap.test.ts", "exits as the bundle's mostra was ended"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-01",
+    name: "verify uses the environment's browsers inside a bundle",
+    file: "src/verify/runner.ts",
+    from: '  if (browsers !== undefined) out["PLAYWRIGHT_BROWSERS_PATH"] = browsers;',
+    to: "",
+    check: unit("bundle.test.ts", "uses the bundle's browsers"),
+  },
+  {
+    requirement: "RT-01",
+    name: "artifact children don't get the runtime's own Node.js first on PATH",
+    file: "src/processes/environment.ts",
+    from: '  result["PATH"] = path.split(delimiter)[0] === own ? path : `${own}${delimiter}${path}`;',
+    to: '  result["PATH"] = path;',
+    check: unit("deps.test.ts", "passes the artifact environment's allowlist"),
+  },
+  {
+    requirement: "RT-01",
+    name: "an untyped package's TS7016 fails verify (found by the bundle smoke test)",
+    file: "src/verify/typecheck.ts",
+    from: "    !printedErrors &&\n",
+    to: "",
+    check: unit("verify.test.ts", "TS7016 explain"),
+  },
+  {
+    requirement: "RT-01",
+    name: "npm create mostra prints its next steps into --json's envelope",
+    file: "../create-mostra/src/index.ts",
+    from: "  if (code === 0 && !run.json) io.stdout(",
+    to: "  if (code === 0) io.stdout(",
+    check: integration("create.test.ts", "one envelope"),
+    cwd: "../create-mostra",
+  },
+  {
+    requirement: "HO-04",
+    name: "the SDK registers no ports with the instance",
+    file: "../sdk/src/mostra.ts",
+    from: "      capabilities: { notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS] },\n      ports: names,",
+    to: "      capabilities: { notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS] },\n      ports: [],",
+    check: integration("sdk.test.ts", "registers its ports"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "a named event stream never acknowledges what it handled",
+    file: "../sdk/src/events.ts",
+    from: "    if (!this.#options.name || cursor === undefined || cursor === this.#acked)",
+    to: "    if (this.#options.name || !this.#options.name)",
+    check: integration("sdk.test.ts", "streams events in order"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "a page that overtakes its subscription's answer is dropped (found on macOS CI)",
+    file: "../sdk/src/events.ts",
+    from: "      this.#early?.push(parsed.data);",
+    to: "",
+    check: unit("events.test.ts", "keeps a page that arrives with its subscription's answer"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "next() acknowledges under a subscription its pause is ending (found under load)",
+    file: "../sdk/src/events.ts",
+    from: "    if (!this.#paused && this.#subscription !== undefined) await this.#sendAck(this.#subscription);",
+    to: "    if (this.#subscription !== undefined) await this.#sendAck(this.#subscription);",
+    check: unit("events.test.ts", "never acknowledges under a subscription"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a mirror's credentials stay in its URL, where fetch refuses them and errors echo them (GPT review finding 2)",
+    file: "../sdk/src/bundle/download.ts",
+    from: '  if (parsed.username !== "" || parsed.password !== "") {',
+    to: "  if (false) {",
+    check: unit("download.test.ts", "never prints them"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a message keeps a URL's credentials or query (GPT review finding 2, defense in depth)",
+    file: "../sdk/src/bundle/download.ts",
+    from: "  return text.replace(/",
+    to: "  return text || text.replace(/",
+    check: unit("download.test.ts", "reduces every URL"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a download ignores the host's own proxy settings (GPT review finding 6)",
+    file: "../sdk/src/bundle/download.ts",
+    from: "    agent = new EnvHttpProxyAgent(settings);",
+    to: "    agent = new EnvHttpProxyAgent();",
+    check: unit("download.test.ts", "takes the proxy from the environment"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "an aborted stream leaves the subscription its late answer names (GPT review finding 5)",
+    file: "../sdk/src/events.ts",
+    from: "    await this.#subscribing?.catch(() => undefined);",
+    to: "",
+    check: unit("events.test.ts", "after the stream was aborted"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a failed browser fetch prints a mirror's credentials (Opus review finding 3)",
+    file: "../sdk/src/bundle/setup.ts",
+    from: "  const tail = scrubSecrets(",
+    to: "  const tail = ((text: string, _env: unknown) => text)(",
+    check: unit("bundle.test.ts", "names no credential"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "the platform gate resolves every socket of its host's process (Opus review finding 4)",
+    file: "../sdk/src/platform.ts",
+    from: "  report.excludeNetwork = true;",
+    to: "",
+    check: unit("platform.test.ts", "asks for the report with excludeNetwork"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a browser that differs from its pin downloads the whole bundle again (Opus review finding 5)",
+    file: "../sdk/src/bundle/cache.ts",
+    from: "      if (await filesIntact(dir)) return await finish(dir, { ...options, filesChecked: true });",
+    to: "      const kept = await finish(dir, options).catch(async () => { await rm(dir, { recursive: true, force: true }); return undefined; }); if (kept) return kept;",
+    check: unit("bundle.test.ts", "fetches a browser that differs from its pin again"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a browser fetched again over a complete-marked directory is never fetched (Opus review finding 5)",
+    file: "../sdk/src/bundle/setup.ts",
+    from: "    await rm(browsersDir(root), { recursive: true, force: true });",
+    to: "",
+    check: unit("bundle.test.ts", "fetches a browser that differs from its pin again"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "a host's callback that throws escapes into the host's process (Opus review finding 6)",
+    file: "../sdk/src/mostra.ts",
+    from: "    onInternalError: (error, method) => onPortError?.(error, method),",
+    to: "    onInternalError: (error, method) => options.onPortError?.(error, method),",
+    also: [
+      {
+        file: "../sdk/src/mostra.ts",
+        from: "      onLog?.(line);",
+        to: "      options.onLog?.(line);",
+      },
+    ],
+    check: integration("sdk.test.ts", "callbacks throw"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "HO-04",
+    name: "an acknowledgement refused during a pause is an unhandled rejection (Opus review finding 7)",
+    file: "../sdk/src/events.ts",
+    from: "    await acked.catch((error: unknown) => this.#end(error));",
+    to: "    await acked;",
+    check: unit("events.test.ts", "refused acknowledgement"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "pins whose asset names a path are written where it points (Opus review finding 8)",
+    file: "../sdk/src/bundle/cache.ts",
+    from: "    asset !== undefined &&\n    (!BundleAssetSchema.safeParse(asset).success ||",
+    to: "    asset !== undefined && false &&\n    (!BundleAssetSchema.safeParse(asset).success ||",
+    check: unit("bundle.test.ts", "refuses pins whose asset"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "a test variable leaked into a user's environment swaps an installed CLI's pins (Opus review finding 8)",
+    file: "../sdk/src/runtime.ts",
+    from: "  return override && !installed ? override :",
+    to: "  return override ? override :",
+    check: unit("platform.test.ts", "ignored by an installed copy"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "create-mostra passes a terminal's Ctrl-C on a second time (Opus review finding 9)",
+    file: "../create-mostra/src/index.ts",
+    from: `      if (signal === "SIGINT" && io.terminal) return; // the CLI got the terminal's own`,
+    to: "",
+    check: unit("run.test.ts", "passes SIGINT on"),
+    cwd: "../create-mostra",
+  },
+  {
+    requirement: "RT-01",
+    name: "create-mostra exits 1 for a CLI a signal ended (Opus review finding 9)",
+    file: "../create-mostra/src/index.ts",
+    from: "      settle(exit ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),",
+    to: "      settle(exit ?? 1),",
+    check: unit("run.test.ts", "exits as a shell reports"),
+    cwd: "../create-mostra",
+  },
+  {
+    requirement: "RT-01",
+    name: "create-mostra prints no envelope when it can't find the CLI (Opus review finding 9)",
+    file: "../create-mostra/src/index.ts",
+    from: "  if (json) {",
+    to: "  if (json && false) {",
+    check: unit("run.test.ts", "one --json envelope and exit 3"),
+    cwd: "../create-mostra",
+  },
+  {
+    requirement: "HO-04",
+    name: "a host crashes on EPIPE when its instance dies (own review)",
+    file: "../sdk/src/mostra.ts",
+    from: '  child.stdin?.on("error", (error: NodeJS.ErrnoException) => {',
+    to: '  child.stdin?.on("error-seeded", (error: NodeJS.ErrnoException) => {',
+    check: integration("sdk.test.ts", "survives its instance dying"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
+    name: "mostra starts on any Node.js (Node.js 20 then crashed inside undici)",
+    file: "../cli/src/node-gate.ts",
+    from: "  return major < MINIMUM_NODE[0] || (major === MINIMUM_NODE[0] && minor < MINIMUM_NODE[1]);",
+    to: "  return major < 0 && minor < 0;",
+    check: unit("node-gate.test.ts", "refuses releases before 22.19"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "AX-01",
+    name: "a --timeout during the daemon's start says the command didn't finish (found on macOS CI)",
+    file: "../cli/src/run.ts",
+    from: "                  message: startingDaemon()",
+    to: "                  message: false",
+    check: integration("contract.test.ts", "a usage error, an unknown command and a timeout"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "EN-08",
+    name: "a home the SDK configured sends like any other",
+    file: "../cli/src/telemetry/decision.ts",
+    from: '  if (inputs.embedded) return { ...at, enabled: false, reason: "embedded" };',
+    to: "",
+    check: integration("telemetry.test.ts", "SDK-spawned"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "EN-08",
+    name: "the SDK carries telemetry code",
+    file: "../sdk/src/index.ts",
+    from: 'export { sdkVersion } from "./version.ts";',
+    to: 'export { sdkVersion } from "./version.ts";\n/** Seeded. */\nexport const SEEDED: string = "MOSTRA_TELEMETRY_ENDPOINT";',
+    check: integration("telemetry.test.ts", "ships no code in the SDK"),
+    cwd: "../cli",
+  },
   // The Claude Opus review of WP-05 (M17): each fix, undone.
   {
     requirement: "wp05-claude-1",
@@ -96,7 +407,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "wp05-claude-4",
     name: "the frame is not sandboxed and can replace the shell",
-    file: "../shell/src/shell.tsx",
+    file: "../shell/src/viewer.tsx",
     from: "      sandbox={frameSandbox()}",
     to: "",
     check: e2e("neither itself nor through a popup"),
@@ -475,7 +786,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "AU-02",
     name: "server modules reach the browser unchanged",
     file: "src/builder/child/spa.ts",
-    from: "serverClientStubPlugin(serverModules),",
+    from: "serverClientStubPlugin(serverModules, sourceDir),",
     to: "",
     check: integration("publish.test.ts", "publishes a directory"),
   },
@@ -563,7 +874,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "VR-02",
     name: "a publish's receipt isn't recorded with its commit",
     file: "src/registry/index.ts",
-    from: "if (input.requestId !== undefined) {",
+    from: "if (input.request !== undefined) {",
     to: "if (false) {",
     check: integration("publish-faults.test.ts", "replays the committed receipt"),
   },
@@ -604,7 +915,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "review-5",
     name: "imports from outside the artifact are built",
     file: "src/builder/child/plugins.ts",
-    from: 'if (file.startsWith("\\0") || inside(file) || !existsSync(file)) return resolved;',
+    from: 'if (id.startsWith("\\0") || !isAbsolute(id) || !existsSync(id)) return resolved;',
     to: "return resolved;",
     check: integration("publish.test.ts", "refuses imports from outside"),
   },
@@ -709,15 +1020,15 @@ const SEEDS: readonly Seed[] = [
     requirement: "DP-05",
     name: "the install child gets the supervisor's environment",
     file: "src/deps/installer.ts",
-    from: "        env,\n        onStdout:",
-    to: "        env: options.env,\n        onStdout:",
+    from: "      env,\n      // The IPC channel is the child's lifeline",
+    to: "      env: options.env,\n      // The IPC channel is the child's lifeline",
     check: integration("deps.test.ts", "lifecycle scripts"),
   },
   {
     requirement: "DP-05",
     name: "a user's ignore-scripts setting stops lifecycle scripts",
     file: "src/deps/installer.ts",
-    from: '        "--config.ignore-scripts=false",',
+    from: '    "--config.ignore-scripts=false",',
     to: "",
     check: integration("deps.test.ts", "lifecycle scripts"),
   },
@@ -742,8 +1053,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp04-review-2",
     name: "the working lockfile changes before the publish commits",
     file: "src/publish/publisher.ts",
-    from: '          faults.at("publish:after-dependencies");',
-    to: '          ledger.write((db) => deps.save(db, key));\n          faults.at("publish:after-dependencies");',
+    from: '    faults.at("publish:after-dependencies");',
+    to: '    ledger.write((db) => deps.save(db, lockKey(manifest.id ?? registry.artifactAt(source.bindingPath), source.bindingPath)));\n    faults.at("publish:after-dependencies");',
     check: integration("deps.test.ts", "review finding 2"),
   },
   {
@@ -1873,16 +2184,16 @@ const SEEDS: readonly Seed[] = [
     requirement: "D135",
     name: "a removed layout isn't installed again before the worker starts",
     file: "src/deps/index.ts",
-    from: "      return ensureLayout(lock, digest, where);",
-    to: '      return join(dirs.locks, digest, "node_modules");',
+    from: "    return ensureLayout(lock, digest, where);",
+    to: '    return join(dirs.locks, digest, "node_modules");',
     check: integration("server-packages.test.ts", "installs a removed layout again"),
   },
   {
     requirement: "D135",
     name: "a version runs against today's warm set, not the packages it locked",
     file: "src/deps/index.ts",
-    from: "      if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);",
-    to: "      if (drifted.length < 0) return ensurePinnedLayout(lock, digest, drifted, where);",
+    from: "    if (drifted.length > 0) return ensurePinnedLayout(lock, digest, drifted, where);",
+    to: "    if (drifted.length < 0) return ensurePinnedLayout(lock, digest, drifted, where);",
     check: integration("server-packages.test.ts", "after the runtime's moved on"),
   },
   {
@@ -2050,8 +2361,8 @@ const SEEDS: readonly Seed[] = [
     also: [
       {
         file: "src/verify/typecheck.ts",
-        from: '  if (exit.code !== 0 && !found.some((diagnostic) => diagnostic.severity === "error")) {',
-        to: "  if (exit.code === -12345) {",
+        from: "    exit.code !== 0 &&\n    !printedErrors &&",
+        to: "    exit.code === -12345 &&\n    !printedErrors &&",
       },
     ],
     check: integration("verify.test.ts", "compiler refuses"),
@@ -2660,7 +2971,41 @@ const SEEDS: readonly Seed[] = [
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
 const root = join(runtime, "../..");
 // --only <requirement> replays its seeds; --name <text> narrows them to names containing it.
-const { values } = parseArgs({ options: { only: { type: "string" }, name: { type: "string" } } });
+const { values } = parseArgs({
+  options: {
+    only: { type: "string" },
+    name: { type: "string" },
+    // Checks that every seed still finds what it plants into, and runs nothing: a seed whose
+    // anchor moved is a proof that silently stopped proving (the boundaries job runs this).
+    anchors: { type: "boolean", default: false },
+  },
+});
+
+if (values.anchors) {
+  const stale: string[] = [];
+  const ambiguous: string[] = [];
+  for (const seed of SEEDS) {
+    for (const edit of [{ file: seed.file, from: seed.from }, ...(seed.also ?? [])]) {
+      const path = join(runtime, edit.file);
+      const text = existsSync(path) ? readFileSync(path, "utf8") : "";
+      const count = text.split(edit.from).length - 1;
+      const where = `${seed.requirement} | ${seed.name} (${edit.file})`;
+      if (count === 0) stale.push(where);
+      // Planted at the first match, which still proves something, but which one is luck.
+      else if (count > 1) ambiguous.push(`${where}: ${count} matches`);
+    }
+  }
+  for (const line of ambiguous) console.log(`  ! ${line}`);
+  if (stale.length > 0) {
+    console.error(`✗ seed anchors: ${stale.length} of ${SEEDS.length} seeds can't be planted`);
+    for (const line of stale) console.error(`  - ${line}`);
+    process.exit(1);
+  }
+  console.log(
+    `✓ seed anchors: all ${SEEDS.length} seeds can be planted${ambiguous.length > 0 ? ` (${ambiguous.length} at the first of several matches)` : ""}`,
+  );
+  process.exit(0);
+}
 
 function build(): void {
   for (const name of [
@@ -2671,7 +3016,9 @@ function build(): void {
     "@mostra/shell",
     "@mostra/verify",
     "@mostra/runtime",
+    "@mostra/sdk",
     "@mostra/cli",
+    "create-mostra",
   ]) {
     execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore" });
   }

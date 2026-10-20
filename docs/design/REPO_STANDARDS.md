@@ -50,6 +50,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/verify` | runtime bundle | protocol, playwright, axe-core | runtime internals |
 | `@mostra/shell` | runtime bundle | react, protocol, kit tokens | runtime |
 | `@mostra/warm` (unpublished) | runtime bundle: the warm set artifacts resolve (D91) | react, the kit and the other warm packages, as dependencies only; it has no code | runtime, worker |
+| `@mostra/bundle` (unpublished) | the runtime bundle's assembler (D142): what a bundle carries, its Node.js pins, the assembler, smoke tests and release scripts | the packages a bundle carries, as dependencies only | |
 | `@mostra/pty-host` | runtime bundle | node-pty, protocol | runtime |
 | `@mostra/sdk` | JavaScript hosts | protocol | runtime internals (spawns it) |
 | `@mostra/cli` | agents, people | protocol, sdk | runtime internals |
@@ -77,7 +78,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | Tests | Vitest 5 (unit, and browser mode through Playwright); Playwright Test for end-to-end in Chromium, Firefox and WebKit; `cargo nextest` |
 | Boundaries and hygiene | dependency-cruiser (§3 rules), knip (unused files, exports, dependencies), size-limit (`@mostra/react` and `@mostra/kit` entry budgets) |
 | API surface | API Extractor reports (`*.api.md`, committed), publint, are-the-types-wrong |
-| Licenses | `tools/license-audit` over the resolved dependency tree (OSI-only core, `pnpr/` excluded, D20, D26; `ee/` audited apart from the core, and no published core package contains it, D118); `cargo-deny` |
+| Licenses | `tools/license-audit` over the resolved dependency tree (OSI-only core, `pnpr/` excluded, D20, D26; `ee/` audited apart from the core, which never reaches it, D118) and, with `--bundle`, over each assembled runtime bundle on its own platform (D142); the api gate's packing check proves no published core tarball contains anything of `ee/` (EN-09); `cargo-deny` |
 | Editors | `.editorconfig`; VS Code workspace settings and recommended extensions (Biome, ESLint, rust-analyzer, Playwright) so the language servers work across project references |
 
 ## 5. Local workflow
@@ -101,16 +102,17 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | types | affected TS | `tsc -b` |
 | unit | affected | Vitest, sharded by package |
 | build | affected | tsdown and Vite; artifacts uploaded for later jobs |
-| boundaries | always | dependency-cruiser, knip |
+| boundaries | always | dependency-cruiser, knip, and the seed anchors (every seeded violation of `prove-seeds.ts` still finds what it plants into) |
 | api | affected public packages | API Extractor diff, publint, attw; a changed report needs a changeset |
 | e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix; macOS and Linux for platform-specific suites |
-| integration | runtime or protocol affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the files by name, in `packages/runtime/vitest.config.ts`); a group nearing the target gets split again |
+| integration | runtime, protocol, CLI, SDK or create-mostra affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the runtime's files by name, in `packages/runtime/vitest.config.ts`, and `clients` for the CLI's, the SDK's and `create-mostra`'s suites); a group nearing the target gets split again |
 | hygiene | runtime affected | negative tests (bad Host, bad Origin, missing token, CSRF, revoked token) |
 | conformance | runtime, sdk, crates affected | the kit against standalone adapters and the reference test host |
 | examples | examples, templates, kit, runtime affected | `mostra verify` on every example and template, sharded; visual and ARIA baselines compared |
 | rust | crates affected | `cargo nextest` on macOS and Linux; `cargo-deny` |
 | licenses | lockfile or Cargo.lock changed | license audit |
 | docs | docs or generated references affected | build `apps/docs`, check generated references are current, check links |
+| release (`release.yml`) | pull requests touching any package, the license audit, the api gate, the lockfile or the workflow (docs alone don't); every push to `main` | the four runtime bundles built, audited and smoke-tested with no Node.js, the npm path smoke-tested, the release dry run; publishing on `main` only (§9) |
 | supply-chain | pull requests | dependency review, CodeQL (weekly and on PR), OpenSSF Scorecard (weekly) |
 
 - **Target:** under 10 minutes wall-clock for a typical pull request (D50). The plan job prints the critical path, so slow jobs are visible.
@@ -144,18 +146,15 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 
 ## 9. Releases
 
-- **Changesets** keeps a release pull request open. Merging it runs the release workflow in the protected `release` environment (D67):
-  - npm publish with trusted publishing, direct, provenance automatic, tokens disallowed per package;
-  - crates.io with `rust-lang/crates-io-auth-action`;
-  - runtime bundles built per platform (macOS arm64 and x64, Linux x64 and arm64; Windows from v1.1, D120) with a SHA-256 manifest and a GitHub artifact attestation, attached to the GitHub release;
-  - the docs site deployed.
-- **One-time account steps** are Mirza's:
-  - create the npm organization;
-  - configure trusted publishers per package (each new configuration must publish within 2 days);
-  - set "disallow tokens";
-  - possibly create one crates.io token per crate for its first release (hypothesis, VERIFIED_FACTS).
+- **One version per release** (D142 item 7): every published package but the extension contracts is one Changesets `fixed` group, so a release names one runtime bundle per platform.
+- **The version pull request** (`changeset version`) is opened by the session that finishes an accepted package (`docs/agents/release.md`). Its merge to `main` runs `.github/workflows/release.yml` (D67, D142 item 9). Every run builds a bundle per platform on its own runner (macOS arm64 and x64, Linux x64 and arm64; Windows from v1.1, D120), audits and smoke-tests each with no Node.js, packs every package and dry-runs its publish, and smoke-tests the npm path. For a version with no changeset pending and no published release, it then publishes in the protected `release` environment (only `main` deploys there, one run at a time), in this order:
+  - a GitHub artifact attestation per bundle, and the GitHub release (tag `v` plus the version, immutable) with the bundles, their asset records and `SHA256SUMS`, checked from outside before anything goes to npm;
+  - npm with trusted publishing, direct, provenance, tokens disallowed per package, from exactly the tarballs the smoke tests used;
+  - crates.io with `rust-lang/crates-io-auth-action`, once a crate is publishable (WP-12);
+  - the docs site, once it exists (WP-26).
 
-  The release WP prepares exact instructions.
+  Pull requests that touch distribution run everything but the publish. A release that failed after it was published is finished by the next run (re-run or push), from the release's own tag and archives, never a new build (`docs/agents/release.md`, D142 item 9).
+- **One-time account steps** are Mirza's, before the first release: `tools/release/npm-setup.sh` publishes a placeholder for each new package (npm configures trusted publishing only for a package that exists), configures its trusted publisher and sets "Require two-factor authentication and disallow tokens"; each configuration must publish within 2 days. A crate's first release needs one crates.io token (VERIFIED_FACTS, WP-11), then its trusted publisher (WP-12).
 - **Authority.** Accepting a WP authorizes its publication (D36). The worker asks only when something is genuinely uncertain.
 
 ## 10. Supply chain

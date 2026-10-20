@@ -125,6 +125,25 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     published: false,
   },
   {
+    // The runtime bundle (RT-01, D142): what it carries (its dependencies, deployed as the
+    // bundle's lib/node_modules), its Node.js pins, the assembler and the smoke test. Unpublished.
+    name: "@mostra/bundle",
+    dir: "packages/bundle",
+    audience: "the runtime bundle's assembler",
+    environment: "node",
+    workspace: [
+      "@mostra/cli",
+      "@mostra/protocol",
+      "@mostra/runtime",
+      "@mostra/sdk",
+      "@mostra/shell",
+      "@mostra/verify",
+      "@mostra/worker",
+    ],
+    external: "any",
+    published: false,
+  },
+  {
     name: "@mostra/pty-host",
     dir: "packages/pty-host",
     audience: "runtime bundle",

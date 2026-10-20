@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /**
- * License audit (DP-06, KT-02, D14, D20, D26). Everything Mostra publishes ships only
+ * License audit (DP-06, KT-02, EN-09, D14, D20, D26, D118). Everything Mostra publishes ships only
  * OSI-approved dependencies, and nothing anywhere comes from pnpm's PolyForm-licensed `pnpr/`.
+ *
+ * `ee/` is audited apart (D118): no core package's closure may reach a package under `ee/`; the
+ * packages in `ee/` (found by directory, whether or not the workspace lists them yet) keep their
+ * own commercial license, and their third-party dependencies follow the same OSI rules as the
+ * core's, so self-hosters meet no other terms.
  *
  * It walks the installed production dependency closure of every published workspace package and,
  * for each dependency:
@@ -10,9 +15,15 @@
  *   (PolyForm, BSL, SSPL, Elastic, Commons Clause, FSL, "SEE LICENSE IN").
  *
  *   node tools/license-audit/cli.ts [--root <workspace>]
+ *   node tools/license-audit/cli.ts --bundle <runtime bundle directory>
+ *
+ * `--bundle` audits what one platform's runtime bundle actually ships (RT-01): every package in
+ * its `lib/node_modules`, the warm set's included, by the same rules, plus the license texts of
+ * its Node.js. A platform's optional native packages are installed only on that platform, so the
+ * release runs it on each platform's own runner, where the workspace audit can't see them.
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import parseSpdx from "spdx-expression-parse";
 import { fail, ROOT } from "../lib/repo.ts";
@@ -86,7 +97,7 @@ const PNPM_FREE_OF_PNPR_BELOW = 11;
  * Private packages whose dependencies still reach users: the warm set ships in the runtime bundle
  * (D91, WP-11), so its packages are audited like a published package's.
  */
-const SHIPPED_PRIVATE: ReadonlySet<string> = new Set(["@mostra/warm"]);
+const SHIPPED_PRIVATE: ReadonlySet<string> = new Set(["@mostra/warm", "@mostra/bundle"]);
 
 type Spdx =
   | { license: string; plus?: boolean }
@@ -239,16 +250,46 @@ export function dependencyProblems(dep: Installed): string[] {
   return problems;
 }
 
-/** Audits every published package under `root`. */
+/** The packages in `ee/`: each `ee/<name>/package.json`, listed by the workspace or not. */
+export function eePackages(root: string): { name: string; dir: string }[] {
+  const ee = join(root, "ee");
+  if (!existsSync(ee)) return [];
+  const found: { name: string; dir: string }[] = [];
+  for (const entry of readdirSync(ee, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifest = readManifest(join(ee, entry.name));
+    if (manifest)
+      found.push({ name: String(manifest["name"] ?? entry.name), dir: `ee/${entry.name}` });
+  }
+  return found;
+}
+
+/** Audits every published package under `root`, and `ee/` apart from them. */
 export function audit(root: string): { problems: string[]; checked: number; published: string[] } {
   const problems: string[] = [];
+  const realEe = existsSync(join(root, "ee")) ? `${realpathSync(join(root, "ee"))}/` : undefined;
+  const inEe = (dir: string): boolean => realEe !== undefined && `${dir}/`.startsWith(realEe);
   const published = listPackages(root).filter(
-    (pkg) => !pkg.private || SHIPPED_PRIVATE.has(pkg.name),
+    (pkg) => (!pkg.private || SHIPPED_PRIVATE.has(pkg.name)) && !pkg.dir.startsWith("ee/"),
   );
   const checked = new Set<string>();
   for (const pkg of published) {
     for (const dep of closure(join(root, pkg.dir), pkg.name)) {
+      if (inEe(dep.dir)) {
+        problems.push(
+          `${dep.via} reaches ${dep.name}, a package in ee/: the core never depends on ee/ (D118).`,
+        );
+        continue;
+      }
       if (checked.has(dep.dir)) continue;
+      checked.add(dep.dir);
+      problems.push(...dependencyProblems(dep));
+    }
+  }
+  for (const pkg of eePackages(root)) {
+    for (const dep of closure(join(root, pkg.dir), pkg.name)) {
+      // Another ee/ package carries ee/'s own license; its third-party dependencies come next.
+      if (inEe(dep.dir) || checked.has(dep.dir)) continue;
       checked.add(dep.dir);
       problems.push(...dependencyProblems(dep));
     }
@@ -268,13 +309,80 @@ export function audit(root: string): { problems: string[]; checked: number; publ
   };
 }
 
+/** Every installed package under `dir`'s `node_modules` trees, each once, links not followed. */
+function installedPackages(dir: string): Installed[] {
+  const found = new Map<string, Installed>();
+  const visitModules = (modules: string): void => {
+    for (const entry of readdirSync(modules, { withFileTypes: true })) {
+      if (entry.name === ".bin" || !(entry.isDirectory() || entry.isSymbolicLink())) continue;
+      const path = join(modules, entry.name);
+      if (entry.name === ".pnpm") {
+        for (const store of readdirSync(path, { withFileTypes: true }))
+          if (store.isDirectory() && existsSync(join(path, store.name, "node_modules")))
+            visitModules(join(path, store.name, "node_modules"));
+        continue;
+      }
+      if (entry.name.startsWith("@")) {
+        for (const scoped of readdirSync(path, { withFileTypes: true }))
+          visitPackage(join(path, scoped.name), `${entry.name}/${scoped.name}`);
+        continue;
+      }
+      visitPackage(path, entry.name);
+    }
+  };
+  const visitPackage = (path: string, name: string): void => {
+    const real = realpathSync(path);
+    if (found.has(real)) return;
+    const manifest = readManifest(real);
+    if (!manifest) return;
+    found.set(real, {
+      name,
+      version: String(manifest["version"] ?? "?"),
+      dir: real,
+      license: declaredLicense(manifest),
+      via: relative(dir, path),
+    });
+    if (existsSync(join(real, "node_modules"))) visitModules(join(real, "node_modules"));
+  };
+  visitModules(join(dir, "lib", "node_modules"));
+  return [...found.values()];
+}
+
+/** Audits an assembled runtime bundle (`--bundle`). */
+export function auditBundle(dir: string): { problems: string[]; checked: number } {
+  const problems: string[] = [];
+  // Mostra's own packages are Apache-2.0, checked by repo-lint; the third-party ones are audited.
+  const packages = installedPackages(dir).filter((pkg) => !pkg.name.startsWith("@mostra/"));
+  for (const pkg of packages) problems.push(...dependencyProblems(pkg));
+  const nodeLicense = join(dir, "node", "LICENSE");
+  if (!existsSync(nodeLicense)) problems.push("The bundle's Node.js has no LICENSE file.");
+  else {
+    const text = readFileSync(nodeLicense, "utf8");
+    for (const [pattern, label] of FORBIDDEN_TEXTS)
+      if (pattern.test(text)) problems.push(`The bundle's Node.js LICENSE carries ${label} terms.`);
+  }
+  for (const file of ["LICENSE", "NOTICE"])
+    if (!existsSync(join(dir, file))) problems.push(`The bundle has no ${file} (D14).`);
+  return { problems: [...new Set(problems)], checked: packages.length };
+}
+
 function main(): void {
-  const { values } = parseArgs({ options: { root: { type: "string" } } });
+  const { values } = parseArgs({
+    options: { root: { type: "string" }, bundle: { type: "string" } },
+  });
+  if (values.bundle !== undefined) {
+    const result = auditBundle(values.bundle);
+    if (result.problems.length > 0) fail(result.problems, "license audit of the runtime bundle");
+    console.log(
+      `✓ license audit of the runtime bundle: ${result.checked} third-party packages OSI-licensed; no pnpr; Node.js's license texts clean`,
+    );
+    return;
+  }
   const root = values.root ?? ROOT;
   const result = audit(root);
   if (result.problems.length > 0) fail(result.problems, "license audit");
   console.log(
-    `✓ license audit: ${result.checked} production dependencies of ${result.published.length} published packages are OSI-licensed; no pnpr`,
+    `✓ license audit: ${result.checked} production dependencies of ${result.published.length} published packages and ee/ are OSI-licensed; no pnpr; the core reaches nothing in ee/`,
   );
 }
 

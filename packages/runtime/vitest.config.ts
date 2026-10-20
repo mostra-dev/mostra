@@ -6,6 +6,8 @@ import { configDefaults, defineConfig } from "vitest/config";
  * picks one; unset, every suite runs (`pnpm check --job integration` on a laptop). The groups
  * partition the files by name, so a new suite always lands in exactly one: `verify*` suites in
  * `verify` (but the failure suite, which has a group of its own), everything else in `core`.
+ * `clients` is the CLI's, the SDK's and `create-mostra`'s suites (WP-11): none of the runtime's,
+ * so their instances never compete with the runtime's suites for one machine's CPU.
  */
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
@@ -13,6 +15,7 @@ const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] 
   core: { include: ["test/integration/**/*.test.ts"], exclude: [VERIFY_SUITES] },
   verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+  clients: { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group
@@ -32,6 +35,9 @@ export default defineConfig({
   resolve: { conditions: ["@mostra/source"] },
   ssr: { resolve: { conditions: ["@mostra/source"] } },
   test: {
+    // The `clients` integration group runs none of the runtime's suites (a root option: vitest
+    // reads it only here).
+    passWithNoTests: integrationFiles.include.length === 0,
     projects: [
       {
         extends: true,

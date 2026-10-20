@@ -356,6 +356,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       env: environment,
       entry: located.entry,
       nodeArgs: located.nodeArgs,
+      browsers: located.browsers,
     });
     verifier = createVerifier({
       home: home.path,

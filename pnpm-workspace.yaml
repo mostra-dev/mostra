@@ -45,6 +45,9 @@ catalog:
   ignore: 7.0.12
   semver: 7.8.5
   '@types/semver': 7.8.0
+  # The SDK's bundle manager (WP-11): tar extraction, and fetch through the environment's proxy
+  tar: 7.5.22
+  undici: 8.11.2
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
   '@hono/node-server': 2.1.3

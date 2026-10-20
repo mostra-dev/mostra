@@ -50,8 +50,8 @@ The owner is where the invariant is enforced; packages not built yet are named b
 | Drafts are never delivered as submissions | interaction ledger (WP-06) |
 | A submission is durable before any delivery attempt | interaction ledger, outbox (WP-06) |
 | Trusted controls render only in the shell's origin | runtime `gateway` (shell and artifacts on separate origins, framing rules) and `@mostra/shell` (the controls arrive in WP-07) |
-| Non-OSI engines never bundled; licenses disclosed before install | license audit (`tools/license-audit`), plugins (WP-16) |
-| Everything outside `ee/` that users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE`; the `ee/` boundary in the package map and license audit (WP-11) |
+| Non-OSI engines never bundled; licenses disclosed before install | license audit (`tools/license-audit`, and `--bundle` over each runtime bundle), the bundle's assembler (the verify browser is fetched at setup, never shipped, D142), plugins (WP-16) |
+| Everything outside `ee/` that users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE`; the `ee/` boundary (D118): dependency-cruiser's `core-never-imports-ee`, the license audit's separate `ee/` treatment, the api gate's packing check (`mostra-tools pack-check`) |
 | Interfaces evolve additively within a revision | `@mostra/protocol` schema snapshots, API reports |
 | Hosts reach Mostra only through public ports and protocol | protocol server, conformance kit (WP-02, WP-12) |
 

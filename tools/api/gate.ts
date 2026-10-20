@@ -5,12 +5,14 @@
  *    fails on any warning, including undocumented public exports.
  * 2. A report that differs from the base needs a changeset naming the package.
  * 3. publint and are-the-types-wrong check the packed tarball.
+ * 4. The packing check: nothing packed comes from `ee/` (D118, EN-09; `pack.ts`).
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { changedFiles } from "../check/plan.ts";
 import { fromRoot, mergeBase, readAtRevision, runSync } from "../lib/repo.ts";
 import type { WorkspacePackage } from "../lib/workspace.ts";
+import { packCheck } from "./pack.ts";
 
 /** The committed API report's path, relative to the repository root. */
 export function reportPath(pkg: WorkspacePackage): string {
@@ -86,6 +88,10 @@ export function apiGate(pkg: WorkspacePackage): string[] {
   );
   if (attw.code !== 0) problems.push(`are-the-types-wrong: ${(attw.stdout + attw.stderr).trim()}`);
   else console.log("✓ are-the-types-wrong");
+
+  const leaks = packCheck(dir);
+  if (leaks.length > 0) problems.push(...leaks.map((leak) => `${pkg.name} ${leak}`));
+  else console.log("✓ nothing of ee/ packed");
 
   for (const file of readdirSync(dir)) if (file.endsWith(".tgz")) runSync("rm", [join(dir, file)]);
   return problems;

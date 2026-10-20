@@ -3,11 +3,10 @@
  * it reads, and the CLI's own config directory (D140 item 5). Resolving a path never touches the
  * file system; the runtime owns everything inside the home.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createDiagnostic, RpcError } from "@mostra/protocol";
+import { isAbsolute, join, resolve } from "node:path";
+import { resolveRuntime } from "@mostra/sdk";
 
 /** The environment the CLI reads. */
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -52,30 +51,23 @@ export function configDir(env: Environment, cwd: string): string {
   return join(base, "mostra");
 }
 
-/**
- * The runtime the CLI starts (D85): `MOSTRA_RUNTIME_BIN` when set, else the `mostra-runtime`
- * beside this package, as the repository and the runtime bundle (WP-11) lay them out. Throws
- * `MOSTRA_ENV_RUNTIME_MISSING` when there is none.
- */
-export function locateRuntime(env: Environment): {
+/** The runtime the CLI starts: its Node.js and its `mostra-runtime` entry. */
+export interface RuntimeLocation {
+  /** The Node.js to run it with: the runtime bundle's own, or this process's for a checkout. */
+  readonly node: string;
+  /** `mostra-runtime`'s entry. */
   readonly entry: string;
-  readonly nodeArgs: readonly string[];
-} {
-  const override = nonEmpty(env["MOSTRA_RUNTIME_BIN"]);
-  if (override !== undefined) {
-    if (!existsSync(override))
-      throw runtimeMissing(`MOSTRA_RUNTIME_BIN names ${override}, which doesn't exist.`);
-    return { entry: override, nodeArgs: [] };
-  }
-  const here = dirname(fileURLToPath(import.meta.url));
-  // dist/ or src/ of packages/cli; the runtime package sits beside it.
-  const built = resolve(here, "..", "..", "runtime", "dist", "bin.js");
-  if (existsSync(built)) return { entry: built, nodeArgs: [] };
-  throw runtimeMissing(`No Mostra runtime beside the CLI (looked for ${built}).`);
 }
 
-function runtimeMissing(message: string): RpcError {
-  return new RpcError(createDiagnostic("MOSTRA_ENV_RUNTIME_MISSING", { message }));
+/**
+ * The runtime the CLI starts (D85, RT-01), found as the SDK finds it: `MOSTRA_BUNDLE`,
+ * `MOSTRA_RUNTIME_BIN`, the runtime bundle this CLI sits in, or a development checkout's built
+ * runtime beside it. The bootstrap (`bootstrap.ts`) has already moved a CLI installed from npm
+ * into its pinned bundle, so this never downloads. Throws the SDK's diagnostic when there is none.
+ */
+export async function locateRuntime(env: Environment): Promise<RuntimeLocation> {
+  const runtime = await resolveRuntime({ env });
+  return { node: runtime.node, entry: runtime.runtimeEntry };
 }
 
 /** What the CLI reads of a home's `config.json` (DATA_MODEL §1). */

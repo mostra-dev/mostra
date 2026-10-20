@@ -520,3 +520,65 @@ These are specified in [rounds/ROUND-3.md §6](rounds/ROUND-3.md#6-extensions-ex
 - **`mcp-app`.** One HTML file plus `mcp-app.json`, carrying the `_meta.ui` CSP declaration and resource URI.
 
 Secrets never enter any export (STANDARDS security).
+
+## 16. Distribution: the runtime bundle and the SDK
+
+What WP-11 fixed (D142). The schemas are in `@mostra/protocol` (`bundle.ts`), published with the other wire schemas, so the Rust crate (WP-12) reads the same files.
+
+**A bundle** is `mostra-<version>-<platform>.tar.gz` (`bundleAssetName`; platforms `BUNDLE_PLATFORMS`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, glibc only) with one top directory, `mostra-<version>-<platform>/`:
+
+```text
+bundle.json            BundleInfo: name "mostra-runtime-bundle", version, platform, node { version, path },
+                       entries { runtime, cli, setup }, files { path, sha256 }, browser (BundleBrowser), source?
+files.json             BundleFiles: every regular file { path, size, sha256, executable } and link { path, target }
+node/                  the official Node.js distribution
+lib/node_modules/      Mostra's packages and their dependencies; @mostra/warm/node_modules, the warm set
+bin/mostra, bin/mostra-runtime, bin/mostra-setup   POSIX launchers on the bundle's own Node.js
+LICENSE, NOTICE
+```
+
+Setup adds `browsers/` (the verify browser, fetched and checked against `BundleBrowser.files`) and `.mostra-setup.json` (`BundleSetup`: version, platform, `files` (the `files.json` digest it checked), the browser's revision, when). A bundle is usable only with a marker whose files digest, version, platform and browser revision match its own `bundle.json`. `bin/mostra-setup` (the entry `setup`) runs it by hand and prints one JSON line (`{ status: "ok", bundle: { root, …marker } }` or `{ status: "failed", diagnostic }`, exit 3).
+
+**Pins.** `@mostra/sdk` ships `dist/bundles.json` (`BundlePins`: version, `release` (the base URL, `https://github.com/mostra-dev/mostra/releases/download/v<version>`), `assets` per platform: `{ file, sha256, size, unpackedSize }`). The GitHub release carries the four archives, each archive's asset record (`mostra-<version>-<platform>.json`, a `BundleAsset`, so a host that downloads one directly knows its unpacked size), `SHA256SUMS` in `sha256sum`'s format and an artifact attestation per archive. It is published before any npm package of its version, so a pin always names an archive that exists. An asset's `file` is exactly `mostra-<version>-<platform>.tar.gz` of its pins' version and platform, or the pins are refused.
+
+**The cache.** `<cache>/bundles/<archive SHA-256>/<top directory>`, with `<cache>` = `MOSTRA_CACHE_DIR`, else `~/Library/Caches/mostra` (macOS), else `${XDG_CACHE_HOME:-~/.cache}/mostra` (Linux); `<sha256>.lock` and `.tmp-*` scratch directories beside them while an install runs. An entry exists only once its files are checked; it is ready once its setup marker is written.
+
+**Finding the runtime** (`resolveRuntime`, the CLI's bootstrap, every SDK host), first match:
+1. `MOSTRA_BUNDLE` (or the SDK's `bundle` option): an extracted bundle, set up first when it isn't;
+2. `MOSTRA_RUNTIME_BIN`: a `mostra-runtime` entry, run on this process's Node.js (`MOSTRA_ENV_RUNTIME_MISSING` when it doesn't exist);
+3. the bundle the calling code runs from;
+4. the release's pins: the cached bundle, installed first when missing;
+5. a development checkout's built `packages/runtime/dist/bin.js` beside the package;
+6. otherwise `MOSTRA_ENV_BUNDLE_UNAVAILABLE`.
+
+**Variables.** `MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, `MOSTRA_CACHE_DIR`, `MOSTRA_BUNDLE_MIRROR` (a base URL, `https:`, `http:` or `file:`, holding the archives under their names; a user and password in it are sent as Basic authorization and never printed), `MOSTRA_OFFLINE` (only the cache serves), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, either case, read from the environment the caller passes: the SDK's `env` option, else the process's) and Playwright's own download mirror for the browser (`PLAYWRIGHT_DOWNLOAD_HOST`).
+
+**Diagnostics.** `MOSTRA_ENV_BUNDLE_INVALID` (a size, digest, file, link or browser that differs from its pin; nothing installed), `MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED` (the network, a proxy, a mirror, the disk), `MOSTRA_ENV_BUNDLE_UNAVAILABLE` (offline without a cached bundle, or no bundle for this release and platform), and `MOSTRA_PLATFORM_UNSUPPORTED` before any download on another platform.
+
+**The npm entry points.** `@mostra/cli`'s `mostra`, outside a bundle, installs its release's bundle (steps 1 to 4) and runs the bundle's `mostra` with the same arguments, signals and exit code; with `--json` a failure there is one envelope. `npm create mostra [dir] [-- <mostra new flags>]` (`create-mostra`) runs `mostra new` through that CLI and prints the next steps, except with `--json`.
+
+**The SDK** (`@mostra/sdk`, HO-04):
+
+```ts
+const mostra = await createMostra({
+  home: string,                       // the host's own home (D45)
+  ports?: Ports,                      // submissions.deliver, drafts.mirror, secrets.get, trustedControls.policy|activated
+  client?: { name: string; version?: string },   // default { name: "mostra-sdk", version: <SDK> }
+  settings?: HomeSettings,            // submission, submitChannels, dependencies (HomeConfig)
+  expectPorts?: boolean,              // default true: deliveries wait for this host while it is away (D105)
+  bundle?: string, bind?: string, urlHost?: string, env?: Environment,
+  onLog?, onProgress?, onPortError?, signal?: AbortSignal,
+});
+mostra.instance; mostra.capabilities; mostra.revision; mostra.warnings; mostra.runtime; mostra.closed;
+await mostra.publish(source, { force?, policy?, requestId? });       // PublishReceipt
+await mostra.verify(source, { screenshots? });                       // VerifyVerdict
+await mostra.wait(artifact, until, { after?, timeoutMs?, signal? }); // satisfied | still_waiting
+await mostra.results(artifact, { submission?, format? });            // Results, or Markdown
+await mostra.getState(artifact, ids?); await mostra.patchState(artifact, { ops, mutationId, baseRevision?, as? });
+await mostra.pushLive(artifact, { key, value, mode? }); await mostra.viewUrl(artifact, { scopes?, ttl?, viewer?, version? });
+for await (const page of mostra.events({ filter?, after?, name?, highWaterMark?, signal? })) { … }
+await mostra.call(method, params, { timeoutMs? });                   // any host protocol method by its definition
+await mostra.close();                                                // InstanceExit
+```
+
+`artifact` and `source` are an ID (`art_…`), a path (made absolute) or an `ArtifactRef`/`SourceRef`. A port handler's request and answer are checked against the method's schemas; an answer that fails is `MOSTRA_HOST_INTERNAL_ERROR` to the instance, and a handler that throws is reported to `onPortError` (the instance retries a delivery, D105). `events()` pauses its subscription past `highWaterMark` pages (default 16) and resumes after the last cursor it received, with no gap or repeat; with a `name`, each page is acknowledged once the next one is asked for. The SDK sends no telemetry (D119).

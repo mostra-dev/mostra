@@ -62,5 +62,18 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   none), because CI machines' zone is UTC, an ask-first zone.
 - `wait --timeout` is the wait's own length (exit 5, `still_waiting`), not the global request
   limit (exit 4).
-- The runtime is found through `MOSTRA_RUNTIME_BIN`, else `../runtime/dist/bin.js`; the runtime
-  bundle (WP-11) lays them out the same way.
+- The runtime is found as the SDK finds it (`resolveRuntime`): `MOSTRA_BUNDLE`, then
+  `MOSTRA_RUNTIME_BIN`, then the runtime bundle the CLI sits in, then a development checkout's
+  `../runtime/dist/bin.js`; the runtime runs on that bundle's own Node.js.
+- **A copy installed from npm bootstraps** (`src/bootstrap.ts`, RT-01): outside a bundle, with the
+  release's pins in `@mostra/sdk`'s `dist/bundles.json`, `bin.ts` installs the pinned bundle
+  (progress on stderr; with `--json` a failure is still one envelope) and runs the bundle's own
+  `mostra` with the same arguments, passing on its exit code and signals. Nothing else of the CLI
+  loads on the system's Node.js, so `bootstrap.ts` must keep to Node.js 22.19's features. It
+  forwards SIGTERM and SIGHUP, and SIGINT only when no terminal is attached: at a terminal Ctrl-C
+  already reaches the bundle's `mostra` (one process group), and a second SIGINT would cut short
+  `mostra dev`'s graceful stop. Every failure, a spawn error included, is one `--json` envelope.
+- **One timer per deadline.** `--timeout` belongs to the command's one timer (`withTimeout` in
+  `run.ts`), which names what was underway when it runs out: starting the home's daemon (the
+  connection reports it through `onStarting`) or the command itself. `startDaemon` keeps only its
+  own 30 s limit. Two timers for one deadline raced, and which one fired decided the message.

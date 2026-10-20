@@ -5,10 +5,12 @@
  *   mostra-tools api              API report, changeset rule, publint, attw (EN-04)
  *   mostra-tools schemas check    wire-schema snapshots current and additive (HO-07)
  *   mostra-tools schemas write    regenerate the snapshots (refuses non-additive changes)
+ *   mostra-tools pack-check       nothing the package would publish comes from ee/ (EN-09)
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { apiGate } from "../api/gate.ts";
+import { packCheck } from "../api/pack.ts";
 import { currentPackage, packagePath } from "../lib/workspace.ts";
 import { checkSchemas, writeSchemas } from "../schemas/snapshots.ts";
 
@@ -27,6 +29,9 @@ function finish(problems: readonly string[], ok: string): never {
 }
 
 switch (command) {
+  case "pack-check":
+    finish(packCheck(dir), `${pkg.name}: nothing of ee/ packed`);
+    break;
   case "api":
     finish(apiGate(pkg), `${pkg.name}: public surface`);
     break;

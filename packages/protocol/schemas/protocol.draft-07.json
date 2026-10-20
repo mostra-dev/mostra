@@ -631,6 +631,331 @@
         }
       }
     },
+    "BundleAsset": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$"
+        },
+        "sha256": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "size": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unpackedSize": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "file",
+        "sha256",
+        "size",
+        "unpackedSize"
+      ]
+    },
+    "BundleBrowser": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "const": "chromium-headless-shell"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "browserVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "installer": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\0]"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleFileEntry"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "revision",
+        "browserVersion",
+        "installer",
+        "files"
+      ]
+    },
+    "BundleFileEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\0]"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "executable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "sha256",
+        "executable"
+      ]
+    },
+    "BundleFiles": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleFileEntry"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleLinkEntry"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "files",
+        "links"
+      ]
+    },
+    "BundleInfo": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "name": {
+          "type": "string",
+          "const": "mostra-runtime-bundle"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "$ref": "#/definitions/BundlePlatform"
+        },
+        "node": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\0]"
+            }
+          },
+          "required": [
+            "version",
+            "path"
+          ]
+        },
+        "entries": {
+          "type": "object",
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\0]"
+            },
+            "cli": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\0]"
+            },
+            "setup": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\0]"
+            }
+          },
+          "required": [
+            "runtime",
+            "cli",
+            "setup"
+          ]
+        },
+        "files": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\0]"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Sha256"
+            }
+          },
+          "required": [
+            "path",
+            "sha256"
+          ]
+        },
+        "browser": {
+          "$ref": "#/definitions/BundleBrowser"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "commit"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "name",
+        "version",
+        "platform",
+        "node",
+        "entries",
+        "files",
+        "browser"
+      ]
+    },
+    "BundleLinkEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\0]"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path",
+        "target"
+      ]
+    },
+    "BundlePins": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]*$"
+        },
+        "release": {
+          "type": "string",
+          "format": "uri"
+        },
+        "assets": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/definitions/BundlePlatform"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/BundleAsset"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "version",
+        "release",
+        "assets"
+      ]
+    },
+    "BundlePlatform": {
+      "type": "string",
+      "enum": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-x64",
+        "linux-arm64"
+      ]
+    },
+    "BundleSetup": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "$ref": "#/definitions/BundlePlatform"
+        },
+        "files": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "browser": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "revision"
+          ]
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "version",
+        "platform",
+        "files",
+        "browser",
+        "at"
+      ]
+    },
     "CallRequest": {
       "type": "object",
       "properties": {
@@ -3741,6 +4066,11 @@
         "value"
       ],
       "description": "A secret's name, value and optional artifact scope."
+    },
+    "Sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "A SHA-256 digest in lowercase hex."
     },
     "ShellSubmitRequest": {
       "type": "object",

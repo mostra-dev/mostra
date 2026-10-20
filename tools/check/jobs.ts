@@ -7,6 +7,15 @@ import { existsSync } from "node:fs";
 import { fromRoot } from "../lib/repo.ts";
 import { affectsPackages, type Plan, touches } from "./plan.ts";
 
+/** Packages whose suites run real Mostra processes: the runtime, its protocol and its clients. */
+const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
+  "@mostra/runtime",
+  "@mostra/protocol",
+  "@mostra/cli",
+  "@mostra/sdk",
+  "create-mostra",
+]);
+
 /** The names of the jobs, in REPO_STANDARDS §6 order. */
 export const JOB_NAMES = [
   "format-lint",
@@ -117,13 +126,10 @@ export const JOBS: readonly Job[] = [
     name: "integration",
     summary:
       "Suites through real Mostra processes (sockets, process groups), on macOS and Linux in CI",
-    // D86: only when the runtime or the protocol it speaks is affected (dependents included).
+    // D86: only when the runtime, the protocol it speaks or a client that spawns it is affected
+    // (dependents included).
     applies: (plan) =>
-      plan.packages === "all" ||
-      plan.packages.some(
-        (name) =>
-          name === "@mostra/runtime" || name === "@mostra/protocol" || name === "@mostra/cli",
-      ),
+      plan.packages === "all" || plan.packages.some((name) => INTEGRATION_PACKAGES.has(name)),
     tasks: ["test:integration"],
   },
   {
@@ -149,7 +155,8 @@ export const JOBS: readonly Job[] = [
   },
   {
     name: "boundaries",
-    summary: "dependency-cruiser package-map rules and knip",
+    summary:
+      "dependency-cruiser package-map rules, knip, and every seeded violation still plantable",
     applies: () => true,
     fast: true,
     steps: () => [
@@ -163,6 +170,13 @@ export const JOBS: readonly Job[] = [
         ],
       },
       { label: "knip", command: `${BIN}/knip`, args: ["--no-progress", "--no-config-hints"] },
+      // A seed (packages/runtime/scripts/prove-seeds.ts) whose anchor moved proves nothing and
+      // fails no test, so the anchors are checked on every change (found in WP-11: ten had gone).
+      {
+        label: "seed anchors",
+        command: "node",
+        args: ["packages/runtime/scripts/prove-seeds.ts", "--anchors"],
+      },
     ],
   },
   {

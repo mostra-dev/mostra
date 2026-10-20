@@ -2,19 +2,21 @@ import { defineConfig } from "vitest/config";
 
 /**
  * `unit` runs in-process; `integration` runs the built `mostra` binary against real daemons (the
- * `integration` CI job on macOS and Linux, D86). The CLI's suites join the runtime's `core` group
+ * `integration` CI job on macOS and Linux, D86). The CLI's suites are the `clients` group
  * (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts): any other group runs none of them.
  */
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integration =
-  group === undefined || group === "" || group === "core" ? ["test/integration/**/*.test.ts"] : [];
+  group === undefined || group === "" || group === "clients"
+    ? ["test/integration/**/*.test.ts"]
+    : [];
 
 // Tests import the package by name, resolved to source through the `@mostra/source` condition.
 export default defineConfig({
   resolve: { conditions: ["@mostra/source"] },
   ssr: { resolve: { conditions: ["@mostra/source"] } },
   test: {
-    // A CI group other than `core` runs none of the CLI's integration suites.
+    // A CI group other than `clients` runs none of the CLI's integration suites.
     passWithNoTests: true,
     projects: [
       {

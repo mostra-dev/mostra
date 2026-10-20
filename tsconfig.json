@@ -31,6 +31,15 @@
     },
     {
       "path": "packages/cli"
+    },
+    {
+      "path": "packages/sdk"
+    },
+    {
+      "path": "packages/create-mostra"
+    },
+    {
+      "path": "packages/bundle"
     }
   ]
 }

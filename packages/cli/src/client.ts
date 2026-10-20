@@ -64,8 +64,11 @@ export interface ConnectOptions {
   readonly env: Environment;
   /** Start the daemon when none runs. Default true. */
   readonly autostart?: boolean;
-  /** The whole connection's limit (`--timeout`). */
-  readonly timeoutMs?: number | undefined;
+  /**
+   * Told when this connection starts the home's daemon (`true`) and when the start ends
+   * (`false`), so the command's own `--timeout` names the start if it runs out during it.
+   */
+  readonly onStarting?: (starting: boolean) => void;
 }
 
 /** How long one attempt to reach a recorded socket waits. */
@@ -85,7 +88,13 @@ export async function connect(options: ConnectOptions): Promise<InstanceConnecti
     if (session) return session;
   }
   if (options.autostart === false) return undefined;
-  const started = await startDaemon(options);
+  options.onStarting?.(true);
+  let started: DaemonLine;
+  try {
+    started = await startDaemon(options);
+  } finally {
+    options.onStarting?.(false);
+  }
   return open(started.socket, options, started.status === "started");
 }
 
@@ -113,10 +122,19 @@ interface DaemonLine {
  * Starts the home's daemon, detached from this process, and reads the one line it prints: where
  * it listens, or why it couldn't start. A daemon another starter won prints `attached` and exits.
  */
-export function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
-  const runtime = locateRuntime(options.env);
+export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
+  // The start's own limit. A shorter `--timeout` is the command's: its one timer names the
+  // start when it runs out during it (run.ts), so two timers never race for one deadline.
+  const deadlineAt = Date.now() + START_TIMEOUT_MS;
+  const timedOut = (): RpcError =>
+    new RpcError(
+      createDiagnostic("MOSTRA_HOST_TIMEOUT", {
+        message: `The home's daemon didn't start within ${formatDuration(START_TIMEOUT_MS)}.`,
+      }),
+    );
+  const runtime = await locateRuntime(options.env);
+  if (Date.now() >= deadlineAt) throw timedOut();
   const args = [
-    ...runtime.nodeArgs,
     runtime.entry,
     "daemon",
     // The home this CLI resolved, so the daemon owns exactly it whatever its own environment.
@@ -124,7 +142,7 @@ export function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
     options.home,
   ];
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
+    const child = spawn(runtime.node, args, {
       detached: true,
       stdio: ["ignore", "pipe", "ignore"],
       env: { ...process.env, ...options.env } as NodeJS.ProcessEnv,
@@ -140,21 +158,9 @@ export function startDaemon(options: ConnectOptions): Promise<DaemonLine> {
       child.unref();
       outcome();
     };
-    // The limit is the start's own or the command's --timeout, whichever is shorter, and the
-    // message names the one in force (Opus review finding 7).
-    const limitMs = Math.min(START_TIMEOUT_MS, options.timeoutMs ?? START_TIMEOUT_MS);
     const timer = setTimeout(
-      () =>
-        finish(() =>
-          reject(
-            new RpcError(
-              createDiagnostic("MOSTRA_HOST_TIMEOUT", {
-                message: `The home's daemon didn't start within ${formatDuration(limitMs)}${limitMs < START_TIMEOUT_MS ? " (--timeout)" : ""}.`,
-              }),
-            ),
-          ),
-        ),
-      limitMs,
+      () => finish(() => reject(timedOut())),
+      Math.max(0, deadlineAt - Date.now()),
     );
     child.on("error", (error) =>
       finish(() =>

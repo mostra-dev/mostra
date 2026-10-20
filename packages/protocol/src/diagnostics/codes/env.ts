@@ -12,6 +12,10 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_SERVICE_FAILED",
   "MOSTRA_ENV_BROWSER_MISSING",
   "MOSTRA_ENV_RUNTIME_MISSING",
+  "MOSTRA_ENV_BUNDLE_INVALID",
+  "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED",
+  "MOSTRA_ENV_BUNDLE_UNAVAILABLE",
+  "MOSTRA_ENV_NODE_UNSUPPORTED",
   // gen:codes
 ] as const;
 
@@ -79,11 +83,11 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
     severity: "error",
     phase: "host",
     title: "Browser for verify missing",
-    hint: "Install the browser verify uses with `npx playwright-core install chromium-headless-shell`, then verify again.",
+    hint: "Run the runtime bundle's `bin/mostra-setup` (with network access) to fetch the browser verify uses, then verify again.",
     docs: {
       explanation:
-        "Verify renders pages in Playwright's Chromium headless shell, which the runtime bundle includes. It wasn't found, so verify ran only the stages that need no browser (type check, build and the field-ID scan) and reported this error. Publishing needs `--force` until it is installed.",
-      fix: "Run `npx playwright-core install chromium-headless-shell`, or reinstall Mostra's runtime, then verify again.",
+        "Verify renders pages in the Chromium headless shell its Playwright release pins. The runtime bundle fetches that browser when it is set up and checks every file of it (D142). It wasn't there, so verify ran only the stages that need no browser (type check, build and the field-ID scan) and reported this error. Publishing needs `--force` until it is installed.",
+      fix: "Run `bin/mostra-setup` in the runtime bundle's directory (the message names it) with network access; it fetches and checks the pinned browser. Outside a bundle, in a development checkout, run `npx playwright-core install chromium-headless-shell`. Then verify again.",
     },
   },
   MOSTRA_ENV_RUNTIME_MISSING: {
@@ -93,8 +97,52 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
     hint: "Reinstall Mostra, or set `MOSTRA_RUNTIME_BIN` to the runtime's `mostra-runtime` entry.",
     docs: {
       explanation:
-        "The CLI starts and attaches to the home's instance through the runtime binary (`mostra-runtime`, D85). It looked for it at `MOSTRA_RUNTIME_BIN`, then beside the CLI, and found nothing it could run.",
-      fix: "Reinstall Mostra so the CLI and its runtime are complete, or point `MOSTRA_RUNTIME_BIN` at a `mostra-runtime` entry (its `dist/bin.js`).",
+        "The CLI starts and attaches to the home's instance through the runtime binary (`mostra-runtime`, D85). It looked, in order, for `MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, the runtime bundle it runs from, its release's pinned bundle and a development checkout's built runtime (D142), and found nothing it could run: here, `MOSTRA_RUNTIME_BIN` names a file that doesn't exist, or the runtime couldn't be started.",
+      fix: "Unset `MOSTRA_RUNTIME_BIN` or point it at a `mostra-runtime` entry (its `dist/bin.js`), or reinstall Mostra so the CLI and its runtime are complete.",
+    },
+  },
+  MOSTRA_ENV_BUNDLE_INVALID: {
+    severity: "error",
+    phase: "platform",
+    title: "Runtime bundle failed verification",
+    hint: "Nothing was installed; install Mostra again, and if it fails the same way, report it with the message.",
+    docs: {
+      explanation:
+        "Mostra checks every runtime bundle before it runs anything from it: the archive against the SHA-256 the installing package pins, then each extracted file against the bundle's own file list, and the verify browser against the bundle's browser pin. One of them differed, so the download was corrupted, changed on the way or replaced, and Mostra refused it. A bundle already installed that fails a later check (`mostra doctor --deep`) is refused the same way.",
+      fix: "Run the install again (`npm create mostra`, or the command that started it), which downloads a fresh copy. When a mirror is configured (`MOSTRA_BUNDLE_MIRROR`), check that it serves the release's files unchanged. Check a file you downloaded yourself against the release's `SHA256SUMS`, or with `gh attestation verify <file> --repo mostra-dev/mostra`.",
+    },
+  },
+  MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED: {
+    severity: "error",
+    phase: "platform",
+    title: "Runtime bundle download failed",
+    hint: "Check the network or proxy (`HTTPS_PROXY`), then run the command again: a retry starts the download over.",
+    docs: {
+      explanation:
+        "The runtime bundle for this release and platform isn't in the local cache yet, and fetching it failed: the network or a proxy refused it, the server answered with an error, the connection stalled for 60 seconds, or the disk ran out of space while it was written. Nothing partial is kept.",
+      fix: "Check the connection, and set `HTTPS_PROXY` (and `NO_PROXY`) when the network needs a proxy. Behind a firewall that blocks GitHub, host the release's files on a reachable server and set `MOSTRA_BUNDLE_MIRROR` to its base URL (a `file:` URL works for a local directory). Free space in the cache directory (`MOSTRA_CACHE_DIR`) if the message says the disk is full.",
+    },
+  },
+  MOSTRA_ENV_BUNDLE_UNAVAILABLE: {
+    severity: "error",
+    phase: "platform",
+    title: "No runtime bundle available",
+    hint: "Run this once with network access, or point `MOSTRA_BUNDLE` at an extracted bundle.",
+    docs: {
+      explanation:
+        "Mostra runs on its own runtime bundle, found in the local cache, beside the installed package or at `MOSTRA_BUNDLE`. None was there, and no download could start: Mostra is offline (`MOSTRA_OFFLINE`), this build of the package pins no bundle for this platform, or the platform has none.",
+      fix: "Run the command once with network access and without `MOSTRA_OFFLINE`, so the pinned bundle is fetched and cached; later runs work offline. On a machine without network access, extract the release's archive for the platform and set `MOSTRA_BUNDLE` to its directory. A development checkout uses its own built runtime instead.",
+    },
+  },
+  MOSTRA_ENV_NODE_UNSUPPORTED: {
+    severity: "error",
+    phase: "platform",
+    title: "Node.js too old to start Mostra",
+    hint: "Run `mostra` with Node.js 22.19 or later, or run the runtime bundle's own `bin/mostra`, which needs no Node.js.",
+    docs: {
+      explanation:
+        "A `mostra` (or `npm create mostra`) installed from npm starts on the machine's Node.js only long enough to find its runtime bundle, then every Mostra process runs on the bundle's own Node.js (RT-01, D142). That start needs Node.js 22.19 or later, and this one is older, so Mostra stopped before loading anything.",
+      fix: "Upgrade the machine's Node.js to 22.19 or later, or run Mostra without npm: download the runtime bundle for your platform from the GitHub release, check it against `SHA256SUMS`, extract it, run its `bin/mostra-setup` once, then use its `bin/mostra`.",
     },
   },
   // gen:entries

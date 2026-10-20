@@ -14,7 +14,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | AU-04 | WP-03 | M | Manifest metadata (title, description, family, links, mode) round-trips into artifact/get and results; mode defaults to spa (unit + integration) | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-05 | WP-09 | M, B | Fixtures with duplicate IDs, IDs changing between renders and unbound controls produce MOSTRA_FIELD_* codes at the right severity | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AU-06 | WP-26 | I, R | `mostra new --template <family>` for every family produces an artifact that passes verify, with AGENTS.md (CI matrix); Mirza reviews | unverified |
-| RT-01 | WP-11 | I, X | Clean macOS and Linux CI runners without Node: npm create mostra → verify → publish; tampered bundle rejected; external: real install | unverified |
+| RT-01 | WP-11 | I, X | Clean macOS and Linux CI runners without Node: npm create mostra → verify → publish; tampered bundle rejected; external: real install | validated ([WP-11](../progress/PROGRESS-WP-11.md)) |
 | RT-02 | WP-03 | I | Process audit test: supervisor module graph contains no artifact module after build, publish, verify and action calls | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | RT-03 | WP-08 | I | Worker per active version starts on first call, evicts after idle, restarts with backoff, parks after repeated crashes (integration) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | RT-04 | WP-08 | I | Crash, OOM and busy-loop fixtures in one artifact; sibling artifact and gateway keep serving; viewer sees actionable message | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
@@ -78,7 +78,7 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance) | unverified |
 | HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
 | HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | unverified |
-| HO-04 | WP-11 | M, C | SDK host registers ports, publishes, receives delivery, waits and reads results (integration) | unverified |
+| HO-04 | WP-11 | M, C | SDK host registers ports, publishes, receives delivery, waits and reads results (integration) | verified ([WP-11](../progress/PROGRESS-WP-11.md)) |
 | HO-05 | WP-12 | C | Conformance kit passes on standalone adapters and both reference hosts; broken host fails expected scenarios; baselines work | unverified |
 | HO-06 | WP-12 | C, R | Audit: no host-specific identifiers in core packages; every JCODE_HOST row maps to a conformance scenario; Mirza reviews | unverified |
 | HO-07 | WP-01 | M | Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
@@ -123,10 +123,10 @@ v1 requirements: 146. v1.1 requirements: 8. Owned exactly once: 154. Neither v1 
 | EN-02 | WP-01 | M | Tooling baseline in place and pinned through catalogs; `pnpm check` equals CI | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-03 | WP-26 | B | CI job verifies every example and template with committed visual and ARIA baselines | unverified |
 | EN-04 | WP-01 | M | API Extractor, publint and attw gates fail on seeded violations | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | unverified |
+| EN-05 | WP-11 | X | Release dry run in CI; first real release with provenance after Mirza's account steps (external) | validated ([WP-11](../progress/PROGRESS-WP-11.md)) |
 | EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-08 | WP-10 | M, I | Seeded: a host-spawned instance (`mostra host`) sends nothing; `DO_NOT_TRACK=1` sends nothing; payloads match the documented schema and contain no paths or tokens. WP-11 adds the SDK-spawned case to the same test | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
-| EN-09 | WP-11 | M | Seeded import from core into `ee/` fails the boundary check; a packed core tarball contains no `ee/` file | unverified |
+| EN-09 | WP-11 | M | Seeded import from core into `ee/` fails the boundary check; a packed core tarball contains no `ee/` file | verified ([WP-11](../progress/PROGRESS-WP-11.md)) |
 | CO-01 | WP-31 | I, B | Roster of five yields five links mapping to five viewers; roster changes are events | unverified |
 | CO-02 | WP-31 | I, C | Property test over interleavings: satisfied exactly when the last respondent submits, under `once` per-viewer and `epochs` | unverified |
 | CO-03 | WP-31 | B | Five simulated viewers in browsers move through states; hook, protocol and CLI agree | unverified |

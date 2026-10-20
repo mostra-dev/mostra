@@ -1,11 +1,16 @@
 /**
  * Unit tests for the pure rules behind the gates: schema compatibility (HO-07), commit messages
- * (EN-01), action pinning (EN-06) and Markdown links.
+ * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05) and Markdown links.
  */
 import { describe, expect, it } from "vitest";
+import { eeLeaks } from "../api/pack.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
-import { workflowProblems } from "../repo-lint/cli.ts";
+import {
+  privilegedImportProblems,
+  releaseGroupProblems,
+  workflowProblems,
+} from "../repo-lint/cli.ts";
 import { type Bundle, compareBundles, compareSnapshots, type Schema } from "../schemas/compat.ts";
 
 const bundle = (defs: Record<string, Schema>, revision = "2026-10-10"): Bundle => ({
@@ -301,6 +306,112 @@ describe("Markdown links", () => {
       "[ok](b.md) [bad](missing.md#x) [web](https://x.test) [anchor](#top) `[code](nope.md)`";
     expect(brokenLinks("docs/a.md", text, (path) => path === "docs/b.md")).toEqual([
       "docs/a.md: link to missing.md#x does not resolve",
+    ]);
+  });
+});
+
+describe("the release group (RT-01, EN-05)", () => {
+  const pkg = (name: string, isPrivate = false) => ({
+    name,
+    dir: `packages/${name}`,
+    private: isPrivate,
+    scripts: {},
+    dependencies: [],
+    manifest: {},
+  });
+  const packages = [
+    pkg("@mostra/cli"),
+    pkg("@mostra/runtime"),
+    pkg("create-mostra"),
+    pkg("@mostra/contract-exporter"),
+    pkg("@mostra/warm", true),
+  ];
+  const privatePackages = { version: false, tag: false };
+
+  it("accepts one fixed group of every published package but the contracts", () => {
+    const fixed = [["@mostra/cli", "@mostra/runtime", "create-mostra"]];
+    expect(releaseGroupProblems({ fixed, privatePackages }, packages)).toEqual([]);
+  });
+
+  it("refuses a missing package, a stray one, a second group and versioned private packages", () => {
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "create-mostra"]], privatePackages },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("lacks @mostra/runtime")]);
+    expect(
+      releaseGroupProblems(
+        {
+          fixed: [["@mostra/cli", "@mostra/runtime", "create-mostra", "@mostra/contract-exporter"]],
+          privatePackages,
+        },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("names @mostra/contract-exporter")]);
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "@mostra/runtime"], ["create-mostra"]], privatePackages },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("exactly one fixed group")]);
+    expect(
+      releaseGroupProblems(
+        { fixed: [["@mostra/cli", "@mostra/runtime", "create-mostra"]] },
+        packages,
+      ),
+    ).toEqual([expect.stringContaining("privatePackages")]);
+  });
+});
+
+describe("the ee/ packing check (D118, EN-09)", () => {
+  const root = "/repo";
+  const dir = "/repo/packages/sdk";
+  const maps: Record<string, string> = {
+    "dist/index.js.map": JSON.stringify({ sources: ["../src/index.ts"] }),
+    "dist/leaky.js.map": JSON.stringify({ sources: ["../../../ee/sso/src/index.ts"] }),
+    "dist/rooted.js.map": JSON.stringify({ sourceRoot: "../../..", sources: ["ee/audit/log.ts"] }),
+    "dist/broken.js.map": "{",
+  };
+  const leaks = (files: string[]) => eeLeaks(dir, files, (path) => maps[path], root);
+
+  it("passes a package built from its own sources", () => {
+    expect(leaks(["dist/index.js", "dist/index.js.map", "README.md"])).toEqual([]);
+    // A file merely named like ee isn't under ee/.
+    expect(leaks(["dist/free.js", "dist/ee.js", "docs/fee/x.md"])).toEqual([]);
+  });
+
+  it("refuses an ee/ file in the tarball and a bundle built from ee/ sources", () => {
+    expect(leaks(["ee/sso/index.js"])).toEqual([expect.stringContaining("packs ee/sso/index.js")]);
+    expect(leaks(["dist/ee/sso.js"])).toEqual([expect.stringContaining("packs dist/ee/sso.js")]);
+    expect(leaks(["dist/leaky.js.map"])).toEqual([
+      expect.stringContaining("built from ee/sso/src/index.ts"),
+    ]);
+    expect(leaks(["dist/rooted.js.map"])).toEqual([
+      expect.stringContaining("built from ee/audit/log.ts"),
+    ]);
+    expect(leaks(["dist/broken.js.map"])).toEqual([expect.stringContaining("isn't JSON")]);
+  });
+});
+
+describe("the release's publish job runs built-ins only (EN-05)", () => {
+  it("accepts node: imports and refuses anything installed, however it is imported", () => {
+    const ok =
+      'import { spawnSync } from "node:child_process";\nconst fs = await import("node:fs");\n';
+    expect(privilegedImportProblems(ok, "a.ts")).toEqual([]);
+    const seeded = [
+      'import semver from "semver";',
+      'import { x } from "@mostra/protocol";',
+      'export { y } from "./helpers.ts";',
+      'import "tar";',
+      'const z = await import("undici");',
+    ].join("\n");
+    expect(privilegedImportProblems(seeded, "a.ts")).toEqual([
+      expect.stringContaining('"semver"'),
+      expect.stringContaining('"@mostra/protocol"'),
+      expect.stringContaining('"./helpers.ts"'),
+      expect.stringContaining('"tar"'),
+      expect.stringContaining('"undici"'),
     ]);
   });
 });

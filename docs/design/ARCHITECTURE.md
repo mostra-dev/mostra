@@ -125,9 +125,9 @@ Each child runs in its own process group. Its PID and start time are recorded in
 - **Workers:** 1 GiB heap and a 10 s event-loop watchdog by default, configurable per artifact. Evicted after 10 idle minutes. Restarted with exponential backoff after a crash, which is reported to the viewer and the event log (RT-04).
 - **Verify runner:** keeps a warm Chromium and closes it after 10 idle minutes.
 
-**Runtime distribution** (RT-01, H-13). Each platform (macOS arm64 and x64, Linux x64 and arm64) gets one signed, hash-pinned bundle: a private Node LTS (24 now, 26 after its LTS date, D48), prebuilt Mostra code, the warm package set, the Playwright Chromium headless shell, and native modules (better-sqlite3, node-pty, Rolldown, Lightning CSS).
-- `npm create mostra`, `@mostra/cli`, the SDK and the Rust crate download it, check the SHA-256 manifest and cache it by hash.
-- Every entry point runs on the private runtime, so users never need a global Node.
+**Runtime distribution** (RT-01, H-13, D142). Each platform (macOS arm64 and x64, Linux x64 and arm64, glibc) gets one hash-pinned, attested bundle: a private Node LTS (24 now, 26 after its LTS date, D48), prebuilt Mostra code, the warm package set, pnpm 10 and native modules (better-sqlite3, Rolldown, Lightning CSS, Tailwind's oxide, TypeScript 7's compiler; node-pty with the terminals in v1.1), each listed with its SHA-256 in the bundle's `files.json`. The verify browser (Playwright's Chrome Headless Shell) isn't redistributed: setup fetches the revision the bundle pins with the bundle's own Playwright and checks every file against the pin (D142 item 2).
+- `npm create mostra`, `@mostra/cli`, the SDK and the Rust crate download it, check its size and SHA-256 against the pins their release carries, check every file against `files.json`, and cache it by digest (D142 items 3, 4).
+- Every entry point runs on the private runtime, so users never need a global Node; a CLI installed from npm only starts the bundle's own (D142 item 6).
 - Windows fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35) until WP-32 adds it in v1.1 (D120).
 
 ## 5. The browser side

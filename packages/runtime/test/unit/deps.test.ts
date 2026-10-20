@@ -3,7 +3,7 @@
  * lockfile's text, the offline flag and the artifact environment.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isOffline,
@@ -192,12 +192,17 @@ describe("the install child's settings and environment", () => {
       NODE_OPTIONS: "--require evil",
     });
     expect(env).toEqual({
-      PATH: "/bin",
+      // D142: the runtime's own Node.js comes first, so `node` in a script is the bundle's.
+      PATH: `${dirname(process.execPath)}:/bin`,
       HOME: "/home/u",
       CC: "clang",
       HTTPS_PROXY: "http://proxy",
       npm_config_registry: "http://registry",
     });
+    // Already first: not added twice.
+    expect(artifactEnvironment({ PATH: `${dirname(process.execPath)}:/bin` })["PATH"]).toBe(
+      `${dirname(process.execPath)}:/bin`,
+    );
   });
 
   it("is offline when MOSTRA_OFFLINE says so", () => {

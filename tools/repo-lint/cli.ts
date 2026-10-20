@@ -7,7 +7,10 @@
  *   AGENTS.md, and, when published, names this repository exactly (npm trusted publishing);
  * - `LICENSE` is the canonical Apache-2.0 text and `NOTICE` exists (D14);
  * - every GitHub Action is pinned to a full commit SHA with a version comment, and every workflow
- *   sets top-level permissions.
+ *   sets top-level permissions;
+ * - Changesets releases every published package but the extension contracts (versioned on their
+ *   own, D30) as one fixed group, so one Mostra version names one runtime bundle (RT-01), and
+ *   never versions or tags a private package.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -53,6 +56,84 @@ export function specifierProblems(pkg: WorkspacePackage): string[] {
       }
     }
   }
+  return problems;
+}
+
+/** Packages released on their own versions: the extension contracts (D30). */
+const OWN_VERSION = /^@mostra\/contract-/;
+
+/**
+ * The imports in `source` that aren't Node.js built-ins (`node:`): a script the release's
+ * `publish` job runs has only the checkout and Node.js there, no installed packages, and the job
+ * holds the publishing credentials, so it runs nothing installed (EN-05).
+ */
+export function privilegedImportProblems(source: string, file: string): string[] {
+  const problems: string[] = [];
+  const specifiers = [
+    ...source.matchAll(/^\s*(?:import|export)\s[^;]*?\sfrom\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/^\s*import\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g),
+  ].map((match) => match[1] as string);
+  for (const specifier of specifiers) {
+    if (!specifier.startsWith("node:"))
+      problems.push(
+        `${file} imports "${specifier}", but the release's publish job runs it with Node.js built-ins only.`,
+      );
+  }
+  return problems;
+}
+
+/** The scripts `.github/workflows/release.yml`'s `publish` job runs with `node`, and their problems. */
+function publishJobProblems(root: string): string[] {
+  const file = join(root, ".github", "workflows", "release.yml");
+  if (!existsSync(file)) return [];
+  const workflow = parseYaml(readFileSync(file, "utf8")) as {
+    jobs?: Record<string, { steps?: { run?: string }[] }>;
+  };
+  const steps = workflow.jobs?.["publish"]?.steps ?? [];
+  const problems: string[] = [];
+  for (const step of steps) {
+    for (const match of (step.run ?? "").matchAll(/\bnode\s+(\S+\.(?:ts|mjs|js))\b/g)) {
+      const script = match[1] as string;
+      const path = join(root, script);
+      if (!existsSync(path))
+        problems.push(`release.yml's publish job runs ${script}, which doesn't exist.`);
+      else problems.push(...privilegedImportProblems(readFileSync(path, "utf8"), script));
+    }
+  }
+  return problems;
+}
+
+/** Problems with the release configuration: one fixed group of every core package published. */
+export function releaseGroupProblems(
+  config: { fixed?: unknown; privatePackages?: unknown },
+  packages: readonly WorkspacePackage[],
+): string[] {
+  const problems: string[] = [];
+  const core = packages
+    .filter((pkg) => !pkg.private && !OWN_VERSION.test(pkg.name))
+    .map((pkg) => pkg.name)
+    .sort();
+  const fixed = Array.isArray(config.fixed) ? (config.fixed as unknown[]) : [];
+  const group =
+    fixed.length === 1 && Array.isArray(fixed[0]) ? [...(fixed[0] as string[])].sort() : undefined;
+  if (group === undefined) {
+    problems.push(
+      ".changeset/config.json must have exactly one fixed group: Mostra's published packages share one version (RT-01).",
+    );
+  } else {
+    for (const name of core.filter((name) => !group.includes(name)))
+      problems.push(`.changeset/config.json's fixed group lacks ${name}, a published package.`);
+    for (const name of group.filter((name) => !core.includes(name)))
+      problems.push(
+        `.changeset/config.json's fixed group names ${name}, which isn't a published core package.`,
+      );
+  }
+  const privates = config.privatePackages as { version?: unknown; tag?: unknown } | undefined;
+  if (privates?.version !== false || privates?.tag !== false)
+    problems.push(
+      '.changeset/config.json must set "privatePackages": { "version": false, "tag": false }.',
+    );
   return problems;
 }
 
@@ -184,9 +265,15 @@ function main(): void {
   for (const file of yamlFiles(join(root, ".github"))) {
     problems.push(...workflowProblems(relative(root, file), readFileSync(file, "utf8")));
   }
+  const changesets = JSON.parse(readFileSync(join(root, ".changeset", "config.json"), "utf8")) as {
+    fixed?: unknown;
+    privatePackages?: unknown;
+  };
+  problems.push(...releaseGroupProblems(changesets, listPackages(root)));
+  problems.push(...publishJobProblems(root));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
-    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions`,
+    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group, a publish job on built-ins`,
   );
 }
 

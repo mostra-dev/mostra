@@ -57,6 +57,27 @@
       "project": [],
       "ignoreDependencies": [".+"]
     },
+    "packages/bundle": {
+      "entry": ["scripts/*.ts"],
+      "project": ["scripts/**/*.ts"],
+      "ignoreDependencies": [
+        "@mostra/cli",
+        "@mostra/runtime",
+        "@mostra/shell",
+        "@mostra/verify",
+        "@mostra/worker",
+        "playwright-core"
+      ]
+    },
+    "packages/sdk": {
+      "entry": ["src/index.ts", "src/setup-main.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
+    },
+    "packages/create-mostra": {
+      "entry": ["src/index.ts", "src/bin.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
     "packages/shell": {
       "entry": ["src/main.tsx", "index.html", "vite.config.ts"],
       "project": ["src/**/*.{ts,tsx}", "test/**/*.ts"]

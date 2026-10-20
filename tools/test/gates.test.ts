@@ -1,10 +1,10 @@
 /**
  * Every gate, proven by a seeded violation (WP-01 acceptance evidence; EN-01, EN-04, EN-06,
- * EN-07, DP-06, KT-02, HO-07, AX-03). Each test plants one violation in a repository copy, runs
+ * EN-07, DP-06, KT-02, HO-07, AX-03; WP-11: EN-09's ee/ boundary). Each test plants one violation in a repository copy, runs
  * the real gate command there and expects a failure that names the problem, then removes the
  * violation and expects the gate to pass.
  */
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { copyRepository, type RepoCopy } from "./repo-copy.ts";
@@ -91,6 +91,26 @@ describe("boundaries", () => {
     expect(fixed.code, fixed.output).toBe(0);
   });
 
+  it("dependency-cruiser refuses any import from the core into ee/ (D118, EN-09)", () => {
+    // An ee/ package with its own code, as the first package that needs ee/ will add it.
+    mkdirSync(join(repo.root, "ee/sso/src"), { recursive: true });
+    repo.write("ee/sso/src/index.ts", "export const sso = 1;\n");
+    repo.write(
+      "packages/runtime/src/seed-ee.ts",
+      'import { sso } from "../../../ee/sso/src/index.ts";\nexport const seeded = sso;\n',
+    );
+    const result = depcruise();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("core-never-imports-ee");
+
+    // The same ee/ code with no core module importing it is fine.
+    repo.reset();
+    mkdirSync(join(repo.root, "ee/sso/src"), { recursive: true });
+    repo.write("ee/sso/src/index.ts", "export const sso = 1;\n");
+    const fixed = depcruise();
+    expect(fixed.code, fixed.output).toBe(0);
+  });
+
   it("knip rejects an unused export", () => {
     expect(repo.run("node_modules/.bin/knip", ["--no-progress", "--no-config-hints"]).code).toBe(0);
     repo.edit(
@@ -100,6 +120,31 @@ describe("boundaries", () => {
     const result = repo.run("node_modules/.bin/knip", ["--no-progress", "--no-config-hints"]);
     expect(result.code).not.toBe(0);
     expect(result.output).toMatch(/Unused exports[\s\S]*seededUnused/);
+  });
+});
+
+describe("ee/ packing check (D118, EN-09)", () => {
+  it("fails a core package whose tarball would carry ee/ code, and passes once it's gone", () => {
+    const check = () =>
+      repo.run("node", ["../../tools/bin/mostra-tools.ts", "pack-check"], { cwd: "packages/sdk" });
+    const clean = check();
+    expect(clean.code, clean.output).toBe(0);
+    // An ee/ file under dist/, and a bundle whose sourcemap shows it inlined ee/ code.
+    mkdirSync(join(repo.root, "packages/sdk/dist/ee"), { recursive: true });
+    repo.write("packages/sdk/dist/ee/sso.js", "export const sso = 1;\n");
+    repo.write(
+      "packages/sdk/dist/inlined.js.map",
+      JSON.stringify({ version: 3, sources: ["../../../ee/sso/src/index.ts"], mappings: "" }),
+    );
+    const result = check();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("packs dist/ee/sso.js, a file under ee/");
+    expect(result.output).toContain("built from ee/sso/src/index.ts in ee/");
+    // dist/ is git-ignored, so reset() wouldn't remove the seed: remove it by hand.
+    rmSync(join(repo.root, "packages/sdk/dist/ee"), { recursive: true });
+    rmSync(join(repo.root, "packages/sdk/dist/inlined.js.map"));
+    const fixed = check();
+    expect(fixed.code, fixed.output).toBe(0);
   });
 });
 

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": ".tsbuild",
+    "types": ["node"],
+    "isolatedDeclarations": false,
+    "declarationMap": false,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["scripts/**/*.ts"],
+  "references": [
+    {
+      "path": "../protocol/tsconfig.src.json"
+    },
+    {
+      "path": "../sdk/tsconfig.src.json"
+    }
+  ]
+}
