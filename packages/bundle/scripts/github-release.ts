@@ -7,19 +7,19 @@
  * outside, before anything goes to npm, and a run that finds the release already published only
  * finishes what npm lacks from the release's own assets (Opus review findings 1 and 2).
  *
- *   node packages/bundle/scripts/github-release.ts state --event <name> --ref <ref> --sha <sha>
+ *   node packages/bundle/scripts/github-release.ts state --event <name> --ref <ref>
  *   node packages/bundle/scripts/github-release.ts fetch --platform <p> --out <dir>
  *   node packages/bundle/scripts/github-release.ts publish --assets <dir> --notes <file> --target <sha>
  *   node packages/bundle/scripts/github-release.ts verify --assets <dir>
  *
- * - `state` prints `version=`, `mode=`, `publish=` and `ref=` lines for `$GITHUB_OUTPUT`. The mode is
+ * - `state` prints `version=`, `mode=` and `publish=` lines for `$GITHUB_OUTPUT`. The mode is
  *   `none` (a pull request, the unreleased 0.0.0, changesets pending, or released in full),
  *   `fresh` (no published release and nothing on npm: build, release, publish) or `finish` (the
  *   release is published and npm lacks part of the version: its assets, not a new build). A
- *   version on npm with no published release can't happen in this order and fails closed. `ref`
- *   is what the run builds: the pushed commit, or for `finish` the release's own tag, so every
- *   package npm still lacks is packed from the very source the published ones were (pnpm's
- *   tarballs are reproducible: fixed times, no owners), and those already on npm compare equal.
+ *   version on npm with no published release can't happen in this order and fails closed. Under
+ *   `finish` the workflow packs from the release's own tag, so every package npm still lacks is
+ *   packed from the very source the published ones were (pnpm's tarballs are reproducible: fixed
+ *   times, no owners), and those already on npm compare equal.
  * - `fetch` downloads one platform's archive and asset record from the published release and
  *   checks the archive against both.
  * - `publish` makes the release: a draft (created at `--target` if missing) whose assets are made
@@ -48,7 +48,6 @@ const { values, positionals } = parseArgs({
     assets: { type: "string" },
     notes: { type: "string" },
     target: { type: "string" },
-    sha: { type: "string" },
   },
   allowPositionals: true,
   strict: true,
@@ -149,7 +148,6 @@ function state(): void {
     console.log(`version=${version}`);
     console.log(`mode=${mode}`);
     console.log(`publish=${mode === "none" ? "false" : "true"}`);
-    console.log(`ref=${mode === "finish" ? `refs/tags/${tag}` : (values.sha ?? "")}`);
     console.error(`release state of ${version}: ${mode} (${why})`);
   };
   const mode = ((): [string, string] => {
