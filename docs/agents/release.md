@@ -8,12 +8,16 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
 1. **The package is merged.** Its changesets are on `main`, and `main`'s `Release` workflow run is
    green: every bundle built, audited and smoke-tested with no Node.js, every package packed and
    dry-run published, and the npm path smoke-tested on Node.js 22. Don't release a red `main`.
-2. **The first release only: Mirza's account steps.** He runs `tools/release/npm-setup.sh` (signed
-   in to npm as an owner of `@mostra` and `create-mostra`, 2FA on), which publishes a placeholder
-   for each new package, configures its trusted publisher (`mostra-dev/mostra`, `release.yml`,
-   environment `release`, direct publish) and sets "Require two-factor authentication and
-   disallow tokens". Each configuration expires unless it publishes within 2 days, so the version
-   pull request merges right after. `tools/release/npm-setup.sh --check` reports the state.
+2. **The first release only: Mirza's account steps.** He runs `tools/release/npm-setup.sh` in a
+   terminal (signed in to npm as an owner of `@mostra` and `create-mostra`, 2FA on). It
+   authenticates once (he chooses "skip two-factor authentication for the next 5 minutes"), then
+   for each package publishes a placeholder if it's new, configures its trusted publisher
+   (`mostra-dev/mostra`, `release.yml`, environment `release`, direct publish), checks npm now
+   reports exactly that, and sets "Require two-factor authentication and disallow tokens". It stops
+   on anything npm doesn't answer clearly, and can simply be run again; it ends with "Done: every
+   package has its trusted publisher". Each configuration expires unless it publishes within 2
+   days, so the release runs right after. `--check` reports the state without changing anything
+   (it reads "unreadable EOTP" where npm wants a second factor).
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
    `pnpm changeset version`, then `pnpm install` (the lockfile takes the new versions), then
    `pnpm check --affected`. Commit `chore(release): Mostra <version>` with `git commit -s`, push,
@@ -38,6 +42,10 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
      exactly that tarball; anything else fails the run before a byte is published.
    - **npm has the version but the release isn't published** can't happen in this order; `plan`
      fails closed. Look before publishing anything by hand.
+
+   - **npm refused a publish with 404** right after "Signed provenance statement": no trusted
+     publisher matched (the job prints npm's `oidc` lines). Mirza runs `npm-setup.sh` again, then
+     the failed `publish` job is re-run: the published release is kept and npm is finished.
 
    Never delete a tag or a published release: both are immutable (the release-tags ruleset,
    immutable releases); a release that can't be finished is replaced by the next version.

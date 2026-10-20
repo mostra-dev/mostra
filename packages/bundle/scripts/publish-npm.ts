@@ -18,7 +18,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -167,6 +167,29 @@ function registered(name: string): Registered {
   return { versions, ...(latest !== undefined ? { latest } : {}) };
 }
 
+/**
+ * Why npm's OIDC exchange failed, from its newest debug log: npm writes every level there, and a
+ * failed exchange (no trusted publisher, or one that names another workflow or environment) is
+ * only a `verbose` line, after which npm falls back to the placeholder token and the registry
+ * answers 404. The lines name no token. Empty when there's no log or no OIDC line.
+ */
+function oidcReason(): string {
+  const logs = join(process.env["HOME"] ?? "", ".npm", "_logs");
+  if (!existsSync(logs)) return "";
+  const newest = readdirSync(logs)
+    .filter((name) => name.endsWith("-debug-0.log"))
+    .sort()
+    .at(-1);
+  if (newest === undefined) return "";
+  const lines = readFileSync(join(logs, newest), "utf8")
+    .split("\n")
+    .filter((text) => /\boidc\b/.test(text))
+    .map((text) => `  ${text.replace(/^\d+\s+/, "")}`);
+  return lines.length > 0
+    ? `\nnpm's trusted-publishing exchange (from its debug log):\n${lines.join("\n")}\n`
+    : "\nnpm's debug log has no trusted-publishing (oidc) line: it may not have tried the exchange.\n";
+}
+
 /** The `dist.integrity` npm records for `name`@version. */
 function integrity(name: string): string | undefined {
   const view = spawnSync("npm", ["view", `${name}@${version}`, "dist.integrity", "--json"], {
@@ -260,7 +283,16 @@ function publish(): void {
       ...(step.tag ? ["--tag", step.tag] : []),
       ...(dryRun ? ["--dry-run"] : ["--provenance"]),
     ];
-    run("npm", args, ROOT);
+    const result = spawnSync("npm", args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (result.status !== 0) {
+      fail(
+        `npm ${args.join(" ")} exited ${result.status}:\n${result.stdout}${result.stderr}${dryRun ? "" : oidcReason()}`,
+      );
+    }
     console.log(
       `${dryRun ? "would publish" : "published"} ${member.name}@${version}${step.tag ? ` (tag ${step.tag}: ${version} is the unreleased version, older than anything npm has)` : ""}`,
     );
