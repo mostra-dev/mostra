@@ -15,7 +15,13 @@ run next.
 - **No behavior of its own.** It runs the CLI's `mostra new <dir>` with every other argument as
   given, and exits with the CLI's code. Anything it would need beyond that belongs in the CLI.
 - **`--json` stays one envelope.** With `--json`, stdout is exactly the CLI's envelope; the next
-  steps are printed only for a person.
+  steps are printed only for a person. When the CLI can't be started at all, this package writes
+  that one envelope itself (`MOSTRA_ENV_RUNTIME_MISSING`, exit 3), the only diagnostic it builds:
+  it may not import `@mostra/protocol`, and a missing CLI could describe nothing.
+- **Signals and exit codes as the CLI's bootstrap has them.** SIGTERM and SIGHUP are passed on,
+  SIGINT only when no terminal is attached (a terminal's Ctrl-C already reached the CLI, and a
+  second would cut short a command that stops gracefully on the first), and a CLI a signal ended
+  exits 128 plus that signal's number.
 - **Nothing global.** No global install, no shell profile edits, no telemetry of its own (the
   CLI's telemetry rules apply to the `mostra new` it runs, D140).
 

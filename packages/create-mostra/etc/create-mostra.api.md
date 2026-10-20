@@ -13,9 +13,12 @@ export function create(io: CreateIo): Promise<number>;
 // @public
 export interface CreateIo {
     readonly args: readonly string[];
+    readonly cli?: () => string;
     readonly cwd: string;
     readonly env: NodeJS.ProcessEnv;
+    readonly stderr?: (text: string) => void;
     readonly stdout: (text: string) => void;
+    readonly terminal?: boolean;
 }
 
 // @public

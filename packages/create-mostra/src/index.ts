@@ -9,6 +9,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { constants } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
 /** The directory an artifact goes into when none is named. */
@@ -112,32 +113,79 @@ export interface CreateIo {
   readonly env: NodeJS.ProcessEnv;
   /** Writes to stdout: the usage and the next steps (the CLI writes its own output itself). */
   readonly stdout: (text: string) => void;
+  /** Writes to stderr: why the CLI couldn't be started. */
+  readonly stderr?: (text: string) => void;
+  /**
+   * Whether a terminal is attached (stdin, stdout or stderr is one). Ctrl-C there signals the
+   * whole foreground process group, the CLI included, so SIGINT isn't passed on: a second one
+   * would cut short a command that stops gracefully on the first (as the CLI's bootstrap does).
+   */
+  readonly terminal?: boolean;
+  /** Finds the `mostra` binary to run; default {@link cliBin}. */
+  readonly cli?: () => string;
 }
 
-/** Runs `npm create mostra`: resolves with the exit code, the CLI's own. */
+/**
+ * The one diagnostic this package writes itself: the CLI it depends on couldn't be started, so
+ * nothing of it (nor of `@mostra/protocol`, which it may not import) can describe the failure.
+ * The fields are the catalog entry's (`MOSTRA_ENV_RUNTIME_MISSING`, exit 3).
+ */
+function cliMissing(io: CreateIo, json: boolean, why: string): number {
+  const message = `create-mostra couldn't start the mostra CLI it depends on (${why}). Install it again: npm create mostra@latest.`;
+  io.stderr?.(`create-mostra: ${message}\n`);
+  if (json) {
+    const error = {
+      code: "MOSTRA_ENV_RUNTIME_MISSING",
+      severity: "error",
+      phase: "host",
+      message,
+      docs: "https://mostra-dev.github.io/mostra/errors/MOSTRA_ENV_RUNTIME_MISSING",
+    };
+    io.stdout(`${JSON.stringify({ ok: false, error, warnings: [] })}\n`);
+  }
+  return 3;
+}
+
+/**
+ * Runs `npm create mostra`: resolves with the exit code, the CLI's own (128 plus the signal's
+ * number when a signal ended it, as a shell reports it). Signals this process gets are passed on
+ * as the CLI's bootstrap passes them.
+ */
 export async function create(io: CreateIo): Promise<number> {
   const run = plan(io.args, io.cwd);
   if (run.help) {
     io.stdout(USAGE);
     return 0;
   }
+  let bin: string;
+  try {
+    bin = (io.cli ?? cliBin)();
+  } catch (error) {
+    return cliMissing(io, run.json, error instanceof Error ? error.message : String(error));
+  }
   const code = await new Promise<number>((done) => {
-    const child = spawn(process.execPath, [cliBin(), ...run.argv], {
+    const child = spawn(process.execPath, [bin, ...run.argv], {
       cwd: io.cwd,
       env: io.env,
       stdio: "inherit",
     });
     const forward = (signal: NodeJS.Signals): void => {
+      if (signal === "SIGINT" && io.terminal) return; // the CLI got the terminal's own
       child.kill(signal);
     };
-    process.on("SIGINT", forward);
-    process.on("SIGTERM", forward);
-    child.on("error", () => done(3));
-    child.on("exit", (exit, signal) => {
-      process.off("SIGINT", forward);
-      process.off("SIGTERM", forward);
-      done(exit ?? (signal === "SIGINT" ? 130 : 1));
-    });
+    const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
+    for (const signal of signals) process.on(signal, forward);
+    let settled = false;
+    const settle = (exit: number): void => {
+      if (settled) return;
+      settled = true;
+      for (const signal of signals) process.off(signal, forward);
+      done(exit);
+    };
+    child.on("error", (error) => settle(cliMissing(io, run.json, error.message)));
+    child.on("exit", (exit, signal) =>
+      settle(exit ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),
+    );
   });
   if (code === 0 && !run.json) io.stdout(nextSteps(relative(io.cwd, run.dir) || "."));
   return code;
