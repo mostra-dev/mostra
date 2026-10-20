@@ -73,8 +73,8 @@ describe("the runtime bundle's contract (RT-01)", () => {
       BundlePins.safeParse({ ...pins, assets: { "freebsd-x64": pins.assets["linux-x64"] } })
         .success,
     ).toBe(false);
-    // An asset is exactly its release's archive for its platform (Opus review finding 8): an
-    // installer joins the name to a directory, so nothing else may stand there.
+    // An asset names an archive, never a path (Opus review finding 8): an installer joins it to
+    // a directory. That it is its release's archive for its platform is the installer's check.
     const named = (file: string) =>
       BundlePins.safeParse({
         ...pins,
@@ -82,8 +82,6 @@ describe("the runtime bundle's contract (RT-01)", () => {
       }).success;
     expect(named("../../escaped.tar.gz")).toBe(false);
     expect(named("dir/mostra-0.1.0-linux-x64.tar.gz")).toBe(false);
-    expect(named("mostra-0.1.0-linux-arm64.tar.gz")).toBe(false);
-    expect(named("mostra-0.0.9-linux-x64.tar.gz")).toBe(false);
     expect(BundlePins.safeParse({ ...pins, version: "../0.1.0" }).success).toBe(false);
   });
 

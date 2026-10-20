@@ -604,7 +604,7 @@
       "properties": {
         "file": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$"
         },
         "sha256": {
           "$ref": "#/$defs/Sha256"
@@ -850,7 +850,7 @@
         },
         "version": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]*$"
         },
         "release": {
           "type": "string",

@@ -221,23 +221,17 @@ export interface BundlePins {
   readonly assets: Partial<Record<BundlePlatform, BundleAsset>>;
 }
 
-/** The `bundles.json` schema: each asset's `file` is {@link bundleAssetName} of its release and platform. */
+/**
+ * The `bundles.json` schema. Each asset's `file` has an archive's shape (no directory); that it is
+ * exactly {@link bundleAssetName} of the pins' version and its platform is checked by the
+ * installer before any I/O, since JSON Schema can't express the comparison.
+ */
 export const BundlePins: z.ZodType<BundlePins> = z
   .object({
     schemaVersion: z.literal(1),
     version: z.string().regex(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/),
     release: z.url({ protocol: /^https?$/ }),
     assets: z.partialRecord(BundlePlatformSchema, BundleAsset),
-  })
-  .superRefine((pins, context) => {
-    for (const [platform, asset] of Object.entries(pins.assets)) {
-      if (asset && asset.file !== bundleAssetName(pins.version, platform as BundlePlatform))
-        context.addIssue({
-          code: "custom",
-          path: ["assets", platform, "file"],
-          message: `must be ${bundleAssetName(pins.version, platform as BundlePlatform)}`,
-        });
-    }
   })
   .register(wireRegistry, { id: "BundlePins" });
 
