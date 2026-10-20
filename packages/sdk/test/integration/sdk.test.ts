@@ -198,6 +198,55 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     expect(later.status).toBe("satisfied");
   });
 
+  it("keeps going when the host's own callbacks throw: no uncaught error, and the delivery still lands (Opus review finding 6)", async () => {
+    const escaped: unknown[] = [];
+    const onEscaped = (reason: unknown): void => {
+      escaped.push(reason);
+    };
+    process.on("unhandledRejection", onEscaped);
+    process.on("uncaughtException", onEscaped);
+    try {
+      let logged = 0;
+      let reported = 0;
+      let attempts = 0;
+      const mostra = await host({
+        home: join(dir.path, "home"),
+        client: { name: "throwing-host" },
+        env: hostEnv(dir.path, { MOSTRA_TEST_UNVERIFIED_PUBLISH: "1" }),
+        onLog: () => {
+          logged += 1;
+          throw new Error("the host's logger is broken");
+        },
+        onPortError: () => {
+          reported += 1;
+          throw new Error("the host's error reporter is broken");
+        },
+        ports: {
+          submissions: {
+            deliver: () => {
+              attempts += 1;
+              if (attempts === 1) throw new Error("the database is down");
+              return { accepted: true };
+            },
+          },
+        },
+      });
+      const receipt = await mostra.publish(writeArtifact(dir.path, "throwing"));
+      await (await new Viewer().open(receipt.url as string)).answerAndSubmit({ answer: 1 });
+      await eventually(
+        async () => (await mostra.results(receipt.artifactId)).submission.delivery === "delivered",
+        30_000,
+      );
+      expect(attempts).toBe(2);
+      expect(reported).toBe(1);
+      expect(logged).toBeGreaterThan(0);
+      expect(escaped).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onEscaped);
+      process.off("uncaughtException", onEscaped);
+    }
+  });
+
   it("sends nothing for a wait already aborted, so no answer is left unhandled when the instance ends", async () => {
     const mostra = await host({ home: join(dir.path, "home"), env: hostEnv(dir.path) });
     const unhandled: unknown[] = [];

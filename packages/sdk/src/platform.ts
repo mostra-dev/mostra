@@ -19,12 +19,40 @@ export interface PlatformFacts {
   readonly glibc?: string | undefined;
 }
 
-/** The facts of the running process. */
+/** What {@link glibcRuntime} needs of `process.report`. */
+interface Reporter {
+  /** Node.js 22.13 and 23.3 or later; `@types/node` 24.19 doesn't declare it yet. */
+  excludeNetwork?: boolean;
+  getReport(): object;
+}
+
+/**
+ * The glibc release Node.js reports, read from its diagnostic report's header. The report runs in
+ * the caller's process (a host's server, say) and by default resolves the name of every open TCP
+ * handle, synchronously; with `excludeNetwork` it does none of that (Opus review finding 4), as
+ * detect-libc does. The setting is restored after.
+ */
+export function glibcRuntime(report: Reporter | undefined): string | undefined {
+  if (report === undefined) return undefined;
+  const before = report.excludeNetwork ?? false;
+  report.excludeNetwork = true;
+  try {
+    return (report.getReport() as { header?: { glibcVersionRuntime?: string } }).header
+      ?.glibcVersionRuntime;
+  } finally {
+    report.excludeNetwork = before;
+  }
+}
+
+let facts: PlatformFacts | undefined;
+
+/** The facts of the running process, read once. */
 export function currentPlatform(): PlatformFacts {
-  if (process.platform !== "linux") return { platform: process.platform, arch: process.arch };
-  const header = (process.report?.getReport() as { header?: { glibcVersionRuntime?: string } })
-    ?.header;
-  return { platform: process.platform, arch: process.arch, glibc: header?.glibcVersionRuntime };
+  facts ??=
+    process.platform === "linux"
+      ? { platform: process.platform, arch: process.arch, glibc: glibcRuntime(process.report) }
+      : { platform: process.platform, arch: process.arch };
+  return facts;
 }
 
 /**

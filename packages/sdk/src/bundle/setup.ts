@@ -6,7 +6,7 @@
  * hand, and for the Rust crate (WP-12), so there is one implementation of what "ready" means.
  */
 import { spawn } from "node:child_process";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   BUNDLE_SETUP_MARKER,
@@ -16,6 +16,7 @@ import {
   createDiagnostic,
   RpcError,
 } from "@mostra/protocol";
+import { scrubUrls } from "./download.ts";
 import { checkTree, hashFile, safeRelative } from "./tree.ts";
 
 /** The environment setup reads. */
@@ -159,6 +160,36 @@ function installEnvironment(bundle: Bundle, env: Environment): NodeJS.ProcessEnv
   return out;
 }
 
+/** The variables whose URLs may carry credentials the browser's fetch uses. */
+const CREDENTIAL_URLS = [
+  "PLAYWRIGHT_DOWNLOAD_HOST",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+];
+
+/** `text` without URLs' credentials or queries, and without any password `env`'s URLs carry. */
+export function scrubSecrets(text: string, env: Environment): string {
+  let out = scrubUrls(text);
+  for (const name of CREDENTIAL_URLS) {
+    const value = env[name];
+    if (!value) continue;
+    // A proxy is often written without a scheme (`user:pass@host:3128`), which `URL` would read
+    // as the scheme `user:`.
+    const spelled = value.includes("://") ? value : `http://${value}`;
+    const parsed = URL.canParse(spelled) ? new URL(spelled) : undefined;
+    for (const secret of [parsed?.password, parsed?.username]) {
+      if (!secret) continue;
+      for (const form of new Set([secret, decodeURIComponent(secret)]))
+        if (form.length >= 3) out = out.split(form).join("***");
+    }
+  }
+  return out;
+}
+
 /** Runs the bundle's Playwright to fetch the pinned browser; at most 15 minutes. */
 async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<void> {
   const { root, info } = bundle;
@@ -185,7 +216,13 @@ async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<vo
     child.on("close", (exit, signal) => resolve(exit ?? signal ?? "unknown"));
   });
   if (code === 0) return;
-  const tail = output.join("").trim().split("\n").slice(-6).join(" | ");
+  // Playwright prints the URLs it fetches, and a mirror's or proxy's may carry credentials
+  // (Opus review finding 3): every URL is reduced to its printable form, and any password the
+  // environment names is removed wherever it appears.
+  const tail = scrubSecrets(
+    output.join("").trim().split("\n").slice(-6).join(" | "),
+    options.env ?? process.env,
+  );
   throw new RpcError(
     createDiagnostic("MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED", {
       message: `Fetching the verify browser (${info.browser.name} ${info.browser.browserVersion}) failed (${code}): ${tail}`,
@@ -215,6 +252,9 @@ export async function setupBundle(root: string, options: SetupOptions = {}): Pro
         }),
       );
     }
+    // Fresh, never over what's there: a directory that differs from the pin may still carry
+    // Playwright's "installation complete" marker, and Playwright would then fetch nothing.
+    await rm(browsersDir(root), { recursive: true, force: true });
     await installBrowser(bundle, options);
     const problems = await checkBrowser(bundle);
     if (problems.length > 0) {

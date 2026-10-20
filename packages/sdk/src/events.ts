@@ -170,7 +170,10 @@ class EventStream implements AsyncIterator<EventPage> {
     await this.#session
       .call(eventsUnsubscribeMethod, { subscriptionId: id })
       .catch(() => undefined);
-    await acked;
+    // A pause runs from a page's arrival, where nobody awaits it, so it never rejects (Opus review
+    // finding 7): an ack the instance refused (or a connection gone) ends the stream with that
+    // error, which the consumer's next() then throws.
+    await acked.catch((error: unknown) => this.#end(error));
     if (this.#subscription === id) this.#subscription = undefined;
   }
 

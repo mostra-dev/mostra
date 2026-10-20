@@ -195,7 +195,11 @@ export interface BundleAsset {
 /** The asset schema. */
 export const BundleAsset: z.ZodType<BundleAsset> = z
   .object({
-    file: z.string().min(1),
+    // Exactly an archive's own name, no directory: an installer joins it to its scratch directory
+    // (Opus review finding 8), and `BundlePins` checks it names its release and platform.
+    file: z
+      .string()
+      .regex(/^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\.tar\.gz$/),
     sha256,
     size: z.int().positive(),
     unpackedSize: z.int().positive(),
@@ -217,13 +221,23 @@ export interface BundlePins {
   readonly assets: Partial<Record<BundlePlatform, BundleAsset>>;
 }
 
-/** The `bundles.json` schema. */
+/** The `bundles.json` schema: each asset's `file` is {@link bundleAssetName} of its release and platform. */
 export const BundlePins: z.ZodType<BundlePins> = z
   .object({
     schemaVersion: z.literal(1),
-    version: z.string().min(1),
+    version: z.string().regex(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/),
     release: z.url({ protocol: /^https?$/ }),
     assets: z.partialRecord(BundlePlatformSchema, BundleAsset),
+  })
+  .superRefine((pins, context) => {
+    for (const [platform, asset] of Object.entries(pins.assets)) {
+      if (asset && asset.file !== bundleAssetName(pins.version, platform as BundlePlatform))
+        context.addIssue({
+          code: "custom",
+          path: ["assets", platform, "file"],
+          message: `must be ${bundleAssetName(pins.version, platform as BundlePlatform)}`,
+        });
+    }
   })
   .register(wireRegistry, { id: "BundlePins" });
 

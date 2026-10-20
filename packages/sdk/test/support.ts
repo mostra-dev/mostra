@@ -50,7 +50,10 @@ const { dirname, join } = require("node:path");
 const browsers = process.env.PLAYWRIGHT_BROWSERS_PATH;
 if (process.argv[2] !== "install" || process.argv[3] !== "chromium-headless-shell") process.exit(2);
 if (process.env.FAKE_INSTALL_LOG) appendFileSync(process.env.FAKE_INSTALL_LOG, "install\\n");
+if (process.env.FAKE_BROWSER_SAY) console.log(process.env.FAKE_BROWSER_SAY);
 if (process.env.FAKE_BROWSER_FAIL) { console.error("ERROR: connect ECONNREFUSED"); process.exit(1); }
+// As Playwright does: a browser marked complete is never fetched again.
+if (require("node:fs").existsSync(join(browsers, "chromium_headless_shell-1", "INSTALLATION_COMPLETE"))) process.exit(0);
 const file = join(browsers, ${JSON.stringify(BROWSER_FILE)});
 mkdirSync(dirname(file), { recursive: true });
 writeFileSync(file, process.env.FAKE_BROWSER_CONTENT ?? ${JSON.stringify(BROWSER_CONTENT)}, { mode: 0o755 });

@@ -73,6 +73,18 @@ describe("the runtime bundle's contract (RT-01)", () => {
       BundlePins.safeParse({ ...pins, assets: { "freebsd-x64": pins.assets["linux-x64"] } })
         .success,
     ).toBe(false);
+    // An asset is exactly its release's archive for its platform (Opus review finding 8): an
+    // installer joins the name to a directory, so nothing else may stand there.
+    const named = (file: string) =>
+      BundlePins.safeParse({
+        ...pins,
+        assets: { "linux-x64": { ...pins.assets["linux-x64"], file } },
+      }).success;
+    expect(named("../../escaped.tar.gz")).toBe(false);
+    expect(named("dir/mostra-0.1.0-linux-x64.tar.gz")).toBe(false);
+    expect(named("mostra-0.1.0-linux-arm64.tar.gz")).toBe(false);
+    expect(named("mostra-0.0.9-linux-x64.tar.gz")).toBe(false);
+    expect(BundlePins.safeParse({ ...pins, version: "../0.1.0" }).success).toBe(false);
   });
 
   it("records setup with the files digest it verified", () => {

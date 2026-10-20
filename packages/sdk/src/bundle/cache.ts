@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   type BundleAsset,
+  BundleAsset as BundleAssetSchema,
   type BundlePins,
   type BundlePlatform,
   bundleAssetName,
@@ -73,6 +74,20 @@ const BROWSER_ALLOWANCE = 500 * 1024 * 1024;
  */
 export async function installPinned(pins: BundlePins, options: InstallOptions): Promise<Bundle> {
   const asset = pins.assets[options.platform];
+  // Checked before any I/O: the asset's name becomes a path in the cache's scratch directory and
+  // its digest the bundle's directory (Opus review finding 8), so the asset must be well-formed
+  // and named exactly as its release's archive for this platform.
+  if (
+    asset !== undefined &&
+    (!BundleAssetSchema.safeParse(asset).success ||
+      asset.file !== bundleAssetName(pins.version, options.platform))
+  ) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_ENV_BUNDLE_INVALID", {
+        message: `The pins name ${JSON.stringify(asset.file)} for ${options.platform}, not Mostra ${pins.version}'s archive ${bundleAssetName(pins.version, options.platform)}.`,
+      }),
+    );
+  }
   if (asset === undefined) {
     throw new RpcError(
       createDiagnostic("MOSTRA_ENV_BUNDLE_UNAVAILABLE", {
@@ -99,20 +114,34 @@ export async function installPinned(pins: BundlePins, options: InstallOptions): 
     if (raced) return raced;
     await sweep(bundles);
     if (await exists(dir)) {
-      // A bundle whose files checked out but whose setup didn't finish (no network for the
-      // browser, a crash): check again and finish; anything off means downloading it afresh.
-      const kept = await finish(dir, options).catch(async (error: unknown) => {
-        if (error instanceof RpcError && error.diagnostic.code !== "MOSTRA_ENV_BUNDLE_INVALID")
-          throw error;
-        await rm(dir, { recursive: true, force: true });
-        return undefined;
-      });
-      if (kept) return kept;
+      // A bundle whose setup didn't finish (no network for the browser, a crash). Only its own
+      // files decide whether it is downloaded afresh: a file that differs from the pins can't be
+      // repaired in place, but the browser can be fetched again, and downloading 200 MB again
+      // never changes what Playwright serves (Opus review finding 5). Anything else, such as a
+      // permission error, is thrown: it says nothing about the bundle, so nothing is deleted.
+      if (await filesIntact(dir)) return await finish(dir, { ...options, filesChecked: true });
+      await rm(dir, { recursive: true, force: true });
     }
     await fetchInto(pins, asset, dir, bundles, options);
     return await finish(dir, { ...options, filesChecked: true });
   } finally {
     await release();
+  }
+}
+
+/**
+ * Whether the bundle at `dir` holds exactly what its `files.json` lists. `false` only for
+ * `MOSTRA_ENV_BUNDLE_INVALID` (a missing or changed file, a `bundle.json` that doesn't read);
+ * every other error is thrown.
+ */
+async function filesIntact(dir: string): Promise<boolean> {
+  try {
+    await checkFiles(await readBundle(dir));
+    return true;
+  } catch (error) {
+    if (error instanceof RpcError && error.diagnostic.code === "MOSTRA_ENV_BUNDLE_INVALID")
+      return false;
+    throw error;
   }
 }
 

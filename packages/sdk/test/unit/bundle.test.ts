@@ -435,4 +435,99 @@ describe("a bundle's links (RT-01)", () => {
     expect(problems.join("\n")).toContain("lib/escape: links outside the bundle");
     expect(problems.join("\n")).not.toContain("lib/inside");
   });
+
+  it("fetches a browser that differs from its pin again into an empty directory, and never downloads the bundle again (Opus review finding 5)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const wrong = pinsEnv(dir.path, synthetic, release, {
+      FAKE_BROWSER_CONTENT: "another build\n",
+    });
+    expect(
+      await failure(
+        installPinned(synthetic.pins(release), { env: wrong, platform: bundlePlatform() }),
+      ),
+    ).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+    const root = bundleDir(wrong, synthetic.sha256);
+    // The browser can be fetched again; the bundle's own files were never in question.
+    expect(existsSync(join(root, "bundle.json"))).toBe(true);
+    const { rmSync } = await import("node:fs");
+    rmSync(synthetic.archive); // any download of the bundle would now fail
+    expect(
+      await failure(
+        installPinned(synthetic.pins(release), { env: wrong, platform: bundlePlatform() }),
+      ),
+    ).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+    expect(existsSync(join(root, "bundle.json"))).toBe(true);
+    // Once the browser served is the pinned one, setup finishes from the cache: the old
+    // directory, marked complete as Playwright marks it, didn't stop the fetch.
+    const right = { ...wrong, FAKE_BROWSER_CONTENT: "" };
+    delete (right as Record<string, string>)["FAKE_BROWSER_CONTENT"];
+    const bundle = await installPinned(synthetic.pins(release), {
+      env: right,
+      platform: bundlePlatform(),
+    });
+    expect(await readSetup(bundle)).toBeDefined();
+  });
+
+  it("keeps a bundle whose check fails for a reason that isn't the bundle's, and says why (Opus review finding 5)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const env = pinsEnv(dir.path, synthetic, release, { FAKE_BROWSER_FAIL: "1" });
+    await failure(installPinned(synthetic.pins(release), { env, platform: bundlePlatform() }));
+    const root = bundleDir(env, synthetic.sha256);
+    const { chmodSync } = await import("node:fs");
+    const unreadable = join(root, "lib/node_modules/@mostra/cli/dist/bin.js");
+    chmodSync(unreadable, 0o000);
+    try {
+      const error = await installPinned(synthetic.pins(release), {
+        env,
+        platform: bundlePlatform(),
+      }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(
+        error instanceof RpcError && error.diagnostic.code === "MOSTRA_ENV_BUNDLE_INVALID",
+      ).toBe(false);
+      expect(existsSync(join(root, "bundle.json"))).toBe(true);
+    } finally {
+      chmodSync(unreadable, 0o644);
+    }
+  });
+
+  it("names no credential a mirror's or proxy's URL carries when the browser can't be fetched (Opus review finding 3)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const env = pinsEnv(dir.path, synthetic, release, {
+      FAKE_BROWSER_FAIL: "1",
+      FAKE_BROWSER_SAY:
+        "Downloading https://mirror-user:m1rr0r-secret@mirror.example/builds/cft/1/x.zip?sig=q4ery-secret via proxy-user:pr0xy-secret@proxy.example:3128",
+      PLAYWRIGHT_DOWNLOAD_HOST: "https://mirror-user:m1rr0r-secret@mirror.example",
+      HTTPS_PROXY: "proxy-user:pr0xy-secret@proxy.example:3128",
+    });
+    const error = await installPinned(synthetic.pins(release), {
+      env,
+      platform: bundlePlatform(),
+    }).catch((caught: RpcError) => caught);
+    const said = JSON.stringify((error as RpcError).diagnostic);
+    expect((error as RpcError).diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED");
+    expect(said).toContain("mirror.example");
+    for (const secret of ["m1rr0r-secret", "q4ery-secret", "pr0xy-secret"])
+      expect(said).not.toContain(secret);
+  });
+
+  it("refuses pins whose asset isn't named as its release's archive, before anything is written (Opus review finding 8)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const env = pinsEnv(dir.path, synthetic, release);
+    const pins = synthetic.pins(release);
+    const asset = pins.assets[bundlePlatform()];
+    const crafted = {
+      ...pins,
+      assets: { [bundlePlatform()]: { ...asset, file: "../../escaped.tar.gz" } },
+    } as typeof pins;
+    expect(await failure(installPinned(crafted, { env, platform: bundlePlatform() }))).toBe(
+      "MOSTRA_ENV_BUNDLE_INVALID",
+    );
+    expect(existsSync(join(dir.path, "cache"))).toBe(false);
+    expect(existsSync(join(dir.path, "escaped.tar.gz"))).toBe(false);
+  });
 });

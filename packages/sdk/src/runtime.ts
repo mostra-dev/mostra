@@ -11,7 +11,7 @@
  * Anything a bundle supplies is checked first: its setup marker must match it, or setup runs.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { BundlePins, createDiagnostic, RpcError } from "@mostra/protocol";
 import { type InstallProgress, installPinned } from "./bundle/cache.ts";
 import {
@@ -51,9 +51,23 @@ export interface RuntimeOptions {
   readonly onProgress?: ((progress: InstallProgress) => void) | undefined;
 }
 
-/** The pins this build carries: `dist/bundles.json`, which the release writes before publishing. */
+/**
+ * Where the pins are read from: `<package>/dist/bundles.json`, which the release writes before
+ * publishing. `MOSTRA_TEST_BUNDLE_PINS` names another file only for a package that runs from a
+ * development checkout (its real path outside any `node_modules`), where the tests use it: an
+ * installed copy (npm's `node_modules`, or a bundle's `lib/node_modules`) ignores it, so a
+ * variable leaked into a user's environment can't swap the pins npm's provenance covers (Opus
+ * review finding 8).
+ */
+export function pinsFile(env: Environment, root: string): string {
+  const override = env["MOSTRA_TEST_BUNDLE_PINS"];
+  const installed = root.split(sep).includes("node_modules");
+  return override && !installed ? override : join(root, "dist", "bundles.json");
+}
+
+/** The pins this build carries: `dist/bundles.json` (a test override applies only in a development checkout). */
 export function readPins(env: Environment): BundlePins | undefined {
-  const file = env["MOSTRA_TEST_BUNDLE_PINS"] || join(packageRoot(), "dist", "bundles.json");
+  const file = pinsFile(env, packageRoot());
   if (!existsSync(file)) return undefined;
   let data: unknown;
   try {

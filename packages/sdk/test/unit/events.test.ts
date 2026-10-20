@@ -246,4 +246,72 @@ describe("ending the stream (IN-08)", () => {
     expect(calls.map((call) => call.method)).toEqual(["events/subscribe", "events/unsubscribe"]);
     expect(calls[1]?.params).toEqual({ subscriptionId: "sub-late" });
   });
+
+  it("ends the stream with a refused acknowledgement a pause sent, never an unhandled rejection (Opus review finding 7)", async () => {
+    // Each subscription's answer arrives with two pages in the same chunk, so a stream with a
+    // high-water mark of two pauses at once: the second pause, after a resume, acknowledges the
+    // page the consumer handled meanwhile, and the instance refuses it.
+    let handler: ((params: unknown) => void) | undefined;
+    let subscriptions = 0;
+    const batches = [
+      [1, 2],
+      [3, 4],
+    ];
+    const session: EventSession = {
+      call: (method) => {
+        if (method.method === "events/subscribe") {
+          const id = `s${++subscriptions}`;
+          const cursors = batches.shift() ?? [];
+          const answer = Promise.resolve({ subscriptionId: id, cursor: "0" } as never);
+          void answer.then(() => {
+            for (const cursor of cursors)
+              handler?.({ subscriptionId: id, events: [event(cursor)], cursor: String(cursor) });
+          });
+          return answer;
+        }
+        if (method.method === "events/ack")
+          return Promise.reject(new Error("The instance refused the acknowledgement."));
+        return Promise.resolve({} as never);
+      },
+      onNotification(next) {
+        handler = next;
+        return () => {
+          handler = undefined;
+        };
+      },
+      closed: new Promise(() => {}),
+    };
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const iterator = openEventStream(session, {
+        highWaterMark: 2,
+        name: "tasks",
+        after: "0",
+      })[Symbol.asyncIterator]();
+      const seen: number[] = [];
+      let failure: unknown;
+      try {
+        for (let i = 0; i < 6; i++) {
+          const page = await nextPage(iterator);
+          if (page.done) break;
+          seen.push(...page.value.events.map((e: EventRecord) => Number(e.cursor)));
+          // A consumer that takes time over each page, as real ones do: the pause's outcome
+          // then settles while nobody awaits it.
+          await new Promise((done) => setTimeout(done, 20));
+        }
+      } catch (error) {
+        failure = error;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+      expect(unhandled).toEqual([]);
+      expect(String(failure)).toContain("refused the acknowledgement");
+      expect(seen[0]).toBe(1);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
 });

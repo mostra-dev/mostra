@@ -144,11 +144,14 @@ export interface MostraOptions {
   readonly urlHost?: string;
   /** The instance's environment. Default: this process's. */
   readonly env?: Environment;
-  /** Each line the instance logs (JSON, on its stderr). */
+  /** Each line the instance logs (JSON, on its stderr). A callback that throws is ignored. */
   readonly onLog?: (line: string) => void;
-  /** Progress of the first download or setup of the runtime bundle. */
+  /** Progress of the first download or setup of the runtime bundle. A throw is ignored. */
   readonly onProgress?: (progress: InstallProgress) => void;
-  /** An exception a port threw; the instance got `MOSTRA_HOST_INTERNAL_ERROR` and will retry. */
+  /**
+   * An exception a port threw; the instance got `MOSTRA_HOST_INTERNAL_ERROR` and will retry. A
+   * callback that throws is ignored, and the instance is answered all the same.
+   */
   readonly onPortError?: (error: unknown, method: string) => void;
   /** Gives up finding the runtime and starting the instance. */
   readonly signal?: AbortSignal;
@@ -333,12 +336,33 @@ function stopChild(
   });
 }
 
+/** `callback`, made unable to throw into its caller. */
+function guarded<A extends unknown[]>(
+  callback: ((...args: A) => void) | undefined,
+): ((...args: A) => void) | undefined {
+  if (callback === undefined) return undefined;
+  return (...args: A) => {
+    try {
+      callback(...args);
+    } catch {
+      // The host's own code failed; Mostra's work goes on.
+    }
+  };
+}
+
 /**
  * Spawns an instance for `home` and opens its session. Rejects with the instance's own diagnostic
  * when it can't start (`MOSTRA_HOME_LOCKED`, `MOSTRA_PLATFORM_UNSUPPORTED` …), or with the
  * runtime's (`MOSTRA_ENV_BUNDLE_*`) when no verified runtime can be found.
  */
 export async function createMostra(options: MostraOptions): Promise<Mostra> {
+  // The host's callbacks run inside Mostra's own handlers (a pipe's data listener, the RPC
+  // peer's error path, a download's progress): one that throws must never escape into the host's
+  // process as an uncaught exception or unhandled rejection, nor stop an answer (Opus review
+  // finding 6). A callback that throws is ignored.
+  const onLog = guarded(options.onLog);
+  const onProgress = guarded(options.onProgress);
+  const onPortError = guarded(options.onPortError);
   const ports = options.ports ?? {};
   const names = portNames(ports);
   const env = options.env ?? process.env;
@@ -347,7 +371,7 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
     bundle: options.bundle,
     env,
     signal: options.signal,
-    onProgress: options.onProgress,
+    ...(onProgress ? { onProgress } : {}),
   });
   options.signal?.throwIfAborted();
   const args = [runtime.runtimeEntry, "host", "--home", home];
@@ -372,7 +396,7 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
     for (const line of errLines.push(chunk)) {
       logTail.push(line);
       if (logTail.length > 20) logTail.shift();
-      options.onLog?.(line);
+      onLog?.(line);
     }
   });
 
@@ -419,7 +443,7 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
     onNotification: (method, params) => {
       for (const handler of notificationHandlers.get(method) ?? []) handler(params);
     },
-    onInternalError: (error, method) => options.onPortError?.(error, method),
+    onInternalError: (error, method) => onPortError?.(error, method),
   });
   const lines = new LineSplitter();
   child.stdout?.setEncoding("utf8");
