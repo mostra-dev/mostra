@@ -261,11 +261,11 @@ async function verify(): Promise<void> {
   if (!current || current.draft) fail(`${tag} isn't published.`);
   const problems = assetProblems(current, local);
   if (problems.length > 0) fail(`${tag} doesn't hold this run's assets: ${problems.join("; ")}.`);
-  // What an installer does, without credentials: each pinned URL answers with the archive.
-  for (const name of local.keys()) {
+  // What an installer does, without credentials: each of the release's own archives (equal to
+  // this run's, just checked) answers at its pinned URL with its size.
+  for (const { name, size } of current.assets) {
     if (!name.endsWith(".tar.gz")) continue;
-    const url = `https://github.com/${REPO}/releases/download/${tag}/${name}`;
-    const size = current.assets.find((asset) => asset.name === name)?.size;
+    const url = `https://github.com/${REPO}/releases/download/${tag}/${encodeURIComponent(name)}`;
     let response: Response | undefined;
     for (let attempt = 1; attempt <= 5; attempt++) {
       response = await fetch(url, { method: "HEAD", redirect: "follow" }).catch(() => undefined);
