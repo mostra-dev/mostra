@@ -489,3 +489,14 @@ Checked by the WP-11 session on 2026-10-19 against the primary sources named and
 | `undici` | 8.11.2 | 2026-09-24 | MIT; Node.js 22.19 or later | The SDK's downloads (`EnvHttpProxyAgent` honors the proxy variables); 8.12 waits for the cooldown |
 | `tar` | 7.5.22 | 2026-07-24 | BlueOak-1.0.0 (OSI) | The SDK's extraction (strict, no absolute paths, no owners) and the assembler's packing |
 | `@changesets/cli` | 3.0.3, config schema 4.0.1 | | MIT | `fixed` groups and `privatePackages: { version: false, tag: false }` (D142 item 7) |
+
+**Found while proving WP-11** (2026-10-20; local runs on macOS 26.2 arm64 and the release workflow's GitHub runners):
+
+| Fact | Value | Source | Consequence |
+|---|---|---|---|
+| pnpm imports on Linux | `pnpm deploy` links packages from its store as hard links on the Linux runners, so the staged tree's files had more than one link | release workflow, `bundle (linux-x64)` and `(linux-arm64)` | Both deploys pass `--config.package-import-method=copy`; the assembler fails on any file with more than one link |
+| node-tar and hard links | `c()` writes the second path of a file with two links as a `Link` entry | local probe with tar 7.5.22 | The SDK's extractor refuses `Link` entries by design, so a bundle must hold none |
+| undici's `fetch` and credentials | A URL with a user or password is refused: "Request cannot be constructed from a URL that includes credentials", repeating the URL | `packages/sdk/test/unit/download.test.ts` (red before the fix) | A mirror's credentials travel as Basic authorization; download messages pass through `scrubUrls` |
+| `EnvHttpProxyAgent` options | `httpProxy`, `httpsProxy` and `noProxy` override the variables; an option left out falls back to `process.env` (`noProxy` included) | undici 8.11.2 `lib/dispatcher/env-http-proxy-agent.js` | The SDK passes all three, empty ones included, from the environment it was given |
+| npm 10 on Node.js 20 | `npm install` of local tarballs that depend on each other fails: "Cannot read properties of null (reading 'edgesOut')" (Node.js 20.20.2's npm 10) | release workflow, `npm-old-node` | That job installs with npm 11.21.0 (Node.js 20.17 or later); the binaries still run on Node.js 20 |
+| `$TMPDIR` on macOS runners | Long enough that a runtime directory under it puts the control socket at 106 bytes, over macOS's 103 | release workflow, `npm-smoke (darwin-arm64)`: `MOSTRA_HOME_SOCKET_TOO_LONG` | The smoke tests give the runtime its own directory under `/tmp` |
