@@ -21,6 +21,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { constants } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { BUNDLE_NAME, type BundleInfo, bundleAssetName } from "@mostra/protocol";
@@ -44,7 +45,10 @@ import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(process.env.BOOT_LOG, JSON.stringify({ args, viaBundleNode: process.env.VIA_BUNDLE_NODE === "1" }) + "\\n");
 const exit = args.find((arg) => arg.startsWith("exit-"));
-process.exit(exit ? Number(exit.slice(5)) : 0);
+const signal = args.find((arg) => arg.startsWith("signal-"));
+if (signal) process.kill(process.pid, signal.slice(7));
+else if (args.includes("wait")) setInterval(() => {}, 1000);
+else process.exit(exit ? Number(exit.slice(5)) : 0);
 `;
 
 const dir = mkdtempSync("/tmp/mcb-");
@@ -133,6 +137,7 @@ function mostra(
   pinsFile: string,
   cache: string,
   mirror: string = join(dir, "release"),
+  started?: (pid: number, log: string) => void,
 ): Promise<{ code: number; stdout: string; stderr: string; log: string }> {
   const log = join(dir, `boot-${Math.random().toString(36).slice(2)}.log`);
   const env: Record<string, string> = {
@@ -148,6 +153,7 @@ function mostra(
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    if (child.pid !== undefined) started?.(child.pid, log);
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
@@ -184,6 +190,23 @@ describe("the npm bootstrap (RT-01)", () => {
     expect(again.code, again.stderr).toBe(0);
     expect(JSON.parse(again.log.trim()).args).toEqual(["list"]);
     expect(readdirSync(join(cache, "bundles"))).toEqual(installed);
+  });
+
+  it("exits as the bundle's mostra was ended, and passes a signal sent to it on", async () => {
+    const cache = join(dir, "cache-signals");
+    // Ended by a signal: 128 plus that signal's number, as a shell reports it.
+    const killed = await mostra(["signal-SIGUSR2"], pins, cache);
+    expect(killed.code, killed.stderr).toBe(128 + (constants.signals.SIGUSR2 as number));
+    // No terminal is attached here, so a SIGINT sent to the npm mostra reaches the bundle's.
+    const interrupted = await mostra(["wait"], pins, cache, join(dir, "release"), (pid, log) => {
+      const poll = setInterval(() => {
+        if (existsSync(log) && readFileSync(log, "utf8").includes('"wait"')) {
+          clearInterval(poll);
+          process.kill(pid, "SIGINT");
+        }
+      }, 50);
+    });
+    expect(interrupted.code, interrupted.stderr).toBe(128 + (constants.signals.SIGINT as number));
   });
 
   it("refuses a bundle whose SHA-256 isn't the pinned one, with one --json envelope, and runs nothing", async () => {

@@ -69,7 +69,10 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   release's pins in `@mostra/sdk`'s `dist/bundles.json`, `bin.ts` installs the pinned bundle
   (progress on stderr; with `--json` a failure is still one envelope) and runs the bundle's own
   `mostra` with the same arguments, passing on its exit code and signals. Nothing else of the CLI
-  loads on the system's Node.js, so `bootstrap.ts` must keep to Node.js 22.19's features.
+  loads on the system's Node.js, so `bootstrap.ts` must keep to Node.js 22.19's features. It
+  forwards SIGTERM and SIGHUP, and SIGINT only when no terminal is attached: at a terminal Ctrl-C
+  already reaches the bundle's `mostra` (one process group), and a second SIGINT would cut short
+  `mostra dev`'s graceful stop. Every failure, a spawn error included, is one `--json` envelope.
 - **One timer per deadline.** `--timeout` belongs to the command's one timer (`withTimeout` in
   `run.ts`), which names what was underway when it runs out: starting the home's daemon (the
   connection reports it through `onStarting`) or the command itself. `startDaemon` keeps only its

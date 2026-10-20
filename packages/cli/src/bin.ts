@@ -40,6 +40,10 @@ async function start(): Promise<number> {
           process.stderr.write(text);
         },
         stderrTty: process.stderr.isTTY === true,
+        terminal:
+          process.stdin.isTTY === true ||
+          process.stdout.isTTY === true ||
+          process.stderr.isTTY === true,
       })
     : await (await import("./run.ts")).run({
         argv: process.argv.slice(2),

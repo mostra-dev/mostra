@@ -12,7 +12,8 @@
  * none of the CLI's commands.
  */
 import { spawn } from "node:child_process";
-import { type Diagnostic, RpcError } from "@mostra/protocol";
+import { constants } from "node:os";
+import { createDiagnostic, type Diagnostic, RpcError } from "@mostra/protocol";
 import { enclosingBundle, type InstallProgress, readPins, resolveRuntime } from "@mostra/sdk";
 import { exitCodeFor } from "./exit.ts";
 import type { Environment } from "./home.ts";
@@ -25,6 +26,12 @@ export interface BootstrapIo {
   readonly stderr: (text: string) => void;
   /** Whether stderr is a terminal: progress then rewrites one line. */
   readonly stderrTty: boolean;
+  /**
+   * Whether a terminal is attached (stdin, stdout or stderr is one). Ctrl-C there signals the
+   * whole foreground process group, the bundle's `mostra` included, so SIGINT isn't forwarded:
+   * a second one would cut short a command that stops gracefully on the first (`mostra dev`).
+   */
+  readonly terminal: boolean;
 }
 
 /** Whether this CLI should move into its pinned bundle before running a command. */
@@ -84,15 +91,28 @@ function failed(io: BootstrapIo, diagnostic: Diagnostic): number {
  * reason no bundle could be found. Signals this process gets are passed on to the child.
  */
 export async function bootstrap(io: BootstrapIo): Promise<number> {
-  let runtime: Awaited<ReturnType<typeof resolveRuntime>>;
   try {
-    runtime = await resolveRuntime({ env: io.env, onProgress: progressReporter(io) });
+    return await runInBundle(io);
   } catch (error) {
+    // Whatever goes wrong, `--json` still gets exactly one envelope (D140 item 16).
     if (error instanceof RpcError) return failed(io, error.diagnostic);
-    throw error;
+    return failed(
+      io,
+      createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+        message: `The npm bootstrap failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+    );
   }
+}
+
+async function runInBundle(io: BootstrapIo): Promise<number> {
+  const runtime = await resolveRuntime({ env: io.env, onProgress: progressReporter(io) });
   if (runtime.cliEntry === undefined) {
-    throw new Error("The runtime the bootstrap found has no CLI entry.");
+    throw new RpcError(
+      createDiagnostic("MOSTRA_ENV_RUNTIME_MISSING", {
+        message: "The runtime the bootstrap found has no CLI entry.",
+      }),
+    );
   }
   const cli = runtime.cliEntry;
   return new Promise((resolve) => {
@@ -101,23 +121,31 @@ export async function bootstrap(io: BootstrapIo): Promise<number> {
       env: io.env as NodeJS.ProcessEnv,
     });
     const forward = (signal: NodeJS.Signals): void => {
+      if (signal === "SIGINT" && io.terminal) return; // the child got the terminal's own
       child.kill(signal);
     };
     const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
     for (const signal of signals) process.on(signal, forward);
-    child.on("error", (error) => {
+    let settled = false;
+    const settle = (code: number): void => {
+      if (settled) return;
+      settled = true;
       for (const signal of signals) process.off(signal, forward);
-      io.stderr(`mostra: couldn't start the runtime's CLI: ${error.message}\n`);
-      resolve(3);
-    });
-    child.on("exit", (code, signal) => {
-      for (const signal of signals) process.off(signal, forward);
-      const numbers: Partial<Record<NodeJS.Signals, number>> = {
-        SIGHUP: 1,
-        SIGINT: 2,
-        SIGTERM: 15,
-      };
-      resolve(code ?? 128 + (signal ? (numbers[signal] ?? 1) : 1));
-    });
+      resolve(code);
+    };
+    child.on("error", (error) =>
+      settle(
+        failed(
+          io,
+          createDiagnostic("MOSTRA_ENV_RUNTIME_MISSING", {
+            message: `The runtime bundle's CLI couldn't be started (${runtime.node}): ${error.message}`,
+          }),
+        ),
+      ),
+    );
+    // A child ended by a signal exits as a shell reports it: 128 plus the signal's number.
+    child.on("exit", (code, signal) =>
+      settle(code ?? 128 + (signal ? (constants.signals[signal] ?? 0) : 0)),
+    );
   });
 }
