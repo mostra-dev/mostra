@@ -105,7 +105,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | boundaries | always | dependency-cruiser, knip |
 | api | affected public packages | API Extractor diff, publint, attw; a changed report needs a changeset |
 | e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix; macOS and Linux for platform-specific suites |
-| integration | runtime or protocol affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the files by name, in `packages/runtime/vitest.config.ts`); a group nearing the target gets split again |
+| integration | runtime, protocol, CLI, SDK or create-mostra affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the runtime's files by name, in `packages/runtime/vitest.config.ts`, and `clients` for the CLI's, the SDK's and `create-mostra`'s suites); a group nearing the target gets split again |
 | hygiene | runtime affected | negative tests (bad Host, bad Origin, missing token, CSRF, revoked token) |
 | conformance | runtime, sdk, crates affected | the kit against standalone adapters and the reference test host |
 | examples | examples, templates, kit, runtime affected | `mostra verify` on every example and template, sharded; visual and ARIA baselines compared |

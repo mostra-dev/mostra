@@ -3,11 +3,13 @@ import { defineConfig } from "vitest/config";
 /**
  * `unit` runs in-process, with synthetic bundles and a local file server; `integration` spawns
  * real instances of the runtime built beside this package (the `integration` CI job on macOS and
- * Linux, D86), in the runtime's `core` group (`MOSTRA_TEST_GROUP`).
+ * Linux, D86), in the `clients` group (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts).
  */
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integration =
-  group === undefined || group === "" || group === "core" ? ["test/integration/**/*.test.ts"] : [];
+  group === undefined || group === "" || group === "clients"
+    ? ["test/integration/**/*.test.ts"]
+    : [];
 
 // Tests import the package by name, resolved to source through the `@mostra/source` condition.
 export default defineConfig({
