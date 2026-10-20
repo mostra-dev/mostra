@@ -259,6 +259,25 @@ async function removeEverywhere(dir: string, match: (name: string) => boolean): 
   }
 }
 
+/**
+ * Fails on any regular file with more than one link: tar would write it as a hard-link entry,
+ * which installers refuse, and it would share its bytes with something outside the bundle.
+ */
+async function checkNoHardLinks(root: string): Promise<void> {
+  const { lstat } = await import("node:fs/promises");
+  const linked: string[] = [];
+  const visit = async (dir: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) await visit(path);
+      else if (entry.isFile() && (await lstat(path)).nlink > 1) linked.push(relative(root, path));
+    }
+  };
+  await visit(root);
+  if (linked.length > 0)
+    fail(linked.slice(0, 50), `bundle: ${linked.length} files are hard links (deploy must copy)`);
+}
+
 /** Fails when a link in the tree doesn't resolve to something inside it. */
 async function checkLinks(root: string): Promise<void> {
   const { readlink, realpath } = await import("node:fs/promises");
@@ -393,6 +412,9 @@ async function main(): Promise<void> {
     "deploy",
     "--prod",
     "--config.node-linker=hoisted",
+    // Copies, never hard links into the store (pnpm's default on Linux): a bundle's files stand
+    // alone, and an archive holds no hard-link entries, which installers refuse.
+    "--config.package-import-method=copy",
     join(stage, "lib"),
   ]);
   step("deploying the warm set (isolated)");
@@ -401,6 +423,7 @@ async function main(): Promise<void> {
     "@mostra/warm",
     "deploy",
     "--prod",
+    "--config.package-import-method=copy",
     join(stage, "lib", "node_modules", "@mostra", "warm"),
   ]);
 
@@ -466,6 +489,7 @@ async function main(): Promise<void> {
 
   step("checking links and paths");
   await checkLinks(stage);
+  await checkNoHardLinks(stage);
   checkMachinePaths(stage);
 
   step("listing every file");
