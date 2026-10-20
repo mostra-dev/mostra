@@ -1,4 +1,12 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { RpcError } from "@mostra/protocol";
@@ -389,5 +397,42 @@ describe("the platform gate", () => {
     expect(code({ platform: "linux", arch: "x64" })).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
     expect(code({ platform: "linux", arch: "arm64", glibc: "2.39" })).toBe("ok");
     expect(code({ platform: "darwin", arch: "x64" })).toBe("ok");
+  });
+});
+
+describe("a bundle's links (RT-01)", () => {
+  let scratch: ReturnType<typeof tempDir>;
+  beforeEach(() => {
+    scratch = tempDir("mlink");
+  });
+  afterEach(() => scratch.cleanup());
+
+  it("refuses a link that leaves the bundle, even when its file list names it", async () => {
+    const root = join(scratch.path, "bundle");
+    mkdirSync(join(root, "lib"), { recursive: true });
+    writeFileSync(join(root, "lib", "a.js"), "a");
+    symlinkSync("a.js", join(root, "lib", "inside"));
+    symlinkSync("../../outside", join(root, "lib", "escape"));
+    // describeTree never lists such a link …
+    await expect(describeTree(root)).rejects.toThrow("links outside the tree");
+    // … and a list that does (a tampered or hand-made bundle) fails the check.
+    const listed = {
+      schemaVersion: 1 as const,
+      files: [
+        {
+          path: "lib/a.js",
+          size: 1,
+          sha256: createHash("sha256").update("a").digest("hex"),
+          executable: false,
+        },
+      ],
+      links: [
+        { path: "lib/escape", target: "../../outside" },
+        { path: "lib/inside", target: "a.js" },
+      ],
+    };
+    const problems = await checkTree(root, listed);
+    expect(problems.join("\n")).toContain("lib/escape: links outside the bundle");
+    expect(problems.join("\n")).not.toContain("lib/inside");
   });
 });

@@ -1,8 +1,10 @@
 /**
  * Unpacking a downloaded archive (RT-01). Only regular files, directories and symbolic links are
- * accepted, all under the archive's one top directory, which is stripped; node-tar refuses
- * absolute paths, `..` and links that leave the target. The tree is then checked against the
- * bundle's file list by setup, so anything the archive smuggled in is found there too.
+ * accepted, all under the archive's one top directory, which is stripped. node-tar refuses
+ * absolute paths, `..` and writing through a link; it does create a link whatever its target, so
+ * setup then checks the whole tree against the bundle's file list (`checkTree`), which refuses any
+ * file or link it doesn't list and any link that leaves the bundle. A pinned archive's SHA-256 is
+ * checked before any of this.
  */
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import { x } from "tar";
