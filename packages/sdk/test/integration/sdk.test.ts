@@ -198,6 +198,31 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     expect(later.status).toBe("satisfied");
   });
 
+  it("sends nothing for a wait already aborted, so no answer is left unhandled when the instance ends", async () => {
+    const mostra = await host({ home: join(dir.path, "home"), env: hostEnv(dir.path) });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const controller = new AbortController();
+      controller.abort(new Error("given up"));
+      await expect(
+        mostra.wait("art_00000000000000000000000000", "submitted", {
+          signal: controller.signal,
+          timeoutMs: 60_000,
+        }),
+      ).rejects.toThrow("given up");
+      process.kill(mostra.instance.pid, "SIGKILL");
+      await mostra.closed;
+      await new Promise((done) => setTimeout(done, 200));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("survives its instance dying mid-call: every call rejects, the host process never crashes", async () => {
     const mostra = await host({ home: join(dir.path, "home"), env: hostEnv(dir.path) });
     const uncaught: unknown[] = [];

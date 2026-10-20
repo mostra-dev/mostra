@@ -504,16 +504,19 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
     verify: (source, verifyOptions = {}) =>
       call(artifactVerifyMethod, { source: artifactRef(source), ...verifyOptions }),
     wait: (artifact, until, waitOptions = {}) => {
+      const signal = waitOptions.signal;
+      // Checked before the request goes out: nothing is sent for a wait already given up, so no
+      // answer is left without a handler (GPT review finding 4).
+      if (signal?.aborted) return Promise.reject(signal.reason);
       const pending = call(waitMethod, {
         artifact: artifactRef(artifact),
         until,
         timeoutMs: waitOptions.timeoutMs ?? WAIT_MAX_MS,
         ...(waitOptions.after !== undefined ? { after: waitOptions.after } : {}),
       });
-      const signal = waitOptions.signal;
       if (!signal) return pending;
-      if (signal.aborted) return Promise.reject(signal.reason);
-      // The instance's wait runs on until its own timeout; its late answer is simply dropped.
+      // The instance's wait runs on until its own timeout; its late answer, or the connection's
+      // end, is handled here and dropped.
       return new Promise<WaitResult>((done, fail) => {
         const onAbort = (): void => fail(signal.reason);
         signal.addEventListener("abort", onAbort, { once: true });
