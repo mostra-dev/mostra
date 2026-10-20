@@ -433,6 +433,18 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
       }),
     );
   });
+  // A pipe to an instance that died fails its next write (EPIPE) on its own schedule. Without a
+  // listener that error is an uncaught exception in the host's own process: every pipe has one,
+  // and a write that failed ends the session at once, as the instance's exit does.
+  child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+    peer.close(
+      createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+        message: `The Mostra instance for ${home} stopped reading (${error.code ?? error.message}).`,
+      }),
+    );
+  });
+  child.stdout?.on("error", () => {});
+  child.stderr?.on("error", () => {});
 
   const abort = (): void => {
     void stopChild(child, exited, 0);

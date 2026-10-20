@@ -169,6 +169,15 @@ const SEEDS: readonly Seed[] = [
     cwd: "../sdk",
   },
   {
+    requirement: "HO-04",
+    name: "a host crashes on EPIPE when its instance dies (own review)",
+    file: "../sdk/src/mostra.ts",
+    from: '  child.stdin?.on("error", (error: NodeJS.ErrnoException) => {',
+    to: '  child.stdin?.on("error-seeded", (error: NodeJS.ErrnoException) => {',
+    check: integration("sdk.test.ts", "survives its instance dying"),
+    cwd: "../sdk",
+  },
+  {
     requirement: "RT-01",
     name: "mostra starts on any Node.js (Node.js 20 then crashed inside undici)",
     file: "../cli/src/node-gate.ts",

@@ -198,6 +198,34 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     expect(later.status).toBe("satisfied");
   });
 
+  it("survives its instance dying mid-call: every call rejects, the host process never crashes", async () => {
+    const mostra = await host({ home: join(dir.path, "home"), env: hostEnv(dir.path) });
+    const uncaught: unknown[] = [];
+    const onUncaught = (error: unknown): void => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      // Writes racing the instance's death: a pipe whose reader died answers EPIPE, which must
+      // never surface as an unhandled stream error in the host's own process.
+      const big = "x".repeat(4 * 1024 * 1024);
+      process.kill(mostra.instance.pid, "SIGKILL");
+      const calls = Array.from({ length: 20 }, () =>
+        mostra.pushLive("art_00000000000000000000000000", { key: "k", value: big }).then(
+          () => "answered",
+          (error: unknown) => (error instanceof RpcError ? error.diagnostic.code : String(error)),
+        ),
+      );
+      const outcomes = await Promise.all(calls);
+      expect(new Set(outcomes)).toEqual(new Set(["MOSTRA_HOST_CONNECTION_CLOSED"]));
+      expect((await mostra.closed).signal).toBe("SIGKILL");
+      await new Promise((done) => setTimeout(done, 200));
+      expect(uncaught).toEqual([]);
+    } finally {
+      process.off("uncaughtException", onUncaught);
+    }
+  });
+
   it("refuses a port it can't serve, and reports a home another host owns with the instance's own code", async () => {
     await expect(
       createMostra({
