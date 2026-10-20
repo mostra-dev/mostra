@@ -23,6 +23,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/semver": "catalog:",
+    "semver": "catalog:",
     "tar": "catalog:",
     "typescript": "catalog:"
   }

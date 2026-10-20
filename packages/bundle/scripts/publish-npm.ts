@@ -11,14 +11,17 @@
  * `pack` packs every member and checks every tarball: the fixed group's one version, nothing of
  * `ee/` (D118), `@mostra/sdk` carrying `dist/bundles.json` for that version, and no file a package
  * must never ship (`.env`, keys). `publish` publishes exactly those tarballs, the ones the smoke
- * tests installed, in dependency order; a version already on npm is skipped, so a release that
- * failed half-way finishes when the workflow runs again. `--dry-run` runs `npm publish --dry-run`.
+ * tests installed, in dependency order, after a preflight over all of them (`plan`): a version
+ * already on npm is skipped, so a release that failed half-way finishes when the workflow runs
+ * again, and one that would move a package's `latest` backwards fails the release before anything
+ * is published. `--dry-run` runs `npm publish --dry-run`.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import semver from "semver";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { values, positionals } = parseArgs({
@@ -140,6 +143,55 @@ function pack(): void {
   console.log(`✓ npm pack: ${group.length} packages at ${version} in ${out}`);
 }
 
+/** What the registry holds of a package: its versions and its `latest`, or nothing yet. */
+interface Registered {
+  readonly versions: readonly string[];
+  readonly latest?: string;
+}
+
+/** Reads `name` from the registry; a package npm doesn't have is `{ versions: [] }`. */
+function registered(name: string): Registered {
+  const view = spawnSync("npm", ["view", name, "versions", "dist-tags", "--json"], {
+    encoding: "utf8",
+  });
+  if (view.status !== 0) {
+    if (/E404|404 Not Found/.test(`${view.stdout}${view.stderr}`)) return { versions: [] };
+    fail(`npm view ${name} failed: ${view.stderr.trim() || view.stdout.trim()}`);
+  }
+  const data = JSON.parse(view.stdout) as {
+    versions?: string | string[];
+    "dist-tags"?: Record<string, string>;
+  };
+  const versions = typeof data.versions === "string" ? [data.versions] : (data.versions ?? []);
+  const latest = data["dist-tags"]?.["latest"];
+  return { versions, ...(latest !== undefined ? { latest } : {}) };
+}
+
+/**
+ * What publishing does for each package, decided for all of them before anything is published,
+ * so a release never stops half-way on a refusal it could have known: a version already on npm is
+ * skipped (a re-run finishes a release that failed part-way); one that isn't newer than the
+ * package's `latest` would move `latest` backwards and fails the release before any publish. A
+ * dry run of the unreleased 0.0.0 (a pull request's tree, before `changeset version`) rehearses
+ * under the tag `dry-run` instead.
+ */
+function plan(): { member: (typeof group)[number]; tag?: string; skip?: true }[] {
+  const problems: string[] = [];
+  const steps = group.map((member) => {
+    const known = registered(member.name);
+    if (known.versions.includes(version)) return { member, skip: true as const };
+    if (known.latest !== undefined && !semver.gt(version, known.latest)) {
+      if (dryRun && version === "0.0.0") return { member, tag: "dry-run" };
+      problems.push(
+        `${member.name}@${version} isn't newer than its latest, ${known.latest}: publishing it would move latest backwards.`,
+      );
+    }
+    return { member };
+  });
+  if (problems.length > 0) fail(`nothing published: ${problems.join(" ")}`);
+  return steps;
+}
+
 function publish(): void {
   if (!values.from) fail("--from <dir> is required.");
   const from = resolve(values.from);
@@ -148,10 +200,10 @@ function publish(): void {
   for (const member of group) {
     const file = join(from, tarballName(member.name, version));
     if (!existsSync(file)) fail(`${file} is missing: run pack first.`);
-    const existing = spawnSync("npm", ["view", `${member.name}@${version}`, "version"], {
-      encoding: "utf8",
-    });
-    if (existing.status === 0 && existing.stdout.trim() === version) {
+  }
+  for (const step of plan()) {
+    const { member } = step;
+    if (step.skip) {
       console.log(`skipped ${member.name}@${version}: already on npm`);
       continue;
     }
@@ -159,13 +211,16 @@ function publish(): void {
     // a dry run elsewhere would refuse the flag.
     const args = [
       "publish",
-      file,
+      join(from, tarballName(member.name, version)),
       "--access",
       "public",
+      ...(step.tag ? ["--tag", step.tag] : []),
       ...(dryRun ? ["--dry-run"] : ["--provenance"]),
     ];
     run("npm", args, ROOT);
-    console.log(`${dryRun ? "would publish" : "published"} ${member.name}@${version}`);
+    console.log(
+      `${dryRun ? "would publish" : "published"} ${member.name}@${version}${step.tag ? ` (tag ${step.tag}: ${version} is the unreleased version, older than npm's latest)` : ""}`,
+    );
   }
   console.log(`✓ npm publish: ${group.length} packages at ${version}${dryRun ? " (dry run)" : ""}`);
 }

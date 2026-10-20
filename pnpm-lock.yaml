@@ -509,6 +509,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
+      semver:
+        specifier: 'catalog:'
+        version: 7.8.5
       tar:
         specifier: 'catalog:'
         version: 7.5.22
