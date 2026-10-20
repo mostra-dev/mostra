@@ -13,8 +13,11 @@ export HOME="$work/user" MOSTRA_CACHE_DIR="$work/cache" DO_NOT_TRACK=1
 mkdir -p "$HOME" "$work/project"
 cd "$work/project"
 npm init -y > /dev/null
+# Installed with npm 11.21.0 (it supports Node.js 20.17 and later): Node.js 20's own npm 10 crashes
+# installing a set of local tarballs that depend on each other ("Cannot read properties of null
+# (reading 'edgesOut')"), which isn't what this checks. The binaries below still run on Node.js 20.
 # shellcheck disable=SC2046
-npm install --no-audit --no-fund $(find "$tarballs" -name '*.tgz' | sort) > "$work/install.log" 2>&1 ||
+npx --yes npm@11.21.0 install --no-audit --no-fund $(find "$tarballs" -name '*.tgz' | sort) > "$work/install.log" 2>&1 ||
   die "npm install failed: $(tail -20 "$work/install.log")"
 for bin in mostra create-mostra; do
   set +e

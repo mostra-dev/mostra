@@ -60,7 +60,10 @@ PATH=$clean_path "$root/bin/mostra-setup" > "$work/logs/setup.json" 2> "$work/lo
 grep -q '"status":"ok"' "$work/logs/setup.json" || die "setup said: $(cat "$work/logs/setup.json")"
 
 home=$work/home
-export MOSTRA_HOME="$home" MOSTRA_RUNTIME_DIR="$work/run" MOSTRA_CONFIG_DIR="$work/config" HOME="$work/user"
+# The control socket lives in the runtime directory, and a socket path is at most 103 bytes on
+# macOS (D82), where $TMPDIR is long: a short directory of its own.
+run=$(mktemp -d /tmp/mostra-run-XXXXXX)
+export MOSTRA_HOME="$home" MOSTRA_RUNTIME_DIR="$run" MOSTRA_CONFIG_DIR="$work/config" HOME="$work/user"
 export DO_NOT_TRACK=1
 mkdir -p "$HOME"
 mostra() { PATH=$clean_path "$root/bin/mostra" "$@"; }

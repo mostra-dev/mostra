@@ -19,7 +19,9 @@ say() { printf 'npm-smoke: %s\n' "$*"; }
 die() { printf 'npm-smoke: FAILED: %s\n' "$*" >&2; exit 1; }
 
 say "the machine's Node.js: $(node --version), npm $(npm --version)"
-export HOME="$work/user" MOSTRA_HOME="$work/home" MOSTRA_RUNTIME_DIR="$work/run"
+# A short runtime directory: macOS caps a socket path at 103 bytes (D82) and its $TMPDIR is long.
+run=$(mktemp -d /tmp/mostra-run-XXXXXX)
+export HOME="$work/user" MOSTRA_HOME="$work/home" MOSTRA_RUNTIME_DIR="$run"
 export MOSTRA_CONFIG_DIR="$work/config" MOSTRA_CACHE_DIR="$work/cache" DO_NOT_TRACK=1
 export MOSTRA_BUNDLE_MIRROR="file://$archives"
 
