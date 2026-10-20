@@ -21,7 +21,6 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import semver from "semver";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { values, positionals } = parseArgs({
@@ -170,25 +169,40 @@ function registered(name: string): Registered {
 /**
  * What publishing does for each package, decided for all of them before anything is published,
  * so a release never stops half-way on a refusal it could have known: a version already on npm is
- * skipped (a re-run finishes a release that failed part-way); one that isn't newer than the
- * package's `latest` would move `latest` backwards and fails the release before any publish. A
- * dry run of the unreleased 0.0.0 (a pull request's tree, before `changeset version`) rehearses
- * under the tag `dry-run` instead.
+ * skipped (a re-run finishes a release that failed part-way), and every other package must pass
+ * `npm publish --dry-run`, npm's own checks (moving `latest` backwards among them), before the
+ * first real publish. A dry run of the unreleased 0.0.0 (a pull request's tree, before
+ * `changeset version`) rehearses a package npm already has under the tag `dry-run`, since 0.0.0
+ * is older than anything published. No dependency: this runs in the job that holds the OIDC token.
  */
-function plan(): { member: (typeof group)[number]; tag?: string; skip?: true }[] {
-  const problems: string[] = [];
+function plan(from: string): { member: (typeof group)[number]; tag?: string; skip?: true }[] {
   const steps = group.map((member) => {
     const known = registered(member.name);
     if (known.versions.includes(version)) return { member, skip: true as const };
-    if (known.latest !== undefined && !semver.gt(version, known.latest)) {
-      if (dryRun && version === "0.0.0") return { member, tag: "dry-run" };
-      problems.push(
-        `${member.name}@${version} isn't newer than its latest, ${known.latest}: publishing it would move latest backwards.`,
-      );
-    }
+    if (dryRun && version === "0.0.0" && known.latest !== undefined)
+      return { member, tag: "dry-run" };
     return { member };
   });
-  if (problems.length > 0) fail(`nothing published: ${problems.join(" ")}`);
+  if (!dryRun) {
+    const refused: string[] = [];
+    for (const step of steps) {
+      if (step.skip) continue;
+      const tarball = join(from, tarballName(step.member.name, version));
+      const check = spawnSync("npm", ["publish", tarball, "--access", "public", "--dry-run"], {
+        cwd: ROOT,
+        encoding: "utf8",
+      });
+      if (check.status !== 0) {
+        const said = `${check.stderr}${check.stdout}`
+          .split("\n")
+          .filter((line) => /error/i.test(line))
+          .join(" ")
+          .trim();
+        refused.push(`${step.member.name}@${version}: ${said || `npm exited ${check.status}`}`);
+      }
+    }
+    if (refused.length > 0) fail(`nothing published; npm would refuse: ${refused.join("; ")}`);
+  }
   return steps;
 }
 
@@ -201,7 +215,7 @@ function publish(): void {
     const file = join(from, tarballName(member.name, version));
     if (!existsSync(file)) fail(`${file} is missing: run pack first.`);
   }
-  for (const step of plan()) {
+  for (const step of plan(from)) {
     const { member } = step;
     if (step.skip) {
       console.log(`skipped ${member.name}@${version}: already on npm`);
@@ -219,7 +233,7 @@ function publish(): void {
     ];
     run("npm", args, ROOT);
     console.log(
-      `${dryRun ? "would publish" : "published"} ${member.name}@${version}${step.tag ? ` (tag ${step.tag}: ${version} is the unreleased version, older than npm's latest)` : ""}`,
+      `${dryRun ? "would publish" : "published"} ${member.name}@${version}${step.tag ? ` (tag ${step.tag}: ${version} is the unreleased version, older than anything npm has)` : ""}`,
     );
   }
   console.log(`✓ npm publish: ${group.length} packages at ${version}${dryRun ? " (dry run)" : ""}`);

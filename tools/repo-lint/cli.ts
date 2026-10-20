@@ -62,6 +62,48 @@ export function specifierProblems(pkg: WorkspacePackage): string[] {
 /** Packages released on their own versions: the extension contracts (D30). */
 const OWN_VERSION = /^@mostra\/contract-/;
 
+/**
+ * The imports in `source` that aren't Node.js built-ins (`node:`): a script the release's
+ * `publish` job runs has only the checkout and Node.js there, no installed packages, and the job
+ * holds the publishing credentials, so it runs nothing installed (EN-05).
+ */
+export function privilegedImportProblems(source: string, file: string): string[] {
+  const problems: string[] = [];
+  const specifiers = [
+    ...source.matchAll(/^\s*(?:import|export)\s[^;]*?\sfrom\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/^\s*import\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g),
+  ].map((match) => match[1] as string);
+  for (const specifier of specifiers) {
+    if (!specifier.startsWith("node:"))
+      problems.push(
+        `${file} imports "${specifier}", but the release's publish job runs it with Node.js built-ins only.`,
+      );
+  }
+  return problems;
+}
+
+/** The scripts `.github/workflows/release.yml`'s `publish` job runs with `node`, and their problems. */
+function publishJobProblems(root: string): string[] {
+  const file = join(root, ".github", "workflows", "release.yml");
+  if (!existsSync(file)) return [];
+  const workflow = parseYaml(readFileSync(file, "utf8")) as {
+    jobs?: Record<string, { steps?: { run?: string }[] }>;
+  };
+  const steps = workflow.jobs?.["publish"]?.steps ?? [];
+  const problems: string[] = [];
+  for (const step of steps) {
+    for (const match of (step.run ?? "").matchAll(/\bnode\s+(\S+\.(?:ts|mjs|js))\b/g)) {
+      const script = match[1] as string;
+      const path = join(root, script);
+      if (!existsSync(path))
+        problems.push(`release.yml's publish job runs ${script}, which doesn't exist.`);
+      else problems.push(...privilegedImportProblems(readFileSync(path, "utf8"), script));
+    }
+  }
+  return problems;
+}
+
 /** Problems with the release configuration: one fixed group of every core package published. */
 export function releaseGroupProblems(
   config: { fixed?: unknown; privatePackages?: unknown },
@@ -228,9 +270,10 @@ function main(): void {
     privatePackages?: unknown;
   };
   problems.push(...releaseGroupProblems(changesets, listPackages(root)));
+  problems.push(...publishJobProblems(root));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
-    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group`,
+    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group, a publish job on built-ins`,
   );
 }
 

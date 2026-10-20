@@ -6,7 +6,11 @@ import { describe, expect, it } from "vitest";
 import { eeLeaks } from "../api/pack.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
-import { releaseGroupProblems, workflowProblems } from "../repo-lint/cli.ts";
+import {
+  privilegedImportProblems,
+  releaseGroupProblems,
+  workflowProblems,
+} from "../repo-lint/cli.ts";
 import { type Bundle, compareBundles, compareSnapshots, type Schema } from "../schemas/compat.ts";
 
 const bundle = (defs: Record<string, Schema>, revision = "2026-10-10"): Bundle => ({
@@ -387,5 +391,27 @@ describe("the ee/ packing check (D118, EN-09)", () => {
       expect.stringContaining("built from ee/audit/log.ts"),
     ]);
     expect(leaks(["dist/broken.js.map"])).toEqual([expect.stringContaining("isn't JSON")]);
+  });
+});
+
+describe("the release's publish job runs built-ins only (EN-05)", () => {
+  it("accepts node: imports and refuses anything installed, however it is imported", () => {
+    const ok =
+      'import { spawnSync } from "node:child_process";\nconst fs = await import("node:fs");\n';
+    expect(privilegedImportProblems(ok, "a.ts")).toEqual([]);
+    const seeded = [
+      'import semver from "semver";',
+      'import { x } from "@mostra/protocol";',
+      'export { y } from "./helpers.ts";',
+      'import "tar";',
+      'const z = await import("undici");',
+    ].join("\n");
+    expect(privilegedImportProblems(seeded, "a.ts")).toEqual([
+      expect.stringContaining('"semver"'),
+      expect.stringContaining('"@mostra/protocol"'),
+      expect.stringContaining('"./helpers.ts"'),
+      expect.stringContaining('"tar"'),
+      expect.stringContaining('"undici"'),
+    ]);
   });
 });
