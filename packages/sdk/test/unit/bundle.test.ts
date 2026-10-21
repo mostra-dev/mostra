@@ -22,7 +22,7 @@ import {
   resolveRuntime,
   setupBundle,
 } from "@mostra/sdk";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_FILE, fileServer, pinsEnv, syntheticBundle, tempDir } from "../support.ts";
 
 let dir: ReturnType<typeof tempDir>;
@@ -290,6 +290,39 @@ describe("installing a pinned bundle (RT-01)", () => {
       expect(cached(env)).toEqual([synthetic.sha256]);
     } finally {
       await server.close();
+    }
+  });
+
+  it("touches its lock while the install runs, so a long install is never taken from it (Opus review of WP-12, finding 10)", async () => {
+    const { existsSync, statSync, utimesSync } = await import("node:fs");
+    vi.useFakeTimers({ toFake: ["setInterval"] });
+    try {
+      const synthetic = await syntheticBundle(dir.path);
+      const release = pathToFileURL(dir.path).href;
+      const env: Record<string, string> = {
+        ...pinsEnv(dir.path, synthetic, release),
+        FAKE_BROWSER_SLEEP_MS: "3000",
+      };
+      const lockPath = join(
+        env["MOSTRA_CACHE_DIR"] as string,
+        "bundles",
+        `${synthetic.sha256}.lock`,
+      );
+      const install = installPinned(synthetic.pins(release), { env, platform: bundlePlatform() });
+      while (!existsSync(lockPath)) await new Promise((done) => setTimeout(done, 10));
+      // As if the install had run for two hours.
+      const old = new Date(Date.now() - 2 * 60 * 60_000);
+      utimesSync(lockPath, old, old);
+      vi.advanceTimersByTime(61_000);
+      let fresh = false;
+      for (let i = 0; i < 100 && !fresh; i += 1) {
+        await new Promise((done) => setTimeout(done, 20));
+        fresh = existsSync(lockPath) && Date.now() - statSync(lockPath).mtimeMs < 60_000;
+      }
+      expect(fresh, "the held lock wasn't touched").toBe(true);
+      await install;
+    } finally {
+      vi.useRealTimers();
     }
   });
 

@@ -52,6 +52,7 @@ if (process.argv[2] !== "install" || process.argv[3] !== "chromium-headless-shel
 if (process.env.FAKE_INSTALL_LOG) appendFileSync(process.env.FAKE_INSTALL_LOG, "install\\n");
 if (process.env.FAKE_BROWSER_SAY) console.log(process.env.FAKE_BROWSER_SAY);
 if (process.env.FAKE_BROWSER_FAIL) { console.error("ERROR: connect ECONNREFUSED"); process.exit(1); }
+if (process.env.FAKE_BROWSER_SLEEP_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_BROWSER_SLEEP_MS));
 // As Playwright does: a browser marked complete is never fetched again.
 if (require("node:fs").existsSync(join(browsers, "chromium_headless_shell-1", "INSTALLATION_COMPLETE"))) process.exit(0);
 const file = join(browsers, ${JSON.stringify(BROWSER_FILE)});

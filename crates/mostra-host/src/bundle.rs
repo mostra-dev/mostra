@@ -797,13 +797,22 @@ fn alive(pid: i32) -> bool {
     }
 }
 
-/// The install lock: an exclusive create holding the owner's PID and a token. A lock whose owner
-/// is gone, or older than an hour, is taken over. It only saves a second download: the scratch
-/// directory and its rename keep the cache correct whatever happens to it.
+/// The install lock, shared with `@mostra/sdk`'s installer (D142 item 4): an exclusive create
+/// holding the owner's PID and a token. A lock whose owner is gone, or untouched for an hour, is
+/// taken over: it is judged through one descriptor, moved aside, and removed only if the file moved
+/// is the one judged (a fresh lock another installer took meanwhile is put back), so two
+/// installers never both take one over (Opus review of WP-12, finding 10). The holder touches the
+/// lock every minute, so an install that runs longer than an hour is never taken from a live
+/// owner. It only saves a second download: the scratch directory and its rename keep the cache
+/// correct whatever happens to it.
 struct Lock {
     path: PathBuf,
     token: String,
+    refresh: tokio::task::JoinHandle<()>,
 }
+
+/// How often a held lock is touched.
+const LOCK_TOUCH: Duration = Duration::from_mins(1);
 
 impl Lock {
     async fn take(path: &Path) -> Result<Self> {
@@ -817,9 +826,26 @@ impl Lock {
             {
                 Ok(mut file) => {
                     let _ = writeln!(file, "{} {token}", std::process::id());
+                    let touched = path.to_path_buf();
+                    let mine = token.clone();
+                    let refresh = tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(LOCK_TOUCH).await;
+                            let held = std::fs::read_to_string(&touched)
+                                .is_ok_and(|text| text.contains(&mine));
+                            if !held {
+                                return;
+                            }
+                            if let Ok(file) = std::fs::OpenOptions::new().write(true).open(&touched)
+                            {
+                                let _ = file.set_modified(SystemTime::now());
+                            }
+                        }
+                    });
                     return Ok(Self {
                         path: path.to_path_buf(),
                         token,
+                        refresh,
                     });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -830,39 +856,161 @@ impl Lock {
                     )));
                 }
             }
-            if Self::stale(path) {
-                let aside = path.with_extension(format!("stale-{}", random_hex()));
-                if std::fs::rename(path, &aside).is_ok() {
-                    let _ = std::fs::remove_file(&aside);
-                }
+            if Self::take_over_if_stale(path) {
                 continue;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 
-    fn stale(path: &Path) -> bool {
-        let Ok(meta) = std::fs::metadata(path) else {
-            return true;
+    /// Removes the lock at `path` when it is stale and says whether it did (or it was gone).
+    fn take_over_if_stale(path: &Path) -> bool {
+        match Self::judge(path) {
+            Judged::Gone => true,
+            Judged::Live => false,
+            Judged::Stale(meta) => {
+                Self::remove_judged(path, &meta);
+                true
+            }
+        }
+    }
+
+    /// Reads and judges the lock through one descriptor.
+    fn judge(path: &Path) -> Judged {
+        let Ok(mut file) = std::fs::File::open(path) else {
+            return Judged::Gone;
         };
+        let Ok(meta) = file.metadata() else {
+            return Judged::Live;
+        };
+        let mut text = String::new();
+        let _ = file.read_to_string(&mut text);
+        drop(file);
         let old = meta
             .modified()
             .ok()
             .and_then(|at| at.elapsed().ok())
             .is_some_and(|age| age > STALE_LOCK);
-        let owner = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| text.split_whitespace().next()?.parse::<i32>().ok());
-        old || owner.is_some_and(|pid| pid > 0 && !alive(pid))
+        let owner = text
+            .split_whitespace()
+            .next()
+            .and_then(|pid| pid.parse::<i32>().ok());
+        if old || owner.is_some_and(|pid| pid > 0 && !alive(pid)) {
+            Judged::Stale(meta)
+        } else {
+            Judged::Live
+        }
+    }
+
+    /// Moves the lock aside and removes it only if it is the file `judged` describes: a fresh lock
+    /// another installer took since is put back, unless a newer one exists.
+    fn remove_judged(path: &Path, judged: &std::fs::Metadata) {
+        use std::os::unix::fs::MetadataExt as _;
+        let aside = path.with_extension(format!("lock.stale-{}", random_hex()));
+        if std::fs::rename(path, &aside).is_err() {
+            return; // someone else moved or removed it
+        }
+        let moved = std::fs::metadata(&aside).ok();
+        if moved.is_some_and(|moved| moved.ino() != judged.ino() || moved.dev() != judged.dev()) {
+            let _ = std::fs::hard_link(&aside, path);
+        }
+        let _ = std::fs::remove_file(&aside);
     }
 }
 
+/// What a lock was judged to be.
+enum Judged {
+    Gone,
+    Live,
+    Stale(std::fs::Metadata),
+}
+
 impl Drop for Lock {
-    /// Removes the lock only while it is still this holder's (a takeover replaced it otherwise).
+    /// Released by moving it aside and removing it only if it is still this holder's own (a
+    /// takeover replaced it otherwise), so a release never removes another installer's lock.
     fn drop(&mut self) {
-        let mine = std::fs::read_to_string(&self.path).is_ok_and(|text| text.contains(&self.token));
-        if mine {
-            let _ = std::fs::remove_file(&self.path);
+        self.refresh.abort();
+        let aside = self
+            .path
+            .with_extension(format!("lock.done-{}", random_hex()));
+        if std::fs::rename(&self.path, &aside).is_err() {
+            return;
         }
+        let mine = std::fs::read_to_string(&aside).is_ok_and(|text| text.contains(&self.token));
+        if !mine {
+            let _ = std::fs::hard_link(&aside, &self.path);
+        }
+        let _ = std::fs::remove_file(&aside);
+    }
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::{Judged, Lock};
+    use std::time::{Duration, SystemTime};
+
+    /// A dead process's ID, for a lock whose owner is gone.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    /// Two installers judge one stale lock; the first takes it over and takes its own lock; the
+    /// second's move must not remove that fresh lock (Opus review of WP-12, finding 10).
+    #[test]
+    fn a_takeover_never_removes_a_fresh_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("digest.lock");
+        std::fs::write(&path, format!("{} dead\n", dead_pid())).unwrap();
+        let Judged::Stale(judged_by_second) = Lock::judge(&path) else {
+            panic!("a lock of a dead owner is stale");
+        };
+        // The first installer takes it over and creates its own (a new file).
+        let Judged::Stale(judged_by_first) = Lock::judge(&path) else {
+            panic!("stale");
+        };
+        Lock::remove_judged(&path, &judged_by_first);
+        std::fs::write(&path, format!("{} fresh\n", std::process::id())).unwrap();
+        // The second installer acts on its old judgement.
+        Lock::remove_judged(&path, &judged_by_second);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            format!("{} fresh\n", std::process::id()),
+            "the fresh lock was removed"
+        );
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
+        assert_eq!(left.len(), 1, "an aside file was left");
+    }
+
+    /// A held lock is touched while its install runs, so it never looks an hour old; a release
+    /// leaves a lock that isn't its own (Opus review of WP-12, finding 10).
+    #[tokio::test(start_paused = true)]
+    async fn a_held_lock_stays_fresh_and_releases_only_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("digest.lock");
+        let lock = Lock::take(&path).await.unwrap();
+        let old = SystemTime::now() - Duration::from_hours(2);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(matches!(Lock::judge(&path), Judged::Stale(_)));
+        tokio::time::sleep(super::LOCK_TOUCH + Duration::from_secs(1)).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            matches!(Lock::judge(&path), Judged::Live),
+            "the lock wasn't touched"
+        );
+        // Another installer's lock replaced it (a takeover): releasing leaves that one.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, "1 another\n").unwrap();
+        drop(lock);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "1 another\n");
     }
 }

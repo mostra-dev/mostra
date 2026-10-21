@@ -7,7 +7,18 @@
  * directory the next install removes, never a half-ready bundle.
  */
 import { randomBytes } from "node:crypto";
-import { link, mkdir, open, readdir, readFile, rename, rm, stat, statfs } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  statfs,
+  utimes,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -265,6 +276,11 @@ function alive(pid: number): boolean {
 
 /** How old a lock may get before another installer takes it over whatever its owner. */
 const STALE_LOCK_MS = 60 * 60_000;
+/**
+ * How often a held lock is touched, so an install longer than {@link STALE_LOCK_MS} (a slow
+ * network, a large browser) is never taken from its live owner (Opus review of WP-12, finding 10).
+ */
+const LOCK_TOUCH_MS = 60_000;
 
 /** `url` without trailing slashes, in linear time (a regex would be quadratic on many slashes). */
 function withoutTrailingSlashes(url: string): string {
@@ -326,8 +342,18 @@ async function lock(path: string, signal: AbortSignal | undefined): Promise<() =
       const handle = await open(path, "wx", 0o600);
       await handle.writeFile(`${process.pid} ${token}\n`);
       await handle.close();
+      const touch = setInterval(() => {
+        void readFile(path, "utf8")
+          .then((text) => {
+            if (text.includes(token)) return utimes(path, new Date(), new Date());
+            return undefined;
+          })
+          .catch(() => undefined);
+      }, LOCK_TOUCH_MS);
+      touch.unref();
       // Released by moving it aside and removing it only if it is still this installer's own.
       return async () => {
+        clearInterval(touch);
         const aside = `${path}.done-${randomBytes(6).toString("hex")}`;
         if (
           !(await rename(path, aside).then(
