@@ -39,6 +39,8 @@ use crate::wire::{
 #[derive(Debug, Clone)]
 pub struct PortError {
     message: String,
+    /// The instance's params didn't read as the method's: answered -32602, never the host's fault.
+    invalid_params: bool,
 }
 
 impl PortError {
@@ -46,6 +48,7 @@ impl PortError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            invalid_params: false,
         }
     }
 
@@ -205,7 +208,10 @@ pub(crate) struct PortSet {
 }
 
 fn parse<T: serde::de::DeserializeOwned>(params: Value) -> Result<T, PortError> {
-    serde_json::from_value(params).map_err(|e| PortError::new(format!("invalid params: {e}")))
+    serde_json::from_value(params).map_err(|e| PortError {
+        message: format!("invalid params: {e}"),
+        invalid_params: true,
+    })
 }
 
 impl PortSet {
@@ -345,7 +351,7 @@ impl Incoming for PortSet {
                     if let Some(callback) = &on_error {
                         callback(&method, error.message());
                     }
-                    let code = if error.message().starts_with("invalid params:") {
+                    let code = if error.invalid_params {
                         (-32602, "MOSTRA_HOST_INVALID_PARAMS")
                     } else {
                         (-32603, "MOSTRA_HOST_INTERNAL_ERROR")
@@ -368,5 +374,109 @@ impl Incoming for PortSet {
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Delivered, Incoming, PortError, PortSet, Secrets};
+    use crate::wire::PortSecretsGetParams;
+    use serde_json::{Value, json};
+
+    struct Vault;
+
+    impl Secrets for Vault {
+        async fn get(&self, request: PortSecretsGetParams) -> Result<Option<String>, PortError> {
+            match request.name.as_str() {
+                "fails" => Err(PortError::new("invalid params: the host's own words")),
+                "panics" => panic!("the host's code panicked"),
+                "absent" => Ok(None),
+                name => Ok(Some(format!("value of {name}"))),
+            }
+        }
+    }
+
+    fn ports() -> PortSet {
+        let mut ports = PortSet::default();
+        ports.secrets(Vault);
+        ports
+    }
+
+    async fn ask(method: &str, params: Value) -> Result<Value, (i64, String)> {
+        ports()
+            .request(method.to_owned(), params)
+            .await
+            .map_err(|failure| {
+                (
+                    failure.code,
+                    failure.diagnostic["code"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            })
+    }
+
+    #[tokio::test]
+    async fn a_served_port_answers_and_null_falls_back() {
+        let params = json!({ "artifactId": "art_01", "name": "MAIL" });
+        assert_eq!(
+            ask("port/secrets.get", params).await,
+            Ok(json!("value of MAIL"))
+        );
+        let absent = json!({ "artifactId": "art_01", "name": "absent" });
+        assert_eq!(ask("port/secrets.get", absent).await, Ok(Value::Null));
+    }
+
+    #[tokio::test]
+    async fn a_port_the_host_didnt_register_is_method_unknown() {
+        assert_eq!(
+            ask("port/addressing.externalBase", json!({})).await,
+            Err((-32601, "MOSTRA_HOST_METHOD_UNKNOWN".to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn params_that_dont_read_are_invalid_params_and_the_hosts_failure_is_internal() {
+        assert_eq!(
+            ask("port/secrets.get", json!({ "name": 3 })).await,
+            Err((-32602, "MOSTRA_HOST_INVALID_PARAMS".to_owned()))
+        );
+        // A host's own error is internal, whatever its message says (it once read as params).
+        let fails = json!({ "artifactId": "art_01", "name": "fails" });
+        assert_eq!(
+            ask("port/secrets.get", fails).await,
+            Err((-32603, "MOSTRA_HOST_INTERNAL_ERROR".to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_panicking_handler_is_answered_at_once() {
+        let panics = json!({ "artifactId": "art_01", "name": "panics" });
+        assert_eq!(
+            ask("port/secrets.get", panics).await,
+            Err((-32603, "MOSTRA_HOST_INTERNAL_ERROR".to_owned()))
+        );
+    }
+
+    #[test]
+    fn every_delivery_answer_has_its_wire_form() {
+        assert_eq!(Delivered::Accepted.wire(), json!({ "accepted": true }));
+        assert_eq!(
+            Delivered::Duplicate.wire(),
+            json!({ "accepted": false, "reason": "duplicate", "retry": false })
+        );
+        assert_eq!(
+            Delivered::Undeliverable.wire(),
+            json!({ "accepted": false, "reason": "undeliverable", "retry": false })
+        );
+        assert_eq!(
+            Delivered::Rejected("invalid".into()).wire(),
+            json!({ "accepted": false, "reason": "invalid", "retry": false })
+        );
+        assert_eq!(
+            Delivered::RetryLater("busy".into()).wire(),
+            json!({ "accepted": false, "reason": "busy", "retry": true })
+        );
     }
 }

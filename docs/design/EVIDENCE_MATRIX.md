@@ -75,14 +75,14 @@ v1 requirements: 148. v1.1 requirements: 8. Owned exactly once: 156. Neither v1 
 | HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HY-08 | WP-30 | B | Signed-in and anonymous viewers record the right viewer kind; a forged identity claim is refused; a link without sign-in still works within its scopes | unverified |
 | HY-09 | WP-30 | B | Serving from the main domain is impossible (route test); the artifact can't click or hide the report control (forgery suite of WP-07 reused); interstitial and expiry honored | unverified |
-| HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance), and a port of an unknown name registered and called through the same path | unverified |
+| HO-01 | WP-12 | M, C | Every port exercised with and without host registration (conformance), and a port of an unknown name registered and called through the same path | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-02 | WP-02 | C | Revision negotiation picks highest common; unsupported revision refused with the code (protocol suite) | verified ([WP-02](../progress/PROGRESS-WP-02.md)) |
-| HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | unverified |
+| HO-03 | WP-12 | C, X | Rust crate: wire-type snapshot test, client integration against a real instance, spawn and attach, bundle cache; external: crates.io release | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-04 | WP-11 | M, C | SDK host registers ports, publishes, receives delivery, waits and reads results (integration) | verified ([WP-11](../progress/PROGRESS-WP-11.md)) |
-| HO-05 | WP-12 | C | Conformance kit passes on standalone adapters and both reference hosts; broken host fails expected scenarios; baselines work | unverified |
-| HO-06 | WP-12 | C, R | Audit: no host-specific identifiers in core packages; every JCODE_HOST row maps to a conformance scenario; Mirza reviews | unverified |
+| HO-05 | WP-12 | C | Conformance kit passes on standalone adapters and both reference hosts; broken host fails expected scenarios; baselines work | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
+| HO-06 | WP-12 | C, R | Audit: no host-specific identifiers in core packages; every JCODE_HOST row maps to a conformance scenario; Mirza reviews | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-07 | WP-01 | M | Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| HO-08 | WP-12 | I, C | Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable | unverified |
+| HO-08 | WP-12 | I, C | Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-09 | WP-30 | M, C | A fixture operator denies a share over its limit with a diagnostic, receives metering events, and suspends an artifact; with no operator everything works | unverified |
 | HO-10 | WP-13 | M, C | Conformance: a host's external base appears in minted links and passes the Host and Origin checks; without the port, links stay on loopback; a base the host withdraws stops working | unverified |
 | HO-11 | WP-20 | M, C | Conformance: a host's reviews port receives each thread and choice, and its capture port supplies the crop a comment stores; without them, no mirror and the verify runner's browser | unverified |
