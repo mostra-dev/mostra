@@ -67,7 +67,7 @@ Each row is a generic Mostra capability that the Jcode integration relies on. C0
 | H-11 | Host-configurable storage locations outside any project checkout; artifacts, versions and submissions remain readable after the originating directory is removed | Answers and artifacts survive Jcode checkout closeout | HO-08 |
 | H-12 | Process models: spawned over stdio by a long-lived host, or a standalone daemon a host attaches to | Jcode's server spawns or attaches to Mostra independently of TUI connections | RT-06 |
 | H-13 | A Rust host crate (tokio-friendly) and a runtime bundle the host downloads and caches by hash | Jcode is Rust; its install channels manage the bundle | HO-03, RT-01 |
-| H-14 | Addressing port with tunnel hostnames and capability minting | Links work from Mirza's other devices; C04's TUI shows them | HY-04, HO-01 |
+| H-14 | Addressing port with tunnel hostnames and capability minting | Links work from Mirza's other devices; C04's TUI shows them | HY-04, HO-10 |
 | H-15 | A host conformance kit | C03-B proves the Jcode adapter against it | HO-05 |
 | H-16 | No telemetry in host-embedded instances (D119); private, owner-only storage in the standalone adapters | Matches Jcode's privacy rules | EN-08 |
 

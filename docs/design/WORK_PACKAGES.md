@@ -238,7 +238,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - every H-01 to H-16 row exercised by a scenario.
 
 ### WP-13. Sharing and remote viewing
-- **Owns:** HY-04, HY-05, HY-07.
+- **Owns:** HY-04, HY-05, HY-07, HO-10.
 - **Builds:**
   - `share/start` and `share/stop` with `tailscale serve` (identity header mapping) and `funnel` (port plan), and `cloudflared` quick tunnels;
   - worker-mode frame sessions (D70) with ticketed streams and WebSockets;
@@ -376,7 +376,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Evidence:** a render test per library in three browsers; the uPlot path holds the target rate (target set in the WP spec from a measured baseline, at least 60 updates per second with 10k points on CI hardware) without frame drops beyond the budget; the license audit stays green; each team component renders from fixtures in both themes and accepts `className` (KT-11).
 
 ### WP-20. Review layer and shell design
-- **Owns:** RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06.
+- **Owns:** RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06, HO-11.
 - **Builds:**
   - the shell's review overlay: pins, threads, resolve and reopen;
   - multi-layer anchors with crops through the capture port;
