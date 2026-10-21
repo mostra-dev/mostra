@@ -39,6 +39,7 @@
 | M29 | 2026-10-18T13:45:08Z / 13:59:11Z | Chose a visual direction for Mostra (Italian modernism, "Mostra!") and asked for it to be refined rigorously. Then approved the three open calls on the refined draft: "I agree with your recommendation on all three." The answer dot appears only on the app icon and in big moments, Figtree is the interface face, and the default artifact theme stays as quiet as shown. Recorded as D141. |
 | M30 | 2026-10-19T11:36:46.506Z | WP-11's twelve questions (the release version line, who opens the release pull request, the npm account steps, RT-01's check without a global Node.js, `npm create mostra`'s behavior, where bundles live, the first release's timing, the telemetry endpoint, `ee/`, prose, reviews, CI): "For every decision point, I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded as D142. |
 | M31 | 2026-10-21T00:15:19.500Z | WP-12's seven questions (which ports WP-12 builds and which move to the packages that consume them, the `identity` port's semantics, how the kit drives a host under test, browser-driven shell scenarios, the first crates.io release, receivers of newer enum values, reviews and prose): "For every decision point, I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded as D143. |
+| M32 | 2026-10-21T18:14:18.572Z | Accepted WP-12 ("100% approved"), approved its Claude Opus review, and removed the limit on Opus reviews: "this is an important project with big PRs and very important & complex & enterprise-grade implementation work, so every WP deserves an Opus review." Recorded as D144. |
 
 ## Program-level decisions
 
@@ -509,7 +510,7 @@ Merging to `main` and publishing packages still follow acceptance (D36). Deletin
 Every work package gets an independent code review before it is presented to Mirza, and every finding is fixed or answered in the progress report:
 1. **GPT-6.1-Sol through `codex review`**, effort high, on the pull request's diff. A GPT-only live call, announced as D34 requires, with its tokens recorded.
 2. **GitHub Copilot code review** runs automatically on every push to a pull request (the `main` ruleset). Its comments are review threads, and the ruleset requires every thread resolved before merging.
-3. **Claude Opus 5.5** also reviews the truly substantial packages, up to ten of Mostra's packages (D114; at first at most one in five). It waits for Mirza's approval like every Anthropic batch (D34).
+3. **Claude Opus 5.5** also reviews the truly substantial packages, up to ten of Mostra's packages (D114; at first at most one in five). It waits for Mirza's approval like every Anthropic batch (D34). *Amended by D144:* every package gets one.
 
 Reviews find defects; they never replace the evidence table. The WP-01 review (13 findings, all fixed with regression tests) showed the value: a green gate suite still had false negatives. *Source:* M12.
 
@@ -721,7 +722,7 @@ D53's `window.storage` follows the API Claude-written artifacts use (`get`, `set
 `useChoice(reviewSetId, options?)` takes an optional `{ candidates: { id, label? }[]; current?: string }`, an additive extension of INTERFACES §2.3. With candidates it asks the shell for the trusted Choose control of that review set, which the shell renders outside the frame ("Choose Airy"). WP-20's `ReviewSet` passes them.
 
 ### D114. Claude reviews for up to ten packages (M19)
-Amends D80 item 3: Claude Opus 5.5 may review up to ten of Mostra's packages, still chosen for substance and still waiting for Mirza's approval of each run (D34).
+Amends D80 item 3: Claude Opus 5.5 may review up to ten of Mostra's packages, still chosen for substance and still waiting for Mirza's approval of each run (D34). *Superseded by D144:* there is no limit.
 
 ### D115. A frame always shows its own view's version (delegated, M19)
 D98 item 5 lets an artifact origin serve the version its frame session last entered, so a tab whose frame reloads after another tab switched versions gets the other version's page. WP-07 makes that page unable to act as the wrong view, rather than only telling the viewer:
@@ -1045,9 +1046,13 @@ Mirza delegated every WP-12 question at M31. Each item is an **approved decision
 6. **The crate.** `mostra-host` follows the release group's version (D142 item 7; `tools/release/versions.ts sync` after `changeset version`, repo lint refusing a crate that differs), so a release names one runtime, and it embeds the same bundle pins as `@mostra/sdk` (`bundles.json`, written by the release before packaging; its build refuses pins of another version). Its first crates.io release is published once by Mirza with a token (`tools/release/crates-setup.sh`, from the release's tag with the pins the published SDK carries, checked against the release's `SHA256SUMS`); then he adds the trusted publisher, and every later release publishes the crate from its tag through trusted publishing. Wire types accept what a newer Mostra adds: unknown object fields are ignored, and an unknown enum value or union member reads as an `Unknown` variant that serializes back unchanged (older TypeScript clients still refuse them: issue #45). `Mostra::close` takes `&self`, so a host that shares its handle can close it. A pull request's release rehearsal builds, packs and dry-runs the version its pending changesets make (`versions.ts plan` and `rehearse`), since npm refuses even a dry run over a version it has.
 7. **No host-specific code in the core** (HO-06) is a gate: `tools/audit/host-neutral.ts`, in the `boundaries` job, refuses a known host's identifiers in any package's `src/`, manifest, README or AGENTS.md, any crate's sources, the lockfiles and the CLI reference. JCODE_HOST.md names, for every need H-01 to H-16, the scenarios that exercise it, and a test keeps that column true.
 8. **CI.** The `conformance` job runs the kit against the Rust reference host (every port, standalone, broken with its baseline) on macOS and Linux; the TypeScript reference host's runs are in the integration job's `clients` group.
-9. **Reviews and prose.** GPT-6.1-Sol through `codex review`, and Claude Opus 5.5 as the ninth of ten (D114), each announced (D34). Agent-facing prose (the crate's and the kit's AGENTS.md and READMEs, rustdoc, the new diagnostic's hint) is delegated as in WP-03 to WP-11: Mirza sees only the texts the agent isn't confident in, before the merge.
+9. **Reviews and prose.** GPT-6.1-Sol through `codex review`, and Claude Opus 5.5 (approved at M32, which also made it every package's, D144), each announced (D34). Agent-facing prose (the crate's and the kit's AGENTS.md and READMEs, rustdoc, the new diagnostic's hint) is delegated as in WP-03 to WP-11: Mirza sees only the texts the agent isn't confident in, before the merge.
 
 *Rejected:* building `addressing`, `reviews` and `capture` before their callers (item 1); a single TypeScript-only conformance library (item 3).
+
+
+### D144. A Claude Opus review for every package (M32)
+*Supersedes* D114 and *amends* D80 item 3: every work package gets a Claude Opus 5.5 review of its pull request before it merges, beside GPT-6.1-Sol's (D80 item 1), whatever its size. The session writes the review prompt (the package, its decisions, its evidence and where to look hardest), Mirza runs it and brings the findings back, and each is fixed with a test red on the old code or answered in the progress report, as for every reviewer. Anthropic runs still follow D34: Mirza runs or approves each one. *Why:* Mostra's packages are large, complex and enterprise-grade, and each Opus review so far found defects the other gates missed. *Source:* M32.
 
 ## Research consensus adopted
 

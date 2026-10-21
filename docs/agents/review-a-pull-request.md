@@ -19,8 +19,9 @@ still had 13 false negatives.
 4. **Read Copilot's review.** The `main` ruleset requests a Copilot review on every push to a pull
    request. Its comments are review threads, and merging needs every thread resolved. If it reports
    a quota problem, note it in the progress report and continue.
-5. **For a truly substantial package** (up to ten of Mostra's packages, D114), ask Mirza to approve a Claude
-   Opus 5.5 review too (D34). Run it only after his approval.
+5. **Every package gets a Claude Opus 5.5 review too** (D144). Write its prompt (the package, its
+   decisions, its evidence, the commit to review and where to look hardest) and give it to Mirza,
+   who runs it (D34) and brings the findings back.
 6. **Triage every finding.** Each one is either fixed, with a regression test that fails on the old
    code where the finding is testable, or answered with the reason it doesn't hold. Never weaken a
    check to make a finding go away. Re-run the gates you touched.
