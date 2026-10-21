@@ -74,6 +74,11 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@mostra/runtime"]
     },
+    "packages/conformance": {
+      "entry": ["src/index.ts", "src/cli.ts", "src/reference-host.ts", "test/fixtures/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
+    },
     "packages/create-mostra": {
       "entry": ["src/index.ts", "src/bin.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]

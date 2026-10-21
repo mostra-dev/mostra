@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "expectedFailures": {
+    "delivery.exactly-once": "--break store-duplicates: the store keeps every delivery call, so a redelivery is stored twice",
+    "drafts.mirror": "--break drafts-as-submissions: the store takes draft mirrors for submissions",
+    "ports.trusted-controls": "--break ignore-policy: the policy allows both channels whatever the host meant"
+  }
+}

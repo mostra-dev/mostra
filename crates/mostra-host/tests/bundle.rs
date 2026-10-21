@@ -17,7 +17,11 @@ fn platform() -> &'static str {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut out, byte| {
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
 }
 
 fn sha(bytes: &[u8]) -> String {
@@ -198,7 +202,11 @@ async fn bytes_files_or_links_that_differ_from_the_pins_install_nothing() {
             })
             .unwrap_or_default()
             .into_iter()
-            .filter(|name| !name.ends_with(".lock"))
+            .filter(|name| {
+                !std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("lock"))
+            })
             .collect::<Vec<_>>()
     };
 

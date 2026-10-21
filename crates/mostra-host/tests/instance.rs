@@ -90,6 +90,10 @@ fn options(fixture: &Fixture) -> Options {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one end-to-end story: spawn, call, stream, resume"
+)]
 async fn a_spawned_instance_answers_typed_calls_and_resumes_a_named_event_stream() {
     let Some(fixture) = fixture() else { return };
     let mostra = Mostra::spawn(options(&fixture)).await.unwrap();
@@ -149,12 +153,9 @@ async fn a_spawned_instance_answers_typed_calls_and_resumes_a_named_event_stream
         name: Some("rust-host".into()),
         ..EventStreamOptions::default()
     });
-    let first = tokio::spawn({
-        let mostra_events = async move {
-            let page = events.next().await.unwrap().unwrap();
-            (events, page)
-        };
-        mostra_events
+    let first = tokio::spawn(async move {
+        let page = events.next().await.unwrap().unwrap();
+        (events, page)
     });
     tokio::time::sleep(Duration::from_millis(300)).await;
     let patched = mostra
