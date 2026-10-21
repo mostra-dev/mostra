@@ -305,9 +305,10 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
       createMostra({
         home: join(dir.path, "home"),
         env: hostEnv(dir.path),
-        ports: { identity: { resolve: () => null } } as never,
+        // `identity` is served since D143; `addressing` arrives with WP-13 (D143 item 1).
+        ports: { addressing: { externalBase: () => null } } as never,
       }),
-    ).rejects.toThrow('no port "identity"');
+    ).rejects.toThrow('no port "addressing"');
     const home = join(dir.path, "home");
     await host({ home, env: hostEnv(dir.path) });
     const second = await createMostra({ home, env: hostEnv(dir.path) }).catch(
