@@ -27,56 +27,38 @@ enum Failure {
     Final(Error),
 }
 
-/// `url` without credentials or query, for messages.
+/// `url` without credentials, query or fragment, for messages. Parsed as a URL, so a password
+/// holding `?`, `#` or `@` never cuts the authority short (Opus review of WP-12, finding 8); text
+/// that isn't a URL prints as `<url>`.
 pub(crate) fn printable(url: &str) -> String {
-    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
-    let rest = rest.split(['?', '#']).next().unwrap_or("");
-    let rest = match rest.split_once('/') {
-        Some((authority, path)) => {
-            let host = authority.rsplit('@').next().unwrap_or(authority);
-            format!("{host}/{path}")
-        }
-        None => rest.rsplit('@').next().unwrap_or(rest).to_owned(),
+    let Ok(mut parsed) = url::Url::parse(url) else {
+        return "<url>".to_owned();
     };
-    if scheme.is_empty() {
-        rest
-    } else {
-        format!("{scheme}://{rest}")
-    }
+    let _ = parsed.set_username("");
+    let _ = parsed.set_password(None);
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    parsed.to_string()
 }
 
-/// The URL without its user and password, and the Basic credentials they were.
+/// The URL without its user and password, and the Basic credentials they were (decoded).
 fn credentials(url: &str) -> (String, Option<(String, String)>) {
-    let Some((scheme, rest)) = url.split_once("://") else {
+    let Ok(mut parsed) = url::Url::parse(url) else {
         return (url.to_owned(), None);
     };
-    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
-    let Some((userinfo, host)) = authority.rsplit_once('@') else {
+    if parsed.username().is_empty() && parsed.password().is_none() {
         return (url.to_owned(), None);
-    };
-    let (user, password) = userinfo.split_once(':').unwrap_or((userinfo, ""));
+    }
     let decode = |text: &str| {
-        let mut out = Vec::new();
-        let bytes = text.as_bytes();
-        let mut index = 0;
-        while index < bytes.len() {
-            if bytes[index] == b'%'
-                && index + 2 < bytes.len()
-                && let Ok(byte) = u8::from_str_radix(&text[index + 1..index + 3], 16)
-            {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-            out.push(bytes[index]);
-            index += 1;
-        }
-        String::from_utf8_lossy(&out).into_owned()
+        percent_encoding::percent_decode_str(text)
+            .decode_utf8_lossy()
+            .into_owned()
     };
-    (
-        format!("{scheme}://{host}/{path}"),
-        Some((decode(user), decode(password))),
-    )
+    let user = decode(parsed.username());
+    let password = parsed.password().map(decode).unwrap_or_default();
+    let _ = parsed.set_username("");
+    let _ = parsed.set_password(None);
+    (parsed.to_string(), Some((user, password)))
 }
 
 fn env_value<'a>(env: &'a Environment, upper: &str) -> Option<&'a str> {
@@ -266,9 +248,28 @@ async fn once(
     Ok(())
 }
 
-/// `text` with `url`'s credentials and every other URL's reduced to their printable form.
+/// `text` with every URL in it reduced to its printable form (an error names the request's URL,
+/// without credentials but with its query, which may hold a signed mirror's secret: Opus review
+/// of WP-12, finding 8), and `url`'s user and password removed wherever else they appear.
 fn scrub(text: &str, url: &str) -> String {
-    let mut out = text.replace(url, &printable(url));
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = ["https://", "http://", "file://"]
+        .iter()
+        .filter_map(|scheme| rest.find(scheme))
+        .min()
+    {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        let end = tail
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '<' | '>' | ',' | ']')
+            })
+            .unwrap_or(tail.len());
+        out.push_str(&printable(&tail[..end]));
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
     if let (_, Some((user, password))) = credentials(url) {
         for secret in [password, user] {
             if secret.len() >= 3 {
@@ -282,6 +283,31 @@ fn scrub(text: &str, url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{credentials, printable};
+
+    /// A signed mirror's query, a password holding `#`, `?` or `@`, and the request URL an error
+    /// repeats without the user never reach a message (Opus review of WP-12, finding 8).
+    #[test]
+    fn no_secret_of_a_mirror_reaches_a_message() {
+        let url = "https://ci:p%23w%3Fx%40y@mirror.example/x/a.tar.gz?X-Amz-Signature=SECRET#frag";
+        let error = "error sending request for url \
+            (https://mirror.example/x/a.tar.gz?X-Amz-Signature=SECRET): connection refused";
+        let message = super::scrub(error, url);
+        assert!(!message.contains("SECRET"), "{message}");
+        assert!(
+            message.contains("https://mirror.example/x/a.tar.gz)"),
+            "{message}"
+        );
+        assert_eq!(printable(url), "https://mirror.example/x/a.tar.gz");
+        let raw = "https://ci:pw#with?marks@mirror.example/x";
+        assert!(!printable(raw).contains("marks"), "{}", printable(raw));
+        assert!(!printable(raw).contains("pw"), "{}", printable(raw));
+        let (bare, auth) = credentials(url);
+        assert_eq!(
+            bare,
+            "https://mirror.example/x/a.tar.gz?X-Amz-Signature=SECRET#frag"
+        );
+        assert_eq!(auth, Some(("ci".to_owned(), "p#w?x@y".to_owned())));
+    }
 
     #[test]
     fn credentials_never_reach_a_message() {

@@ -684,6 +684,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "nix",
+ "percent-encoding",
  "regress",
  "reqwest",
  "rustls",
@@ -694,6 +695,7 @@ dependencies = [
  "tar",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]
