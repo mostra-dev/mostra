@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 use tokio::sync::Notify;
-use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::rpc::{ListenGuard, Peer};
@@ -69,7 +68,11 @@ struct State {
     /// A subscribe is in flight. Its answer is taken in by a task of its own, so a consumer that
     /// stops waiting (a `select!`, a timeout) never loses the subscription it started.
     subscribing: bool,
-    pausing: Option<JoinHandle<()>>,
+    /// A pause's acknowledgement and unsubscribe are still in flight. The flag lives in the
+    /// stream's state, not in a handle a consumer's future holds, so a `next()` given up while it
+    /// waits for them never lets a resume start before the paused subscription is over (Opus
+    /// review of WP-12, finding 5).
+    pausing: bool,
     ended: Option<Ended>,
 }
 
@@ -115,7 +118,8 @@ impl Shared {
                     .call("events/unsubscribe", json!({ "subscriptionId": id }), None)
             });
             let shared = Arc::clone(self);
-            state.pausing = Some(tokio::spawn(async move {
+            state.pausing = true;
+            tokio::spawn(async move {
                 if let Some(unsubscribe) = unsubscribe {
                     let _ = unsubscribe.await;
                 }
@@ -130,7 +134,10 @@ impl Shared {
                 if state.subscription == paused_id {
                     state.subscription = None;
                 }
-            }));
+                state.pausing = false;
+                drop(state);
+                shared.wake.notify_one();
+            });
         }
         self.wake.notify_one();
     }
@@ -274,7 +281,9 @@ impl EventStream {
         });
     }
 
-    /// Waits until no subscribe is in flight; the stream's error when one was refused.
+    /// Waits until no subscribe is in flight; the stream's error when one was refused, once the
+    /// pages it already holds are handed out (a failure never discards them, Opus review of WP-12,
+    /// finding 6).
     async fn subscribed(&self) -> Result<()> {
         loop {
             let notified = self.shared.wake.notified();
@@ -282,10 +291,21 @@ impl EventStream {
                 let state = self.shared.lock();
                 if !state.subscribing {
                     return match &state.ended {
-                        Some(Ended::Failed(error)) => Err(error.clone()),
+                        Some(Ended::Failed(error)) if state.queue.is_empty() => Err(error.clone()),
                         _ => Ok(()),
                     };
                 }
+            }
+            notified.await;
+        }
+    }
+
+    /// Waits until a pause's acknowledgement and unsubscribe are answered.
+    async fn paused_out(&self) {
+        loop {
+            let notified = self.shared.wake.notified();
+            if !self.shared.lock().pausing {
+                return;
             }
             notified.await;
         }
@@ -297,10 +317,7 @@ impl EventStream {
     }
 
     async fn resume(&self) -> Result<()> {
-        let pausing = self.shared.lock().pausing.take();
-        if let Some(pausing) = pausing {
-            let _ = pausing.await;
-        }
+        self.paused_out().await;
         let after = {
             let mut state = self.shared.lock();
             state.paused = false;
@@ -327,7 +344,12 @@ impl EventStream {
             if let Some(handed) = state.handed_out.clone() {
                 state.handled = Some(handed);
             }
-            state.paused && state.ended.is_none() && state.queue.len() <= self.shared.high / 2
+            // A pause still in flight resumes later: the pages held now are handed out first, and
+            // an empty queue waits for the pause below.
+            state.paused
+                && !state.pausing
+                && state.ended.is_none()
+                && state.queue.len() <= self.shared.high / 2
         };
         if resume {
             self.resume().await?;
@@ -386,17 +408,14 @@ impl EventStream {
     pub async fn close(self) -> Result<()> {
         // A subscribe still in flight names a subscription to end too.
         let _ = self.subscribed().await;
-        let pausing = {
+        {
             let mut state = self.shared.lock();
             if state.ended.is_none() {
                 state.ended = Some(Ended::Closed);
             }
             state.queue.clear();
-            state.pausing.take()
-        };
-        if let Some(pausing) = pausing {
-            let _ = pausing.await;
         }
+        self.paused_out().await;
         let (id, ack) = {
             let mut state = self.shared.lock();
             let id = state.subscription.take();
@@ -530,5 +549,165 @@ mod tests {
             .expect("close never ended")
             .expect("close panicked")
             .expect("close failed");
+    }
+
+    /// An instance played by hand: the requests the stream sends, and lines written back.
+    struct Fake {
+        requests: mpsc::UnboundedReceiver<Value>,
+        writer: Option<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+    }
+
+    impl Fake {
+        fn start() -> (Peer, Self) {
+            let (ours, theirs) = tokio::io::duplex(1 << 20);
+            let (reader, writer) = tokio::io::split(ours);
+            let peer = Peer::start(reader, writer, Arc::new(Nobody));
+            let (their_reader, their_writer) = tokio::io::split(theirs);
+            let (seen, requests) = mpsc::unbounded_channel::<Value>();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(their_reader).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let _ = seen.send(serde_json::from_str::<Value>(&line).unwrap_or(Value::Null));
+                }
+            });
+            (
+                peer,
+                Self {
+                    requests,
+                    writer: Some(their_writer),
+                },
+            )
+        }
+
+        async fn send(&mut self, message: Value) {
+            let mut line = message.to_string();
+            line.push('\n');
+            let writer = self.writer.as_mut().expect("open");
+            writer.write_all(line.as_bytes()).await.unwrap();
+        }
+
+        async fn expect(&mut self, method: &str) -> Value {
+            let request = tokio::time::timeout(Duration::from_secs(5), self.requests.recv())
+                .await
+                .expect("no request came")
+                .expect("the connection ended");
+            assert_eq!(request["method"], method, "{request}");
+            request
+        }
+
+        async fn answer(&mut self, request: &Value, result: Value) {
+            self.send(json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }))
+                .await;
+        }
+
+        async fn page(&mut self, subscription: &str, cursor: &str) {
+            self.send(json!({ "jsonrpc": "2.0", "method": "events/notify",
+                "params": { "subscriptionId": subscription, "events": [], "cursor": cursor } }))
+                .await;
+        }
+    }
+
+    async fn next_cursor(stream: &mut EventStream) -> String {
+        tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .expect("no page")
+            .expect("next failed")
+            .expect("ended")
+            .cursor
+    }
+
+    /// A `next()` given up while a pause's unsubscribe is unanswered never lets the next `next()`
+    /// subscribe again before it is: the pages the paused subscription still sends and the new
+    /// subscription's replay never overlap (Opus review of WP-12, finding 5).
+    #[tokio::test]
+    async fn a_resume_given_up_never_repeats_pages() {
+        let (peer, mut fake) = Fake::start();
+        let mut stream = EventStream::open(
+            &peer,
+            EventStreamOptions {
+                high_water_mark: Some(2),
+                ..Default::default()
+            },
+        );
+        let first = tokio::spawn(async move {
+            let cursor = next_cursor(&mut stream).await;
+            (stream, cursor)
+        });
+        let subscribe = fake.expect("events/subscribe").await;
+        fake.answer(
+            &subscribe,
+            json!({ "subscriptionId": "sub-1", "cursor": "0" }),
+        )
+        .await;
+        fake.page("sub-1", "1").await;
+        fake.page("sub-1", "2").await;
+        let (mut stream, cursor) = first.await.unwrap();
+        assert_eq!(cursor, "1");
+        // Two pages: the stream paused, and its unsubscribe waits for an answer.
+        let unsubscribe = fake.expect("events/unsubscribe").await;
+        let mut seen = vec![cursor, next_cursor(&mut stream).await];
+        // The consumer gives up a next() while the pause is still in flight.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), stream.next())
+                .await
+                .is_err()
+        );
+        // The next next() must wait for the unsubscribe's answer before it subscribes again.
+        let resumed = tokio::spawn(async move {
+            let mut cursors = Vec::new();
+            for _ in 0..2 {
+                cursors.push(next_cursor(&mut stream).await);
+            }
+            cursors
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        // A page of the paused subscription, sent before its unsubscribe's answer.
+        fake.page("sub-1", "3").await;
+        fake.answer(&unsubscribe, json!({})).await;
+        let again = fake.expect("events/subscribe").await;
+        assert_eq!(
+            again["params"]["after"], "3",
+            "the new subscription starts after page 3"
+        );
+        fake.answer(&again, json!({ "subscriptionId": "sub-2", "cursor": "3" }))
+            .await;
+        fake.page("sub-2", "4").await;
+        seen.extend(resumed.await.unwrap());
+        assert_eq!(seen, ["1", "2", "3", "4"]);
+    }
+
+    /// Pages the stream holds are handed out before the connection's end is reported (Opus review
+    /// of WP-12, finding 6).
+    #[tokio::test]
+    async fn a_failure_hands_out_the_pages_it_holds_first() {
+        let (peer, mut fake) = Fake::start();
+        let mut stream = EventStream::open(&peer, EventStreamOptions::default());
+        let first = tokio::spawn(async move {
+            let cursor = next_cursor(&mut stream).await;
+            (stream, cursor)
+        });
+        let subscribe = fake.expect("events/subscribe").await;
+        fake.answer(
+            &subscribe,
+            json!({ "subscriptionId": "sub-1", "cursor": "0" }),
+        )
+        .await;
+        for cursor in ["1", "2", "3"] {
+            fake.page("sub-1", cursor).await;
+        }
+        let (mut stream, cursor) = first.await.unwrap();
+        assert_eq!(cursor, "1");
+        // The instance goes away with two pages still held.
+        if let Some(mut writer) = fake.writer.take() {
+            writer.shutdown().await.unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(next_cursor(&mut stream).await, "2");
+        assert_eq!(next_cursor(&mut stream).await, "3");
+        let end = tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .expect("the end was never reported")
+            .unwrap_err();
+        assert_eq!(end.code(), "MOSTRA_HOST_CONNECTION_CLOSED");
     }
 }
