@@ -2,18 +2,19 @@
  * Every host protocol method this package defines. `pnpm gen protocol-method` adds entries at the
  * markers; the method itself lives in its own module under `methods/<group>/`.
  */
-import type { AnyMethod } from "../method.ts";
+import type { AnyMethod, AnyNotification } from "../method.ts";
+import { ARTIFACT_PROGRESS, ArtifactProgressParams } from "../verify.ts";
 import { artifactCreateMethod } from "./artifact/create.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
 import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
 import { depsAddMethod } from "./deps/add.ts";
-import { devStartMethod } from "./dev/start.ts";
+import { DEV_NOTIFY, DevNotifyParams, devStartMethod } from "./dev/start.ts";
 import { devStopMethod } from "./dev/stop.ts";
 import { eventsAckMethod } from "./events/ack.ts";
 import { eventsReadMethod } from "./events/read.ts";
-import { eventsSubscribeMethod } from "./events/subscribe.ts";
+import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
@@ -22,6 +23,7 @@ import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
+import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
@@ -77,5 +79,13 @@ export const hostMethods: readonly AnyMethod[] = [
   instanceCheckMethod,
   devStartMethod,
   devStopMethod,
+  portIdentityResolveMethod,
   // gen:methods
+];
+
+/** Every notification the instance sends to its clients (INTERFACES §6). */
+export const hostNotifications: readonly AnyNotification[] = [
+  { method: EVENTS_NOTIFY, params: EventsNotifyParams as AnyNotification["params"] },
+  { method: ARTIFACT_PROGRESS, params: ArtifactProgressParams as AnyNotification["params"] },
+  { method: DEV_NOTIFY, params: DevNotifyParams as AnyNotification["params"] },
 ];

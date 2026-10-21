@@ -25,6 +25,22 @@ export interface WireBundleSource {
    * `z.toJSONSchema(registry, { target, io: "input", uri }).schemas`.
    */
   definitions(target: Target, uri: (id: string) => string): Record<string, Record<string, unknown>>;
+  /**
+   * The protocol's methods by name, each with its direction, whether it mutates, and its params
+   * and result as schemas (a reference written through `uri(id)`, or `{}` for any JSON). Clients
+   * in other languages (the Rust crate's generator, D143) read them as `x-mostra-methods`.
+   */
+  methods?(uri: (id: string) => string): Record<string, WireMethod>;
+  /** The notifications by name, with their params, as `x-mostra-notifications`. */
+  notifications?(uri: (id: string) => string): Record<string, { readonly params: object }>;
+}
+
+/** One method of a bundle's `x-mostra-methods`. */
+export interface WireMethod {
+  readonly direction: string;
+  readonly mutating: boolean;
+  readonly params: object;
+  readonly result: object;
 }
 
 /** The JSON Schema dialects emitted. */
@@ -33,12 +49,22 @@ export type Target = "draft-2020-12" | "draft-07";
 /** Renders one bundle for one target as formatted JSON text. */
 export function renderBundle(source: WireBundleSource, target: Target): string {
   const defsKey = target === "draft-07" ? "definitions" : "$defs";
-  const schemas = source.definitions(target, (id) => `#/${defsKey}/${id}`);
+  const uri = (id: string): string => `#/${defsKey}/${id}`;
+  const schemas = source.definitions(target, uri);
   const defs: Record<string, unknown> = {};
   for (const id of Object.keys(schemas).sort()) {
     const { $schema: _schema, $id: _id, ...rest } = schemas[id] ?? {};
     defs[id] = rest;
   }
+  const sorted = <T>(record: Record<string, T> | undefined): Record<string, T> | undefined =>
+    record &&
+    Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, record[key] as T]),
+    );
+  const methods = sorted(source.methods?.(uri));
+  const notifications = sorted(source.notifications?.(uri));
   const bundle = {
     $schema:
       target === "draft-07"
@@ -46,6 +72,8 @@ export function renderBundle(source: WireBundleSource, target: Target): string {
         : "https://json-schema.org/draft/2020-12/schema",
     title: source.title,
     "x-mostra-revisions": source.revisions,
+    ...(methods ? { "x-mostra-methods": methods } : {}),
+    ...(notifications ? { "x-mostra-notifications": notifications } : {}),
     [defsKey]: defs,
   };
   return `${JSON.stringify(bundle, null, 2)}\n`;

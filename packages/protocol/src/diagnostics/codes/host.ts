@@ -20,6 +20,7 @@ export const hostDiagnosticCodes = [
   "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN",
   "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED",
   "MOSTRA_HOST_MESSAGE_TOO_LARGE",
+  "MOSTRA_HOST_IDENTITY_UNAVAILABLE",
   // gen:codes
 ] as const;
 
@@ -191,6 +192,17 @@ export const hostDiagnostics: AreaCatalog<HostDiagnosticCode> = {
       explanation:
         "One host-protocol message is one line of JSON, and a line holds at most 64 Mi characters (`MAX_LINE_LENGTH`), so neither side buffers without bound. Mostra checks every message before it writes it: an answer that would be longer is replaced by this error, and a delivery whose envelope would be longer is recorded as undeliverable instead of being sent and retried forever.",
       fix: "Read less per request (`events/read` with a smaller `limit`, `results/get` for one submission), and keep artifacts' values within the field and document limits.",
+    },
+  },
+  MOSTRA_HOST_IDENTITY_UNAVAILABLE: {
+    severity: "error",
+    phase: "host",
+    title: "The host that identifies viewers didn't answer",
+    hint: "Start the host that serves this home's identity port, then open the link again.",
+    docs: {
+      explanation:
+        "A host registered the `identity` port, so it decides who opens this home's links. When a link minted without a viewer was opened, that host failed, didn't answer within 5 seconds, gave an answer its schema refuses, or is expected (it lists `identity` in `HomeConfig.ports`) but not connected. Mostra refuses the link rather than let the session act as someone else.",
+      fix: "Start or reconnect the host, then open the link again. A link minted with `view/url`'s `viewer` names its person itself and never needs the port. To return the home to Mostra's own identity, have the host register without the port and clear its expected ports (`HomeConfig.ports: []`).",
     },
   },
   // gen:entries

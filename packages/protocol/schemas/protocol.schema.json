@@ -4,6 +4,381 @@
   "x-mostra-revisions": {
     "host-protocol": "2026-10-10"
   },
+  "x-mostra-methods": {
+    "artifact/create": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ArtifactCreateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ArtifactCreateResult"
+      }
+    },
+    "artifact/get": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ArtifactGetParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ArtifactDetail"
+      }
+    },
+    "artifact/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ArtifactListParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ArtifactListResult"
+      }
+    },
+    "artifact/publish": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ArtifactPublishParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PublishReceipt"
+      }
+    },
+    "artifact/verify": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ArtifactVerifyParams"
+      },
+      "result": {
+        "$ref": "#/$defs/VerifyVerdict"
+      }
+    },
+    "deps/add": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/DepsAddParams"
+      },
+      "result": {
+        "$ref": "#/$defs/DepsAddResult"
+      }
+    },
+    "dev/start": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/DevStartParams"
+      },
+      "result": {
+        "$ref": "#/$defs/DevStartResult"
+      }
+    },
+    "dev/stop": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/DevStopParams"
+      },
+      "result": {
+        "$ref": "#/$defs/DevStopResult"
+      }
+    },
+    "events/ack": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/EventsAckParams"
+      },
+      "result": {
+        "$ref": "#/$defs/EventsAckResult"
+      }
+    },
+    "events/read": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/EventsReadParams"
+      },
+      "result": {
+        "$ref": "#/$defs/EventsReadResult"
+      }
+    },
+    "events/subscribe": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/EventsSubscribeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/EventsSubscribeResult"
+      }
+    },
+    "events/unsubscribe": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/EventsUnsubscribeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/EventsUnsubscribeResult"
+      }
+    },
+    "gc/run": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/GcRunParams"
+      },
+      "result": {
+        "$ref": "#/$defs/GcRunResult"
+      }
+    },
+    "instance/check": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/InstanceCheckParams"
+      },
+      "result": {
+        "$ref": "#/$defs/InstanceCheckResult"
+      }
+    },
+    "instance/status": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/InstanceStatusParams"
+      },
+      "result": {
+        "$ref": "#/$defs/InstanceStatusResult"
+      }
+    },
+    "live/push": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/LivePushParams"
+      },
+      "result": {
+        "$ref": "#/$defs/LivePushResult"
+      }
+    },
+    "mostra/initialize": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/MostraInitializeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/MostraInitializeResult"
+      }
+    },
+    "mostra/shutdown": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/MostraShutdownParams"
+      },
+      "result": {
+        "$ref": "#/$defs/MostraShutdownResult"
+      }
+    },
+    "port/drafts.mirror": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/DraftMirror"
+      },
+      "result": {}
+    },
+    "port/identity.resolve": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortIdentityResolveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortIdentityResolveResult"
+      }
+    },
+    "port/secrets.get": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortSecretsGetParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortSecretsGetResult"
+      }
+    },
+    "port/submissions.deliver": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/SubmissionEnvelope"
+      },
+      "result": {
+        "$ref": "#/$defs/PortSubmissionsDeliverResult"
+      }
+    },
+    "port/trustedControls.activated": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortTrustedControlsActivatedParams"
+      },
+      "result": {}
+    },
+    "port/trustedControls.policy": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortTrustedControlsPolicyParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ControlsPolicy"
+      }
+    },
+    "results/get": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ResultsGetParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ResultsGetResult"
+      }
+    },
+    "secret/delete": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/SecretDeleteParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SecretDeleteResult"
+      }
+    },
+    "secret/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/SecretListParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SecretListResult"
+      }
+    },
+    "secret/set": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/SecretSetParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SecretEntry"
+      }
+    },
+    "state/get": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/StateGetParams"
+      },
+      "result": {
+        "$ref": "#/$defs/StateGetResult"
+      }
+    },
+    "state/patch": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/StatePatchParams"
+      },
+      "result": {
+        "$ref": "#/$defs/MutationResult"
+      }
+    },
+    "view/default": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ViewDefaultParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CapabilityLink"
+      }
+    },
+    "view/launch": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ViewLaunchParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ViewLaunchResult"
+      }
+    },
+    "view/revoke": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ViewRevokeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ViewRevokeResult"
+      }
+    },
+    "view/rotate": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ViewRotateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CapabilityLink"
+      }
+    },
+    "view/url": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ViewUrlParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CapabilityLink"
+      }
+    },
+    "wait": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/WaitParams"
+      },
+      "result": {
+        "$ref": "#/$defs/WaitResult"
+      }
+    }
+  },
+  "x-mostra-notifications": {
+    "artifact/progress": {
+      "params": {
+        "$ref": "#/$defs/ArtifactProgressParams"
+      }
+    },
+    "dev/notify": {
+      "params": {
+        "$ref": "#/$defs/DevNotifyParams"
+      }
+    },
+    "events/notify": {
+      "params": {
+        "$ref": "#/$defs/EventsNotifyParams"
+      }
+    }
+  },
   "$defs": {
     "ActionError": {
       "type": "object",
@@ -2889,6 +3264,44 @@
         "events"
       ],
       "description": "A long-poll answer: the cursor, the events after the asked one, and a snapshot."
+    },
+    "PortIdentityResolveParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "via": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headers": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "via",
+        "headers"
+      ],
+      "description": "A browser opening a link without a viewer: the artifact, how the request arrived and its headers (no cookies, no Mostra headers)."
+    },
+    "PortIdentityResolveResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewerSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The person the session acts for, by the host's stable key, or null for the default."
     },
     "PortName": {
       "type": "string",

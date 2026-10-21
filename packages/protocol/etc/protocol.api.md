@@ -65,6 +65,9 @@ export type AnyFunction = (...args: never) => unknown;
 export type AnyMethod = MethodDefinition<unknown, unknown>;
 
 // @public
+export type AnyNotification = NotificationDefinition<unknown>;
+
+// @public
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
 
 // @public
@@ -1331,10 +1334,13 @@ export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
-export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED", "MOSTRA_HOST_MESSAGE_TOO_LARGE"];
+export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED", "MOSTRA_HOST_MESSAGE_TOO_LARGE", "MOSTRA_HOST_IDENTITY_UNAVAILABLE"];
 
 // @public
 export const hostMethods: readonly AnyMethod[];
+
+// @public
+export const hostNotifications: readonly AnyNotification[];
 
 // @public
 export type HygieneDiagnosticCode = (typeof hygieneDiagnosticCodes)[number];
@@ -1349,6 +1355,9 @@ export type Id<P extends IdPrefix> = `${P}_${string}` & {
 
 // @public
 export type IdBody = "ulid" | "sha256-base32";
+
+// @public
+export type IdentityVia = "local" | "tailnet" | "token" | (string & {});
 
 // @public
 export interface IdKind<P extends IdPrefix> {
@@ -1711,6 +1720,12 @@ export const networkDiagnosticCodes: readonly ["MOSTRA_NETWORK_REQUEST_FAILED", 
 export function normalizeScopes(scopes: readonly CapabilityScope[]): CapabilityScope[];
 
 // @public
+export interface NotificationDefinition<Params> {
+    readonly method: string;
+    readonly params: z.ZodType<Params>;
+}
+
+// @public
 export const OPEN_LINK_SCHEMES: readonly string[];
 
 // @public
@@ -1746,6 +1761,19 @@ export const PollResult: z.ZodType<PollResult>;
 
 // @public
 export const portDraftsMirrorMethod: MethodDefinition<DraftMirror, DraftsMirrorResult>;
+
+// @public
+export const portIdentityResolveMethod: MethodDefinition<PortIdentityResolveParams, PortIdentityResolveResult>;
+
+// @public
+export interface PortIdentityResolveParams {
+    readonly artifactId: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly via: IdentityVia;
+}
+
+// @public
+export type PortIdentityResolveResult = ViewerSpec | null;
 
 // @public
 export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addressing" | "trustedControls" | "capture" | "secrets" | "pty" | "ai" | (string & {});

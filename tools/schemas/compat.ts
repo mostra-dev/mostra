@@ -19,6 +19,10 @@ export type Schema = boolean | { readonly [keyword: string]: unknown };
 /** A published bundle: named definitions plus the protocol revisions it describes. */
 export interface Bundle {
   readonly "x-mostra-revisions"?: Readonly<Record<string, string>>;
+  /** The protocol's methods by name (D143): direction, mutating, and params and result schemas. */
+  readonly "x-mostra-methods"?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /** The notifications by name, with their params schemas. */
+  readonly "x-mostra-notifications"?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly $defs: Readonly<Record<string, Schema>>;
 }
 
@@ -362,6 +366,23 @@ export function compareBundles(before: Bundle, after: Bundle): Break[] {
     const next = after.$defs[name];
     if (next === undefined) comparer.breaks.push({ path: name, reason: "definition removed" });
     else comparer.compare(schema, next, name);
+  }
+  // A method or notification is a name clients call or handle: removing one, or changing who sends
+  // it, whether it mutates, or which definition its params or result name, isn't additive (D143).
+  for (const key of ["x-mostra-methods", "x-mostra-notifications"] as const) {
+    const old = before[key] ?? {};
+    const next = after[key] ?? {};
+    for (const [name, entry] of Object.entries(old)) {
+      const now = next[name];
+      if (now === undefined) {
+        comparer.breaks.push({ path: `${key}.${name}`, reason: "method removed" });
+        continue;
+      }
+      for (const field of Object.keys(entry)) {
+        if (!same(entry[field], now[field]))
+          comparer.breaks.push({ path: `${key}.${name}.${field}`, reason: `${field} changed` });
+      }
+    }
   }
   return comparer.breaks;
 }
