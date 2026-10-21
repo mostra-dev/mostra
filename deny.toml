@@ -2,6 +2,15 @@
 # crate. Mirrors the npm license audit: OSI-approved licenses only.
 [graph]
 all-features = true
+# The platforms Mostra's crates build for (v1.0: macOS and glibc Linux on arm64 and x64, D35;
+# Windows joins with WP-32, D120). Dependencies of other targets (wasm32's bundled root
+# certificates under CDLA-Permissive-2.0, Android's JNI) never reach a host's build.
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+]
 
 [advisories]
 version = 2

@@ -136,6 +136,9 @@ jobs:
         with:
           tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
       - name: pnpm check --job rust
+        env:
+          # The crate's instance suites fail, never skip, when the runtime didn't build.
+          MOSTRA_HOST_REQUIRE_RUNTIME: "1"
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
 
   # Suites through real Mostra processes (sockets, process groups, start times) on both v1

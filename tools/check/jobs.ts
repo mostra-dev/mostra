@@ -204,9 +204,17 @@ export const JOBS: readonly Job[] = [
   },
   {
     name: "rust",
-    summary: "cargo nextest and cargo-deny",
-    applies: (plan) => touches(plan, RUST),
+    summary: "cargo nextest (the crate against the built runtime) and cargo-deny",
+    // The crate's suites run real instances of the runtime this checkout builds (D143), so a
+    // runtime or protocol change runs them too.
+    applies: (plan) =>
+      touches(plan, RUST) || affects(plan, ["@mostra/runtime", "@mostra/protocol"]),
     steps: () => [
+      {
+        label: "build the runtime",
+        command: `${BIN}/turbo`,
+        args: ["run", "build", "--filter=@mostra/runtime...", "--output-logs=errors-only"],
+      },
       {
         label: "nextest",
         command: "cargo",
