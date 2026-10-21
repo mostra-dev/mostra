@@ -162,6 +162,11 @@ export interface ResolvedSession {
   /** The version a frame session entered (D98 item 5). */
   readonly versionId?: string;
   readonly grant: Grant;
+  /**
+   * The viewer the session acts as: its link's viewer (D104), else the one the host's identity
+   * port named when the link was exchanged (D143 item 2); absent: the home's local user.
+   */
+  readonly viewerId?: string;
 }
 
 /** What a redeemed frame ticket carries. */
@@ -175,6 +180,8 @@ export interface TicketGrant {
   readonly shellOrigin: string;
   /** The shell session that asked for it: the ticket works only while that session lives. */
   readonly shellSessionId: string;
+  /** The viewer that shell session acts as, which the frame's session acts as too (D143). */
+  readonly viewerId?: string | undefined;
 }
 
 interface TokenRow {
@@ -196,6 +203,7 @@ interface SessionRow {
   origin: string;
   csrf: string;
   version_id: string | null;
+  viewer_id: string | null;
 }
 
 const grantOf = (row: TokenRow): Grant => ({
@@ -522,6 +530,8 @@ export class Capabilities {
     readonly tokenId: string;
     readonly origin: string;
     readonly versionId?: string;
+    /** The person the host's identity port named, for a link without a viewer (D143 item 2). */
+    readonly viewerId?: string | undefined;
   }): {
     readonly cookie: string;
     readonly csrf: string;
@@ -533,7 +543,7 @@ export class Capabilities {
     const now = this.#iso(this.#now());
     this.#ledger.write((db) =>
       db.run(
-        "INSERT INTO session (id, token_id, origin, mode, csrf, version_id, created_at, last_seen_at) VALUES (?, ?, ?, 'cookie', ?, ?, ?, ?)",
+        "INSERT INTO session (id, token_id, origin, mode, csrf, version_id, created_at, last_seen_at, viewer_id) VALUES (?, ?, ?, 'cookie', ?, ?, ?, ?, ?)",
         id,
         input.tokenId,
         input.origin,
@@ -541,6 +551,7 @@ export class Capabilities {
         input.versionId ?? null,
         now,
         now,
+        input.viewerId ?? null,
       ),
     );
     return { cookie, csrf, id };
@@ -574,11 +585,15 @@ export class Capabilities {
       // A row whose CSRF hash doesn't match was not made by this code: it doesn't count.
       if (!safeEqual(hashSecret(csrf), found.session.csrf)) continue;
       this.#touch(found.session.id);
+      const grant = grantOf(found.token);
+      // A link's own viewer always wins: a token's viewer never changes (D104).
+      const viewerId = grant.viewerId ?? found.session.viewer_id ?? undefined;
       return {
         id: found.session.id,
         csrf,
         ...(found.session.version_id !== null ? { versionId: found.session.version_id } : {}),
-        grant: grantOf(found.token),
+        grant,
+        ...(viewerId !== undefined ? { viewerId } : {}),
       };
     }
     return revoked

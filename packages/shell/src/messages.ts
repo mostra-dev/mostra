@@ -37,6 +37,12 @@ export function explain(code: string): { readonly title: string; readonly detail
       };
     case "MOSTRA_HYGIENE_SCOPE_DENIED":
       return { title: "This link doesn't allow that", detail: "Ask for a link with more access." };
+    case "MOSTRA_HOST_IDENTITY_UNAVAILABLE":
+      return {
+        title: "Mostra can't tell who you are right now",
+        detail:
+          "The app that identifies people for this artifact isn't answering. Try again in a moment.",
+      };
     case "NO_ARTIFACT":
       return {
         title: "No artifact here",

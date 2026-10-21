@@ -80,8 +80,21 @@ export function localViewerId(db: LedgerDb): string {
  * a `name` given again replaces the stored one.
  */
 export function viewerForSpec(db: LedgerDb, spec: ViewerSpec): string {
+  return viewerByRef(db, "token", spec);
+}
+
+/**
+ * The viewer a host's identity port named (D143 item 2): one viewer of kind `host` per `ref`,
+ * kept apart from `view/url`'s viewers, which a host names for links it mints.
+ */
+export function viewerForHost(db: LedgerDb, spec: ViewerSpec): string {
+  return viewerByRef(db, "host", spec);
+}
+
+function viewerByRef(db: LedgerDb, kind: "token" | "host", spec: ViewerSpec): string {
   const found = db.get<ViewerRow>(
-    "SELECT * FROM viewer WHERE kind = 'token' AND external_ref = ?",
+    "SELECT * FROM viewer WHERE kind = ? AND external_ref = ?",
+    kind,
     spec.ref,
   );
   if (found) {
@@ -92,8 +105,9 @@ export function viewerForSpec(db: LedgerDb, spec: ViewerSpec): string {
   }
   const id = ViewerId.create();
   db.run(
-    "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES (?, 'token', ?, ?, ?)",
+    "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES (?, ?, ?, ?, ?)",
     id,
+    kind,
     spec.ref,
     spec.name ?? null,
     new Date().toISOString(),

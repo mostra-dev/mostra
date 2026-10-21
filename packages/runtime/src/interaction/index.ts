@@ -90,6 +90,7 @@ import {
   openView,
   viewControls,
   viewer,
+  viewerForHost,
   viewerForSpec,
   viewFor,
 } from "./viewers.ts";
@@ -154,6 +155,8 @@ export interface Interaction {
   viewer(viewerId: string): Viewer;
   /** The viewer for `view/url`'s `viewer`, inside the caller's transaction. */
   viewerForSpec(db: LedgerDb, spec: ViewerSpec): string;
+  /** The viewer a host's identity port named (D143 item 2), in a transaction of its own. */
+  viewerForHost(spec: ViewerSpec): string;
   /** Records a frame load of a version (D104), with the controls in force (D108); returns its ID. */
   openView(input: {
     readonly artifactId: string;
@@ -500,6 +503,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     viewer: (viewerId) => ledger.read((db) => viewer(db, viewerId)),
     viewerForSpec,
+    viewerForHost: (spec) => ledger.write((db) => viewerForHost(db, spec)),
     openView(input) {
       return ledger.write((db) => openView(db, input));
     },

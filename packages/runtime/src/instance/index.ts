@@ -24,6 +24,7 @@ import {
   type JsonRpcParams,
   type MostraInitializeResult,
   type PortTrustedControlsActivatedParams,
+  portIdentityResolveMethod,
   portSecretsGetMethod,
   portTrustedControlsActivatedMethod,
   portTrustedControlsPolicyMethod,
@@ -56,7 +57,9 @@ import {
   controlsPolicy,
   createGateway,
   type Gateway,
+  IDENTITY_TIMEOUT_MS,
   locateShell,
+  resolveIdentity,
 } from "../gateway/index.ts";
 import { createGc, gcMethods } from "../gc/index.ts";
 import {
@@ -204,6 +207,15 @@ export function runtimeVersion(): string {
 }
 
 const CLIENT: ClientInfo = { name: "mostra-runtime", version: "" };
+
+/** Every port this instance calls when a client registers it (`capabilities.ports`). */
+export const SUPPORTED_PORTS: readonly string[] = [
+  "identity",
+  "submissions",
+  "drafts",
+  "trustedControls",
+  "secrets",
+];
 
 /**
  * Starts an instance for a home (RT-06): the platform gate, then the home's lock, migrations,
@@ -383,6 +395,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     });
     return verifier;
   };
+  // The hosts that always provide a port (`HomeConfig.ports`, D105), by client name.
+  const expectedOwners = (port: string): string[] =>
+    Object.entries(readHomeSettings(home.path).expectedPorts ?? {})
+      .filter(([, ports]) => ports.includes(port))
+      .map(([owner]) => owner);
   // The gateway (WP-05): leased ports, capability links and sessions, static versions.
   const clockOffset = testClockOffset(environment["MOSTRA_TEST_CLOCK_OFFSET_MS"], log);
   const addressing = createAddressing({
@@ -608,10 +625,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         artifact,
         log,
         home: () => readHomeSettings(home.path).submitChannels,
-        expected: () =>
-          Object.entries(readHomeSettings(home.path).expectedPorts ?? {})
-            .filter(([, ports]) => ports.includes("trustedControls"))
-            .map(([owner]) => owner),
+        expected: () => expectedOwners("trustedControls"),
         registrant: () => server.registrants("trustedControls").at(-1),
         call: (session, params) =>
           server.callSession(
@@ -619,6 +633,21 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
             portTrustedControlsPolicyMethod.method,
             params as unknown as JsonRpcParams,
             CONTROLS_POLICY_TIMEOUT_MS,
+          ),
+      }),
+    // Who a browser is, for links without a viewer (D143 item 2).
+    identity: (input) =>
+      resolveIdentity({
+        ...input,
+        log,
+        expected: () => expectedOwners("identity"),
+        registrant: () => server.registrants("identity").at(-1),
+        call: (session, params) =>
+          server.callSession(
+            session,
+            portIdentityResolveMethod.method,
+            params as JsonRpcParams,
+            IDENTITY_TIMEOUT_MS,
           ),
       }),
     activated: (event) => {
@@ -713,7 +742,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       if (markHostConfigured(home.path, client.name))
         log.info("home.host_configured", { client: client.name });
     },
-    supportedPorts: ["submissions", "drafts", "trustedControls", "secrets"],
+    // The ports this instance calls (D143 item 1); `addressing` arrives with WP-13, `reviews` and
+    // `capture` with WP-20, `pty` with WP-23.
+    supportedPorts: SUPPORTED_PORTS,
     notifications: [EVENTS_NOTIFY, ARTIFACT_PROGRESS, DEV_NOTIFY],
     onInitialized: (session) => interaction.connected(session),
     onClosed: (session) => interaction.disconnected(session),

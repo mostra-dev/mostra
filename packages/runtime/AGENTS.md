@@ -97,6 +97,13 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   on the view; the submit transaction and the artifact's writes to `review.<set>.choice` check that
   record, before anything else, including a repeat of an earlier submit. A port that fails or
   doesn't answer within 5 s narrows the view to the shell channel; it never widens it.
+- **A session's person is decided once, at the link's exchange (D143 item 2).** A link minted
+  with a viewer acts for it; otherwise `gateway/identity.ts` asks a registered `identity` port
+  (headers without `cookie` and `x-mostra-*`) and the session row keeps the answer
+  (`session.viewer_id`), which the frame's session inherits through its ticket. A host that took
+  identity over and fails, times out, answers nonsense or is expected but away refuses the
+  exchange (503 `MOSTRA_HOST_IDENTITY_UNAVAILABLE`); nobody silently becomes the local user.
+  The ports the instance calls are `SUPPORTED_PORTS` in `instance/index.ts`.
 - **Orphans are derived, never stored (D109).** A field is an orphan of a view when the view's
   version's `fields` coverage (`builder/coverage.ts`) doesn't cover it; nothing moves or drops a
   field. Coverage that can't be known is open: a version never orphans an answer by a guess.

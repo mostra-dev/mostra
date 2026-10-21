@@ -23,6 +23,7 @@ import { InstanceInfo } from '@mostra/protocol';
 import { LivePushParams } from '@mostra/protocol';
 import { LivePushResult } from '@mostra/protocol';
 import { MethodDefinition } from '@mostra/protocol';
+import { PortIdentityResolveParams } from '@mostra/protocol';
 import { PortSecretsGetParams } from '@mostra/protocol';
 import { PortTrustedControlsActivatedParams } from '@mostra/protocol';
 import { PublishReceipt } from '@mostra/protocol';
@@ -37,6 +38,7 @@ import { SubmissionPolicy } from '@mostra/protocol';
 import { SubmissionsDeliverResult } from '@mostra/protocol';
 import { SubmitChannel } from '@mostra/protocol';
 import { VerifyVerdict } from '@mostra/protocol';
+import { ViewerSpec } from '@mostra/protocol';
 import { ViewUrlParams } from '@mostra/protocol';
 import { WaitCondition } from '@mostra/protocol';
 import { WaitResult } from '@mostra/protocol';
@@ -233,6 +235,9 @@ export interface PlatformFacts {
 export interface Ports {
     readonly drafts?: {
         mirror(draft: DraftMirror): void | Promise<void>;
+    };
+    readonly identity?: {
+        resolve(request: PortIdentityResolveParams): ViewerSpec | null | Promise<ViewerSpec | null>;
     };
     readonly secrets?: {
         get(request: PortSecretsGetParams): string | null | Promise<string | null>;

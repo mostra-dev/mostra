@@ -30,6 +30,7 @@ import {
   type Diagnostic,
   durationMs,
   type FrameTicket,
+  type IdentityVia,
   type Refusal,
   RpcError,
   refusal,
@@ -76,6 +77,7 @@ import {
   refusalResponse,
   sessionCookie,
 } from "./http.ts";
+import type { IdentityOutcome } from "./identity.ts";
 import { versionIntegrity } from "./integrity.ts";
 import { createListener, type Listener } from "./listener.ts";
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
@@ -84,6 +86,12 @@ import { fileResponse, findFile } from "./serve.ts";
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 export type { DevUpstream } from "./dev.ts";
+export {
+  IDENTITY_TIMEOUT_MS,
+  type IdentityOutcome,
+  identityHeaders,
+  resolveIdentity,
+} from "./identity.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -113,6 +121,15 @@ export interface GatewayOptions {
   readonly controls: (artifact: ArtifactDetail) => Promise<ControlsPolicy>;
   /** Tells hosts with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: BrowserRoutesOptions["activated"];
+  /**
+   * Who a browser is that exchanges a link minted without a viewer (D143 item 2): the person a
+   * host's identity port names, the standalone default, or a refusal. Absent: the default.
+   */
+  readonly identity?: (input: {
+    readonly artifactId: string;
+    readonly via: IdentityVia;
+    readonly headers: Headers;
+  }) => Promise<IdentityOutcome>;
   /** The browser-protocol revisions served; `BROWSER_PROTOCOL_REVISIONS` unless a test adds one. */
   readonly revisions?: readonly string[];
   /**
@@ -473,7 +490,26 @@ export function createGateway(options: GatewayOptions): Gateway {
         );
       }
     }
-    const session = capabilities.createSession({ tokenId: grant.tokenId, origin: shellOrigin() });
+    // A link without a viewer acts for whoever the host's identity port names (D143 item 2);
+    // a host that took identity over and can't answer refuses the link, never a guess.
+    let viewerId: string | undefined;
+    if (grant.viewerId === undefined && options.identity) {
+      const outcome = await options.identity({
+        artifactId,
+        via: "local",
+        headers: context.request.headers,
+      });
+      if (outcome.kind === "unavailable") {
+        log.warn("gateway.session_refused", { artifactId, code: outcome.diagnostic.code });
+        return jsonResponse(outcome.diagnostic, { status: 503 });
+      }
+      if (outcome.kind === "person") viewerId = interaction.viewerForHost(outcome.viewer);
+    }
+    const session = capabilities.createSession({
+      tokenId: grant.tokenId,
+      origin: shellOrigin(),
+      viewerId,
+    });
     if (launch) capabilities.spendLaunch(body["launch"]);
     log.info("gateway.session_started", {
       origin: shellOrigin(),
@@ -566,11 +602,12 @@ export function createGateway(options: GatewayOptions): Gateway {
       origin: artifactOrigin,
       shellOrigin: shellOrigin(),
       shellSessionId: session.id,
+      viewerId: session.viewerId,
     });
     // One frame load is one view, of exactly this version, by this link's viewer (D104), with
     // the channels and controls in force for it (D108).
     const controls = await options.controls(detail);
-    const viewerId = interaction.viewerOf(session.grant.viewerId);
+    const viewerId = interaction.viewerOf(session.viewerId);
     const viewId = interaction.openView({
       artifactId,
       versionId: version.id,
@@ -732,13 +769,20 @@ export function createGateway(options: GatewayOptions): Gateway {
         origin(),
         artifactId,
       );
-      if (!isRefusal(existing) && existing.grant.tokenId === redeemed.tokenId) {
+      // The frame acts as its shell session's viewer (D143 item 2): a session of the same link
+      // for someone else (the identity port named another person) is never reused.
+      if (
+        !isRefusal(existing) &&
+        existing.grant.tokenId === redeemed.tokenId &&
+        existing.viewerId === redeemed.viewerId
+      ) {
         capabilities.enterVersion(existing.id, redeemed.versionId);
       } else {
         const session = capabilities.createSession({
           tokenId: redeemed.tokenId,
           origin: origin(),
           versionId: redeemed.versionId,
+          viewerId: redeemed.viewerId,
         });
         headers["set-cookie"] = sessionCookie(
           checks().cookieName(),
@@ -767,7 +811,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         scopes: session.grant.scopes,
         // The viewer the page acts as, so edits made before its first snapshot are journaled
         // under it (WP-07; Claude review finding 4).
-        viewer: interaction.viewer(interaction.viewerOf(session.grant.viewerId)),
+        viewer: interaction.viewer(interaction.viewerOf(session.viewerId)),
         ...(version ? { version: { id: version.id, number: version.number } } : {}),
       });
     };
