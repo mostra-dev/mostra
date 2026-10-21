@@ -229,60 +229,79 @@ impl Identity for Store {
         &self,
         request: PortIdentityResolveParams,
     ) -> Result<Option<Person>, PortError> {
-        let answer = {
-            let mut state = self.lock();
-            state.identity.push(json!({
-                "artifactId": request.artifact_id.to_string(),
-                "via": request.via.to_string(),
-                "headers": request.headers.keys().collect::<Vec<_>>(),
-            }));
-            state.person.clone()
-        };
-        match answer {
-            Value::String(kind) if kind == "fail" => {
-                Err(PortError::new("the host's directory is unavailable"))
+        let mut call = json!({
+            "artifactId": request.artifact_id.to_string(),
+            "via": request.via.to_string(),
+            "headers": request.headers.keys().collect::<Vec<_>>(),
+        });
+        let answer = self.lock().person.clone();
+        // What the host answers is recorded beside the call (absent when it fails or hangs), so
+        // the kit judges the session by this host's own way of naming people.
+        let person = match answer {
+            Value::String(kind) if kind == "fail" || kind == "hang" => {
+                self.lock().identity.push(call);
+                if kind == "fail" {
+                    return Err(PortError::new("the host's directory is unavailable"));
+                }
+                return hang().await;
             }
-            Value::String(kind) if kind == "hang" => hang().await,
             Value::String(kind) if kind == "headers" => {
-                Ok(request.headers.get("x-forwarded-user").map(|user| {
-                    Person::new(user.clone()).named(user.split('@').next().unwrap_or(user))
-                }))
+                request.headers.get("x-forwarded-user").map(|user| {
+                    (
+                        user.clone(),
+                        Some(user.split('@').next().unwrap_or(user).to_owned()),
+                    )
+                })
             }
-            Value::Object(person) => {
-                let reference = person
+            Value::Object(person) => Some((
+                person
                     .get("ref")
                     .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let mut found = Person::new(reference);
-                if let Some(name) = person.get("name").and_then(Value::as_str) {
-                    found = found.named(name);
-                }
-                Ok(Some(found))
+                    .unwrap_or_default()
+                    .to_owned(),
+                person
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            )),
+            _ => None,
+        };
+        call["answer"] = person.as_ref().map_or(Value::Null, |(reference, name)| {
+            let mut answer = json!({ "ref": reference });
+            if let Some(name) = name {
+                answer["name"] = json!(name);
             }
-            _ => Ok(None),
-        }
+            answer
+        });
+        self.lock().identity.push(call);
+        Ok(person.map(|(reference, name)| match name {
+            Some(name) => Person::new(reference).named(name),
+            None => Person::new(reference),
+        }))
     }
 }
 
 impl TrustedControls for Store {
     async fn policy(&self, artifact: ArtifactSummary) -> Result<ControlsPolicy, PortError> {
-        let answer = {
-            let mut state = self.lock();
-            state
-                .policies
-                .push(json!({ "artifactId": artifact.id.to_string() }));
-            state.policy.clone()
-        };
+        let id = artifact.id.to_string();
+        let mut answer = self.lock().policy.clone();
         if self.faults.contains("ignore-policy") {
-            return serde_json::from_value(json!({ "submitChannels": ["shell", "artifact"] }))
-                .map_err(|e| PortError::new(e.to_string()));
+            answer = json!({ "submitChannels": ["shell", "artifact"] });
         }
         match answer {
-            Value::String(kind) if kind == "fail" => {
-                Err(PortError::new("the host's policy service is unavailable"))
+            Value::String(kind) if kind == "fail" || kind == "hang" => {
+                self.lock().policies.push(json!({ "artifactId": id }));
+                if kind == "fail" {
+                    return Err(PortError::new("the host's policy service is unavailable"));
+                }
+                hang().await
             }
-            Value::String(kind) if kind == "hang" => hang().await,
-            policy => serde_json::from_value(policy).map_err(|e| PortError::new(e.to_string())),
+            policy => {
+                self.lock()
+                    .policies
+                    .push(json!({ "artifactId": id, "answer": policy.clone() }));
+                serde_json::from_value(policy).map_err(|e| PortError::new(e.to_string()))
+            }
         }
     }
 

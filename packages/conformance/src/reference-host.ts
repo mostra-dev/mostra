@@ -7,6 +7,9 @@
  *
  *   mostra-conformance-reference-host                 every port
  *   mostra-conformance-reference-host --standalone    no port: Mostra's built-in adapters
+ *   mostra-conformance-reference-host --unscripted    every port, without the `faults` feature:
+ *     its policy allows both channels and it names people by its own IDs (`user-1` …), so the
+ *     kit judges it by the answers it reports, as it must any host that can't be scripted
  *   mostra-conformance-reference-host --break <fault,…>   a deliberately broken host:
  *     store-duplicates       stores every delivery call, so a redelivery is stored twice
  *     drafts-as-submissions  takes draft mirrors for submissions
@@ -68,8 +71,14 @@ export class ReferenceStore {
   #person: Extract<ScriptParams, { port: "identity" }>["answer"] = "headers";
   #secretValues: Readonly<Record<string, string>> = {};
 
-  constructor(faults: ReadonlySet<string> = new Set()) {
+  /** People by the header that named them, for an unscripted host's own IDs. */
+  readonly #people = new Map<string, string>();
+  readonly #unscripted: boolean;
+
+  constructor(faults: ReadonlySet<string> = new Set(), unscripted = false) {
     this.#faults = faults;
+    this.#unscripted = unscripted;
+    if (unscripted) this.#policy = { submitChannels: ["artifact", "shell"] };
   }
 
   /** Sets how a port answers from now on (feature `faults`). */
@@ -143,28 +152,44 @@ export class ReferenceStore {
       },
       identity: {
         resolve: async (request: PortIdentityResolveParams) => {
-          this.#identity.push({
+          const call = {
             artifactId: request.artifactId,
             via: request.via,
             headers: Object.keys(request.headers).sort(),
-          });
+          };
           const answer = this.#person;
-          if (answer === "fail") throw new Error("the host's directory is unavailable");
-          if (answer === "hang") return new Promise<never>(() => undefined);
+          if (answer === "fail" || answer === "hang") {
+            this.#identity.push(call);
+            if (answer === "fail") throw new Error("the host's directory is unavailable");
+            return new Promise<never>(() => undefined);
+          }
+          let person: { ref: string; name?: string } | null = answer === "headers" ? null : answer;
           if (answer === "headers") {
             const user = request.headers["x-forwarded-user"];
-            return user ? { ref: user, name: user.split("@")[0] ?? user } : null;
+            if (user && this.#unscripted && !this.#people.has(user)) {
+              this.#people.set(user, `user-${this.#people.size + 1}`);
+            }
+            const ref = user && this.#unscripted ? this.#people.get(user) : user;
+            person = user && ref ? { ref, name: user.split("@")[0] ?? user } : null;
           }
-          return answer;
+          this.#identity.push({ ...call, answer: person });
+          return person;
         },
       },
       trustedControls: {
         policy: async (artifact: ArtifactSummary): Promise<ControlsPolicy> => {
-          this.#policies.push({ artifactId: artifact.id });
           const answer = this.#policy;
-          if (this.#faults.has("ignore-policy")) return { submitChannels: ["shell", "artifact"] };
-          if (answer === "fail") throw new Error("the host's policy service is unavailable");
-          if (answer === "hang") return new Promise<never>(() => undefined);
+          if (this.#faults.has("ignore-policy")) {
+            const both: ControlsPolicy = { submitChannels: ["shell", "artifact"] };
+            this.#policies.push({ artifactId: artifact.id, answer: both });
+            return both;
+          }
+          if (answer === "fail" || answer === "hang") {
+            this.#policies.push({ artifactId: artifact.id });
+            if (answer === "fail") throw new Error("the host's policy service is unavailable");
+            return new Promise<never>(() => undefined);
+          }
+          this.#policies.push({ artifactId: artifact.id, answer: answer as ControlsPolicy });
           return answer as ControlsPolicy;
         },
         activated: (event: PortTrustedControlsActivatedParams) => {
@@ -199,23 +224,26 @@ export class ReferenceStore {
 
 /** Runs the reference host's harness on stdio. */
 export async function runReferenceHost(
-  options: { standalone?: boolean; faults?: readonly string[] } = {},
+  options: { standalone?: boolean; unscripted?: boolean; faults?: readonly string[] } = {},
 ): Promise<void> {
   const faults = new Set(options.faults ?? []);
-  const store = new ReferenceStore(faults);
+  const unscripted = options.unscripted ?? false;
+  const store = new ReferenceStore(faults, unscripted);
   let mostra: Mostra | undefined;
   const ports = options.standalone ? {} : store.ports();
   const portNames = Object.keys(ports);
   const name = options.standalone
     ? "reference-host-ts-standalone"
-    : faults.size > 0
-      ? "reference-host-ts-broken"
-      : "reference-host-ts";
+    : unscripted
+      ? "reference-host-ts-unscripted"
+      : faults.size > 0
+        ? "reference-host-ts-broken"
+        : "reference-host-ts";
   await serveHarness({
     initialize: () => ({
       host: { name, version: kitVersion() },
       ports: portNames,
-      features: options.standalone ? ["events"] : ["faults", "events"],
+      features: options.standalone || unscripted ? ["events"] : ["faults", "events"],
     }),
     async start(params: StartParams): Promise<StartResult> {
       if (params.mode === "attach") {
@@ -260,7 +288,9 @@ export async function runReferenceHost(
       await current?.close();
     },
     store: () => store.snapshot(),
-    ...(options.standalone ? {} : { script: (params: ScriptParams) => store.script(params) }),
+    ...(options.standalone || unscripted
+      ? {}
+      : { script: (params: ScriptParams) => store.script(params) }),
     async events(params: EventsParams): Promise<EventsResult> {
       if (!mostra) throw new Error("No instance runs.");
       const pages: EventsResult["pages"][number][] = [];
@@ -307,7 +337,11 @@ if (
   process.argv[1]?.endsWith("reference-host.js")
 ) {
   const { values } = parseArgs({
-    options: { standalone: { type: "boolean" }, break: { type: "string" } },
+    options: {
+      standalone: { type: "boolean" },
+      unscripted: { type: "boolean" },
+      break: { type: "string" },
+    },
     strict: true,
   });
   const faults = values.break ? values.break.split(",").filter(Boolean) : [];
@@ -317,7 +351,9 @@ if (
       process.exit(2);
     }
   }
-  void runReferenceHost({ standalone: values.standalone ?? false, faults }).then(() =>
-    process.exit(0),
-  );
+  void runReferenceHost({
+    standalone: values.standalone ?? false,
+    unscripted: values.unscripted ?? false,
+    faults,
+  }).then(() => process.exit(0));
 }

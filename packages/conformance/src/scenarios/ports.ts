@@ -24,14 +24,22 @@ export const identity: Scenario = {
       same(read.submission.viewer.kind, "local", "the viewer without an identity port");
       return;
     }
-    same(
-      [read.submission.viewer.kind, read.submission.viewer.ref],
-      ["host", "ada@example.com"],
-      "the person the host's identity port named",
-    );
     const calls = (await context.store()).identity;
     const call = calls.at(-1);
     check(call, "the host's identity port was never asked");
+    // The session acts as whoever the host named, in its own terms (D143 item 2): the kit judges
+    // the session by the host's answer, not by any one way of naming people.
+    check(
+      call.answer !== undefined,
+      "the host's store doesn't report what its identity port answered (harness/store)",
+    );
+    same(
+      call.answer === null
+        ? [read.submission.viewer.kind]
+        : [read.submission.viewer.kind, read.submission.viewer.ref],
+      call.answer === null ? ["local"] : ["host", call.answer.ref],
+      "the submission's viewer, by the host's answer",
+    );
     same(call.via, "local", "how the request reached the gateway");
     check(
       call.headers.includes("x-forwarded-user"),
@@ -115,27 +123,49 @@ export const trustedControls: Scenario = {
       );
       return;
     }
-    if (context.host.supports("faults")) {
-      await context.host.script({
-        port: "trustedControls",
-        answer: { submitChannels: ["shell"], controls: ["submit"] },
-      });
-    }
+    // A host that can script its policy is asked for shell-only, the case hosts that need
+    // provenance use (H-05); any other host is judged by the policy it answered itself.
+    const scripted = context.host.supports("faults")
+      ? { submitChannels: ["shell"], controls: ["submit"] }
+      : undefined;
+    if (scripted) await context.host.script({ port: "trustedControls", answer: scripted });
     const receipt = await context.published(FORM);
     const viewer = await context.viewer(receipt.artifactId);
-    check(
-      (await context.store()).policies.some((entry) => entry.artifactId === receipt.artifactId),
-      "the host's policy wasn't asked when the view opened",
+    const asked = (await context.store()).policies.find(
+      (entry) => entry.artifactId === receipt.artifactId,
     );
-    same(viewer.ticket.submitChannels, ["shell"], "the view's channels under the host's policy");
+    check(asked, "the host's policy wasn't asked when the view opened");
+    const policy = scripted ?? asked.answer;
+    check(
+      policy,
+      "the host's store doesn't report what its trustedControls policy answered (harness/store)",
+    );
+    same(
+      [...viewer.ticket.submitChannels].sort(),
+      [...policy.submitChannels].sort(),
+      "the view's channels under the host's policy",
+    );
     const written = await viewer.write({ name: "Ada" });
     const revision = written.json<{ revision: string }>().revision;
-    const denied = await viewer.submit(revision);
-    same(
-      [denied.status, denied.json<{ code?: string }>().code],
-      [403, "MOSTRA_SUBMIT_CHANNEL_DENIED"],
-      "the artifact channel's submit",
-    );
+    const artifactAllowed = policy.submitChannels.includes("artifact");
+    if (!artifactAllowed) {
+      const denied = await viewer.submit(revision);
+      same(
+        [denied.status, denied.json<{ code?: string }>().code],
+        [403, "MOSTRA_SUBMIT_CHANNEL_DENIED"],
+        "the artifact channel's submit",
+      );
+    }
+    if (!policy.submitChannels.includes("shell")) {
+      // A host that allows the artifact channel alone: the page's submit is recorded as such.
+      same((await viewer.submit(revision)).status, 200, "the artifact channel's submit");
+      same(
+        (await context.results(receipt.artifactId)).submission.channel,
+        "artifact",
+        "the recorded channel",
+      );
+      return;
+    }
     const trusted = await viewer.shellSubmit(revision);
     same(trusted.status, 200, "the shell's trusted Submit");
     same(

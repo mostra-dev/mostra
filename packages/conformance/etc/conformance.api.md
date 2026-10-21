@@ -232,7 +232,7 @@ export const REFERENCE_FAULTS: readonly string[];
 
 // @public
 export class ReferenceStore {
-    constructor(faults?: ReadonlySet<string>);
+    constructor(faults?: ReadonlySet<string>, unscripted?: boolean);
     ports(): Ports;
     script(params: ScriptParams): void;
     snapshot(): StoreResult;
@@ -260,6 +260,7 @@ export interface RunOptions {
 // @public
 export function runReferenceHost(options?: {
     standalone?: boolean;
+    unscripted?: boolean;
     faults?: readonly string[];
 }): Promise<void>;
 
@@ -468,9 +469,17 @@ export interface StoreResult {
         readonly artifactId: string;
         readonly via: string;
         readonly headers: readonly string[];
+        readonly answer?: {
+            readonly ref: string;
+            readonly name?: string;
+        } | null;
     }[];
     readonly policies: readonly {
         readonly artifactId: string;
+        readonly answer?: {
+            readonly submitChannels: readonly string[];
+            readonly controls?: readonly string[];
+        };
     }[];
     readonly secrets: readonly {
         readonly artifactId: string;

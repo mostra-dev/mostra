@@ -123,6 +123,13 @@ async function runOne(
 /** Runs the kit's scenarios against a host and judges them against its baseline. */
 export async function runConformance(options: RunOptions): Promise<ConformanceReport> {
   const baseline = options.baseline ?? NO_BASELINE;
+  // A baseline naming a scenario the run doesn't know would expect nothing, silently: refused here
+  // as `readBaseline` refuses it, whoever built the baseline (GPT review of WP-12, finding 9).
+  const catalog = (options.scenarios ?? SCENARIOS).map((scenario) => scenario.id);
+  const unknown = Object.keys(baseline.expectedFailures).filter((id) => !catalog.includes(id));
+  if (unknown.length > 0) {
+    throw new Error(`The baseline names scenarios the kit doesn't have: ${unknown.join(", ")}.`);
+  }
   const settings: RunSettings = {
     host: options.host,
     hostEnv: options.hostEnv ?? {},

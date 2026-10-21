@@ -123,6 +123,15 @@ describe("the runner's judgement (HO-05)", () => {
     expect(stale.ok).toBe(false);
   });
 
+  it("refuses a baseline naming a scenario it doesn't have, before any host starts (GPT review finding 9)", async () => {
+    const run = runConformance({
+      host: "exit 7",
+      scenarios: [passes],
+      baseline: { schemaVersion: 1, expectedFailures: { "t.pases": "a typo" } },
+    });
+    await expect(run).rejects.toThrow(/t\.pases/);
+  });
+
   it("bounds each scenario in time and selects by ID prefix", async () => {
     const slow = scenario("t.slow", () => new Promise(() => undefined));
     const report = await runConformance({

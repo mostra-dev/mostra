@@ -17,7 +17,7 @@ requests on stdin (one per line) and answers them with your real integration. An
 | `harness/start { home, env, mode? }` | starts or attaches to your Mostra instance for that home, adding `env` to its environment |
 | `harness/call { method, params, timeoutMs? }` | sends one host-protocol request through your client; answers `{ result }` or `{ error }` |
 | `harness/stop` | ends your session |
-| `harness/store` | reports what your own store holds: deliveries, draft mirrors, activations, identity, policy and secret calls |
+| `harness/store` | reports what your own store holds: deliveries, draft mirrors, activations, identity, policy and secret calls, with what your identity and policy ports answered (scenarios judge a host that can't be scripted by those answers) |
 | `harness/script` | (feature `faults`) answers a port the way the kit asks |
 | `harness/events` | (feature `events`) reads pages from your own named event stream |
 
@@ -61,7 +61,9 @@ so the baseline only ever shrinks.
 ## Reference hosts
 
 `mostra-conformance-reference-host` is the TypeScript reference host, built on `@mostra/sdk`.
-`--standalone` registers no port (Mostra's built-in adapters); `--break <fault,…>` is a
+`--standalone` registers no port (Mostra's built-in adapters); `--unscripted` serves every port
+without the `faults` feature, naming people by its own IDs and allowing both channels, as a host
+that can't be scripted would; `--break <fault,…>` is a
 deliberately broken host for proving the kit. Both reference hosts pass every scenario that applies
 to them.
 

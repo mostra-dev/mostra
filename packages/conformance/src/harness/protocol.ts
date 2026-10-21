@@ -199,14 +199,28 @@ export interface StoreResult {
     readonly control: string;
     readonly viewId: string;
   }[];
-  /** `identity.resolve` calls: the artifact, how the request arrived and the header names. */
+  /**
+   * `identity.resolve` calls: the artifact, how the request arrived, the header names, and what
+   * the host answered (absent when it failed or never answered). Scenarios judge the session by
+   * this answer, so a host may name people however it likes.
+   */
   readonly identity: readonly {
     readonly artifactId: string;
     readonly via: string;
     readonly headers: readonly string[];
+    readonly answer?: { readonly ref: string; readonly name?: string } | null;
   }[];
-  /** `trustedControls.policy` calls. */
-  readonly policies: readonly { readonly artifactId: string }[];
+  /**
+   * `trustedControls.policy` calls, with what the host answered (absent when it failed or never
+   * answered). Scenarios judge the view by this answer when they can't script one.
+   */
+  readonly policies: readonly {
+    readonly artifactId: string;
+    readonly answer?: {
+      readonly submitChannels: readonly string[];
+      readonly controls?: readonly string[];
+    };
+  }[];
   /** `secrets.get` calls. */
   readonly secrets: readonly { readonly artifactId: string; readonly name: string }[];
 }
@@ -240,9 +254,26 @@ export const StoreResult: z.ZodType<StoreResult> = z.object({
     z.object({ artifactId: z.string(), control: z.string(), viewId: z.string() }),
   ),
   identity: z.array(
-    z.object({ artifactId: z.string(), via: z.string(), headers: z.array(z.string()) }),
+    z.object({
+      artifactId: z.string(),
+      via: z.string(),
+      headers: z.array(z.string()),
+      answer: z
+        .union([z.object({ ref: z.string(), name: z.string().optional() }), z.null()])
+        .optional(),
+    }),
   ),
-  policies: z.array(z.object({ artifactId: z.string() })),
+  policies: z.array(
+    z.object({
+      artifactId: z.string(),
+      answer: z
+        .object({
+          submitChannels: z.array(z.string()),
+          controls: z.array(z.string()).optional(),
+        })
+        .optional(),
+    }),
+  ),
   secrets: z.array(z.object({ artifactId: z.string(), name: z.string() })),
 }) as z.ZodType<StoreResult>;
 

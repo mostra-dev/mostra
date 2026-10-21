@@ -46,6 +46,17 @@ describe("the conformance kit (HO-05)", () => {
     expect(status["delivery.exactly-once"]).toBe("skipped");
   });
 
+  it("a host that can't be scripted is judged by its own answers: its own IDs for people, both channels (GPT review findings 6 and 7)", async () => {
+    const report = await runConformance({
+      host: `${REFERENCE} --unscripted`,
+      only: ["ports.", "delivery.submission", "home."],
+    });
+    const failed = report.outcomes.filter((outcome) => outcome.status === "failed");
+    expect(failed, JSON.stringify(failed, null, 2)).toEqual([]);
+    expect(statuses(report.outcomes)["ports.identity"]).toBe("passed");
+    expect(statuses(report.outcomes)["ports.trusted-controls"]).toBe("passed");
+  });
+
   it("a broken host fails exactly the scenarios its faults break, and its baseline turns the run green", async () => {
     const host = `${REFERENCE} --break store-duplicates,drafts-as-submissions,ignore-policy`;
     const only = ["delivery.", "drafts.", "ports.trusted-controls", "session.negotiation"];
