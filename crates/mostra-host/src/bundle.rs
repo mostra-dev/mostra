@@ -575,7 +575,9 @@ async fn fetch_into(
 ) -> Result<()> {
     let needed = asset.size.get() + asset.unpacked_size.get() + BROWSER_ALLOWANCE;
     if let Ok(stats) = nix::sys::statvfs::statvfs(bundles) {
-        let free = u64::from(stats.blocks_available()) * stats.fragment_size();
+        // `blocks_available` is a u32 on macOS and a u64 on Linux.
+        #[allow(clippy::useless_conversion, reason = "u32 on macOS, u64 on Linux")]
+        let free = u64::from(stats.blocks_available()).saturating_mul(stats.fragment_size());
         if free < needed {
             #[allow(clippy::cast_precision_loss, reason = "a readable size")]
             let gib = |bytes: u64| format!("{:.1} GiB", bytes as f64 / 1024_f64.powi(3));
