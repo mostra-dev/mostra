@@ -54,6 +54,6 @@ describe("the host-neutral core (HO-06)", () => {
   ])("is refused: %s", (_what, path, text) => {
     const problems = hostNeutralProblems(tree({ [path]: text }));
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(new RegExp(`^${path.replace(/[.]/g, "\\.")}:1: `));
+    expect(problems[0]?.startsWith(`${path}:1: `)).toBe(true);
   });
 });
