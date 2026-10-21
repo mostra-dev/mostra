@@ -2,7 +2,6 @@
 name = "mostra-host"
 version = "0.1.0"
 description = "Host Mostra, the agent artifact runtime, from Rust: the host protocol's wire types, a tokio client, spawn and attach, the runtime bundle and the host ports."
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -25,6 +24,9 @@ serde_json = { version = "1.0.150", features = ["raw_value"] }
 sha2 = "0.11.1"
 tar = "0.4.44"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
+
+[build-dependencies]
+serde_json = "1.0.150"
 
 [dev-dependencies]
 tempfile = "3.23.0"

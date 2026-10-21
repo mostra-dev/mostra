@@ -226,6 +226,13 @@ jobs:
         run: node packages/bundle/scripts/publish-npm.ts publish --from "$RUNNER_TEMP/npm" --dry-run
       - name: Release notes
         run: node packages/bundle/scripts/notes.ts > "$RUNNER_TEMP/npm/notes.md"
+      # The crate carries the same pins as @mostra/sdk (D143): its build embeds them. Packaging it
+      # here builds it from what crates.io would get, as the npm dry run does for the packages.
+      - name: Package the crates with the release's pins
+        run: |
+          cp packages/sdk/dist/bundles.json crates/mostra-host/bundles.json
+          cp packages/sdk/dist/bundles.json "$RUNNER_TEMP/npm/crate-pins.json"
+          cargo package --locked --allow-dirty -p mostra-host
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-packages
@@ -351,19 +358,32 @@ jobs:
           node packages/bundle/scripts/github-release.ts verify --assets "$RUNNER_TEMP/assets"
       - name: npm (trusted publishing, provenance)
         run: node packages/bundle/scripts/publish-npm.ts publish --from "$RUNNER_TEMP/release/npm"
+      # The crates publish from the release's own tag with the release's pins (D143), so a run
+      # that finishes a release publishes exactly what the first one would have.
       - name: The crates to publish
         id: crates
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          crates=$(cargo metadata --no-deps --format-version 1 | node -e 'const m=JSON.parse(require("fs").readFileSync(0));console.log(m.packages.filter((p)=>!(Array.isArray(p.publish)&&p.publish.length===0)).map((p)=>p.name).join(" "))')
-          echo "crates=$crates" >> "$GITHUB_OUTPUT"
-          echo "Crates to publish: ${crates:-none}" >> "$GITHUB_STEP_SUMMARY"
+          case "$VERSION" in *[!0-9A-Za-z.+-]* | "") echo "Unexpected version: $VERSION" >&2; exit 1 ;; esac
+          git fetch --no-tags --depth 1 origin "+refs/tags/v$VERSION:refs/tags/v$VERSION"
+          git checkout --detach "v$VERSION"
+          cp "$RUNNER_TEMP/release/npm/crate-pins.json" crates/mostra-host/bundles.json
+          node tools/release/crates.ts plan --version "$VERSION" | tee -a "$GITHUB_OUTPUT"
+      - name: A crate's first release
+        if: steps.crates.outputs.first != ''
+        env:
+          FIRST: ${{ steps.crates.outputs.first }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          echo "First release of $FIRST: run tools/release/crates-setup.sh $VERSION once (docs/agents/release.md)." >> "$GITHUB_STEP_SUMMARY"
       - name: crates.io (trusted publishing)
-        if: steps.crates.outputs.crates != ''
+        if: steps.crates.outputs.publish != ''
         id: auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
       - name: Publish the crates
-        if: steps.crates.outputs.crates != ''
+        if: steps.crates.outputs.publish != ''
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-          CRATES: ${{ steps.crates.outputs.crates }}
-        run: for crate in $CRATES; do cargo publish --locked -p "$crate"; done
+          CRATES: ${{ steps.crates.outputs.publish }}
+        run: for crate in $CRATES; do cargo publish --locked --allow-dirty -p "$crate"; done
