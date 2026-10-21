@@ -56,7 +56,7 @@ node -e '
 ' "$work/crates/$crate/bundles.json" "$work/SHA256SUMS"
 
 echo "→ packaging $crate $version"
-(cd "$work" && cargo package --quiet --allow-dirty -p "$crate")
+(cd "$work" && cargo package --quiet --locked --allow-dirty -p "$crate")
 
 printf "crates.io API token (Account Settings → API Tokens; scope publish-new, crate %s): " "$crate"
 stty -echo 2>/dev/null || true
@@ -66,7 +66,7 @@ echo
 [ -n "$token" ] || { echo "No token given; nothing published." >&2; exit 1; }
 
 echo "→ publishing $crate $version"
-(cd "$work" && CARGO_REGISTRY_TOKEN=$token cargo publish --allow-dirty -p "$crate")
+(cd "$work" && CARGO_REGISTRY_TOKEN=$token cargo publish --locked --allow-dirty -p "$crate")
 token=
 
 cat <<EOF
