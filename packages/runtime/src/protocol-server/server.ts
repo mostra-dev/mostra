@@ -284,6 +284,15 @@ export class ProtocolServer {
     return registrant.peer.request(method, params, options);
   }
 
+  /** The names of the clients connected now (initialized sessions). */
+  connectedClients(): ReadonlySet<string> {
+    return new Set(
+      [...this.#connections]
+        .filter((connection) => connection.session.initialized)
+        .map((connection) => connection.session.client?.name ?? ""),
+    );
+  }
+
   /**
    * The initialized connections that registered `port`, oldest first, with their clients' names:
    * the hosts a port call can reach (D105).

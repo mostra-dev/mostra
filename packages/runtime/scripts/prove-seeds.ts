@@ -2999,6 +2999,30 @@ const SEEDS: readonly Seed[] = [
     to: '    if (launch && !capabilities.spendLaunch(body["launch"]) && false) {',
     check: integration("identity.test.ts", "spends a launch ticket once"),
   },
+  {
+    requirement: "HO-01",
+    name: "a link revoked during the identity call still gets a session (Opus review 3)",
+    file: "src/gateway/index.ts",
+    from: '      : capabilities.presentToken(body["token"], artifactId);\n    if (isRefusal(now))',
+    to: "      : grant;\n    if (isRefusal(now))",
+    check: integration("identity.test.ts", "revoked while the port answered"),
+  },
+  {
+    requirement: "HO-01",
+    name: "one browser's later exchange silently replaces another link's session (Opus review 2)",
+    file: "src/gateway/index.ts",
+    from: "      made !== undefined &&",
+    to: "      made === null &&",
+    check: integration("identity.test.ts", "silently replace another link"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a connected host that stopped serving identity blocks every link (Opus review 7)",
+    file: "src/instance/index.ts",
+    from: '          return expectedOwners("identity").filter((owner) => !connected.has(owner));',
+    to: '          return expectedOwners("identity").filter(() => connected.size >= 0);',
+    check: integration("identity.test.ts", "stopped serving identity"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

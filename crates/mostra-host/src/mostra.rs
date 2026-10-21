@@ -310,7 +310,9 @@ fn initialize_params(options: &Options) -> Value {
         "path".into(),
         Value::String(options.home().to_string_lossy().into_owned()),
     );
-    if options.expect_ports && !ports.is_empty() {
+    // What this host always provides, an empty list included: a host that stopped serving a port
+    // clears the record, so its absence is never awaited (Opus review of WP-12, finding 7).
+    if options.expect_ports {
         home.insert("ports".into(), json!(ports));
     }
     json!({

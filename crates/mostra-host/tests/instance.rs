@@ -356,3 +356,37 @@ async fn attach_starts_the_daemon_with_its_bind_and_a_dropped_handle_leaves() {
         .await
         .unwrap();
 }
+
+/// A host started again without ports clears the record of the ports it always provides, so
+/// nothing waits for a port it no longer serves (Opus review of WP-12, finding 7).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_host_without_ports_clears_what_it_was_expected_to_serve() {
+    struct Nobody;
+    impl Identity for Nobody {
+        async fn resolve(
+            &self,
+            _: wire::PortIdentityResolveParams,
+        ) -> Result<Option<Person>, PortError> {
+            Ok(None)
+        }
+    }
+    let Some(fixture) = fixture() else { return };
+    let expected = || -> Value {
+        let text = std::fs::read_to_string(fixture.home.join("config.json")).unwrap();
+        serde_json::from_str::<Value>(&text).unwrap()["expectedPorts"]["mostra-host-test"].clone()
+    };
+    let first = Mostra::spawn(
+        options(&fixture)
+            .client("mostra-host-test", "1")
+            .identity(Nobody),
+    )
+    .await
+    .unwrap();
+    assert_eq!(expected(), json!(["identity"]));
+    first.close().await.unwrap();
+    let second = Mostra::spawn(options(&fixture).client("mostra-host-test", "1"))
+        .await
+        .unwrap();
+    assert_eq!(expected(), Value::Null, "the record outlived the port");
+    second.close().await.unwrap();
+}

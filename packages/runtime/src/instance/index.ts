@@ -640,7 +640,13 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       resolveIdentity({
         ...input,
         log,
-        expected: () => expectedOwners("identity"),
+        // A host that is connected but serves no identity port (it stopped serving one, and its
+        // record says it still does) isn't away: the home's default holds (Opus review of
+        // WP-12, finding 7).
+        expected: () => {
+          const connected = server.connectedClients();
+          return expectedOwners("identity").filter((owner) => !connected.has(owner));
+        },
         registrant: () => server.registrants("identity").at(-1),
         call: (session, params) =>
           server.callSession(

@@ -55,6 +55,27 @@ function exchange(
   });
 }
 
+/** The shell's exchange of a link with extra body fields (the browser's key, `replace`). */
+function exchangeBody(
+  browser: Browser,
+  url: string,
+  extra: Record<string, unknown>,
+): Promise<Answer> {
+  const link = parseLink(url);
+  return browser.ask({
+    method: "POST",
+    url: `${link.shell}/a/${link.artifactId}/_mostra/session`,
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-dest": "empty",
+      origin: link.shell,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ token: link.secret, ...extra }),
+  });
+}
+
 /** The viewer a frame session acts as. */
 async function frameViewer(browser: Browser, url: string): Promise<Record<string, unknown>> {
   const opened = await openLink(browser, url);
@@ -194,6 +215,69 @@ describe("the identity port (D143 item 2)", () => {
     const statuses = [(await first).status, (await second).status].sort();
     expect(statuses).toEqual([200, 401]);
     identity.close();
+  });
+
+  it("gives no session to a link revoked while the port answered (Opus review finding 3)", async () => {
+    const identity = await host(gateway, "identity-revoked", ["identity"]);
+    const link = await gateway.link(receipt.artifactId);
+    const pending = exchange(new Browser(), link.url);
+    const call = await identity.next((m) => m.method === "port/identity.resolve");
+    ok(await gateway.client.call("view/revoke", { tokenId: link.tokenId }));
+    answer(identity, call, null);
+    const refused = await pending;
+    expect([refused.status, refused.json()["code"]]).toEqual([410, "MOSTRA_HYGIENE_TOKEN_REVOKED"]);
+    expect(refused.header("set-cookie")).toBeUndefined();
+    identity.close();
+  });
+
+  it("never lets one browser's exchange silently replace another link's made meanwhile (Opus review finding 2)", async () => {
+    const identity = await host(gateway, "identity-race", ["identity"]);
+    const wide = await gateway.link(receipt.artifactId);
+    const narrow = await gateway.link(receipt.artifactId, { scopes: ["view"] });
+    const key = "browser-key-0123456789abcdef";
+    // One browser (one key) opens two links; both exchanges wait for the identity port.
+    const first = exchangeBody(new Browser(), wide.url, { browser: key });
+    const firstCall = await identity.next((m) => m.method === "port/identity.resolve");
+    const second = exchangeBody(new Browser(), narrow.url, { browser: key });
+    const secondCall = await identity.next(
+      (m) => m.method === "port/identity.resolve" && m.id !== firstCall.id,
+    );
+    answer(identity, firstCall, null);
+    expect((await first).status).toBe(200);
+    answer(identity, secondCall, null);
+    const conflict = await second;
+    expect([conflict.status, conflict.json()["code"]]).toEqual([
+      409,
+      "MOSTRA_HYGIENE_SESSION_CONFLICT",
+    ]);
+    expect(conflict.header("set-cookie")).toBeUndefined();
+    // The viewer may still choose the new link.
+    const replacing = exchangeBody(new Browser(), narrow.url, { browser: key, replace: true });
+    answer(identity, await identity.next((m) => m.method === "port/identity.resolve"), null);
+    expect((await replacing).status).toBe(200);
+    // Another browser (another key), or the same link again, is no conflict.
+    const elsewhere = exchangeBody(new Browser(), wide.url, { browser: "another-browser-key-xyz" });
+    answer(identity, await identity.next((m) => m.method === "port/identity.resolve"), null);
+    expect((await elsewhere).status).toBe(200);
+    identity.close();
+  });
+
+  it("doesn't wait for a host that is connected but stopped serving identity (Opus review finding 7)", async () => {
+    // The host once served identity and is expected to; now it connects without the port.
+    const once = await host(gateway, "identity-dropped", ["identity"], ["identity"]);
+    once.close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const link = await gateway.link(receipt.artifactId);
+    expect((await exchange(new Browser(), link.url)).status).toBe(503);
+    const without = await connectTo(gateway.daemon.status.socket as string);
+    ok(
+      await without.call(
+        "mostra/initialize",
+        initializeParams({ client: { name: "identity-dropped", version: "2" }, ports: [] }),
+      ),
+    );
+    expect((await frameViewer(new Browser(), link.url))["kind"]).toBe("local");
+    without.close();
   });
 });
 

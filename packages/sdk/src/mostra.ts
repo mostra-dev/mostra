@@ -492,7 +492,9 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
   options.signal?.addEventListener("abort", abort, { once: true });
   const homeConfig: HomeConfig = {
     path: home,
-    ...(options.expectPorts !== false && names.length > 0 ? { ports: names } : {}),
+    // What this host always provides, an empty list included: a host that stopped serving a port
+    // clears the record, so its absence is never awaited (Opus review of WP-12, finding 7).
+    ...(options.expectPorts !== false ? { ports: names } : {}),
     ...(options.settings?.submission ? { submission: options.settings.submission } : {}),
     ...(options.settings?.submitChannels
       ? { submitChannels: options.settings.submitChannels }

@@ -98,6 +98,15 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     await expect(mostra.results(receipt.artifactId)).rejects.toMatchObject({
       diagnostic: { code: "MOSTRA_HOST_CONNECTION_CLOSED" },
     });
+
+    // The same host started again without ports clears its record, so nothing waits for a port
+    // it no longer serves (Opus review of WP-12, finding 7).
+    const again = await host({ home, client: { name: "sdk-test-host" } });
+    const cleared = JSON.parse(readFileSync(join(home, "config.json"), "utf8")) as {
+      expectedPorts?: Record<string, string[]>;
+    };
+    expect(cleared.expectedPorts?.["sdk-test-host"]).toBeUndefined();
+    await again.close();
   });
 
   it("redelivers with the same delivery ID when the host's port throws, and tells the host", async () => {

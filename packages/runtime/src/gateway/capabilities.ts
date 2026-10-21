@@ -745,6 +745,8 @@ export class Capabilities {
    * session between them (GPT review of WP-12, finding 1).
    */
   spendLaunch(ticket: unknown): boolean {
+    // An expired ticket is swept first, so it can't be spent (Opus review of WP-12, finding 3).
+    this.#sweepTickets();
     return looksLikeSecret(ticket) && this.#launches.delete(hashSecret(ticket));
   }
 
