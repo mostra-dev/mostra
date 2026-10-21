@@ -2995,8 +2995,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "HO-01",
     name: "a launch ticket presented twice during an identity call opens two sessions (GPT review 1)",
     file: "src/gateway/index.ts",
-    from: '    if (launch && !capabilities.spendLaunch(body["launch"])) {',
-    to: '    if (launch && !capabilities.spendLaunch(body["launch"]) && false) {',
+    from: '      ? capabilities.presentLaunch(body["launch"], artifactId, true)',
+    to: '      ? capabilities.presentLaunch(body["launch"], artifactId, false)',
     check: integration("identity.test.ts", "spends a launch ticket once"),
   },
   {
