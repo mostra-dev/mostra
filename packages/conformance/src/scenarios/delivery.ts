@@ -4,14 +4,7 @@
  * with draft mirrors (IN-06, IN-12, H-01, H-03, H-04, H-08).
  */
 import { FORM } from "../fixtures.ts";
-import {
-  check,
-  connectSocket,
-  NotApplicable,
-  type Scenario,
-  type ScenarioContext,
-  same,
-} from "../scenario.ts";
+import { check, connectSocket, type Scenario, type ScenarioContext, same } from "../scenario.ts";
 
 /** Publishes the form, answers it and submits on the artifact channel; the submission's ID. */
 async function submitForm(
@@ -187,8 +180,10 @@ export const outboxReplay: Scenario = {
       same(answer.status, 200, `a submit while the host is away (${answer.body})`);
       submissions.push(answer.json<{ id: string }>().id);
     }
+    // A daemon that keeps the home while its host is away records where clients find it: no
+    // record is a defect, never a reason to skip (Opus review of WP-12, finding 11).
     const socket = context.socket();
-    if (!socket) throw new NotApplicable("the daemon left no instance.json");
+    check(socket, "the daemon kept the home but left no instance.json to find it by");
     const kit = await connectSocket(socket);
     await kit.initialize;
     const pending = (await kit.peer.request("results/get", {

@@ -15,7 +15,13 @@ export const identity: Scenario = {
   async run(context) {
     await context.start();
     const receipt = await context.published(FORM, { policy: { policy: "epochs" } });
-    const headers = { "x-forwarded-user": "ada@example.com" };
+    // The exchange carries a cookie and a Mostra header, so the filter that keeps them from the
+    // host is really tested (Opus review of WP-12, finding 9).
+    const headers = {
+      "x-forwarded-user": "ada@example.com",
+      cookie: "elsewhere=1",
+      "x-mostra-csrf": "not-for-the-host",
+    };
     const viewer = await context.viewer(receipt.artifactId, { headers });
     const channel = viewer.ticket.submitChannels.includes("artifact") ? "artifact" : "shell";
     same((await viewer.answer({ name: "Ada" }, channel)).status, 200, "the submit");
