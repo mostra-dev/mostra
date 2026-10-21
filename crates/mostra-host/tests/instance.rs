@@ -211,8 +211,19 @@ async fn a_spawned_instance_answers_typed_calls_and_resumes_a_named_event_stream
 
     let state = mostra.get_state(artifact.as_str()).await.unwrap();
     assert_eq!(state.fields["count"].value, json!(2));
+    // Closing ends the instance through its stdin, at once: never by the SIGTERM that follows a
+    // 10 s grace (the writer used to outlive the close, keeping stdin open).
+    let closing = std::time::Instant::now();
     let exit = mostra.close().await.unwrap();
     assert_eq!(exit.and_then(|exit| exit.code), Some(0));
+    assert!(
+        closing.elapsed() < Duration::from_secs(5),
+        "the instance took {:?} to stop",
+        closing.elapsed()
+    );
+    let after = mostra.get_state(artifact.as_str()).await.unwrap_err();
+    assert_eq!(after.code(), "MOSTRA_HOST_CONNECTION_CLOSED");
+    assert!(mostra.close().await.unwrap().is_none(), "a second close");
 }
 
 struct Names(Arc<Mutex<Vec<wire::PortIdentityResolveParams>>>);

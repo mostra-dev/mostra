@@ -123,9 +123,27 @@ impl Peer {
             closed,
         });
         let writing = Arc::clone(&inner);
+        let mut closing = inner.closed.subscribe();
         tokio::spawn(async move {
             let mut writer = writer;
-            while let Some(line) = lines.recv().await {
+            // The writer ends when the peer closes, not only when every sender is gone: `Inner`
+            // holds a sender for its whole life, so without this a closed session kept the
+            // instance's stdin (or the socket) open, and a spawned instance waited for SIGTERM.
+            loop {
+                let line = tokio::select! {
+                    biased;
+                    line = lines.recv() => line,
+                    () = async { let _ = closing.wait_for(Option::is_some).await.map(|_| ()); } => {
+                        // What was queued before the close (a last acknowledgement) still goes.
+                        while let Ok(line) = lines.try_recv() {
+                            if writer.write_all(line.as_bytes()).await.is_err() {
+                                break;
+                            }
+                        }
+                        None
+                    }
+                };
+                let Some(line) = line else { break };
                 if writer.write_all(line.as_bytes()).await.is_err() || writer.flush().await.is_err()
                 {
                     writing
@@ -133,6 +151,7 @@ impl Peer {
                     break;
                 }
             }
+            let _ = writer.flush().await;
             let _ = writer.shutdown().await;
         });
         let reading = Arc::clone(&inner);

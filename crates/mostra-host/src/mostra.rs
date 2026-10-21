@@ -701,11 +701,14 @@ impl Mostra {
 
     /// Ends the session. A spawned instance is stopped: its stdin closes, it is sent SIGTERM if
     /// it hasn't exited within 10 s, and SIGKILL 5 s later. An attached daemon keeps running.
+    /// It takes `&self`, so a host that shares its handle (`Arc<Mostra>`) can close it while
+    /// other tasks hold it: their calls in flight, and any later ones, end with
+    /// `MOSTRA_HOST_CONNECTION_CLOSED`. A second close returns `None`.
     ///
     /// # Errors
     ///
     /// Never for the instance's own exit; reserved for later releases.
-    pub async fn close(self) -> Result<Option<InstanceExit>> {
+    pub async fn close(&self) -> Result<Option<InstanceExit>> {
         self.peer.close("The host closed the session.");
         match &self.connection {
             Connection::Spawned(child) => Ok(stop(child, Duration::from_secs(10)).await),
