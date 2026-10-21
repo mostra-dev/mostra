@@ -171,15 +171,20 @@ export const outboxReplay: Scenario = {
     await context.start({ mode: "attach" });
     const first = await context.published(FORM);
     const second = await context.published(FORM);
-    const links = [await context.link(first.artifactId), await context.link(second.artifactId)];
-    // The host goes away; its daemon keeps the home (and expects the host back, D105).
+    // The viewers open their links while the host is there (a host that serves identity refuses
+    // new links while it is away, D143), then the host goes away and its daemon keeps the home,
+    // expecting the host back (D105).
+    const viewers = [
+      await context.viewer(first.artifactId),
+      await context.viewer(second.artifactId),
+    ];
     await context.host.stopInstance();
-    const { Viewer } = await import("../viewer.ts");
     const submissions: string[] = [];
-    for (const link of links) {
-      const viewer = await Viewer.open(link);
-      const answer = await viewer.answer({ name: `Ada ${submissions.length + 1}` });
-      same(answer.status, 200, "a submit while the host is away");
+    for (const viewer of viewers) {
+      // A host that took the channel policy over gave these views the shell channel (D108).
+      const channel = viewer.ticket.submitChannels.includes("artifact") ? "artifact" : "shell";
+      const answer = await viewer.answer({ name: `Ada ${submissions.length + 1}` }, channel);
+      same(answer.status, 200, `a submit while the host is away (${answer.body})`);
       submissions.push(answer.json<{ id: string }>().id);
     }
     const socket = context.socket();
