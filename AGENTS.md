@@ -53,7 +53,7 @@ The owner is where the invariant is enforced; packages not built yet are named b
 | Non-OSI engines never bundled; licenses disclosed before install | license audit (`tools/license-audit`, and `--bundle` over each runtime bundle), the bundle's assembler (the verify browser is fetched at setup, never shipped, D142), plugins (WP-16) |
 | Everything outside `ee/` that users install, embed or self-host is Apache-2.0 | repository lint, `LICENSE`, `NOTICE`; the `ee/` boundary (D118): dependency-cruiser's `core-never-imports-ee`, the license audit's separate `ee/` treatment, the api gate's packing check (`mostra-tools pack-check`) |
 | Interfaces evolve additively within a revision | `@mostra/protocol` schema snapshots, API reports |
-| Hosts reach Mostra only through public ports and protocol | protocol server, conformance kit (WP-02, WP-12) |
+| Hosts reach Mostra only through public ports and protocol | protocol server, the conformance kit (`@mostra/conformance`, its reference hosts and the `conformance` job), and `tools/audit/host-neutral.ts` in the `boundaries` job (WP-02, WP-12) |
 
 Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets and
 capability tokens stay out of every log and output; macOS and Linux only for v1.0, failing closed
