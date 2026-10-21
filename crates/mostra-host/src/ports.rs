@@ -555,7 +555,7 @@ mod tests {
                     assert!(!matches!(
                         decoded,
                         crate::wire::PortSubmissionsDeliverResult::Unknown(_)
-                    ))
+                    ));
                 })
                 .unwrap();
         }
