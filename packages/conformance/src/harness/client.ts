@@ -13,6 +13,7 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { kitVersion } from "../version.ts";
 import {
   type CallError,
   type CallResult,
@@ -110,7 +111,7 @@ export class HostUnderTest {
     try {
       const answer = await host.#request(HARNESS_METHODS.initialize, {
         revision: HARNESS_REVISIONS.at(-1),
-        kit: { name: "@mostra/conformance", version: "0" },
+        kit: { name: "@mostra/conformance", version: kitVersion() },
       });
       host.info = InitializeResultSchema.parse(answer);
     } catch (error) {

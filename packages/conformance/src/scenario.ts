@@ -27,6 +27,7 @@ import {
 import type { Fixture } from "./fixtures.ts";
 import { HostUnderTest } from "./harness/client.ts";
 import type { StartParams, StartResult, StoreResult } from "./harness/protocol.ts";
+import { kitVersion } from "./version.ts";
 import { Viewer } from "./viewer.ts";
 
 /** A scenario: one property of a host integration, with the requirements it covers. */
@@ -358,7 +359,7 @@ export async function connectSocket(
   const initialize = peer.request(
     "mostra/initialize",
     {
-      client: { name: "mostra-conformance", version: "0" },
+      client: { name: "mostra-conformance", version: kitVersion() },
       revisions: [...revisions],
       capabilities: {},
       ports: [],

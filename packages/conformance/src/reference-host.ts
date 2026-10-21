@@ -40,6 +40,7 @@ import type {
   StoreResult,
 } from "./harness/protocol.ts";
 import { serveHarness } from "./harness/serve.ts";
+import { kitVersion } from "./version.ts";
 
 /** The faults a broken reference host can carry. */
 export const REFERENCE_FAULTS: readonly string[] = [
@@ -212,7 +213,7 @@ export async function runReferenceHost(
       : "reference-host-ts";
   await serveHarness({
     initialize: () => ({
-      host: { name, version: "0" },
+      host: { name, version: kitVersion() },
       ports: portNames,
       features: options.standalone ? ["events"] : ["faults", "events"],
     }),
@@ -227,7 +228,7 @@ export async function runReferenceHost(
       await mostra?.close();
       mostra = await createMostra({
         home: params.home,
-        client: { name, version: "0" },
+        client: { name, version: kitVersion() },
         ports,
         env: { ...process.env, ...params.env },
         onLog: () => undefined,

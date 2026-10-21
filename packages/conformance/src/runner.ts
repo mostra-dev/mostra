@@ -2,7 +2,7 @@
  * Runs scenarios against a host (HO-05): each in a fresh directory with a fresh shim and home,
  * one at a time, each bounded in time; then judges the run against the host's baseline.
  */
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Baseline, NO_BASELINE } from "./baseline.ts";
@@ -163,6 +163,14 @@ export async function runConformance(options: RunOptions): Promise<ConformanceRe
     };
     outcomes.push(outcome);
     options.onOutcome?.(outcome);
+  }
+  // Each scenario removed its own directory; the run's own is removed when the kit made it.
+  if (options.workDir === undefined) {
+    try {
+      rmdirSync(root);
+    } catch {
+      // Not empty: something a scenario couldn't remove stays for a look.
+    }
   }
   return {
     host,
