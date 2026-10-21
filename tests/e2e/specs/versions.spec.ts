@@ -140,10 +140,27 @@ test.describe("answers that don't carry over (VR-05)", () => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info);
+      // Errors the page throws (an input's handler included), reported with a field that lost
+      // what was typed.
+      const thrown: string[] = [];
+      page.on("pageerror", (error) => thrown.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") thrown.push(message.text());
+      });
       const frame = await open(client, page, own, viewerName(info));
       await frame.getByTestId("name").fill("Ana");
       await frame.getByTestId("notes").fill("a note for version 1");
+      // The page shows both answers before the save is judged: a CI run once saw the notes field
+      // empty right after its fill, with the page rightly "Saved" and no orphan (issue #46).
+      // This fails at the input, with what the page threw, should it happen again.
+      await expect(frame.getByTestId("name"), `page errors: ${thrown.join(" | ")}`).toHaveValue(
+        "Ana",
+      );
+      await expect(frame.getByTestId("notes"), `page errors: ${thrown.join(" | ")}`).toHaveValue(
+        "a note for version 1",
+      );
       await saved(page);
+      await expect(frame.getByTestId("notes-save")).toHaveText("saved");
       await republish(client, own, withoutNotes);
       await expect(page.locator('[data-mostra-banner-orphans="1"]')).toBeVisible({
         timeout: 10_000,
