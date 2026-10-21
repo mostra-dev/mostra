@@ -739,9 +739,13 @@ export class Capabilities {
     return rest;
   }
 
-  /** Spends a launch ticket that started a session. */
-  spendLaunch(ticket: unknown): void {
-    if (looksLikeSecret(ticket)) this.#launches.delete(hashSecret(ticket));
+  /**
+   * Spends a launch ticket that started a session: `true` only for the caller that spent it, so
+   * two exchanges that both presented it while a host's identity port was answering get one
+   * session between them (GPT review of WP-12, finding 1).
+   */
+  spendLaunch(ticket: unknown): boolean {
+    return looksLikeSecret(ticket) && this.#launches.delete(hashSecret(ticket));
   }
 
   /** Removes sessions unseen for longer than their cookie lives; no browser holds them any more. */

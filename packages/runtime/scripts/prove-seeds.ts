@@ -2966,6 +2966,39 @@ const SEEDS: readonly Seed[] = [
     check: integration("telemetry.test.ts", "Opus review finding 6"),
     cwd: "../cli",
   },
+  // WP-12: the identity port (D143 item 2).
+  {
+    requirement: "HO-01",
+    name: "the identity port receives the browser's cookies",
+    file: "src/gateway/identity.ts",
+    from: '    if (key === "cookie" || key.startsWith("x-mostra-")) return;',
+    to: "",
+    check: integration("identity.test.ts", "names the person"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a host that took identity over and is away leaves the local user",
+    file: "src/gateway/identity.ts",
+    from: "  if (away.length > 0) {",
+    to: "  if (away.length < 0) {",
+    check: integration("identity.test.ts", "refuses the link"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a link minted for a person asks the identity port anyway",
+    file: "src/gateway/index.ts",
+    from: "    if (grant.viewerId === undefined && options.identity) {",
+    to: "    if (options.identity) {",
+    check: integration("identity.test.ts", "never asks for a link with a viewer"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a launch ticket presented twice during an identity call opens two sessions (GPT review 1)",
+    file: "src/gateway/index.ts",
+    from: '    if (launch && !capabilities.spendLaunch(body["launch"])) {',
+    to: '    if (launch && !capabilities.spendLaunch(body["launch"]) && false) {',
+    check: integration("identity.test.ts", "spends a launch ticket once"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

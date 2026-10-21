@@ -160,6 +160,41 @@ describe("the identity port (D143 item 2)", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect((await frameViewer(new Browser(), link.url))["kind"]).toBe("local");
   }, 30_000);
+
+  it("spends a launch ticket once, even when two exchanges present it while the port answers (GPT review finding 1)", async () => {
+    const identity = await host(gateway, "identity-slow", ["identity"]);
+    const link = await gateway.link(receipt.artifactId);
+    const launched = ok(await gateway.client.call("view/launch", { tokenId: link.tokenId })) as {
+      url: string;
+    };
+    const ticket = new URL(launched.url).hash.replace(/^#l=/, "");
+    const parsed = parseLink(link.url);
+    const present = (browser: Browser) =>
+      browser.ask({
+        method: "POST",
+        url: `${parsed.shell}/a/${parsed.artifactId}/_mostra/session`,
+        headers: {
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-dest": "empty",
+          origin: parsed.shell,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ launch: ticket }),
+      });
+    // Both exchanges present the ticket before the host answers either of them.
+    const first = present(new Browser());
+    const firstCall = await identity.next((m) => m.method === "port/identity.resolve");
+    const second = present(new Browser());
+    const secondCall = await identity.next(
+      (m) => m.method === "port/identity.resolve" && m.id !== firstCall.id,
+    );
+    answer(identity, firstCall, null);
+    answer(identity, secondCall, null);
+    const statuses = [(await first).status, (await second).status].sort();
+    expect(statuses).toEqual([200, 401]);
+    identity.close();
+  });
 });
 
 /** After an exchange, the rest of the shell's steps: ticket, entry, the frame's own session. */

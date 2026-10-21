@@ -500,12 +500,20 @@ export function createGateway(options: GatewayOptions): Gateway {
       }
       if (outcome.kind === "person") viewerId = interaction.viewerForHost(outcome.viewer);
     }
+    // A launch ticket is spent before the session exists and after every await, so it opens one
+    // session however many exchanges presented it while the identity port was answering.
+    if (launch && !capabilities.spendLaunch(body["launch"])) {
+      return refuse(
+        shellChecks,
+        refusal("MOSTRA_HYGIENE_TOKEN_INVALID", "The launch ticket is unknown, used or expired."),
+        meta,
+      );
+    }
     const session = capabilities.createSession({
       tokenId: grant.tokenId,
       origin: shellOrigin(),
       viewerId,
     });
-    if (launch) capabilities.spendLaunch(body["launch"]);
     log.info("gateway.session_started", {
       origin: shellOrigin(),
       artifactId,
