@@ -97,6 +97,27 @@ pub fn generate(schema_text: &str) -> Result<Generated, String> {
     }
     for schema in definitions.values_mut() {
         strip_time_formats(schema);
+        boolean_constants(schema);
+    }
+    // typify keeps a boolean `const` as a plain `bool`, so an untagged union told apart only by one
+    // (`{accepted: true}` against `{accepted: false, reason, retry}`) would decode every value as
+    // its first member and drop the rest (Opus review of WP-12, finding 1). Each boolean constant is
+    // a type of its own that reads only its value, and a union serde could still mis-decode fails
+    // the generator.
+    definitions.insert(
+        CONST_TRUE.into(),
+        serde_json::json!({ "type": "boolean", "enum": [true] }),
+    );
+    definitions.insert(
+        CONST_FALSE.into(),
+        serde_json::json!({ "type": "boolean", "enum": [false] }),
+    );
+    let ambiguous = ambiguous_unions(definitions);
+    if !ambiguous.is_empty() {
+        return Err(format!(
+            "untagged unions serde would decode as the wrong member (D143):\n  {}",
+            ambiguous.join("\n  ")
+        ));
     }
     let revisions = bundle
         .get("x-mostra-revisions")
@@ -122,7 +143,9 @@ pub fn generate(schema_text: &str) -> Result<Generated, String> {
     let mut settings = typify::TypeSpaceSettings::default();
     settings
         .with_struct_builder(false)
-        .with_map_type("::std::collections::BTreeMap");
+        .with_map_type("::std::collections::BTreeMap")
+        .with_replacement(CONST_TRUE, "crate::wire::ConstTrue", std::iter::empty())
+        .with_replacement(CONST_FALSE, "crate::wire::ConstFalse", std::iter::empty());
     let mut space = typify::TypeSpace::new(&settings);
     space
         .add_root_schema(root)
@@ -212,6 +235,267 @@ fn check_subset(schema: &Value, path: &str, problems: &mut Vec<String>) {
             }
             _ => {}
         }
+    }
+}
+
+/// The synthetic definitions boolean constants become, replaced by `wire::ConstTrue` and
+/// `wire::ConstFalse`.
+const CONST_TRUE: &str = "MostraConstTrue";
+const CONST_FALSE: &str = "MostraConstFalse";
+
+/// Replaces every `{ "type": "boolean", "const": b }` with a reference to its constant's type.
+fn boolean_constants(schema: &mut Value) {
+    match schema {
+        Value::Object(node) => {
+            if let Some(Value::Bool(value)) = node.get("const") {
+                let target = if *value { CONST_TRUE } else { CONST_FALSE };
+                *schema = serde_json::json!({ "$ref": format!("#/definitions/{target}") });
+                return;
+            }
+            for (key, value) in node.iter_mut() {
+                if key != "enum" && key != "default" {
+                    boolean_constants(value);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(boolean_constants),
+        _ => {}
+    }
+}
+
+/// Every `anyOf` or `oneOf` whose object members serde, trying them in order and ignoring unknown
+/// fields, would decode as an earlier member: a value of the later member then loses its fields.
+/// Unions typify tags (every member an object with one shared string constant) are skipped.
+fn ambiguous_unions(definitions: &serde_json::Map<String, Value>) -> Vec<String> {
+    let mut found = Vec::new();
+    for (name, schema) in definitions {
+        walk_unions(
+            schema,
+            &format!("definitions.{name}"),
+            definitions,
+            &mut found,
+        );
+    }
+    found
+}
+
+fn walk_unions(
+    schema: &Value,
+    path: &str,
+    defs: &serde_json::Map<String, Value>,
+    found: &mut Vec<String>,
+) {
+    let Value::Object(node) = schema else { return };
+    for (key, value) in node {
+        let at = format!("{path}.{key}");
+        match key.as_str() {
+            "anyOf" | "oneOf" => {
+                let members: Vec<&Value> = value.as_array().into_iter().flatten().collect();
+                if !tagged(&members, defs) {
+                    for (j, later) in members.iter().enumerate() {
+                        let later = resolve(later, defs);
+                        if !is_object(later) {
+                            continue;
+                        }
+                        let probe = minimal(later, defs, 0);
+                        for (i, earlier) in members.iter().enumerate().take(j) {
+                            if accepts(resolve(earlier, defs), &probe, defs, 0) {
+                                found.push(format!(
+                                    "{at}: member {j} ({probe}) decodes as member {i}"
+                                ));
+                            }
+                        }
+                    }
+                }
+                for (index, member) in members.iter().enumerate() {
+                    walk_unions(member, &format!("{at}[{index}]"), defs, found);
+                }
+            }
+            "properties" => {
+                for (name, property) in value.as_object().into_iter().flatten() {
+                    walk_unions(property, &format!("{at}.{name}"), defs, found);
+                }
+            }
+            "items" | "additionalProperties" | "allOf" => match value {
+                Value::Array(items) => {
+                    for (index, item) in items.iter().enumerate() {
+                        walk_unions(item, &format!("{at}[{index}]"), defs, found);
+                    }
+                }
+                other => walk_unions(other, &at, defs, found),
+            },
+            _ => {}
+        }
+    }
+}
+
+fn resolve<'a>(schema: &'a Value, defs: &'a serde_json::Map<String, Value>) -> &'a Value {
+    let mut current = schema;
+    for _ in 0..32 {
+        let Some(name) = current
+            .get("$ref")
+            .and_then(Value::as_str)
+            .and_then(|r| r.strip_prefix("#/definitions/"))
+        else {
+            break;
+        };
+        match defs.get(name) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    current
+}
+
+fn is_object(schema: &Value) -> bool {
+    schema.get("type").and_then(Value::as_str) == Some("object")
+        || (schema.get("type").is_none() && schema.get("properties").is_some())
+}
+
+/// The string constant a member fixes for `property`, if it does.
+fn string_constant<'a>(schema: &'a Value, property: &str) -> Option<&'a str> {
+    let value = schema.get("properties")?.get(property)?;
+    value.get("const").and_then(Value::as_str).or_else(|| {
+        match value
+            .get("enum")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+        {
+            Some([only]) => only.as_str(),
+            _ => None,
+        }
+    })
+}
+
+/// Whether typify tags this union: every member an object sharing a property that each fixes to
+/// a distinct string.
+fn tagged(members: &[&Value], defs: &serde_json::Map<String, Value>) -> bool {
+    let resolved: Vec<&Value> = members.iter().map(|m| resolve(m, defs)).collect();
+    if resolved.len() < 2 || !resolved.iter().all(|m| is_object(m)) {
+        return false;
+    }
+    let Some(first) = resolved[0].get("properties").and_then(Value::as_object) else {
+        return false;
+    };
+    first.keys().any(|property| {
+        let tags: Vec<Option<&str>> = resolved
+            .iter()
+            .map(|m| string_constant(m, property))
+            .collect();
+        tags.iter().all(Option::is_some) && tags.iter().collect::<BTreeSet<_>>().len() == tags.len()
+    })
+}
+
+/// The smallest value a member describes: its required properties, each at its smallest.
+fn minimal(schema: &Value, defs: &serde_json::Map<String, Value>, depth: usize) -> Value {
+    let schema = resolve(schema, defs);
+    if depth > 16 {
+        return Value::Null;
+    }
+    if let Some(value) = schema.get("const") {
+        return value.clone();
+    }
+    if let Some(first) = schema
+        .get("enum")
+        .and_then(Value::as_array)
+        .and_then(|e| e.first())
+    {
+        return first.clone();
+    }
+    for key in ["anyOf", "oneOf"] {
+        if let Some(first) = schema
+            .get(key)
+            .and_then(Value::as_array)
+            .and_then(|m| m.first())
+        {
+            return minimal(first, defs, depth + 1);
+        }
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("boolean") => Value::Bool(false),
+        Some("integer" | "number") => Value::from(1),
+        Some("string") => Value::from("x"),
+        Some("array") => Value::Array(Vec::new()),
+        Some("null") => Value::Null,
+        _ if is_object(schema) => {
+            let mut object = serde_json::Map::new();
+            for name in schema
+                .get("required")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
+                let property = schema
+                    .get("properties")
+                    .and_then(|p| p.get(name))
+                    .unwrap_or(&Value::Null);
+                object.insert(name.to_owned(), minimal(property, defs, depth + 1));
+            }
+            Value::Object(object)
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Whether serde's untagged decoding of a generated type for `schema` takes `value`: the right
+/// JSON kind, every required property present and taken, unknown properties ignored, a boolean
+/// constant only for its value (`MostraConstTrue`/`False`), and any string for an enum (enums
+/// keep an `Unknown` variant).
+fn accepts(
+    schema: &Value,
+    value: &Value,
+    defs: &serde_json::Map<String, Value>,
+    depth: usize,
+) -> bool {
+    if depth > 16 {
+        return true;
+    }
+    if let Some(name) = schema
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|r| r.strip_prefix("#/definitions/"))
+    {
+        if name == CONST_TRUE {
+            return value == &Value::Bool(true);
+        }
+        if name == CONST_FALSE {
+            return value == &Value::Bool(false);
+        }
+    }
+    let schema = resolve(schema, defs);
+    for key in ["anyOf", "oneOf"] {
+        if let Some(members) = schema.get(key).and_then(Value::as_array) {
+            return members.iter().any(|m| accepts(m, value, defs, depth + 1));
+        }
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("boolean") => value.is_boolean(),
+        Some("integer") => value.is_i64() || value.is_u64(),
+        Some("number") => value.is_number(),
+        Some("string") => value.is_string(),
+        Some("array") => value.is_array(),
+        Some("null") => value.is_null(),
+        _ if is_object(schema) => {
+            let Some(object) = value.as_object() else {
+                return false;
+            };
+            schema
+                .get("required")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .all(|name| {
+                    object.get(name).is_some_and(|field| {
+                        schema
+                            .get("properties")
+                            .and_then(|p| p.get(name))
+                            .is_none_or(|property| accepts(property, field, defs, depth + 1))
+                    })
+                })
+        }
+        _ => true,
     }
 }
 

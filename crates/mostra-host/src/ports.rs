@@ -124,9 +124,13 @@ pub enum Delivered {
     Duplicate,
     /// The host can never take it (the session it was for is gone): shown to the viewer.
     Undeliverable,
-    /// The host refuses it for good, with a reason.
+    /// The host refuses it for good, with a reason. The reasons `duplicate` and `undeliverable`
+    /// mean something else to Mostra, so they travel as `rejected: <reason>` (use
+    /// [`Delivered::Duplicate`] or [`Delivered::Undeliverable`] for those), and an empty reason
+    /// is `rejected`.
     Rejected(String),
-    /// The host can't take it now: Mostra keeps it pending and tries again with backoff.
+    /// The host can't take it now: Mostra keeps it pending and tries again with backoff. An empty
+    /// reason is `retry later`.
     RetryLater(String),
 }
 
@@ -140,10 +144,23 @@ impl Delivered {
             Self::Undeliverable => {
                 serde_json::json!({ "accepted": false, "reason": "undeliverable", "retry": false })
             }
+            // Only the variants of their own give the reserved reasons, and the protocol needs a
+            // reason (Opus review of WP-12, finding 4): a `Rejected("duplicate")` would otherwise
+            // count as delivered, and an empty reason would be retried forever.
             Self::Rejected(reason) => {
+                let reason = match reason.trim() {
+                    "" => "rejected".to_owned(),
+                    reserved @ ("duplicate" | "undeliverable") => format!("rejected: {reserved}"),
+                    _ => reason.clone(),
+                };
                 serde_json::json!({ "accepted": false, "reason": reason, "retry": false })
             }
             Self::RetryLater(reason) => {
+                let reason = if reason.trim().is_empty() {
+                    "retry later"
+                } else {
+                    reason
+                };
                 serde_json::json!({ "accepted": false, "reason": reason, "retry": true })
             }
         }
@@ -506,5 +523,41 @@ mod tests {
             Delivered::RetryLater("busy".into()).wire(),
             json!({ "accepted": false, "reason": "busy", "retry": true })
         );
+    }
+
+    /// A rejection can't pass for a delivered or undeliverable submission, and every answer has
+    /// the reason the protocol needs (Opus review of WP-12, finding 4).
+    #[test]
+    fn a_rejection_never_takes_a_reserved_or_empty_reason() {
+        for (reason, sent) in [
+            ("duplicate", "rejected: duplicate"),
+            (" undeliverable ", "rejected: undeliverable"),
+            ("", "rejected"),
+            ("  ", "rejected"),
+        ] {
+            assert_eq!(
+                Delivered::Rejected(reason.into()).wire(),
+                json!({ "accepted": false, "reason": sent, "retry": false }),
+                "Rejected({reason:?})"
+            );
+        }
+        assert_eq!(
+            Delivered::RetryLater(String::new()).wire(),
+            json!({ "accepted": false, "reason": "retry later", "retry": true })
+        );
+        // What the instance accepts: a reason of at least one character.
+        for answer in [
+            Delivered::Rejected(String::new()),
+            Delivered::RetryLater(String::new()),
+        ] {
+            serde_json::from_value::<crate::wire::PortSubmissionsDeliverResult>(answer.wire())
+                .map(|decoded| {
+                    assert!(!matches!(
+                        decoded,
+                        crate::wire::PortSubmissionsDeliverResult::Unknown(_)
+                    ))
+                })
+                .unwrap();
+        }
     }
 }

@@ -3338,7 +3338,7 @@ pub struct DeliveryStatus {
     #[serde(rename = "updatedAt")]
     pub updated_at: DeliveryStatusUpdatedAt,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub waiting: ::std::option::Option<bool>,
+    pub waiting: ::std::option::Option<crate::wire::ConstTrue>,
 }
 ///`DeliveryStatusState`
 #[derive(
@@ -5055,7 +5055,7 @@ for EventsUnsubscribeResult {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldConflict {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub deleted: ::std::option::Option<bool>,
+    pub deleted: ::std::option::Option<crate::wire::ConstTrue>,
     pub id: ::std::string::String,
     pub revision: DocumentRevision,
     #[serde(
@@ -5139,7 +5139,7 @@ impl<'de> ::serde::Deserialize<'de> for FieldConflictUpdatedAt {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldOp {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub delete: ::std::option::Option<bool>,
+    pub delete: ::std::option::Option<crate::wire::ConstTrue>,
     pub id: FieldOpId,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub label: ::std::option::Option<FieldOpLabel>,
@@ -5411,7 +5411,7 @@ pub struct FrameTicket {
         rename = "devPreview",
         skip_serializing_if = "::std::option::Option::is_none"
     )]
-    pub dev_preview: ::std::option::Option<bool>,
+    pub dev_preview: ::std::option::Option<crate::wire::ConstTrue>,
     pub follow: bool,
     pub latest: VersionRef,
     pub pinned: bool,
@@ -5420,7 +5420,7 @@ pub struct FrameTicket {
         rename = "serverParked",
         skip_serializing_if = "::std::option::Option::is_none"
     )]
-    pub server_parked: ::std::option::Option<bool>,
+    pub server_parked: ::std::option::Option<crate::wire::ConstTrue>,
     pub src: FrameTicketSrc,
     #[serde(rename = "submitChannels")]
     pub submit_channels: ::std::vec::Vec<SubmitChannel>,
@@ -6809,9 +6809,9 @@ for PortSecretsGetResult {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum PortSubmissionsDeliverResult {
-    Variant0 { accepted: bool },
+    Variant0 { accepted: crate::wire::ConstTrue },
     Variant1 {
-        accepted: bool,
+        accepted: crate::wire::ConstFalse,
         reason: PortSubmissionsDeliverResultVariant1Reason,
         retry: bool,
     },
@@ -7114,7 +7114,7 @@ pub struct Results {
         rename = "signalsCompacted",
         skip_serializing_if = "::std::option::Option::is_none"
     )]
-    pub signals_compacted: ::std::option::Option<bool>,
+    pub signals_compacted: ::std::option::Option<crate::wire::ConstTrue>,
     #[serde(
         rename = "signalsOmitted",
         skip_serializing_if = "::std::option::Option::is_none"
@@ -9150,7 +9150,7 @@ pub struct SubmissionSummary {
     #[serde(rename = "draftRevision")]
     pub draft_revision: DocumentRevision,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub duplicate: ::std::option::Option<bool>,
+    pub duplicate: ::std::option::Option<crate::wire::ConstTrue>,
     pub epoch: ::std::num::NonZeroU64,
     pub id: SubmissionId,
     #[serde(rename = "staleView")]

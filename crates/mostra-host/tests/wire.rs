@@ -89,3 +89,26 @@ fn the_method_table_names_each_method_once_with_its_types() {
         &["artifact/progress", "dev/notify", "events/notify"]
     );
 }
+
+/// Every answer of a submissions port decodes as its own member and serializes back unchanged:
+/// a refusal keeps its reason and retry flag (Opus review of WP-12, finding 1).
+#[test]
+fn a_delivery_answer_decodes_as_its_own_member() {
+    use mostra_host::wire::PortSubmissionsDeliverResult as Answer;
+    let accepted = json!({ "accepted": true });
+    let refused = json!({ "accepted": false, "reason": "busy", "retry": true });
+    assert!(matches!(
+        serde_json::from_value::<Answer>(accepted.clone()).unwrap(),
+        Answer::Variant0 { .. }
+    ));
+    let decoded = serde_json::from_value::<Answer>(refused.clone()).unwrap();
+    let Answer::Variant1 { reason, retry, .. } = &decoded else {
+        panic!("a refusal decoded as {decoded:?}");
+    };
+    assert_eq!((reason.as_str(), *retry), ("busy", true));
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), refused);
+    assert_eq!(
+        serde_json::to_value(serde_json::from_value::<Answer>(accepted.clone()).unwrap()).unwrap(),
+        accepted
+    );
+}

@@ -23,6 +23,53 @@ pub mod methods;
 
 pub use generated::*;
 
+/// Generates a boolean that the schema fixes to one value (`const`): it reads only that value and
+/// writes it back, so an untagged union told apart by it decodes as the right member.
+macro_rules! boolean_constant {
+    ($name:ident, $value:literal, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+        pub struct $name;
+
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_bool($value)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let value = bool::deserialize(deserializer)?;
+                if value == $value {
+                    Ok(Self)
+                } else {
+                    Err(serde::de::Error::custom(concat!(
+                        "expected ",
+                        stringify!($value)
+                    )))
+                }
+            }
+        }
+
+        impl From<$name> for bool {
+            fn from(_: $name) -> bool {
+                $value
+            }
+        }
+    };
+}
+
+boolean_constant!(
+    ConstTrue,
+    true,
+    "`true`, where the schema allows no other value."
+);
+boolean_constant!(
+    ConstFalse,
+    false,
+    "`false`, where the schema allows no other value."
+);
+
 /// Who sends a method's request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
