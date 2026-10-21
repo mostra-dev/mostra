@@ -1,13 +1,18 @@
 [package]
 name = "mostra-host"
 version = "0.0.0"
-description = "Rust host crate for Mostra, the agent artifact runtime (built in WP-12)."
+description = "Host Mostra, the agent artifact runtime, from Rust: the host protocol's wire types, a tokio client, spawn and attach, the runtime bundle and the host ports."
 publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[dependencies]
+regress = "0.12.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.150", features = ["raw_value"] }
 
 [lints]
 workspace = true

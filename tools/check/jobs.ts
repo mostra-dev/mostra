@@ -67,6 +67,9 @@ const BIN = "node_modules/.bin";
 const TS6_BIN = "tools/ts6/node_modules/.bin";
 const RUST = [
   /^crates\//,
+  // The crate's wire types are generated from the protocol's schema (D143): a schema change runs
+  // the snapshot test that finds them stale.
+  /^packages\/protocol\/schemas\//,
   /^Cargo\.(toml|lock)$/,
   /^deny\.toml$/,
   /^rust-toolchain\.toml$/,
