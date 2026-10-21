@@ -86,12 +86,7 @@ import { fileResponse, findFile } from "./serve.ts";
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 export type { DevUpstream } from "./dev.ts";
-export {
-  IDENTITY_TIMEOUT_MS,
-  type IdentityOutcome,
-  identityHeaders,
-  resolveIdentity,
-} from "./identity.ts";
+export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {

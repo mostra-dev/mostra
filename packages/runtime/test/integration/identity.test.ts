@@ -82,7 +82,7 @@ describe("the identity port (D143 item 2)", () => {
       "x-mostra-csrf": "not-for-the-host",
     });
     const call = await identity.next((message) => message.method === "port/identity.resolve");
-    const params = call.params as {
+    const params = (call as unknown as { params: unknown }).params as {
       artifactId: string;
       via: string;
       headers: Record<string, string>;
