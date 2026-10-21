@@ -710,6 +710,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mostra-host-reference"
+version = "0.0.0"
+dependencies = [
+ "mostra-host",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -13,6 +13,7 @@ const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
   "@mostra/protocol",
   "@mostra/cli",
   "@mostra/sdk",
+  "@mostra/conformance",
   "create-mostra",
 ]);
 
@@ -29,6 +30,7 @@ export const JOB_NAMES = [
   "api",
   "licenses",
   "rust",
+  "conformance",
   "docs",
   "commits",
 ] as const;
@@ -222,6 +224,61 @@ export const JOBS: readonly Job[] = [
       },
       { label: "cargo-deny", command: "cargo", args: ["deny", "--locked", "check"] },
     ],
+  },
+  {
+    name: "conformance",
+    summary:
+      "The host conformance kit against the Rust reference host: with every port, standalone, and broken with its baseline",
+    // The TypeScript reference host runs in the integration job's `clients` group; this job runs
+    // the Rust one, so a change to the kit, the crate, the runtime or the protocol runs it (HO-05).
+    applies: (plan) =>
+      touches(plan, RUST) ||
+      affects(plan, [
+        "@mostra/runtime",
+        "@mostra/protocol",
+        "@mostra/sdk",
+        "@mostra/conformance",
+        "@mostra/shell",
+      ]),
+    alone: true,
+    steps: () => {
+      const kit = ["packages/conformance/dist/cli.js", "--host"];
+      const host = "target/debug/mostra-host-reference";
+      return [
+        {
+          label: "build the runtime and the kit",
+          command: `${BIN}/turbo`,
+          args: [
+            "run",
+            "build",
+            "--filter=@mostra/runtime...",
+            "--filter=@mostra/conformance...",
+            "--output-logs=errors-only",
+          ],
+        },
+        {
+          label: "build the Rust reference host",
+          command: "cargo",
+          args: ["build", "--locked", "-p", "mostra-host-reference"],
+        },
+        { label: "kit: Rust reference host", command: "node", args: [...kit, host] },
+        {
+          label: "kit: Rust reference host, standalone",
+          command: "node",
+          args: [...kit, `${host} --standalone`],
+        },
+        {
+          label: "kit: Rust reference host, broken, with its baseline",
+          command: "node",
+          args: [
+            ...kit,
+            `${host} --break store-duplicates,drafts-as-submissions,ignore-policy`,
+            "--baseline",
+            "packages/conformance/baselines/reference-host-rust-broken.json",
+          ],
+        },
+      ];
+    },
   },
   {
     name: "docs",
