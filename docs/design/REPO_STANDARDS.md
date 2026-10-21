@@ -106,7 +106,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | build | affected | tsdown and Vite; artifacts uploaded for later jobs |
 | boundaries | always | dependency-cruiser, knip, and the seed anchors (every seeded violation of `prove-seeds.ts` still finds what it plants into) |
 | api | affected public packages | API Extractor diff, publint, attw; a changed report needs a changeset |
-| e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix; macOS and Linux for platform-specific suites |
+| e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix, one engine per machine (`MOSTRA_E2E_BROWSER`), on macOS and Linux |
 | integration | runtime, protocol, CLI, SDK or create-mostra affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the runtime's files by name, in `packages/runtime/vitest.config.ts`, and `clients` for the CLI's, the SDK's and `create-mostra`'s suites); a group nearing the target gets split again |
 | hygiene | runtime affected | negative tests (bad Host, bad Origin, missing token, CSRF, revoked token) |
 | conformance | runtime, protocol, sdk, shell, conformance or crates affected | the kit against the Rust reference host, its standalone mode and its broken mode with its baseline, on macOS and Linux (D143); the TypeScript reference host's runs are in `integration`'s `clients` group |
