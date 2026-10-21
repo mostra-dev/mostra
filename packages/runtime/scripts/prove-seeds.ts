@@ -2966,6 +2966,63 @@ const SEEDS: readonly Seed[] = [
     check: integration("telemetry.test.ts", "Opus review finding 6"),
     cwd: "../cli",
   },
+  // WP-12: the identity port (D143 item 2).
+  {
+    requirement: "HO-01",
+    name: "the identity port receives the browser's cookies",
+    file: "src/gateway/identity.ts",
+    from: '    if (key === "cookie" || key.startsWith("x-mostra-")) return;',
+    to: "",
+    check: integration("identity.test.ts", "names the person"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a host that took identity over and is away leaves the local user",
+    file: "src/gateway/identity.ts",
+    from: "  if (away.length > 0) {",
+    to: "  if (away.length < 0) {",
+    check: integration("identity.test.ts", "refuses the link"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a link minted for a person asks the identity port anyway",
+    file: "src/gateway/index.ts",
+    from: "    if (grant.viewerId === undefined && options.identity) {",
+    to: "    if (options.identity) {",
+    check: integration("identity.test.ts", "never asks for a link with a viewer"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a launch ticket presented twice during an identity call opens two sessions (GPT review 1)",
+    file: "src/gateway/index.ts",
+    from: '      ? capabilities.presentLaunch(body["launch"], artifactId, true)',
+    to: '      ? capabilities.presentLaunch(body["launch"], artifactId, false)',
+    check: integration("identity.test.ts", "spends a launch ticket once"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a link revoked during the identity call still gets a session (Opus review 3)",
+    file: "src/gateway/index.ts",
+    from: '      : capabilities.presentToken(body["token"], artifactId);\n    if (isRefusal(now))',
+    to: "      : grant;\n    if (isRefusal(now))",
+    check: integration("identity.test.ts", "revoked while the port answered"),
+  },
+  {
+    requirement: "HO-01",
+    name: "one browser's later exchange silently replaces another link's session (Opus review 2)",
+    file: "src/gateway/index.ts",
+    from: "      made !== undefined &&",
+    to: "      made === null &&",
+    check: integration("identity.test.ts", "silently replace another link"),
+  },
+  {
+    requirement: "HO-01",
+    name: "a connected host that stopped serving identity blocks every link (Opus review 7)",
+    file: "src/instance/index.ts",
+    from: '          return expectedOwners("identity").filter((owner) => !connected.has(owner));',
+    to: '          return expectedOwners("identity").filter(() => connected.size >= 0);',
+    check: integration("identity.test.ts", "stopped serving identity"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

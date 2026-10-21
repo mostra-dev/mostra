@@ -98,6 +98,15 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     await expect(mostra.results(receipt.artifactId)).rejects.toMatchObject({
       diagnostic: { code: "MOSTRA_HOST_CONNECTION_CLOSED" },
     });
+
+    // The same host started again without ports clears its record, so nothing waits for a port
+    // it no longer serves (Opus review of WP-12, finding 7).
+    const again = await host({ home, client: { name: "sdk-test-host" } });
+    const cleared = JSON.parse(readFileSync(join(home, "config.json"), "utf8")) as {
+      expectedPorts?: Record<string, string[]>;
+    };
+    expect(cleared.expectedPorts?.["sdk-test-host"]).toBeUndefined();
+    await again.close();
   });
 
   it("redelivers with the same delivery ID when the host's port throws, and tells the host", async () => {
@@ -305,9 +314,10 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
       createMostra({
         home: join(dir.path, "home"),
         env: hostEnv(dir.path),
-        ports: { identity: { resolve: () => null } } as never,
+        // `identity` is served since D143; `addressing` arrives with WP-13 (D143 item 1).
+        ports: { addressing: { externalBase: () => null } } as never,
       }),
-    ).rejects.toThrow('no port "identity"');
+    ).rejects.toThrow('no port "addressing"');
     const home = join(dir.path, "home");
     await host({ home, env: hostEnv(dir.path) });
     const second = await createMostra({ home, env: hostEnv(dir.path) }).catch(

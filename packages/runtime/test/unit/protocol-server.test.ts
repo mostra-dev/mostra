@@ -141,4 +141,43 @@ describe("port callbacks (D59)", () => {
     expect(calls).toEqual(["registrant:port/submissions.deliver"]);
     bystander.close();
   });
+
+  it("serve a port of any name through one path: a later package's port needs no new plumbing (HO-01, D143)", async () => {
+    // `addressing` (WP-13) stands for any port a later package adds: only its name joins the
+    // instance's supported ports; registration, the registrant lookup, the call on the
+    // registering connection, its time limit and the warning when unsupported are the same.
+    const { server, socket } = await serve({ ports: ["identity", "addressing"] });
+    const host = await client(socket, (method, params) => ({ method, params }));
+    const session = await host.peer.call(
+      mostraInitializeMethod,
+      initialize({ ports: ["addressing", "identity", "capture"] }),
+    );
+    expect(session.capabilities.ports).toEqual(["identity", "addressing"]);
+    expect(session.warnings.map((warning) => warning.code)).toEqual([
+      "MOSTRA_HOST_PORT_UNSUPPORTED",
+    ]);
+    expect(session.warnings[0]?.message).toContain("capture");
+    for (const port of ["identity", "addressing"]) {
+      const [registrant] = server.registrants(port);
+      expect(registrant?.owner).toBe("test");
+      await expect(
+        server.callSession(
+          registrant?.session ?? -1,
+          `port/${port}.example`,
+          { artifactId: "a" },
+          1000,
+        ),
+      ).resolves.toEqual({ method: `port/${port}.example`, params: { artifactId: "a" } });
+    }
+    expect(server.registrants("capture")).toEqual([]);
+    // A registrant that never answers is the same timeout for every port.
+    const silent = await client(socket, () => new Promise(() => undefined));
+    await silent.peer.call(mostraInitializeMethod, initialize({ ports: ["addressing"] }));
+    const last = server.registrants("addressing").at(-1);
+    await expect(
+      server.callSession(last?.session ?? -1, "port/addressing.example", {}, 100),
+    ).rejects.toMatchObject({ diagnostic: { code: "MOSTRA_HOST_TIMEOUT" } });
+    host.close();
+    silent.close();
+  });
 });

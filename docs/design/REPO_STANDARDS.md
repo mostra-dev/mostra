@@ -21,7 +21,7 @@ mostra/
   docs/agents/        playbooks: add-diagnostic, add-protocol-method, add-kit-component, add-contract,
                       add-template, add-cli-command, update-dependency, write-e2e-test
   packages/           npm packages (§3)
-  crates/             mostra-host, mostra-term-capture
+  crates/             mostra-host, its codegen and reference host (D143), mostra-term-capture
   plugins/            first-party plugins (each an npm package)
   skills/mostra/      the Agent Skill (single source for harness plugins)
   templates/          `mostra new` templates, one per family
@@ -57,7 +57,9 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `create-mostra` | people | cli | |
 | `@mostra/conformance` | host authors | protocol, sdk | runtime internals |
 | `@mostra/contract-*` | plugin authors | protocol | everything else |
-| crate `mostra-host` | Rust hosts | serde, tokio | |
+| crate `mostra-host` | Rust hosts | serde, tokio, and the crates its HTTP download, TLS, archives and digests need (D143) | anything of Mostra but the published protocol schema |
+| crate `mostra-host-codegen` (unpublished) | the crate's wire types: typify over the draft-07 bundle, `write` and `check` (D143) | typify, schemars, syn | |
+| crate `mostra-host-reference` (unpublished) | the conformance kit's Rust reference host (D143) | `mostra-host`, tokio | |
 | crate `mostra-term-capture` | ratatui authors | ratatui, serde | |
 | `ee/*` (D118) | operators of self-hosted servers | the core's public packages | nothing in the core may depend on `ee/` |
 
@@ -104,10 +106,10 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | build | affected | tsdown and Vite; artifacts uploaded for later jobs |
 | boundaries | always | dependency-cruiser, knip, and the seed anchors (every seeded violation of `prove-seeds.ts` still finds what it plants into) |
 | api | affected public packages | API Extractor diff, publint, attw; a changed report needs a changeset |
-| e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix; macOS and Linux for platform-specific suites |
+| e2e | runtime, react, shell, kit affected | Playwright on Chromium, Firefox and WebKit as a matrix, one engine per machine (`MOSTRA_E2E_BROWSER`), on macOS and Linux |
 | integration | runtime, protocol, CLI, SDK or create-mostra affected | suites through real Mostra processes (sockets, process groups, start times) on macOS and Linux (D86), in groups of suites, one machine each (`MOSTRA_TEST_GROUP`: `core`, `verify`, `verify-failures`, partitioning the runtime's files by name, in `packages/runtime/vitest.config.ts`, and `clients` for the CLI's, the SDK's and `create-mostra`'s suites); a group nearing the target gets split again |
 | hygiene | runtime affected | negative tests (bad Host, bad Origin, missing token, CSRF, revoked token) |
-| conformance | runtime, sdk, crates affected | the kit against standalone adapters and the reference test host |
+| conformance | runtime, protocol, sdk, shell, conformance or crates affected | the kit against the Rust reference host, its standalone mode and its broken mode with its baseline, on macOS and Linux (D143); the TypeScript reference host's runs are in `integration`'s `clients` group |
 | examples | examples, templates, kit, runtime affected | `mostra verify` on every example and template, sharded; visual and ARIA baselines compared |
 | rust | crates affected | `cargo nextest` on macOS and Linux; `cargo-deny` |
 | licenses | lockfile or Cargo.lock changed | license audit |

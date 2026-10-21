@@ -132,7 +132,7 @@
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
-| HO-01 | Ports for identity, drafts, submissions, reviews, events, addressing, trusted controls and capture, with built-in standalone adapters | v1 | D25 | M, C |
+| HO-01 | Ports for identity, drafts, submissions, events, trusted controls and secrets, with built-in standalone adapters; every port, these and those HO-10 and HO-11 add, registers and is called through one generic path | v1 | D25, D143 | M, C |
 | HO-02 | A versioned, language-neutral host protocol (JSON-RPC 2.0, stdio required) with capability negotiation and version refusal | v1 | D25, D32 | C |
 | HO-03 | A Rust host crate (wire types, client, runtime-bundle management, port traits) | v1 | D17, D25 | C, X |
 | HO-04 | A TypeScript SDK (`createMostra({ ports })`) | v1 | D25 | M, C |
@@ -141,6 +141,8 @@
 | HO-07 | **Invariant.** Interfaces and tool schemas change additively within a version; breaking changes need a new revision with a deprecation window | v1 | D32 | M |
 | HO-08 | Hosts configure where artifact sources, versions and interaction data live; artifacts, versions and submissions stay readable after the directory the artifact was authored in is removed | v1 | D25, JCODE_HOST H-11 | I, C |
 | HO-09 | Operator ports on the remote server (limits, metering, account resolution, abuse actions) with no-op defaults for self-hosters | v1 | D58, D116 | M, C |
+| HO-10 | An addressing port: a host supplies the external base of an artifact's links (its own tunnel hostname), which joins the Host allowlist and the links Mostra mints, with the loopback ports as the standalone default | v1 | D25, D143, JCODE_HOST H-14 | M, C |
+| HO-11 | Reviews and capture ports: hosts mirror review threads and choices, and supply the screenshots review crops use, with no mirror and the verify runner's browser as the standalone defaults | v1 | D25, D143 | M, C |
 
 ## Kit (KT)
 

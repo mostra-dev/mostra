@@ -133,8 +133,10 @@ port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo')), owner
 token(id PK, secret_hash UNIQUE, artifact_id FK, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at,
       is_default, pinned_version NULL, shell_origin, replaced_by NULL)  -- one default per artifact; a revoked row never changes;
                                                                        -- a link works only at shell_origin (D97 items 9, 10)
-session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, version_id NULL, created_at, last_seen_at)
-                                                                 -- id: SHA-256 of the cookie; csrf: SHA-256 of the CSRF token (D98)
+session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, version_id NULL, created_at, last_seen_at,
+        viewer_id NULL FK)                                       -- id: SHA-256 of the cookie; csrf: SHA-256 of the CSRF token (D98);
+                                                                 -- viewer_id: the person a host's identity port named for a link
+                                                                 -- without a viewer (migration 10, D143 item 2)
 share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it
 schema_migration(version PK, name, runtime_version, applied_at)

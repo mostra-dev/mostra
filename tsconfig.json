@@ -40,6 +40,9 @@
     },
     {
       "path": "packages/bundle"
+    },
+    {
+      "path": "packages/conformance"
     }
   ]
 }

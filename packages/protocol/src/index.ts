@@ -280,9 +280,11 @@ export {
 } from "./manifest.ts";
 export {
   type AnyMethod,
+  type AnyNotification,
   defineMethod,
   type MethodDefinition,
   type MethodDirection,
+  type NotificationDefinition,
 } from "./method.ts";
 export {
   type ArtifactCreateParams,
@@ -357,7 +359,7 @@ export {
   type GcVersion,
   gcRunMethod,
 } from "./methods/gc/run.ts";
-export { hostMethods } from "./methods/index.ts";
+export { hostMethods, hostNotifications } from "./methods/index.ts";
 export {
   type InstanceCheck,
   type InstanceCheckParams,
@@ -397,6 +399,12 @@ export {
   type DraftsMirrorResult,
   portDraftsMirrorMethod,
 } from "./methods/port/drafts-mirror.ts";
+export {
+  type IdentityVia,
+  type PortIdentityResolveParams,
+  type PortIdentityResolveResult,
+  portIdentityResolveMethod,
+} from "./methods/port/identity-resolve.ts";
 export {
   type PortSecretsGetParams,
   type PortSecretsGetResult,

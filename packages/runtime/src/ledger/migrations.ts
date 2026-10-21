@@ -580,4 +580,17 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 10,
+    name: "session viewers",
+    up(db) {
+      // D143 item 2: a link minted without a viewer acts as the person a host's identity port
+      // names, decided once when the browser exchanges the link. The session keeps that viewer,
+      // and a frame session made from its tickets keeps the same one. NULL: the link's own viewer,
+      // or the home's local user.
+      db.exec(`
+        ALTER TABLE session ADD COLUMN viewer_id TEXT REFERENCES viewer(id);
+      `);
+    },
+  },
 ];

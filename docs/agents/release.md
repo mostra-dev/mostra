@@ -19,19 +19,34 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    days, so the release runs right after. `--check` reports the state without changing anything
    (it reads "unreadable EOTP" where npm wants a second factor).
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
-   `pnpm changeset version`, then `pnpm install` (the lockfile takes the new versions), then
-   `pnpm check --affected`. Commit `chore(release): Mostra <version>` with `git commit -s`, push,
-   and open the pull request with the version's changelog. Every package of the group moves to
-   one version; nothing else changes.
+   `pnpm changeset version`, then `node tools/release/versions.ts sync` (the host crate takes the
+   group's version; Changesets knows nothing of Cargo, and repo lint refuses a crate that differs),
+   then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`.
+   Commit `chore(release): Mostra <version>` with `git commit -s`, push, and open the pull request
+   with the version's changelog. Every package of the group and the host crate move to one
+   version; nothing else changes. Before this pull request, every pull request's `Release`
+   run rehearses the version its pending changesets make (`versions.ts plan` and `rehearse`):
+   npm refuses even a dry run over a version it has.
 4. **Merge it when CI is green.** On `main` the `Release` workflow's `plan` job
    (`packages/bundle/scripts/github-release.ts state`) sees a version with no changeset pending
    and no published release, and the `publish` job runs in the `release` environment (only `main`
    may deploy there, one run at a time). In this order: it attests the bundles; publishes the
    GitHub release `v<version>` with the four archives, their asset records and `SHA256SUMS`
    (immutable from then on); checks from outside that the release holds exactly those bytes and
-   that each pinned URL downloads; and only then publishes the npm packages with provenance. So
-   the `@mostra/sdk` npm serves always pins archives that exist.
-5. **A failure part-way** finishes by itself, never by hand:
+   that each pinned URL downloads; then publishes the npm packages with provenance; and last the
+   crates, from the release's tag with the same pins as `@mostra/sdk`
+   (`crates/mostra-host/bundles.json`, which the crate's build embeds and refuses for another
+   version), through crates.io trusted publishing (`tools/release/crates.ts plan` names what to
+   publish). So the `@mostra/sdk` npm and the crate always pin archives that exist.
+5. **A crate's first release only: Mirza's token.** crates.io configures a trusted publisher only
+   for a crate that exists, so a crate's first version waits: the `publish` job's summary says
+   "First release of mostra-host". Mirza runs `tools/release/crates-setup.sh <version>` in a
+   terminal: it publishes the crate from the release's tag with the pins the published
+   `@mostra/sdk` carries (checked against the release's `SHA256SUMS`), using a token he pastes
+   (scope `publish-new`), then names the two last steps: add the trusted publisher on crates.io
+   (`mostra-dev/mostra`, `release.yml`, environment `release`) and revoke the token. Every later
+   release publishes the crate itself.
+6. **A failure part-way** finishes by itself, never by hand:
    - **Before the release is published** (a draft, nothing on npm): re-run the failed jobs, or let
      the next push to `main` run; the draft's assets are replaced by that run's, since nothing
      published names them yet.
@@ -49,14 +64,17 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
 
    Never delete a tag or a published release: both are immutable (the release-tags ruleset,
    immutable releases); a release that can't be finished is replaced by the next version.
-6. **Check it from outside** (external evidence for the progress report):
+7. **Check it from outside** (external evidence for the progress report):
    - `npm view @mostra/cli@<version> dist.attestations` names a provenance attestation, and
      `npm audit signatures` in a project that installed it verifies;
    - `gh release view v<version>` lists four `mostra-<version>-<platform>.tar.gz`, their `.json`
      asset records and `SHA256SUMS`;
      `gh attestation verify <archive> --repo mostra-dev/mostra` passes for one of them;
    - on a clean machine, `npm create mostra@latest my-artifact`, then
-     `npx @mostra/cli verify my-artifact` and `npx @mostra/cli publish my-artifact`.
+     `npx @mostra/cli verify my-artifact` and `npx @mostra/cli publish my-artifact`;
+   - a fresh Rust program depending on `mostra-host = "<version>"` spawns an instance on a fresh
+     `MOSTRA_CACHE_DIR`: it downloads, checks and caches the pinned bundle.
 
 **Done when** the `publish` job is green, the release is published with its nine assets, every
-package of the group shows `<version>` on npm with provenance, and the clean-machine check passed.
+package of the group shows `<version>` on npm with provenance, `mostra-host` shows `<version>` on
+crates.io, and the clean-machine checks passed.

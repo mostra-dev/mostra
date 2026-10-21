@@ -13,6 +13,7 @@ const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
   "@mostra/protocol",
   "@mostra/cli",
   "@mostra/sdk",
+  "@mostra/conformance",
   "create-mostra",
 ]);
 
@@ -29,6 +30,7 @@ export const JOB_NAMES = [
   "api",
   "licenses",
   "rust",
+  "conformance",
   "docs",
   "commits",
 ] as const;
@@ -67,6 +69,9 @@ const BIN = "node_modules/.bin";
 const TS6_BIN = "tools/ts6/node_modules/.bin";
 const RUST = [
   /^crates\//,
+  // The crate's wire types are generated from the protocol's schema (D143): a schema change runs
+  // the snapshot test that finds them stale.
+  /^packages\/protocol\/schemas\//,
   /^Cargo\.(toml|lock)$/,
   /^deny\.toml$/,
   /^rust-toolchain\.toml$/,
@@ -170,6 +175,8 @@ export const JOBS: readonly Job[] = [
         ],
       },
       { label: "knip", command: `${BIN}/knip`, args: ["--no-progress", "--no-config-hints"] },
+      // No host-specific code in the core (HO-06, invariant 11).
+      { label: "host-neutral core", command: "node", args: ["tools/audit/host-neutral.ts"] },
       // A seed (packages/runtime/scripts/prove-seeds.ts) whose anchor moved proves nothing and
       // fails no test, so the anchors are checked on every change (found in WP-11: ten had gone).
       {
@@ -201,9 +208,17 @@ export const JOBS: readonly Job[] = [
   },
   {
     name: "rust",
-    summary: "cargo nextest and cargo-deny",
-    applies: (plan) => touches(plan, RUST),
+    summary: "cargo nextest (the crate against the built runtime) and cargo-deny",
+    // The crate's suites run real instances of the runtime this checkout builds (D143), so a
+    // runtime or protocol change runs them too.
+    applies: (plan) =>
+      touches(plan, RUST) || affects(plan, ["@mostra/runtime", "@mostra/protocol"]),
     steps: () => [
+      {
+        label: "build the runtime",
+        command: `${BIN}/turbo`,
+        args: ["run", "build", "--filter=@mostra/runtime...", "--output-logs=errors-only"],
+      },
       {
         label: "nextest",
         command: "cargo",
@@ -211,6 +226,61 @@ export const JOBS: readonly Job[] = [
       },
       { label: "cargo-deny", command: "cargo", args: ["deny", "--locked", "check"] },
     ],
+  },
+  {
+    name: "conformance",
+    summary:
+      "The host conformance kit against the Rust reference host: with every port, standalone, and broken with its baseline",
+    // The TypeScript reference host runs in the integration job's `clients` group; this job runs
+    // the Rust one, so a change to the kit, the crate, the runtime or the protocol runs it (HO-05).
+    applies: (plan) =>
+      touches(plan, RUST) ||
+      affects(plan, [
+        "@mostra/runtime",
+        "@mostra/protocol",
+        "@mostra/sdk",
+        "@mostra/conformance",
+        "@mostra/shell",
+      ]),
+    alone: true,
+    steps: () => {
+      const kit = ["packages/conformance/dist/cli.js", "--host"];
+      const host = "target/debug/mostra-host-reference";
+      return [
+        {
+          label: "build the runtime and the kit",
+          command: `${BIN}/turbo`,
+          args: [
+            "run",
+            "build",
+            "--filter=@mostra/runtime...",
+            "--filter=@mostra/conformance...",
+            "--output-logs=errors-only",
+          ],
+        },
+        {
+          label: "build the Rust reference host",
+          command: "cargo",
+          args: ["build", "--locked", "-p", "mostra-host-reference"],
+        },
+        { label: "kit: Rust reference host", command: "node", args: [...kit, host] },
+        {
+          label: "kit: Rust reference host, standalone",
+          command: "node",
+          args: [...kit, `${host} --standalone`],
+        },
+        {
+          label: "kit: Rust reference host, broken, with its baseline",
+          command: "node",
+          args: [
+            ...kit,
+            `${host} --break store-duplicates,drafts-as-submissions,ignore-policy`,
+            "--baseline",
+            "packages/conformance/baselines/reference-host-rust-broken.json",
+          ],
+        },
+      ];
+    },
   },
   {
     name: "docs",

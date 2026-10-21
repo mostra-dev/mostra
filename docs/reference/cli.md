@@ -798,7 +798,7 @@ Exit codes:
   3  environment error (no runtime, browser or socket; the home; an unsupported platform)
 
 Example:
-  mostra host --home ~/.jcode/mostra
+  mostra host --home ~/.my-host/mostra
 ```
 
 ## mostra docs

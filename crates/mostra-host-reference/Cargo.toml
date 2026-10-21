@@ -1,0 +1,22 @@
+[package]
+name = "mostra-host-reference"
+version = "0.0.0"
+description = "The Rust reference host of Mostra's conformance kit: mostra-host with every port it serves, a store that keeps each submission once, and the harness shim the kit drives."
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "mostra-host-reference"
+path = "src/main.rs"
+
+[dependencies]
+mostra-host = { path = "../mostra-host" }
+serde_json = "1.0.150"
+tokio = { version = "1.47.1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

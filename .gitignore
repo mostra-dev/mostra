@@ -23,3 +23,6 @@ __pycache__/
 
 # The runtime bundle assembler's downloads (tools/bundle)
 /.cache/
+
+# A release writes the bundle pins into the crate before packaging it (D143)
+crates/mostra-host/bundles.json

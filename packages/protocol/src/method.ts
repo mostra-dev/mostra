@@ -40,3 +40,17 @@ export function defineMethod<Params, Result>(
   }
   return definition;
 }
+
+/**
+ * One notification of the host protocol: a message without an answer, sent by the instance to a
+ * client that accepted it in `mostra/initialize` (`ClientCapabilities.notifications`).
+ */
+export interface NotificationDefinition<Params> {
+  /** The JSON-RPC method name, such as `events/notify`. */
+  readonly method: string;
+  /** The schema of its `params`. */
+  readonly params: z.ZodType<Params>;
+}
+
+/** A notification of any params type. */
+export type AnyNotification = NotificationDefinition<unknown>;

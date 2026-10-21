@@ -181,6 +181,34 @@ describe("bundle evolution (review findings 2 and 3)", () => {
   const v2 = bundle({ T: obj({ b: { type: "string" } }, ["b"]) }, "2026-11-01");
   const map = (entries: Record<string, Bundle>) => new Map(Object.entries(entries));
 
+  it("accepts new methods and rejects removed or changed ones (D143)", () => {
+    const withMethods = (methods: Record<string, Record<string, unknown>>): Bundle => ({
+      ...bundle({ T: { type: "string" } }),
+      "x-mostra-methods": methods,
+    });
+    const publish = {
+      direction: "client-to-instance",
+      mutating: true,
+      params: { $ref: "#/$defs/T" },
+      result: {},
+    };
+    const problems = (
+      before: Record<string, Record<string, unknown>>,
+      after: Record<string, Record<string, unknown>>,
+    ): string[] =>
+      compareBundles(withMethods(before), withMethods(after)).map(
+        (item) => `${item.path}: ${item.reason}`,
+      );
+    expect(problems({ a: publish }, { a: publish, b: publish })).toEqual([]);
+    expect(problems({ a: publish }, {})).toEqual(["x-mostra-methods.a: method removed"]);
+    expect(problems({ a: publish }, { a: { ...publish, mutating: false } })).toEqual([
+      "x-mostra-methods.a.mutating: mutating changed",
+    ]);
+    expect(problems({ a: publish }, { a: { ...publish, result: { $ref: "#/$defs/U" } } })).toEqual([
+      "x-mostra-methods.a.result: result changed",
+    ]);
+  });
+
   it("rejects a removed or renamed bundle while its revision is supported", () => {
     expect(compareSnapshots(map({ protocol: v1 }), map({}), "2026-10-20")[0]).toContain(
       'bundle "protocol" was removed or renamed',

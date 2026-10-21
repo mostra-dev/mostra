@@ -92,11 +92,39 @@ export function exchange(
   credential: Credential,
   replace = false,
 ): Promise<ShellSession> {
+  const browser = browserKey();
   return call(`${apiBase}/session`, {
     method: "POST",
     headers: JSON_HEADERS,
-    body: JSON.stringify(replace ? { ...credential, replace: true } : credential),
+    body: JSON.stringify({
+      ...credential,
+      ...(browser !== undefined ? { browser } : {}),
+      ...(replace ? { replace: true } : {}),
+    }),
   });
+}
+
+const BROWSER_KEY = "mostra.browser";
+
+/**
+ * This browser's key on the shell's origin: random, kept in the origin's storage, the same for
+ * every tab. The gateway uses it to tell two exchanges of one browser apart from two browsers, so
+ * a link opened while another link's exchange waits is never silently replaced (D98 item 8, Opus
+ * review of WP-12, finding 2). No other origin can read it; it grants nothing.
+ */
+export function browserKey(): string | undefined {
+  try {
+    const stored = globalThis.localStorage?.getItem(BROWSER_KEY);
+    if (stored && /^[A-Za-z0-9_-]{16,64}$/.test(stored)) return stored;
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    const key = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    globalThis.localStorage?.setItem(BROWSER_KEY, key);
+    return key;
+  } catch {
+    // Storage blocked: the gateway's cookie check alone applies, as before.
+    return undefined;
+  }
 }
 
 /** Reads the session the browser already has for this artifact. */

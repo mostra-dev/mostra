@@ -127,7 +127,7 @@ export function actionRoutes(options: ActionRoutesOptions): ActionRoutes {
     if (!session || artifactId === undefined) throw new Error("session route without a session");
     return {
       artifactId,
-      viewerId: interaction.viewerOf(session.grant.viewerId),
+      viewerId: interaction.viewerOf(session.viewerId),
       tokenId: session.grant.tokenId,
       scopes: session.grant.scopes,
     };

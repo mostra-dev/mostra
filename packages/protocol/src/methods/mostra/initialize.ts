@@ -43,7 +43,7 @@ export const CLI_CLIENT_NAME = "mostra-cli";
 
 /** The client that opens a connection. */
 export interface ClientInfo {
-  /** The client's name, for logs and status (`mostra-cli`, `jcode`). */
+  /** The client's name, for logs and status (`mostra-cli`, `my-host`). */
   readonly name: string;
   /** The client's own version. */
   readonly version: string;

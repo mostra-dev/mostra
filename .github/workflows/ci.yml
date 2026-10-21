@@ -136,7 +136,43 @@ jobs:
         with:
           tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
       - name: pnpm check --job rust
+        env:
+          # The crate's instance suites fail, never skip, when the runtime didn't build.
+          MOSTRA_HOST_REQUIRE_RUNTIME: "1"
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
+
+  # The host conformance kit against the Rust reference host on both v1 platforms (HO-05):
+  # every port, standalone, and broken with its baseline. The TypeScript reference host runs in
+  # the integration job's `clients` group. The kit's shell scenario renders in Chromium.
+  conformance:
+    name: conformance (${{ matrix.os }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"conformance"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        id: setup
+        with:
+          job: conformance
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Cache the Playwright browser
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
+          key: playwright-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install the Playwright Chromium headless shell
+        run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
+      - name: pnpm check --job conformance
+        run: node tools/check/cli.ts --job conformance $SCOPE --verbose
 
   # Suites through real Mostra processes (sockets, process groups, start times) on both v1
   # platforms (D86). The plan runs it when the runtime, the protocol or a client package (CLI,
@@ -179,16 +215,21 @@ jobs:
 
   # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
   # platforms: WebKit on macOS is the closest Playwright gets to Safari.
+  # One engine per machine (REPO_STANDARDS §6's matrix): the three on one macOS runner had grown to
+  # 11 to 14 minutes of a 15-minute limit and went past it (WP-12).
   e2e:
-    name: e2e (${{ matrix.os }})
+    name: e2e (${{ matrix.os }}, ${{ matrix.browser }})
     needs: plan
     if: contains(needs.plan.outputs.jobs, '"e2e"')
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        browser: [chromium, firefox, webkit]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    env:
+      MOSTRA_E2E_BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -202,16 +243,16 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-e2e-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install Chromium, Firefox and WebKit
-        run: pnpm --filter @mostra/e2e exec playwright install --with-deps chromium firefox webkit
+          key: playwright-e2e-${{ matrix.browser }}-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install the engine
+        run: pnpm --filter @mostra/e2e exec playwright install --with-deps ${{ matrix.browser }}
       - name: pnpm check --job e2e
         run: node tools/check/cli.ts --job e2e $SCOPE --verbose
       - name: Keep the traces of failed tests
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-traces-${{ matrix.os }}
+          name: e2e-traces-${{ matrix.os }}-${{ matrix.browser }}
           path: tests/e2e/test-results
           retention-days: 7
 
@@ -233,7 +274,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, check, rust, integration, e2e, dependency-review]
+    needs: [plan, check, rust, conformance, integration, e2e, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

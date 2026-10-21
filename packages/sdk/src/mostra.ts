@@ -44,11 +44,13 @@ import {
   type MethodDefinition,
   type MostraInitializeResult,
   mostraInitializeMethod,
+  type PortIdentityResolveParams,
   type PortName,
   type PortSecretsGetParams,
   type PortTrustedControlsActivatedParams,
   type PublishReceipt,
   portDraftsMirrorMethod,
+  portIdentityResolveMethod,
   portSecretsGetMethod,
   portSubmissionsDeliverMethod,
   portTrustedControlsActivatedMethod,
@@ -69,6 +71,7 @@ import {
   stateGetMethod,
   statePatchMethod,
   type VerifyVerdict,
+  type ViewerSpec,
   type ViewUrlParams,
   viewUrlMethod,
   WAIT_MAX_MS,
@@ -88,6 +91,14 @@ import { sdkVersion } from "./version.ts";
  * its stable ID, so a port may see the same call again after a crash.
  */
 export interface Ports {
+  /**
+   * Names the person behind a link minted without a viewer, from the request's headers (D143):
+   * `{ ref, name? }` (one viewer per `ref`), or `null` for the home's local user. Answer within
+   * 5 s; a failure refuses the link rather than guess.
+   */
+  readonly identity?: {
+    resolve(request: PortIdentityResolveParams): ViewerSpec | null | Promise<ViewerSpec | null>;
+  };
   /** Receives each submission once it is durable (D58, D105). Answer within 30 s. */
   readonly submissions?: {
     deliver(
@@ -257,6 +268,7 @@ export interface CallOptions {
 
 /** The port methods the SDK serves, by port. */
 const PORT_METHODS = {
+  identity: [portIdentityResolveMethod],
   submissions: [portSubmissionsDeliverMethod],
   drafts: [portDraftsMirrorMethod],
   secrets: [portSecretsGetMethod],
@@ -279,6 +291,10 @@ function closedError(message: string): RpcError {
 /** The handler for one port method, its params already checked. */
 function portHandler(ports: Ports, method: string): ((params: unknown) => unknown) | undefined {
   switch (method) {
+    case portIdentityResolveMethod.method:
+      return (
+        ports.identity && ((params) => ports.identity?.resolve(params as PortIdentityResolveParams))
+      );
     case portSubmissionsDeliverMethod.method:
       return (
         ports.submissions && ((params) => ports.submissions?.deliver(params as SubmissionEnvelope))
@@ -476,7 +492,9 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
   options.signal?.addEventListener("abort", abort, { once: true });
   const homeConfig: HomeConfig = {
     path: home,
-    ...(options.expectPorts !== false && names.length > 0 ? { ports: names } : {}),
+    // What this host always provides, an empty list included: a host that stopped serving a port
+    // clears the record, so its absence is never awaited (Opus review of WP-12, finding 7).
+    ...(options.expectPorts !== false ? { ports: names } : {}),
     ...(options.settings?.submission ? { submission: options.settings.submission } : {}),
     ...(options.settings?.submitChannels
       ? { submitChannels: options.settings.submitChannels }

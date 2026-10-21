@@ -19,6 +19,7 @@ import { parse as parseYaml } from "yaml";
 import { fail, ROOT } from "../lib/repo.ts";
 import { listPackages, type WorkspacePackage } from "../lib/workspace.ts";
 import { PACKAGE_MAP } from "../package-map.ts";
+import { crateProblems } from "../release/versions.ts";
 
 const REPOSITORY = "git+https://github.com/mostra-dev/mostra.git";
 /** SHA-256 of the canonical Apache License 2.0 text (apache.org/licenses/LICENSE-2.0.txt). */
@@ -271,9 +272,11 @@ function main(): void {
   };
   problems.push(...releaseGroupProblems(changesets, listPackages(root)));
   problems.push(...publishJobProblems(root));
+  // The host crate follows the release group's version (D143).
+  problems.push(...crateProblems(root));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
-    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group, a publish job on built-ins`,
+    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group with its crate, a publish job on built-ins`,
   );
 }
 

@@ -1,0 +1,26 @@
+[package]
+name = "mostra-host-codegen"
+version = "0.0.0"
+description = "Generates the mostra-host crate's wire types and methods from @mostra/protocol's draft-07 schema (D59, D143)."
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "mostra-host-codegen"
+path = "src/main.rs"
+
+[dependencies]
+prettyplease = "0.3.0"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+schemars = "0.8.22"
+serde_json = "1.0.150"
+syn = { version = "3.0.9", features = ["full", "visit-mut"] }
+typify = "=0.8.0"
+
+[lints]
+workspace = true

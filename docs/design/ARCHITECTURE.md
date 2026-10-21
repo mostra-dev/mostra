@@ -292,7 +292,7 @@ Hosts integrate through the **host protocol** (D59, INTERFACES §6) and **option
 
 **Operator ports** (D116, HO-09) are the remote server's counterpart for whoever operates it: limits, metering, account resolution and abuse actions, each with a no-op default, so a self-hoster needs nothing more. The managed service's operating layer, which lives outside this repository (D118), reaches the remote server only through them, as hosts reach an instance only through the host protocol and its ports (invariant 11). Their shape is WP-28's to design.
 
-The **Rust crate** `mostra-host` has wire types generated from the schema, a hand-written tokio client, spawn and attach, runtime-bundle download and cache, and port traits (HO-03). The **TypeScript SDK** has `createMostra({ home, ports })` (HO-04). The **conformance kit** (HO-05) runs scenarios against a host, with expected-failure baselines. JCODE_HOST's H-01 to H-16 map to generic mechanisms only (HO-06, [JCODE_HOST.md](JCODE_HOST.md#how-mostra-meets-each-need)).
+The **Rust crate** `mostra-host` has wire types generated from the schema, a hand-written tokio client, spawn and attach, runtime-bundle download and cache, and port traits (HO-03). The **TypeScript SDK** has `createMostra({ home, ports })` (HO-04). The **conformance kit** (HO-05) runs scenarios against a host through a harness shim the host ships, with expected-failure baselines, and the TypeScript and Rust reference hosts pass it (D143, INTERFACES §17). JCODE_HOST's H-01 to H-16 map to generic mechanisms only (HO-06, [JCODE_HOST.md](JCODE_HOST.md#how-mostra-meets-each-need)).
 
 ## 12. Agent experience
 

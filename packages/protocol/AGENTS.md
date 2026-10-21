@@ -34,7 +34,8 @@ imports nothing but `zod` (tools/package-map.ts).
 ## Tests to run
 
 `pnpm --filter @mostra/protocol test`, then `pnpm check --affected`. After a schema change, run
-`pnpm --filter @mostra/protocol gen:schemas`; after a catalog change,
+`pnpm --filter @mostra/protocol gen:schemas`, then `cargo run -p mostra-host-codegen -- write` (the Rust
+crate's wire types, whose snapshot test fails otherwise, D143); after a catalog change,
 `node tools/docs/diagnostics.ts write`.
 
 ## Gotchas

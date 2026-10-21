@@ -4,7 +4,7 @@
  * compatibility check, HO-07).
  */
 import * as z from "zod";
-import { HOST_PROTOCOL_REVISIONS } from "../src/index.ts";
+import { HOST_PROTOCOL_REVISIONS, hostMethods, hostNotifications } from "../src/index.ts";
 import { wireRegistry } from "../src/wire-registry.ts";
 
 const [hostRevision] = HOST_PROTOCOL_REVISIONS;
@@ -26,6 +26,23 @@ function rejectUnrepresentable(context: { zodSchema: unknown; path: (string | nu
 }
 if (hostRevision === undefined) throw new Error("HOST_PROTOCOL_REVISIONS is empty");
 
+/**
+ * A method's params or result as a schema: a reference to its registered definition, or `{}` for
+ * a result whose content is ignored (`z.unknown()`). Params must be registered, so every client
+ * generator gets a named type for them.
+ */
+function schemaRef(
+  schema: z.ZodType,
+  uri: (id: string) => string,
+  what: string,
+  required: boolean,
+): object {
+  const id = (wireRegistry.get(schema) as { id?: string } | undefined)?.id;
+  if (id !== undefined) return { $ref: uri(id) };
+  if (!required && schema instanceof z.ZodUnknown) return {};
+  throw new Error(`${what} isn't registered in wireRegistry; register it with a stable id.`);
+}
+
 /** The bundles, one per published file pair. */
 export const bundles = [
   {
@@ -40,5 +57,31 @@ export const bundles = [
         metadata: wireRegistry,
         override: rejectUnrepresentable,
       }).schemas as Record<string, Record<string, unknown>>,
+    methods: (uri: (id: string) => string) =>
+      Object.fromEntries(
+        hostMethods.map((method) => [
+          method.method,
+          {
+            direction: method.direction,
+            mutating: method.mutating,
+            params: schemaRef(method.params, uri, `The params of ${method.method}`, true),
+            result: schemaRef(method.result, uri, `The result of ${method.method}`, false),
+          },
+        ]),
+      ),
+    notifications: (uri: (id: string) => string) =>
+      Object.fromEntries(
+        hostNotifications.map((notification) => [
+          notification.method,
+          {
+            params: schemaRef(
+              notification.params,
+              uri,
+              `The params of ${notification.method}`,
+              true,
+            ),
+          },
+        ]),
+      ),
   },
 ];

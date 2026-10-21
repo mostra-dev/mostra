@@ -199,7 +199,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (!session || artifactId === undefined) throw new Error("session route without a session");
     return {
       artifactId,
-      viewerId: interaction.viewerOf(session.grant.viewerId),
+      viewerId: interaction.viewerOf(session.viewerId),
       // A page names only views its own link opened (Claude review finding 11).
       tokenId: session.grant.tokenId,
       scopes: session.grant.scopes,
