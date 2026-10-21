@@ -185,12 +185,17 @@ impl Peer {
     ) -> impl Future<Output = Result<Value>> + Send + 'static {
         let id = self.inner.next.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
+        // Registered first, then the close checked: `Inner::close` marks the peer closed before it
+        // fails what is pending, so a call either sees the mark here or is failed by the close.
+        // Checking first would leave a call that registered just after the close's drain waiting
+        // forever.
+        self.inner.lock_pending().insert(id, sender);
         let early = if self.inner.closed.borrow().is_some() {
+            self.inner.lock_pending().remove(&id);
             Some(Error::closed(
                 "The connection to the Mostra instance is closed.",
             ))
         } else {
-            self.inner.lock_pending().insert(id, sender);
             let mut message = serde_json::Map::new();
             message.insert("jsonrpc".into(), Value::from("2.0"));
             message.insert("id".into(), Value::from(id));
@@ -433,5 +438,62 @@ fn dispatch(inner: &Arc<Inner>, line: &[u8], incoming: &Arc<dyn Incoming>) {
             let _ = waiter.send(outcome);
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Failure, Incoming, Peer};
+    use crate::rpc::BoxFuture;
+    use serde_json::Value;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    struct Nobody;
+    impl Incoming for Nobody {
+        fn request(&self, _: String, _: Value) -> BoxFuture<'static, Result<Value, Failure>> {
+            Box::pin(async { Ok(Value::Null) })
+        }
+    }
+
+    /// A call made while the peer closes, from any thread, always ends: answered by the close or
+    /// refused as closed, never left waiting (calls registered just after the close's drain once
+    /// were).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn every_call_racing_a_close_ends() {
+        for _ in 0..200 {
+            // The instance's side never answers: only the close can end the calls.
+            let (ours, theirs) = tokio::io::duplex(1 << 20);
+            let (reader, writer) = tokio::io::split(ours);
+            let peer = Peer::start(reader, writer, Arc::new(Nobody));
+            let callers: Vec<_> = (0..8)
+                .map(|_| {
+                    let peer = peer.clone();
+                    tokio::spawn(async move {
+                        let mut calls = Vec::new();
+                        for _ in 0..50 {
+                            calls.push(peer.call("instance/status", Value::Null, None));
+                            tokio::task::yield_now().await;
+                        }
+                        for call in calls {
+                            let outcome = call.await;
+                            assert_eq!(
+                                outcome.err().map(|e| e.code().to_owned()).as_deref(),
+                                Some("MOSTRA_HOST_CONNECTION_CLOSED")
+                            );
+                        }
+                    })
+                })
+                .collect();
+            tokio::task::yield_now().await;
+            peer.close("closed by the test");
+            for caller in callers {
+                tokio::time::timeout(Duration::from_secs(5), caller)
+                    .await
+                    .expect("a call made during the close never ended")
+                    .expect("a caller panicked");
+            }
+            drop(theirs);
+        }
     }
 }
