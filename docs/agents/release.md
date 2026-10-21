@@ -19,7 +19,8 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    days, so the release runs right after. `--check` reports the state without changing anything
    (it reads "unreadable EOTP" where npm wants a second factor).
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
-   `pnpm changeset version`, then `node tools/release/versions.ts sync` (the host crate takes the
+   `GITHUB_TOKEN=$(gh auth token) pnpm changeset version` (the changelog names each change's pull
+   request through GitHub's API), then `node tools/release/versions.ts sync` (the host crate takes the
    group's version; Changesets knows nothing of Cargo, and repo lint refuses a crate that differs),
    then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`.
    Commit `chore(release): Mostra <version>` with `git commit -s`, push, and open the pull request

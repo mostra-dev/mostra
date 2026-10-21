@@ -1,6 +1,6 @@
 {
   "name": "@mostra/shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Mostra's shell: the trusted page that hosts an artifact's frame on its own origin, talking to it over the validated bridge. Built files, served by the runtime's gateway.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

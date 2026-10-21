@@ -1,5 +1,12 @@
 # @mostra/react
 
+## 0.2.0
+
+### Patch Changes
+
+- Updated dependencies [[`0ff9ae5`](https://github.com/mostra-dev/mostra/commit/0ff9ae5b682ab9b9d5db42b9984d553ce025428b)]:
+  - @mostra/protocol@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
