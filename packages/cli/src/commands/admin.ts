@@ -340,7 +340,7 @@ export const hostCommand: CommandDef = defineCommand({
   ],
   output: { type: "the host protocol (INTERFACES §6)", topic: "cli" },
   exits: [],
-  example: "host --home ~/.jcode/mostra",
+  example: "host --home ~/.my-host/mostra",
   local: true,
   quiet: true,
   readsStdin: true,

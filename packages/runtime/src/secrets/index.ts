@@ -2,7 +2,7 @@
  * Secrets (D44, AC-06): named values server code reads with `secret(name)`, kept outside artifact
  * source in the home's owner-only store, `secrets/<scope>/<name>` (mode 0600, directories 0700),
  * where the scope is `home` for a secret every artifact shares or the artifact's ID for its own.
- * A host may supply secrets through its `secrets` port instead (Jcode's credential store).
+ * A host may supply secrets through its `secrets` port instead (a host's own credential store).
  *
  * Every value Mostra holds or hands out is registered with the instance's redactor, so it never
  * reaches a log, a run log, an event, a diagnostic or a report. Nothing derived from a value is

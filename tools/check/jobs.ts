@@ -175,6 +175,8 @@ export const JOBS: readonly Job[] = [
         ],
       },
       { label: "knip", command: `${BIN}/knip`, args: ["--no-progress", "--no-config-hints"] },
+      // No host-specific code in the core (HO-06, invariant 11).
+      { label: "host-neutral core", command: "node", args: ["tools/audit/host-neutral.ts"] },
       // A seed (packages/runtime/scripts/prove-seeds.ts) whose anchor moved proves nothing and
       // fails no test, so the anchors are checked on every change (found in WP-11: ten had gone).
       {
