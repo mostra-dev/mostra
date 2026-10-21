@@ -66,6 +66,9 @@ struct State {
     paused: bool,
     /// Pages of a subscription not known yet, kept while a subscribe is in flight.
     early: Option<Vec<EventsNotifyParams>>,
+    /// A subscribe is in flight. Its answer is taken in by a task of its own, so a consumer that
+    /// stops waiting (a `select!`, a timeout) never loses the subscription it started.
+    subscribing: bool,
     pausing: Option<JoinHandle<()>>,
     ended: Option<Ended>,
 }
@@ -210,8 +213,15 @@ impl EventStream {
         }
     }
 
-    async fn subscribe(&self, after: Option<String>) -> Result<()> {
-        self.shared.lock().early = Some(Vec::new());
+    /// Starts `events/subscribe` (it is sent now) and takes its answer in a task of its own: the
+    /// subscription it names is installed, with the pages that arrived before it, whether or not
+    /// anyone still awaits it. A refusal ends the stream with the instance's error.
+    fn start_subscribe(&self, after: Option<String>) {
+        {
+            let mut state = self.shared.lock();
+            state.early = Some(Vec::new());
+            state.subscribing = true;
+        }
         let mut params = serde_json::Map::new();
         if let Some(filter) = &self.options.filter {
             params.insert(
@@ -228,25 +238,62 @@ impl EventStream {
         let answer = self
             .shared
             .peer
-            .call("events/subscribe", Value::Object(params), None)
-            .await;
-        let mut state = self.shared.lock();
-        let early = state.early.take().unwrap_or_default();
-        let answer = answer?;
-        let id = answer["subscriptionId"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned();
-        state.subscription = Some(id.clone());
-        if state.received.is_none() {
-            state.received = answer["cursor"].as_str().map(str::to_owned);
-        }
-        for page in early {
-            if page.subscription_id.as_str() == id {
-                self.shared.accept(&mut state, page);
+            .call("events/subscribe", Value::Object(params), None);
+        let shared = Arc::clone(&self.shared);
+        tokio::spawn(async move {
+            let answer = answer.await;
+            let mut state = shared.lock();
+            state.subscribing = false;
+            let early = state.early.take().unwrap_or_default();
+            match answer {
+                Ok(answer) => {
+                    let id = answer["subscriptionId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned();
+                    state.subscription = Some(id.clone());
+                    if state.received.is_none() {
+                        state.received = answer["cursor"].as_str().map(str::to_owned);
+                    }
+                    if state.ended.is_none() {
+                        for page in early {
+                            if page.subscription_id.as_str() == id {
+                                shared.accept(&mut state, page);
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    if state.ended.is_none() {
+                        state.ended = Some(Ended::Failed(error));
+                    }
+                }
             }
+            drop(state);
+            shared.wake.notify_one();
+        });
+    }
+
+    /// Waits until no subscribe is in flight; the stream's error when one was refused.
+    async fn subscribed(&self) -> Result<()> {
+        loop {
+            let notified = self.shared.wake.notified();
+            {
+                let state = self.shared.lock();
+                if !state.subscribing {
+                    return match &state.ended {
+                        Some(Ended::Failed(error)) => Err(error.clone()),
+                        _ => Ok(()),
+                    };
+                }
+            }
+            notified.await;
         }
-        Ok(())
+    }
+
+    async fn subscribe(&self, after: Option<String>) -> Result<()> {
+        self.start_subscribe(after);
+        self.subscribed().await
     }
 
     async fn resume(&self) -> Result<()> {
@@ -272,8 +319,9 @@ impl EventStream {
     pub async fn next(&mut self) -> Result<Option<EventPage>> {
         if !self.started {
             self.started = true;
-            self.subscribe(self.options.after.clone()).await?;
+            self.start_subscribe(self.options.after.clone());
         }
+        self.subscribed().await?;
         let resume = {
             let mut state = self.shared.lock();
             if let Some(handed) = state.handed_out.clone() {
@@ -336,6 +384,8 @@ impl EventStream {
     /// Never for a closed connection; the instance's refusals are ignored, since the stream ends
     /// either way.
     pub async fn close(self) -> Result<()> {
+        // A subscribe still in flight names a subscription to end too.
+        let _ = self.subscribed().await;
         let pausing = {
             let mut state = self.shared.lock();
             if state.ended.is_none() {
@@ -393,5 +443,92 @@ impl EventStream {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EventStream, EventStreamOptions};
+    use crate::rpc::{BoxFuture, Failure, Incoming, Peer};
+    use serde_json::{Value, json};
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::sync::mpsc;
+
+    struct Nobody;
+    impl Incoming for Nobody {
+        fn request(&self, _: String, _: Value) -> BoxFuture<'static, Result<Value, Failure>> {
+            Box::pin(async { Ok(Value::Null) })
+        }
+    }
+
+    /// A stream whose first `next()` is given up while its subscribe is unanswered still holds the
+    /// subscription once the answer comes: its pages arrive, and `close()` ends it (GPT review of
+    /// WP-12, finding 2).
+    #[tokio::test]
+    async fn a_next_given_up_during_subscribe_keeps_the_subscription() {
+        let (ours, theirs) = tokio::io::duplex(1 << 16);
+        let (reader, writer) = tokio::io::split(ours);
+        let peer = Peer::start(reader, writer, Arc::new(Nobody));
+        let (their_reader, mut their_writer) = tokio::io::split(theirs);
+        let (seen, mut requests) = mpsc::unbounded_channel::<Value>();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(their_reader).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = seen.send(serde_json::from_str::<Value>(&line).unwrap_or(Value::Null));
+            }
+        });
+        let mut stream = EventStream::open(
+            &peer,
+            EventStreamOptions {
+                name: Some("host".into()),
+                ..Default::default()
+            },
+        );
+        // The consumer stops waiting while the subscribe is unanswered.
+        let first = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
+        assert!(first.is_err(), "the subscribe was answered by nobody");
+        let subscribe = requests.recv().await.expect("a subscribe was sent");
+        assert_eq!(subscribe["method"], "events/subscribe");
+        // The answer comes late, and a page follows it.
+        let line = |message: Value| {
+            let mut line = message.to_string();
+            line.push('\n');
+            line
+        };
+        let answer = line(
+            json!({ "jsonrpc": "2.0", "id": subscribe["id"], "result": { "subscriptionId": "sub-1", "cursor": "5" } }),
+        );
+        let page = line(
+            json!({ "jsonrpc": "2.0", "method": "events/notify", "params": { "subscriptionId": "sub-1", "events": [], "cursor": "6" } }),
+        );
+        their_writer.write_all(answer.as_bytes()).await.unwrap();
+        their_writer.write_all(page.as_bytes()).await.unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .expect("the page never came: the subscription was lost")
+            .expect("next failed")
+            .expect("the stream ended");
+        assert_eq!(got.cursor, "6");
+        // close() ends the subscription the given-up call started.
+        let closing = tokio::spawn(stream.close());
+        let unsubscribe = loop {
+            let request = requests.recv().await.expect("an unsubscribe was sent");
+            if request["method"] == "events/unsubscribe" {
+                break request;
+            }
+            let id = request["id"].clone();
+            let reply = line(json!({ "jsonrpc": "2.0", "id": id, "result": {} }));
+            their_writer.write_all(reply.as_bytes()).await.unwrap();
+        };
+        assert_eq!(unsubscribe["params"]["subscriptionId"], "sub-1");
+        let reply = line(json!({ "jsonrpc": "2.0", "id": unsubscribe["id"], "result": {} }));
+        their_writer.write_all(reply.as_bytes()).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), closing)
+            .await
+            .expect("close never ended")
+            .expect("close panicked")
+            .expect("close failed");
     }
 }

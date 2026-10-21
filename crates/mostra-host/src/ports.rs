@@ -327,6 +327,15 @@ impl PortSet {
     }
 }
 
+/// Tells the host's error callback, which can never keep the instance from its answer: a callback
+/// that panics is ignored (GPT review of WP-12, finding 8).
+fn report(callback: Option<&ErrorCallback>, method: &str, message: &str) {
+    if let Some(callback) = callback {
+        let _ =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(method, message)));
+    }
+}
+
 impl Incoming for PortSet {
     fn request(&self, method: String, params: Value) -> BoxFuture<'static, Result<Value, Failure>> {
         let handler = self
@@ -348,9 +357,7 @@ impl Incoming for PortSet {
             match tokio::spawn(handler(params)).await {
                 Ok(Ok(result)) => Ok(result),
                 Ok(Err(error)) => {
-                    if let Some(callback) = &on_error {
-                        callback(&method, error.message());
-                    }
+                    report(on_error.as_ref(), &method, error.message());
                     let code = if error.invalid_params {
                         (-32602, "MOSTRA_HOST_INVALID_PARAMS")
                     } else {
@@ -363,9 +370,7 @@ impl Incoming for PortSet {
                     ))
                 }
                 Err(_) => {
-                    if let Some(callback) = &on_error {
-                        callback(&method, "the handler panicked");
-                    }
+                    report(on_error.as_ref(), &method, "the handler panicked");
                     Err(Failure::new(
                         -32603,
                         "MOSTRA_HOST_INTERNAL_ERROR",
@@ -457,6 +462,29 @@ mod tests {
             ask("port/secrets.get", panics).await,
             Err((-32603, "MOSTRA_HOST_INTERNAL_ERROR".to_owned()))
         );
+    }
+
+    /// A host's error callback that panics never keeps the instance from its answer (GPT review
+    /// of WP-12, finding 8).
+    #[tokio::test]
+    async fn a_panicking_error_callback_still_answers_at_once() {
+        let mut ports = ports();
+        ports.on_error(std::sync::Arc::new(|_: &str, _: &str| {
+            panic!("the host's callback panicked")
+        }));
+        for name in ["fails", "panics"] {
+            let answer = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                ports.request(
+                    "port/secrets.get".to_owned(),
+                    json!({ "artifactId": "art_01", "name": name }),
+                ),
+            )
+            .await
+            .expect("no answer: the callback's panic took the response with it");
+            let failure = answer.expect_err("a failure");
+            assert_eq!(failure.code, -32603);
+        }
     }
 
     #[test]

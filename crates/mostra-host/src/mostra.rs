@@ -427,7 +427,7 @@ impl Mostra {
         };
         if stream.is_none() {
             let resolved = resolve_runtime(&options.runtime).await?;
-            let started = start_daemon(&resolved, &home, &options.runtime.env).await?;
+            let started = start_daemon(&resolved, &home, &options).await?;
             stream = Some(connect(&started).await?);
             socket = Some(started);
             runtime = Some(resolved);
@@ -717,6 +717,23 @@ impl Mostra {
     }
 }
 
+impl Drop for Mostra {
+    /// A handle dropped without [`Mostra::close`] still ends its session, so an attached daemon
+    /// stops calling ports nobody serves. A spawned instance is stopped as `close` would, in a
+    /// task, when a Tokio runtime is there to run it; otherwise it is killed with its handle.
+    fn drop(&mut self) {
+        self.peer.close("The host dropped its handle.");
+        if let Connection::Spawned(child) = &self.connection
+            && let Ok(handle) = tokio::runtime::Handle::try_current()
+        {
+            let child = Arc::clone(child);
+            handle.spawn(async move {
+                stop(&child, Duration::from_secs(10)).await;
+            });
+        }
+    }
+}
+
 fn decode<T: serde::de::DeserializeOwned>(method: &str, value: Value) -> Result<T> {
     serde_json::from_value(value).map_err(|e| {
         Error::new(
@@ -782,15 +799,24 @@ async fn connect(socket: &Path) -> Result<tokio::net::UnixStream> {
 
 /// Starts the home's daemon, detached, and reads the one line it prints: where it listens, or
 /// why it couldn't start. A daemon another starter won prints `attached` and exits.
-async fn start_daemon(runtime: &Runtime, home: &Path, env: &Environment) -> Result<PathBuf> {
-    let mut command: Command = runtime.command([
+/// Starts the home's daemon with this handle's bind and URL host (D99: neither is remembered, so
+/// they apply to the daemon this call starts; one already running keeps its own).
+async fn start_daemon(runtime: &Runtime, home: &Path, options: &Options) -> Result<PathBuf> {
+    let mut args: Vec<std::ffi::OsString> = vec![
         "daemon".into(),
         "--home".into(),
         home.as_os_str().to_owned(),
-    ]);
+    ];
+    if let Some(bind) = &options.bind {
+        args.extend(["--bind".into(), bind.into()]);
+    }
+    if let Some(url_host) = &options.url_host {
+        args.extend(["--url-host".into(), url_host.into()]);
+    }
+    let mut command: Command = runtime.command(args);
     command
         .env_clear()
-        .envs(env)
+        .envs(&options.runtime.env)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

@@ -32,6 +32,7 @@ fn sha(bytes: &[u8]) -> String {
 fn files() -> Vec<(&'static str, Vec<u8>, bool)> {
     let setup = r#"#!/bin/sh
 root="$2"
+[ -n "$TEST_SETUP_SLEEP" ] && sleep "$TEST_SETUP_SLEEP"
 files=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$root/bundle.json" | tail -1)
 cat > "$root/.mostra-setup.json" <<JSON
 {"schemaVersion":1,"version":"9.9.9","platform":"PLATFORM","files":"$files","browser":{"revision":"1"},"at":"2026-10-21T00:00:00.000Z"}
@@ -261,4 +262,52 @@ async fn bytes_files_or_links_that_differ_from_the_pins_install_nothing() {
         .unwrap_err();
     assert_eq!(refused.code(), "MOSTRA_ENV_BUNDLE_INVALID");
     assert_eq!(leftovers(), Vec::<String>::new());
+}
+
+/// An install the host gives up part-way (a timeout, a `select!`) releases its lock and removes
+/// its scratch, so the next install of that bundle goes ahead at once instead of waiting an hour
+/// for a lock whose owner (this live process) never comes back (GPT review of WP-12, finding 3).
+#[tokio::test]
+async fn an_install_given_up_part_way_holds_nothing_up() {
+    let work = tempfile::tempdir().unwrap();
+    let (_, digest, size) = archive(work.path(), |_| {}, &[]);
+    let cache = work.path().join("cache");
+    let mut slow = env(&cache, work.path());
+    slow.insert("TEST_SETUP_SLEEP".into(), "30".into());
+    let given_up = tokio::time::timeout(
+        std::time::Duration::from_millis(1500),
+        bundle::install_pinned(&pins(&digest, size), platform(), &slow, &|_| {}),
+    )
+    .await;
+    assert!(given_up.is_err(), "the slow setup finished");
+    let bundles = cache.join("bundles");
+    let left: Vec<String> = std::fs::read_dir(&bundles)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            name.starts_with(".tmp-")
+                || std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("lock"))
+        })
+        .collect();
+    assert_eq!(
+        left,
+        Vec::<String>::new(),
+        "a lock or scratch outlived the install"
+    );
+    let again = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        bundle::install_pinned(
+            &pins(&digest, size),
+            platform(),
+            &env(&cache, work.path()),
+            &|_| {},
+        ),
+    )
+    .await
+    .expect("the next install waited for the given-up one's lock")
+    .unwrap();
+    assert!(bundle::read_setup(&again).is_some());
 }

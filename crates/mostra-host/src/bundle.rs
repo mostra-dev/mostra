@@ -432,6 +432,8 @@ pub async fn setup(bundle: &Bundle, env: &Environment) -> Result<BundleSetup> {
         .env_clear()
         .envs(env)
         .stdin(std::process::Stdio::null())
+        // A host that gives up the install stops its setup too.
+        .kill_on_drop(true)
         .output()
         .await
         .map_err(|e| {
@@ -545,7 +547,9 @@ pub async fn install_pinned(
         read_bundle(&dir)
     }
     .await;
-    lock.release();
+    // The lock is released when `lock` drops: here, or wherever a host gives up the install (a
+    // `select!`, a timeout), so a dropped install never holds the next one up for an hour.
+    drop(lock);
     outcome
 }
 
@@ -589,9 +593,11 @@ async fn fetch_into(
             )));
         }
     }
-    let scratch = bundles.join(format!(".tmp-{}-{}", std::process::id(), random_hex()));
-    create_private_dir(&scratch)?;
+    let scratch = Scratch(bundles.join(format!(".tmp-{}-{}", std::process::id(), random_hex())));
+    create_private_dir(&scratch.0)?;
+    let scratch_dir = scratch.0.clone();
     let result = async {
+        let scratch = &scratch_dir;
         let archive = scratch.join(asset.file.as_str());
         let base = env
             .get("MOSTRA_BUNDLE_MIRROR")
@@ -648,8 +654,18 @@ async fn fetch_into(
         }
     }
     .await;
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
     result
+}
+
+/// A scratch directory, removed when it drops: after the rename, after a failure, or when a host
+/// gives up the install part-way (its PID is alive, so `sweep` wouldn't take it).
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn random_hex() -> String {
@@ -839,8 +855,11 @@ impl Lock {
             .and_then(|text| text.split_whitespace().next()?.parse::<i32>().ok());
         old || owner.is_some_and(|pid| pid > 0 && !alive(pid))
     }
+}
 
-    fn release(self) {
+impl Drop for Lock {
+    /// Removes the lock only while it is still this holder's (a takeover replaced it otherwise).
+    fn drop(&mut self) {
         let mine = std::fs::read_to_string(&self.path).is_ok_and(|text| text.contains(&self.token));
         if mine {
             let _ = std::fs::remove_file(&self.path);

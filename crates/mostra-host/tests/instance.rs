@@ -306,3 +306,53 @@ async fn attach_starts_the_daemon_once_and_a_spawn_then_meets_its_lock() {
         .unwrap();
     assert!(!reason.is_empty());
 }
+
+/// An attach that starts the daemon passes on its bind and URL host (D99), and a handle dropped
+/// without `close()` still ends its session, so the daemon stops counting (and calling) a host
+/// that is gone (GPT review of WP-12, findings 4 and 5).
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_starts_the_daemon_with_its_bind_and_a_dropped_handle_leaves() {
+    let Some(fixture) = fixture() else { return };
+    let first = Mostra::attach(options(&fixture).bind("127.0.0.1", Some("localhost".into())))
+        .await
+        .unwrap();
+    let receipt = first
+        .publish(&fixture.source.join("page.tsx"), PublishOptions::default())
+        .await
+        .unwrap();
+    let link = first
+        .view_url(receipt.artifact_id.as_str(), serde_json::Map::new())
+        .await
+        .unwrap();
+    assert!(
+        link.url.as_str().starts_with("http://localhost:"),
+        "the daemon's links use the URL host the attach asked for: {}",
+        link.url.as_str()
+    );
+    let watcher = Mostra::attach(options(&fixture)).await.unwrap();
+    let connections = |status: &Value| status["connections"].as_u64().unwrap_or_default();
+    let status = watcher
+        .call_raw("instance/status", json!({}), None)
+        .await
+        .unwrap();
+    assert_eq!(status["gateway"]["bind"], "127.0.0.1");
+    assert_eq!(connections(&status), 2);
+    drop(first);
+    let mut left = false;
+    for _ in 0..50 {
+        let status = watcher
+            .call_raw("instance/status", json!({}), None)
+            .await
+            .unwrap();
+        if connections(&status) == 1 {
+            left = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(left, "the dropped handle's session stayed open");
+    watcher
+        .call_raw("mostra/shutdown", json!({}), Some(Duration::from_secs(10)))
+        .await
+        .unwrap();
+}
