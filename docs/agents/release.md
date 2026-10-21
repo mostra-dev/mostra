@@ -19,10 +19,13 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    days, so the release runs right after. `--check` reports the state without changing anything
    (it reads "unreadable EOTP" where npm wants a second factor).
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
-   `pnpm changeset version`, then `pnpm install` (the lockfile takes the new versions), then
-   `pnpm check --affected`. Commit `chore(release): Mostra <version>` with `git commit -s`, push,
-   and open the pull request with the version's changelog. Every package of the group moves to
-   one version; nothing else changes.
+   `pnpm changeset version`, then `node tools/release/versions.ts sync` (the host crate takes the
+   group's version; Changesets knows nothing of Cargo, and repo lint refuses a crate that differs),
+   then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`. Commit `chore(release): Mostra <version>` with `git commit -s`, push,
+   and open the pull request with the version's changelog. Every package of the group and the host crate move
+   to one version; nothing else changes. Before this pull request, every pull request's `Release`
+   run rehearses the version its pending changesets make (`versions.ts plan` and `rehearse`):
+   npm refuses even a dry run over a version it has.
 4. **Merge it when CI is green.** On `main` the `Release` workflow's `plan` job
    (`packages/bundle/scripts/github-release.ts state`) sees a version with no changeset pending
    and no published release, and the `publish` job runs in the `release` environment (only `main`
