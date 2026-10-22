@@ -43,11 +43,12 @@ jobs:
       - name: Another local user
         shell: pwsh
         run: |
-          net user mostraprobe 'Pr0be-Mostra-W1!x' /add
-          whoami /all
+          $password = ConvertTo-SecureString 'Xq7!vT9#kL2$' -AsPlainText -Force
+          New-LocalUser -Name mostraprobe -Password $password -PasswordNeverExpires -AccountNeverExpires | Format-List
+          Get-LocalUser mostraprobe | Format-List
       - name: Probe
         shell: bash
-        run: node crates/mostra-win/probe/probe.mjs target/debug mostraprobe 'Pr0be-Mostra-W1!x'
+        run: node crates/mostra-win/probe/probe.mjs target/debug mostraprobe 'Xq7!vT9#kL2$'
 
   natives:
     name: natives (${{ matrix.os }})

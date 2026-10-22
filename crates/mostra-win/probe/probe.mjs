@@ -6,9 +6,10 @@ import { once } from "node:events";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-const [targetDir, otherUser, otherPassword] = process.argv.slice(2);
+const [targetArg, otherUser, otherPassword] = process.argv.slice(2);
+const targetDir = resolve(targetArg);
 const exe = (name) => join(targetDir, `${name}.exe`);
 const results = {};
 const note = (key, value) => {
@@ -206,10 +207,15 @@ setInterval(() => {}, 1000);
     windowsHide: true,
   });
   broker.stderr.on("data", (d) => console.log("broker stderr", String(d)));
+  broker.on("exit", (code) => console.log("broker exited", code));
   let text = "";
   broker.stdio[3].on("data", (d) => {
     text += d;
-    if (text.includes("\n")) broker.stdio[3].write("go\n");
+    if (text.includes("\n") && !text.includes("released")) {
+      console.log("broker gate report", text.trim());
+      text += "released";
+      broker.stdio[3].write("go\n");
+    }
   });
   const channel = broker.stdio[4];
   let buffer = Buffer.alloc(0);
