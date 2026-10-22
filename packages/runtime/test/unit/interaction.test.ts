@@ -96,7 +96,7 @@ function events(ledger: Ledger, artifactId?: string): EventRecord[] {
  * Property tests open a real ledger per run (WAL, synchronous=FULL, every migration), so their
  * time is file I/O: tens of runs take seconds, more on a busy machine.
  */
-const PROPERTY_TIMEOUT_MS = 30_000;
+const PROPERTY_TIMEOUT_MS = process.platform === "win32" ? 120_000 : 30_000; // NTFS syncs slower
 
 describe("fields: compare-and-set, rebase, conflicts and replay (IN-01, LL-01)", () => {
   it(
@@ -1277,9 +1277,9 @@ describe("no path delivers a draft as a submission (IN-06)", () => {
     const { readdirSync, readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const root = join(import.meta.dirname, "../../src");
-    const files = readdirSync(root, { recursive: true, encoding: "utf8" }).filter((file) =>
-      file.endsWith(".ts"),
-    );
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => file.endsWith(".ts"))
+      .map((file) => file.replaceAll("\\", "/"));
     const callers = files.filter((file) =>
       /portSubmissionsDeliverMethod|port\/submissions\.deliver/.test(
         readFileSync(join(root, file), "utf8"),

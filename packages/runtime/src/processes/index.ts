@@ -3,7 +3,7 @@
  * time, reaped after a supervisor crash, with typed JSON-RPC messages over Node IPC.
  */
 
-export { isSameProcess, listProcesses, readProcess } from "../platform/index.ts";
+export { listProcesses, readProcess } from "../platform/index.ts";
 export {
   connectToSupervisor,
   type SupervisorConnection,

@@ -635,6 +635,43 @@ pub fn as_user<T>(user: &str, password: &str, body: impl FnOnce() -> T) -> io::R
 
 // ----- Processes -----
 
+/// Suspends (or resumes) every thread of a process: a test probe's frozen owner.
+pub fn suspend_process(pid: u32, suspend: bool) -> io::Result<usize> {
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
+    use windows_sys::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+    // SAFETY: plain call; the snapshot handle is owned.
+    let snapshot = Handle::owned(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) })?;
+    // SAFETY: zeroed POD, sized before use.
+    let mut entry: THREADENTRY32 = unsafe { zeroed() };
+    entry.dwSize = u32::try_from(size_of::<THREADENTRY32>()).unwrap_or(0);
+    let mut count = 0;
+    // SAFETY: a valid snapshot and a sized entry.
+    let mut ok = unsafe { Thread32First(snapshot.raw(), &raw mut entry) };
+    while ok != 0 {
+        if entry.th32OwnerProcessID == pid {
+            // SAFETY: plain call; the handle is owned.
+            if let Ok(thread) =
+                Handle::owned(unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) })
+            {
+                // SAFETY: a valid thread handle with suspend rights.
+                unsafe {
+                    if suspend {
+                        SuspendThread(thread.raw());
+                    } else {
+                        ResumeThread(thread.raw());
+                    }
+                }
+                count += 1;
+            }
+        }
+        // SAFETY: as above.
+        ok = unsafe { Thread32Next(snapshot.raw(), &raw mut entry) };
+    }
+    Ok(count)
+}
+
 /// One process of a snapshot.
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessEntry {

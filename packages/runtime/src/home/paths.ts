@@ -5,7 +5,6 @@
  */
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { VersionId } from "@mostra/protocol";
 import type { Environment } from "../log.ts";
 import {
@@ -15,6 +14,7 @@ import {
   OS,
   ownedDirectory,
   type PreparedDirectory,
+  pathsOf,
   type RuntimeDirChoice,
   runtimeDirFor,
 } from "../platform/index.ts";
@@ -44,7 +44,7 @@ const nonEmpty = (value: string | undefined): string | undefined =>
 export function resolveHomePath(inputs: PathInputs): string {
   const cwd = inputs.cwd ?? process.cwd();
   const chosen = nonEmpty(inputs.home) ?? nonEmpty(inputs.env["MOSTRA_HOME"]);
-  if (chosen !== undefined) return resolve(cwd, chosen);
+  if (chosen !== undefined) return pathsOf(inputs.platform ?? OS).resolve(cwd, chosen);
   return defaultHome(inputs.platform ?? OS, inputs.env, inputs.userHome ?? homedir());
 }
 

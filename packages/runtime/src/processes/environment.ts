@@ -7,6 +7,7 @@
  */
 import { delimiter, dirname } from "node:path";
 import type { Environment } from "../log.ts";
+import { WINDOWS } from "../platform/index.ts";
 
 /** Variables an artifact's processes need to work like an ordinary shell's programs. */
 const PASSED: ReadonlySet<string> = new Set([
@@ -43,6 +44,44 @@ const PASSED: ReadonlySet<string> = new Set([
   "SSL_CERT_DIR",
 ]);
 
+/**
+ * What Windows programs need besides the variables above, which Windows itself gives any program
+ * (without `SystemRoot`, for one, Node.js can't load its cryptography): the system's directories,
+ * the user's profile folders, the shell and how it finds programs, and the processor. Windows
+ * compares variable names without case, so these are matched that way.
+ */
+const PASSED_WINDOWS: ReadonlySet<string> = new Set(
+  [
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "OS",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+  ].map((name) => name.toUpperCase()),
+);
+const PASSED_UPPER: ReadonlySet<string> = new Set([...PASSED].map((name) => name.toUpperCase()));
+
 /** npm's own configuration channel: the user's registry, scopes and proxies for installs. */
 const NPM_CONFIG = /^npm_config_/i;
 
@@ -53,12 +92,24 @@ const NPM_CONFIG = /^npm_config_/i;
  */
 export function artifactEnvironment(env: Environment): Environment {
   const result: Record<string, string> = {};
+  // On Windows `Path` and `PATH` are one variable; the one given keeps its own name.
+  let pathName = "PATH";
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (PASSED.has(name) || NPM_CONFIG.test(name)) result[name] = value;
+    if (WINDOWS) {
+      const upper = name.toUpperCase();
+      if (upper === "PATH") pathName = name;
+      if (PASSED_UPPER.has(upper) || PASSED_WINDOWS.has(upper) || NPM_CONFIG.test(name)) {
+        result[name] = value;
+      }
+    } else if (PASSED.has(name) || NPM_CONFIG.test(name)) {
+      result[name] = value;
+    }
   }
   const own = dirname(process.execPath);
-  const path = result["PATH"] ?? "/usr/bin:/bin";
-  result["PATH"] = path.split(delimiter)[0] === own ? path : `${own}${delimiter}${path}`;
+  const path = result[pathName] ?? (WINDOWS ? "" : "/usr/bin:/bin");
+  const first = path.split(delimiter)[0] ?? "";
+  const already = WINDOWS ? first.toLowerCase() === own.toLowerCase() : first === own;
+  result[pathName] = already ? path : path === "" ? own : `${own}${delimiter}${path}`;
   return result;
 }

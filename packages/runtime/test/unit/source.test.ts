@@ -15,6 +15,7 @@ import {
 import { join } from "node:path";
 import { RpcError } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
+import { removeTree, sealPlaced } from "../../src/platform/index.ts";
 import {
   copySnapshot,
   listSource,
@@ -22,7 +23,7 @@ import {
   snapshotError,
 } from "../../src/publish/source.ts";
 import { readTar, TAR_END, tarFile } from "../../src/publish/tar.ts";
-import { tempDir } from "../support.ts";
+import { tempDir, WINDOWS } from "../support.ts";
 
 function tree(files: Record<string, string>): string {
   const root = tempDir("source");
@@ -129,7 +130,8 @@ describe("snapshots", () => {
     chmodSync(join(root, "bin/run.sh"), 0o755);
     const target = tempDir("snapshot");
     const listed = await copySnapshot(await listSource(await resolveSource(root)), target);
-    expect(listed.find((file) => file.path === "bin/run.sh")?.executable).toBe(true);
+    // Windows keeps no execute bit, so nothing there is executable (and the digest says so).
+    expect(listed.find((file) => file.path === "bin/run.sh")?.executable).toBe(!WINDOWS);
     expect(listed.find((file) => file.path === "index.tsx")).toMatchObject({
       executable: false,
       sha256: "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
@@ -162,7 +164,8 @@ describe("snapshots", () => {
     for (const entry of files) {
       const path = join(out, ...entry.path.split("/"));
       expect(new Uint8Array(readFileSync(path))).toEqual(entry.data);
-      expect((statSync(path).mode & 0o111) !== 0).toBe(entry.executable);
+      // Windows keeps no execute bit to extract.
+      if (!WINDOWS) expect((statSync(path).mode & 0o111) !== 0).toBe(entry.executable);
     }
   });
 });
@@ -193,15 +196,18 @@ describe("snapshot failures (D80 Claude review finding 6)", () => {
       const root = tree({ "index.tsx": "x" });
       const files = await listSource(await resolveSource(root));
       const target = tempDir("staging");
-      chmodSync(target, 0o555);
+      // Read-only: mode 0555, or on Windows the read-only access list of a sealed version.
+      if (WINDOWS) await sealPlaced(target);
+      else chmodSync(target, 0o555);
       try {
         const error = await copySnapshot(files, join(target, "source")).catch(
           (caught: unknown) => caught,
         );
         expect(error).not.toBeInstanceOf(RpcError);
-        expect((error as NodeJS.ErrnoException).code).toBe("EACCES");
+        expect((error as NodeJS.ErrnoException).code).toBe(WINDOWS ? "EPERM" : "EACCES");
       } finally {
-        chmodSync(target, 0o755);
+        if (WINDOWS) await removeTree(target);
+        else chmodSync(target, 0o755);
       }
     },
   );

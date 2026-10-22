@@ -209,8 +209,24 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
         }
     }
 
-    let watcher = Arc::clone(&job);
+    watch_lifeline(lifeline, Arc::clone(&job));
+
+    let code = sys::wait_exit(&suspended.process).unwrap_or(1);
+    // The child is gone; whatever it started goes with it, as a group ends with its leader.
+    let _ = job.terminate(code);
+    code.cast_signed()
+}
+
+/// Ends the job when the lifeline closes: the supervisor stopped the child, exited or was killed.
+fn watch_lifeline(lifeline: RawHandle, job: Arc<Job>) {
+    // A test fault (MOSTRA_TEST_GATE=ignore-lifeline): a gate that no longer watches its lifeline,
+    // as a gate that hangs would, so the reaper's own path is what ends the child after a
+    // supervisor crash (FAILURE_MODEL §2). Never set outside the runtime's tests.
+    let watch = std::env::var_os("MOSTRA_TEST_GATE").is_none_or(|value| value != "ignore-lifeline");
     thread::spawn(move || {
+        if !watch {
+            return;
+        }
         let mut buffer = [0u8; 64];
         while let Ok(read) = sys::pipe_read(lifeline, &mut buffer) {
             if read == 0 {
@@ -218,11 +234,6 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
             }
         }
         // The lifeline closed: end the child and everything it started.
-        let _ = watcher.terminate(1);
+        let _ = job.terminate(1);
     });
-
-    let code = sys::wait_exit(&suspended.process).unwrap_or(1);
-    // The child is gone; whatever it started goes with it, as a group ends with its leader.
-    let _ = job.terminate(code);
-    code.cast_signed()
 }

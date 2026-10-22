@@ -6,6 +6,10 @@
 //! → {"ok":true,"result":[{"path","read","readWrite","error"?}]}
 //! ```
 //! `read` opens for reading only (a directory: listing it), `readWrite` for reading and writing.
+//!
+//! ```text
+//! mostra-win-probe suspend|resume <pid>    freezes or thaws every thread of a process
+//! ```
 
 #[cfg(windows)]
 fn main() {
@@ -15,6 +19,29 @@ fn main() {
     use serde_json::json;
 
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if let [command, pid] = arguments.as_slice()
+        && (command == "suspend" || command == "resume")
+    {
+        {
+            let Ok(pid) = pid.parse() else {
+                std::process::exit(2)
+            };
+            match sys::suspend_process(pid, command == "suspend") {
+                Ok(threads) => println!(
+                    "{}",
+                    json!({ "ok": true, "result": { "threads": threads } })
+                ),
+                Err(error) => {
+                    println!(
+                        "{}",
+                        json!({ "ok": false, "error": { "message": error.to_string() } })
+                    );
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    }
     let [command, user, password, targets @ ..] = arguments.as_slice() else {
         println!(
             "{}",

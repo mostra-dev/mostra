@@ -8,13 +8,15 @@
  * Either way the caller gets one stream per client and a listener it can check and replace: a
  * socket file that disappeared, or a pipe whose helper stopped, is bound again (D81 item 4).
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, type Stats, statSync, unlinkSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { Duplex } from "node:stream";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
-import { type OperatingSystem, OS, socketPathLimit, WINDOWS } from "./directories.ts";
+import { type OperatingSystem, OS, pathsOf, socketPathLimit, WINDOWS } from "./directories.ts";
+import { helperPath } from "./helper.ts";
+import { launch } from "./launch.ts";
 
 /** Called once per client with the client's stream. */
 export type OnConnection = (stream: Duplex) => void;
@@ -51,7 +53,7 @@ export function controlEndpoint(
   os: OperatingSystem = OS,
 ): string {
   if (os === "win32" || runtimeDir === undefined) return `\\\\.\\pipe\\mostra-${hash}`;
-  const path = join(runtimeDir, `${hash}.sock`);
+  const path = pathsOf(os).join(runtimeDir, `${hash}.sock`);
   const limit = socketPathLimit(os);
   const length = Buffer.byteLength(path);
   if (length > limit) {
@@ -69,14 +71,36 @@ export function controlEndpoint(
 export function listenControl(
   endpoint: string,
   onConnection: OnConnection,
-  launchPipe: LaunchPipe | undefined,
+  launchPipe: LaunchPipe = launchPipeDirectly,
 ): Promise<ControlListener> {
-  if (WINDOWS) {
-    if (!launchPipe) throw new Error("A Windows control pipe needs the helper's launcher.");
-    return listenPipe(endpoint, onConnection, launchPipe);
-  }
+  if (WINDOWS) return listenPipe(endpoint, onConnection, launchPipe);
   return listenSocket(endpoint, onConnection);
 }
+
+const PIPE_PREFIX = "\\\\.\\pipe\\";
+
+/**
+ * Starts the pipe's helper behind its gate without a process manager to record it: for a
+ * protocol server outside an instance (the instance always records its helper).
+ */
+const launchPipeDirectly: LaunchPipe = async (name) => {
+  const launched = launch(
+    {
+      kind: "control-pipe",
+      command: helperPath(),
+      args: ["pipe", name],
+      env: process.env,
+      extra: "channel",
+    },
+    () => {},
+  );
+  const exited = new Promise((resolve) => launched.process.once("exit", resolve));
+  await launched.identify();
+  launched.release();
+  const channel = launched.process.stdio[4] as Duplex | null;
+  if (!channel) throw new Error("The control pipe's helper has no channel.");
+  return { channel, exited, stop: () => launched.end(2000, []) };
+};
 
 async function listenSocket(path: string, onConnection: OnConnection): Promise<ControlListener> {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -147,7 +171,11 @@ async function listenPipe(
   onConnection: OnConnection,
   launchPipe: LaunchPipe,
 ): Promise<ControlListener> {
-  const name = `${base.slice("\\\\.\\pipe\\".length)}-${randomBytes(8).toString("hex")}`;
+  // An endpoint that isn't a pipe name (a socket path a caller chose) names one by its hash.
+  const stem = base.startsWith(PIPE_PREFIX)
+    ? base.slice(PIPE_PREFIX.length)
+    : `mostra-${createHash("sha256").update(base).digest("hex").slice(0, 16)}`;
+  const name = `${stem}-${randomBytes(8).toString("hex")}`;
   const helper = await launchPipe(name);
   const streams = new Map<number, Duplex>();
   let exited = false;

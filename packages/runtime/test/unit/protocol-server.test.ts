@@ -39,7 +39,7 @@ async function serve(options: { revisions?: readonly string[]; ports?: readonly 
   // A short path: macOS limits socket paths to 103 bytes.
   const socket = join(tempDir("mps", true), "s.sock");
   await server.listen(socket);
-  return { server, socket };
+  return { server, socket: server.socketPath ?? socket };
 }
 
 /** A client with its own request handler, as a host implementing ports would have. */

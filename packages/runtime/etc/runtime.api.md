@@ -69,6 +69,7 @@ export interface InstanceStop {
 
 // @public
 export interface ProcessManager {
+    killAll(): void;
     list(): readonly {
         pid: number;
         kind: string;

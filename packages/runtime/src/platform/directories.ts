@@ -13,7 +13,7 @@
  * user and `SYSTEM`, inherited by everything inside (the helper's `secure-dir`).
  */
 import { chmodSync, mkdirSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import { runHelper } from "./helper.ts";
 
@@ -31,9 +31,14 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const nonEmpty = (value: string | undefined): string | undefined =>
   value === undefined || value === "" ? undefined : value;
 
+/** The path rules of an operating system, so resolution for another one can be computed and tested. */
+export function pathsOf(os: OperatingSystem): typeof posix {
+  return os === "win32" ? win32 : posix;
+}
+
 /** The home a platform uses when neither `--home` nor `MOSTRA_HOME` names one. */
 export function defaultHome(os: OperatingSystem, env: Environment, userHome: string): string {
-  if (os === "darwin") return join(userHome, ".mostra");
+  if (os === "darwin") return posix.join(userHome, ".mostra");
   if (os === "win32") {
     const local = nonEmpty(env["LOCALAPPDATA"]);
     return win32.join(
@@ -44,8 +49,8 @@ export function defaultHome(os: OperatingSystem, env: Environment, userHome: str
     );
   }
   const data = nonEmpty(env["XDG_DATA_HOME"]);
-  return join(
-    data !== undefined && isAbsolute(data) ? data : join(userHome, ".local", "share"),
+  return posix.join(
+    data !== undefined && posix.isAbsolute(data) ? data : posix.join(userHome, ".local", "share"),
     "mostra",
   );
 }
@@ -71,19 +76,22 @@ export function runtimeDirFor(inputs: {
 }): RuntimeDirChoice | undefined {
   if (inputs.os === "win32") return undefined;
   const override = nonEmpty(inputs.env["MOSTRA_RUNTIME_DIR"]);
-  if (override !== undefined) return { dir: resolve(inputs.cwd, override), source: "override" };
+  if (override !== undefined)
+    return { dir: posix.resolve(inputs.cwd, override), source: "override" };
   if (inputs.os === "darwin")
-    return { dir: join(inputs.userHome, ".mostra", "run"), source: "fallback" };
+    return { dir: posix.join(inputs.userHome, ".mostra", "run"), source: "fallback" };
   const xdg = nonEmpty(inputs.env["XDG_RUNTIME_DIR"]);
   let rejected: string | undefined;
   if (xdg !== undefined) {
     rejected = unsafeXdgRuntimeDir(xdg);
-    if (rejected === undefined) return { dir: join(xdg, "mostra"), source: "xdg" };
+    if (rejected === undefined) return { dir: posix.join(xdg, "mostra"), source: "xdg" };
   }
   const state = nonEmpty(inputs.env["XDG_STATE_HOME"]);
   const base =
-    state !== undefined && isAbsolute(state) ? state : join(inputs.userHome, ".local", "state");
-  const dir = join(base, "mostra", "run");
+    state !== undefined && posix.isAbsolute(state)
+      ? state
+      : posix.join(inputs.userHome, ".local", "state");
+  const dir = posix.join(base, "mostra", "run");
   return rejected === undefined
     ? { dir, source: "fallback" }
     : { dir, source: "fallback", rejected };
@@ -96,7 +104,7 @@ function uid(): number {
 
 /** Why `$XDG_RUNTIME_DIR` can't be used, or `undefined` when it can (XDG Base Directory spec). */
 function unsafeXdgRuntimeDir(dir: string): string | undefined {
-  if (!isAbsolute(dir)) return "it isn't an absolute path";
+  if (!posix.isAbsolute(dir)) return "it isn't an absolute path";
   let stats: ReturnType<typeof statSync>;
   try {
     stats = statSync(dir);

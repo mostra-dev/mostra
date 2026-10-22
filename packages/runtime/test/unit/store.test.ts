@@ -2,12 +2,13 @@
  * The version store's durability rules (FAILURE_MODEL §3, review finding 2): a file that can't be
  * synced fails the publish; only a directory may lack sync support.
  */
-import { chmodSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sealPlaced } from "../../src/platform/index.ts";
 import { fsyncPath, removeTree } from "../../src/registry/index.ts";
 import { sealTree } from "../../src/registry/store.ts";
-import { tempDir } from "../support.ts";
+import { tempDir, WINDOWS } from "../support.ts";
 
 describe("fsyncPath", () => {
   it("syncs files and directories", () => {
@@ -26,8 +27,9 @@ describe("fsyncPath", () => {
       writeFileSync(file, "x");
       chmodSync(file, 0o000);
       try {
-        // Opening fails with EACCES: for a file that is a failure, never "unsupported".
-        expect(() => fsyncPath(file)).toThrow(/EACCES/);
+        // Opening fails with EACCES (EPERM on Windows, where 0o000 is the read-only attribute and
+        // a sync needs a handle that may write): for a file that is a failure, never "unsupported".
+        expect(() => fsyncPath(file)).toThrow(WINDOWS ? /EPERM/ : /EACCES/);
         expect(() => fsyncPath(join(dir, "missing"))).toThrow(/ENOENT/);
         expect(() => fsyncPath(join(dir, "missing"), true)).toThrow(/ENOENT/);
         const locked = join(dir, "locked");
@@ -42,7 +44,7 @@ describe("fsyncPath", () => {
   );
 });
 
-describe("sealing", () => {
+describe.skipIf(WINDOWS)("sealing", () => {
   it("makes every file 0444 and every directory 0555, and removeTree still removes it", async () => {
     const dir = join(tempDir("seal"), "version");
     mkdirSync(join(dir, "client/assets"), { recursive: true });
@@ -52,6 +54,22 @@ describe("sealing", () => {
     expect(statSync(join(dir, "client/assets/app.js")).mode & 0o777).toBe(0o444);
     expect(statSync(join(dir, "client")).mode & 0o777).toBe(0o555);
     expect(statSync(dir).mode & 0o777).toBe(0o555);
+    await removeTree(dir);
+    expect(() => statSync(dir)).toThrow();
+  });
+});
+
+describe.runIf(WINDOWS)("sealing on Windows (RT-10)", () => {
+  it("leaves a placed version unwritable even to its owner, and removeTree still removes it", async () => {
+    const dir = join(tempDir("seal"), "version");
+    mkdirSync(join(dir, "client/assets"), { recursive: true });
+    writeFileSync(join(dir, "client/assets/app.js"), "x");
+    await sealTree(dir, true);
+    await sealPlaced(dir);
+    expect(() => writeFileSync(join(dir, "client/assets/app.js"), "y")).toThrow(/EPERM|EACCES/);
+    expect(() => writeFileSync(join(dir, "client/new.js"), "y")).toThrow(/EPERM|EACCES/);
+    expect(() => rmSync(join(dir, "client/assets/app.js"))).toThrow(/EPERM|EACCES/);
+    expect(readFileSync(join(dir, "client/assets/app.js"), "utf8")).toBe("x");
     await removeTree(dir);
     expect(() => statSync(dir)).toThrow();
   });

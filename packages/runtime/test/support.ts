@@ -26,7 +26,17 @@ import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
 afterAll(() => {
-  for (const dir of created.splice(0)) removeAll(dir);
+  for (const dir of created.splice(0)) {
+    try {
+      removeAll(dir);
+    } catch (error) {
+      // Windows refuses to remove a file this process still has open, such as a ledger a unit
+      // test left open for the life of its file; the directory stays in the temporary folder.
+      if (!WINDOWS || !["EPERM", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+        throw error;
+      }
+    }
+  }
 });
 
 /** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
@@ -199,6 +209,34 @@ export function initializeParams(overrides: Record<string, unknown> = {}): Recor
     ports: [],
     ...overrides,
   };
+}
+
+/**
+ * Whether a control endpoint exists: a socket file on POSIX; on Windows a pipe a client can
+ * connect to (a pipe is no file, and it disappears with its server).
+ */
+export async function endpointExists(path: string): Promise<boolean> {
+  if (!WINDOWS) return existsSync(path);
+  return new Promise((resolve) => {
+    const connection = createConnection(path);
+    connection.once("connect", () => {
+      connection.destroy();
+      resolve(true);
+    });
+    connection.once("error", () => resolve(false));
+  });
+}
+
+/**
+ * Stops a daemon the way every platform can: `mostra/shutdown` over its socket (D87). (A signal
+ * would do on POSIX; Windows has none to send.)
+ */
+export async function shutdownDaemon(socket: string): Promise<void> {
+  const client = await connectTo(socket);
+  await client.call("mostra/initialize", initializeParams());
+  const response = await client.call("mostra/shutdown");
+  if (response.error) throw new Error(`mostra/shutdown failed: ${response.error.message}`);
+  await client.closed;
 }
 
 /** Connects to a control socket. */

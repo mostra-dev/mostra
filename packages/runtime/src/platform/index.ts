@@ -11,15 +11,13 @@ export {
   controlEndpoint,
   type LaunchPipe,
   listenControl,
-  type OnConnection,
-  type PipeProcess,
 } from "./control.ts";
 export {
   defaultHome,
-  type OperatingSystem,
   OS,
   ownedDirectory,
   type PreparedDirectory,
+  pathsOf,
   type RuntimeDirChoice,
   runtimeDirFor,
   socketPathLimit,
@@ -36,26 +34,7 @@ export {
   samePath,
   sealPlaced,
   sealTree,
-  unlinkDirectory,
 } from "./files.ts";
-export { HelperError, helperPath, runtimeRoot } from "./helper.ts";
-export {
-  bootId,
-  isSameProcess,
-  listProcesses,
-  type ProcessInfo,
-  parseProcStat,
-  parsePsLine,
-  readProcess,
-  sameBoot,
-  startedNoEarlier,
-} from "./identity.ts";
-export {
-  adoptable,
-  type Launched,
-  type LaunchSpec,
-  launch,
-  type ReapOutcome,
-  type RecordedChild,
-  reapRecorded,
-} from "./launch.ts";
+export { helperPath, runtimeRoot } from "./helper.ts";
+export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
+export { adoptable, launch, reapRecorded } from "./launch.ts";

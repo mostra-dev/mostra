@@ -6,7 +6,20 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { initializeParams, startDaemon, startHost, testHome } from "../support.ts";
+import {
+  initializeParams,
+  shutdownDaemon,
+  startDaemon,
+  startHost,
+  testHome,
+  WINDOWS,
+} from "../support.ts";
+
+/** The test home's environment without the development switch that admits Windows (D146). */
+const withoutSwitch = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const { MOSTRA_DEV_WINDOWS: _switch, ...rest } = env;
+  return rest;
+};
 
 const preload = ["--import", fileURLToPath(new URL("../fixtures/platform.mjs", import.meta.url))];
 
@@ -17,7 +30,7 @@ describe.each([
   { platform: "linux", arch: "ia32" },
 ])("on $platform-$arch", ({ platform, arch }) => {
   const simulated = (home: ReturnType<typeof testHome>) => ({
-    env: { ...home.env, MOSTRA_TEST_PLATFORM: platform, MOSTRA_TEST_ARCH: arch },
+    env: { ...withoutSwitch(home.env), MOSTRA_TEST_PLATFORM: platform, MOSTRA_TEST_ARCH: arch },
     nodeArgs: preload,
   });
 
@@ -49,6 +62,25 @@ describe.each([
   });
 });
 
+// Windows itself, without the switch, fails closed like any unsupported platform (D146).
+describe.runIf(WINDOWS)("on Windows without MOSTRA_DEV_WINDOWS", () => {
+  it("every entry point fails closed before touching the home", async () => {
+    const home = testHome();
+    const daemon = await startDaemon(home, { env: withoutSwitch(home.env) });
+    expect(daemon.status).toMatchObject({
+      status: "failed",
+      diagnostic: { code: "MOSTRA_PLATFORM_UNSUPPORTED" },
+    });
+    expect((await daemon.exited).code).toBe(3);
+    expect(existsSync(home.home)).toBe(false);
+    const host = startHost(home, { env: withoutSwitch(home.env) });
+    const response = await host.client.call("mostra/initialize", initializeParams());
+    expect(response.error?.data.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    expect((await host.exited).code).toBe(3);
+    expect(existsSync(home.home)).toBe(false);
+  });
+});
+
 describe("on this platform", () => {
   it("the same preload reporting the real platform starts normally", async () => {
     const home = testHome();
@@ -57,7 +89,7 @@ describe("on this platform", () => {
       nodeArgs: preload,
     });
     expect(daemon.status.status).toBe("started");
-    daemon.child.kill("SIGTERM");
+    await shutdownDaemon(daemon.status.socket ?? "");
     expect((await daemon.exited).code).toBe(0);
   });
 });
