@@ -300,9 +300,9 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Builds:**
   - `skills/mostra/` (SKILL.md with the D69 trigger and the core loop, references for the APIs built so far);
   - the root `AGENTS.md` final text and the scaffolded artifact `AGENTS.md`;
-  - the harness-plugin generator for Claude Code, Codex, Gemini CLI, Cursor and Copilot (real copies, not symlinks).
+  - the harness-plugin generator for Claude Code, Codex, Gemini CLI, Cursor and Copilot (real copies, not symlinks), built to pass the plugin directories' review on the first scan (D147).
 
-  The prose is drafted and iterated with Mirza until he accepts it.
+  The prose is drafted with Mirza and accepted in one batch at the end of the package (D149).
 - **Depends on:** WP-13.
 - **Evidence:** Mirza's acceptance of the prose; mechanism tests for discovery and loading in each harness's documented layout; `skills-ref validate`; generated manifests checked against each harness's schema where one is published.
 
@@ -313,7 +313,8 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - the tools of INTERFACES §12, stateless with explicit handles;
   - `wait` capped at 50 s returning `still_waiting`;
   - resources;
-  - tool descriptions drafted with Mirza.
+  - tool descriptions drafted with Mirza and accepted in one batch (D149);
+  - no telemetry from a server a harness plugin starts (D148).
 - **Depends on:** WP-14.
 - **Evidence:** MCP conformance runs (`@modelcontextprotocol/conformance`); a scripted agent session through the tools from create to results; HTTP hygiene negative tests; external evidence from Claude Desktop or Codex using the server.
 

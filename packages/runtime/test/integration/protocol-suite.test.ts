@@ -65,7 +65,7 @@ const socket: Transport = {
     expect(daemon.status).toMatchObject({ status: "started" });
   },
   async teardown() {
-    // Windows has no signals between processes: stop it over the protocol (D87, D147).
+    // Windows has no signals between processes: stop it over the protocol (D87, D150).
     if (WINDOWS) await shutdownDaemon(daemon?.status.socket ?? "");
     else daemon?.child.kill("SIGTERM");
     expect((await daemon?.exited)?.code).toBe(0);
@@ -244,7 +244,7 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
     expect(result.instance).toEqual((init.result as { instance: unknown }).instance);
     expect(await endpointExists(result.socket)).toBe(true);
     expect(result.connections).toBeGreaterThanOrEqual(1);
-    // On Windows the control pipe's helper is the instance's one child (D147).
+    // On Windows the control pipe's helper is the instance's one child (D150).
     expect((result.processes as { kind: string }[]).map((child) => child.kind)).toEqual(
       WINDOWS ? ["control-pipe"] : [],
     );

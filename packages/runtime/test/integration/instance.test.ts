@@ -96,7 +96,7 @@ describe("stale sockets (FAILURE_MODEL §2)", () => {
     expect(started).toHaveLength(1);
     const owner = started[0]?.status as DaemonStatus;
     expect(owner.pid).not.toBe(first.status.pid);
-    // The same socket path on POSIX; a fresh pipe name on Windows (D147).
+    // The same socket path on POSIX; a fresh pipe name on Windows (D150).
     if (!WINDOWS) expect(owner.socket).toBe(first.status.socket);
     for (const starter of starters) {
       if (starter.status.status === "attached") expect(starter.status.pid).toBe(owner.pid);

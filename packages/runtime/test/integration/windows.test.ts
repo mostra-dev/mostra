@@ -1,5 +1,5 @@
 /**
- * RT-10 on Windows (WP-W1, FAILURE_MODEL §2, §3, D147): what the platform layer guarantees there
+ * RT-10 on Windows (WP-W1, FAILURE_MODEL §2, §3, D150): what the platform layer guarantees there
  * that the POSIX suites check with modes, sockets and signals.
  *
  * - another local user can open neither the home, nor a file in it, nor its control pipe, nor a

@@ -7,7 +7,7 @@
 ```text
 <home>/                        default ~/.mostra (macOS), ${XDG_DATA_HOME:-~/.local/share}/mostra (Linux),
                                %LOCALAPPDATA%\mostra (Windows); mode 0700 (D85), on Windows a protected access list
-                               granting only the user and SYSTEM, inherited by everything inside (D147)
+                               granting only the user and SYSTEM, inherited by everything inside (D150)
   config.json                  home settings written by `mostra` and by hosts through HomeConfig (the dependency policy, D95);
                                `hostConfigured: { client, at }`, written once when a host first configures the home or a
                                `mostra-runtime host` instance owns it, and never removed (D140 item 4)
@@ -44,7 +44,7 @@
                                $XDG_RUNTIME_DIR/mostra when owned and 0700, else ${XDG_STATE_HOME:-~/.local/state}/mostra/run (Linux);
                                home-hash is 16 Crockford base32 characters of SHA-256(realpath(home)).
                                Windows has no runtime dir: the control pipe is \\.\pipe\mostra-<home-hash>-<16 random
-                               hex>, fresh on every bind, owner-only, served by the helper (D147)
+                               hex>, fresh on every bind, owner-only, served by the helper (D150)
 ```
 
 **The CLI's own directory** (D140 item 5) is per operating-system user, not per home: `MOSTRA_CONFIG_DIR`, else `${XDG_CONFIG_HOME:-~/.config}/mostra`, mode 0700, holding `telemetry.json` (0600, written by rename: the telemetry choice, when the notice of what is sent was shown where sending follows, when the ask-first notice was shown (a separate record, so it never stands for the other), when a flush last started), `telemetry-id` (0600: the random install ID, made by D140's exclusive create, a hard link that fails when the file exists, so processes on a first run agree on one ID without the lock), `telemetry-queue.ndjson` (0600, at most 1,000 events, none older than 7 days) and, while a change is made, `telemetry.lock` (its owner's PID and a token; released only by its owner, taken over when it is older than 10 s and its owner no longer runs, or older than 60 s whoever it names, since a dead owner's PID can name an unrelated live process). Only `@mostra/cli` reads or writes it.
@@ -145,7 +145,7 @@ share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it;
                                                                  -- start_time `<boot>/<start>`; on Windows `win/<creation time>`
                                                                  -- (100 ns since 1601) and pgid its own PID: its Job Object is
-                                                                 -- `Local\mostra-job-<pid>-<creation time>` (D147)
+                                                                 -- `Local\mostra-job-<pid>-<creation time>` (D150)
 schema_migration(version PK, name, runtime_version, applied_at)
 request(method, request_id, result_json, params_digest NULL, created_at, PRIMARY KEY(method, request_id))
                                                                         -- H-03: a mutating request's recorded result, replayed only
