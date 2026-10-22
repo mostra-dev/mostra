@@ -11,7 +11,7 @@ mkdirSync(join(dir, "client"));
 writeFileSync(join(dir, "client", "a.js"), "x");
 console.log(
   "privileges",
-  execSync("whoami /priv", { encoding: "utf8" })
+  execSync("C:\\Windows\\System32\\whoami.exe /priv", { encoding: "utf8" })
     .split("\n")
     .filter((line) => /Backup|Restore|TakeOwnership|Security/.test(line))
     .join("\n"),
