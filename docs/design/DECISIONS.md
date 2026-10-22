@@ -42,6 +42,7 @@
 | M32 | 2026-10-21T18:14:18.572Z | Accepted WP-12 ("100% approved"), approved its Claude Opus review, and removed the limit on Opus reviews: "this is an important project with big PRs and very important & complex & enterprise-grade implementation work, so every WP deserves an Opus review." Recorded as D144. |
 | M33 | 2026-10-22T09:40:00Z | Approved, as part of a set of planning recommendations ("I basically approve everything"), that the remote design pass keep the hosted shell's framing configurable so a later embed mode needs no migration. Recorded as D145. |
 | M34 | 2026-10-22T12:01:05Z | Approved native Windows before the first release, built right after WP-12: "Yes, sure. We can call them WP-W1...Wn, I guess n would be something around 2-4." Recorded as D146. |
+| M35 | 2026-10-22T19:40:24Z | Accepted a set of recommendations ("All as recommended"), among them: harness plugins built to pass the plugin directories' review on the first scan; an MCP server that a harness plugin starts counts as embedded use and sends no telemetry; agent-facing prose accepted in one batch at the end of each package. Recorded as D147 to D149. |
 
 ## Program-level decisions
 
@@ -486,7 +487,7 @@ Base UI is the default base. EVAL-01 found no first-pass difference between Base
 Mirza approved the complete C03-A design at M9, recorded in [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md). C03-B can start once WP-14 is accepted. That threshold may move to a later package if implementation reorders work; the move is recorded here, and nothing in C03-B's needs (JCODE_HOST) may move out of the packages before it. *Source:* M9 Q1, Q2.
 
 ### D74. Agent-facing prose is drafted in the WPs that build it
-The Skill and AGENTS.md texts are drafted in WP-14, the MCP tool descriptions in WP-15, and CLI help and diagnostic hints in the package that adds each command or code. Each is iterated with Mirza until he accepts it (STANDARDS prose, D69). *Source:* M9 Q4.
+The Skill and AGENTS.md texts are drafted in WP-14, the MCP tool descriptions in WP-15, and CLI help and diagnostic hints in the package that adds each command or code. Each is iterated with Mirza until he accepts it (STANDARDS prose, D69). *Source:* M9 Q4. *Amended by D149:* acceptance happens once per package, at its end.
 
 ### D75. EVAL-01b: Claude check of the default base
 A Claude Sonnet run of EVAL-01 (6 prompts × 2 bases, in pairs, through Claude Code signed in with Mirza's OAuth account) checks D72 across model families, as D34 asks. Mirza approved the batch at M9. D72's overturn rule applies to its result. *Source:* M9 Q3.
@@ -766,7 +767,7 @@ A remote server forwards a hosted artifact's action calls and live producers to 
 - Events are listed publicly in the docs. They carry no artifact content, paths, tokens, identities or IP addresses (the collector stores none). The most useful fields are the command, its outcome and duration, the Mostra version, the platform, and the agent or harness that ran it (from MCP `clientInfo` or known environment markers).
 - The collector belongs to the managed service's operating layer; the endpoint is configurable and disabled in development builds. The event list and detection rules are a *Deferred decision* for WP-10 with Mirza (the first-run notice is agent-facing prose, D74).
 
-*Decided by D140:* the consent model, the decision order, the event list, harness detection and the endpoint rules (M27, M28). *Source:* M20. *Amends* STANDARDS ("No telemetry"), REPO_STANDARDS, the root AGENTS.md, the work-package protocol and the assignment prompt. H-16 keeps its meaning for hosts.
+*Decided by D140:* the consent model, the decision order, the event list, harness detection and the endpoint rules (M27, M28). *Source:* M20. *Amends* STANDARDS ("No telemetry"), REPO_STANDARDS, the root AGENTS.md, the work-package protocol and the assignment prompt. H-16 keeps its meaning for hosts. *Clarified by D148:* an MCP server a harness plugin starts counts as embedded use.
 
 ### D120. Windows in v1.1
 v1.0 remains macOS and Linux, failing closed elsewhere (D35, RT-07). Windows support follows in v1.1, shortly after the first release, as a new package WP-32 under "After the first release". *Source:* M20. *Amends* D35 (adds the target; the fail-closed rule stands for anything still unsupported). *Superseded by D146:* Windows moves into v1.0 as WP-W1 to WP-W3; WP-32 is withdrawn.
@@ -1061,6 +1062,20 @@ Mirza delegated every WP-12 question at M31. Each item is an **approved decision
 
 ### D146. Windows in v1.0, as WP-W1 to WP-W3 (M34)
 *Supersedes* D120 and *amends* D35 and D125: Windows (x64 and arm64) ships in v1.0. Three packages build it right after WP-12 and before WP-13: WP-W1 (platform layer, supervisor and ledger, RT-10), WP-W2 (gateway, workers, `verify`, the CLI and the login service, RT-11) and WP-W3 (bundles, the SDK, the Rust crate and conformance, RT-12). WP-32 is withdrawn, and RT-10 takes the release label `v1`, with RT-11 and RT-12 split from it. Until WP-W3 removes it, a development switch that only CI sets admits Windows, so no release exposes a partial port; every other platform still fails closed (RT-07). From WP-W3 on, every package keeps its Windows CI legs green. Terminal features on Windows wait for WP-22 and WP-23. The W series keeps the existing numbers stable; `tools/design/wp_specs.py` and `tools/design/evidence_matrix.py` accept `WP-W<n>`. *Why:* about half of professional developers work on Windows (Stack Overflow Developer Survey 2025: 49.5%), so a release without it turns away many of the people agents work for and send pages to; and porting now, before the remaining packages, keeps each of them from adding Unix-only code that would have to be retrofitted. *Source:* M34.
+
+### D147. Harness plugins built for directory review (M35)
+WP-14's harness plugins are built to pass the plugin directories' review on the first scan:
+- **Claude Code:** the generated plugin lives in its own repository with its manifest at the root; it launches the local MCP server pinned to an exact version; its README discloses everything it runs, sends or fetches, every network destination included (the telemetry endpoint and how to turn it off); it has no hooks; its name is `mostra`.
+- **OpenAI's directory (ChatGPT and Codex):** no upgrade prompts or plan display inside the plugin or app, OAuth only, no hooks, no trial plugins; framed third-party pages get extra review, so the app renders through the MCP Apps resource.
+- MCP Bundle desktop extensions are not built.
+
+The session verifies each rule against the directories' own pages on the day and records them in VERIFIED_FACTS. *Why:* directory review decides whether the plugin can be listed, a plugin that fails its first scan is rejected, and the directories are how people who never open a terminal install Mostra. *Source:* M35. *Amends* WP-14's scope.
+
+### D148. Plugin-started MCP servers count as embedded use (M35)
+*Clarifies* D119: an MCP server that a harness plugin starts runs on the host's behalf, so it counts as embedded use and sends no telemetry, whatever the consent setting of the standalone CLI on that machine. Usage on that route is measured from the directories' own dashboards, package downloads and the `clientInfo` a remote server receives, never from the user's machine. WP-15 implements it and adds a test: `mostra mcp` started with a plugin's launch configuration sends nothing. *Why:* D119 limits telemetry to commands a person runs in the standalone CLI, and a plugin whose only network destination is its own server keeps its disclosure simple. *Source:* M35.
+
+### D149. Agent-facing prose is accepted once per package (M35)
+*Amends* D74: Mirza accepts each package's agent-facing prose (the Skill, AGENTS.md files, MCP tool descriptions, CLI help, diagnostic hints) in one batch at the end of the package, on the complete texts, instead of text by text during it. Drafts are still written with him in mind, and mechanism tests may use placeholder text until then. The acceptance is the package's evidence row for its prose. *Why:* prose is judged best in context, as the whole set an agent will read, and WP-14 and WP-15 are mostly prose. *Source:* M35.
 
 ## Research consensus adopted
 
