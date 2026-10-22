@@ -131,6 +131,22 @@ export function samePath(a: string, b: string): boolean {
   return normal(a) === normal(b);
 }
 
+/**
+ * A path as a key for comparison: `/`-separated, without a trailing `/`, and on Windows in lower
+ * case, since Windows names compare without case and bundlers spell `C:\x` as `C:/x`. The key has
+ * the path's length, so an index found in it holds in the path too.
+ */
+export function pathKey(path: string): string {
+  return nameKey(path.replaceAll("\\", "/"));
+}
+
+/** Whether `file` is `dir` itself or lies under it, however either spells its separators. */
+export function isUnder(file: string, dir: string): boolean {
+  const key = pathKey(file);
+  const root = pathKey(dir).replace(/\/+$/, "");
+  return key === root || key.startsWith(`${root}/`);
+}
+
 /** Removes a link made by {@link linkDirectory}, never what it points to. */
 export async function unlinkDirectory(path: string): Promise<void> {
   try {

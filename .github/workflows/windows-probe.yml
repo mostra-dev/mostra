@@ -83,6 +83,9 @@ jobs:
           node -e "import('lightningcss').then(m=>console.log('lightningcss', typeof m.transform))" || echo "lightningcss FAILED"
           node -e "import('@tailwindcss/oxide').then(m=>console.log('oxide', Object.keys(m).length))" || echo "oxide FAILED"
           ls node_modules/.bin | head -40
+      - name: Tailwind through a junction (as the builder's staging)
+        shell: bash
+        run: node crates/mostra-win/probe/tailwind.mjs
       - name: Runtime unit tests (to see what fails)
         shell: bash
         continue-on-error: true

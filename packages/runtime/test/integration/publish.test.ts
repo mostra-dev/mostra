@@ -35,6 +35,7 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts/", import.meta.url));
@@ -595,7 +596,9 @@ describe("review findings (D80)", () => {
     expect(ids[0]).toBe(first.artifactId);
   });
 
-  it.skipIf(process.getuid?.() === 0)(
+  // Root reads anything; so does the Windows runners' administrator, through Node.js's
+  // backup-semantics opens (VERIFIED_FACTS, WP-W1), and Windows has no mode to take away.
+  it.skipIf(process.getuid?.() === 0 || WINDOWS)(
     "reports an entry the publisher can't read as unreadable, not as an internal error (Claude finding 7)",
     async () => {
       const dir = copyFixture("directory");

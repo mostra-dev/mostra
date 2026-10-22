@@ -17,7 +17,7 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,9 +129,9 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     // A published, sealed version.
     const client = await connectTo(socket);
     await client.call("mostra/initialize", initializeParams());
-    const published = await client.call("artifact/publish", {
-      source: { path: artifact("hello") },
-    });
+    const page = join(tempDir("cross-user-art"), "page.tsx");
+    cpSync(join(artifact("single-tsx"), "page.tsx"), page);
+    const published = await client.call("artifact/publish", { source: { path: page } });
     expect(published.error).toBeUndefined();
     const { versionId } = published.result as { versionId: string };
     client.close();
@@ -292,10 +292,11 @@ describe.runIf(WINDOWS)("Windows: children end with their supervisor (RT-09, RT-
         .split("\n")
         .filter((line) => line.includes('"process.reaped"'))
         .map((line) => JSON.parse(line) as { kind: string; skipped?: string; signalled: number[] });
-      // The job held the child and both grandchildren.
-      expect(reaped.find((entry) => entry.kind === "demo")?.signalled.sort()).toEqual(
-        [...everyone].sort(),
-      );
+      // The job held the child and both grandchildren (and the console host Windows gives a
+      // console program, which lives in its client's job), never the look-alike.
+      const demo = reaped.find((entry) => entry.kind === "demo")?.signalled ?? [];
+      expect(demo).toEqual(expect.arrayContaining(everyone));
+      expect(demo).not.toContain(decoy.pid);
       expect(reaped.find((entry) => entry.kind === "decoy")?.skipped).toBe("pid reused");
       await stopDaemon(next.status.socket ?? "");
       const after = new Database(join(home.home, "store", "ledger.sqlite"), { readonly: true });

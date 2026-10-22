@@ -26,8 +26,10 @@ export {
 export { baseEnvironment } from "./environment.ts";
 export {
   fsyncPath,
+  isUnder,
   linkDirectory,
   nameKey,
+  pathKey,
   removeTree,
   renamePath,
   renamePathSync,

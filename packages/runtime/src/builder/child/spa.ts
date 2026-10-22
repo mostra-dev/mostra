@@ -13,7 +13,7 @@ import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { build, type InlineConfig, type PluginOption } from "vite";
-import { linkDirectory } from "../../platform/index.ts";
+import { isUnder, linkDirectory, pathKey } from "../../platform/index.ts";
 import type { FieldCoverage } from "../coverage.ts";
 import {
   type BuildRequest,
@@ -141,12 +141,16 @@ export function diagnose(error: unknown, sourceDir: string): Diagnostic {
   };
   const first = failure.errors?.[0] ?? failure;
   // Bundler messages carry terminal colours; diagnostics are plain text.
-  const rawMessage = stripVTControlCharacters(first.message ?? String(error)).replaceAll(
-    `${sourceDir}/`,
-    "",
-  );
+  // Paths in the message as the bundler spells them (`/`-separated on Windows too).
+  const rawMessage = stripVTControlCharacters(first.message ?? String(error))
+    .replaceAll(`${sourceDir}/`, "")
+    .replaceAll(`${sourceDir.replaceAll("\\", "/")}/`, "")
+    .replaceAll(`${sourceDir}\\`, "");
   const file = first.loc?.file ?? first.id;
-  const inSource = file?.startsWith(sourceDir) ? relative(sourceDir, file) : undefined;
+  const inSource =
+    file !== undefined && isUnder(file, sourceDir)
+      ? relative(sourceDir, file).replaceAll("\\", "/")
+      : undefined;
   const location =
     inSource !== undefined
       ? { file: inSource, line: first.loc?.line ?? 1, column: (first.loc?.column ?? 0) + 1 }
@@ -217,7 +221,8 @@ export async function packageRoots(nodeModules: string): Promise<string[]> {
       } catch {
         continue; // A dangling link brings nothing in.
       }
-      const store = dir.lastIndexOf("/.pnpm/");
+      // pnpm's store, found however the platform spells separators (the key keeps the length).
+      const store = pathKey(dir).lastIndexOf("/.pnpm/");
       const root = store === -1 ? dir : dir.slice(0, store + "/.pnpm".length);
       if (roots.has(root)) continue;
       roots.add(root);
@@ -268,7 +273,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   if (scan.hasLive) await writeFile(join(generated, "mostra-env.d.ts"), LIVE_DECLARATION);
 
   const serverModules = new Map<string, readonly ServerFunctionEntry[]>(
-    [...scan.serverModules].map(([module, entries]) => [join(sourceDir, module), entries]),
+    [...scan.serverModules].map(([module, entries]) => [pathKey(join(sourceDir, module)), entries]),
   );
   // Packages that use the field hooks themselves open the version's coverage (D109).
   const hookUses: FieldHookUse[] = [];

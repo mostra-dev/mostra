@@ -10,6 +10,7 @@ import { compile } from "@mdx-js/mdx";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import type { Plugin } from "vite";
+import { isUnder, pathKey } from "../../platform/index.ts";
 import type { ServerFunctionEntry } from "../types.ts";
 import { SCRIPT, startsWithUseServer } from "./scan.ts";
 
@@ -54,7 +55,7 @@ export function fieldHookUsePlugin(
   uses: FieldHookUse[],
 ): Plugin {
   const inside = (file: string, dir: string | undefined): boolean =>
-    dir !== undefined && (file === dir || file.startsWith(`${dir}/`));
+    dir !== undefined && isUnder(file, dir);
   return {
     name: "mostra:field-hook-use",
     enforce: "pre",
@@ -68,7 +69,8 @@ export function fieldHookUsePlugin(
         inside(file, roots.runtimeDir)
       )
         return null;
-      if (!uses.some((use) => use.importer === file)) uses.push({ importer: file });
+      if (!uses.some((use) => pathKey(use.importer) === pathKey(file)))
+        uses.push({ importer: file });
       return null;
     },
   };
@@ -92,7 +94,8 @@ const STUB_PREFIX = "\0mostra-server-reference:";
 
 /**
  * Replaces `"use server"` modules with their client stubs. `modules` maps each module's absolute
- * path to its exports, from the scan.
+ * path, as its {@link pathKey}, to its exports, from the scan: bundlers spell Windows paths with
+ * `/`, the file system with `\\`.
  */
 export function serverClientStubPlugin(
   modules: ReadonlyMap<string, readonly ServerFunctionEntry[]>,
@@ -107,7 +110,9 @@ export function serverClientStubPlugin(
       if (source.startsWith(STUB_PREFIX)) return source;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       const file = resolved?.id.split("?")[0];
-      return file !== undefined && modules.has(file) ? `${STUB_PREFIX}${file}.mjs` : null;
+      return file !== undefined && modules.has(pathKey(file))
+        ? `${STUB_PREFIX}${pathKey(file)}.mjs`
+        : null;
     },
     load(id) {
       if (!id.startsWith(STUB_PREFIX)) return null;
@@ -118,7 +123,7 @@ export function serverClientStubPlugin(
     // directive, but without a stub, would ship its server code to every viewer.
     transform(code, id) {
       const file = id.split("?")[0] ?? id;
-      if (!file.startsWith(`${sourceDir}/`) || modules.has(file)) return null;
+      if (!isUnder(file, sourceDir) || modules.has(pathKey(file))) return null;
       if (!SCRIPT.has(extname(file))) return null;
       if (startsWithUseServer(file, code) !== true) return null;
       return this.error(
@@ -149,7 +154,7 @@ export interface BuildInputs {
  * later change to them would go unnoticed.
  */
 export function confinePlugin(inputs: BuildInputs): Plugin {
-  const under = (file: string, dir: string): boolean => file.startsWith(`${dir}/`);
+  const under = (file: string, dir: string): boolean => isUnder(file, dir);
   const ours = (file: string): boolean =>
     under(file, inputs.sourceDir) || under(file, inputs.generatedDir);
   const packaged = (file: string): boolean => inputs.packageRoots.some((root) => under(file, root));
@@ -168,7 +173,7 @@ export function confinePlugin(inputs: BuildInputs): Plugin {
       if (from === undefined || source.startsWith("\0")) return null;
       const fromPackage = !ours(from);
       if (fromPackage && !packaged(from)) return null;
-      const bare = !source.startsWith(".") && !source.startsWith("/");
+      const bare = !source.startsWith(".") && !source.startsWith("/") && !isAbsolute(source);
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || resolved.external) return resolved;
       const id = resolved.id.split("?")[0] ?? resolved.id;

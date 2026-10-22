@@ -25,7 +25,7 @@ import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { parseSync } from "oxc-parser";
 import { build, createServer, type Plugin, type ViteDevServer } from "vite";
-import { linkDirectory } from "../../platform/index.ts";
+import { linkDirectory, pathKey } from "../../platform/index.ts";
 import type { SupervisorConnection } from "../../processes/index.ts";
 import {
   DEV_SECRET_HEADER,
@@ -115,7 +115,7 @@ export async function startDev(
   const refreshServerModules = (): void => {
     serverModules.clear();
     for (const [module, entries] of scan.serverModules)
-      serverModules.set(join(sourceDir, module), entries);
+      serverModules.set(pathKey(join(sourceDir, module)), entries);
   };
   refreshServerModules();
   const writeEntry = async (): Promise<void> => {
