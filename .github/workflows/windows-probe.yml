@@ -52,6 +52,9 @@ jobs:
       - name: Probe
         shell: bash
         run: node crates/mostra-win/probe/probe.mjs target/debug mostraprobe 'Xq7!vT9#kL2$'
+      - name: Does a seal stop its owner's writes (as a Node.js process)
+        shell: bash
+        run: node crates/mostra-win/probe/seal.mjs target/debug/mostra-win.exe
 
   natives:
     name: natives (${{ matrix.os }})

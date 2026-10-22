@@ -15,6 +15,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const runtime = resolve("packages/runtime");
 const require = createRequire(join(runtime, "package.json"));
@@ -54,8 +55,12 @@ show("through the junction", () => [
 mkdirSync(join(root, "gen"));
 writeFileSync(join(root, "gen", "styles.css"), '@import "tailwindcss";\n');
 writeFileSync(join(root, "gen", "entry.js"), 'import "./styles.css";\n');
-const { build } = await import(require.resolve("vite"));
-const tailwind = (await import(require.resolve("@tailwindcss/vite"))).default;
+// Names built at run time: the probe isn't a package and declares nothing.
+const [vite, plugin] = ["vite", "@tailwindcss/vite"].map(
+  (name) => pathToFileURL(require.resolve(name)).href,
+);
+const { build } = await import(vite);
+const tailwind = (await import(plugin)).default;
 for (const preserve of [false, true]) {
   try {
     await build({

@@ -15,7 +15,21 @@
  *   one file.
  */
 import { closeSync, type Dirent, fsyncSync, openSync, renameSync, statSync } from "node:fs";
-import { chmod, lstat, readdir, rename, rm, symlink, unlink } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { WINDOWS } from "./directories.ts";
 import { runHelperAsync } from "./helper.ts";
@@ -90,11 +104,107 @@ export function fsyncPath(path: string, directory = false): void {
 }
 
 /**
- * Makes `path` a link to the directory `target`: a symlink on POSIX, a junction on Windows, which
- * needs no privilege. `target` is made absolute, as a junction requires.
+ * Makes `path` a link to the `node_modules`-like directory `target`: a symlink on POSIX; on
+ * Windows a {@link linkFarm}, since a junction to the directory would break the relative links
+ * inside it (pnpm's), which Windows resolves against the path they were reached by (VERIFIED_FACTS,
+ * WP-W1).
  */
 export async function linkDirectory(target: string, path: string): Promise<void> {
-  await symlink(WINDOWS ? resolve(target) : target, path, WINDOWS ? "junction" : "dir");
+  if (WINDOWS) await linkFarm(target, path);
+  else await symlink(target, path, "dir");
+}
+
+/** The marker a link farm keeps: what it mirrors, and the entries it mirrored. */
+const FARM_MARKER = ".mostra-link";
+
+/** Every entry of a `node_modules`-like directory, scoped ones as `@scope/name`, dot entries left out. */
+async function farmEntries(target: string): Promise<{ name: string; real: string }[]> {
+  const names: string[] = [];
+  for (const entry of await readdir(target, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    if (entry.name.startsWith("@") && entry.isDirectory()) {
+      for (const scoped of await readdir(join(target, entry.name)))
+        names.push(`${entry.name}/${scoped}`);
+    } else names.push(entry.name);
+  }
+  const entries: { name: string; real: string }[] = [];
+  for (const name of names.sort()) {
+    try {
+      entries.push({ name, real: await realpath(join(target, ...name.split("/"))) });
+    } catch {
+      // A dangling link brings nothing in, as through a directory link.
+    }
+  }
+  return entries;
+}
+
+/**
+ * A directory that stands for `target`: one junction per entry, to the entry's real path, so every
+ * link inside resolves from where it really is, and a marker naming what it mirrors. Built aside
+ * and renamed into place, so `path` is either missing or complete. Used on Windows; it works on
+ * POSIX too, where the tests exercise it.
+ */
+export async function linkFarm(target: string, path: string): Promise<void> {
+  const source = resolve(target);
+  const entries = await farmEntries(source);
+  const building = `${path}.${process.pid}.${Date.now()}.farm`;
+  await mkdir(building, { recursive: true });
+  try {
+    for (const entry of entries) {
+      const at = join(building, ...entry.name.split("/"));
+      if (entry.name.includes("/")) await mkdir(join(at, ".."), { recursive: true });
+      await symlink(entry.real, at, "junction");
+    }
+    await writeFile(
+      join(building, FARM_MARKER),
+      `${JSON.stringify({ target: source, entries })}\n`,
+    );
+    await renamePath(building, path);
+  } catch (error) {
+    await removeFarm(building).catch(() => {});
+    throw error;
+  }
+}
+
+/** Removes a link farm's junctions, never what they point to, then its directories. */
+async function removeFarm(path: string): Promise<void> {
+  for (const entry of await readdir(path, { withFileTypes: true }).catch(() => [])) {
+    const at = join(path, entry.name);
+    if (entry.isSymbolicLink()) await unlinkEntry(at);
+    else if (entry.isDirectory()) await removeFarm(at);
+    else await rm(at, { force: true });
+  }
+  await rmdir(path);
+}
+
+/** Removes one link: on Windows a junction is removed as the directory entry it is. */
+async function unlinkEntry(path: string): Promise<void> {
+  try {
+    await unlink(path);
+  } catch (error) {
+    if (!WINDOWS || errno(error) !== "EPERM") throw error;
+    await rmdir(path);
+  }
+}
+
+/**
+ * What the directory link `path` stands for, or `undefined` when it is missing, isn't a link, or
+ * (a link farm) no longer mirrors its target's current entries.
+ */
+export async function linkTarget(path: string): Promise<string | undefined> {
+  try {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) return resolve(join(path, ".."), await readlink(path));
+    if (!info.isDirectory()) return undefined;
+    const marker = JSON.parse(await readFile(join(path, FARM_MARKER), "utf8")) as {
+      target: string;
+      entries: { name: string; real: string }[];
+    };
+    const now = await farmEntries(marker.target);
+    return JSON.stringify(now) === JSON.stringify(marker.entries) ? marker.target : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -149,13 +259,15 @@ export function isUnder(file: string, dir: string): boolean {
 
 /** Removes a link made by {@link linkDirectory}, never what it points to. */
 export async function unlinkDirectory(path: string): Promise<void> {
+  let info: Awaited<ReturnType<typeof lstat>>;
   try {
-    await unlink(path);
+    info = await lstat(path);
   } catch (error) {
-    // Windows removes a junction as the directory entry it is.
-    if (!WINDOWS || errno(error) !== "EPERM") throw error;
-    await rm(path, { force: true });
+    if (errno(error) === "ENOENT") return;
+    throw error;
   }
+  if (info.isDirectory() && !info.isSymbolicLink()) await removeFarm(path);
+  else await unlinkEntry(path);
 }
 
 /** Calls `visit` for every entry under `dir`, children before their directory. */

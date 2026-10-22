@@ -28,6 +28,7 @@ export {
   fsyncPath,
   isUnder,
   linkDirectory,
+  linkTarget,
   nameKey,
   pathKey,
   removeTree,

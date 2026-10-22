@@ -20,7 +20,7 @@
  * ```
  */
 import { randomBytes } from "node:crypto";
-import { existsSync, readlinkSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ import {
   recordResult,
 } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { linkDirectory, replaceDirectoryLink, samePath } from "../platform/index.ts";
+import { linkDirectory, linkTarget, replaceDirectoryLink, samePath } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
 import { type Lock, lockDigest, lockText, parseLock, pinnedPackages } from "./lock.ts";
@@ -413,12 +413,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   /** Points a layout's `warm` symlink at the current warm set (the runtime may have moved). */
   const relinkWarm = async (dir: string): Promise<void> => {
     const link = join(dir, "warm");
-    let target: string | undefined;
-    try {
-      target = readlinkSync(link);
-    } catch {
-      target = undefined;
-    }
+    const target = await linkTarget(link);
     if (target !== undefined && samePath(target, warm.nodeModules)) return;
     await replaceDirectoryLink(warm.nodeModules, link);
   };
