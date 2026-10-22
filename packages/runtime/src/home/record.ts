@@ -4,10 +4,10 @@
  * atomically after binding its socket and removes it on a clean exit; a record whose PID and
  * start time match no live process is stale.
  */
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as z from "zod";
-import { isSameProcess } from "../processes/index.ts";
+import { isSameProcess, renamePathSync } from "../platform/index.ts";
 
 /** The record's file name in the home. */
 export const INSTANCE_FILE = "instance.json";
@@ -64,7 +64,7 @@ export function writeInstanceRecord(home: string, record: InstanceRecord): void 
   const file = join(home, INSTANCE_FILE);
   const temp = `${file}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
-  renameSync(temp, file);
+  renamePathSync(temp, file);
 }
 
 /** Removes the record when it is still this process's (a clean exit). */

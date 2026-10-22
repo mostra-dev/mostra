@@ -16,6 +16,7 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED",
   "MOSTRA_ENV_BUNDLE_UNAVAILABLE",
   "MOSTRA_ENV_NODE_UNSUPPORTED",
+  "MOSTRA_ENV_HELPER_MISSING",
   // gen:codes
 ] as const;
 
@@ -143,6 +144,17 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
       explanation:
         "A `mostra` (or `npm create mostra`) installed from npm starts on the machine's Node.js only long enough to find its runtime bundle, then every Mostra process runs on the bundle's own Node.js (RT-01, D142). That start needs Node.js 22.19 or later, and this one is older, so Mostra stopped before loading anything.",
       fix: "Upgrade the machine's Node.js to 22.19 or later, or run Mostra without npm: download the runtime bundle for your platform from the GitHub release, check it against `SHA256SUMS`, extract it, run its `bin/mostra-setup` once, then use its `bin/mostra`.",
+    },
+  },
+  MOSTRA_ENV_HELPER_MISSING: {
+    severity: "error",
+    phase: "platform",
+    title: "Windows helper missing",
+    hint: "Reinstall Mostra, or set `MOSTRA_WIN_HELPER` to its `mostra-win.exe`.",
+    docs: {
+      explanation:
+        "On Windows the runtime runs `mostra-win.exe`, a helper that ships with it, for what Node.js can't do there: owner-only access to the home, the home's control pipe, and every child process in a Job Object. The runtime looked for it at `MOSTRA_WIN_HELPER`, in its runtime bundle, and in a development checkout's Cargo build, and found none, so it stopped before touching the home.",
+      fix: "Reinstall Mostra so the runtime bundle is complete. In a development checkout, build the helper with `cargo build -p mostra-win`. A custom layout can point the runtime at the helper with `MOSTRA_WIN_HELPER`.",
     },
   },
   // gen:entries

@@ -92,20 +92,14 @@ function refuseOverStdio(diagnostic: Diagnostic, exitCode: number): void {
 }
 
 function handleSignals(instance: Instance): void {
-  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  // SIGTERM and SIGINT on POSIX; on Windows Ctrl+C and Ctrl+Break reach a console process as
+  // SIGINT and SIGBREAK, and everything else stops it over the protocol (`mostra/shutdown`, D87).
+  for (const signal of ["SIGTERM", "SIGINT", "SIGBREAK"] as const) {
     process.on(signal, () => void instance.stop(signal, EXIT.ok));
   }
   process.on("SIGPIPE", () => {});
   // Last resort: children never outlive an exiting supervisor (FAILURE_MODEL §2).
-  process.on("exit", () => {
-    for (const child of instance.processes.list()) {
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch {
-        // Already gone.
-      }
-    }
-  });
+  process.on("exit", () => instance.processes.killAll());
   process.on("uncaughtException", (error) => {
     mirror(`${JSON.stringify({ level: "error", event: "uncaught", message: error.message })}\n`);
     void instance.stop("uncaught exception", EXIT.failure);

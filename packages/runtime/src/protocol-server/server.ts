@@ -4,9 +4,6 @@
  * rules (initialize first and once, revision negotiation, the home check, port registration on
  * the registering connection) and routes every other method to the handler a module registered.
  */
-import { chmodSync, mkdirSync, type Stats, statSync, unlinkSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
-import { dirname } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import {
   CLI_CLIENT_NAME,
@@ -27,6 +24,7 @@ import {
   RpcPeer,
 } from "@mostra/protocol";
 import type { Log } from "../log.ts";
+import { type ControlListener, type LaunchPipe, listenControl } from "../platform/index.ts";
 import { pump, writeLine } from "./streams.ts";
 
 /** How a connection reached the instance. */
@@ -125,7 +123,9 @@ export class ProtocolServer {
   readonly #connections = new Set<Connection>();
   #nextId = 1;
   #refusal: Diagnostic | undefined;
-  #listener: { server: Server; path: string; stats: Stats } | undefined;
+  #listener: ControlListener | undefined;
+  #endpoint: string | undefined;
+  #listenOptions: { launchPipe?: LaunchPipe; onMoved?: (path: string) => void } = {};
   #healTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: ProtocolServerOptions) {
@@ -200,60 +200,49 @@ export class ProtocolServer {
   }
 
   /**
-   * Listens on the home's control socket (D81, D82): replaces any leftover socket file (only the
-   * lock holder calls this), makes the socket owner-only, and checks every `healMs` (at most
-   * 10 s) that the file still exists, re-creating it when it has disappeared.
+   * Listens on the home's control endpoint (D81, D82): a Unix socket, replacing any leftover file
+   * (only the lock holder calls this) and owner-only; on Windows the helper's owner-only pipe
+   * (`launchPipe`). Every `healMs` (at most 10 s) it checks that the endpoint still serves and
+   * binds it again when it doesn't, calling `onMoved` when the new endpoint has another name.
    */
-  async listen(path: string, healMs = 5000): Promise<void> {
-    this.#listener = await this.#bind(path);
+  async listen(
+    path: string,
+    healMs = 5000,
+    options: { launchPipe?: LaunchPipe; onMoved?: (path: string) => void } = {},
+  ): Promise<void> {
+    this.#endpoint = path;
+    this.#listenOptions = options;
+    this.#listener = await this.#bind();
     this.#healTimer = setInterval(() => void this.#heal(), Math.min(healMs, 10_000));
     this.#healTimer.unref();
   }
 
-  /** The socket the server listens on. */
+  /** The endpoint the server listens on, as clients connect to it. */
   get socketPath(): string | undefined {
     return this.#listener?.path;
   }
 
-  async #bind(path: string): Promise<{ server: Server; path: string; stats: Stats }> {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    try {
-      unlinkSync(path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    const server = createServer((socket: Socket) => {
-      this.serve("socket", socket, socket);
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(path, () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    chmodSync(path, 0o600);
-    server.on("error", (error) => this.#options.log.error("protocol.listener_error", { error }));
-    return { server, path, stats: statSync(path) };
+  #bind(): Promise<ControlListener> {
+    return listenControl(
+      this.#endpoint ?? "",
+      (stream) => {
+        this.serve("socket", stream, stream);
+      },
+      this.#listenOptions.launchPipe,
+    );
   }
 
   async #heal(): Promise<void> {
     const listener = this.#listener;
-    if (!listener) return;
-    let current: Stats | undefined;
-    try {
-      current = statSync(listener.path);
-    } catch {
-      current = undefined;
-    }
-    if (current && current.ino === listener.stats.ino && current.dev === listener.stats.dev) return;
+    if (!listener || listener.intact()) return;
     // Close the old listener first: Node removes a Unix socket's file when its server closes, so
     // closing it after binding would remove the new socket.
-    listener.server.close();
+    await listener.close();
     try {
-      const replacement = await this.#bind(listener.path);
+      const replacement = await this.#bind();
       this.#listener = replacement;
-      this.#options.log.warn("protocol.socket_recreated", { path: listener.path });
+      this.#options.log.warn("protocol.socket_recreated", { path: replacement.path });
+      if (replacement.path !== listener.path) this.#listenOptions.onMoved?.(replacement.path);
     } catch (error) {
       this.#options.log.warn("protocol.socket_recreate_failed", { path: listener.path, error });
     }
@@ -371,16 +360,7 @@ export class ProtocolServer {
     if (this.#healTimer) clearInterval(this.#healTimer);
     const listener = this.#listener;
     this.#listener = undefined;
-    if (listener) {
-      listener.server.close();
-      try {
-        const current = statSync(listener.path);
-        if (current.ino === listener.stats.ino && current.dev === listener.stats.dev)
-          unlinkSync(listener.path);
-      } catch {
-        // Already gone.
-      }
-    }
+    void listener?.close();
     for (const connection of this.#connections) connection.close();
   }
 

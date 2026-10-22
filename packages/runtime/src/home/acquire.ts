@@ -57,8 +57,13 @@ export interface AcquireHomeOptions {
 export interface OwnedHome {
   /** The home's real path. */
   readonly path: string;
+  /**
+   * The control endpoint's base: the socket path on POSIX; on Windows the pipe name each bind
+   * completes. `instance.json` records the endpoint actually bound.
+   */
   readonly socketPath: string;
-  readonly runtimeDir: RuntimeDirChoice;
+  /** The runtime directory; `undefined` on Windows, which has none. */
+  readonly runtimeDir: RuntimeDirChoice | undefined;
   readonly ledger: Ledger;
   readonly log: Log;
   /** Removes secrets and capability material from everything the instance logs or reports. */
@@ -67,8 +72,8 @@ export interface OwnedHome {
   readonly self: { readonly pid: number; readonly startTime: string };
   /** When this process took the home (RFC 3339). */
   readonly startedAt: string;
-  /** Writes `instance.json`; call it once the socket listens. */
-  publish(mode: "host" | "daemon"): void;
+  /** Writes `instance.json` naming the bound endpoint; call it once it listens, and again when it moves. */
+  publish(mode: "host" | "daemon", socket: string): void;
   /**
    * Calls `onGone` once with `MOSTRA_HOME_GONE` if the home or its ledger disappears or is
    * replaced. Checks every `intervalMs`, at most 10 s.
@@ -107,9 +112,15 @@ export async function acquireHome(options: AcquireHomeOptions): Promise<HomeAcqu
   const home = prepared.realPath;
   const runtimeDir = resolveRuntimeDir({ env: options.env });
   // Check the length before creating anything in the runtime directory, then again with its real
-  // path, which is the one bound (on macOS, /tmp is /private/tmp).
-  socketPathFor(runtimeDir.dir, home);
-  const socketPath = socketPathFor(prepareOwnedDirectory(runtimeDir.dir).realPath, home);
+  // path, which is the one bound (on macOS, /tmp is /private/tmp). Windows has no runtime
+  // directory: its control pipe lives in the system's pipe namespace.
+  let socketPath: string;
+  if (runtimeDir === undefined) {
+    socketPath = socketPathFor(undefined, home);
+  } else {
+    socketPathFor(runtimeDir.dir, home);
+    socketPath = socketPathFor(prepareOwnedDirectory(runtimeDir.dir).realPath, home);
+  }
   const redactor = new Redactor();
   redactor.protectEnvironment(options.env);
   const log = openFileLog({
@@ -118,9 +129,9 @@ export async function acquireHome(options: AcquireHomeOptions): Promise<HomeAcqu
     ...(options.mirror ? { mirror: options.mirror } : {}),
   });
   if (prepared.tightenedFrom !== undefined) {
-    log.warn("home.tightened", { home, from: prepared.tightenedFrom.toString(8), to: "700" });
+    log.warn("home.tightened", { home, from: prepared.tightenedFrom, to: "owner only" });
   }
-  if (runtimeDir.rejected !== undefined) {
+  if (runtimeDir?.rejected !== undefined) {
     log.warn("home.xdg_runtime_dir_rejected", {
       reason: runtimeDir.rejected,
       using: runtimeDir.dir,
@@ -194,8 +205,13 @@ export async function acquireHome(options: AcquireHomeOptions): Promise<HomeAcqu
 
 interface OwnInputs {
   readonly home: string;
+  /**
+   * The control endpoint's base: the socket path on POSIX; on Windows the pipe name each bind
+   * completes. `instance.json` records the endpoint actually bound.
+   */
   readonly socketPath: string;
-  readonly runtimeDir: RuntimeDirChoice;
+  /** The runtime directory; `undefined` on Windows, which has none. */
+  readonly runtimeDir: RuntimeDirChoice | undefined;
   readonly ledger: Ledger;
   readonly log: Log;
   readonly redactor: Redactor;
@@ -228,11 +244,11 @@ function own(inputs: OwnInputs): OwnedHome {
     redactor,
     self,
     startedAt,
-    publish(mode) {
+    publish(mode, socket) {
       writeInstanceRecord(home, {
         pid: self.pid,
         startTime: self.startTime,
-        socket: socketPath,
+        socket,
         runtimeVersion: inputs.options.runtimeVersion,
         revisions: [...HOST_PROTOCOL_REVISIONS],
         mode,

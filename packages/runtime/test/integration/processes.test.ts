@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Ledger, openLedger } from "../../src/ledger/index.ts";
 import { type Log, openFileLog, Redactor, silentLog } from "../../src/log.ts";
-import { bootId, readProcess } from "../../src/processes/identity.ts";
+import { bootId, readProcess } from "../../src/platform/identity.ts";
 import {
   listProcesses,
   openProcessManager,

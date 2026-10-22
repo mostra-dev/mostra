@@ -9,7 +9,7 @@ import {
   readProcess,
   sameBoot,
   startedNoEarlier,
-} from "../../src/processes/identity.ts";
+} from "../../src/platform/identity.ts";
 
 describe("start-time parsing", () => {
   it("reads pgrp and starttime after the last parenthesis of /proc/<pid>/stat", () => {

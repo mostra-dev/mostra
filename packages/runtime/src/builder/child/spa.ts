@@ -6,13 +6,14 @@
  * Nothing in the artifact runs.
  */
 import type { Dirent } from "node:fs";
-import { mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { build, type InlineConfig, type PluginOption } from "vite";
+import { linkDirectory } from "../../platform/index.ts";
 import type { FieldCoverage } from "../coverage.ts";
 import {
   type BuildRequest,
@@ -257,7 +258,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     packageRoots: await packageRoots(request.nodeModules),
   };
   await rm(join(request.stagingDir, "node_modules"), { force: true, recursive: true });
-  await symlink(request.nodeModules, join(request.stagingDir, "node_modules"), "dir");
+  await linkDirectory(request.nodeModules, join(request.stagingDir, "node_modules"));
   await writeFile(
     join(request.stagingDir, "index.html"),
     html(request.manifest.title, request.versionId),

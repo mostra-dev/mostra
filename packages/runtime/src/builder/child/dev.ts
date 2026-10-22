@@ -13,7 +13,7 @@
  * When `pages/`, `"use server"` modules or `live.ts` change, the generated entry is written again.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import {
   createServer as createHttpServer,
   type IncomingMessage,
@@ -25,6 +25,7 @@ import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { parseSync } from "oxc-parser";
 import { build, createServer, type Plugin, type ViteDevServer } from "vite";
+import { linkDirectory } from "../../platform/index.ts";
 import type { SupervisorConnection } from "../../processes/index.ts";
 import {
   DEV_SECRET_HEADER,
@@ -95,7 +96,7 @@ export async function startDev(
   await mkdir(generated, { recursive: true });
   for (const [name, text] of Object.entries(STAGING_FILES)) await writeFile(join(root, name), text);
   await rm(join(root, "node_modules"), { force: true, recursive: true });
-  await symlink(request.nodeModules, join(root, "node_modules"), "dir");
+  await linkDirectory(request.nodeModules, join(root, "node_modules"));
   await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
   await mkdir(request.outDir, { recursive: true });
   // Vite's pre-bundled dependencies live in the session's root (`cacheDir` below); they are

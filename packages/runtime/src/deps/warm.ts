@@ -3,10 +3,10 @@
  * install. `@mostra/warm`'s `dependencies` are the warm packages; its `node_modules` is the layout.
  */
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { Environment } from "../log.ts";
+import { runtimeRoot } from "../platform/index.ts";
 
 /** The warm set: where its layout is and what versions it holds. */
 export interface WarmSet {
@@ -16,20 +16,7 @@ export interface WarmSet {
   readonly packages: Readonly<Record<string, string>>;
 }
 
-/** The directory of `@mostra/runtime`'s package.json. */
-export function runtimeRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    const manifest = join(dir, "package.json");
-    if (existsSync(manifest)) {
-      const { name } = JSON.parse(readFileSync(manifest, "utf8")) as { name?: string };
-      if (name === "@mostra/runtime") return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) throw new Error("Couldn't find @mostra/runtime's package.json.");
-    dir = parent;
-  }
-}
+export { runtimeRoot };
 
 function warmMissing(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_ENV_WARM_MISSING", { message }));

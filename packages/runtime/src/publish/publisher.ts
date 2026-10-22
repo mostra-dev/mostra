@@ -17,17 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -63,6 +53,7 @@ import {
   requestKey,
 } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
+import { renamePath } from "../platform/index.ts";
 import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
 import {
   type BuildOutcome,
@@ -237,7 +228,7 @@ async function archiveSnapshot(
   } finally {
     await handle.close();
   }
-  await rename(temporary, target);
+  await renamePath(temporary, target);
   fsyncPath(dirname(target), true);
   return true;
 }
@@ -747,7 +738,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
             // again from the same snapshot otherwise (D138 item 5).
             const cachedBuild = verifier().builtVersion(versionId);
             if (cachedBuild && (await versionDamage(cachedBuild)) === undefined) {
-              await rename(cachedBuild, out);
+              await renamePath(cachedBuild, out);
               outputDigest = (
                 JSON.parse(await readFile(join(out, "manifest.json"), "utf8")) as {
                   outputDigest: string;

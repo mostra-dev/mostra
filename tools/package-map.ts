@@ -221,6 +221,7 @@ export const RUNTIME_MODULES: readonly string[] = [
   "protocol-server",
   "builder",
   "home",
+  "platform",
   "instance",
 ];
 

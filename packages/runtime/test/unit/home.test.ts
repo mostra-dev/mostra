@@ -153,7 +153,7 @@ describe("owned directories (D85)", () => {
     const path = join(scratch(), "loose");
     mkdirSync(path);
     chmodSync(path, 0o755);
-    expect(prepareOwnedDirectory(path)).toMatchObject({ created: false, tightenedFrom: 0o755 });
+    expect(prepareOwnedDirectory(path)).toMatchObject({ created: false, tightenedFrom: "755" });
     expect(statSync(path).mode & 0o777).toBe(0o700);
   });
 

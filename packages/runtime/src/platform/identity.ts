@@ -3,7 +3,9 @@
  * reused, so a process is identified by its PID plus an opaque start time: the boot it started in
  * and when it started within that boot. Linux reads `/proc/<pid>/stat` (start ticks since boot)
  * and the boot ID; macOS reads `ps -o lstart` (seconds) and `kern.boottime` (VERIFIED_FACTS,
- * WP-02). Zombies count as gone: they have exited and only wait for their parent.
+ * WP-02); Windows asks the helper for the creation time (`GetProcessTimes`, 100 ns units since
+ * 1601, so absolute across boots), written `win/<creation time>` (VERIFIED_FACTS, WP-W1). Zombies,
+ * and Windows processes that exited but whose object a handle still keeps, count as gone.
  *
  * Seconds are enough on macOS (issue #8): XNU hands out PIDs in order from the last one, up to
  * 99,999, then from 100, skipping any PID still used as a process, process group or session
@@ -13,22 +15,28 @@
  */
 import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
+import { runHelperAsync } from "./helper.ts";
+
+/** The boot part of every Windows start time: creation times are absolute. */
+const WINDOWS_BOOT = "win";
 
 /** One running process as the operating system reports it. */
 export interface ProcessInfo {
   readonly pid: number;
-  /** Its process group. */
+  /** Its process group; on Windows, where processes have none, its own PID. */
   readonly pgid: number;
   /** `<boot>/<start>`: opaque, but comparable with {@link startedNoEarlier} within one boot. */
   readonly startTime: string;
 }
 
 /** Splits a start time into its boot and its position within the boot. */
-function parts(startTime: string): { boot: string; at: number } | undefined {
+function parts(startTime: string): { boot: string; at: bigint } | undefined {
   const slash = startTime.lastIndexOf("/");
   if (slash <= 0) return undefined;
-  const at = Number(startTime.slice(slash + 1));
-  return Number.isSafeInteger(at) ? { boot: startTime.slice(0, slash), at } : undefined;
+  const text = startTime.slice(slash + 1);
+  // Seconds on macOS, ticks on Linux, 100 ns units since 1601 on Windows (past 2^53).
+  if (!/^\d+$/.test(text)) return undefined;
+  return { boot: startTime.slice(0, slash), at: BigInt(text) };
 }
 
 /** Whether two start times belong to the same boot of the machine. */
@@ -126,9 +134,10 @@ function run(file: string, args: readonly string[]): Promise<{ code: number; std
 
 let cachedBoot: Promise<string> | undefined;
 
-/** The identity of the current boot of this machine. */
+/** The identity of the current boot of this machine (on Windows a constant: times are absolute). */
 export function bootId(): Promise<string> {
   cachedBoot ??= (async () => {
+    if (process.platform === "win32") return WINDOWS_BOOT;
     if (process.platform === "linux") {
       return (await readFile("/proc/sys/kernel/random/boot_id", "utf8")).trim();
     }
@@ -140,8 +149,20 @@ export function bootId(): Promise<string> {
   return cachedBoot;
 }
 
+interface WindowsProcess {
+  readonly pid: number;
+  readonly ppid?: number;
+  readonly startTime?: string;
+}
+
 /** Reads one process, or `undefined` when no process has that PID. */
 export async function readProcess(pid: number): Promise<ProcessInfo | undefined> {
+  if (process.platform === "win32") {
+    const [entry] = await runHelperAsync<WindowsProcess[]>(["identity", String(pid)]);
+    return entry?.startTime === undefined
+      ? undefined
+      : { pid, pgid: pid, startTime: entry.startTime };
+  }
   const boot = await bootId();
   if (process.platform === "linux") {
     try {
@@ -161,8 +182,19 @@ export async function readProcess(pid: number): Promise<ProcessInfo | undefined>
   return line === undefined ? undefined : parsePsLine(line, boot);
 }
 
-/** Lists every process the user can see. */
-export async function listProcesses(): Promise<ProcessInfo[]> {
+/**
+ * Lists every process the user can see. On Windows each carries its parent's PID (`ppid`), which
+ * may name a process that has since exited and whose PID was reused.
+ */
+export async function listProcesses(): Promise<(ProcessInfo & { readonly ppid?: number })[]> {
+  if (process.platform === "win32") {
+    const entries = await runHelperAsync<WindowsProcess[]>(["processes"]);
+    return entries.flatMap((entry) =>
+      entry.startTime === undefined
+        ? []
+        : [{ pid: entry.pid, pgid: entry.pid, startTime: entry.startTime, ppid: entry.ppid ?? 0 }],
+    );
+  }
   const boot = await bootId();
   if (process.platform === "linux") {
     const entries = (await readdir("/proc")).filter((name) => /^\d+$/.test(name));

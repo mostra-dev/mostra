@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
-import { bootId, listProcesses, readProcess } from "../../src/processes/identity.ts";
+import { bootId, listProcesses, readProcess } from "../../src/platform/identity.ts";
 import {
   alive,
   connectTo,

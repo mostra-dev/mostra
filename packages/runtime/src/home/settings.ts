@@ -6,7 +6,7 @@
  * Written atomically (a temporary file, then a rename); read fresh by whoever needs a setting, so
  * a host's change applies to the next request.
  */
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createDiagnostic,
@@ -15,6 +15,7 @@ import {
   SubmissionPolicy,
 } from "@mostra/protocol";
 import * as z from "zod";
+import { fsyncPath, renamePathSync } from "../platform/index.ts";
 
 /** The settings `config.json` holds. Unknown keys are kept, so newer settings survive. */
 export interface HomeSettings {
@@ -85,21 +86,9 @@ export function writeHomeSettings(home: string, change: HomeSettings): void {
   const file = join(home, SETTINGS_FILE);
   const temporary = `${file}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  const handle = openSync(temporary, "r");
-  try {
-    fsyncSync(handle);
-  } finally {
-    closeSync(handle);
-  }
-  renameSync(temporary, file);
-  const dir = openSync(home, "r");
-  try {
-    fsyncSync(dir);
-  } catch {
-    // Some file systems can't sync a directory; the rename itself is atomic.
-  } finally {
-    closeSync(dir);
-  }
+  fsyncPath(temporary);
+  renamePathSync(temporary, file);
+  fsyncPath(home, true);
 }
 
 /**

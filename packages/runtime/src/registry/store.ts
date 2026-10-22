@@ -1,72 +1,15 @@
 /**
  * The content-addressed version store on disk (DATA_MODEL §1, FAILURE_MODEL §3): `versions/<id>/`
  * and `sources/<artifactId>/<sourceDigest>.tar.zst`. A version directory is assembled in staging,
- * made read-only and synced, then renamed into place; it becomes visible only when its ledger row
+ * synced and made read-only (`platform`: modes on POSIX, an access list on Windows), then renamed
+ * into place; it becomes visible only when its ledger row
  * commits, and anything without a row is removed at the next start.
  */
-import { closeSync, fsyncSync, openSync } from "node:fs";
-import { chmod, lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { fsyncPath, removeTree, renamePath, sealPlaced, sealTree } from "../platform/index.ts";
 
-/** Calls `visit` for every entry under `dir`, children before their directory. */
-async function walk(
-  dir: string,
-  visit: (path: string, isDirectory: boolean) => Promise<void>,
-): Promise<void> {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) await walk(path, visit);
-    await visit(path, entry.isDirectory());
-  }
-}
-
-/**
- * Syncs a file or a directory to disk. A file that can't be synced fails the caller (its bytes
- * would not be durable); a directory may not support it on some file systems, and only that
- * case is tolerated (EINVAL, ENOTSUP, EISDIR, EPERM, EACCES on `open`).
- */
-export function fsyncPath(path: string, directory = false): void {
-  let fd: number | undefined;
-  try {
-    fd = openSync(path, "r");
-    fsyncSync(fd);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    const unsupported = ["EINVAL", "ENOTSUP", "EISDIR", "EPERM", "EACCES"];
-    if (!directory || !unsupported.includes(code ?? "")) throw error;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
-/**
- * Makes a tree read-only (files 0444, directories 0555) and syncs it to disk. The top directory is
- * left writable when `keepTop` is set: renaming a directory needs write access to it, to update `..`.
- */
-export async function sealTree(dir: string, keepTop = false): Promise<void> {
-  await walk(dir, async (path, isDirectory) => {
-    await chmod(path, isDirectory ? 0o555 : 0o444);
-    fsyncPath(path, isDirectory);
-  });
-  if (!keepTop) await chmod(dir, 0o555);
-  fsyncPath(dir, true);
-}
-
-/** Removes a tree, sealed or not. Missing trees are fine. */
-export async function removeTree(dir: string): Promise<void> {
-  try {
-    const info = await lstat(dir);
-    if (info.isDirectory()) {
-      await chmod(dir, 0o755);
-      await walk(dir, async (path, isDirectory) => {
-        if (isDirectory) await chmod(path, 0o755);
-      }).catch(() => {});
-    }
-  } catch {
-    return;
-  }
-  await rm(dir, { recursive: true, force: true });
-}
+export { fsyncPath, removeTree, sealTree };
 
 /** The version store of one home. */
 export interface VersionStore {
@@ -105,9 +48,8 @@ export async function openVersionStore(home: string): Promise<VersionStore> {
       const target = versionDir(versionId);
       // A directory without a ledger row is a leftover of an interrupted publish (FAILURE_MODEL §3).
       await removeTree(target);
-      await rename(built, target);
-      await chmod(target, 0o555);
-      fsyncPath(target, true);
+      await renamePath(built, target);
+      await sealPlaced(target);
       fsyncPath(versionsDir, true);
     },
     async sweep(known) {

@@ -379,6 +379,15 @@
       "fix": "Run the command once with network access and without `MOSTRA_OFFLINE`, so the pinned bundle is fetched and cached; later runs work offline. On a machine without network access, extract the release's archive for the platform and set `MOSTRA_BUNDLE` to its directory. A development checkout uses its own built runtime instead."
     },
     {
+      "code": "MOSTRA_ENV_HELPER_MISSING",
+      "severity": "error",
+      "phase": "platform",
+      "title": "Windows helper missing",
+      "hint": "Reinstall Mostra, or set `MOSTRA_WIN_HELPER` to its `mostra-win.exe`.",
+      "explanation": "On Windows the runtime runs `mostra-win.exe`, a helper that ships with it, for what Node.js can't do there: owner-only access to the home, the home's control pipe, and every child process in a Job Object. The runtime looked for it at `MOSTRA_WIN_HELPER`, in its runtime bundle, and in a development checkout's Cargo build, and found none, so it stopped before touching the home.",
+      "fix": "Reinstall Mostra so the runtime bundle is complete. In a development checkout, build the helper with `cargo build -p mostra-win`. A custom layout can point the runtime at the helper with `MOSTRA_WIN_HELPER`."
+    },
+    {
       "code": "MOSTRA_ENV_NODE_UNSUPPORTED",
       "severity": "error",
       "phase": "platform",
