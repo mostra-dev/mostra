@@ -449,7 +449,7 @@
       "properties": {
         "dir": {
           "type": "string",
-          "pattern": "^\\/"
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
         },
         "template": {
           "type": "string",
@@ -899,7 +899,7 @@
           "properties": {
             "path": {
               "type": "string",
-              "pattern": "^\\/"
+              "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
             }
           },
           "required": [
@@ -4527,7 +4527,7 @@
           "properties": {
             "path": {
               "type": "string",
-              "pattern": "^\\/"
+              "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
             }
           },
           "required": [

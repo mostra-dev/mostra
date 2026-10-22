@@ -214,7 +214,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
 `MOSTRA_TEST_FAULTS` (`<point>:throw|crash|hang`, comma-separated), the fault points tests use to fail
-or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …), or to
+or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record`, or `spawn:before-record:<kind>` for one kind of child …), or to
 hang a child (`builder:build:hang`: each builder never answers its build, issue #18);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward

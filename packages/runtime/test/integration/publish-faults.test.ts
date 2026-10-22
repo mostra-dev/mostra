@@ -10,6 +10,7 @@ import {
   connectTo,
   eventually,
   initializeParams,
+  KILLED,
   type LineClient,
   type Message,
   startDaemon,
@@ -81,7 +82,7 @@ describe("a crash at any publish step leaves no visible version (VR-02)", () => 
           params: { source: { path: source } },
         }),
       );
-      expect(await crashing.daemon.exited).toEqual({ code: null, signal: "SIGKILL" });
+      expect(await crashing.daemon.exited).toEqual(KILLED);
 
       // The crash left work in progress behind: staging, and from the archive step on, store files.
       const left = storeState(home);

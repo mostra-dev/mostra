@@ -330,6 +330,9 @@ function createManager({
     const registered = (async () => {
       const info = await launched.identify();
       faults.at("spawn:before-record");
+      // The same point for one kind of child (`spawn:before-record:demo`), for an instance whose
+      // start already spawns children of its own (on Windows the control pipe's helper).
+      faults.at(`spawn:before-record:${spec.kind}`);
       if (!info) return;
       pid = info.pid;
       record({

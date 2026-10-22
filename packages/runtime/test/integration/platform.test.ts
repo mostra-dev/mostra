@@ -4,7 +4,6 @@
  * preloading `test/fixtures/platform.mjs`, which overrides `process.platform` and `process.arch`.
  */
 import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   initializeParams,
@@ -21,7 +20,8 @@ const withoutSwitch = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
   return rest;
 };
 
-const preload = ["--import", fileURLToPath(new URL("../fixtures/platform.mjs", import.meta.url))];
+// A file URL: Node.js on Windows takes no drive path for --import.
+const preload = ["--import", new URL("../fixtures/platform.mjs", import.meta.url).href];
 
 describe.each([
   { platform: "win32", arch: "x64" },

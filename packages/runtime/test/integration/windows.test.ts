@@ -25,6 +25,7 @@ import { LineSplitter } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import { helperPath, readProcess } from "../../src/platform/index.ts";
 import {
+  accessEntries,
   alive,
   connectTo,
   endpointExists,
@@ -34,6 +35,7 @@ import {
   tempDir,
   testHome,
   WINDOWS,
+  WRITE_RIGHTS,
 } from "../support.ts";
 
 const Database = createRequire(import.meta.url)(
@@ -135,8 +137,10 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     client.close();
     const sealedFile = join(home.home, "versions", versionId, "manifest.json");
     expect(existsSync(sealedFile)).toBe(true);
-    // The owner can't write a sealed file either, as with mode 0444 (it can unseal it).
-    expect(() => writeFileSync(sealedFile, "x")).toThrow(/EPERM|EACCES/);
+    // Nobody may write a sealed file, its owner included, as with mode 0444 (the owner can unseal
+    // it). Checked on the list itself: the runner's administrator passes any list with Node.js's
+    // backup-semantics opens.
+    for (const entry of accessEntries(sealedFile)) expect(entry.mask & WRITE_RIGHTS).toBe(0);
 
     // The control: a file in an ordinary directory another user can open.
     const open = join("C:\\", `mostra-public-${process.pid}`);
@@ -313,7 +317,8 @@ describe.runIf(WINDOWS)("Windows: children end with their supervisor (RT-09, RT-
     const home = testHome();
     const marker = join(tempDir("gate"), "ran.txt");
     const supervisor = spawn(process.execPath, [fixture("windows-gated.mjs"), home.home, marker], {
-      env: { ...home.env, MOSTRA_TEST_FAULTS: "spawn:before-record:crash" },
+      // The demo child's own point: the instance's start already spawned the pipe's helper.
+      env: { ...home.env, MOSTRA_TEST_FAULTS: "spawn:before-record:demo:crash" },
       stdio: ["ignore", "pipe", "inherit"],
     });
     let output = "";

@@ -14,7 +14,7 @@
  * - **Names.** Windows file names are case-insensitive: two names that differ only in case are
  *   one file.
  */
-import { closeSync, type Dirent, fsyncSync, openSync, renameSync } from "node:fs";
+import { closeSync, type Dirent, fsyncSync, openSync, renameSync, statSync } from "node:fs";
 import { chmod, lstat, readdir, rename, rm, symlink, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { WINDOWS } from "./directories.ts";
@@ -70,7 +70,11 @@ export function renamePathSync(from: string, to: string): void {
  * one this way at all), and only that case is tolerated.
  */
 export function fsyncPath(path: string, directory = false): void {
-  if (directory && WINDOWS) return; // NTFS journals directory changes; a directory can't be synced.
+  if (directory && WINDOWS) {
+    // NTFS journals directory changes, and Windows can't sync a directory; it must exist, though.
+    statSync(path);
+    return;
+  }
   let fd: number | undefined;
   try {
     // Windows flushes a file only through a handle that may write (VERIFIED_FACTS, WP-W1).

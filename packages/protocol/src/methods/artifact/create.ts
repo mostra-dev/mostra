@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { AbsolutePath } from "../../artifact.ts";
 import { ArtifactId } from "../../ids.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
@@ -27,7 +28,7 @@ export interface ArtifactCreateResult {
 
 const params: z.ZodType<ArtifactCreateParams> = z
   .object({
-    dir: z.string().regex(/^\//),
+    dir: AbsolutePath,
     template: z.string().min(1).exactOptional(),
     title: z.string().min(1).exactOptional(),
     requestId: z.string().min(1).exactOptional(),

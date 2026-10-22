@@ -9,7 +9,7 @@
  */
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { openPage, type RunState } from "../action-page.ts";
 import {
@@ -52,7 +52,7 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   const marker = join(tempDir("marker"), "executed.txt");
   const daemon = await startDaemon(home, {
     env: { ...home.env, MOSTRA_TEST_AUDIT_FILE: audit },
-    nodeArgs: ["--import", join(fixtures, "audit.mjs")],
+    nodeArgs: ["--import", pathToFileURL(join(fixtures, "audit.mjs")).href],
   });
   const client = await connectTo(daemon.status.socket as string);
   result(await client.call("mostra/initialize", initializeParams()));

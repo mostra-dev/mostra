@@ -212,9 +212,12 @@ impl ::std::str::FromStr for ArtifactCreateParamsDir {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^\\/").unwrap() });
+        { ::regress::Regex::new("^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])").unwrap() });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^\\/\"".into());
+            return Err(
+                "doesn't match pattern \"^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -1249,9 +1252,12 @@ impl ::std::str::FromStr for ArtifactRefPath {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^\\/").unwrap() });
+        { ::regress::Regex::new("^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])").unwrap() });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^\\/\"".into());
+            return Err(
+                "doesn't match pattern \"^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -8841,9 +8847,12 @@ impl ::std::str::FromStr for SourceRefPath {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^\\/").unwrap() });
+        { ::regress::Regex::new("^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])").unwrap() });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^\\/\"".into());
+            return Err(
+                "doesn't match pattern \"^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }

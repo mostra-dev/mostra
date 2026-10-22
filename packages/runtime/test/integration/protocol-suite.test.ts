@@ -8,13 +8,16 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   connectTo,
+  endpointExists,
   initializeParams,
   type LineClient,
   type RuntimeProcess,
+  shutdownDaemon,
   startDaemon,
   startHost,
   type TestHome,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 interface Opened {
@@ -62,7 +65,9 @@ const socket: Transport = {
     expect(daemon.status).toMatchObject({ status: "started" });
   },
   async teardown() {
-    daemon?.child.kill("SIGTERM");
+    // Windows has no signals between processes: stop it over the protocol (D87, D147).
+    if (WINDOWS) await shutdownDaemon(daemon?.status.socket ?? "");
+    else daemon?.child.kill("SIGTERM");
     expect((await daemon?.exited)?.code).toBe(0);
   },
   async open() {
@@ -216,7 +221,7 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
     );
     expect(mismatch.error?.data.code).toBe("MOSTRA_HOME_MISMATCH");
     const link = join(dirname(opened.home), "home-link");
-    if (!existsSync(link)) symlinkSync(opened.home, link);
+    if (!existsSync(link)) symlinkSync(opened.home, link, "junction");
     const same = await opened.client.call(
       "mostra/initialize",
       initializeParams({ home: { path: link } }),
@@ -237,9 +242,12 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
       startedAt: string;
     };
     expect(result.instance).toEqual((init.result as { instance: unknown }).instance);
-    expect(existsSync(result.socket)).toBe(true);
+    expect(await endpointExists(result.socket)).toBe(true);
     expect(result.connections).toBeGreaterThanOrEqual(1);
-    expect(result.processes).toEqual([]);
+    // On Windows the control pipe's helper is the instance's one child (D147).
+    expect((result.processes as { kind: string }[]).map((child) => child.kind)).toEqual(
+      WINDOWS ? ["control-pipe"] : [],
+    );
     expect(Number.isNaN(Date.parse(result.startedAt))).toBe(false);
     await opened.close();
   });

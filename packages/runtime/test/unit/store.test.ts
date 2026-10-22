@@ -2,13 +2,13 @@
  * The version store's durability rules (FAILURE_MODEL §3, review finding 2): a file that can't be
  * synced fails the publish; only a directory may lack sync support.
  */
-import { chmodSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { sealPlaced } from "../../src/platform/index.ts";
 import { fsyncPath, removeTree } from "../../src/registry/index.ts";
 import { sealTree } from "../../src/registry/store.ts";
-import { tempDir, WINDOWS } from "../support.ts";
+import { accessEntries, tempDir, WINDOWS, WRITE_RIGHTS } from "../support.ts";
 
 describe("fsyncPath", () => {
   it("syncs files and directories", () => {
@@ -60,15 +60,21 @@ describe.skipIf(WINDOWS)("sealing", () => {
 });
 
 describe.runIf(WINDOWS)("sealing on Windows (RT-10)", () => {
-  it("leaves a placed version unwritable even to its owner, and removeTree still removes it", async () => {
+  it("leaves a placed version readable only, its owner included, and removeTree still removes it", async () => {
     const dir = join(tempDir("seal"), "version");
     mkdirSync(join(dir, "client/assets"), { recursive: true });
     writeFileSync(join(dir, "client/assets/app.js"), "x");
     await sealTree(dir, true);
     await sealPlaced(dir);
-    expect(() => writeFileSync(join(dir, "client/assets/app.js"), "y")).toThrow(/EPERM|EACCES/);
-    expect(() => writeFileSync(join(dir, "client/new.js"), "y")).toThrow(/EPERM|EACCES/);
-    expect(() => rmSync(join(dir, "client/assets/app.js"))).toThrow(/EPERM|EACCES/);
+    // Every entry of every file's and directory's list grants reading only, to anyone. (A write
+    // attempt can't show it on CI: the runner's administrator holds the backup and restore
+    // privileges, and Node.js opens files with backup semantics, which pass any list.)
+    for (const path of [dir, join(dir, "client"), join(dir, "client/assets/app.js")]) {
+      const entries = accessEntries(path);
+      expect(entries.length, path).toBeGreaterThan(0);
+      for (const entry of entries)
+        expect(entry.mask & WRITE_RIGHTS, `${path} ${entry.sid}`).toBe(0);
+    }
     expect(readFileSync(join(dir, "client/assets/app.js"), "utf8")).toBe("x");
     await removeTree(dir);
     expect(() => statSync(dir)).toThrow();

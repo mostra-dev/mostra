@@ -42,6 +42,45 @@ afterAll(() => {
 /** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
 export const WINDOWS: boolean = OS === "win32";
 
+/**
+ * How a process the fault points killed (`<point>:crash`) is seen to exit: SIGKILL on POSIX; on
+ * Windows `TerminateProcess`, exit code 1, with no signal.
+ */
+export const KILLED: { code: number | null; signal: string | null } = WINDOWS
+  ? { code: 1, signal: null }
+  : { code: null, signal: "SIGKILL" };
+
+/**
+ * The allow entries of a path's access list on Windows, from the helper's test probe: each
+ * entry's SID and access mask. A sealed version's must grant reading only.
+ */
+export function accessEntries(path: string): { sid: string; mask: number }[] {
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  const out = execFileSync(probe, ["security", path], { encoding: "utf8", windowsHide: true });
+  const { result } = JSON.parse(out) as { result: { sddl: string } };
+  const dacl = result.sddl.slice(result.sddl.indexOf("D:"));
+  const rights: Record<string, number> = {
+    FA: 0x1f01ff,
+    FR: 0x120089,
+    FX: 0x1200a0,
+    GA: 0x10000000,
+    GR: 0x80000000,
+    GX: 0x20000000,
+    GW: 0x40000000,
+  };
+  return [...dacl.matchAll(/\(A;[^;]*;([^;]*);[^;]*;[^;]*;([^)]*)\)/g)].map((match) => {
+    const text = match[1] ?? "";
+    const mask = text.startsWith("0x")
+      ? Number(text)
+      : (text.match(/../g) ?? []).reduce((sum, code) => sum | (rights[code] ?? 0xffffffff), 0);
+    return { sid: match[2] ?? "", mask };
+  });
+}
+
+/** What may be written through an access mask: data, appended data, attributes, deletion, the list itself. */
+export const WRITE_RIGHTS =
+  0x2 | 0x4 | 0x10 | 0x100 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000;
+
 /** Removes a tree, including sealed (read-only) version directories. */
 export function removeAll(dir: string): void {
   if (WINDOWS) {

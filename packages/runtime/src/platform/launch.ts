@@ -159,10 +159,16 @@ function launchPosix(
 }
 
 function launchWindows(spec: LaunchSpec): Launched {
+  // Node.js puts every child it starts, the gate too, into one kill-on-close job of its own
+  // (libuv's global job), so a supervisor that dies takes its gates with it, and each gate's death
+  // closes its child's job. A gate a test makes miss its lifeline (MOSTRA_TEST_GATE, a hung gate's
+  // stand-in) is started outside that job, or nothing would be left for the reaper to find.
+  const hung = spec.env["MOSTRA_TEST_GATE"] === "ignore-lifeline";
   const child = spawn(helperPath(), ["gate", "--", spec.command, ...spec.args], {
     cwd: spec.cwd,
     env: spec.env,
     windowsHide: true,
+    detached: hung,
     stdio: stdioFor(spec.extra),
     serialization: "json",
   });

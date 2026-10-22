@@ -70,6 +70,15 @@ describe("schema compatibility", () => {
     expect(reasons({ S: { type: "string" } }, { S: { type: "string", pattern: "^a" } })).toEqual([
       "S: pattern added or changed",
     ]);
+    // A pattern widened by alternatives beside the old one only grows (WP-W1's absolute paths);
+    // any other change to a pattern is reported, since no general proof exists.
+    const p = (pattern: string) => ({ S: { type: "string", pattern } });
+    expect(reasons(p("^/"), p("^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"))).toEqual([]);
+    expect(reasons(p("^/"), p("^(?:[A-Za-z]:|\\\\)"))).toEqual(["S: pattern added or changed"]);
+    expect(reasons(p("^/"), p("^(?:/)|x"))).toEqual(["S: pattern added or changed"]);
+    expect(reasons(p("^/"), p("^(?:/|x)y"))).toEqual(["S: pattern added or changed"]);
+    expect(reasons(p("^a|b"), p("^(?:a|b|c)"))).toEqual(["S: pattern added or changed"]);
+    expect(reasons(p("^a"), p("^(?:a[|]|b)"))).toEqual(["S: pattern added or changed"]);
     expect(
       reasons({ S: { type: "string", minLength: 1 } }, { S: { type: "string", minLength: 2 } }),
     ).toEqual(["S: minLength raised"]);

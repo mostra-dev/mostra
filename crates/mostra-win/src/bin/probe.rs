@@ -19,6 +19,24 @@ fn main() {
     use serde_json::json;
 
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if let [command, path] = arguments.as_slice()
+        && command == "security"
+    {
+        match sys::file_security(OsStr::new(path)) {
+            Ok(security) => println!(
+                "{}",
+                json!({ "ok": true, "result": { "sddl": security.sddl, "protected": security.protected } })
+            ),
+            Err(error) => {
+                println!(
+                    "{}",
+                    json!({ "ok": false, "error": { "message": error.to_string() } })
+                );
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     if let [command, pid] = arguments.as_slice()
         && (command == "suspend" || command == "resume")
     {

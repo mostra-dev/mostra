@@ -42,7 +42,16 @@ describe("home resolution (D84)", () => {
   });
 
   it("resolves relative paths against the working directory and ignores empty or relative XDG values", () => {
-    expect(resolveHomePath({ ...base, home: "h", env: {} })).toBe("/work/h");
+    expect(resolveHomePath({ ...base, home: "h", env: {}, platform: "linux" })).toBe("/work/h");
+    expect(
+      resolveHomePath({
+        home: "h",
+        env: {},
+        platform: "win32",
+        cwd: "C:\\work",
+        userHome: "C:\\u",
+      }),
+    ).toBe("C:\\work\\h");
     expect(
       resolveHomePath({ ...base, env: { MOSTRA_HOME: "" }, home: "", platform: "darwin" }),
     ).toBe("/Users/u/.mostra");
@@ -63,49 +72,53 @@ describe("runtime directory (D82)", () => {
     );
   });
 
-  it("on Linux accepts $XDG_RUNTIME_DIR only when it is owned by the user and 0700", () => {
-    const root = scratch();
-    const good = join(root, "good");
-    mkdirSync(good, { mode: 0o700 });
-    chmodSync(good, 0o700);
-    expect(resolveRuntimeDir({ env: { XDG_RUNTIME_DIR: good }, platform: "linux" })).toEqual({
-      dir: join(good, "mostra"),
-      source: "xdg",
-    });
+  // Reads real owners and modes, which Windows doesn't keep (it has no runtime directory at all).
+  it.skipIf(WINDOWS)(
+    "on Linux accepts $XDG_RUNTIME_DIR only when it is owned by the user and 0700",
+    () => {
+      const root = scratch();
+      const good = join(root, "good");
+      mkdirSync(good, { mode: 0o700 });
+      chmodSync(good, 0o700);
+      expect(resolveRuntimeDir({ env: { XDG_RUNTIME_DIR: good }, platform: "linux" })).toEqual({
+        dir: join(good, "mostra"),
+        source: "xdg",
+      });
 
-    const open = join(root, "open");
-    mkdirSync(open);
-    chmodSync(open, 0o755);
-    const state = join(root, "state");
-    const fallback = resolveRuntimeDir({
-      env: { XDG_RUNTIME_DIR: open, XDG_STATE_HOME: state },
-      platform: "linux",
-    });
-    expect(fallback).toEqual({
-      dir: join(state, "mostra", "run"),
-      source: "fallback",
-      rejected: "other users can access it",
-    });
-    expect(
-      resolveRuntimeDir({
-        env: { XDG_RUNTIME_DIR: join(root, "missing") },
+      const open = join(root, "open");
+      mkdirSync(open);
+      chmodSync(open, 0o755);
+      const state = join(root, "state");
+      const fallback = resolveRuntimeDir({
+        env: { XDG_RUNTIME_DIR: open, XDG_STATE_HOME: state },
         platform: "linux",
-        userHome: "/h",
-      }),
-    ).toEqual({
-      dir: "/h/.local/state/mostra/run",
-      source: "fallback",
-      rejected: "it doesn't exist",
-    });
-    expect(
-      resolveRuntimeDir({ env: { XDG_RUNTIME_DIR: "/" }, platform: "linux", userHome: "/h" })
-        ?.rejected,
-    ).toBe(process.getuid?.() === 0 ? "other users can access it" : "another user owns it");
-    expect(resolveRuntimeDir({ env: {}, platform: "linux", userHome: "/h" })).toEqual({
-      dir: "/h/.local/state/mostra/run",
-      source: "fallback",
-    });
-  });
+      });
+      expect(fallback).toEqual({
+        dir: join(state, "mostra", "run"),
+        source: "fallback",
+        rejected: "other users can access it",
+      });
+      expect(
+        resolveRuntimeDir({
+          env: { XDG_RUNTIME_DIR: join(root, "missing") },
+          platform: "linux",
+          userHome: "/h",
+        }),
+      ).toEqual({
+        dir: "/h/.local/state/mostra/run",
+        source: "fallback",
+        rejected: "it doesn't exist",
+      });
+      expect(
+        resolveRuntimeDir({ env: { XDG_RUNTIME_DIR: "/" }, platform: "linux", userHome: "/h" })
+          ?.rejected,
+      ).toBe(process.getuid?.() === 0 ? "other users can access it" : "another user owns it");
+      expect(resolveRuntimeDir({ env: {}, platform: "linux", userHome: "/h" })).toEqual({
+        dir: "/h/.local/state/mostra/run",
+        source: "fallback",
+      });
+    },
+  );
 });
 
 describe("socket path (D82)", () => {
