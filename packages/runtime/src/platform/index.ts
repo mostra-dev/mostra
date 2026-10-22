@@ -23,6 +23,7 @@ export {
   socketPathLimit,
   WINDOWS,
 } from "./directories.ts";
+export { baseEnvironment } from "./environment.ts";
 export {
   fsyncPath,
   linkDirectory,

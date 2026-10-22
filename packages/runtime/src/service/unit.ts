@@ -36,7 +36,7 @@ export interface ServiceSpec {
   readonly node: string;
   readonly entry: string;
   readonly env?: Environment;
-  /** `process.platform`. */
+  /** The operating system (`OS` of the platform layer). */
   readonly platform?: string;
 }
 

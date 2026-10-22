@@ -56,7 +56,10 @@ export function connectToSupervisor(
   };
 }
 
-/** Signals this child's whole process group (it leads it) and exits. */
+/**
+ * Signals this child's whole process group (it leads it) and exits. On Windows there is no group
+ * to signal: the child's gate ends its Job Object, descendants included, once the child exits.
+ */
 function exitWithGroup(): void {
   try {
     process.kill(-process.pid, "SIGTERM");
