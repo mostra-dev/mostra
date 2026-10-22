@@ -213,6 +213,75 @@ jobs:
       - name: pnpm check --job integration
         run: node tools/check/cli.ts --job integration $SCOPE --verbose
 
+  # The Windows legs (WP-W1, D146): the unit and integration jobs for the packages ported so far
+  # (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 and arm64. The runtime runs on Windows only
+  # behind the development switch `MOSTRA_DEV_WINDOWS`, which only these legs set; it finds the
+  # Windows helper Cargo builds here (`crates/mostra-win`). The integration leg runs the `windows`
+  # group, WP-01 to WP-04's real-process suites, with a second local user for RT-10's access check.
+  windows:
+    name: ${{ matrix.job }} (${{ matrix.os }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"unit"') || contains(needs.plan.outputs.jobs, '"integration"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+        job: [unit, integration]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      MOSTRA_DEV_WINDOWS: "1"
+      MOSTRA_TEST_GROUP: windows
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Skip when not affected
+        id: gate
+        env:
+          JOBS: ${{ needs.plan.outputs.jobs }}
+          JOB: ${{ matrix.job }}
+        run: |
+          if echo "$JOBS" | grep -q "\"$JOB\""; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not affected by this change." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        id: setup
+        if: steps.gate.outputs.run
+        with:
+          job: windows-${{ matrix.job }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.gate.outputs.run
+        with:
+          key: windows-helper
+      - name: Build the Windows helper
+        if: steps.gate.outputs.run
+        run: cargo build -p mostra-win --release --locked
+      - name: A second local user, for the access checks (RT-10)
+        if: steps.gate.outputs.run && matrix.job == 'integration'
+        shell: pwsh
+        run: |
+          $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
+      - name: Install the Playwright Chromium headless shell
+        if: steps.gate.outputs.run && matrix.job == 'integration'
+        run: pnpm --filter @mostra/runtime exec playwright install --only-shell chromium
+      - name: pnpm check --job ${{ matrix.job }}
+        if: steps.gate.outputs.run
+        env:
+          JOB: ${{ matrix.job }}
+        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose
+
   # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
   # platforms: WebKit on macOS is the closest Playwright gets to Safari.
   # One engine per machine (REPO_STANDARDS §6's matrix): the three on one macOS runner had grown to
@@ -274,7 +343,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, check, rust, conformance, integration, e2e, dependency-review]
+    needs: [plan, check, rust, conformance, integration, windows, e2e, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

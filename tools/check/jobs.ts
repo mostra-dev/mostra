@@ -17,6 +17,12 @@ const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
   "create-mostra",
 ]);
 
+/**
+ * The packages whose suites run on Windows so far: WP-W1 brings the supervisor's core (WP-01 to
+ * WP-04's suites); WP-W2 and WP-W3 add the rest (D146).
+ */
+export const WINDOWS_PACKAGES: readonly string[] = ["@mostra/protocol", "@mostra/runtime"];
+
 /** The names of the jobs, in REPO_STANDARDS §6 order. */
 export const JOB_NAMES = [
   "format-lint",

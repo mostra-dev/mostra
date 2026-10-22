@@ -11,7 +11,7 @@ import {
   socketPathFor,
   socketPathLimit,
 } from "../../src/home/index.ts";
-import { tempDir } from "../support.ts";
+import { tempDir, WINDOWS } from "../support.ts";
 
 const scratch = (): string => tempDir("mostra-paths");
 const codeOf = (fn: () => unknown): string | undefined => {
@@ -58,7 +58,7 @@ describe("runtime directory (D82)", () => {
       dir: "/r",
       source: "override",
     });
-    expect(resolveRuntimeDir({ env: {}, platform: "darwin", userHome: "/Users/u" }).dir).toBe(
+    expect(resolveRuntimeDir({ env: {}, platform: "darwin", userHome: "/Users/u" })?.dir).toBe(
       "/Users/u/.mostra/run",
     );
   });
@@ -99,7 +99,7 @@ describe("runtime directory (D82)", () => {
     });
     expect(
       resolveRuntimeDir({ env: { XDG_RUNTIME_DIR: "/" }, platform: "linux", userHome: "/h" })
-        .rejected,
+        ?.rejected,
     ).toBe(process.getuid?.() === 0 ? "other users can access it" : "another user owns it");
     expect(resolveRuntimeDir({ env: {}, platform: "linux", userHome: "/h" })).toEqual({
       dir: "/h/.local/state/mostra/run",
@@ -141,7 +141,7 @@ describe("socket path (D82)", () => {
   });
 });
 
-describe("owned directories (D85)", () => {
+describe.skipIf(WINDOWS)("owned directories (D85)", () => {
   it("creates missing directories with mode 0700", () => {
     const path = join(scratch(), "a", "b");
     const prepared = prepareOwnedDirectory(path);
@@ -186,11 +186,83 @@ describe("platform gate (D35, RT-07)", () => {
       ["linux", "ia32"],
       ["darwin", "ppc64"],
     ] as const) {
-      const diagnostic = checkPlatform(os, arch);
+      const diagnostic = checkPlatform(os, arch, {});
       expect(diagnostic?.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
       expect(diagnostic?.phase).toBe("platform");
       expect(diagnostic?.message).toContain(`${os}-${arch}`);
     }
-    expect(checkPlatform("win32", "x64")?.message).toContain("Windows");
+    expect(checkPlatform("win32", "x64", {})?.message).toContain("Windows");
+  });
+
+  it("admits Windows on x64 and arm64 only behind MOSTRA_DEV_WINDOWS=1 (D146)", () => {
+    const on = { MOSTRA_DEV_WINDOWS: "1" };
+    for (const arch of ["x64", "arm64"]) expect(checkPlatform("win32", arch, on)).toBeUndefined();
+    for (const value of ["", "0", "true", "yes"]) {
+      expect(checkPlatform("win32", "x64", { MOSTRA_DEV_WINDOWS: value })?.code).toBe(
+        "MOSTRA_PLATFORM_UNSUPPORTED",
+      );
+    }
+    // The switch admits Windows alone: every other platform still fails closed.
+    for (const [os, arch] of [
+      ["win32", "ia32"],
+      ["freebsd", "x64"],
+      ["linux", "ia32"],
+    ] as const) {
+      expect(checkPlatform(os, arch, on)?.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    }
+  });
+});
+
+describe("Windows defaults (RT-10)", () => {
+  it("puts the home under %LOCALAPPDATA% and the control pipe in no directory", () => {
+    const env = { LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" };
+    expect(resolveHomePath({ env, platform: "win32", userHome: "C:\\Users\\u" })).toBe(
+      "C:\\Users\\u\\AppData\\Local\\mostra",
+    );
+    expect(resolveHomePath({ env: {}, platform: "win32", userHome: "C:\\Users\\u" })).toBe(
+      "C:\\Users\\u\\AppData\\Local\\mostra",
+    );
+    // A relative LOCALAPPDATA is ignored, as a relative XDG value is.
+    expect(
+      resolveHomePath({
+        env: { LOCALAPPDATA: "rel" },
+        platform: "win32",
+        userHome: "C:\\Users\\u",
+      }),
+    ).toBe("C:\\Users\\u\\AppData\\Local\\mostra");
+    expect(
+      resolveRuntimeDir({
+        env: { MOSTRA_RUNTIME_DIR: "/r" },
+        platform: "win32",
+        userHome: "C:\\u",
+      }),
+    ).toBeUndefined();
+    expect(socketPathFor(undefined, "C:\\h", "win32")).toMatch(
+      /^\\\\\.\\pipe\\mostra-[0-9A-HJKMNP-TV-Z]{16}$/,
+    );
+  });
+});
+
+describe.runIf(WINDOWS)("owned directories on Windows (D85, RT-10)", () => {
+  it("creates a missing directory owner-only, keeps it, and tightens a wider one it owns", () => {
+    const path = join(scratch(), "a", "b");
+    expect(prepareOwnedDirectory(path)).toMatchObject({ created: true });
+    expect(prepareOwnedDirectory(path)).toEqual({
+      created: false,
+      realPath: realpathSync.native(path),
+    });
+    const loose = join(scratch(), "loose");
+    mkdirSync(loose);
+    const tightened = prepareOwnedDirectory(loose);
+    expect(tightened.created).toBe(false);
+    // The temporary directory's inherited entries were what it allowed before.
+    expect(tightened.tightenedFrom).toMatch(/^O:.*D:/);
+    expect(prepareOwnedDirectory(loose).tightenedFrom).toBeUndefined();
+  });
+
+  it("refuses a path that isn't a directory, changing nothing", () => {
+    const file = join(scratch(), "file");
+    writeFileSync(file, "x");
+    expect(codeOf(() => prepareOwnedDirectory(file))).toBe("MOSTRA_HOME_NOT_OWNED");
   });
 });

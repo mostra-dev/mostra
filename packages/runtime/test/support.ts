@@ -22,14 +22,28 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
 import { afterAll } from "vitest";
+import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
 afterAll(() => {
   for (const dir of created.splice(0)) removeAll(dir);
 });
 
+/** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
+export const WINDOWS: boolean = OS === "win32";
+
 /** Removes a tree, including sealed (read-only) version directories. */
 export function removeAll(dir: string): void {
+  if (WINDOWS) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    } catch {
+      // A sealed version's access list refuses deletion until its owner resets it.
+      execFileSync(helperPath(), ["unseal", dir], { stdio: "ignore", windowsHide: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
+    return;
+  }
   const unseal = (path: string): void => {
     let entries: Dirent[];
     try {
@@ -46,10 +60,12 @@ export function removeAll(dir: string): void {
 
 /**
  * A fresh directory, removed after the file's tests. `short` places it under `/tmp`, because
- * macOS limits socket paths to 103 bytes and its `os.tmpdir()` is long.
+ * macOS limits socket paths to 103 bytes and its `os.tmpdir()` is long (Windows has no such
+ * limit: its control endpoint is a pipe). Its real path is the long form on Windows too.
  */
 export function tempDir(prefix: string, short = false): string {
-  const dir = realpathSync(mkdtempSync(join(short ? "/tmp" : tmpdir(), `${prefix}-`)));
+  const base = short && !WINDOWS ? "/tmp" : tmpdir();
+  const dir = realpathSync.native(mkdtempSync(join(base, `${prefix}-`)));
   created.push(dir);
   return dir;
 }
