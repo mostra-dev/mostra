@@ -1,10 +1,12 @@
-// Disposable probe for WP-W1 (removed before merging): a Vite build of one CSS file that imports
-// Tailwind through a junction, as the builder's staging does, printing the whole error.
+// Disposable probe for WP-W1 (removed before merging): how the warm set's links look on Windows,
+// and a Vite build of one CSS file that imports Tailwind through a junction, as the builder's
+// staging does, printing the whole error.
 import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   statSync,
   symlinkSync,
@@ -17,25 +19,41 @@ import { join, resolve } from "node:path";
 const runtime = resolve("packages/runtime");
 const require = createRequire(join(runtime, "package.json"));
 const warm = resolve("packages/warm/node_modules");
+const show = (label, body) => {
+  try {
+    console.log(label, body());
+  } catch (error) {
+    console.log(`${label} FAILED`, error.message);
+  }
+};
+show("warm has", () =>
+  readdirSync(warm).filter((name) => name.startsWith("tailwind") || name === "react"),
+);
+for (const name of ["tailwindcss", "react"]) {
+  const entry = join(warm, name);
+  show(`warm ${name}`, () => {
+    const l = lstatSync(entry);
+    return {
+      link: l.isSymbolicLink(),
+      dir: l.isDirectory(),
+      target: l.isSymbolicLink() ? readlinkSync(entry) : null,
+      real: realpathSync(entry),
+    };
+  });
+}
 const root = mkdtempSync(join(tmpdir(), "tw-"));
 symlinkSync(warm, join(root, "node_modules"), "junction");
+show("junction", () => [
+  lstatSync(join(root, "node_modules")).isSymbolicLink(),
+  readlinkSync(join(root, "node_modules")),
+]);
+show("through the junction", () => [
+  statSync(join(root, "node_modules", "tailwindcss")).isDirectory(),
+  realpathSync(join(root, "node_modules", "tailwindcss")),
+]);
 mkdirSync(join(root, "gen"));
 writeFileSync(join(root, "gen", "styles.css"), '@import "tailwindcss";\n');
 writeFileSync(join(root, "gen", "entry.js"), 'import "./styles.css";\n');
-console.log(
-  "junction",
-  lstatSync(join(root, "node_modules")).isSymbolicLink(),
-  realpathSync(join(root, "node_modules")),
-);
-console.log(
-  "tailwindcss",
-  statSync(join(root, "node_modules", "tailwindcss")).isDirectory(),
-  realpathSync(join(root, "node_modules", "tailwindcss")),
-);
-console.log(
-  "warm has",
-  readdirSync(warm).filter((name) => name.startsWith("tailwind")),
-);
 const { build } = await import(require.resolve("vite"));
 const tailwind = (await import(require.resolve("@tailwindcss/vite"))).default;
 for (const preserve of [false, true]) {
