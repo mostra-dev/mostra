@@ -120,8 +120,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-01",
     name: "artifact children don't get the runtime's own Node.js first on PATH",
     file: "src/processes/environment.ts",
-    from: '  result["PATH"] = path.split(delimiter)[0] === own ? path : `${own}${delimiter}${path}`;',
-    to: '  result["PATH"] = path;',
+    from: '  result[pathName] = already ? path : path === "" ? own : `${own}${delimiter}${path}`;',
+    to: "  result[pathName] = path;",
     check: unit("deps.test.ts", "passes the artifact environment's allowlist"),
   },
   {
@@ -720,9 +720,9 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "RT-06",
     name: "a stale socket file isn't replaced",
-    file: "src/protocol-server/server.ts",
-    from: "unlinkSync(path);",
-    to: "",
+    file: "src/platform/control.ts",
+    from: "  try {\n    unlinkSync(path);\n  } catch (error) {",
+    to: "  try {\n  } catch (error) {",
     check: integration("instance.test.ts", "recovers after a SIGKILL"),
   },
   {
@@ -744,7 +744,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "RT-09",
     name: "a reused PID is signalled",
-    file: "src/processes/manager.ts",
+    file: "src/platform/launch.ts",
     from: 'if (leader && leader.startTime !== row.start_time) return "pid reused";',
     to: "",
     check: integration("reaping.test.ts"),
@@ -753,7 +753,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-09",
     name: "a child's group outlives it",
     file: "src/processes/manager.ts",
-    from: "await endGroups([pid, ...adopted.values()], 2000);",
+    from: "await launched.sweep([...adopted.values()]);",
     to: "",
     check: integration("processes.test.ts", "take down their group"),
   },
@@ -881,7 +881,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "#7",
     name: "children run before they are recorded",
-    file: "src/processes/manager.ts",
+    file: "src/platform/launch.ts",
     from: `const GATE_SCRIPT = 'IFS= read -r go <&3 && [ "$go" = go ] || exit 125; exec 3<&-; exec "$@"';`,
     to: `const GATE_SCRIPT = 'exec 3<&-; exec "$@"';`,
     check: integration("reaping.test.ts", "recorded before it runs"),
@@ -898,7 +898,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "review-2",
     name: "a file's failed sync is ignored",
-    file: "src/registry/store.ts",
+    file: "src/platform/files.ts",
     from: 'if (!directory || !unsupported.includes(code ?? "")) throw error;',
     to: "if (false) throw error;",
     check: ["--project", "unit", "test/unit/store.test.ts"],
@@ -996,7 +996,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "DP-03",
     name: "a lock layout keeps linking the warm set where the runtime was",
     file: "src/deps/index.ts",
-    from: "    if (target === warm.nodeModules) return;",
+    from: "    if (target !== undefined && samePath(target, warm.nodeModules)) return;",
     to: "    return;",
     check: integration("deps.test.ts", "relinks a lock layout"),
   },
