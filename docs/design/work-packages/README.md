@@ -99,4 +99,4 @@ The invariants in [../PRODUCT.md](../PRODUCT.md#rule-strengths):
 - interfaces evolve additively;
 - no host-specific code in the core.
 
-Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets redacted everywhere; macOS and Linux for v1.0, failing closed elsewhere, and Windows in v1.1 (D35, D120).
+Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets redacted everywhere; macOS, Linux and Windows for v1.0 (Windows from WP-W1 to WP-W3, D146), failing closed elsewhere (D35); from WP-W3 on every package keeps its Windows CI legs green.

@@ -56,8 +56,8 @@ The owner is where the invariant is enforced; packages not built yet are named b
 | Hosts reach Mostra only through public ports and protocol | protocol server, the conformance kit (`@mostra/conformance`, its reference hosts and the `conformance` job), and `tools/audit/host-neutral.ts` in the `boundaries` job (WP-02, WP-12) |
 
 Also: telemetry only from the standalone CLI, never from embedded use (D119); secrets and
-capability tokens stay out of every log and output; macOS and Linux only for v1.0, failing closed
-with a diagnostic elsewhere, and Windows in v1.1 (D120).
+capability tokens stay out of every log and output; macOS, Linux and Windows for v1.0 (Windows built
+by WP-W1 to WP-W3, D146), failing closed with a diagnostic elsewhere.
 
 ## Repository discipline
 

@@ -1,11 +1,11 @@
 # Mostra work packages
 
-**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
+**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below, and D146 (2026-10-22) replaced WP-32 with the Windows packages WP-W1 to WP-W3, built before WP-13. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
 
 ## How the sequence was built
 
-- **Scope.** 32 packages: 29 deliver all of v1 (D16, as amended by D116, D121 and D122) without shrinking it, and the 3 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D120, D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
-- **Order.** Packages run in the order of this file (D125): WP-01 to WP-15, then WP-28 to WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-32, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125). D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 34 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 2 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
+- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
 - **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
@@ -237,6 +237,50 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - a grep and dependency audit shows no host-specific code in the core;
   - every H-01 to H-16 row exercised by a scenario.
 
+### WP-W1. Windows I: platform layer, supervisor and ledger
+- **Owns:** RT-10.
+- **Builds:**
+  - a platform layer for win32 x64 and arm64: the home and runtime directory under `%LOCALAPPDATA%`, owner-only NTFS access control in place of `0600` and `0700` modes, and Windows rename, delete and path semantics in the ledger lock, the version store and staging;
+  - the home transport on Windows: a named pipe restricted to the user, or another local transport (compare two), with D81 and D82's semantics, so racing starters converge and a dead owner is recovered;
+  - the process model: child processes in Job Objects in place of process groups, identity by PID and creation time, reaping of descendants after a supervisor crash, D93's gated launch re-derived, and graceful shutdown over the control channel in place of signals;
+  - the builder and the dependency store on Windows, including native prebuilds and the warm set;
+  - the platform gate admits Windows behind a development switch, which only the CI legs set; every other platform still fails closed;
+  - Windows legs in the unit and integration jobs for WP-01 to WP-04's suites.
+- **Depends on:** WP-12.
+- **Evidence:**
+  - RT-10's check on a Windows CI runner: sixteen racing starters over the Windows transport converge on one supervisor; a killed supervisor's children and grandchildren are reaped by PID and creation time; the publish and install fixtures pass;
+  - another user on the runner can open neither the home nor the transport;
+  - RT-07's fail-closed check still passes for an unsupported platform, and for Windows without the switch.
+
+### WP-W2. Windows II: gateway, workers, verify and CLI
+- **Owns:** RT-11.
+- **Builds:**
+  - the gateway and addressing on Windows (loopback binds, port leases, origins);
+  - workers, actions and live data under WP-W1's process model, with D62's watchdog and memory limits;
+  - `verify` with its headless Chromium on Windows;
+  - the CLI: `open` through the default browser, `dev` file watching with Windows paths, the telemetry store, and `daemon install` as a per-user login service (Task Scheduler or the per-user Run key, compared);
+  - the secret store with owner-only access control;
+  - Windows legs in the integration and e2e jobs.
+- **Depends on:** WP-W1.
+- **Evidence:** RT-11's check: on a Windows CI runner the integration and e2e suites pass as on macOS and Linux (the verify suites, a crashing and a busy-looping worker, the controls, `dev` reloading after a change); `daemon install` starts the service at login and removes it cleanly.
+
+### WP-W3. Windows III: distribution, SDK, host crate and conformance
+- **Owns:** RT-12.
+- **Builds:**
+  - verified runtime bundles for win32 x64 and arm64: the private Node, the native prebuilds and D142's verification, with the browser fetched at setup;
+  - `create-mostra`, the SDK's platform gate and bundle download, and the release pipeline for Windows;
+  - the Rust host crate's Windows transport and spawn, and a Windows leg in the rust and conformance jobs;
+  - the development switch removed: Windows is supported like macOS and Linux;
+  - Windows in the install and host docs.
+
+  From this package on, every package keeps the Windows legs green.
+- **Depends on:** WP-W2.
+- **Evidence:**
+  - RT-12's check on a Windows CI runner without a global Node: `npm create mostra` through `verify`, `publish`, a submission and `results`;
+  - the release dry run produces verified win32 x64 and arm64 bundles;
+  - the Rust crate and the conformance kit pass against the Windows reference hosts;
+  - RT-07's fail-closed check still passes for unsupported platforms.
+
 ### WP-13. Sharing and remote viewing
 - **Owns:** HY-04, HY-05, HY-07, HO-10.
 - **Builds:**
@@ -245,7 +289,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - long-poll transport;
   - Host allowlist registration;
   - instructions when a tool is missing.
-- **Depends on:** WP-12.
+- **Depends on:** WP-W3.
 - **Evidence:**
   - worker mode in three browsers with cross-site fixtures and real Safari;
   - spoofed identity headers rejected while the backend stays on loopback;
@@ -446,13 +490,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
 
 ## After the first release
 
-These packages follow the first release, v1.0 (D120, D122). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. WP-32 comes first, and the terminal packages follow it in order.
-
-### WP-32. Windows
-- **Owns:** RT-10.
-- **Builds:** Windows support for the runtime bundle (private Node, native modules, headless Chromium), the supervisor (named pipes or another local transport in place of Unix sockets, process trees in place of process groups, home paths), the gateway and the CLI; a Windows CI leg; docs. Terminal features on Windows (ConPTY) wait for WP-22 and WP-23.
-- **Depends on:** WP-27.
-- **Evidence:** RT-10's check: on a Windows CI runner without a global Node, `npm create mostra` through `verify`, `publish`, a submission and `results`; the RT-07 fail-closed check still passes for unsupported platforms.
+These packages follow the first release, v1.0 (D122). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. Windows is no longer among them: it ships in v1.0 (D146).
 
 ### WP-22. Terminals I: frames, renderer, recordings and capture
 - **Owns:** TM-01, TM-03, TM-06.
@@ -464,7 +502,7 @@ These packages follow the first release, v1.0 (D120, D122). Their requirements c
   - the `mostra-term-capture` crate (TestBackend buffer and scripted keys to frames);
   - `term dump` and terminal lint;
   - `mostra term record` (from WP-25, D122).
-- **Depends on:** WP-20, WP-32.
+- **Depends on:** WP-20.
 - **Evidence:** the fidelity fixture suite (the prototype's nine fixtures plus 256-color and truecolor grids) renders pixel-consistently across browsers within the stated threshold; the capture crate produces frames for scripted keys; dump goldens. (The zero-difference proof against WASM mode is TM-05, owned by WP-23.)
 
 ### WP-23. Terminals II: live, WASM and compare
