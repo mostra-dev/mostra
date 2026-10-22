@@ -196,7 +196,8 @@ setInterval(() => {}, 1000);
   await delay(300);
   note("after reap", { child: alive(run.who.pid), grand: alive(run.who.grand) });
   note("reap reused", helper("reap", `${process.pid}:win/1`));
-  await once(run.child, "exit");
+  if (run.child.exitCode === null) await once(run.child, "exit");
+  note("gate exit after reap", run.child.exitCode);
 }
 
 // 4. The pipe broker.
