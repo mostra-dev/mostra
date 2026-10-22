@@ -41,6 +41,7 @@
 | M31 | 2026-10-21T00:15:19.500Z | WP-12's seven questions (which ports WP-12 builds and which move to the packages that consume them, the `identity` port's semantics, how the kit drives a host under test, browser-driven shell scenarios, the first crates.io release, receivers of newer enum values, reviews and prose): "For every decision point, I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded as D143. |
 | M32 | 2026-10-21T18:14:18.572Z | Accepted WP-12 ("100% approved"), approved its Claude Opus review, and removed the limit on Opus reviews: "this is an important project with big PRs and very important & complex & enterprise-grade implementation work, so every WP deserves an Opus review." Recorded as D144. |
 | M33 | 2026-10-22T09:40:00Z | Approved, as part of a set of planning recommendations ("I basically approve everything"), that the remote design pass keep the hosted shell's framing configurable so a later embed mode needs no migration. Recorded as D145. |
+| M34 | 2026-10-22T12:01:05Z | Approved native Windows before the first release, built right after WP-12: "Yes, sure. We can call them WP-W1...Wn, I guess n would be something around 2-4." Recorded as D146. |
 
 ## Program-level decisions
 
@@ -287,7 +288,7 @@ D33 is confirmed. Rules for every run that makes real model requests:
 *Source:* M6 Q1. *Supersedes* the "budget Mirza approves" wording in STANDARDS with the ask-first rule.
 
 ### D35. Windows is out of v1.0
-v1.0 explicitly does not support Windows. Windows stays on the roadmap for a later release. The v1 design need not constrain itself for Windows. On an unsupported platform every Mostra entry point fails closed with a clear diagnostic. *Source:* M6 Q2. *Resolves* RT-07. *Amended by D120:* Windows support follows in v1.1 (WP-32); the fail-closed rule stands for anything still unsupported.
+v1.0 explicitly does not support Windows. Windows stays on the roadmap for a later release. The v1 design need not constrain itself for Windows. On an unsupported platform every Mostra entry point fails closed with a clear diagnostic. *Source:* M6 Q2. *Resolves* RT-07. *Amended by D120:* Windows support follows in v1.1 (WP-32); the fail-closed rule stands for anything still unsupported. *Amended by D146:* Windows ships in v1.0, built by WP-W1 to WP-W3 right after WP-12.
 
 ### D36. Approving a work package approves its publication
 When Mirza accepts a work package, that acceptance authorizes every publication step for it: pushing to the public repository, publishing to npm and crates.io, creating releases and deploying the docs site. Agents ask only when something is uncertain or a real dilemma arises. *Source:* M6 Q3. *Changes* STANDARDS, Consequential actions.
@@ -768,7 +769,7 @@ A remote server forwards a hosted artifact's action calls and live producers to 
 *Decided by D140:* the consent model, the decision order, the event list, harness detection and the endpoint rules (M27, M28). *Source:* M20. *Amends* STANDARDS ("No telemetry"), REPO_STANDARDS, the root AGENTS.md, the work-package protocol and the assignment prompt. H-16 keeps its meaning for hosts.
 
 ### D120. Windows in v1.1
-v1.0 remains macOS and Linux, failing closed elsewhere (D35, RT-07). Windows support follows in v1.1, shortly after the first release, as a new package WP-32 under "After the first release". *Source:* M20. *Amends* D35 (adds the target; the fail-closed rule stands for anything still unsupported).
+v1.0 remains macOS and Linux, failing closed elsewhere (D35, RT-07). Windows support follows in v1.1, shortly after the first release, as a new package WP-32 under "After the first release". *Source:* M20. *Amends* D35 (adds the target; the fail-closed rule stands for anything still unsupported). *Superseded by D146:* Windows moves into v1.0 as WP-W1 to WP-W3; WP-32 is withdrawn.
 
 ### D121. Team features in v1
 - **Expected respondents:** an artifact or share names the people who should answer, by the host's stable viewer reference and display name (or email on a remote server that sends invitations); locally Mostra issues one personal link per respondent.
@@ -797,7 +798,7 @@ From WP-28 on, a package specification fixes the outcome, the architecture at th
 - D17's interface priority still explains the first part of the order. The remote server comes right after the local MCP server because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package needs its viewer identity.
 - The C03-B threshold (WP-14, D73) is unchanged. The phase closeout still follows WP-27.
 
-*Source:* M20.
+*Source:* M20. *Amended by D146:* WP-32 is withdrawn; the Windows packages WP-W1 to WP-W3 follow WP-12 and carry a W series rather than the next two-digit numbers, and the generators accept both forms.
 
 ### D126. Embedding in host applications later
 A chrome-less embed mode with host theming, host identity and host-rendered trusted controls (the `trustedControls` port already allows the last) is a `later` item (EX-08), so applications such as desktop GUIs for coding agents can render Mostra views natively. *Source:* M20.
@@ -1057,6 +1058,9 @@ Mirza delegated every WP-12 question at M31. Each item is an **approved decision
 
 ### D145. The hosted shell's framing is an operator setting (M33)
 *Amends* D126: WP-28 designs the hosted shell's framing policy (`frame-ancestors` and `X-Frame-Options`, INTERFACES §4) as operator configuration whose default and only v1 value is today's `'none'` and `DENY` (D98). A later embed mode (EX-08) can then add a per-tenant allow-list, paired with host-rendered trusted controls, without migrating issued links or shells. Nothing in v1 allows framing, and invariant 7 is unchanged: any allow-list waits for the embed decision and its own review against that invariant. *Why:* products that build on Mostra may want its pages inside their own web apps; keeping the policy a setting now costs little, while changing every hosted shell after launch would not. *Source:* M33.
+
+### D146. Windows in v1.0, as WP-W1 to WP-W3 (M34)
+*Supersedes* D120 and *amends* D35 and D125: Windows (x64 and arm64) ships in v1.0. Three packages build it right after WP-12 and before WP-13: WP-W1 (platform layer, supervisor and ledger, RT-10), WP-W2 (gateway, workers, `verify`, the CLI and the login service, RT-11) and WP-W3 (bundles, the SDK, the Rust crate and conformance, RT-12). WP-32 is withdrawn, and RT-10 takes the release label `v1`, with RT-11 and RT-12 split from it. Until WP-W3 removes it, a development switch that only CI sets admits Windows, so no release exposes a partial port; every other platform still fails closed (RT-07). From WP-W3 on, every package keeps its Windows CI legs green. Terminal features on Windows wait for WP-22 and WP-23. The W series keeps the existing numbers stable; `tools/design/wp_specs.py` and `tools/design/evidence_matrix.py` accept `WP-W<n>`. *Why:* about half of professional developers work on Windows (Stack Overflow Developer Survey 2025: 49.5%), so a release without it turns away many of the people agents work for and send pages to; and porting now, before the remaining packages, keeps each of them from adding Unix-only code that would have to be retrofitted. *Source:* M34.
 
 ## Research consensus adopted
 

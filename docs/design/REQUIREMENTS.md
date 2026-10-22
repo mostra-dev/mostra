@@ -4,7 +4,7 @@
 
 **Strength.** Every row is a **requirement** ([STANDARDS.md](STANDARDS.md#rule-strengths)) unless it is marked **Invariant** or **Default**. Invariants are listed in [PRODUCT.md](PRODUCT.md#rule-strengths), and rows that restate one carry the label.
 
-**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): Windows (D120) and the terminal modes (D122). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
+**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): the terminal modes (D122). Windows moved into v1 (D146). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
 
 **Verification routes:**
 - **M:** mechanism or unit tests.
@@ -36,8 +36,10 @@
 | RT-04 | A crash, hang or memory blow-up in one artifact leaves the gateway and other artifacts working; the failure is reported with an actionable message | v1 | D18 | I |
 | RT-05 | Frozen client-only versions are served with no worker process | v1 | D18 | I |
 | RT-06 | One instance per home: a host-spawned process over stdio or a standalone daemon the CLI attaches to over the home socket; racing starters converge on one supervisor and stale sockets are recovered | v1 | D18, D45 | I, C |
-| RT-07 | macOS and Linux are supported; on any other platform every entry point fails closed with a clear diagnostic (Windows is out of v1.0; RT-10 adds it in v1.1) | v1 | PRODUCT, D35, D120 | I |
-| RT-10 | Windows support for the runtime, CLI, gateway and host protocol, with a Windows CI leg | v1.1 | D120 | M, I, X |
+| RT-07 | macOS and Linux are supported, and Windows once RT-10 to RT-12 are met (D146); on any other platform every entry point fails closed with a clear diagnostic | v1 | PRODUCT, D35, D146 | I |
+| RT-10 | On Windows (x64 and arm64) the supervisor, ledger, builder, dependency store and process model keep FAILURE_MODEL §2's guarantees: an owner-only home and transport, racing starters converging on one supervisor, and every child tracked by PID and creation time and reaped with its descendants after a supervisor crash | v1 | D120, D146 | M, I |
+| RT-11 | On Windows the gateway, workers, actions, `verify`, the CLI (including `open`, `dev` and `daemon install`) and the secret store work as on macOS and Linux, with Windows legs in the integration and e2e CI jobs | v1 | D146 | I, B |
+| RT-12 | Windows ships like macOS and Linux: verified win32 x64 and arm64 runtime bundles with no global Node, `npm create mostra`, the SDK, the Rust host crate and the conformance kit passing on Windows | v1 | D18, D146 | I, C, X |
 
 ## Versions and publishing (VR)
 

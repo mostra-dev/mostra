@@ -303,18 +303,56 @@ DETAIL = {
   risks=["Presence must never reach the ledger or the event log: a test asserts it (CO-04).", "Roster waits are level- or edge-triggered like D103 and D107: property-test the interleavings."],
   handoff="Team forms and live team pages work end to end; WP-19 and WP-20 add the kit components and mentions on these hooks.",
 ),
-"WP-32": dict(
-  goal="Mostra runs on Windows as it does on macOS and Linux: one install command, no global Node, the same protocol and the same guarantees.",
-  reading=["../DECISIONS.md D18, D35, D45, D62, D81, D82, D85, D120", "../ARCHITECTURE.md §4", "../FAILURE_MODEL.md §2, §10", "../REPO_STANDARDS.md §6, §9", "../VERIFIED_FACTS.md (process model); verify the Windows facts you rely on"],
+"WP-W1": dict(
+  goal="The supervisor, ledger, builder and dependency store run natively on Windows x64 and arm64 with the guarantees they give on macOS and Linux: one owner per home, an owner-only home and transport, and every child process tracked and reaped.",
+  reading=["../DECISIONS.md D18, D35, D44, D45, D62, D81, D82, D85, D86, D87, D93, D120, D146", "../ARCHITECTURE.md §4", "../FAILURE_MODEL.md §2, §3, §10", "../DATA_MODEL.md §3 (`child.start_time`)", "../REPO_STANDARDS.md §6, §9", "../VERIFIED_FACTS.md (process model, WP-02 and WP-08); verify every Windows fact you rely on and record it there"],
   detail=[
-    "The runtime bundle for Windows: private Node, native modules (better-sqlite3 and the others), headless Chromium.",
-    "The supervisor: a local transport in place of Unix sockets (named pipes or another; compare two candidates), process trees in place of process groups, home and runtime-directory paths, the ledger lock.",
-    "The gateway and the CLI on Windows; a Windows leg in the CI jobs that run real processes and browsers.",
-    "The fail-closed gate stays for every platform still unsupported (RT-07).",
+    "The surface and the options (D123); the session settles the rest and records it as delegated decisions. Re-derive FAILURE_MODEL §2's guarantees for Windows rather than porting the Unix code paths; every place that assumes POSIX (modes, signals, process groups, `ps`, `/proc`, socket paths) is found by audit and listed in the progress report.",
+    "Platform layer: one module owns the platform differences, so the rest of the runtime asks it rather than testing `process.platform`. The home and runtime directory default under `%LOCALAPPDATA%`; D44's environment overrides keep working.",
+    "Owner-only access (D44, D85, D140): NTFS access control lists that grant only the current user (and SYSTEM where Windows requires it), set at creation, in place of `0600` and `0700`, and checked when a directory is reused. Options: a small Rust helper in `crates/` called by the runtime, a native addon, or `icacls` at creation; recommendation: the helper, which W1's process model needs anyway.",
+    "Files: Windows refuses to rename or delete an open file. Staging, the sealed version store, the dependency store and GC close files before renaming them, retry sharing violations briefly, and never leave a half-written entry; the ledger's exclusive lock (D81) is re-checked under Windows file locking; long paths (the `\\\\?\\` prefix) and case-insensitive names are handled in the version store and the dependency store.",
+    "Home transport (D81, D82): Node's `net` serves Windows named pipes. Compare a per-home pipe whose access list admits only the current user (and rejects remote clients) with loopback TCP plus a token file in the owner-only home; recommendation: the named pipe. Racing starters converge on one supervisor and a dead owner is recovered, as RT-06 requires.",
+    "Process model (D45, RT-09): each child in a Job Object, so its descendants close with it, in place of process groups; identity by PID and creation time (`GetProcessTimes`) in place of `/proc` and `ps`; the startup reaper finds and ends the processes a crashed supervisor left, grandchildren included. D93's gated launch is re-derived for Windows. Graceful shutdown (D87) travels over the control channel, because Windows has no SIGTERM. Options for the Job Object calls: the Rust helper or a native addon; recommendation: the helper.",
+    "The builder and the dependency store (WP-03, WP-04): the private pnpm, native prebuilds for win32 x64 and arm64, links in place of symlinks where Windows needs them, and the warm set.",
+    "The platform gate admits win32 x64 and arm64 only behind a development switch that the CI legs set, so no release exposes a partial Windows; other platforms fail closed as before, and RT-07's simulated platform becomes one that stays unsupported. The switch's name is a *Deferred decision* for this package.",
+    "CI: Windows legs (`windows-latest`, and an arm64 runner where one is available) in the unit and integration jobs for WP-01 to WP-04's suites.",
   ],
-  out=["Terminal features on Windows (ConPTY), which wait for WP-22 and WP-23"],
-  risks=["Process identity and reaping differ fundamentally on Windows: re-derive FAILURE_MODEL §2's guarantees rather than porting the Unix code paths."],
-  handoff="Windows users install and use Mostra; the terminal packages follow.",
+  out=["The gateway, workers, verify and the CLI on Windows (WP-W2)", "Bundles, the SDK, the Rust crate and conformance on Windows (WP-W3)", "Terminal features on Windows (ConPTY), which wait for WP-22 and WP-23"],
+  risks=["Windows signals, process groups and file locking differ in kind, not in detail: a port that only translates calls will pass simple tests and fail under races. Test the races (sixteen starters, a kill during publish, a kill with grandchildren).", "Antivirus scanners hold files open briefly after they are written; rename and delete paths must tolerate it without weakening atomicity.", "GitHub's Windows runners are slower: keep each job inside D50's target by grouping, as the integration job does."],
+  handoff="A supervisor that runs on Windows with the same guarantees; WP-W2 brings the gateway, workers, verify and the CLI onto it.",
+),
+"WP-W2": dict(
+  goal="Everything a person and an agent touch locally works on Windows as on macOS and Linux: the gateway, workers and actions, `verify`, the CLI and the login service.",
+  reading=["../DECISIONS.md D21, D45, D50, D62, D93, D119, D146", "../ARCHITECTURE.md §4, §5", "../INTERFACES.md §9 (CLI)", "../FAILURE_MODEL.md §2, §10", "WP-W1's progress report and delegated decisions"],
+  detail=[
+    "The surface and the options (D123); the session settles the rest and records it as delegated decisions.",
+    "Gateway and addressing: loopback binds, port leases reused across restarts (D62), and per-artifact origins behave as on Unix; Windows Firewall prompts never appear for loopback-only binds (a check).",
+    "Workers, actions and live data run under WP-W1's process model, with D62's memory limit and watchdog; a crashing, an out-of-memory and a busy-looping worker are contained as RT-04 requires.",
+    "`verify` drives its headless Chromium on Windows, fetched at setup as on the other platforms (D142).",
+    "CLI: `open` launches the default browser; `dev` watches files with Windows paths and editors' save patterns; telemetry keeps its store and consent under the Windows home (D119, D140).",
+    "Login service (RT-08): compare a per-user Task Scheduler task at logon with the per-user Run registry key; recommendation: Task Scheduler, which restarts on failure and needs no elevation. `daemon install` and `daemon uninstall` leave nothing behind.",
+    "The secret store keeps owner-only access on Windows (WP-W1's access lists).",
+    "CI: Windows legs in the integration and e2e jobs.",
+  ],
+  out=["Bundles, the SDK, the Rust crate and conformance on Windows (WP-W3)", "Terminal features on Windows"],
+  risks=["Browser and file-watching tests are where Windows flakes appear: fix the cause (a missed save event, a slow start) rather than retrying."],
+  handoff="Mostra works on Windows from source; WP-W3 ships it to people who install it.",
+),
+"WP-W3": dict(
+  goal="People on Windows install and use Mostra the way people on macOS and Linux do: one command, no global Node, verified bundles, and hosts in TypeScript or Rust.",
+  reading=["../DECISIONS.md D18, D91, D142, D146", "../INTERFACES.md §16, §17", "../REPO_STANDARDS.md §6, §9", "WP-11's and WP-12's progress reports", "WP-W1's and WP-W2's progress reports and delegated decisions"],
+  detail=[
+    "The surface and the options (D123); the session settles the rest and records it as delegated decisions.",
+    "Runtime bundles for win32 x64 and arm64: the private Node, the native prebuilds, and D142's verification; the verify browser is fetched at setup, never shipped. The license audit covers each bundle (`--bundle`).",
+    "`create-mostra`, the SDK's platform gate and bundle download, and the release pipeline produce and publish the Windows bundles with the others.",
+    "The Rust host crate spawns and attaches over the Windows transport; the Rust and TypeScript reference hosts pass the conformance kit on Windows.",
+    "The development switch from WP-W1 is removed: Windows is supported, and RT-07's fail-closed check covers the platforms still unsupported.",
+    "Docs: installation, the host guides and troubleshooting cover Windows.",
+    "From this package on, every package keeps the Windows legs green (for example WP-13's tunnel binaries and WP-14 and WP-15's host configuration paths).",
+  ],
+  out=["A native installer or package-manager listing (winget, Scoop): later, once the npm path is proven", "Terminal features on Windows"],
+  risks=["Windows arm64 runners and prebuilds are the least tested combination: verify each native dependency's arm64 prebuild on the day and record it in VERIFIED_FACTS."],
+  handoff="Windows is a supported platform; WP-13 and every later package keep it green.",
 ),
 }
 
@@ -343,7 +381,7 @@ def main():
     stale = []
     for section, b in blocks(text):
         head, body = b.split("\n", 1)
-        m = re.match(r"(WP-\d\d)\. (.+)", head)
+        m = re.match(r"(WP-(?:\d\d|W\d))\. (.+)", head)
         wp, title = m.group(1), m.group(2).strip()
         seen.append(wp)
         if wp not in DETAIL:
@@ -359,8 +397,8 @@ def main():
              f"| **Mode** | `PROGRAM MODE: work-package`, `WORK PACKAGE: {wp}` |",
              f"| **Depends on** | {depends} |"]
         if section == AFTER_FIRST_RELEASE:
-            L.append("| **Release** | v1.1, after the first release (D120, D122) |")
-        L += [f"| **Branch** | `wp/{wp[3:]}-<short-name>` from the accepted predecessor |",
+            L.append("| **Release** | v1.1, after the first release (D122) |")
+        L += [f"| **Branch** | `wp/{wp[3:].lower()}-<short-name>` from the accepted predecessor |",
              f"| **Protocol** | [README.md](README.md) |", "",
              "## Goal", "", det["goal"], "",
              "## Owned requirements", "",

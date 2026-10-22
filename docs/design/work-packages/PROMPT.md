@@ -191,6 +191,6 @@ These hold in every package, whatever its scope (PRODUCT, Rule strengths):
 - Hosts reach Mostra only through its public ports and protocol.
 
 Also: only the standalone CLI sends telemetry, never embedded use; secrets stay out of every log
-and output; v1.0 supports macOS and Linux, failing closed with a diagnostic elsewhere, and Windows
-follows in v1.1.
+and output; v1.0 supports macOS, Linux and Windows (Windows from WP-W1 to WP-W3), failing closed
+with a diagnostic elsewhere; from WP-W3 on, every package keeps its Windows CI legs green.
 ```

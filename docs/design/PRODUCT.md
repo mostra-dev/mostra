@@ -121,11 +121,11 @@ Release scope is decided in D16, amended by D116, D121 and D122, and refined int
   - the local MCP server and MCP Apps export;
   - the SDK, host protocol, Rust crate and conformance kit;
   - plugin contracts at 0.x with first-party plugins.
-- **v1.1, the follow-up release:** Windows (D120) and the terminal modes (D122).
+- **v1.1, the follow-up release:** the terminal modes (D122). Windows moved into v1 (D146).
 - **v1.x:** sandboxed remote execution, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
 - **Later:** the marketplace web interface and embedding Mostra views in host applications (D126).
 
-**Platforms.** macOS and Linux are required for v1. Windows follows in v1.1 (D120); v1.0 fails closed there (D35). Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder.
+**Platforms.** macOS, Linux and Windows (x64 and arm64) are required for v1 (D146); Windows is built by WP-W1 to WP-W3, and until they finish it fails closed like every unsupported platform (D35). Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder.
 
 ## Non-goals
 
