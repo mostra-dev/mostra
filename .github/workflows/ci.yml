@@ -264,6 +264,11 @@ jobs:
       - name: Build the Windows helper
         if: steps.gate.outputs.run
         run: cargo build -p mostra-win --release --locked
+      # The helper's Windows code compiles only on Windows, so the format-lint job's clippy (Linux)
+      # never sees it; it is linted here, on each architecture.
+      - name: Lint the Windows helper
+        if: steps.gate.outputs.run && matrix.job == 'unit'
+        run: cargo clippy -p mostra-win --all-targets --locked -- -D warnings
       - name: A second local user, for the access checks (RT-10)
         if: steps.gate.outputs.run && matrix.job == 'integration'
         shell: pwsh
