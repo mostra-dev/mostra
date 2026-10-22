@@ -40,6 +40,7 @@
 | M30 | 2026-10-19T11:36:46.506Z | WP-11's twelve questions (the release version line, who opens the release pull request, the npm account steps, RT-01's check without a global Node.js, `npm create mostra`'s behavior, where bundles live, the first release's timing, the telemetry endpoint, `ee/`, prose, reviews, CI): "For every decision point, I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded as D142. |
 | M31 | 2026-10-21T00:15:19.500Z | WP-12's seven questions (which ports WP-12 builds and which move to the packages that consume them, the `identity` port's semantics, how the kit drives a host under test, browser-driven shell scenarios, the first crates.io release, receivers of newer enum values, reviews and prose): "For every decision point, I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded as D143. |
 | M32 | 2026-10-21T18:14:18.572Z | Accepted WP-12 ("100% approved"), approved its Claude Opus review, and removed the limit on Opus reviews: "this is an important project with big PRs and very important & complex & enterprise-grade implementation work, so every WP deserves an Opus review." Recorded as D144. |
+| M33 | 2026-10-22T09:40:00Z | Approved, as part of a set of planning recommendations ("I basically approve everything"), that the remote design pass keep the hosted shell's framing configurable so a later embed mode needs no migration. Recorded as D145. |
 
 ## Program-level decisions
 
@@ -1053,6 +1054,9 @@ Mirza delegated every WP-12 question at M31. Each item is an **approved decision
 
 ### D144. A Claude Opus review for every package (M32)
 *Supersedes* D114 and *amends* D80 item 3: every work package gets a Claude Opus 5.5 review of its pull request before it merges, beside GPT-6.1-Sol's (D80 item 1), whatever its size. The session writes the review prompt (the package, its decisions, its evidence and where to look hardest), Mirza runs it and brings the findings back, and each is fixed with a test red on the old code or answered in the progress report, as for every reviewer. Anthropic runs still follow D34: Mirza runs or approves each one. *Why:* Mostra's packages are large, complex and enterprise-grade, and each Opus review so far found defects the other gates missed. *Source:* M32.
+
+### D145. The hosted shell's framing is an operator setting (M33)
+*Amends* D126: WP-28 designs the hosted shell's framing policy (`frame-ancestors` and `X-Frame-Options`, INTERFACES §4) as operator configuration whose default and only v1 value is today's `'none'` and `DENY` (D98). A later embed mode (EX-08) can then add a per-tenant allow-list, paired with host-rendered trusted controls, without migrating issued links or shells. Nothing in v1 allows framing, and invariant 7 is unchanged: any allow-list waits for the embed decision and its own review against that invariant. *Why:* products that build on Mostra may want its pages inside their own web apps; keeping the policy a setting now costs little, while changing every hosted shell after launch would not. *Source:* M33.
 
 ## Research consensus adopted
 
