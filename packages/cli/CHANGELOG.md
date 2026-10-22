@@ -1,5 +1,14 @@
 # @mostra/cli
 
+## 0.2.0
+
+### Patch Changes
+
+- [#44](https://github.com/mostra-dev/mostra/pull/44) [`b6ddfa7`](https://github.com/mostra-dev/mostra/commit/b6ddfa7fd59d5ab41bb39a37e303a26cd1e202cc) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra host --help`'s example uses a neutral home path (`~/.my-host/mostra`) instead of naming a particular host.
+- Updated dependencies [[`0ff9ae5`](https://github.com/mostra-dev/mostra/commit/0ff9ae5b682ab9b9d5db42b9984d553ce025428b), [`8772efe`](https://github.com/mostra-dev/mostra/commit/8772efeaf48e77765e6c3953c213704dd35c8de5), [`7251965`](https://github.com/mostra-dev/mostra/commit/725196570ed56cf930213d4cffed1093c5863b8e)]:
+  - @mostra/protocol@0.2.0
+  - @mostra/sdk@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

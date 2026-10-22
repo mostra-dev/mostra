@@ -1,6 +1,6 @@
 {
   "name": "@mostra/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "What server code imports: the request context, progress, secrets, signals, host events, artifact state and live sources.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

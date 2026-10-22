@@ -1,5 +1,11 @@
 # @mostra/protocol
 
+## 0.2.0
+
+### Minor Changes
+
+- [#44](https://github.com/mostra-dev/mostra/pull/44) [`0ff9ae5`](https://github.com/mostra-dev/mostra/commit/0ff9ae5b682ab9b9d5db42b9984d553ce025428b) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Add the `identity` port (`port/identity.resolve`, D143): a host names the person behind a link opened without a viewer, or answers `null` for Mostra's own default. `MOSTRA_HOST_IDENTITY_UNAVAILABLE` is new. The published JSON Schema bundles now list every method and notification (`x-mostra-methods`, `x-mostra-notifications`), which `hostNotifications` exports too.
+
 ## 0.1.0
 
 ### Minor Changes

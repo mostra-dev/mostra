@@ -1,6 +1,6 @@
 {
   "name": "create-mostra",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "npm create mostra: create a Mostra artifact, installing the Mostra runtime on first use.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
