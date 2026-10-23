@@ -546,10 +546,11 @@ describe("lifecycle scripts (DP-05)", () => {
   it("end with the supervisor: a SIGKILLed supervisor leaves no install child or script running", async () => {
     const target = await start();
     const dir = artifact({ "index.tsx": "export default function Page() { return <p />; }\n" });
-    void target.client.call("deps/add", {
-      artifact: { path: dir },
-      packages: ["mostra-fixture-slow"],
-    });
+    // Never answered: the supervisor is killed during the install. Its timeout's rejection is
+    // expected, and must not surface later as an unhandled one (it did on Windows' slower runs).
+    target.client
+      .call("deps/add", { artifact: { path: dir }, packages: ["mostra-fixture-slow"] })
+      .catch(() => {});
     // The slow postinstall writes its PID into the layout it is installed in, then waits.
     const locks = join(target.home.home, "deps", "locks");
     let pidFile: string | undefined;
