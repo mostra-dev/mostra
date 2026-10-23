@@ -43,6 +43,7 @@
 | M33 | 2026-10-22T09:40:00Z | Approved, as part of a set of planning recommendations ("I basically approve everything"), that the remote design pass keep the hosted shell's framing configurable so a later embed mode needs no migration. Recorded as D145. |
 | M34 | 2026-10-22T12:01:05Z | Approved native Windows before the first release, built right after WP-12: "Yes, sure. We can call them WP-W1...Wn, I guess n would be something around 2-4." Recorded as D146. |
 | M35 | 2026-10-22T19:40:24Z | Accepted a set of recommendations ("All as recommended"), among them: harness plugins built to pass the plugin directories' review on the first scan; an MCP server that a harness plugin starts counts as embedded use and sends no telemetry; agent-facing prose accepted in one batch at the end of each package. Recorded as D147 to D149. |
+| M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
 
 ## Program-level decisions
 
@@ -1079,8 +1080,8 @@ The session verifies each rule against the directories' own pages on the day and
 
 ## WP-W1 decisions
 
-### D150. The Windows platform layer, helper, pipe and process model (proposed by WP-W1, awaiting Mirza's approval)
-*Status:* the WP-W1 session's choices under D123 (the specification fixes the surface and the options; the session settles the rest), presented with the candidate. It fills ARCHITECTURE §4, FAILURE_MODEL §2, §3 and §10, DATA_MODEL §1 and §3 and INTERFACES §6 for Windows. Each choice was observed on GitHub's Windows x64 and arm64 runners (VERIFIED_FACTS, WP-W1).
+### D150. The Windows platform layer, helper, pipe and process model (M36)
+*Status:* approved at M36. The WP-W1 session's choices under D123 (the specification fixes the surface and the options; the session settles the rest), presented with the candidate and amended by the Claude Opus and GPT reviews of WP-W1. It fills ARCHITECTURE §4, FAILURE_MODEL §2, §3 and §10, DATA_MODEL §1 and §3 and INTERFACES §6 for Windows. Each choice was observed on GitHub's Windows x64 and arm64 runners (VERIFIED_FACTS, WP-W1).
 
 1. **One platform module.** `@mostra/runtime`'s `platform` owns every difference between POSIX and Windows: default homes, owner-only directories, the control endpoint, process identity, launching, ending and reaping children, renames, syncing, directory links, sealing and base environments. No other module reads `process.platform` (a test).
 2. **A Rust helper, `mostra-win`** (`crates/mostra-win`, unpublished; WP-W3 ships it in the Windows bundles), over the other two options. A native addon would tie a binary to Node.js's ABI and load Win32 code into the supervisor, which never loads platform code before its gate (RT-07); `icacls` can't express a protected owner-only list without localized output parsing, and can't do Job Objects or pipes at all. The helper's `unsafe` code is confined to one file.
