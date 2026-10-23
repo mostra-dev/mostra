@@ -1,35 +1,36 @@
-# RT-10's seeded violations on Windows (WP-W1), removed before the package merges: earlier runs
-# of this workflow probed the facts in VERIFIED_FACTS (WP-W1); its scripts are in the branch's
-# history (crates/mostra-win/probe/ before 7e90926).
-name: Windows probe (WP-W1, temporary)
+# Seeded violations on Windows, replayed on demand: `prove-seeds.ts --only <requirement>` (each
+# seed red with its violation and green restored) on a Windows runner, where the Windows seeds
+# (RT-10, the helper and the process model) can run; nothing else can run them, since no Windows
+# machine is at hand (docs/agents/run-on-windows.md). Started by hand from the Actions tab or with
+# `gh workflow run windows-seeds.yml --ref <branch> -f only=RT-10`; a package that adds or moves a
+# Windows seed replays it here and records the run in its report.
+name: Windows seeds
 
 on:
-  push:
-    branches: ["wp/w1-*"]
-    paths:
-      - "crates/mostra-win/**"
-      - ".github/workflows/windows-probe.yml"
-      - "packages/runtime/scripts/prove-seeds.ts"
   workflow_dispatch:
+    inputs:
+      only:
+        description: The requirement whose seeds to replay (RT-10, …)
+        required: true
+        default: RT-10
+      os:
+        description: The runner
+        type: choice
+        options: [windows-latest, windows-11-arm]
+        default: windows-latest
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-probe-${{ github.ref }}
+  group: windows-seeds-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # RT-10's seeded violations on Windows (prove-seeds.ts --only RT-10): each red with its seed,
-  # green restored. Temporary, like the rest of this workflow: the record goes into WP-W1's report.
   seeds:
-    name: seeds (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    name: seeds (${{ inputs.only }}, ${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
     env:
       MOSTRA_DEV_WINDOWS: "1"
       LEFTHOOK: "0"
@@ -48,7 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo build -p mostra-win --release --locked
       - run: pnpm --filter @mostra/protocol --filter @mostra/react --filter @mostra/runtime build
-      - name: A second local user
+      - name: A second local user, for the access checks
         shell: pwsh
         run: |
           $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
@@ -56,5 +57,7 @@ jobs:
           "::add-mask::$password"
           "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
           "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
-      - name: prove-seeds --only RT-10
-        run: node packages/runtime/scripts/prove-seeds.ts --only RT-10
+      - name: prove-seeds --only ${{ inputs.only }}
+        env:
+          ONLY: ${{ inputs.only }}
+        run: node packages/runtime/scripts/prove-seeds.ts --only "$ONLY"

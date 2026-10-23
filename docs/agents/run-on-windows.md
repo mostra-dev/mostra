@@ -19,12 +19,18 @@ place Windows behavior is observed, so the loop is a push and a CI run.
    skip silently on Windows: a missing prerequisite (the second user, the helper) is a failure.
 3. **Push and read the leg.** The `windows` job runs `pnpm check --job unit|integration` with
    `MOSTRA_DEV_WINDOWS=1`, `MOSTRA_TEST_GROUP=windows` or `windows-publish` (the suites in
-   `packages/runtime/vitest.config.ts`'s two Windows groups, one machine each) and a second local user (`MOSTRA_TEST_OTHER_USER`, `MOSTRA_TEST_OTHER_PASSWORD`).
+   `packages/runtime/vitest.config.ts`'s two Windows groups, one machine each) and a second local
+   user (`MOSTRA_TEST_OTHER_USER`, `MOSTRA_TEST_OTHER_PASSWORD`).
    Read a failing leg's log with `gh run view <run> --log-failed`, or the whole job with
    `gh api repos/mostra-dev/mostra/actions/jobs/<job>/logs`.
 4. **Observe Windows behavior you depend on** before building on it: the helper's
    `mostra-win-probe` (`as-user`, `suspend`, `resume`) and a short script in a test are how the
    facts in VERIFIED_FACTS (WP-W1) were seen. Record each new fact there with the run that showed it.
+5. **Replay Windows seeds on a Windows runner.** A seed with `platform: "win32"` in
+   `packages/runtime/scripts/prove-seeds.ts` runs only there:
+   `gh workflow run windows-seeds.yml --ref <branch> -f only=RT-10` (and `-f os=windows-11-arm`
+   for arm64), then record the run in the report. Every seed must end "seeded: red" and
+   "restored: green"; a seed that doesn't compile prints Cargo's error and fails the run.
 
 Windows differs in kind: no signals between processes (stop a daemon with `mostra/shutdown`), no
 process groups (each child has a Job Object), no modes (owner-only access lists), files in use
@@ -33,4 +39,5 @@ doesn't exist, and names compare without case. The runner's user is an administr
 off, so a check that a privilege is missing can't be made there.
 
 **Done when** both Windows legs (`windows-latest`, `windows-11-arm`) pass on the pushed commit,
-and the macOS and Linux legs still pass.
+the macOS and Linux legs still pass, and any Windows seed you added or moved is red then green in
+a `windows-seeds.yml` run.
