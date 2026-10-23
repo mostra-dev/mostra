@@ -9,6 +9,8 @@
  *   pnpm check --base <ref>        compare against <ref> instead of origin/main
  *   pnpm check --plan [--json]     print which jobs and packages would run, then stop
  *   pnpm check --verbose           print the output of passing jobs too
+ *   pnpm check --stream            print Turbo's output as it arrives, so a job a CI runner cancels
+ *                                  for its time limit still shows where it was (the integration jobs)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +28,7 @@ const { values } = parseArgs({
     plan: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
     verbose: { type: "boolean", default: false },
+    stream: { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -143,10 +146,14 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
       ...filters,
       "--continue",
       "--summarize",
-      "--output-logs=errors-only",
+      // Streaming needs every task's lines as they come; otherwise only a failure's, at its end.
+      values.stream ? "--output-logs=full" : "--output-logs=errors-only",
       "--ui=stream",
     ],
-    (line) => output.push(line),
+    (line) => {
+      output.push(line);
+      if (values.stream) console.log(line);
+    },
     { env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1", TURBO_TELEMETRY_DISABLED: "1" } },
   );
   const summaryFile = existsSync(runsDir)
@@ -183,7 +190,8 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
         ? []
         : [
             `failed: ${blamed.map((task) => task.taskId).join(", ") || `turbo exited ${code}`}`,
-            ...output,
+            // Already printed as it arrived.
+            ...(values.stream ? [] : output),
           ]),
     ];
     return { job: job.name, ok, ms, output: lines };

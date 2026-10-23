@@ -211,7 +211,7 @@ jobs:
       - name: Install the Playwright Chromium headless shell
         run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
       - name: pnpm check --job integration
-        run: node tools/check/cli.ts --job integration $SCOPE --verbose
+        run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream
 
   # The Windows legs (WP-W1, D146): the unit and integration jobs for the packages ported so far
   # (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 and arm64. The runtime runs on Windows only
@@ -291,7 +291,7 @@ jobs:
         env:
           JOB: ${{ matrix.job }}
           MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
-        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose
+        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
       - name: Keep the test homes' supervisor logs
         if: failure() && steps.gate.outputs.run
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
