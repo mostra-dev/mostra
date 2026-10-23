@@ -30,6 +30,11 @@ interface Seed {
   readonly e2e?: boolean;
   /** Where Vitest runs, relative to packages/runtime, when not there (`../react` for its suites). */
   readonly cwd?: string;
+  /**
+   * The one platform the seed can be proven on (`win32`: the Windows process model, access lists
+   * and the helper, WP-W1); elsewhere it is reported as skipped. Its anchors are checked everywhere.
+   */
+  readonly platform?: NodeJS.Platform;
 }
 
 const integration = (file: string, ...filter: string[]): string[] => [
@@ -53,6 +58,60 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-W1: Windows (RT-10). The helper's seeds rebuild it (cargo) before their checks.
+  {
+    requirement: "RT-10",
+    name: "a home's access list lets everyone in",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})"',
+    to: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})(A;OICI;FA;;;WD)"',
+    check: integration("windows.test.ts", "another local user open neither"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "the control pipe's access list lets everyone in",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: 'SecurityDescriptor::from_sddl(&format!("O:{user}D:P(A;;GA;;;{user})(A;;GA;;;{SYSTEM})"))',
+    to: 'SecurityDescriptor::from_sddl(&format!("O:{user}D:P(A;;GA;;;{user})(A;;GA;;;{SYSTEM})(A;;GA;;;WD)"))',
+    check: integration("windows.test.ts", "another local user open neither"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a child's job doesn't end with its last handle",
+    file: "../../crates/mostra-win/src/win/sys.rs",
+    from: "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+    to: "limits.BasicLimitInformation.LimitFlags = 0;",
+    check: integration("windows.test.ts", "ends a killed supervisor's child and grandchildren"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "the reaper ends a recorded PID whatever its creation time",
+    file: "../../crates/mostra-win/src/win/process.rs",
+    from: "let liveness = sys::process_liveness(*pid);",
+    to: "let liveness = sys::process_liveness(*pid);\n                let created = match liveness { Liveness::Running(now) => now, _ => created };",
+    check: integration("windows.test.ts", "reaps what a supervisor's stuck gates left"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a gate runs its child before the supervisor recorded it",
+    file: "../../crates/mostra-win/src/win/gate.rs",
+    from: 'if read_line(lifeline).as_deref() != Some("go") {',
+    to: "if read_line(lifeline).is_some() && false {",
+    check: integration("windows.test.ts", "issue #7"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "Windows is admitted without the development switch",
+    file: "src/home/platform.ts",
+    from: 'if (platform === "win32" && env[WINDOWS_DEV_SWITCH] === "1") return undefined;',
+    to: 'if (platform === "win32") return undefined;',
+    check: integration("platform.test.ts", "fails closed"),
+  },
   // WP-11: the runtime bundle, the bootstrap, the SDK and embedded telemetry.
   {
     requirement: "RT-01",
@@ -3064,7 +3123,24 @@ if (values.anchors) {
   process.exit(0);
 }
 
-function build(): void {
+const WINDOWS_HOST = process.platform === "win32";
+
+function build(seed?: Seed): void {
+  // pnpm is a `.cmd` on Windows, which only a shell runs.
+  const shell = WINDOWS_HOST;
+  if (seed?.platform === "win32") {
+    if (seed.file.includes("crates/mostra-win")) {
+      execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+        cwd: root,
+        stdio: "ignore",
+      });
+    }
+    // Only the packages Windows runs so far (WP-W1): the protocol and the runtime.
+    for (const name of ["@mostra/protocol", "@mostra/runtime"]) {
+      execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+    }
+    return;
+  }
   for (const name of [
     "@mostra/protocol",
     "@mostra/server",
@@ -3077,7 +3153,7 @@ function build(): void {
     "@mostra/cli",
     "create-mostra",
   ]) {
-    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore" });
+    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
   }
 }
 
@@ -3087,10 +3163,18 @@ function check(seed: Seed): { ok: boolean; summary: string } {
         cwd: join(root, "tests", "e2e"),
         encoding: "utf8",
       })
-    : spawnSync("npx", ["vitest", "run", ...seed.check], {
-        cwd: join(runtime, seed.cwd ?? "."),
-        encoding: "utf8",
-      });
+    : spawnSync(
+        process.execPath,
+        [
+          join(runtime, seed.cwd ?? ".", "node_modules", "vitest", "vitest.mjs"),
+          "run",
+          ...seed.check,
+        ],
+        {
+          cwd: join(runtime, seed.cwd ?? "."),
+          encoding: "utf8",
+        },
+      );
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
   const summary =
     text
@@ -3110,6 +3194,10 @@ let missed = 0;
 for (const seed of SEEDS) {
   if (values.only && seed.requirement !== values.only) continue;
   if (values.name && !seed.name.includes(values.name)) continue;
+  if (seed.platform !== undefined && seed.platform !== process.platform) {
+    console.log(`${seed.requirement} | ${seed.name} | skipped: needs ${seed.platform}`);
+    continue;
+  }
   const edits = [{ file: seed.file, from: seed.from, to: seed.to }, ...(seed.also ?? [])];
   const originals = edits.map((edit) => {
     const path = join(runtime, edit.file);
@@ -3129,13 +3217,13 @@ for (const seed of SEEDS) {
     for (const { path, edit } of originals) {
       writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
     }
-    build();
+    build(seed);
     red = check(seed);
   } finally {
     restore();
     restore = undefined;
   }
-  build();
+  build(seed);
   const green = check(seed);
   if (red.ok || !green.ok) missed++;
   console.log(

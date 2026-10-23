@@ -1,6 +1,6 @@
-# A disposable probe of the Windows facts WP-W1's design relies on (removed before the package
-# merges): the helper's gate, Job Objects, owner-only access control and pipe, checked against
-# another local user, and which of the workspace's native modules load on Windows.
+# RT-10's seeded violations on Windows (WP-W1), removed before the package merges: earlier runs
+# of this workflow probed the facts in VERIFIED_FACTS (WP-W1); its scripts are in the branch's
+# history (crates/mostra-win/probe/ before 7e90926).
 name: Windows probe (WP-W1, temporary)
 
 on:
@@ -9,6 +9,7 @@ on:
     paths:
       - "crates/mostra-win/**"
       - ".github/workflows/windows-probe.yml"
+      - "packages/runtime/scripts/prove-seeds.ts"
   workflow_dispatch:
 
 permissions:
@@ -19,51 +20,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  helper:
-    name: helper (${{ matrix.os }})
+  # RT-10's seeded violations on Windows (prove-seeds.ts --only RT-10): each red with its seed,
+  # green restored. Temporary, like the rest of this workflow: the record goes into WP-W1's report.
+  seeds:
+    name: seeds (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, windows-11-arm]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    steps:
-      - name: The runner's privileges (whether backup and restore are enabled)
-        shell: pwsh
-        run: whoami /priv
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          package-manager-cache: false
-      - name: Build the helper
+    timeout-minutes: 60
+    env:
+      MOSTRA_DEV_WINDOWS: "1"
+      LEFTHOOK: "0"
+    defaults:
+      run:
         shell: bash
-        run: |
-          rustup show
-          cargo build -p mostra-win --locked
-      - name: Another local user
-        shell: pwsh
-        run: |
-          $password = ConvertTo-SecureString 'Xq7!vT9#kL2$' -AsPlainText -Force
-          New-LocalUser -Name mostraprobe -Password $password -PasswordNeverExpires -AccountNeverExpires | Format-List
-          Get-LocalUser mostraprobe | Format-List
-      - name: Probe
-        shell: bash
-        run: node crates/mostra-win/probe/probe.mjs target/debug mostraprobe 'Xq7!vT9#kL2$'
-      - name: Does a seal stop its owner's writes (as a Node.js process)
-        shell: bash
-        run: node crates/mostra-win/probe/seal.mjs target/debug/mostra-win.exe
-
-  natives:
-    name: natives (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,23 +45,16 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - name: Install
-        shell: bash
-        run: pnpm install --frozen-lockfile
-      - name: Native modules
-        shell: bash
-        working-directory: packages/runtime
+      - run: pnpm install --frozen-lockfile
+      - run: cargo build -p mostra-win --release --locked
+      - run: pnpm --filter @mostra/protocol --filter @mostra/react --filter @mostra/runtime build
+      - name: A second local user
+        shell: pwsh
         run: |
-          node -e "const D=require('better-sqlite3'); const d=new D(':memory:'); console.log('better-sqlite3', d.prepare('select sqlite_version() v').get())" || echo "better-sqlite3 FAILED"
-          node -e "import('oxc-parser').then(m=>console.log('oxc-parser', typeof m.parseSync))" || echo "oxc-parser FAILED"
-          node -e "import('vite').then(m=>console.log('vite', m.version))" || echo "vite FAILED"
-          node -e "import('lightningcss').then(m=>console.log('lightningcss', typeof m.transform))" || echo "lightningcss FAILED"
-          node -e "import('@tailwindcss/oxide').then(m=>console.log('oxide', Object.keys(m).length))" || echo "oxide FAILED"
-          ls node_modules/.bin | head -40
-      - name: Tailwind through a junction (as the builder's staging)
-        shell: bash
-        run: node crates/mostra-win/probe/tailwind.mjs
-      - name: Runtime unit tests (to see what fails)
-        shell: bash
-        continue-on-error: true
-        run: pnpm --filter @mostra/protocol --filter @mostra/runtime... build && pnpm --filter @mostra/runtime exec vitest run --project unit 2>&1 | tail -150
+          $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
+      - name: prove-seeds --only RT-10
+        run: node packages/runtime/scripts/prove-seeds.ts --only RT-10
