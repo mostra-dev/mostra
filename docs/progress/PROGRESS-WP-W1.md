@@ -1,6 +1,6 @@
 # WP-W1 progress: Windows I, platform layer, supervisor and ledger
 
-**Status:** Candidate, presented to Mirza on 2026-10-23 and again after the Claude Opus review (D144), whose findings are all answered below: CI green on `24554d2` (every job, the four Windows legs and both architectures included), RT-10's seeds green on Windows, awaiting his acceptance, his approval of D150 and his review of the agent-facing prose.
+**Status:** Done. Accepted by Mirza on 2026-10-23 ("100% approved", M36) after the Claude Opus review, with D150 and the package's agent-facing prose (D149); merged to `main` as `1ce906c` (#54) and released as Mostra 0.3.0, Windows still behind `MOSTRA_DEV_WINDOWS=1` until WP-W3; finalized after the release (work-packages/README.md §4).
 
 ## Baseline
 
@@ -86,6 +86,12 @@ Checks through the real interfaces: the built `mostra-runtime` as real processes
 - **Linux `core` integration runs sometimes go silent for their 15 minutes** and are cancelled (runs 39961330514, 39971478841 and 39983161420 on this branch; also on `main` at `ca21ff9`, run 39839492586, before this package), and pass on a rerun in about 8 minutes. It predates WP-W1, and its cause is unknown because `pnpm check` printed a job's output only when it ended: the integration jobs now run `pnpm check --stream`, so the next occurrence names where it stopped ([#55](https://github.com/mostra-dev/mostra/issues/55)).
 - **The full repository on Windows**: only the protocol's and the runtime's suites run there; the other packages are WP-W2's and WP-W3's, including the owner check of every client but the runtime's own (finding 4).
 
+## Deviations
+
+- **The seeds' workflow stays, run by hand.** The specification's probe was temporary and is gone; its last job became `.github/workflows/windows-seeds.yml` (`workflow_dispatch`, x64 or arm64), because no other machine can run the Windows seeds and WP-W2 and WP-W3 add their own. GitHub dispatches a workflow only from the default branch, so its first run is after this merge.
+- **Windows arm64 legs exceed D50's 10 minutes** (about 17 each, inside a 25-minute limit): noted above, for WP-W2 to split further or cache the helper's build.
+- **Two fixes outside the package landed with its closeout**, both found on `main`'s CI after the merge: WP-12's lock-touch test raced its holder's interval (#56, the check as strict as before, seeded), and the Linux e2e jobs spent their 15 minutes on a slow apt mirror (#58, fixed by #59: apt's downloads cached per engine and image, the e2e limit 25 minutes). #56 also made `pnpm check --stream` stream on GitHub Actions (`--log-order=stream`), which located #55's hang to twelve files of the core group (the issue).
+
 ## The POSIX audit
 
 Every place the code before this package assumed POSIX (modes, signals, process groups, `ps`, `/proc`, socket paths, symlinks, rename and delete semantics, path syntax), found by searching `packages/*/src` for `process.platform`, `chmod`, octal modes, `kill(-…)`, `/bin/sh`, `ps`, `/proc`, `.sock`, `symlink`, signal names, `detached`, `getuid`, `.uid`, `rename`, `realpath` and path separators, and by the Windows runs of the suites. A unit test (`platform-layer.test.ts`) now refuses any `process.platform` read outside `platform`.
@@ -112,3 +118,17 @@ Every place the code before this package assumed POSIX (modes, signals, process 
 Left for later packages, by their specifications:
 - **WP-W2:** `secrets/index.ts` and `gateway/capabilities.ts` (`chmod 0600/0700`: on Windows these files already inherit the home's owner-only list, which WP-W2's secret-store check proves); `service/unit.ts` (`launchctl`, `systemctl`, `getuid`: the Windows login service); `workers/launcher.ts` and `workers/pool.ts` (crash kinds read from signals such as `SIGABRT`); `@mostra/worker` and `@mostra/verify` (`kill(-pid)` on disconnect; their gate's job covers descendants already); the CLI (`browser.ts`'s `open`/`xdg-open`, `telemetry/store.ts`'s modes and `XDG_CONFIG_HOME`, `commands/dev.ts`, `commands/admin.ts`, `client.ts`, `run.ts`, `bootstrap.ts`'s signals); `verify`, `dev` and the gateway's directories (modes only, covered by inheritance).
 - **WP-W3:** `@mostra/sdk` (`platform.ts`'s gate, `bundle/cache.ts`, `bundle/tree.ts`, `bundle/download.ts`, `mostra.ts`), `create-mostra`, `@mostra/conformance` (`harness/client.ts`, `scenario.ts`, `scenarios/session.ts`: Unix sockets), the Rust crate's attach (`crates/mostra-host`), and the bundle's POSIX launchers.
+
+## Commits and publication
+
+- **Range:** `ca21ff9..1ce906c` on `main`: 58 signed-off commits of `wp/w1-windows-platform` (57 and one merge of `main`, `22f4e59`, which brought D147 to D149) and the merge commit of #54. Then #56 (`a06835e`: the SDK test race, streamed Turbo output), the version pull request #57 (`6dce6df`) and #59 (the e2e apt cache).
+- **Merged:** [#54](https://github.com/mostra-dev/mostra/pull/54) as `1ce906c`. CI, Release and CodeQL were green on `0dd9684` (CI run 39992816356), every review thread was resolved, and code scanning had no open alert. On `main` the first CI run met the SDK test race (#56) and a WebKit IN-03 failure that passed on its rerun; the rerun of run 39995692862 is green.
+- **Released, Mostra 0.3.0** (D36, `docs/agents/release.md`): the version pull request [#57](https://github.com/mostra-dev/mostra/pull/57) (`changeset version`, `versions.ts sync`, the crate at 0.3.0) merged as `6dce6df`. [Release run 40020007979](https://github.com/mostra-dev/mostra/actions/runs/40020007979) built, audited and smoke-tested the four bundles with no Node.js, and published the immutable GitHub release [`v0.3.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.3.0) with its nine assets. It then published the eleven npm packages at 0.3.0 with provenance, and `mostra-host` 0.3.0 to crates.io through trusted publishing. No Windows bundle yet (WP-W3).
+- **External checks, 2026-10-23:** `gh attestation verify mostra-0.3.0-darwin-arm64.tar.gz` passes, and its SHA-256 (`8ef0bffe…fd40`) is the one `SHA256SUMS` names; `npm view` shows 0.3.0 with an SLSA provenance attestation for `@mostra/cli`, `runtime`, `protocol`, `sdk` and `create-mostra`, and 0.3.0 for the other six; crates.io's latest `mostra-host` is 0.3.0. On this Mac, with an empty cache, home and config directory, `npm create mostra@0.3.0 my-artifact` installed the pinned bundle and scaffolded the artifact (1 min 56 s), `npx @mostra/cli@0.3.0 verify` passed, and `publish` made `ver_YT453YCZ2ZREE7Z5W9WT77ATEE` on a 0.3.0 instance.
+- **Mostra HQ** (allowed at M36): already recorded Windows at launch (B51, superseding B12) and WP-W1 to WP-W3 in its roadmap; the roadmap now marks WP-W1 done.
+- **Follow-ups filed:** [#55](https://github.com/mostra-dev/mostra/issues/55) (the Linux core group's intermittent hang, now narrowed to twelve files), [#58](https://github.com/mostra-dev/mostra/issues/58) (the slow apt mirror, closed by #59).
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, CI logs and review texts in `~/.jcode/scratch/w1`, the external smoke in `/tmp/w1rel`, and test homes under the system's temporary directory.
+
+## Next
+
+WP-W2, Windows II: the gateway, workers, verify and the CLI (`docs/design/work-packages/WP-W2.md`). It builds on this package's platform layer and process model, adds its suites to the Windows integration groups, and gives the CLI the pipe-owner check the runtime's own client has (`connectControl`).
