@@ -609,11 +609,6 @@ describe.runIf(WINDOWS)("the gate on its own", () => {
       stdio: ["ignore", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
-  const childrenOf = (pid: number): number[] => {
-    const out = execFileSync(helperPath(), ["processes"], { encoding: "utf8" });
-    const { result } = JSON.parse(out) as { result: { pid: number; ppid?: number }[] };
-    return result.filter((entry) => entry.ppid === pid).map((entry) => entry.pid);
-  };
 
   it("never runs its command when its lifeline closes before go", async () => {
     const marker = join(tempDir("gate-eof"), "ran.txt");
@@ -636,20 +631,23 @@ describe.runIf(WINDOWS)("the gate on its own", () => {
       { MOSTRA_TEST_GATE: "stall-after-create" },
       "setInterval(() => {}, 1 << 30)",
     );
-    await once(child, "spawn");
-    let created: number[] = [];
-    await eventually(
-      () => {
-        created = childrenOf(child.pid ?? 0);
-        return created.length === 1;
-      },
-      10_000,
-      "the gate's suspended child",
-    );
+    // The gate names the child it created (not its own console host) when it stalls.
+    let text = "";
+    child.stderr?.setEncoding("utf8");
+    const created = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`the gate didn't stall: ${text}`)), 10_000);
+      child.stderr?.on("data", (chunk: string) => {
+        text += chunk;
+        const match = /stalled after creating (\d+)/.exec(text);
+        if (match) {
+          clearTimeout(timer);
+          resolve(Number(match[1]));
+        }
+      });
+    });
+    expect(alive(created)).toBe(true);
     child.kill();
     await once(child, "exit");
-    for (const pid of created) {
-      await eventually(() => !alive(pid), 10_000, `the suspended child ${pid} to end`);
-    }
+    await eventually(() => !alive(created), 10_000, `the suspended child ${created} to end`);
   });
 });

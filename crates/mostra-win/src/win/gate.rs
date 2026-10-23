@@ -204,6 +204,7 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
     // A test fault (MOSTRA_TEST_GATE=stall-after-create): a gate that stops between creating its
     // child and naming its job, the moment a gate killed then must still take its child along.
     if test_gate("stall-after-create") {
+        eprintln!("mostra-win gate: stalled after creating {}", suspended.pid);
         loop {
             thread::park();
         }
