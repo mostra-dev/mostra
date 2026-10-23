@@ -263,16 +263,23 @@ export function reapRecorded(
   rows: readonly RecordedChild[],
   warn: (event: string, fields: Readonly<Record<string, unknown>>) => void,
 ): Promise<ReapOutcome[]> {
-  return WINDOWS ? reapWindows(rows) : reapPosix(rows, warn);
+  return WINDOWS ? reapWindows(rows, warn) : reapPosix(rows, warn);
 }
 
-async function reapWindows(rows: readonly RecordedChild[]): Promise<ReapOutcome[]> {
+async function reapWindows(
+  rows: readonly RecordedChild[],
+  warn: (event: string, fields: Readonly<Record<string, unknown>>) => void,
+): Promise<ReapOutcome[]> {
   if (rows.length === 0) return [];
   const answers = await runHelperAsync<
     { pid: number; job?: boolean; ended?: number[]; reused?: boolean; error?: string }[]
   >(["reap", ...rows.map((row) => `${row.pid}:${row.start_time}`)]);
-  return rows.map((_row, index): ReapOutcome => {
+  return rows.map((row, index): ReapOutcome => {
     const answer = answers[index];
+    // A process the helper couldn't end (access, a protected process) is reported, never hidden.
+    if (answer?.error !== undefined) {
+      warn("process.reap_incomplete", { pid: row.pid, error: answer.error });
+    }
     const ended = answer?.ended ?? [];
     if (ended.length > 0) return { ended };
     return { ended: [], skipped: answer?.reused ? "pid reused" : "gone" };
