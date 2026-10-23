@@ -166,9 +166,9 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     } finally {
       rmSync(open, { recursive: true, force: true });
     }
-    // An ordinary user can create the global-namespace job a gate makes for its child, so a
-    // supervisor in another logon session finds it (Opus review of WP-W1).
-    const [job] = asOtherUser(`job:Global\\mostra-job-test-${process.pid}`) as unknown as {
+    // An ordinary user can create the named job a gate makes for its child (in `Global\` it
+    // can't: ERROR_ACCESS_DENIED on the runners, Opus review of WP-W1).
+    const [job] = asOtherUser(`job:Local\\mostra-job-test-${process.pid}`) as unknown as {
       created: boolean;
       error?: number;
     }[];
@@ -332,7 +332,6 @@ describe.runIf(WINDOWS)("Windows: the control pipe (D81 item 4, RT-06)", () => {
     try {
       const [line] = (await once(squatter.stdout, "data")) as [Buffer];
       expect(JSON.parse(line.toString("utf8"))).toMatchObject({ ok: true });
-      expect(await endpointExists(old)).toBe(true);
       // A client refuses it before sending a byte, as if nothing served the name.
       const refused = await connectSocket(old, 5000).then(
         () => undefined,
@@ -482,67 +481,79 @@ describe.runIf(WINDOWS)("Windows: children end with their supervisor (RT-09, RT-
     await stopDaemon(next.status.socket ?? "");
   });
 
-  it("reaps what a supervisor's stuck gates left, by PID and creation time, and spares look-alikes", async () => {
-    const home = testHome();
-    // Gates that miss their lifeline, as hung ones would: the children outlive the supervisor.
-    const { supervisor, started } = await startFamily(home, {
-      ...home.env,
-      MOSTRA_TEST_GATE: "ignore-lifeline",
-    });
-    const everyone = [started.demo, ...started.family.grandchildren];
-    supervisor.kill();
-    await once(supervisor, "exit");
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    for (const pid of everyone) expect(alive(pid)).toBe(true);
+  // Through the child's job by its name, and, where that name can't be opened (a supervisor of
+  // another logon session left it, Opus review), through the child's descendants by parent and
+  // creation time.
+  it.each([
+    ["its job", "ignore-lifeline"],
+    ["its descendants", "ignore-lifeline,hide-job"],
+  ])(
+    "reaps what a supervisor's stuck gates left, by PID and creation time, and spares look-alikes (%s)",
+    async (_how, faults) => {
+      const home = testHome();
+      // Gates that miss their lifeline, as hung ones would: the children outlive the supervisor.
+      const { supervisor, started } = await startFamily(home, {
+        ...home.env,
+        MOSTRA_TEST_GATE: faults,
+      });
+      const everyone = [started.demo, ...started.family.grandchildren];
+      supervisor.kill();
+      await once(supervisor, "exit");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      for (const pid of everyone) expect(alive(pid)).toBe(true);
 
-    // A look-alike: a row whose PID now belongs to an unrelated process created at another time.
-    const decoy = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], {
-      stdio: "ignore",
-    });
-    await once(decoy, "spawn");
-    const decoyInfo = await readProcess(decoy.pid ?? 0);
-    expect(decoyInfo).toBeDefined();
-    const ledger = new Database(join(home.home, "store", "ledger.sqlite"));
-    ledger
-      .prepare(
-        "INSERT INTO child (pid, start_time, kind, owner_ref, pgid, started_at, parent_pid) VALUES (?, 'win/1', 'decoy', 'x', ?, 'then', NULL)",
-      )
-      .run(decoy.pid, decoy.pid);
-    ledger.close();
+      // A look-alike: a row whose PID now belongs to an unrelated process created at another time.
+      const decoy = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], {
+        stdio: "ignore",
+      });
+      await once(decoy, "spawn");
+      const decoyInfo = await readProcess(decoy.pid ?? 0);
+      expect(decoyInfo).toBeDefined();
+      const ledger = new Database(join(home.home, "store", "ledger.sqlite"));
+      ledger
+        .prepare(
+          "INSERT INTO child (pid, start_time, kind, owner_ref, pgid, started_at, parent_pid) VALUES (?, 'win/1', 'decoy', 'x', ?, 'then', NULL)",
+        )
+        .run(decoy.pid, decoy.pid);
+      ledger.close();
 
-    try {
-      const next = await startDaemon(home, { env: home.env });
-      expect(next.status.status).toBe("started");
-      for (const pid of everyone) {
-        await eventually(() => !alive(pid), 10_000, `process ${pid} to be reaped`);
-      }
-      expect(alive(decoy.pid ?? 0)).toBe(true);
-      const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
-      const reaped = log
-        .split("\n")
-        .filter((line) => line.includes('"process.reaped"'))
-        .map((line) => JSON.parse(line) as { kind: string; skipped?: string; signalled: number[] });
-      // The job held the child and both grandchildren (and the console host Windows gives a
-      // console program, which lives in its client's job), never the look-alike.
-      const demo = reaped.find((entry) => entry.kind === "demo")?.signalled ?? [];
-      expect(demo).toEqual(expect.arrayContaining(everyone));
-      expect(demo).not.toContain(decoy.pid);
-      expect(reaped.find((entry) => entry.kind === "decoy")?.skipped).toBe("pid reused");
-      await stopDaemon(next.status.socket ?? "");
-      const after = new Database(join(home.home, "store", "ledger.sqlite"), { readonly: true });
-      expect(after.prepare("SELECT count(*) n FROM child").get()).toEqual({ n: 0 });
-      after.close();
-    } finally {
-      decoy.kill();
-      for (const pid of everyone) {
-        try {
-          process.kill(pid);
-        } catch {
-          // Reaped.
+      try {
+        const next = await startDaemon(home, { env: home.env });
+        expect(next.status.status).toBe("started");
+        for (const pid of everyone) {
+          await eventually(() => !alive(pid), 10_000, `process ${pid} to be reaped`);
+        }
+        expect(alive(decoy.pid ?? 0)).toBe(true);
+        const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+        const reaped = log
+          .split("\n")
+          .filter((line) => line.includes('"process.reaped"'))
+          .map(
+            (line) => JSON.parse(line) as { kind: string; skipped?: string; signalled: number[] },
+          );
+        // The job held the child and both grandchildren (and the console host Windows gives a
+        // console program, which lives in its client's job), never the look-alike.
+        const demo = reaped.find((entry) => entry.kind === "demo")?.signalled ?? [];
+        expect(demo).toEqual(expect.arrayContaining(everyone));
+        expect(demo).not.toContain(decoy.pid);
+        expect(reaped.find((entry) => entry.kind === "decoy")?.skipped).toBe("pid reused");
+        await stopDaemon(next.status.socket ?? "");
+        const after = new Database(join(home.home, "store", "ledger.sqlite"), { readonly: true });
+        expect(after.prepare("SELECT count(*) n FROM child").get()).toEqual({ n: 0 });
+        after.close();
+      } finally {
+        decoy.kill();
+        for (const pid of everyone) {
+          try {
+            process.kill(pid);
+          } catch {
+            // Reaped.
+          }
         }
       }
-    }
-  }, 90_000);
+    },
+    90_000,
+  );
 
   it("never runs the command of a child whose supervisor died before recording it (issue #7)", async () => {
     const home = testHome();

@@ -145,7 +145,7 @@ share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it;
                                                                  -- start_time `<boot>/<start>`; on Windows `win/<creation time>`
                                                                  -- (100 ns since 1601) and pgid its own PID: its Job Object is
-                                                                 -- `Global\mostra-job-<pid>-<creation time>` (D150)
+                                                                 -- `Local\mostra-job-<pid>-<creation time>` (D150)
 schema_migration(version PK, name, runtime_version, applied_at)
 request(method, request_id, result_json, params_digest NULL, created_at, PRIMARY KEY(method, request_id))
                                                                         -- H-03: a mutating request's recorded result, replayed only

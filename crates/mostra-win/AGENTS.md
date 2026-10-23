@@ -25,7 +25,7 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
 - **A child runs only once it is recorded (issue #7, D93).** `gate` creates its command suspended
   inside an unnamed kill-on-close job (`PROC_THREAD_ATTRIBUTE_JOB_LIST`, so the child is never in
   no job of the gate's), then in a Job Object of its own (kill-on-close, named
-  `Global\mostra-job-<pid>-<creation time>`, which a supervisor in any logon session finds),
+  `Local\mostra-job-<pid>-<creation time>`: an ordinary user can't create objects in `Global\`),
   passes the C runtime's descriptor table on (descriptor 3 blanked, so Node.js's IPC channel on 4
   reaches the child), reports `{pid, startTime, job}` on descriptor 3 and resumes the child only
   on "go". Descriptor 3 is the child's lifeline: when it closes, the job ends, descendants
@@ -33,7 +33,9 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
   pipe's helper ignore console Ctrl+C and Ctrl+Break: only the supervisor handles them.
 - **Identity is PID plus creation time.** `identity`, `processes` and `reap` read `GetProcessTimes`
   (`win/<100 ns since 1601>`); `reap` ends a recorded child's job and the child only when the
-  running process's creation time matches the record, so a reused PID is never touched.
+  running process's creation time matches the record, so a reused PID is never touched; when the
+  job's name can't be opened (another logon session's), it ends the child's descendants, each a
+  child of its parent only when created after it.
 - **`unsafe` lives in `src/win/sys.rs` only**, each call with a SAFETY note; the workspace's
   `unsafe_code = "forbid"` is relaxed to `deny` for this crate alone.
 

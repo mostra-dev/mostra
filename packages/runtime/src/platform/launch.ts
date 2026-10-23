@@ -14,7 +14,7 @@
  *   child's lifeline: closing it (a stop, or the supervisor's exit or crash) ends the job, child
  *   and descendants at once. Windows has no signals to ask a process to stop, so a stop is that:
  *   graceful work goes over the child's own channel first (D87). The reaper ends a recorded
- *   child's job, which it opens by the name the gate gave it (`Global\mostra-job-<pid>-<creation>`),
+ *   child's job, which it opens by the name the gate gave it (`Local\mostra-job-<pid>-<creation>`),
  *   and the child itself if it still runs as the recorded process.
  */
 import { type ChildProcess, spawn } from "node:child_process";
@@ -163,7 +163,7 @@ function launchWindows(spec: LaunchSpec): Launched {
   // (libuv's global job), so a supervisor that dies takes its gates with it, and each gate's death
   // closes its child's job. A gate a test makes miss its lifeline (MOSTRA_TEST_GATE, a hung gate's
   // stand-in) is started outside that job, or nothing would be left for the reaper to find.
-  const hung = spec.env["MOSTRA_TEST_GATE"] === "ignore-lifeline";
+  const hung = (spec.env["MOSTRA_TEST_GATE"] ?? "").split(",").includes("ignore-lifeline");
   const child = spawn(helperPath(), ["gate", "--", spec.command, ...spec.args], {
     cwd: spec.cwd,
     env: spec.env,

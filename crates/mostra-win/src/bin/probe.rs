@@ -152,8 +152,12 @@ fn squat(user: &str, password: &str, name: &str) {
     use serde_json::json;
     let full = format!(r"\\.\pipe\{name}");
     let created = sys::as_user(user, password, || {
-        sys::SecurityDescriptor::from_sddl("D:(A;;GA;;;WD)")
-            .and_then(|descriptor| sys::create_pipe_instance(&full, true, &descriptor))
+        // Several instances, so each client the test opens finds one free.
+        sys::SecurityDescriptor::from_sddl("D:(A;;GA;;;WD)").and_then(|descriptor| {
+            (0..8)
+                .map(|index| sys::create_pipe_instance(&full, index == 0, &descriptor))
+                .collect::<std::io::Result<Vec<_>>>()
+        })
     });
     match created {
         Ok(Ok(pipe)) => {

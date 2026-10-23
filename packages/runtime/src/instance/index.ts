@@ -841,7 +841,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         stopWatchingPublishes();
         live.stop();
         interaction.stop();
-        server.close();
+        // Before any child stops: on Windows the pipe's helper is a child, and it hands clients
+        // the answers already sent (the `mostra/shutdown` reply among them) before it exits.
+        await server.close();
         await dev.stopAll();
         await gateway.close();
         await pool.stopAll();

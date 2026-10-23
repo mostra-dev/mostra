@@ -170,6 +170,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-10",
+    name: "a job another session named is reaped only by its PID (Opus review)",
+    file: "../../crates/mostra-win/src/win/process.rs",
+    from: "if !job_found && liveness == Liveness::Running(created) {",
+    to: "if false {",
+    check: integration("windows.test.ts", "(its descendants)"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
     name: "a POSIX path's backslash is taken for a separator (Opus review)",
     file: "src/platform/files.ts",
     from: 'return nameKey(WINDOWS ? path.replaceAll("\\\\", "/") : path);',

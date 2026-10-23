@@ -52,6 +52,37 @@ pub fn processes() -> Result<Value, std::io::Error> {
     ))
 }
 
+/// The running descendants of the process `pid` created at `created`, each with its creation
+/// time: a process counts as a child of another only when it was created after it, since a parent
+/// PID outlives its process and can name a later one.
+fn descendants(pid: u32, created: u64) -> Vec<(u32, u64)> {
+    let Ok(entries) = sys::process_snapshot() else {
+        return Vec::new();
+    };
+    let born: Vec<(u32, u32, u64)> = entries
+        .iter()
+        .filter_map(|entry| match sys::process_liveness(entry.pid) {
+            Liveness::Running(at) => Some((entry.pid, entry.ppid, at)),
+            _ => None,
+        })
+        .collect();
+    let mut found: Vec<(u32, u64)> = Vec::new();
+    let mut frontier = vec![(pid, created)];
+    while let Some((parent, parent_born)) = frontier.pop() {
+        for &(child, child_parent, at) in &born {
+            if child_parent == parent
+                && at >= parent_born
+                && child != pid
+                && !found.iter().any(|(seen, _)| *seen == child)
+            {
+                found.push((child, at));
+                frontier.push((child, at));
+            }
+        }
+    }
+    found
+}
+
 /// `reap <pid>:<startTime>…`: for each recorded child, ends its job (the child and everything it
 /// started, even after the child itself exited) when the job still exists, and the child itself
 /// when it still runs as the recorded process. A PID another process now holds is left alone.
@@ -76,6 +107,15 @@ pub fn reap(targets: &[(u32, String)]) -> Value {
                     Err(error) => return json!({ "pid": pid, "error": error.to_string() }),
                 }
                 let liveness = sys::process_liveness(*pid);
+                if !job_found && liveness == Liveness::Running(created) {
+                    // No job by that name here (a supervisor of another logon session left it):
+                    // the child's descendants, found by parent and creation time.
+                    for (descendant, born) in descendants(*pid, created) {
+                        if sys::terminate_if(descendant, born).unwrap_or(false) {
+                            ended.push(descendant);
+                        }
+                    }
+                }
                 if liveness == Liveness::Running(created)
                     && sys::terminate_if(*pid, created).unwrap_or(false)
                     && !ended.contains(pid)

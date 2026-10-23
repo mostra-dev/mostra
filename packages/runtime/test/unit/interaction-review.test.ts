@@ -62,8 +62,12 @@ async function resultsOf(
 }
 
 /** A token row for `artifactId`, so a view can record the link that opened it. */
+// Each token's ID is new: two random suffixes from 90 collided once in 90 tests that make two,
+// and the second insert met the token table's write-once trigger (seen in WP-W1's CI).
+let tokens = 10;
 function token(ledger: Ledger, artifactId: string): string {
-  const id = `tok_01JB8Z3QF6S7W3N8D5K2C4V9${String(Math.floor(Math.random() * 90) + 10)}`;
+  tokens += 1;
+  const id = `tok_01JB8Z3QF6S7W3N8D5K2C4V9${String(tokens)}`;
   ledger.write((db) =>
     db.run(
       "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, created_at, shell_origin) VALUES (?, ?, ?, '[\"view\"]', ?, 'http://127.0.0.1:20000')",

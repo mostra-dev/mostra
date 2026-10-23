@@ -31,6 +31,12 @@ const EXIT_NOT_RELEASED: i32 = 125;
 const EXIT_CANNOT_RUN: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 
+/// Whether the runtime's tests set `flag` in `MOSTRA_TEST_GATE` (a comma-separated list): test
+/// faults only, never set outside the runtime's suites.
+fn test_gate(flag: &str) -> bool {
+    std::env::var("MOSTRA_TEST_GATE").is_ok_and(|value| value.split(',').any(|item| item == flag))
+}
+
 /// The child's descriptor table (the gate's, without the lifeline at 3) and the handles it
 /// inherits: its standard handles and every descriptor in that table.
 fn child_descriptors(
@@ -64,10 +70,10 @@ fn holder_job() -> io::Result<(String, Job)> {
 /// The name of the job of the child created at `created` with `pid`: the reaper opens it by the
 /// child's recorded identity (`FAILURE_MODEL` §2), and no other process has both.
 pub fn job_name(pid: u32, created: u64) -> String {
-    // The global namespace, so a supervisor started in another logon session (SSH, a service)
-    // finds a predecessor's jobs; the name can't be taken first, since it holds the child's
-    // creation time, and an existing one is refused (Opus review of WP-W1).
-    format!("Global\\mostra-job-{pid}-{created}")
+    // The session's own namespace: an ordinary user may not create objects in `Global\` (seen
+    // on the runners, ERROR_ACCESS_DENIED). A supervisor in another logon session that can't open
+    // the job reaps the child's descendants by their parents and creation times instead.
+    format!("Local\\mostra-job-{pid}-{created}")
 }
 
 /// Appends `argument` to a command line, quoted as the Microsoft C runtime parses it.
@@ -197,14 +203,19 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
         };
     // A test fault (MOSTRA_TEST_GATE=stall-after-create): a gate that stops between creating its
     // child and naming its job, the moment a gate killed then must still take its child along.
-    if std::env::var_os("MOSTRA_TEST_GATE").is_some_and(|value| value == "stall-after-create") {
+    if test_gate("stall-after-create") {
         loop {
             thread::park();
         }
     }
     let started = (|| -> io::Result<(u64, String, Job)> {
         let created = sys::creation_time(&suspended.process)?;
-        let name = job_name(suspended.pid, created);
+        let mut name = job_name(suspended.pid, created);
+        // A test fault (MOSTRA_TEST_GATE=hide-job): a job the reaper can't open by its name, as
+        // one in another logon session's namespace, so the reaper's descendant walk is judged.
+        if test_gate("hide-job") {
+            name.push_str("-hidden");
+        }
         let job = Job::create(&name, &acl::owner_only_object(&user_sddl)?)?;
         job.assign(&suspended.process)?;
         Ok((created, name, job))
@@ -260,7 +271,7 @@ fn watch_lifeline(lifeline: RawHandle, job: Arc<Job>) {
     // A test fault (MOSTRA_TEST_GATE=ignore-lifeline): a gate that no longer watches its lifeline,
     // as a gate that hangs would, so the reaper's own path is what ends the child after a
     // supervisor crash (FAILURE_MODEL §2). Never set outside the runtime's tests.
-    let watch = std::env::var_os("MOSTRA_TEST_GATE").is_none_or(|value| value != "ignore-lifeline");
+    let watch = !test_gate("ignore-lifeline");
     thread::spawn(move || {
         if !watch {
             return;
