@@ -3211,9 +3211,10 @@ function build(seed?: Seed): void {
   const shell = WINDOWS_HOST;
   if (seed?.platform === "win32") {
     if (seed.file.includes("crates/mostra-win")) {
+      // A seed that doesn't compile is a broken seed, not a caught one: say why.
       execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
         cwd: root,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "inherit"],
       });
     }
     // Only the packages Windows runs so far (WP-W1): the protocol and the runtime.
