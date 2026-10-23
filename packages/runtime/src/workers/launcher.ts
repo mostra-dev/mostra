@@ -16,6 +16,7 @@ import {
   type WorkerVersionRef,
 } from "@mostra/protocol";
 import type { Environment } from "../log.ts";
+import { pathKey } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 
 /** How a worker ended. */
@@ -121,7 +122,8 @@ export function localLauncher(options: LocalLauncherOptions): WorkerLauncher {
         resolve(options.home, "cache", "builds"),
         resolve(options.home, "cache", "dev"),
       ];
-      if (!roots.some((root) => versionDir.startsWith(`${root}/`))) {
+      // Strictly inside one of them, compared as the platform compares paths (WP-W1).
+      if (!roots.some((root) => pathKey(versionDir).startsWith(`${pathKey(root)}/`))) {
         throw new Error(
           "A home: locator names a version directory, a verify build or a dev session of the home.",
         );
