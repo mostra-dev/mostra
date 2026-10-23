@@ -21,12 +21,17 @@ if (!send) {
   process.exit(2);
 }
 
-/** Ends this child and its process group (the browser with it). */
+/**
+ * Ends this child and its process group (the browser with it). On Windows there is no group to
+ * signal: its gate's Job Object ends the browser once this process exits (D150).
+ */
 function exitWithGroup(code: number): never {
-  try {
-    process.kill(-process.pid, "SIGTERM");
-  } catch {
-    // The group is already gone.
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-process.pid, "SIGTERM");
+    } catch {
+      // The group is already gone.
+    }
   }
   process.exit(code);
 }

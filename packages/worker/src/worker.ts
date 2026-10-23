@@ -152,11 +152,15 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
 
   const shutdown = (code: number): never => {
     for (const producer of producers.values()) producer.stop();
-    try {
-      // Children of server code die with the worker (it leads its own process group).
-      process.kill(-process.pid, "SIGTERM");
-    } catch {
-      // Not a group leader (a launcher that runs the worker elsewhere): only this process ends.
+    // Children of server code die with the worker: on POSIX it leads its own process group,
+    // which it signals; on Windows there is no group to signal, and its gate's Job Object ends
+    // them once it exits (D150).
+    if (process.platform !== "win32") {
+      try {
+        process.kill(-process.pid, "SIGTERM");
+      } catch {
+        // Not a group leader (a launcher that runs the worker elsewhere): only this process ends.
+      }
     }
     process.exit(code);
   };
