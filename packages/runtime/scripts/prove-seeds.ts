@@ -100,7 +100,7 @@ const SEEDS: readonly Seed[] = [
     name: "a gate runs its child before the supervisor recorded it",
     file: "../../crates/mostra-win/src/win/gate.rs",
     from: 'if read_line(lifeline).as_deref() != Some("go") {',
-    to: "if read_line(lifeline).is_some() && false {",
+    to: "if false {",
     check: integration("windows.test.ts", "issue #7"),
     platform: "win32",
   },
