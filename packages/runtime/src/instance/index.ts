@@ -81,6 +81,7 @@ import {
 } from "../interaction/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
+import { helperPath, type LaunchPipe } from "../platform/index.ts";
 import {
   artifactEnvironment,
   openProcessManager,
@@ -795,7 +796,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,
-        socketPath: () => home.socketPath,
+        socketPath: () => server.socketPath ?? home.socketPath,
         connections: () => server.connections,
         processes: () => manager.list(),
         gateway: () =>
@@ -827,7 +828,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
 
   const instance: Instance = {
     info,
-    socketPath: home.socketPath,
+    get socketPath() {
+      return server.socketPath ?? home.socketPath;
+    },
     processes: manager,
     reaped,
     stopped,
@@ -838,7 +841,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         stopWatchingPublishes();
         live.stop();
         interaction.stop();
-        server.close();
+        // Before any child stops: on Windows the pipe's helper is a child, and it hands clients
+        // the answers already sent (the `mostra/shutdown` reply among them) before it exits.
+        await server.close();
         await dev.stopAll();
         await gateway.close();
         await pool.stopAll();
@@ -865,12 +870,31 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   try {
     await gateway.start();
     gatewayStarted = true;
-    await server.listen(home.socketPath, options.checkIntervalMs);
+    // On Windows the helper serves the owner-only pipe, as a child like any other (RT-10).
+    const launchPipe: LaunchPipe = async (name) => {
+      const child = await manager.spawn({
+        kind: "control-pipe",
+        ownerRef: home.path,
+        command: helperPath(),
+        args: ["pipe", name],
+        channel: true,
+      });
+      if (!child.channel) throw new Error("The control pipe's helper has no channel.");
+      return { channel: child.channel, exited: child.exited, stop: () => child.stop(2000) };
+    };
+    await server.listen(home.socketPath, options.checkIntervalMs, {
+      launchPipe,
+      onMoved: (path) => {
+        faults.at("endpoint:moved");
+        home.publish(options.mode, path);
+        log.warn("home.endpoint_moved", { socket: path });
+      },
+    });
     // Deliveries pending from before a restart go out again (FAILURE_MODEL §4).
     interaction.start();
     // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
     live.start();
-    home.publish(options.mode);
+    home.publish(options.mode, server.socketPath ?? home.socketPath);
     // A host-spawned instance marks its home as a host's (D140 item 4).
     if (options.mode === "host" && markHostConfigured(home.path, "mostra-runtime host"))
       log.info("home.host_configured", { client: "mostra-runtime host" });
@@ -878,7 +902,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // Undo what started before the home is released, so no listener or child outlives it.
     live.stop();
     interaction.stop();
-    server.close();
+    await server.close();
     await gateway.close();
     await pool.stopAll();
     await manager.stopAll();
@@ -922,7 +946,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   log.info("instance.started", {
     mode: options.mode,
     pid: process.pid,
-    socket: home.socketPath,
+    socket: server.socketPath ?? home.socketPath,
     shell: gateway.shellOrigin(),
   });
   return instance;

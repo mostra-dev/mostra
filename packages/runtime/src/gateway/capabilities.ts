@@ -14,7 +14,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -30,6 +29,7 @@ import {
 import { appendEvent } from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
+import { renamePathSync } from "../platform/index.ts";
 
 /** Crockford base32, the alphabet of every Mostra ID body (D77). */
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -127,7 +127,7 @@ export function capabilityKey(home: string, log: Log): Buffer {
   } finally {
     closeSync(fd);
   }
-  renameSync(aside, file);
+  renamePathSync(aside, file);
   chmodSync(file, 0o600);
   return key;
 }

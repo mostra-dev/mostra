@@ -7,8 +7,13 @@ import { ArtifactId, Cursor, TokenId, VersionId } from "./ids.ts";
 import { ArtifactLink, ArtifactManifest, SubmissionPolicy } from "./manifest.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
-/** An absolute file system path: the client resolves relative paths against its own directory. */
-const AbsolutePath = z.string().regex(/^\//);
+/**
+ * An absolute file system path: the client resolves relative paths against its own directory.
+ * POSIX `/…`, and on Windows a drive path (`C:\…`, `C:/…`) or a UNC path (`\\server\share\…`,
+ * WP-W1, D150); a drive-relative `C:x` or a root-relative `\x` isn't absolute. The Windows forms
+ * are alternatives beside the POSIX one, which the schema gate reads as a widening (D32).
+ */
+export const AbsolutePath: z.ZodString = z.string().regex(/^(?:\/|[A-Za-z]:[\\/]|\\\\[^\\])/);
 
 /**
  * Where to build an artifact from: a source path (a `.tsx`, `.jsx` or `.mdx` file, or a directory

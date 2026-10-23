@@ -7,7 +7,7 @@ inputs:
 outputs:
   image:
     description: >-
-      The operating system release and architecture (`ubuntu-26.04-x64`, `macos-15-arm64`). Caches
+      The operating system release and architecture (`ubuntu-26.04-x64`, `macos-15-arm64`, `windows-26100-arm64`). Caches
       of native programs, such as Playwright's browsers, are keyed by it: a browser built for one
       release can't load another's libraries (WebKit for Ubuntu 24.04 needs libicudata.so.74).
     value: ${{ steps.image.outputs.image }}
@@ -20,6 +20,8 @@ runs:
       run: |
         if [ "$RUNNER_OS" = macOS ]; then
           release="macos-$(sw_vers -productVersion | cut -d. -f1)"
+        elif [ "$RUNNER_OS" = Windows ]; then
+          release="windows-$(powershell -NoProfile -Command '[Environment]::OSVersion.Version.Build')"
         else
           release="$(. /etc/os-release && echo "$ID-$VERSION_ID")"
         fi

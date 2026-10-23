@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import { homeHash } from "../home/index.ts";
 import type { Environment } from "../log.ts";
+import { OS } from "../platform/index.ts";
 
 /** Where a home's service is, and whether it is there. */
 export interface ServiceStatus {
@@ -35,7 +36,7 @@ export interface ServiceSpec {
   readonly node: string;
   readonly entry: string;
   readonly env?: Environment;
-  /** `process.platform`. */
+  /** The operating system (`OS` of the platform layer). */
   readonly platform?: string;
 }
 
@@ -50,7 +51,7 @@ function userHome(env: Environment): string {
 /** The service a home's daemon would be, installed or not. */
 export function serviceFor(spec: ServiceSpec): ServiceStatus {
   const env = spec.env ?? process.env;
-  const platform = spec.platform ?? process.platform;
+  const platform = spec.platform ?? OS;
   const hash = homeHash(spec.home);
   const command = [spec.node, spec.entry, "daemon", "--always-on", "--home", spec.home];
   if (platform === "darwin") {

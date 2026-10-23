@@ -16,7 +16,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type ArtifactManifest,
@@ -58,6 +58,8 @@ export {
   type SandboxOptions,
   startSandbox,
 } from "./sandbox.ts";
+
+import { renamePath } from "../platform/index.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
@@ -339,7 +341,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       const outcome = await run.build(temporary);
       if (!outcome.ok) return outcome;
       await rm(join(buildsDir, prepared.versionId), { recursive: true, force: true });
-      await rename(temporary, join(buildsDir, prepared.versionId));
+      await renamePath(temporary, join(buildsDir, prepared.versionId));
       await pruneBuilds(prepared.versionId);
       return outcome;
     } finally {
@@ -756,7 +758,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
         temporary,
         `${JSON.stringify({ verdict: checkedVerdict, built: built.ok }, null, 2)}\n`,
       );
-      await rename(temporary, target);
+      await renamePath(temporary, target);
       await pruneVerdicts();
     } else {
       // Its screenshots stay for the caller who reads this verdict; the cache's pruning removes

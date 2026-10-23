@@ -119,7 +119,9 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 - declared demo dev servers;
 - package installs.
 
-Each child runs in its own process group. Its PID and start time are recorded in the ledger, so a restarted supervisor reaps leftovers from a crash (FAILURE_MODEL §2). Frozen client-only versions need no process at all; the gateway serves their files (RT-05).
+Each child runs in its own process group (on Windows its own Job Object, which ends it and its descendants the moment the supervisor dies, D150). Its PID and start time (creation time on Windows) are recorded in the ledger before it may run, so a restarted supervisor reaps leftovers from a crash (FAILURE_MODEL §2). Frozen client-only versions need no process at all; the gateway serves their files (RT-05).
+
+**Windows** (D146, D150). One module of the runtime, `platform`, holds every difference between POSIX and Windows, and a small Rust helper, `mostra-win`, does what Node.js can't there: the home is `%LOCALAPPDATA%\mostra`, owner-only by a protected access list; the control endpoint is an owner-only named pipe the helper serves and forwards to the supervisor, with a fresh name on every bind that `instance.json` records; each child starts suspended behind the helper's gate in a kill-on-close Job Object, recorded by PID and creation time before it runs. An instance stops over the protocol (`mostra/shutdown`), since Windows has no signals between processes. Until WP-W3, Windows runs only behind `MOSTRA_DEV_WINDOWS=1`, which only Mostra's CI sets.
 
 **Limits and lifecycles** are for stability, never security (D05, D62):
 - **Workers:** 1 GiB heap and a 10 s event-loop watchdog by default, configurable per artifact. Evicted after 10 idle minutes. Restarted with exponential backoff after a crash, which is reported to the viewer and the event log (RT-04).
@@ -128,7 +130,7 @@ Each child runs in its own process group. Its PID and start time are recorded in
 **Runtime distribution** (RT-01, H-13, D142). Each platform (macOS arm64 and x64, Linux x64 and arm64, glibc) gets one hash-pinned, attested bundle: a private Node LTS (24 now, 26 after its LTS date, D48), prebuilt Mostra code, the warm package set, pnpm 10 and native modules (better-sqlite3, Rolldown, Lightning CSS, Tailwind's oxide, TypeScript 7's compiler; node-pty with the terminals in v1.1), each listed with its SHA-256 in the bundle's `files.json`. The verify browser (Playwright's Chrome Headless Shell) isn't redistributed: setup fetches the revision the bundle pins with the bundle's own Playwright and checks every file against the pin (D142 item 2).
 - `npm create mostra`, `@mostra/cli`, the SDK and the Rust crate download it, check its size and SHA-256 against the pins their release carries, check every file against `files.json`, and cache it by digest (D142 items 3, 4).
 - Every entry point runs on the private runtime, so users never need a global Node; a CLI installed from npm only starts the bundle's own (D142 item 6).
-- Windows x64 and arm64 get their bundles from WP-W3 (D146); until then Windows fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35), as every other unsupported platform still does.
+- Windows x64 and arm64 get their bundles from WP-W3 (D146), with the helper `mostra-win.exe` in `bin/`; until then Windows fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35) without the development switch, as every other unsupported platform still does.
 
 ## 5. The browser side
 

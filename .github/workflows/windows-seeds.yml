@@ -1,0 +1,63 @@
+# Seeded violations on Windows, replayed on demand: `prove-seeds.ts --only <requirement>` (each
+# seed red with its violation and green restored) on a Windows runner, where the Windows seeds
+# (RT-10, the helper and the process model) can run; nothing else can run them, since no Windows
+# machine is at hand (docs/agents/run-on-windows.md). Started by hand from the Actions tab or with
+# `gh workflow run windows-seeds.yml --ref <branch> -f only=RT-10`; a package that adds or moves a
+# Windows seed replays it here and records the run in its report.
+name: Windows seeds
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: The requirement whose seeds to replay (RT-10, …)
+        required: true
+        default: RT-10
+      os:
+        description: The runner
+        type: choice
+        options: [windows-latest, windows-11-arm]
+        default: windows-latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-seeds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seeds:
+    name: seeds (${{ inputs.only }}, ${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
+    env:
+      MOSTRA_DEV_WINDOWS: "1"
+      LEFTHOOK: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: cargo build -p mostra-win --release --locked
+      - run: pnpm --filter @mostra/protocol --filter @mostra/react --filter @mostra/runtime build
+      - name: A second local user, for the access checks
+        shell: pwsh
+        run: |
+          $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
+      - name: prove-seeds --only ${{ inputs.only }}
+        env:
+          ONLY: ${{ inputs.only }}
+        run: node packages/runtime/scripts/prove-seeds.ts --only "$ONLY"

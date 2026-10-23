@@ -10,6 +10,7 @@ import {
   connectTo,
   eventually,
   initializeParams,
+  KILLED,
   type LineClient,
   type Message,
   startDaemon,
@@ -81,7 +82,7 @@ describe("a crash at any publish step leaves no visible version (VR-02)", () => 
           params: { source: { path: source } },
         }),
       );
-      expect(await crashing.daemon.exited).toEqual({ code: null, signal: "SIGKILL" });
+      expect(await crashing.daemon.exited).toEqual(KILLED);
 
       // The crash left work in progress behind: staging, and from the archive step on, store files.
       const left = storeState(home);
@@ -239,8 +240,11 @@ describe("builder failures (FAILURE_MODEL §2, §9)", () => {
     expect(response.error?.data.code).toBe("MOSTRA_BUILD_TIMEOUT");
     await eventually(
       async () => {
-        const status = result(await client.call("instance/status")) as { processes: unknown[] };
-        return status.processes.length === 0;
+        const status = result(await client.call("instance/status")) as {
+          processes: { kind: string }[];
+        };
+        // On Windows the control pipe's helper is the instance's own child (D150).
+        return status.processes.every((child) => child.kind === "control-pipe");
       },
       15_000,
       "the hung builder to be stopped",

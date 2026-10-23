@@ -2,7 +2,6 @@
  * The client end of the home socket, used by a starter that finds another supervisor holding the
  * home (D81) and by tests. SDKs and the CLI implement the same few steps in their own packages.
  */
-import { createConnection, type Socket } from "node:net";
 import {
   type ClientInfo,
   createDiagnostic,
@@ -12,6 +11,7 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { ControlConnectError, connectControl } from "../platform/index.ts";
 import { pump, writeLine } from "./streams.ts";
 
 /** An open client connection to an instance's socket. */
@@ -24,21 +24,12 @@ export interface SocketClient {
 
 /**
  * Connects to a control socket. Rejects with `MOSTRA_HOST_CONNECTION_CLOSED` when nothing
- * listens there (the file is missing or stale) or the connection doesn't open within `timeoutMs`.
+ * listens there (the file is missing or stale), the connection doesn't open within `timeoutMs`,
+ * or, on Windows, the pipe under that name is another user's.
  */
 export function connectSocket(path: string, timeoutMs = 5000): Promise<SocketClient> {
-  return new Promise((resolve, reject) => {
-    const socket: Socket = createConnection(path);
-    const timer = setTimeout(() => {
-      socket.destroy();
-      reject(refused(path, "timed out"));
-    }, timeoutMs);
-    socket.once("error", (error: NodeJS.ErrnoException) => {
-      clearTimeout(timer);
-      reject(refused(path, error.code ?? "failed"));
-    });
-    socket.once("connect", () => {
-      clearTimeout(timer);
+  return connectControl(path, timeoutMs).then(
+    (socket) => {
       const peer = new RpcPeer({ send: (message) => void writeLine(socket, message) });
       let markClosed: () => void = () => {};
       const closed = new Promise<void>((done) => {
@@ -53,16 +44,26 @@ export function connectSocket(path: string, timeoutMs = 5000): Promise<SocketCli
           markClosed();
         },
       );
-      resolve({
+      return {
         peer,
         closed,
         close: () => {
           peer.close();
           socket.end();
         },
-      });
-    });
-  });
+      };
+    },
+    (error: unknown) => {
+      // Another user's pipe under the name is no instance of this home, like no instance at all.
+      const why =
+        error instanceof ControlConnectError && error.reason === "not-owned"
+          ? "it belongs to another user"
+          : error instanceof Error
+            ? error.message
+            : "failed";
+      throw refused(path, why);
+    },
+  );
 }
 
 function refused(path: string, why: string): RpcError {

@@ -16,10 +16,11 @@ if (entry === undefined) {
   console.error("The install child needs the installer's entry as its first argument.");
   process.exit(2);
 }
-// Not detached: pnpm stays in this child's process group, which the supervisor and the disconnect
-// rule both end as a whole.
+// Not detached: pnpm stays in this child's process group (on Windows its Job Object), which the
+// supervisor and the disconnect rule both end as a whole. No console window opens on Windows.
 const installer = spawn(process.execPath, [entry, ...args], {
   stdio: ["ignore", "inherit", "inherit"],
+  windowsHide: true,
 });
 installer.on("error", (error) => {
   console.error(`The installer couldn't start: ${error.message}`);

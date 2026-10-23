@@ -300,6 +300,7 @@ class Comparer {
 
     for (const keyword of ["pattern", "format"]) {
       if (keyword in b && !same(a[keyword], b[keyword])) {
+        if (keyword === "pattern" && patternWidens(a[keyword], b[keyword])) continue;
         this.report(path, `${keyword} added or changed`);
       }
     }
@@ -465,4 +466,70 @@ export function compareSnapshots(
       problems.push(`${name} ${item.path}: ${item.reason}. To break it, ${advice}.`);
   }
   return problems;
+}
+
+/**
+ * Splits a regular expression's source at its top-level `|`, keeping escapes, character classes
+ * and groups whole. Returns `undefined` for a source it can't read (unbalanced).
+ */
+function alternatives(source: string): string[] | undefined {
+  const parts: string[] = [];
+  let depth = 0;
+  let inClass = false;
+  let start = 0;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === "\\") {
+      index++;
+      continue;
+    }
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") inClass = true;
+    else if (char === "(") depth++;
+    else if (char === ")") {
+      depth--;
+      if (depth < 0) return undefined;
+    } else if (char === "|" && depth === 0) {
+      parts.push(source.slice(start, index));
+      start = index + 1;
+    }
+  }
+  if (depth !== 0 || inClass) return undefined;
+  parts.push(source.slice(start));
+  return parts;
+}
+
+/** Whether a pattern holds a backreference (`\1` to `\9`, `\k<name>`), escapes considered. */
+export function hasBackreference(pattern: string): boolean {
+  for (let index = 0; index < pattern.length; index++) {
+    if (pattern[index] !== "\\") continue;
+    const next = pattern[index + 1] ?? "";
+    if ((next >= "1" && next <= "9") || next === "k") return true;
+    index++;
+  }
+  return false;
+}
+
+/**
+ * Whether a new pattern provably accepts every string the old one did: the old is `^X` (one
+ * alternative) and the new is `^(?:X|…)`, the old body one of the group's alternatives. A pattern
+ * widened another way is reported as changed, since no general proof exists.
+ */
+export function patternWidens(before: unknown, after: unknown): boolean {
+  if (typeof before !== "string" || typeof after !== "string") return false;
+  // A backreference names a capture by number or name, and alternatives put before the old body
+  // can renumber its captures: `^(a)\1$` → `^(?:(b)|(a)\1$)` refuses `aa` (GPT review of WP-W1).
+  if (hasBackreference(before) || hasBackreference(after)) return false;
+  if (!before.startsWith("^") || !after.startsWith("^(?:") || !after.endsWith(")")) return false;
+  const old = before.slice(1);
+  if ((alternatives(old)?.length ?? 0) !== 1) return false;
+  const group = after.slice("^(?:".length, -1);
+  // The group must span the whole rest of the pattern: `^(?:a)|(b)` isn't one group.
+  if (alternatives(`(?:${group})`)?.length !== 1 || alternatives(group) === undefined) return false;
+  const inner = alternatives(group) ?? [];
+  if (!inner.includes(old)) return false;
+  return alternatives(after.slice(1))?.length === 1;
 }

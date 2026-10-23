@@ -9,12 +9,14 @@
  *   pnpm check --base <ref>        compare against <ref> instead of origin/main
  *   pnpm check --plan [--json]     print which jobs and packages would run, then stop
  *   pnpm check --verbose           print the output of passing jobs too
+ *   pnpm check --stream            print Turbo's output as it arrives, so a job a CI runner cancels
+ *                                  for its time limit still shows where it was (the integration jobs)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { fromRoot, runStreaming } from "../lib/repo.ts";
-import { JOB_NAMES, JOBS, type Job, type JobName } from "./jobs.ts";
+import { JOB_NAMES, JOBS, type Job, type JobName, WINDOWS_PACKAGES } from "./jobs.ts";
 import { makePlan, type Plan } from "./plan.ts";
 
 const { values } = parseArgs({
@@ -26,6 +28,7 @@ const { values } = parseArgs({
     plan: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
     verbose: { type: "boolean", default: false },
+    stream: { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -112,24 +115,45 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
   if (jobs.length === 0) return [];
   const started = Date.now();
   const tasks = [...new Set(jobs.flatMap((job) => job.tasks ?? []))];
-  const filters =
-    current.packages === "all" ? [] : current.packages.map((name) => `--filter=${name}`);
+  // Windows runs only the packages ported to it so far (WP-W1 to WP-W3, D146).
+  const packages =
+    process.platform !== "win32"
+      ? current.packages
+      : (current.packages === "all" ? [...WINDOWS_PACKAGES] : current.packages).filter((name) =>
+          WINDOWS_PACKAGES.includes(name),
+        );
+  if (packages !== "all" && packages.length === 0) {
+    return jobs.map((job) => ({
+      job: job.name,
+      ok: true,
+      ms: 0,
+      output: ["No package of this job runs on Windows yet."],
+    }));
+  }
+  const filters = packages === "all" ? [] : packages.map((name) => `--filter=${name}`);
   const runsDir = fromRoot(".turbo", "runs");
   rmSync(runsDir, { recursive: true, force: true });
   mkdirSync(runsDir, { recursive: true });
   const output: string[] = [];
+  // Turbo's own launcher through Node.js, which runs on every platform (the `.bin` shim is a
+  // shell script on POSIX and a `.cmd` file on Windows).
   const code = await runStreaming(
-    fromRoot("node_modules/.bin/turbo"),
+    process.execPath,
     [
+      fromRoot("node_modules/turbo/bin/turbo"),
       "run",
       ...tasks,
       ...filters,
       "--continue",
       "--summarize",
-      "--output-logs=errors-only",
+      // Streaming needs every task's lines as they come; otherwise only a failure's, at its end.
+      values.stream ? "--output-logs=full" : "--output-logs=errors-only",
       "--ui=stream",
     ],
-    (line) => output.push(line),
+    (line) => {
+      output.push(line);
+      if (values.stream) console.log(line);
+    },
     { env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1", TURBO_TELEMETRY_DISABLED: "1" } },
   );
   const summaryFile = existsSync(runsDir)
@@ -166,7 +190,8 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
         ? []
         : [
             `failed: ${blamed.map((task) => task.taskId).join(", ") || `turbo exited ${code}`}`,
-            ...output,
+            // Already printed as it arrived.
+            ...(values.stream ? [] : output),
           ]),
     ];
     return { job: job.name, ok, ms, output: lines };

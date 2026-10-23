@@ -1,41 +1,23 @@
 /**
- * The process manager (RT-09, ARCHITECTURE §4, FAILURE_MODEL §2). Every child runs as the leader
- * of its own process group and is recorded in the ledger's `child` table with its PID and start
- * time before anyone relies on it. A child's group dies with it, and a supervisor that starts
- * after a crash reaps every recorded group that is still running.
+ * The process manager (RT-09, RT-10, ARCHITECTURE §4, FAILURE_MODEL §2). Every child starts
+ * behind a gate in a group of its own (a process group on POSIX, a Job Object on Windows,
+ * `platform/launch.ts`) and is recorded in the ledger's `child` table with its PID and start
+ * time before it may run. A child's group dies with it, and a supervisor that starts after a
+ * crash reaps every recorded group that is still running.
  */
-import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { Duplex, Writable } from "node:stream";
+import type { Duplex } from "node:stream";
 import { type JsonRpcParams, RpcPeer } from "@mostra/protocol";
 import * as z from "zod";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Environment, Log, Redactor } from "../log.ts";
-import {
-  listProcesses,
-  type ProcessInfo,
-  readProcess,
-  sameBoot,
-  startedNoEarlier,
-} from "./identity.ts";
+import { adoptable, launch, reapRecorded } from "../platform/index.ts";
 
 /** How long a stopping child gets between SIGTERM and SIGKILL, by default. */
 const DEFAULT_GRACE_MS = 5000;
-/** How long reaping waits between SIGTERM and SIGKILL. */
-const REAP_GRACE_MS = 2000;
-/** How long to wait for SIGKILLed processes to disappear before reporting them. */
-const KILL_WAIT_MS = 5000;
 /** How many stderr lines a child's exit report keeps. */
 const STDERR_TAIL = 50;
-
-/**
- * The gate every child starts behind (issue #7): `/bin/sh` waits for "go" on file descriptor 3 and
- * only then replaces itself with the real command, keeping its PID, process group and start time.
- * The supervisor writes "go" after it has recorded the child, so a supervisor killed in between
- * leaves a gate that reads end-of-file and exits 125 without running anything.
- */
-const GATE_SCRIPT = 'IFS= read -r go <&3 && [ "$go" = go ] || exit 125; exec 3<&-; exec "$@"';
 
 /** How a child ended. */
 export interface ChildExit {
@@ -146,6 +128,8 @@ export interface ProcessManager {
   list(): readonly { pid: number; kind: string; ownerRef: string; startedAt: string }[];
   /** Stops every child; used when the supervisor stops. */
   stopAll(graceMs?: number): Promise<void>;
+  /** Ends every child at once without waiting: the last resort at the supervisor's exit. */
+  killAll(): void;
 }
 
 /** Options for {@link openProcessManager}. */
@@ -166,33 +150,9 @@ export interface ProcessManagerOptions {
 export async function openProcessManager(
   options: ProcessManagerOptions,
 ): Promise<{ manager: ProcessManager; reaped: readonly ReapedChild[] }> {
-  const reaped = await reapRecorded(options.ledger, options.log);
+  const reaped = await reap(options.ledger, options.log);
   return { manager: createManager(options), reaped };
 }
-
-/** Signals `pids`, ignoring ones already gone. */
-function signalAll(pids: readonly number[], signal: NodeJS.Signals): void {
-  for (const pid of pids) {
-    try {
-      process.kill(pid, signal);
-    } catch {
-      // Already gone.
-    }
-  }
-}
-
-function signalGroup(pgid: number, signal: NodeJS.Signals): boolean {
-  try {
-    process.kill(-pgid, signal);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const groupAlive = (pgid: number): boolean => signalGroup(pgid, 0 as unknown as NodeJS.Signals);
-
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Waits for `promise` to settle, or `ms` at most, leaving no timer behind. */
 async function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -212,70 +172,21 @@ async function settleWithin(promise: Promise<unknown>, ms: number): Promise<void
   }
 }
 
-/** The processes of a recorded group that are provably the recorded child's: see FAILURE_MODEL §2. */
-function targetsFor(
-  row: ChildRow,
-  processes: readonly ProcessInfo[],
-): number[] | NonNullable<ReapedChild["skipped"]> {
-  const leader = processes.find((info) => info.pid === row.pid);
-  if (leader && leader.startTime !== row.start_time) return "pid reused";
-  if (!leader) {
-    const boot = processes.find((info) => info.pid === process.pid)?.startTime;
-    if (boot === undefined || !sameBoot(boot, row.start_time)) return "other boot";
-  }
-  const members = processes
-    .filter((info) => info.pgid === row.pgid && info.pid !== process.pid)
-    .filter((info) => startedNoEarlier(info.startTime, row.start_time))
-    .map((info) => info.pid);
-  return members.length > 0 ? members : "gone";
-}
-
-async function reapRecorded(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
+async function reap(ledger: Ledger, log: Log): Promise<ReapedChild[]> {
   const rows = ledger.read((db) => db.all<ChildRow>("SELECT * FROM child ORDER BY started_at"));
   if (rows.length === 0) return [];
-  const before = await listProcesses();
-  const plan = rows.map((row) => ({ row, targets: targetsFor(row, before) }));
-  // Only groups proven to be the recorded children's are signalled, then watched until they are
-  // empty: a member may start more processes in the group while it handles SIGTERM, so every
-  // round re-lists the groups instead of trusting the first snapshot (RT-09).
-  const owned = plan.filter((entry) => Array.isArray(entry.targets)).map((entry) => entry.row);
-  const members = (processes: readonly ProcessInfo[]): number[] => [
-    ...new Set(
-      owned.flatMap((row) => {
-        const targets = targetsFor(row, processes);
-        return Array.isArray(targets) ? targets : [];
-      }),
-    ),
-  ];
-  // A listing is a series of reads, so a process that starts while another exits can slip
-  // between them; the groups count as gone only when the kernel has no member left either.
-  const groupsLeft = (): boolean => owned.some((row) => groupAlive(row.pgid));
-  signalAll(members(before), "SIGTERM");
-  const deadline = Date.now() + REAP_GRACE_MS;
-  let remaining = members(await listProcesses());
-  while ((remaining.length > 0 || groupsLeft()) && Date.now() < deadline) {
-    await delay(100);
-    remaining = members(await listProcesses());
-  }
-  const killDeadline = Date.now() + KILL_WAIT_MS;
-  while ((remaining.length > 0 || groupsLeft()) && Date.now() < killDeadline) {
-    signalAll(remaining, "SIGKILL");
-    await delay(50);
-    remaining = members(await listProcesses());
-  }
-  if (remaining.length > 0 || groupsLeft()) {
-    log.warn("process.reap_incomplete", { pids: remaining, pgids: owned.map((row) => row.pgid) });
-  }
+  const outcomes = await reapRecorded(rows, (event, fields) => log.warn(event, fields));
   ledger.write((db) => {
-    for (const { row } of plan) {
+    for (const row of rows) {
       db.run("DELETE FROM child WHERE pid = ? AND start_time = ?", row.pid, row.start_time);
     }
   });
-  const report = plan.map(({ row, targets }): ReapedChild => {
+  const report = rows.map((row, index): ReapedChild => {
     const base = { pid: row.pid, kind: row.kind, ownerRef: row.owner_ref };
-    return Array.isArray(targets)
-      ? { ...base, signalled: targets }
-      : { ...base, signalled: [], skipped: targets };
+    const outcome = outcomes[index];
+    return outcome?.skipped === undefined
+      ? { ...base, signalled: outcome?.ended ?? [] }
+      : { ...base, signalled: [], skipped: outcome.skipped };
   });
   for (const entry of report) log.info("process.reaped", { ...entry });
   return report;
@@ -287,7 +198,7 @@ function createManager({
   redactor,
   faults = noFaults,
 }: ProcessManagerOptions): ProcessManager {
-  const running = new Map<number, ChildHandle>();
+  const running = new Map<number, { handle: ChildHandle; kill(): void }>();
   let stopping = false;
 
   const record = (row: ChildRow): void => {
@@ -307,53 +218,34 @@ function createManager({
   const forget = (pid: number): void => {
     ledger.write((db) => db.run("DELETE FROM child WHERE pid = ? OR parent_pid = ?", pid, pid));
   };
-
-  /**
-   * Terminates groups: SIGTERM, then SIGKILL after `graceMs` to those still present, then waits
-   * (boundedly) until they are gone.
-   */
-  const endGroups = async (pgids: readonly number[], graceMs: number): Promise<void> => {
-    for (const pgid of pgids) signalGroup(pgid, "SIGTERM");
-    const deadline = Date.now() + graceMs;
-    while (Date.now() < deadline && pgids.some(groupAlive)) await delay(25);
-    for (const pgid of pgids) if (groupAlive(pgid)) signalGroup(pgid, "SIGKILL");
-    const killDeadline = Date.now() + KILL_WAIT_MS;
-    while (Date.now() < killDeadline && pgids.some(groupAlive)) await delay(10);
-    const left = pgids.filter(groupAlive);
-    if (left.length > 0) log.warn("process.group_survived_sigkill", { pgids: left });
-  };
+  const warn = (event: string, fields: Readonly<Record<string, unknown>>): void =>
+    log.warn(event, fields);
 
   const spawnChild = async (spec: SpawnSpec): Promise<ChildHandle> => {
     if (stopping) throw new Error("The process manager is stopping.");
     if (spec.ipc && spec.channel) throw new Error("A child takes ipc or a channel, not both.");
     for (const value of spec.redact ?? []) redactor.protect(value);
     redactor.protectEnvironment(spec.env ?? process.env);
-    // fd 3 is the gate; the IPC channel, when there is one, is fd 4 (NODE_CHANNEL_FD survives
-    // the gate replacing itself with the command).
-    const child: ChildProcess = spawn(
-      "/bin/sh",
-      ["-c", GATE_SCRIPT, `mostra-${spec.kind}`, spec.command, ...(spec.args ?? [])],
+    // fd 3 is the gate; the IPC channel or the byte channel, when there is one, is fd 4.
+    const launched = launch(
       {
+        kind: spec.kind,
+        command: spec.command,
+        args: spec.args ?? [],
         cwd: spec.cwd,
         env: spec.env ?? process.env,
-        detached: true,
-        stdio: spec.ipc
-          ? ["ignore", "pipe", "pipe", "pipe", "ipc"]
-          : spec.channel
-            ? ["ignore", "pipe", "pipe", "pipe", "pipe"]
-            : ["ignore", "pipe", "pipe", "pipe"],
-        serialization: "json",
+        extra: spec.ipc ? "ipc" : spec.channel ? "channel" : undefined,
       },
+      warn,
     );
-    const gate = child.stdio[3] as Writable | null;
-    gate?.on("error", () => {
-      // The child exited before reading "go"; its exit is reported through `exited`.
-    });
+    const child = launched.process;
     const startedAt = new Date().toISOString();
-    const pid = await new Promise<number>((resolve, reject) => {
-      child.once("spawn", () => resolve(child.pid ?? 0));
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", () => resolve());
       child.once("error", reject);
     });
+    // The gate's process ID until the child's own is known (the same one on POSIX).
+    let pid = child.pid ?? 0;
     // After the spawn, errors (a failed signal or IPC send) are reported, never thrown: an
     // unhandled 'error' event would take the supervisor down.
     child.on("error", (error) => log.warn("process.error", { kind: spec.kind, pid, error }));
@@ -403,17 +295,19 @@ function createManager({
               );
               return {};
             }
-            const info = await readProcess(parsed.data.pid);
             // Only a group leader (a program in its own session, such as a PTY program) can be
-            // adopted: its whole group is then signalled, and no foreign group ever is.
-            if (!info || info.pgid !== info.pid) return { adopted: false };
-            adopted.set(info.pid, info.pgid);
+            // adopted on POSIX: its whole group is then signalled, and no foreign group ever is.
+            // On Windows every descendant already ends with the child's job.
+            const found = await adoptable(parsed.data.pid);
+            if (!found) return { adopted: false };
+            if (!found.record) return { adopted: true };
+            adopted.set(found.info.pid, found.info.pgid);
             record({
-              pid: info.pid,
-              start_time: info.startTime,
+              pid: found.info.pid,
+              start_time: found.info.startTime,
               kind: `${spec.kind}/adopted`,
               owner_ref: spec.ownerRef,
-              pgid: info.pgid,
+              pgid: found.info.pgid,
               started_at: new Date().toISOString(),
               parent_pid: pid,
             });
@@ -434,37 +328,36 @@ function createManager({
     // Record the child before it may run its command (RT-09, issue #7), then open its gate. If it
     // already exited, nothing is left to reap.
     const registered = (async () => {
-      const info = await readProcess(pid);
+      const info = await launched.identify();
       faults.at("spawn:before-record");
-      if (!info) {
-        // Gone already: nothing is left to record or reap.
-        if (child.exitCode !== null || child.signalCode !== null) return;
-        // Still waiting at its gate, so it can't have exited by itself: its identity just
-        // couldn't be read. Without a row it couldn't be reaped, so it never runs (D80 Claude
-        // review finding 8); the caller stops it and fails the spawn.
-        throw new Error(`Couldn't read the process identity of ${spec.kind} ${pid}.`);
-      }
+      // The same point for one kind of child (`spawn:before-record:demo`), for an instance whose
+      // start already spawns children of its own (on Windows the control pipe's helper).
+      faults.at(`spawn:before-record:${spec.kind}`);
+      // A supervisor stalled here (a test's `hang`) shows the child waiting at its gate, unrecorded.
+      if (faults.hangs(`spawn:before-record:${spec.kind}`)) await new Promise(() => {});
+      if (!info) return;
+      pid = info.pid;
       record({
-        pid,
+        pid: info.pid,
         start_time: info.startTime,
         kind: spec.kind,
         owner_ref: spec.ownerRef,
-        pgid: pid,
+        pgid: info.pid,
         started_at: startedAt,
         parent_pid: null,
       });
-      gate?.end("go\n");
+      launched.release();
     })();
 
     // From here on, the child's group ends with it, whatever happens to its registration.
     const exited = exit.then(async ({ code, signal }) => {
       // The child's lifetime bounds its group and the groups it adopted.
-      await endGroups([pid, ...adopted.values()], 2000);
+      await launched.sweep([...adopted.values()]);
       // The group is gone, so nothing holds the pipes open any more; the bound covers a
       // descendant that left the group with them.
       await settleWithin(Promise.all(drained), 2000);
       await registered.catch(() => {});
-      running.delete(pid);
+      running.delete(child.pid ?? 0);
       try {
         forget(pid);
       } catch (error) {
@@ -478,26 +371,27 @@ function createManager({
     channel?.on("error", (error) =>
       log.warn("process.channel_error", { kind: spec.kind, pid, error }),
     );
-    const handle: ChildHandle = {
-      pid,
+    const stop = async (graceMs = DEFAULT_GRACE_MS): Promise<ChildExit> => {
+      if (launched.running()) await launched.end(graceMs, [...adopted.values()]);
+      return exited;
+    };
+    const handle = {
+      get pid() {
+        return pid;
+      },
       kind: spec.kind,
       ownerRef: spec.ownerRef,
       startedAt,
       ...(channel ? { channel } : {}),
       exited,
-      request(method, params, options) {
+      request(method: string, params?: JsonRpcParams, options?: { timeoutMs?: number }) {
         if (!peer) return Promise.reject(new Error(`${spec.kind} was started without IPC.`));
         return peer.request(method, params, options);
       },
-      async stop(graceMs = DEFAULT_GRACE_MS) {
-        if (child.exitCode === null && child.signalCode === null) {
-          await endGroups([pid, ...adopted.values()], graceMs);
-        }
-        return exited;
-      },
-    };
+      stop,
+    } satisfies ChildHandle;
     // Tracked from the spawn on, so stopAll reaches a child whose registration is still running.
-    running.set(pid, handle);
+    running.set(child.pid ?? 0, { handle, kill: () => launched.kill() });
 
     try {
       await registered;
@@ -527,17 +421,20 @@ function createManager({
   return {
     spawn: trackedSpawn,
     list: () =>
-      [...running.values()].map((child) => ({
-        pid: child.pid,
-        kind: child.kind,
-        ownerRef: child.ownerRef,
-        startedAt: child.startedAt,
+      [...running.values()].map(({ handle }) => ({
+        pid: handle.pid,
+        kind: handle.kind,
+        ownerRef: handle.ownerRef,
+        startedAt: handle.startedAt,
       })),
     async stopAll(graceMs = DEFAULT_GRACE_MS) {
       stopping = true;
       // Spawns already under way finish first, so their children are tracked and stopped too.
       await Promise.all(inflight);
-      await Promise.all([...running.values()].map((child) => child.stop(graceMs)));
+      await Promise.all([...running.values()].map(({ handle }) => handle.stop(graceMs)));
+    },
+    killAll() {
+      for (const { kill } of running.values()) kill();
     },
   };
 }

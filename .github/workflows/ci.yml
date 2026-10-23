@@ -211,7 +211,95 @@ jobs:
       - name: Install the Playwright Chromium headless shell
         run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
       - name: pnpm check --job integration
-        run: node tools/check/cli.ts --job integration $SCOPE --verbose
+        run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream
+
+  # The Windows legs (WP-W1, D146): the unit and integration jobs for the packages ported so far
+  # (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 and arm64. The runtime runs on Windows only
+  # behind the development switch `MOSTRA_DEV_WINDOWS`, which only these legs set; it finds the
+  # Windows helper Cargo builds here (`crates/mostra-win`). The integration leg runs the `windows`
+  # group, WP-01 to WP-04's real-process suites, with a second local user for RT-10's access check.
+  windows:
+    name: ${{ matrix.job }} (${{ matrix.os }}${{ matrix.job == 'integration' && format(', {0}', matrix.group) || '' }})
+    needs: plan
+    if: contains(needs.plan.outputs.jobs, '"unit"') || contains(needs.plan.outputs.jobs, '"integration"')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+        job: [unit, integration]
+        # The integration suites in two groups, one machine each (packages/runtime/vitest.config.ts).
+        group: [windows, windows-publish]
+        exclude:
+          - job: unit
+            group: windows-publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      MOSTRA_DEV_WINDOWS: "1"
+      MOSTRA_TEST_GROUP: ${{ matrix.group }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Skip when not affected
+        id: gate
+        env:
+          JOBS: ${{ needs.plan.outputs.jobs }}
+          JOB: ${{ matrix.job }}
+        run: |
+          if echo "$JOBS" | grep -q "\"$JOB\""; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not affected by this change." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        id: setup
+        if: steps.gate.outputs.run
+        with:
+          job: windows-${{ matrix.job }}-${{ matrix.group }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.gate.outputs.run
+        with:
+          key: windows-helper
+      - name: Build the Windows helper
+        if: steps.gate.outputs.run
+        run: cargo build -p mostra-win --release --locked
+      # The helper's Windows code compiles only on Windows, so the format-lint job's clippy (Linux)
+      # never sees it; it is linted here, on each architecture.
+      - name: Lint the Windows helper
+        if: steps.gate.outputs.run && matrix.job == 'unit'
+        run: cargo clippy -p mostra-win --all-targets --locked -- -D warnings
+      - name: A second local user, for the access checks (RT-10)
+        if: steps.gate.outputs.run && matrix.job == 'integration'
+        shell: pwsh
+        run: |
+          $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
+      - name: Install the Playwright Chromium headless shell
+        if: steps.gate.outputs.run && matrix.job == 'integration'
+        run: pnpm --filter @mostra/runtime exec playwright install --only-shell chromium
+      - name: pnpm check --job ${{ matrix.job }}
+        if: steps.gate.outputs.run
+        env:
+          JOB: ${{ matrix.job }}
+          MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
+        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
+      - name: Keep the test homes' supervisor logs
+        if: failure() && steps.gate.outputs.run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logs-${{ matrix.job }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/mostra-test-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
   # platforms: WebKit on macOS is the closest Playwright gets to Safari.
@@ -274,7 +362,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, check, rust, conformance, integration, e2e, dependency-review]
+    needs: [plan, check, rust, conformance, integration, windows, e2e, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -88,6 +88,17 @@ describe("artifact methods (INTERFACES §6)", () => {
     expect(artifactCreateMethod.params.safeParse({ dir: "./a" }).success).toBe(false);
   });
 
+  it("take Windows absolute paths too, never drive- or root-relative ones (WP-W1)", () => {
+    const publish = artifactPublishMethod.params;
+    for (const path of ["C:\\work\\page.tsx", "d:/work/page.tsx", "\\\\server\\share\\page.tsx"]) {
+      expect(publish.safeParse({ source: { path } }).success, path).toBe(true);
+      expect(artifactCreateMethod.params.safeParse({ dir: path }).success, path).toBe(true);
+    }
+    for (const path of ["C:work", "\\work\\page.tsx", "\\\\\\x", "work\\page.tsx"]) {
+      expect(publish.safeParse({ source: { path } }).success, path).toBe(false);
+    }
+  });
+
   it("let a receipt omit the URL until the gateway serves views (D90)", () => {
     const receipt = {
       artifactId: id,

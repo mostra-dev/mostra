@@ -721,6 +721,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mostra-win"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

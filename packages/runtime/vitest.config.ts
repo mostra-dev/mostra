@@ -16,6 +16,32 @@ const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] 
   verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
   clients: { include: [], exclude: [] },
+  // The Windows legs (WP-W1, D146): WP-01 to WP-04's real-process suites, the ones the platform
+  // layer ports so far, in two groups, one machine each (Windows arm64 runs them about twice as
+  // slowly as x64). Unlike the groups above they overlap them: they are what runs on Windows, and
+  // WP-W2 and WP-W3 add the rest.
+  windows: {
+    include: [
+      "test/integration/instance.test.ts",
+      "test/integration/platform.test.ts",
+      "test/integration/reaping.test.ts",
+      "test/integration/processes.test.ts",
+      "test/integration/deps.test.ts",
+      "test/integration/windows.test.ts",
+    ],
+    exclude: [],
+  },
+  "windows-publish": {
+    include: [
+      "test/integration/protocol-suite.test.ts",
+      "test/integration/publish.test.ts",
+      "test/integration/publish-faults.test.ts",
+      "test/integration/ancestors.test.ts",
+      "test/integration/audit.test.ts",
+      "test/integration/render.test.ts",
+    ],
+    exclude: [],
+  },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group

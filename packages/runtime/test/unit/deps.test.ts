@@ -3,7 +3,7 @@
  * lockfile's text, the offline flag and the artifact environment.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isOffline,
@@ -193,17 +193,38 @@ describe("the install child's settings and environment", () => {
     });
     expect(env).toEqual({
       // D142: the runtime's own Node.js comes first, so `node` in a script is the bundle's.
-      PATH: `${dirname(process.execPath)}:/bin`,
+      PATH: `${dirname(process.execPath)}${delimiter}/bin`,
       HOME: "/home/u",
       CC: "clang",
       HTTPS_PROXY: "http://proxy",
       npm_config_registry: "http://registry",
     });
     // Already first: not added twice.
-    expect(artifactEnvironment({ PATH: `${dirname(process.execPath)}:/bin` })["PATH"]).toBe(
-      `${dirname(process.execPath)}:/bin`,
-    );
+    expect(
+      artifactEnvironment({ PATH: `${dirname(process.execPath)}${delimiter}/bin` })["PATH"],
+    ).toBe(`${dirname(process.execPath)}${delimiter}/bin`);
   });
+
+  it.runIf(process.platform === "win32")(
+    "passes what Windows programs need, matching names without case, and keeps Path's own name",
+    () => {
+      const env = artifactEnvironment({
+        Path: "C:\\Windows\\system32",
+        SystemRoot: "C:\\Windows",
+        ComSpec: "C:\\Windows\\system32\\cmd.exe",
+        TEMP: "C:\\Temp",
+        userprofile: "C:\\Users\\u",
+        GITHUB_TOKEN: "ghp_secret",
+      });
+      expect(env).toEqual({
+        Path: `${dirname(process.execPath)};C:\\Windows\\system32`,
+        SystemRoot: "C:\\Windows",
+        ComSpec: "C:\\Windows\\system32\\cmd.exe",
+        TEMP: "C:\\Temp",
+        userprofile: "C:\\Users\\u",
+      });
+    },
+  );
 
   it("is offline when MOSTRA_OFFLINE says so", () => {
     expect(isOffline({ MOSTRA_OFFLINE: "1" })).toBe(true);

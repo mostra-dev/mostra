@@ -30,6 +30,12 @@ interface Seed {
   readonly e2e?: boolean;
   /** Where Vitest runs, relative to packages/runtime, when not there (`../react` for its suites). */
   readonly cwd?: string;
+  /**
+   * The one platform the seed can be proven on (`win32`: the Windows process model, access lists
+   * and the helper, WP-W1; `posix`: macOS or Linux, where a behavior Windows lacks is judged);
+   * elsewhere it is reported as skipped. Its anchors are checked everywhere.
+   */
+  readonly platform?: NodeJS.Platform | "posix";
 }
 
 const integration = (file: string, ...filter: string[]): string[] => [
@@ -53,6 +59,152 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-W1: Windows (RT-10). The helper's seeds rebuild it (cargo) before their checks.
+  {
+    requirement: "RT-10",
+    name: "a home's access list lets everyone in",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})"',
+    to: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})(A;OICI;FA;;;WD)"',
+    check: integration("windows.test.ts", "another local user open neither"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "the control pipe's access list lets everyone in",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: 'SecurityDescriptor::from_sddl(&format!("O:{user}D:P(A;;GA;;;{user})(A;;GA;;;{SYSTEM})"))',
+    to: 'SecurityDescriptor::from_sddl(&format!("O:{user}D:P(A;;GA;;;{user})(A;;GA;;;{SYSTEM})(A;;GA;;;WD)"))',
+    check: integration("windows.test.ts", "another local user open neither"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a child's job doesn't end with its last handle",
+    file: "../../crates/mostra-win/src/win/sys.rs",
+    from: "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+    to: "limits.BasicLimitInformation.LimitFlags = 0;",
+    check: integration("windows.test.ts", "ends a killed supervisor's child and grandchildren"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "the reaper ends a recorded PID whatever its creation time",
+    file: "../../crates/mostra-win/src/win/process.rs",
+    from: "let liveness = sys::process_liveness(*pid);",
+    to: "let liveness = sys::process_liveness(*pid);\n                let created = match liveness { Liveness::Running(now) => now, _ => created };",
+    check: integration("windows.test.ts", "reaps what a supervisor's stuck gates left"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a gate runs its child before the supervisor recorded it",
+    file: "../../crates/mostra-win/src/win/gate.rs",
+    from: 'if read_line(lifeline).as_deref() != Some("go") {',
+    to: "if false {",
+    check: integration("windows.test.ts", "issue #7"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a pipe that failed after it was ready still counts as intact (GPT review finding 1)",
+    file: "src/platform/control.ts",
+    from: "            failed = true;\n            void helper.stop();",
+    to: "",
+    check: integration("windows.test.ts", "can no longer serve it"),
+    platform: "win32",
+  },
+  // The Opus review of WP-W1: each finding's fix, undone.
+  {
+    requirement: "RT-10",
+    name: "a pipe whose move couldn't be announced is never announced again (Opus review)",
+    file: "src/protocol-server/server.ts",
+    from: "    if (this.#unannounced !== undefined) this.#announce(this.#unannounced);\n",
+    to: "",
+    check: integration("windows.test.ts", "first rewrite fails"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a closing pipe's helper exits without handing clients their answers (Opus review)",
+    file: "../../crates/mostra-win/src/win/pipe.rs",
+    from: "    for writer in pending {\n        let _ = writer.join();\n    }",
+    to: "    drop(pending);",
+    check: integration("windows.test.ts", "writes slowly"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "two heals bind two pipes at once (Opus review)",
+    file: "src/protocol-server/server.ts",
+    from: "this.#healing ??= this.#healOnce()",
+    to: "this.#healing = this.#healOnce()",
+    check: integration("windows.test.ts", "one pipe at a time"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a gate's child starts in no job of its gate's (Opus review)",
+    file: "../../crates/mostra-win/src/win/sys.rs",
+    from: "let mut updated = set_attribute(attributes, PROC_THREAD_ATTRIBUTE_JOB_LIST, &jobs);",
+    to: "let _ = &jobs;\n    let mut updated: io::Result<()> = Ok(());",
+    check: integration("windows.test.ts", "between creating it and naming its job"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a client talks to whoever serves the pipe's name (Opus review)",
+    file: "../../crates/mostra-win/src/win/connect.rs",
+    from: "    match owned {\n        Ok(true) => {}",
+    to: "    match owned {\n        Ok(_) => {}\n        Ok(true) => {}",
+    check: integration("windows.test.ts", "another user took"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "tightening a home resets everything below it, sealed versions too (Opus review)",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: "        if narrow(&security, &user_sddl) {\n            return Ok(());\n        }\n",
+    to: "",
+    check: integration("windows.test.ts", "without unsealing its versions"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "tightening a home leaves another user owning what it made there (GPT review)",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: "        let foreign = !owned_by_user(&security, &user)?;",
+    to: "        let foreign = false;",
+    check: integration("windows.test.ts", "refuses one another user owns"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a job another session named is reaped only by its PID (Opus review)",
+    file: "../../crates/mostra-win/src/win/process.rs",
+    from: "if !job_found && liveness == Liveness::Running(created) {",
+    to: "if false {",
+    check: integration("windows.test.ts", "(its descendants)"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
+    name: "a POSIX path's backslash is taken for a separator (Opus review)",
+    file: "src/platform/files.ts",
+    from: 'return nameKey(WINDOWS ? path.replaceAll("\\\\", "/") : path);',
+    to: 'return nameKey(path.replaceAll("\\\\", "/"));',
+    check: unit("platform-layer.test.ts", "compares paths"),
+    // On Windows a backslash is a separator, so the seed changes nothing there.
+    platform: "posix",
+  },
+  {
+    requirement: "RT-10",
+    name: "Windows is admitted without the development switch",
+    file: "src/home/platform.ts",
+    from: 'if (platform === "win32" && env[WINDOWS_DEV_SWITCH] === "1") return undefined;',
+    to: 'if (platform === "win32") return undefined;',
+    check: integration("platform.test.ts", "fails closed"),
+  },
   // WP-11: the runtime bundle, the bootstrap, the SDK and embedded telemetry.
   {
     requirement: "RT-01",
@@ -120,8 +272,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-01",
     name: "artifact children don't get the runtime's own Node.js first on PATH",
     file: "src/processes/environment.ts",
-    from: '  result["PATH"] = path.split(delimiter)[0] === own ? path : `${own}${delimiter}${path}`;',
-    to: '  result["PATH"] = path;',
+    from: '  result[pathName] = already ? path : path === "" ? own : `${own}${delimiter}${path}`;',
+    to: "  result[pathName] = path;",
     check: unit("deps.test.ts", "passes the artifact environment's allowlist"),
   },
   {
@@ -720,9 +872,9 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "RT-06",
     name: "a stale socket file isn't replaced",
-    file: "src/protocol-server/server.ts",
-    from: "unlinkSync(path);",
-    to: "",
+    file: "src/platform/control.ts",
+    from: "  try {\n    unlinkSync(path);\n  } catch (error) {",
+    to: "  try {\n  } catch (error) {",
     check: integration("instance.test.ts", "recovers after a SIGKILL"),
   },
   {
@@ -744,7 +896,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "RT-09",
     name: "a reused PID is signalled",
-    file: "src/processes/manager.ts",
+    file: "src/platform/launch.ts",
     from: 'if (leader && leader.startTime !== row.start_time) return "pid reused";',
     to: "",
     check: integration("reaping.test.ts"),
@@ -753,7 +905,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-09",
     name: "a child's group outlives it",
     file: "src/processes/manager.ts",
-    from: "await endGroups([pid, ...adopted.values()], 2000);",
+    from: "await launched.sweep([...adopted.values()]);",
     to: "",
     check: integration("processes.test.ts", "take down their group"),
   },
@@ -881,7 +1033,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "#7",
     name: "children run before they are recorded",
-    file: "src/processes/manager.ts",
+    file: "src/platform/launch.ts",
     from: `const GATE_SCRIPT = 'IFS= read -r go <&3 && [ "$go" = go ] || exit 125; exec 3<&-; exec "$@"';`,
     to: `const GATE_SCRIPT = 'exec 3<&-; exec "$@"';`,
     check: integration("reaping.test.ts", "recorded before it runs"),
@@ -898,7 +1050,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "review-2",
     name: "a file's failed sync is ignored",
-    file: "src/registry/store.ts",
+    file: "src/platform/files.ts",
     from: 'if (!directory || !unsupported.includes(code ?? "")) throw error;',
     to: "if (false) throw error;",
     check: ["--project", "unit", "test/unit/store.test.ts"],
@@ -996,7 +1148,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "DP-03",
     name: "a lock layout keeps linking the warm set where the runtime was",
     file: "src/deps/index.ts",
-    from: "    if (target === warm.nodeModules) return;",
+    from: "    if (target !== undefined && samePath(target, warm.nodeModules)) return;",
     to: "    return;",
     check: integration("deps.test.ts", "relinks a lock layout"),
   },
@@ -3064,7 +3216,25 @@ if (values.anchors) {
   process.exit(0);
 }
 
-function build(): void {
+const WINDOWS_HOST = process.platform === "win32";
+
+function build(seed?: Seed): void {
+  // pnpm is a `.cmd` on Windows, which only a shell runs.
+  const shell = WINDOWS_HOST;
+  if (seed?.platform === "win32") {
+    if (seed.file.includes("crates/mostra-win")) {
+      // A seed that doesn't compile is a broken seed, not a caught one: say why.
+      execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+        cwd: root,
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+    }
+    // Only the packages Windows runs so far (WP-W1): the protocol and the runtime.
+    for (const name of ["@mostra/protocol", "@mostra/runtime"]) {
+      execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+    }
+    return;
+  }
   for (const name of [
     "@mostra/protocol",
     "@mostra/server",
@@ -3077,7 +3247,7 @@ function build(): void {
     "@mostra/cli",
     "create-mostra",
   ]) {
-    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore" });
+    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
   }
 }
 
@@ -3087,10 +3257,18 @@ function check(seed: Seed): { ok: boolean; summary: string } {
         cwd: join(root, "tests", "e2e"),
         encoding: "utf8",
       })
-    : spawnSync("npx", ["vitest", "run", ...seed.check], {
-        cwd: join(runtime, seed.cwd ?? "."),
-        encoding: "utf8",
-      });
+    : spawnSync(
+        process.execPath,
+        [
+          join(runtime, seed.cwd ?? ".", "node_modules", "vitest", "vitest.mjs"),
+          "run",
+          ...seed.check,
+        ],
+        {
+          cwd: join(runtime, seed.cwd ?? "."),
+          encoding: "utf8",
+        },
+      );
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
   const summary =
     text
@@ -3110,6 +3288,13 @@ let missed = 0;
 for (const seed of SEEDS) {
   if (values.only && seed.requirement !== values.only) continue;
   if (values.name && !seed.name.includes(values.name)) continue;
+  if (
+    seed.platform !== undefined &&
+    (seed.platform === "posix" ? WINDOWS_HOST : seed.platform !== process.platform)
+  ) {
+    console.log(`${seed.requirement} | ${seed.name} | skipped: needs ${seed.platform}`);
+    continue;
+  }
   const edits = [{ file: seed.file, from: seed.from, to: seed.to }, ...(seed.also ?? [])];
   const originals = edits.map((edit) => {
     const path = join(runtime, edit.file);
@@ -3129,13 +3314,13 @@ for (const seed of SEEDS) {
     for (const { path, edit } of originals) {
       writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
     }
-    build();
+    build(seed);
     red = check(seed);
   } finally {
     restore();
     restore = undefined;
   }
-  build();
+  build(seed);
   const green = check(seed);
   if (red.ok || !green.ok) missed++;
   console.log(

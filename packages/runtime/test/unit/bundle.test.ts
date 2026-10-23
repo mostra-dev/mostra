@@ -4,6 +4,7 @@
  * environment names, so verify renders with the browser the bundle's setup checked.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLE_NAME } from "@mostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,7 +17,7 @@ afterEach(() => {
 
 /** A bundle-shaped tree: `<root>/lib/node_modules/@mostra/runtime`, with `bundle.json` at its root. */
 function bundleTree(name: string): { root: string; runtime: string } {
-  const root = mkdtempSync("/tmp/mrb-");
+  const root = mkdtempSync(join(tmpdir(), "mrb-"));
   dirs.push(root);
   const runtime = join(root, "lib", "node_modules", "@mostra", "runtime");
   mkdirSync(runtime, { recursive: true });

@@ -11,22 +11,13 @@
  * opened.ledger.write((db) => db.run("INSERT INTO child …", …));
  * ```
  */
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  linkSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { existsSync, linkSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type BetterSqlite3 from "better-sqlite3";
 import type { Log } from "../log.ts";
+import { fsyncPath } from "../platform/index.ts";
 import { BOOTSTRAP_SQL, MIGRATIONS, type Migration } from "./migrations.ts";
 import type { LedgerDb, MigrationDb, RunResult, SqlValue } from "./types.ts";
 
@@ -166,12 +157,7 @@ function createLedgerFile(storeDir: string, file: string, log: Log): void {
   } finally {
     db.close();
   }
-  const fd = openSync(temp, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  fsyncPath(temp);
   try {
     linkSync(temp, file);
     log.info("ledger.created", { file });
@@ -185,16 +171,8 @@ function createLedgerFile(storeDir: string, file: string, log: Log): void {
 }
 
 function syncDirectory(dir: string): void {
-  try {
-    const fd = openSync(dir, "r");
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    // Some file systems can't fsync a directory; the data itself is synced.
-  }
+  // Some file systems can't fsync a directory; the data itself is synced.
+  fsyncPath(dir, true);
 }
 
 /**

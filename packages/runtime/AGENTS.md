@@ -15,12 +15,26 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   `MOSTRA_HOME_GONE` when the file was removed.
 - **Migrations only move forward.** Append a migration to `src/ledger/migrations.ts` and never edit
   a released one. Opening backs the ledger up first; a newer ledger is `MOSTRA_HOME_TOO_NEW`.
-- **Every child goes through the process manager (RT-09).** `ProcessManager.spawn` starts it as
-  the leader of its own process group and records it in `child` before anyone relies on it. A
-  child that starts a program in its own session (a PTY) adopts it with `child/adopt`.
+- **Every child goes through the process manager (RT-09, RT-10).** `ProcessManager.spawn` starts
+  it in a group of its own (a process group on POSIX, a Job Object on Windows, `platform/launch.ts`)
+  and records it in `child`, by PID and start time (creation time on Windows), before it may run.
+  A child that starts a program in its own session (a PTY) adopts it with `child/adopt`; on
+  Windows every descendant is already in the child's job.
 - **Children die with their supervisor.** A Node child connects with `connectToSupervisor`, which
   ends its process group when the IPC channel disconnects. Packages that can't import this one
-  (`@mostra/worker`, `@mostra/pty-host`) implement the same rule.
+  (`@mostra/worker`, `@mostra/pty-host`) implement the same rule. On Windows the child's gate
+  holds its Job Object with kill-on-close and ends it when its lifeline (descriptor 3) closes, so
+  the child and its descendants end with the supervisor whatever the child does.
+- **The platform layer owns every operating-system difference (WP-W1, RT-10).** `platform` is the
+  one module that reads `process.platform`; everything else asks it (`WINDOWS`, `OS`) or calls its
+  functions: home defaults, owner-only directories (mode 0700, or an owner-only access list on
+  Windows), the control endpoint (a Unix socket, or the helper's owner-only named pipe on
+  Windows), process identity, launching, ending and reaping children, renames that ride out
+  Windows sharing violations, syncing, directory links (junctions on Windows) and sealing. A
+  test (`platform-layer.test.ts`) fails on any other module that reads `process.platform`.
+  Windows work goes through `mostra-win.exe` (`crates/mostra-win`), found by `helperPath()`.
+- **Windows runs only behind `MOSTRA_DEV_WINDOWS=1` until WP-W3 (D146).** Only Mostra's CI legs
+  set it; without it Windows fails closed like every unsupported platform.
 - **The platform gate runs first (D35, RT-07).** No entry point touches the home before
   `checkPlatform` passes, and nothing platform-specific loads before it: native modules
   (`better-sqlite3`, `oxc-parser`) load on first use through `createRequire`, which a boundary rule
@@ -30,7 +44,9 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   its plugins). The RT-02 audit (`test/integration/audit.test.ts`) records every module the
   supervisor loads.
 - **A child runs only once it is recorded (issue #7).** `ProcessManager.spawn` starts every child
-  behind a `/bin/sh` gate that `exec`s the command after the supervisor wrote its `child` row.
+  behind a gate: on POSIX a `/bin/sh` that `exec`s the command after the supervisor wrote its
+  `child` row; on Windows `mostra-win gate`, which creates the command suspended in its Job
+  Object, reports its PID and creation time, and resumes it on "go".
 - **Versions are immutable and appear atomically (VR-01, VR-02).** A version directory is built in
   `cache/staging`, sealed read-only, renamed into `versions/`, and becomes visible only when its
   ledger row commits; a failed publish removes what it placed, and the next start removes anything
@@ -175,6 +191,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | Module | Owns |
 |---|---|
 | `home` | Platform gate, home and runtime-directory resolution, permissions, the socket name, taking the lock or finding the owner, `instance.json`, the home's settings (`config.json`) |
+| `platform` | Every difference between POSIX and Windows (WP-W1): default homes, owner-only directories, the control endpoint (`control.ts`: the Unix socket or the helper's pipe, with its frame protocol), process identity (`identity.ts`), the child gate, Job Objects and reaping (`launch.ts`), file operations (`files.ts`), base environments, and running the Windows helper (`helper.ts`) |
 | `ledger` | The SQLite ledger: lock, pragmas, migrations with backup, integrity, error mapping |
 | `processes` | Process identity (PID plus start time), the process manager with its gate, reaping, the child side of IPC, the artifact environment children of artifacts get |
 | `protocol-server` | The JSON-RPC dispatcher for stdio and the socket, session rules, the session methods |
@@ -197,7 +214,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
 `MOSTRA_TEST_FAULTS` (`<point>:throw|crash|hang`, comma-separated), the fault points tests use to fail
-or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record` …), or to
+or SIGKILL the instance at a named step (`publish:after-build`, `spawn:before-record`, or `spawn:before-record:<kind>` for one kind of child …), or to
 hang a child (`builder:build:hang`: each builder never answers its build, issue #18);
 `MOSTRA_TEST_BUILD_TIMEOUT_MS` shortens the 180 s build limit and `MOSTRA_TEST_INSTALL_TIMEOUT_MS`
 the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's clock forward
@@ -273,6 +290,13 @@ first module outside `protocol-server` needs it.
   are what agents write, not this package's code.
 - Linux differs from macOS in process listings, signals and `/bin/sh` (`dash`). Run process and
   socket changes on Linux before pushing ([playbook](../../docs/agents/reproduce-on-linux.md)).
+- Windows differs in kind (WP-W1): no signals between processes (stop a daemon with
+  `mostra/shutdown`, `shutdownDaemon` in `test/support.ts`), no process groups (Job Objects), no
+  modes (access lists), files in use can't be removed or renamed, and paths use `\`. Code asks the
+  platform layer; tests use `WINDOWS` from `test/support.ts` and give a Windows variant, or say
+  why a POSIX check doesn't apply. The Windows legs run the `windows` and `windows-publish` groups
+  (`MOSTRA_TEST_GROUP`, `vitest.config.ts`; a new Windows suite joins one of them) with `MOSTRA_DEV_WINDOWS=1` and the helper
+  Cargo builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits
   socket paths to 103 bytes, and its `os.tmpdir()` is long.
 - `net.Server.close()` removes the socket file. Close an old listener before binding its

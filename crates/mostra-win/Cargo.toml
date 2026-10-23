@@ -1,0 +1,48 @@
+[package]
+name = "mostra-win"
+version = "0.0.0"
+description = "Mostra's Windows platform helper: owner-only access control, the home's control pipe, every child in a Job Object behind a gate, and process identity by creation time (WP-W1)."
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# The helper the runtime runs (shipped in the Windows runtime bundles from WP-W3).
+[[bin]]
+name = "mostra-win"
+path = "src/main.rs"
+
+# Test probes only: opening a path or the control pipe as another user (RT-10's access check).
+# Never shipped.
+[[bin]]
+name = "mostra-win-probe"
+path = "src/bin/probe.rs"
+
+[dependencies]
+serde_json = "1.0.150"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_IO",
+  "Win32_System_JobObjects",
+  "Win32_System_Pipes",
+  "Win32_System_Threading",
+] }
+
+# The workspace forbids `unsafe`; this crate is the one place that calls Win32 directly. Its
+# `unsafe` lives only in `src/win/sys.rs`, which allows it with a SAFETY note per call.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

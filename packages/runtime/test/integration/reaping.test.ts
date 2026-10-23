@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
-import { bootId, listProcesses, readProcess } from "../../src/processes/identity.ts";
+import { bootId, listProcesses, readProcess } from "../../src/platform/identity.ts";
 import {
   alive,
   connectTo,
@@ -21,6 +21,7 @@ import {
   startDaemon,
   tempDir,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 const Database = createRequire(import.meta.url)(
@@ -48,7 +49,8 @@ async function startDecoy(): Promise<number> {
   return child.pid ?? 0;
 }
 
-describe("reaping after a supervisor crash (RT-09)", () => {
+// POSIX process groups; windows.test.ts reaps Job Objects on Windows.
+describe.skipIf(WINDOWS)("reaping after a supervisor crash (RT-09)", () => {
   it("reaps demo and PTY grandchildren by recorded PID and start time, and spares look-alikes", async () => {
     const home = testHome();
     const supervisor = spawn(process.execPath, [fixture("supervisor.mjs"), home.home], {
@@ -151,7 +153,7 @@ describe("reaping after a supervisor crash (RT-09)", () => {
   });
 });
 
-describe("a child is recorded before it runs (issue #7)", () => {
+describe.skipIf(WINDOWS)("a child is recorded before it runs (issue #7)", () => {
   it("never runs the command of a child whose supervisor died before recording it", async () => {
     const home = testHome();
     const marker = join(tempDir("gate"), "ran.txt");

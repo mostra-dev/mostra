@@ -14,7 +14,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -32,6 +31,7 @@ import {
   secretSetMethod,
 } from "@mostra/protocol";
 import type { Log, Redactor } from "../log.ts";
+import { renamePathSync } from "../platform/index.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 
 /** Where a secret lives: the home's shared store, or one artifact's. */
@@ -151,7 +151,7 @@ export function openSecrets(options: SecretsOptions): Secrets {
       const temporary = join(dir, `.${name}.${process.pid}.tmp`);
       writeFileSync(temporary, value, { mode: 0o600, flag: "w" });
       chmodSync(temporary, 0o600);
-      renameSync(temporary, join(dir, name));
+      renamePathSync(temporary, join(dir, name));
       options.log.info("secret.set", { name, scope: scope.kind });
       return entry(dir, name, scope);
     },

@@ -20,8 +20,8 @@
  * ```
  */
 import { randomBytes } from "node:crypto";
-import { existsSync, readlinkSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import {
@@ -43,6 +43,13 @@ import {
   recordResult,
 } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
+import {
+  linkDirectory,
+  linkTarget,
+  replaceDirectoryLink,
+  samePath,
+  WINDOWS,
+} from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
 import { type Lock, lockDigest, lockText, parseLock, pinnedPackages } from "./lock.ts";
@@ -223,8 +230,13 @@ export function isOffline(env: Environment): boolean {
   );
 }
 
-/** A shell-safe rendering of `value`, for the commands in diagnostics. */
+/**
+ * A shell-safe rendering of `value`, for the commands in diagnostics: POSIX shell quoting, or on
+ * Windows the double quotes PowerShell and `cmd` both read (a Windows path holds no `"`), and a
+ * plain path with backslashes as it is.
+ */
 function shellQuote(value: string): string {
+  if (WINDOWS) return /^[\w@%+=:,./\\-]+$/.test(value) ? value : `"${value}"`;
   return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
@@ -369,7 +381,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     const work = join(dirs.tmp, `resolve-${randomBytes(6).toString("hex")}`);
     await mkdir(work);
     try {
-      await symlink(warm.nodeModules, join(work, "warm"), "dir");
+      await linkDirectory(warm.nodeModules, join(work, "warm"));
       await writeFile(join(work, "package.json"), manifestOf(input.pins));
       if (input.previous !== undefined)
         await writeFile(join(work, "pnpm-lock.yaml"), input.previous);
@@ -412,16 +424,9 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   /** Points a layout's `warm` symlink at the current warm set (the runtime may have moved). */
   const relinkWarm = async (dir: string): Promise<void> => {
     const link = join(dir, "warm");
-    let target: string | undefined;
-    try {
-      target = readlinkSync(link);
-    } catch {
-      target = undefined;
-    }
-    if (target === warm.nodeModules) return;
-    const fresh = `${link}.${randomBytes(4).toString("hex")}`;
-    await symlink(warm.nodeModules, fresh, "dir");
-    await rename(fresh, link);
+    const target = await linkTarget(link);
+    if (target !== undefined && samePath(target, warm.nodeModules)) return;
+    await replaceDirectoryLink(warm.nodeModules, link);
   };
 
   /**
@@ -456,7 +461,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       await rm(dir, { recursive: true, force: true });
       await mkdir(dir, { recursive: true });
       try {
-        await symlink(warm.nodeModules, join(dir, "warm"), "dir");
+        await linkDirectory(warm.nodeModules, join(dir, "warm"));
         await writeFile(join(dir, "package.json"), manifestOf(lock.packages));
         await writeFile(join(dir, "pnpm-lock.yaml"), pnpm);
         const outcome = await install().run({
@@ -536,7 +541,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       await rm(dir, { recursive: true, force: true });
       await mkdir(dir, { recursive: true });
       try {
-        await symlink(warm.nodeModules, join(dir, "warm"), "dir");
+        await linkDirectory(warm.nodeModules, join(dir, "warm"));
         await writeFile(
           join(dir, "package.json"),
           `${JSON.stringify(

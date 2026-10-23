@@ -12,13 +12,14 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { cp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import { LIVE_DECLARATION } from "../builder/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
 import type { Environment, Log } from "../log.ts";
+import { linkDirectory } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 
 /** How long the check may take: the build's own limit, which it runs beside (FAILURE_MODEL §9). */
@@ -247,7 +248,7 @@ export async function typecheck(options: {
   await mkdir(join(workDir, ".mostra-check"), { recursive: true });
   try {
     await cp(options.sourceDir, join(workDir, "source"), { recursive: true });
-    await symlink(options.nodeModules, join(workDir, "node_modules"), "dir");
+    await linkDirectory(options.nodeModules, join(workDir, "node_modules"));
     await writeFile(join(workDir, ".mostra-check", "assets.d.ts"), AMBIENT);
     if (options.hasLive)
       await writeFile(join(workDir, ".mostra-check", "mostra-env.d.ts"), LIVE_DECLARATION);

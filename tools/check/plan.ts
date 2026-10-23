@@ -4,7 +4,12 @@
  * job compute it the same way, so local and CI runs choose the same work.
  */
 import { git, mergeBase } from "../lib/repo.ts";
-import { listPackages, owningPackage, withDependents } from "../lib/workspace.ts";
+import {
+  listPackages,
+  owningPackage,
+  type WorkspacePackage,
+  withDependents,
+} from "../lib/workspace.ts";
 
 /** The work a check run covers. */
 export interface Plan {
@@ -36,6 +41,26 @@ const GLOBAL_INPUTS: readonly RegExp[] = [
   /^\.node-version$/,
 ];
 
+/**
+ * Directories outside every workspace package that a package runs, so a change in them affects
+ * that package's jobs (and its dependents'): the Windows helper is run by the runtime and is only
+ * exercised by the runtime's Windows suites, since its code compiles on Windows alone (WP-W1).
+ */
+const RUN_BY: readonly { readonly dir: string; readonly pkg: string }[] = [
+  { dir: "crates/mostra-win", pkg: "@mostra/runtime" },
+];
+
+/** The packages a changed file affects directly: its owner, and the package that runs it. */
+export function directOwners(packages: readonly WorkspacePackage[], file: string): string[] {
+  const owners: string[] = [];
+  const owner = owningPackage(packages, file);
+  if (owner) owners.push(owner.name);
+  for (const entry of RUN_BY) {
+    if (file === entry.dir || file.startsWith(`${entry.dir}/`)) owners.push(entry.pkg);
+  }
+  return owners;
+}
+
 /** Builds the plan for a full run, or for the change since `base` when `affected` is set. */
 export function makePlan(options: { affected: boolean; base?: string }): Plan {
   const base = mergeBase(options.base);
@@ -48,10 +73,7 @@ export function makePlan(options: { affected: boolean; base?: string }): Plan {
   }
   const packages = listPackages();
   const direct = new Set<string>();
-  for (const file of changed) {
-    const owner = owningPackage(packages, file);
-    if (owner) direct.add(owner.name);
-  }
+  for (const file of changed) for (const name of directOwners(packages, file)) direct.add(name);
   return { base, changed, packages: [...withDependents(packages, direct)].sort() };
 }
 

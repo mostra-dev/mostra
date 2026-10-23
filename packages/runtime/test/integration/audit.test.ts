@@ -9,7 +9,7 @@
  */
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { openPage, type RunState } from "../action-page.ts";
 import {
@@ -52,7 +52,7 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   const marker = join(tempDir("marker"), "executed.txt");
   const daemon = await startDaemon(home, {
     env: { ...home.env, MOSTRA_TEST_AUDIT_FILE: audit },
-    nodeArgs: ["--import", join(fixtures, "audit.mjs")],
+    nodeArgs: ["--import", pathToFileURL(join(fixtures, "audit.mjs")).href],
   });
   const client = await connectTo(daemon.status.socket as string);
   result(await client.call("mostra/initialize", initializeParams()));
@@ -74,12 +74,22 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   // which calls `archive` (it opts into dryRun()) in a sandbox worker.
   const verdict = result(
     await client.call("artifact/verify", { source: { path: trapped } }, 300_000),
-  ) as { status: string; smoke: { interactions: number } };
-  expect(verdict.status).toBe("pass");
+  ) as {
+    status: string;
+    smoke: { interactions: number };
+    diagnostics?: { code: string; message: string }[];
+  };
+  // The codes and messages say why when it doesn't pass.
+  expect(
+    verdict.status,
+    JSON.stringify(verdict.diagnostics?.map(({ code, message }) => ({ code, message }))),
+  ).toBe("pass");
   expect(verdict.smoke.interactions).toBeGreaterThan(0);
   const verifiedRuns = readFileSync(marker, "utf8").trim().split("\n");
   expect(verifiedRuns.length).toBeGreaterThan(0);
-  for (const line of verifiedRuns) expect(line).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+  for (const line of verifiedRuns) {
+    expect(line.replaceAll("\\", "/")).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+  }
 
   const receipts = [];
   for (const path of [trapped, join(mdx, "page.mdx"), created.dir, trapped]) {
@@ -130,7 +140,7 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   for (const line of ran) {
     const [pid, entry] = line.split(" ");
     expect(Number(pid)).not.toBe(daemon.status.pid);
-    expect(entry).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+    expect((entry ?? "").replaceAll("\\", "/")).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
   }
 
   await client.call("mostra/shutdown", {});
@@ -169,4 +179,6 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
     `globalThis.process.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(control)}, "ran");`,
   )();
   expect(readFileSync(control, "utf8")).toBe("ran");
-});
+  // One verify (a browser), a publish and action calls in a row: Windows arm64 runners take about
+  // twice x64's 42 s, past the suite's 60 s (WP-W1).
+}, 180_000);

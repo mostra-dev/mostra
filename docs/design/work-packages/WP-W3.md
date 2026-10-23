@@ -39,7 +39,8 @@ Design detail for this package:
 - Runtime bundles for win32 x64 and arm64: the private Node, the native prebuilds, and D142's verification; the verify browser is fetched at setup, never shipped. The license audit covers each bundle (`--bundle`).
 - `create-mostra`, the SDK's platform gate and bundle download, and the release pipeline produce and publish the Windows bundles with the others.
 - The Rust host crate spawns and attaches over the Windows transport; the Rust and TypeScript reference hosts pass the conformance kit on Windows.
-- The development switch from WP-W1 is removed: Windows is supported, and RT-07's fail-closed check covers the platforms still unsupported.
+- The development switch from WP-W1 (`MOSTRA_DEV_WINDOWS`, D150) is removed: Windows is supported, and RT-07's fail-closed check covers the platforms still unsupported.
+- From WP-W1 (D150): the bundles carry `mostra-win.exe` in `bin/` (the runtime finds it there), built for each architecture; the SDK and the Rust crate attach over the pipe `instance.json` names, and refuse it unless its owner is the user (the SDK through `mostra-win connect`, the crate with `GetSecurityInfo` on its handle, opened with `SECURITY_IDENTIFICATION`), since another user can create a pipe under a name no instance serves (WP-W1's Opus review); the bundle's launchers become `.cmd` or executables.
 - Docs: installation, the host guides and troubleshooting cover Windows.
 - From this package on, every package keeps the Windows legs green (for example WP-13's tunnel binaries and WP-14 and WP-15's host configuration paths).
 

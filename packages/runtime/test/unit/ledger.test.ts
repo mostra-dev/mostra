@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { RpcError } from "@mostra/protocol";
@@ -12,7 +12,7 @@ import {
   openLedger,
 } from "../../src/ledger/index.ts";
 import { silentLog } from "../../src/log.ts";
-import { tempDir } from "../support.ts";
+import { tempDir, WINDOWS } from "../support.ts";
 
 const Database = createRequire(import.meta.url)(
   "better-sqlite3",
@@ -243,18 +243,41 @@ describe("writes (FAILURE_MODEL §1, §3)", () => {
     ledger.close();
   });
 
-  it("fails closed with MOSTRA_HOME_GONE when the ledger file is removed while open", () => {
+  // POSIX lets a process remove an open file, and SQLite would keep writing into it; Windows
+  // refuses the removal instead (the next test).
+  it.skipIf(WINDOWS)(
+    "fails closed with MOSTRA_HOME_GONE when the ledger file is removed while open",
+    () => {
+      const dir = storeDir();
+      const ledger = open(dir);
+      rmSync(join(dir, LEDGER_FILE));
+      rmSync(join(dir, `${LEDGER_FILE}-wal`), { force: true });
+      const error = failure(() =>
+        ledger.write((db) =>
+          db.run("INSERT INTO child VALUES (1, 'b/1', 'demo', 'x', 1, 'now', NULL)"),
+        ),
+      );
+      expect(error.diagnostic.code).toBe("MOSTRA_HOME_GONE");
+      ledger.close();
+    },
+  );
+});
+
+describe.runIf(WINDOWS)("an open ledger on Windows (RT-10)", () => {
+  it("can't be removed or replaced while its owner holds it, and keeps committing", () => {
     const dir = storeDir();
     const ledger = open(dir);
-    rmSync(join(dir, LEDGER_FILE));
-    rmSync(join(dir, `${LEDGER_FILE}-wal`), { force: true });
-    const error = failure(() =>
-      ledger.write((db) =>
-        db.run("INSERT INTO child VALUES (1, 'b/1', 'demo', 'x', 1, 'now', NULL)"),
-      ),
+    expect(() => rmSync(join(dir, LEDGER_FILE))).toThrow(/EPERM|EBUSY/);
+    expect(() => renameSync(join(dir, LEDGER_FILE), join(dir, "moved.sqlite"))).toThrow(
+      /EPERM|EBUSY|EACCES/,
     );
-    expect(error.diagnostic.code).toBe("MOSTRA_HOME_GONE");
+    ledger.write((db) =>
+      db.run("INSERT INTO child VALUES (1, 'b/1', 'demo', 'x', 1, 'now', NULL)"),
+    );
+    expect(ledger.read((db) => db.get<{ n: number }>("SELECT count(*) n FROM child"))?.n).toBe(1);
     ledger.close();
+    // Released with the lock: removable again.
+    rmSync(join(dir, LEDGER_FILE));
   });
 });
 

@@ -48,6 +48,8 @@ export {
   type VersionRegistry,
 } from "./types.ts";
 
+import { baseEnvironment } from "../platform/index.ts";
+
 /** How long one build may take (FAILURE_MODEL §9). */
 export const BUILD_TIMEOUT_MS = 180_000;
 
@@ -187,12 +189,7 @@ export function createSpaRenderMode(options: SpaRenderModeOptions): RenderMode {
   const timeoutMs = options.timeoutMs ?? BUILD_TIMEOUT_MS;
   const env = options.env ?? process.env;
   // The builder gets only what it needs: no secrets, nothing that could reach a bundle.
-  const childEnv: Environment = {
-    PATH: env["PATH"] ?? "/usr/bin:/bin",
-    HOME: env["HOME"] ?? "/",
-    NODE_ENV: "production",
-    ...(env["TMPDIR"] ? { TMPDIR: env["TMPDIR"] } : {}),
-  };
+  const childEnv: Environment = { ...baseEnvironment(env), NODE_ENV: "production" };
 
   return {
     id: "spa",

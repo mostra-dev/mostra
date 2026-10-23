@@ -6,6 +6,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
+  cpSync,
   type Dirent,
   existsSync,
   mkdtempSync,
@@ -14,22 +15,142 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
 import { afterAll } from "vitest";
+import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
+/**
+ * Keeps the supervisor logs of the test homes in `MOSTRA_TEST_LOG_DIR`, when it is set, before
+ * their homes are removed: CI keeps them for failed runs, since an instance's own errors (the cause
+ * of a `MOSTRA_HOST_INTERNAL_ERROR`) are written only there.
+ */
+function keepLogs(dir: string): void {
+  const into = process.env["MOSTRA_TEST_LOG_DIR"];
+  if (!into) return;
+  const visit = (at: string, depth: number): void => {
+    if (depth > 3) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(at, entry.name);
+      if (entry.name === "logs" && entry.isDirectory()) {
+        const target = join(into, `${basename(dir)}-${depth}-${basename(at)}`);
+        try {
+          cpSync(path, target, { recursive: true });
+        } catch {
+          // A log still being written is kept as far as it could be read.
+        }
+      } else if (entry.isDirectory() && !entry.isSymbolicLink()) visit(path, depth + 1);
+    }
+  };
+  visit(dir, 0);
+}
+
 afterAll(() => {
-  for (const dir of created.splice(0)) removeAll(dir);
+  for (const dir of created.splice(0)) {
+    keepLogs(dir);
+    try {
+      removeAll(dir);
+    } catch (error) {
+      // Windows refuses to remove a file this process still has open, such as a ledger a unit
+      // test left open for the life of its file; the directory stays in the temporary folder.
+      if (!WINDOWS || !["EPERM", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+        throw error;
+      }
+    }
+  }
 });
+
+/** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
+export const WINDOWS: boolean = OS === "win32";
+
+/**
+ * How a process the fault points killed (`<point>:crash`) is seen to exit: SIGKILL on POSIX; on
+ * Windows `TerminateProcess`, exit code 1, with no signal.
+ */
+export const KILLED: { code: number | null; signal: string | null } = WINDOWS
+  ? { code: 1, signal: null }
+  : { code: null, signal: "SIGKILL" };
+
+/**
+ * The allow entries of a path's access list on Windows, from the helper's test probe: each
+ * entry's SID and access mask. A sealed version's must grant reading only.
+ */
+export function accessEntries(path: string): { sid: string; mask: number }[] {
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  const out = execFileSync(probe, ["security", path], { encoding: "utf8", windowsHide: true });
+  const { result } = JSON.parse(out) as { result: { sddl: string } };
+  const dacl = result.sddl.slice(result.sddl.indexOf("D:"));
+  const rights: Record<string, number> = {
+    FA: 0x1f01ff,
+    FR: 0x120089,
+    FX: 0x1200a0,
+    GA: 0x10000000,
+    GR: 0x80000000,
+    GX: 0x20000000,
+    GW: 0x40000000,
+  };
+  return [...dacl.matchAll(/\(A;[^;]*;([^;]*);[^;]*;[^;]*;([^)]*)\)/g)].map((match) => {
+    const text = match[1] ?? "";
+    const mask = text.startsWith("0x")
+      ? Number(text)
+      : (text.match(/../g) ?? []).reduce((sum, code) => sum | (rights[code] ?? 0xffffffff), 0);
+    return { sid: match[2] ?? "", mask };
+  });
+}
+
+/** What may be written through an access mask: data, appended data, attributes, deletion, the list itself. */
+export const WRITE_RIGHTS =
+  0x2 | 0x4 | 0x10 | 0x100 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000;
+
+/**
+ * Whether `path` is sealed against its owner's writes: no write bit on POSIX; on Windows no entry
+ * of its access list grants a write right (the runners' administrator passes any list through
+ * Node.js, so the list itself is what is judged, VERIFIED_FACTS WP-W1).
+ */
+export function sealedAgainstWrites(path: string): boolean {
+  if (!WINDOWS) return (statSync(path).mode & 0o222) === 0;
+  return accessEntries(path).every((entry) => (entry.mask & WRITE_RIGHTS) === 0);
+}
+
+/** Lifts a version's seal so a test can damage it: modes back on POSIX, the owner's list on Windows. */
+export function unsealTree(dir: string): void {
+  if (WINDOWS) {
+    execFileSync(helperPath(), ["unseal", dir], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  chmodSync(dir, 0o755);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) unsealTree(path);
+    else chmodSync(path, 0o644);
+  }
+}
 
 /** Removes a tree, including sealed (read-only) version directories. */
 export function removeAll(dir: string): void {
+  if (WINDOWS) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    } catch {
+      // A sealed version's access list refuses deletion until its owner resets it.
+      execFileSync(helperPath(), ["unseal", dir], { stdio: "ignore", windowsHide: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
+    return;
+  }
   const unseal = (path: string): void => {
     let entries: Dirent[];
     try {
@@ -46,10 +167,12 @@ export function removeAll(dir: string): void {
 
 /**
  * A fresh directory, removed after the file's tests. `short` places it under `/tmp`, because
- * macOS limits socket paths to 103 bytes and its `os.tmpdir()` is long.
+ * macOS limits socket paths to 103 bytes and its `os.tmpdir()` is long (Windows has no such
+ * limit: its control endpoint is a pipe). Its real path is the long form on Windows too.
  */
 export function tempDir(prefix: string, short = false): string {
-  const dir = realpathSync(mkdtempSync(join(short ? "/tmp" : tmpdir(), `${prefix}-`)));
+  const base = short && !WINDOWS ? "/tmp" : tmpdir();
+  const dir = realpathSync.native(mkdtempSync(join(base, `${prefix}-`)));
   created.push(dir);
   return dir;
 }
@@ -183,6 +306,34 @@ export function initializeParams(overrides: Record<string, unknown> = {}): Recor
     ports: [],
     ...overrides,
   };
+}
+
+/**
+ * Whether a control endpoint exists: a socket file on POSIX; on Windows a pipe a client can
+ * connect to (a pipe is no file, and it disappears with its server).
+ */
+export async function endpointExists(path: string): Promise<boolean> {
+  if (!WINDOWS) return existsSync(path);
+  return new Promise((resolve) => {
+    const connection = createConnection(path);
+    connection.once("connect", () => {
+      connection.destroy();
+      resolve(true);
+    });
+    connection.once("error", () => resolve(false));
+  });
+}
+
+/**
+ * Stops a daemon the way every platform can: `mostra/shutdown` over its socket (D87). (A signal
+ * would do on POSIX; Windows has none to send.)
+ */
+export async function shutdownDaemon(socket: string): Promise<void> {
+  const client = await connectTo(socket);
+  await client.call("mostra/initialize", initializeParams());
+  const response = await client.call("mostra/shutdown");
+  if (response.error) throw new Error(`mostra/shutdown failed: ${response.error.message}`);
+  await client.closed;
 }
 
 /** Connects to a control socket. */

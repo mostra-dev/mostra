@@ -18,12 +18,12 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
   realpath,
-  rename,
   rm,
   stat,
   writeFile,
@@ -63,6 +63,7 @@ import {
   requestKey,
 } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
+import { renamePath } from "../platform/index.ts";
 import { fsyncPath, type Registry, removeTree } from "../registry/index.ts";
 import {
   type BuildOutcome,
@@ -229,15 +230,21 @@ async function archiveSnapshot(
     }
     yield TAR_END;
   }
-  const output = createWriteStream(temporary, { mode: 0o400 });
-  await pipeline(Readable.from(blocks()), createZstdCompress(), output);
-  const handle = await import("node:fs/promises").then((fs) => fs.open(temporary, "r"));
+  // Written owner-writable, synced, then made read-only: Windows flushes a file only through a
+  // handle that may write, which a read-only file never opens again.
   try {
-    await handle.sync();
-  } finally {
-    await handle.close();
+    await pipeline(
+      Readable.from(blocks()),
+      createZstdCompress(),
+      createWriteStream(temporary, { mode: 0o600 }),
+    );
+    fsyncPath(temporary);
+    await chmod(temporary, 0o400);
+  } catch (error) {
+    await removeTree(temporary).catch(() => {});
+    throw error;
   }
-  await rename(temporary, target);
+  await renamePath(temporary, target);
   fsyncPath(dirname(target), true);
   return true;
 }
@@ -747,7 +754,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
             // again from the same snapshot otherwise (D138 item 5).
             const cachedBuild = verifier().builtVersion(versionId);
             if (cachedBuild && (await versionDamage(cachedBuild)) === undefined) {
-              await rename(cachedBuild, out);
+              await renamePath(cachedBuild, out);
               outputDigest = (
                 JSON.parse(await readFile(join(out, "manifest.json"), "utf8")) as {
                   outputDigest: string;

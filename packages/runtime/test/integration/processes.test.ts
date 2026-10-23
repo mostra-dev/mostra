@@ -10,13 +10,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Ledger, openLedger } from "../../src/ledger/index.ts";
 import { type Log, openFileLog, Redactor, silentLog } from "../../src/log.ts";
-import { bootId, readProcess } from "../../src/processes/identity.ts";
+import { bootId, readProcess } from "../../src/platform/identity.ts";
 import {
   listProcesses,
   openProcessManager,
   type ProcessManager,
 } from "../../src/processes/index.ts";
-import { alive, eventually, tempDir } from "../support.ts";
+import { alive, eventually, tempDir, WINDOWS } from "../support.ts";
 
 let ledger: Ledger | undefined;
 let manager: ProcessManager | undefined;
@@ -54,7 +54,7 @@ const rows = (target: Ledger) =>
     ),
   );
 
-describe("children", () => {
+describe.skipIf(WINDOWS)("children", () => {
   it("run as process group leaders, are recorded, and leave no row or process after they stop", async () => {
     const { ledger, manager } = await open();
     const child = await manager.spawn({
@@ -151,7 +151,7 @@ describe("children", () => {
   });
 });
 
-describe("review findings (D80)", () => {
+describe.skipIf(WINDOWS)("review findings (D80)", () => {
   it("redacts secrets and capability parameters from child output in the log and the stderr tail (finding 1)", async () => {
     const logs = tempDir("mpm-log");
     const redactor = new Redactor();
@@ -262,5 +262,130 @@ describe("review findings (D80)", () => {
     const late = Number(readFileSync(lateFile, "utf8"));
     await eventually(() => !alive(late), 5000, "the late member to be reaped");
     await eventually(() => !alive(pid), 5000, "the leader to be gone");
+  });
+});
+
+/** A Node.js child script, run through `node -e`. */
+const node = (script: string): { command: string; args: string[] } => ({
+  command: process.execPath,
+  args: ["-e", script],
+});
+const familyFixture = fileURLToPath(new URL("../fixtures/family.mjs", import.meta.url));
+
+async function family(file: string): Promise<{ pid: number; grandchildren: number[] }> {
+  await eventually(() => existsSync(file), 10_000, "the family's PIDs");
+  return JSON.parse(readFileSync(file, "utf8")) as { pid: number; grandchildren: number[] };
+}
+
+describe.runIf(WINDOWS)("children on Windows (RT-09, RT-10)", () => {
+  it("are recorded with their creation time, and stopping one ends its job: it and its grandchildren", async () => {
+    const { ledger, manager } = await open();
+    const file = join(tempDir("mpm"), "family.json");
+    const child = await manager.spawn({
+      kind: "demo",
+      ownerRef: "art_x",
+      command: process.execPath,
+      args: [familyFixture, file],
+    });
+    const members = await family(file);
+    expect(members.pid).toBe(child.pid);
+    const row = rows(ledger)[0] as { pid: number; start_time?: string };
+    expect(rows(ledger)).toMatchObject([
+      { pid: child.pid, kind: "demo", pgid: child.pid, parent_pid: null },
+    ]);
+    const info = await readProcess(child.pid);
+    expect(info?.startTime).toMatch(/^win\/\d+$/);
+    expect(
+      ledger.read((db) => db.get<{ start_time: string }>("SELECT start_time FROM child"))
+        ?.start_time,
+    ).toBe(info?.startTime);
+    expect(row.pid).toBe(child.pid);
+    expect(manager.list()).toMatchObject([{ pid: child.pid, kind: "demo", ownerRef: "art_x" }]);
+    for (const pid of members.grandchildren) expect(alive(pid)).toBe(true);
+    await child.stop(1000);
+    for (const pid of [child.pid, ...members.grandchildren])
+      await eventually(() => !alive(pid), 5000, `process ${pid} to end with its job`);
+    expect(rows(ledger)).toEqual([]);
+    expect(manager.list()).toEqual([]);
+  });
+
+  it("end their grandchildren when they exit on their own", async () => {
+    const { manager } = await open();
+    const file = join(tempDir("mpm"), "grandchild");
+    const child = await manager.spawn({
+      kind: "demo",
+      ownerRef: "x",
+      // The file travels as an argument, never inside the code.
+      command: process.execPath,
+      args: [
+        "-e",
+        'const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.argv[1], String(g.pid)); setTimeout(() => process.exit(0), 1000);',
+        file,
+      ],
+    });
+    await eventually(() => existsSync(file), 5000, "the grandchild's PID");
+    const grandchild = Number(readFileSync(file, "utf8"));
+    expect(alive(grandchild)).toBe(true);
+    expect((await child.exited).code).toBe(0);
+    await eventually(() => !alive(grandchild), 5000, "the grandchild to end with the job");
+  });
+
+  it("redact secrets from child output in the log and the stderr tail (finding 1)", async () => {
+    const logs = tempDir("mpm-log");
+    const redactor = new Redactor();
+    const { manager } = await open(openFileLog({ dir: logs, redactor }), redactor);
+    const child = await manager.spawn({
+      kind: "demo",
+      ownerRef: "x",
+      ...node(
+        'const e = process.env; console.log("token " + e.MY_API_TOKEN + " and " + e.EXPLICIT); console.error("url http://localhost:1/?t=capability-secret-1 " + e.MY_API_TOKEN)',
+      ),
+      env: {
+        SystemRoot: process.env["SystemRoot"] ?? "C:\\Windows",
+        MY_API_TOKEN: "tok-0123456789",
+        EXPLICIT: "explicit-secret-42",
+      },
+      redact: ["explicit-secret-42"],
+    });
+    const exit = await child.exited;
+    const log = readFileSync(join(logs, "supervisor.log"), "utf8");
+    expect(log).toContain("[redacted]");
+    for (const secret of ["tok-0123456789", "explicit-secret-42", "capability-secret-1"]) {
+      expect(log).not.toContain(secret);
+      expect(exit.stderrTail.join("\n")).not.toContain(secret);
+    }
+    expect(exit.stderrTail.join("\n")).toContain("?t=[redacted]");
+  });
+
+  it("never run a child they couldn't record (finding 2)", async () => {
+    const { ledger, manager } = await open();
+    ledger.close();
+    const marker = join(tempDir("mpm"), "ran");
+    await expect(
+      manager.spawn({
+        kind: "demo",
+        ownerRef: "x",
+        ...node(`require("node:fs").writeFileSync(${JSON.stringify(marker)}, "x")`),
+      }),
+    ).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(existsSync(marker)).toBe(false);
+    expect(manager.list()).toEqual([]);
+  });
+
+  it("stop a child whose spawn was still in progress when stopAll began (finding 3)", async () => {
+    const { manager } = await open();
+    const spawning = manager.spawn({
+      kind: "demo",
+      ownerRef: "x",
+      ...node("setInterval(() => {}, 1 << 30)"),
+    });
+    const stopping = manager.stopAll(500);
+    const child = await spawning;
+    await stopping;
+    await eventually(() => !alive(child.pid), 5000, "the in-flight child to be stopped");
+    await expect(manager.spawn({ kind: "demo", ownerRef: "x", ...node("") })).rejects.toThrow(
+      "stopping",
+    );
   });
 });

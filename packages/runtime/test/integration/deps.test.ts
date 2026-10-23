@@ -7,7 +7,6 @@
  * scripts in the install child's context (DP-05).
  */
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -23,6 +22,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { linkTarget } from "../../src/platform/index.ts";
 import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   alive,
@@ -37,6 +37,8 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  unsealTree,
+  WINDOWS,
 } from "../support.ts";
 
 interface Running {
@@ -59,6 +61,8 @@ async function start(
     env: {
       ...home.env,
       HOME: user,
+      // Windows programs (npm's ~/.npmrc among them) find the user's home through USERPROFILE.
+      ...(WINDOWS ? { USERPROFILE: user } : {}),
       npm_config_registry: options.registryUrl ?? registry.url,
       // Something only the supervisor has: it must never reach a lifecycle script (DP-05).
       MOSTRA_TEST_SUPERVISOR_ONLY: "supervisor-only-value",
@@ -98,8 +102,8 @@ function artifact(files: Record<string, string>): string {
   return realpathSync(dir);
 }
 
-const publish = (target: Running, dir: string): Promise<Message> =>
-  target.client.call("artifact/publish", { source: { path: dir } });
+const publish = (target: Running, dir: string, timeoutMs?: number): Promise<Message> =>
+  target.client.call("artifact/publish", { source: { path: dir } }, timeoutMs);
 
 interface Receipt {
   readonly artifactId: string;
@@ -130,16 +134,6 @@ const installsStarted = (target: Running): number => {
       (line) => line.includes('"event":"process.started"') && line.includes('"kind":"install"'),
     ).length;
 };
-
-/** Makes a sealed (read-only) tree removable. */
-function unseal(dir: string): void {
-  chmodSync(dir, 0o755);
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) unseal(path);
-    else chmodSync(path, 0o644);
-  }
-}
 
 const PEER_PAGE = [
   'import * as React from "react";',
@@ -396,7 +390,7 @@ describe("the lockfile in the version identity (DP-03)", () => {
     await stop(online);
     // The version's files and every layout are gone; only the store and the ledger remain.
     const versionDir = join(home.home, "versions", first.versionId);
-    unseal(versionDir);
+    unsealTree(versionDir);
     rmSync(versionDir, { recursive: true });
     rmSync(join(home.home, "deps", "locks"), { recursive: true });
     const before = registry.requests.length;
@@ -442,7 +436,7 @@ describe("the lockfile in the version identity (DP-03)", () => {
     await stop(online);
     rmSync(first, { recursive: true });
     const versionDir = join(home.home, "versions", receipt.versionId);
-    unseal(versionDir);
+    unsealTree(versionDir);
     rmSync(versionDir, { recursive: true });
     const second = warmCopy();
     const moved = await start({ home, env: { MOSTRA_WARM_DIR: second, MOSTRA_OFFLINE: "1" } });
@@ -451,9 +445,10 @@ describe("the lockfile in the version identity (DP-03)", () => {
       reused: true,
     });
     const [layout] = layouts(moved);
-    expect(realpathSync(join(home.home, "deps", "locks", layout as string, "warm"))).toBe(
-      realpathSync(join(second, "node_modules")),
-    );
+    // The layout's `warm` link stands for the moved warm set: a symlink to it, or on Windows a
+    // link farm whose marker names it (D150).
+    const target = await linkTarget(join(home.home, "deps", "locks", layout as string, "warm"));
+    expect(realpathSync(target ?? "")).toBe(realpathSync(join(second, "node_modules")));
   });
 });
 
@@ -551,10 +546,11 @@ describe("lifecycle scripts (DP-05)", () => {
   it("end with the supervisor: a SIGKILLed supervisor leaves no install child or script running", async () => {
     const target = await start();
     const dir = artifact({ "index.tsx": "export default function Page() { return <p />; }\n" });
-    void target.client.call("deps/add", {
-      artifact: { path: dir },
-      packages: ["mostra-fixture-slow"],
-    });
+    // Never answered: the supervisor is killed during the install. Its timeout's rejection is
+    // expected, and must not surface later as an unhandled one (it did on Windows' slower runs).
+    target.client
+      .call("deps/add", { artifact: { path: dir }, packages: ["mostra-fixture-slow"] })
+      .catch(() => {});
     // The slow postinstall writes its PID into the layout it is installed in, then waits.
     const locks = join(target.home.home, "deps", "locks");
     let pidFile: string | undefined;
@@ -578,58 +574,70 @@ describe("lifecycle scripts (DP-05)", () => {
     await eventually(() => !alive(script), 10_000, "the script to end");
   });
 
-  it("run in the install child, in the artifact's directory with the artifact environment", async () => {
-    const target = await start();
-    const dir = artifact({
-      "index.tsx":
-        'import "mostra-fixture-postinstall";\nexport default function Page() { return <p>installed</p>; }\n',
-    });
-    // A user's npm settings that would change what D95 promises; Mostra's own settings win.
-    writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
-    ok<Receipt>(await publish(target, dir));
-    const [layout] = layouts(target);
-    const layoutDir = join(target.home.home, "deps", "locks", layout as string);
-    const pnpmDir = join(layoutDir, "node_modules", ".pnpm");
-    const record = JSON.parse(
-      readFileSync(
-        join(
-          pnpmDir,
-          "mostra-fixture-postinstall@1.0.0",
-          "node_modules",
-          "mostra-fixture-postinstall",
-          "record.json",
+  it(
+    "run in the install child, in the artifact's directory with the artifact environment",
+    async () => {
+      const target = await start();
+      const dir = artifact({
+        "index.tsx":
+          'import "mostra-fixture-postinstall";\nexport default function Page() { return <p>installed</p>; }\n',
+      });
+      // A user's npm settings that would change what D95 promises; Mostra's own settings win.
+      writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
+      ok<Receipt>(await publish(target, dir, WINDOWS ? 170_000 : undefined));
+      const [layout] = layouts(target);
+      const layoutDir = join(target.home.home, "deps", "locks", layout as string);
+      const pnpmDir = join(layoutDir, "node_modules", ".pnpm");
+      const record = JSON.parse(
+        readFileSync(
+          join(
+            pnpmDir,
+            "mostra-fixture-postinstall@1.0.0",
+            "node_modules",
+            "mostra-fixture-postinstall",
+            "record.json",
+          ),
+          "utf8",
         ),
-        "utf8",
-      ),
-    ) as {
-      pid: number;
-      env: Record<string, string>;
-      ancestors: { pid: number; command: string; cwd: string | null }[];
-    };
-    const supervisor = target.daemon.status.pid as number;
-    // The script's ancestry: the shell pnpm runs it in, pnpm, then the install child (connected to
-    // the supervisor, D95), then the supervisor.
-    const index = record.ancestors.findIndex((process) =>
-      process.command.includes("deps/child/install"),
-    );
-    expect(index).toBeGreaterThanOrEqual(1);
-    const installChild = record.ancestors[index];
-    const pnpm = record.ancestors[index - 1];
-    expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
-    expect(record.ancestors[index + 1]?.pid).toBe(supervisor);
-    expect(record.pid).not.toBe(supervisor);
-    expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
-      supervisor,
-    );
-    // The install child, and pnpm with it, run in the artifact's source directory.
-    expect(installChild?.cwd).toBe(dir);
-    expect(pnpm?.cwd).toBe(dir);
-    // The artifact environment, not the supervisor's.
-    expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
-    expect(record.env["HOME"]).toBe(target.user);
-    expect(record.env["INIT_CWD"]).toBe(layoutDir);
-    expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
-  });
+      ) as {
+        pid: number;
+        env: Record<string, string>;
+        ancestors: { pid: number; command: string; cwd: string | null }[];
+      };
+      const supervisor = target.daemon.status.pid as number;
+      // The script's ancestry: the shell pnpm runs it in, pnpm, then the install child (connected to
+      // the supervisor, D95), then the supervisor.
+      const index = record.ancestors.findIndex((process) =>
+        process.command.includes("deps/child/install"),
+      );
+      expect(index).toBeGreaterThanOrEqual(1);
+      const installChild = record.ancestors[index];
+      const pnpm = record.ancestors[index - 1];
+      expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
+      // On Windows the child's gate (`mostra-win gate`, D150) stands between it and the supervisor.
+      const above = WINDOWS ? index + 2 : index + 1;
+      if (WINDOWS) expect(record.ancestors[index + 1]?.command).toContain("mostra-win");
+      expect(record.ancestors[above]?.pid).toBe(supervisor);
+      expect(record.pid).not.toBe(supervisor);
+      expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
+        supervisor,
+      );
+      // The install child, and pnpm with it, run in the artifact's source directory. Windows shows
+      // no process's working directory to another; there INIT_CWD below and the gate's own spawn
+      // directory stand for it.
+      if (!WINDOWS) {
+        expect(installChild?.cwd).toBe(dir);
+        expect(pnpm?.cwd).toBe(dir);
+      }
+      // The artifact environment, not the supervisor's.
+      expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
+      expect(record.env[WINDOWS ? "USERPROFILE" : "HOME"]).toBe(target.user);
+      expect(record.env["INIT_CWD"]).toBe(layoutDir);
+      expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
+    },
+    // Windows reads the script's ancestry through one CIM query (PowerShell), seconds of it.
+    WINDOWS ? 180_000 : undefined,
+  );
 });
 
 describe("gc and the dependency state (VR-06, D140 item 14)", () => {

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/turbo/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        "$TURBO_ROOT$/crates/mostra-win/**",
+        "$TURBO_ROOT$/Cargo.lock",
+        "!$TURBO_ROOT$/crates/mostra-win/**/*.md"
+      ]
+    },
+    "test:integration": {
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        "$TURBO_ROOT$/crates/mostra-win/**",
+        "$TURBO_ROOT$/Cargo.lock",
+        "!$TURBO_ROOT$/crates/mostra-win/**/*.md"
+      ]
+    }
+  }
+}

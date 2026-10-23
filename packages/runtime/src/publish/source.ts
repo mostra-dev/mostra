@@ -20,6 +20,7 @@ import {
 import { basename, dirname, extname, join } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import ignore from "ignore";
+import { nameKey, WINDOWS } from "../platform/index.ts";
 import type { ListedFile } from "./digest.ts";
 
 /** The entry files a directory artifact may have, in INTERFACES §2.1's order. */
@@ -158,7 +159,7 @@ export async function listSource(source: ResolvedSource): Promise<SourceFile[]> 
         }
       }
       if (kind === "dir") {
-        if (IGNORED_DIRS.has(entry.name) || rules.ignores(`${path}/`)) continue;
+        if (IGNORED_DIRS.has(nameKey(entry.name)) || rules.ignores(`${path}/`)) continue;
         let real: string;
         try {
           real = await realpath(absolute);
@@ -169,14 +170,16 @@ export async function listSource(source: ResolvedSource): Promise<SourceFile[]> 
         await walk(absolute, path, new Set([...ancestors, real]));
       } else if (kind === "file") {
         if (IGNORED_FILE.test(entry.name) || rules.ignores(path)) continue;
-        const clash = seen.get(path);
+        // Two names one file system tells apart and another doesn't (NFC forms, or case on
+        // Windows) would become one file in the snapshot.
+        const clash = seen.get(nameKey(path));
         if (clash !== undefined) {
           throw artifactError(
             "MOSTRA_ARTIFACT_SOURCE_UNREADABLE",
-            `${clash} and ${absolute} have the same name after Unicode normalization (NFC).`,
+            `${clash} and ${absolute} have the same name after Unicode normalization (NFC)${WINDOWS ? " and ignoring case, as Windows compares names" : ""}.`,
           );
         }
-        seen.set(path, absolute);
+        seen.set(nameKey(path), absolute);
         files.push({ path, absolute });
       }
     }
