@@ -37,6 +37,7 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 interface Running {
@@ -616,14 +617,21 @@ describe("lifecycle scripts (DP-05)", () => {
     const installChild = record.ancestors[index];
     const pnpm = record.ancestors[index - 1];
     expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
-    expect(record.ancestors[index + 1]?.pid).toBe(supervisor);
+    // On Windows the child's gate (`mostra-win gate`, D150) stands between it and the supervisor.
+    const above = WINDOWS ? index + 2 : index + 1;
+    if (WINDOWS) expect(record.ancestors[index + 1]?.command).toContain("mostra-win");
+    expect(record.ancestors[above]?.pid).toBe(supervisor);
     expect(record.pid).not.toBe(supervisor);
     expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
       supervisor,
     );
-    // The install child, and pnpm with it, run in the artifact's source directory.
-    expect(installChild?.cwd).toBe(dir);
-    expect(pnpm?.cwd).toBe(dir);
+    // The install child, and pnpm with it, run in the artifact's source directory. Windows shows
+    // no process's working directory to another; there INIT_CWD below and the gate's own spawn
+    // directory stand for it.
+    if (!WINDOWS) {
+      expect(installChild?.cwd).toBe(dir);
+      expect(pnpm?.cwd).toBe(dir);
+    }
     // The artifact environment, not the supervisor's.
     expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
     expect(record.env["HOME"]).toBe(target.user);

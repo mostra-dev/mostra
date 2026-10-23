@@ -43,7 +43,13 @@ import {
   recordResult,
 } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { linkDirectory, linkTarget, replaceDirectoryLink, samePath } from "../platform/index.ts";
+import {
+  linkDirectory,
+  linkTarget,
+  replaceDirectoryLink,
+  samePath,
+  WINDOWS,
+} from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
 import { type Lock, lockDigest, lockText, parseLock, pinnedPackages } from "./lock.ts";
@@ -224,8 +230,13 @@ export function isOffline(env: Environment): boolean {
   );
 }
 
-/** A shell-safe rendering of `value`, for the commands in diagnostics. */
+/**
+ * A shell-safe rendering of `value`, for the commands in diagnostics: POSIX shell quoting, or on
+ * Windows the double quotes PowerShell and `cmd` both read (a Windows path holds no `"`), and a
+ * plain path with backslashes as it is.
+ */
 function shellQuote(value: string): string {
+  if (WINDOWS) return /^[\w@%+=:,./\\-]+$/.test(value) ? value : `"${value}"`;
   return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 

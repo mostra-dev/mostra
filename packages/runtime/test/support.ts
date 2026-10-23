@@ -6,6 +6,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
+  cpSync,
   type Dirent,
   existsSync,
   mkdtempSync,
@@ -17,7 +18,7 @@ import {
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
@@ -25,8 +26,40 @@ import { afterAll } from "vitest";
 import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
+/**
+ * Keeps the supervisor logs of the test homes in `MOSTRA_TEST_LOG_DIR`, when it is set, before
+ * their homes are removed: CI keeps them for failed runs, since an instance's own errors (the cause
+ * of a `MOSTRA_HOST_INTERNAL_ERROR`) are written only there.
+ */
+function keepLogs(dir: string): void {
+  const into = process.env["MOSTRA_TEST_LOG_DIR"];
+  if (!into) return;
+  const visit = (at: string, depth: number): void => {
+    if (depth > 3) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(at, entry.name);
+      if (entry.name === "logs" && entry.isDirectory()) {
+        const target = join(into, `${basename(dir)}-${depth}-${basename(at)}`);
+        try {
+          cpSync(path, target, { recursive: true });
+        } catch {
+          // A log still being written is kept as far as it could be read.
+        }
+      } else if (entry.isDirectory() && !entry.isSymbolicLink()) visit(path, depth + 1);
+    }
+  };
+  visit(dir, 0);
+}
+
 afterAll(() => {
   for (const dir of created.splice(0)) {
+    keepLogs(dir);
     try {
       removeAll(dir);
     } catch (error) {

@@ -28,4 +28,11 @@ const attempt = (label, body) => {
 attempt("writeFileSync existing", () => writeFileSync(join(dir, "client", "a.js"), "y"));
 attempt("openSync r+", () => closeSync(openSync(join(dir, "client", "a.js"), "r+")));
 attempt("writeFileSync new", () => writeFileSync(join(dir, "client", "b.js"), "y"));
-console.log("icacls", execSync(`icacls "${join(dir, "client", "a.js")}"`, { encoding: "utf8" }));
+console.log(
+  "access list",
+  execFileSync(
+    helper.replace("mostra-win.exe", "mostra-win-probe.exe"),
+    ["security", join(dir, "client", "a.js")],
+    { encoding: "utf8" },
+  ).trim(),
+);

@@ -285,7 +285,16 @@ jobs:
         if: steps.gate.outputs.run
         env:
           JOB: ${{ matrix.job }}
+          MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
         run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose
+      - name: Keep the test homes' supervisor logs
+        if: failure() && steps.gate.outputs.run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logs-${{ matrix.job }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/mostra-test-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
   # platforms: WebKit on macOS is the closest Playwright gets to Safari.

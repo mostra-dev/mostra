@@ -180,6 +180,18 @@ export const FIXTURE_PACKAGES: readonly FixturePackage[] = [
         'const { join } = require("node:path");',
         "const ancestors = [];",
         "let pid = process.ppid;",
+        // Windows has no `ps`: one CIM query lists every process with its parent and command line;
+        // no process's working directory is readable there (cwd stays null).
+        'if (process.platform === "win32") {',
+        '  const all = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));',
+        "  const byPid = new Map(all.map((entry) => [entry.ProcessId, entry]));",
+        "  while (byPid.has(pid) && ancestors.length < 8) {",
+        "    const entry = byPid.get(pid);",
+        '    ancestors.push({ pid, command: (entry.CommandLine ?? "").replaceAll("\\\\", "/"), cwd: null });',
+        "    pid = entry.ParentProcessId;",
+        "  }",
+        "  pid = 0;",
+        "}",
         "while (pid > 1 && ancestors.length < 8) {",
         '  const line = execFileSync("ps", ["-o", "ppid=,command=", "-p", String(pid)], { encoding: "utf8" }).trim();',
         "  const [parent, ...command] = line.split(/\\s+/);",

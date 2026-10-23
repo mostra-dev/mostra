@@ -17,7 +17,17 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -220,13 +230,19 @@ async function archiveSnapshot(
     }
     yield TAR_END;
   }
-  const output = createWriteStream(temporary, { mode: 0o400 });
-  await pipeline(Readable.from(blocks()), createZstdCompress(), output);
-  const handle = await import("node:fs/promises").then((fs) => fs.open(temporary, "r"));
+  // Written owner-writable, synced, then made read-only: Windows flushes a file only through a
+  // handle that may write, which a read-only file never opens again.
   try {
-    await handle.sync();
-  } finally {
-    await handle.close();
+    await pipeline(
+      Readable.from(blocks()),
+      createZstdCompress(),
+      createWriteStream(temporary, { mode: 0o600 }),
+    );
+    fsyncPath(temporary);
+    await chmod(temporary, 0o400);
+  } catch (error) {
+    await removeTree(temporary).catch(() => {});
+    throw error;
   }
   await renamePath(temporary, target);
   fsyncPath(dirname(target), true);
