@@ -121,7 +121,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 | supply-chain | pull requests | dependency review, CodeQL (weekly and on PR), OpenSSF Scorecard (weekly) |
 
 - **Target:** under 10 minutes wall-clock for a typical pull request (D50). The plan job prints the critical path, so slow jobs are visible.
-- **Caches** (pnpm store, Turborepo, Playwright browsers, cargo, Vitest) are keyed by lockfiles and tool versions.
+- **Caches** (pnpm store, Turborepo, Playwright browsers and, on Linux, the apt packages their engines need, cargo, Vitest) are keyed by lockfiles, tool versions and the runner image.
 - **Required checks** on `main`: every job above whose plan output says it should run.
 
 ## 7. Commits, branches and pull requests
