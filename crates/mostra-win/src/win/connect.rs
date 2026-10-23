@@ -35,7 +35,10 @@ pub fn run(name: &str) -> i32 {
     };
     let owned = (|| -> std::io::Result<bool> {
         let owner = sys::object_owner(&pipe)?;
-        Ok(owner.equals(&sys::current_user()?) || owner.equals(&sys::default_owner()?))
+        // The supervisor's helper names the user as the pipe's owner explicitly, elevated or not,
+        // so nothing else is accepted (an elevated token's default owner, Administrators, is
+        // shared by every administrator).
+        Ok(owner.equals(&sys::current_user()?))
     })();
     match owned {
         Ok(true) => {}
@@ -68,7 +71,9 @@ pub fn run(name: &str) -> i32 {
                 }
             }
         }
-        // The client is done: the server sees the connection end once this process exits.
+        // The client is done. A pipe has no half-close, so its end is the connection's end, as
+        // the client's own close is: clients close only once they have every answer they wait
+        // for, and the server sees the connection end when this process exits.
         std::process::exit(0);
     });
     // The pipe to standard output, until the server closes it.
