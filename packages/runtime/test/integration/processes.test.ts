@@ -315,9 +315,13 @@ describe.runIf(WINDOWS)("children on Windows (RT-09, RT-10)", () => {
     const child = await manager.spawn({
       kind: "demo",
       ownerRef: "x",
-      ...node(
-        `const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" }); require("node:fs").writeFileSync(${JSON.stringify(file)}, String(g.pid)); setTimeout(() => process.exit(0), 1000);`,
-      ),
+      // The file travels as an argument, never inside the code.
+      command: process.execPath,
+      args: [
+        "-e",
+        'const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.argv[1], String(g.pid)); setTimeout(() => process.exit(0), 1000);',
+        file,
+      ],
     });
     await eventually(() => existsSync(file), 5000, "the grandchild's PID");
     const grandchild = Number(readFileSync(file, "utf8"));

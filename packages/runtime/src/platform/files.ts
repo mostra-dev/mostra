@@ -234,10 +234,17 @@ export async function replaceDirectoryLink(target: string, path: string): Promis
   if (moved) await unlinkDirectory(aside);
 }
 
+/** `path` without the separators it ends in (a loop: a regular expression here is quadratic). */
+function trimSeparators(path: string): string {
+  let end = path.length;
+  while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end--;
+  return path.slice(0, end);
+}
+
 /** Whether a link points at `target` (paths compared as this file system compares them). */
 export function samePath(a: string, b: string): boolean {
   const normal = (path: string): string =>
-    nameKey(resolve(path.replace(/^\\\\\?\\/, "")).replace(/[\\/]+$/, ""));
+    nameKey(trimSeparators(resolve(path.startsWith("\\\\?\\") ? path.slice(4) : path)));
   return normal(a) === normal(b);
 }
 
@@ -253,7 +260,7 @@ export function pathKey(path: string): string {
 /** Whether `file` is `dir` itself or lies under it, however either spells its separators. */
 export function isUnder(file: string, dir: string): boolean {
   const key = pathKey(file);
-  const root = pathKey(dir).replace(/\/+$/, "");
+  const root = trimSeparators(pathKey(dir));
   return key === root || key.startsWith(`${root}/`);
 }
 

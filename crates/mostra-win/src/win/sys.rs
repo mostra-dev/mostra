@@ -464,7 +464,10 @@ fn aces(dacl: *mut ACL) -> io::Result<Vec<Ace>> {
         let mut ace: *mut c_void = null_mut();
         // SAFETY: index within AceCount; the entry points into the ACL.
         check(unsafe { GetAce(dacl, index, &raw mut ace) })?;
-        // SAFETY: every ACE starts with an ACE_HEADER.
+        if ace.is_null() {
+            return Err(io::Error::other("GetAce returned no entry"));
+        }
+        // SAFETY: a non-null entry GetAce returned; every ACE starts with an ACE_HEADER.
         let header = unsafe { &*ace.cast::<ACE_HEADER>() };
         let kind = u32::from(header.AceType);
         // Allowed and denied ACEs share ACCESS_ALLOWED_ACE's layout: header, mask, SID.
