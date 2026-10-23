@@ -51,7 +51,7 @@ export interface CommonFields {
   readonly at: string;
   readonly installId: string;
   readonly version: string;
-  readonly os: "darwin" | "linux";
+  readonly os: "darwin" | "linux" | "win32";
   readonly arch: string;
   readonly node: number;
   readonly harness: Harness;

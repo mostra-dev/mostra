@@ -25,7 +25,7 @@ import { checkBrowser, checkFiles, enclosingBundle, readBundle, readSetup } from
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
 import { docsIndex, indexMarkdown, nearestTopics } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
-import { embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
+import { type Environment, embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
 import { usage } from "../parse.ts";
 import { TelemetryStore, TURNED, telemetryStatus } from "../telemetry/index.ts";
 import { NOTICE_DEFAULT } from "../telemetry/words.ts";
@@ -429,6 +429,17 @@ interface DoctorCheck {
   readonly diagnostic?: Diagnostic;
 }
 
+/**
+ * Whether the runtime's gate admits this platform (RT-07, D146): macOS and Linux on x64 and arm64,
+ * and Windows only behind the development switch `MOSTRA_DEV_WINDOWS=1` until WP-W3 ships it.
+ * The runtime's own gate (`home/platform.ts`) decides; this is what `doctor` reports of it.
+ */
+function supportedPlatform(platform: string, arch: string, env: Environment): boolean {
+  if (arch !== "x64" && arch !== "arm64") return false;
+  if (platform === "darwin" || platform === "linux") return true;
+  return platform === "win32" && env["MOSTRA_DEV_WINDOWS"] === "1";
+}
+
 /** `mostra doctor`. */
 export const doctorCommand: CommandDef = defineCommand({
   path: ["doctor"],
@@ -448,7 +459,7 @@ export const doctorCommand: CommandDef = defineCommand({
     const checks: DoctorCheck[] = [];
     const node = Number(process.versions.node.split(".")[0]);
     checks.push(
-      process.platform === "darwin" || process.platform === "linux"
+      supportedPlatform(process.platform, process.arch, context.env)
         ? {
             name: "platform",
             status: "ok",
@@ -458,7 +469,7 @@ export const doctorCommand: CommandDef = defineCommand({
             name: "platform",
             status: "error",
             diagnostic: createDiagnostic("MOSTRA_PLATFORM_UNSUPPORTED", {
-              message: `Mostra runs on macOS and Linux; this is ${process.platform}.`,
+              message: `Mostra doesn't run on ${process.platform === "win32" ? `Windows (${process.platform}-${process.arch})` : `${process.platform}-${process.arch}`}; it supports macOS and Linux on x64 and arm64.`,
             }),
           },
     );

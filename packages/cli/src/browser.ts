@@ -121,10 +121,48 @@ export function splitCommand(command: string): string[] {
   return words;
 }
 
+/** The program that opens a file with its default application, by platform. */
+function platformOpener(platform: string): string[] {
+  if (platform === "darwin") return ["open"];
+  // Explorer opens a path with the program associated with its type, `.html` with the default
+  // browser, as a double click would (VERIFIED_FACTS, WP-W2); its arguments go to it directly,
+  // never through `cmd`.
+  if (platform === "win32") return ["explorer.exe"];
+  return ["xdg-open"];
+}
+
 /**
- * The commands that may open `target`, in order: each entry of `$BROWSER` (separated by `:`, its
- * `%s` replaced by the target, else the target appended, `%%` a literal `%`, as `xdg-open` and
- * Python's `webbrowser` read it), else the platform's opener.
+ * Splits a command as Windows programs read their command lines, for `$BROWSER` there: words
+ * separated by spaces, double quotes grouping words with spaces (`"C:\Program Files\Firefox\
+ * firefox.exe" %s`), and backslashes kept as they are.
+ */
+export function splitWindowsCommand(command: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let inWord = false;
+  let quoted = false;
+  for (const char of command) {
+    if (char === '"') {
+      quoted = !quoted;
+      inWord = true;
+    } else if (!quoted && /\s/.test(char)) {
+      if (inWord) words.push(word);
+      word = "";
+      inWord = false;
+    } else {
+      word += char;
+      inWord = true;
+    }
+  }
+  if (inWord) words.push(word);
+  return words;
+}
+
+/**
+ * The commands that may open `target`, in order: each entry of `$BROWSER` (separated by the
+ * platform's path delimiter, `:` or `;` on Windows, its `%s` replaced by the target, else the
+ * target appended, `%%` a literal `%`, as `xdg-open` and Python's `webbrowser` read it), else the
+ * platform's opener.
  */
 export function browserCommands(
   target: string,
@@ -132,13 +170,14 @@ export function browserCommands(
   platform: string = process.platform,
 ): string[][] {
   const chosen = env["BROWSER"];
-  const entries =
-    chosen !== undefined && chosen.trim() !== ""
-      ? chosen.split(":").filter((entry) => entry.trim() !== "")
-      : [platform === "darwin" ? "open" : "xdg-open"];
+  if (chosen === undefined || chosen.trim() === "") return [[...platformOpener(platform), target]];
+  const entries = chosen
+    .split(platform === "win32" ? ";" : ":")
+    .filter((entry) => entry.trim() !== "");
   const commands: string[][] = [];
   for (const entry of entries) {
-    const words = splitCommand(entry);
+    // A Windows path's backslashes are separators, never escapes.
+    const words = platform === "win32" ? splitWindowsCommand(entry) : splitCommand(entry);
     if (words.length === 0) continue;
     let substituted = false;
     const argv = words.map((word) =>

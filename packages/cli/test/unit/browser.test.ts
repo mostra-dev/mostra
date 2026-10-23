@@ -11,7 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { browserCommands, launchPage, splitCommand, writeLaunchPage } from "../../src/browser.ts";
+import {
+  browserCommands,
+  launchPage,
+  splitCommand,
+  splitWindowsCommand,
+  writeLaunchPage,
+} from "../../src/browser.ts";
 
 describe("the browser command (Opus review finding 7)", () => {
   it("reads $BROWSER as xdg-open does: a : list, %s replaced, else the target appended", () => {
@@ -33,6 +39,22 @@ describe("the browser command (Opus review finding 7)", () => {
     ]);
   });
 
+  it("opens through Explorer on Windows, and reads $BROWSER there as a ; list of Windows command lines (WP-W2)", () => {
+    const page = "C:\\Users\\Ada Lovelace\\AppData\\Local\\Temp\\mostra-open-x\\open.html";
+    expect(browserCommands(page, {}, "win32")).toEqual([["explorer.exe", page]]);
+    expect(
+      browserCommands(
+        page,
+        { BROWSER: '"C:\\Program Files\\Mozilla Firefox\\firefox.exe" -new-window %s;msedge' },
+        "win32",
+      ),
+    ).toEqual([
+      ["C:\\Program Files\\Mozilla Firefox\\firefox.exe", "-new-window", page],
+      ["msedge", page],
+    ]);
+    expect(splitWindowsCommand('a "b c" d\\e ""')).toEqual(["a", "b c", "d\\e", ""]);
+  });
+
   it("splits words and quotes without a shell", () => {
     expect(splitCommand(`a "b c" 'd e' f\\ g`)).toEqual(["a", "b c", "d e", "f g"]);
     expect(splitCommand(`x ""`)).toEqual(["x", ""]);
@@ -51,7 +73,7 @@ afterAll(() => {
 });
 
 describe("the launch page (Opus review finding 4)", () => {
-  it("is mode 0600 in a fresh 0700 directory, and nothing in the URL escapes its quoting", () => {
+  it("is mode 0600 in a fresh 0700 directory (POSIX), and nothing in the URL escapes its quoting", () => {
     const base = freshBase();
     const url = 'http://127.0.0.1:20000/a/art_X#l=ABC"</script><b>';
     const file = writeLaunchPage(url, base);
@@ -60,8 +82,12 @@ describe("the launch page (Opus review finding 4)", () => {
     const mode = fstatSync(handle).mode & 0o777;
     const text = readFileSync(handle, "utf8");
     closeSync(handle);
-    expect(mode).toBe(0o600);
-    expect(statSync(dirname(file)).mode & 0o777).toBe(0o700);
+    // Windows keeps no modes: the page sits in the user's own temporary folder, which only they
+    // (and the system and administrators) may open; the Windows suites check it as another user.
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600);
+      expect(statSync(dirname(file)).mode & 0o777).toBe(0o700);
+    }
     expect(text).toBe(launchPage(url));
     expect(text).not.toContain("</script><b>");
     expect(text).toContain("\\u003c/script>");
