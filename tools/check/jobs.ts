@@ -18,10 +18,21 @@ const INTEGRATION_PACKAGES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The packages whose suites run on Windows so far: WP-W1 brings the supervisor's core (WP-01 to
- * WP-04's suites); WP-W2 and WP-W3 add the rest (D146).
+ * The packages whose suites run on Windows so far: WP-W1 brought the supervisor's core (WP-01 to
+ * WP-04's suites); WP-W2 the gateway, workers, verify, the CLI and the browser suites; WP-W3 adds
+ * the rest (D146).
  */
-export const WINDOWS_PACKAGES: readonly string[] = ["@mostra/protocol", "@mostra/runtime"];
+export const WINDOWS_PACKAGES: readonly string[] = [
+  "@mostra/protocol",
+  "@mostra/runtime",
+  "@mostra/server",
+  "@mostra/worker",
+  "@mostra/verify",
+  "@mostra/shell",
+  "@mostra/react",
+  "@mostra/cli",
+  "@mostra/e2e",
+];
 
 /** The names of the jobs, in REPO_STANDARDS §6 order. */
 export const JOB_NAMES = [

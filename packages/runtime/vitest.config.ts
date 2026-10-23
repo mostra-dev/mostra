@@ -11,15 +11,15 @@ import { configDefaults, defineConfig } from "vitest/config";
  */
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
-const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
+export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: { include: ["test/integration/**/*.test.ts"], exclude: [VERIFY_SUITES] },
   verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
   clients: { include: [], exclude: [] },
-  // The Windows legs (WP-W1, D146): WP-01 to WP-04's real-process suites, the ones the platform
-  // layer ports so far, in two groups, one machine each (Windows arm64 runs them about twice as
-  // slowly as x64). Unlike the groups above they overlap them: they are what runs on Windows, and
-  // WP-W2 and WP-W3 add the rest.
+  // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
+  // runs them about twice as slowly as x64). They partition the files too, in their own way: a
+  // test (`windows-groups.test.ts`) keeps every suite in exactly one of them. `windows-clients` is
+  // the CLI's suites (packages/cli/vitest.config.ts), as `clients` is on macOS and Linux.
   windows: {
     include: [
       "test/integration/instance.test.ts",
@@ -42,6 +42,39 @@ const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] 
     ],
     exclude: [],
   },
+  // WP-W2: the gateway and the interaction core behind it, ...
+  "windows-gateway": {
+    include: [
+      "test/integration/gateway.test.ts",
+      "test/integration/interaction.test.ts",
+      "test/integration/identity.test.ts",
+      "test/integration/browser-revisions.test.ts",
+      "test/integration/scale.test.ts",
+    ],
+    exclude: [],
+  },
+  // ... workers, actions and live data (RT-03, RT-04, AC-01 to AC-08) ...
+  "windows-workers": {
+    include: [
+      "test/integration/actions.test.ts",
+      "test/integration/lifecycle.test.ts",
+      "test/integration/producers.test.ts",
+      "test/integration/seams.test.ts",
+      "test/integration/server-packages.test.ts",
+    ],
+    exclude: [],
+  },
+  // ... and verify with its browser, and `mostra dev`.
+  "windows-verify": {
+    include: [
+      "test/integration/verify.test.ts",
+      "test/integration/verify-secrets.test.ts",
+      "test/integration/dev.test.ts",
+    ],
+    exclude: [],
+  },
+  "windows-verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+  "windows-clients": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group

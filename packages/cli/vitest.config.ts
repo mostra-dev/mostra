@@ -2,12 +2,13 @@ import { defineConfig } from "vitest/config";
 
 /**
  * `unit` runs in-process; `integration` runs the built `mostra` binary against real daemons (the
- * `integration` CI job on macOS and Linux, D86). The CLI's suites are the `clients` group
- * (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts): any other group runs none of them.
+ * `integration` CI job on macOS and Linux, D86, and its Windows legs, WP-W2). The CLI's suites are
+ * the `clients` group, and `windows-clients` on Windows (`MOSTRA_TEST_GROUP`,
+ * packages/runtime/vitest.config.ts): any other group runs none of them.
  */
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integration =
-  group === undefined || group === "" || group === "clients"
+  group === undefined || group === "" || group === "clients" || group === "windows-clients"
     ? ["test/integration/**/*.test.ts"]
     : [];
 
