@@ -294,8 +294,8 @@ first module outside `protocol-server` needs it.
   `mostra/shutdown`, `shutdownDaemon` in `test/support.ts`), no process groups (Job Objects), no
   modes (access lists), files in use can't be removed or renamed, and paths use `\`. Code asks the
   platform layer; tests use `WINDOWS` from `test/support.ts` and give a Windows variant, or say
-  why a POSIX check doesn't apply. The Windows legs run the `windows` group
-  (`MOSTRA_TEST_GROUP=windows`, `vitest.config.ts`) with `MOSTRA_DEV_WINDOWS=1` and the helper
+  why a POSIX check doesn't apply. The Windows legs run the `windows` and `windows-publish` groups
+  (`MOSTRA_TEST_GROUP`, `vitest.config.ts`; a new Windows suite joins one of them) with `MOSTRA_DEV_WINDOWS=1` and the helper
   Cargo builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits
   socket paths to 103 bytes, and its `os.tmpdir()` is long.

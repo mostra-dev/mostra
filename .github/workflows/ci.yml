@@ -219,7 +219,7 @@ jobs:
   # Windows helper Cargo builds here (`crates/mostra-win`). The integration leg runs the `windows`
   # group, WP-01 to WP-04's real-process suites, with a second local user for RT-10's access check.
   windows:
-    name: ${{ matrix.job }} (${{ matrix.os }})
+    name: ${{ matrix.job }} (${{ matrix.os }}${{ matrix.job == 'integration' && format(', {0}', matrix.group) || '' }})
     needs: plan
     if: contains(needs.plan.outputs.jobs, '"unit"') || contains(needs.plan.outputs.jobs, '"integration"')
     strategy:
@@ -227,11 +227,16 @@ jobs:
       matrix:
         os: [windows-latest, windows-11-arm]
         job: [unit, integration]
+        # The integration suites in two groups, one machine each (packages/runtime/vitest.config.ts).
+        group: [windows, windows-publish]
+        exclude:
+          - job: unit
+            group: windows-publish
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
       MOSTRA_DEV_WINDOWS: "1"
-      MOSTRA_TEST_GROUP: windows
+      MOSTRA_TEST_GROUP: ${{ matrix.group }}
     defaults:
       run:
         shell: bash
@@ -256,7 +261,7 @@ jobs:
         id: setup
         if: steps.gate.outputs.run
         with:
-          job: windows-${{ matrix.job }}
+          job: windows-${{ matrix.job }}-${{ matrix.group }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: steps.gate.outputs.run
         with:

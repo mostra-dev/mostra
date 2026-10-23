@@ -50,6 +50,6 @@ process (`suspend`, `resume`) for RT-10's checks.
 ## Tests to run
 
 The helper runs only on Windows, so its behavior is checked through the runtime's suites on the
-Windows CI legs (`packages/runtime/test/integration/windows.test.ts` and the `windows` group).
+Windows CI legs (`packages/runtime/test/integration/windows.test.ts` and the `windows` and `windows-publish` groups).
 Locally: `cargo clippy -p mostra-win --target x86_64-pc-windows-msvc --all-targets -- -D warnings`
 and the same for `aarch64-pc-windows-msvc` ([playbook](../../docs/agents/run-on-windows.md)).
