@@ -32,9 +32,10 @@ interface Seed {
   readonly cwd?: string;
   /**
    * The one platform the seed can be proven on (`win32`: the Windows process model, access lists
-   * and the helper, WP-W1); elsewhere it is reported as skipped. Its anchors are checked everywhere.
+   * and the helper, WP-W1; `posix`: macOS or Linux, where a behavior Windows lacks is judged);
+   * elsewhere it is reported as skipped. Its anchors are checked everywhere.
    */
-  readonly platform?: NodeJS.Platform;
+  readonly platform?: NodeJS.Platform | "posix";
 }
 
 const integration = (file: string, ...filter: string[]): string[] => [
@@ -184,6 +185,8 @@ const SEEDS: readonly Seed[] = [
     from: 'return nameKey(WINDOWS ? path.replaceAll("\\\\", "/") : path);',
     to: 'return nameKey(path.replaceAll("\\\\", "/"));',
     check: unit("platform-layer.test.ts", "compares paths"),
+    // On Windows a backslash is a separator, so the seed changes nothing there.
+    platform: "posix",
   },
   {
     requirement: "RT-10",
@@ -3276,7 +3279,10 @@ let missed = 0;
 for (const seed of SEEDS) {
   if (values.only && seed.requirement !== values.only) continue;
   if (values.name && !seed.name.includes(values.name)) continue;
-  if (seed.platform !== undefined && seed.platform !== process.platform) {
+  if (
+    seed.platform !== undefined &&
+    (seed.platform === "posix" ? WINDOWS_HOST : seed.platform !== process.platform)
+  ) {
     console.log(`${seed.requirement} | ${seed.name} | skipped: needs ${seed.platform}`);
     continue;
   }
