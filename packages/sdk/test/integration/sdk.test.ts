@@ -79,6 +79,11 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
     expect(envelope.results.answers).toEqual({ plan: "approved" });
     expect(envelope.results.submission.viewId).toBe(viewer.viewId);
 
+    // The port's handler holds the envelope before its answer reaches the instance, which records
+    // the delivery only then: "delivered" follows the handler, never precedes it.
+    await eventually(
+      async () => (await mostra.results(receipt.artifactId)).submission.delivery === "delivered",
+    );
     const results = await mostra.results(receipt.artifactId);
     expect(results.submission.id).toBe(envelope.submissionId);
     expect(results.submission.delivery).toBe("delivered");
