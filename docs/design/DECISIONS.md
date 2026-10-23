@@ -1095,7 +1095,6 @@ The session verifies each rule against the directories' own pages on the day and
 11. **`MOSTRA_ENV_HELPER_MISSING`** reports a runtime that can't find its helper (`MOSTRA_WIN_HELPER`, the bundle's `bin/mostra-win.exe`, or a checkout's Cargo build).
 
 *Rejected:* a native addon and `icacls` (item 2); loopback TCP with a token (item 4); one shared job for every child (a stop of one child couldn't end its descendants alone); relying on the reaper alone (children would outlive a crashed supervisor until the next start, as POSIX demo servers do; the job ends them at once).
-||||||| ca21ff9
 
 ## Research consensus adopted
 
