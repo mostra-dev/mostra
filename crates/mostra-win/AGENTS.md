@@ -25,7 +25,7 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
 - **A child runs only once it is recorded (issue #7, D93).** `gate` creates its command suspended
   inside an unnamed kill-on-close job (`PROC_THREAD_ATTRIBUTE_JOB_LIST`, so the child is never in
   no job of the gate's), then in a Job Object of its own (kill-on-close, named
-  `Local\mostra-job-<pid>-<creation time>`: an ordinary user can't create objects in `Global\`),
+  `Local\mostra-job-<pid>-<creation time>`, in the logon session's own namespace),
   passes the C runtime's descriptor table on (descriptor 3 blanked, so Node.js's IPC channel on 4
   reaches the child), reports `{pid, startTime, job}` on descriptor 3 and resumes the child only
   on "go". Descriptor 3 is the child's lifeline: when it closes, the job ends, descendants
@@ -42,7 +42,7 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
 ## Public interface
 
 The binary's commands, listed with their JSON answers in `src/main.rs`. `mostra-win-probe` (test
-only, never shipped) opens paths and pipes and creates jobs as another user (`as-user`), holds a
+only, never shipped) opens paths and pipes as another user (`as-user`), holds a
 pipe as another user (`squat`), prints a path's descriptor (`security`), and freezes or thaws a
 process (`suspend`, `resume`) for RT-10's checks.
 

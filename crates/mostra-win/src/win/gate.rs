@@ -70,9 +70,10 @@ fn holder_job() -> io::Result<(String, Job)> {
 /// The name of the job of the child created at `created` with `pid`: the reaper opens it by the
 /// child's recorded identity (`FAILURE_MODEL` §2), and no other process has both.
 pub fn job_name(pid: u32, created: u64) -> String {
-    // The session's own namespace: an ordinary user may not create objects in `Global\` (seen
-    // on the runners, ERROR_ACCESS_DENIED). A supervisor in another logon session that can't open
-    // the job reaps the child's descendants by their parents and creation times instead.
+    // The logon session's own namespace, which no other session's user can create names in (a
+    // name in `Global\` another user could take first, and the gate would refuse to run its
+    // child). A supervisor of another logon session that can't open the name reaps the child's
+    // descendants by their parents and creation times instead (Opus review of WP-W1).
     format!("Local\\mostra-job-{pid}-{created}")
 }
 

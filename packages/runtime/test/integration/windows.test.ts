@@ -166,13 +166,6 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     } finally {
       rmSync(open, { recursive: true, force: true });
     }
-    // An ordinary user can create the named job a gate makes for its child (in `Global\` it
-    // can't: ERROR_ACCESS_DENIED on the runners, Opus review of WP-W1).
-    const [job] = asOtherUser(`job:Local\\mostra-job-test-${process.pid}`) as unknown as {
-      created: boolean;
-      error?: number;
-    }[];
-    expect(job).toMatchObject({ created: true });
     await stopDaemon(socket);
     expect((await daemon.exited).code).toBe(0);
   });

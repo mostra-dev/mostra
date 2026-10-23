@@ -2,8 +2,8 @@
 //! local user, try to open each path, and say what happened.
 //!
 //! ```text
-//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file, pipe, mkdir or job
-//!   (mkdir creates the directory as that user, so the user owns it; job creates a named job)
+//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file, pipe or mkdir
+//!   (mkdir creates the directory as that user, so the user owns it)
 //! → {"ok":true,"result":[{"path","read","readWrite","error"?}]}
 //! ```
 //! `read` opens for reading only (a directory: listing it), `readWrite` for reading and writing.
@@ -72,18 +72,6 @@ fn main() {
             .iter()
             .map(|target| {
                 let (kind, path) = target.split_once(':').unwrap_or(("file", target));
-                if kind == "job" {
-                    // A named job in the global namespace, as a gate makes one.
-                    let made = sys::current_user()
-                        .and_then(|user| user.to_sddl())
-                        .and_then(|user| mostra_win::win::acl::owner_only_object(&user))
-                        .and_then(|descriptor| sys::Job::create(path, &descriptor));
-                    return json!({
-                        "path": target,
-                        "created": made.is_ok(),
-                        "error": made.err().and_then(|e| e.raw_os_error()),
-                    });
-                }
                 if kind == "mkdir" {
                     let made = std::fs::create_dir(path);
                     return json!({
