@@ -102,8 +102,8 @@ function artifact(files: Record<string, string>): string {
   return realpathSync(dir);
 }
 
-const publish = (target: Running, dir: string): Promise<Message> =>
-  target.client.call("artifact/publish", { source: { path: dir } });
+const publish = (target: Running, dir: string, timeoutMs?: number): Promise<Message> =>
+  target.client.call("artifact/publish", { source: { path: dir } }, timeoutMs);
 
 interface Receipt {
   readonly artifactId: string;
@@ -583,7 +583,7 @@ describe("lifecycle scripts (DP-05)", () => {
       });
       // A user's npm settings that would change what D95 promises; Mostra's own settings win.
       writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
-      ok<Receipt>(await publish(target, dir));
+      ok<Receipt>(await publish(target, dir, WINDOWS ? 170_000 : undefined));
       const [layout] = layouts(target);
       const layoutDir = join(target.home.home, "deps", "locks", layout as string);
       const pnpmDir = join(layoutDir, "node_modules", ".pnpm");
