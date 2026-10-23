@@ -5,21 +5,21 @@
 
 use std::ffi::{OsStr, c_void};
 use std::io;
-use std::mem::{size_of, zeroed};
+use std::mem::{size_of, size_of_val, zeroed};
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::{null, null_mut};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, ERROR_BROKEN_PIPE, ERROR_FILE_NOT_FOUND, ERROR_HANDLE_EOF,
     ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, ERROR_IO_PENDING, ERROR_MORE_DATA,
-    ERROR_NO_DATA, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, FILETIME, GENERIC_READ,
-    GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, LocalFree,
-    STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WIN32_ERROR,
+    ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, FILETIME,
+    GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+    LocalFree, STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
-    ProgressInvokeNever, SDDL_REVISION_1, SE_FILE_OBJECT, TreeResetNamedSecurityInfoW,
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW, GetSecurityInfo,
+    SDDL_REVISION_1, SE_FILE_OBJECT, SE_KERNEL_OBJECT, SetSecurityInfo,
 };
 use windows_sys::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_SIZE_INFORMATION, AclSizeInformation,
@@ -32,9 +32,12 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateDirectoryW, CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_FIRST_PIPE_INSTANCE,
-    FILE_FLAG_OVERLAPPED, FILE_LIST_DIRECTORY, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_LIST_DIRECTORY, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+    READ_CONTROL, ReadFile, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC, WRITE_OWNER,
+    WriteFile,
 };
+use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -54,9 +57,9 @@ use windows_sys::Win32::System::Threading::{
     DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess,
     GetExitCodeProcess, GetProcessTimes, GetStartupInfoW, INFINITE,
     InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST, OpenProcess, OpenProcessToken,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_TERMINATE, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
-    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST, PROCESS_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, ResumeThread, STARTF_USESTDHANDLES,
+    STARTUPINFOEXW, STARTUPINFOW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
 };
 
 // Constants windows-sys keeps behind features this crate doesn't otherwise need.
@@ -515,32 +518,43 @@ pub fn create_directory(path: &OsStr, descriptor: &SecurityDescriptor) -> io::Re
     }
 }
 
-/// Replaces the owner and DACL of `path` and everything below it: the DACL is protected from the
-/// parent's entries, and every descendant's own entries are removed, so each inherits exactly
-/// `descriptor`'s inheritable entries.
-pub fn reset_tree(
+/// Gives one file or directory `descriptor`'s DACL (protected, so nothing is inherited from above)
+/// and, with `owner`, that owner, through a handle opened on the entry itself: a reparse point
+/// (a junction, a link) is changed, never what it points to, and nothing below a directory is
+/// touched, unlike the named-object calls, which propagate. The owner may always change a DACL.
+pub fn set_file_security(
     path: &OsStr,
     owner: Option<&Sid>,
     descriptor: &SecurityDescriptor,
 ) -> io::Result<()> {
     let name = wide(path);
+    let mut access = READ_CONTROL | WRITE_DAC;
     let mut information = DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION;
     if owner.is_some() {
+        access |= WRITE_OWNER;
         information |= OWNER_SECURITY_INFORMATION;
     }
-    // SAFETY: valid name, owner SID and DACL that outlive the call; no progress callback.
-    win32(unsafe {
-        TreeResetNamedSecurityInfoW(
+    // SAFETY: valid name; the handle is owned and closed.
+    let handle = Handle::owned(unsafe {
+        CreateFileW(
             name.as_ptr(),
+            access,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    })?;
+    // SAFETY: a valid handle with WRITE_DAC; the owner SID and DACL outlive the call.
+    win32(unsafe {
+        SetSecurityInfo(
+            handle.raw(),
             SE_FILE_OBJECT,
             information,
             owner.map_or(null_mut(), Sid::as_psid),
             null_mut(),
             descriptor.dacl(),
-            null(),
-            0,
-            None,
-            ProgressInvokeNever,
             null(),
         )
     })
@@ -784,6 +798,14 @@ pub fn terminate_if(pid: u32, created: u64) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Makes this process ignore Ctrl+C and Ctrl+Break from any console it shares: a gate or the
+/// pipe's helper ends only through its lifeline or channel, so a console's Ctrl+C reaches the
+/// supervisor's own handler, which stops its children in order (D87), never them first.
+pub fn ignore_console_interrupts() {
+    // SAFETY: no handler, `TRUE`: the documented way to ignore Ctrl+C for this process.
+    unsafe { SetConsoleCtrlHandler(None, 1) };
+}
+
 // ----- Job objects -----
 
 /// A Job Object.
@@ -793,17 +815,32 @@ impl Job {
     /// Creates a named job whose processes all end when its last handle closes. Fails when the
     /// name exists.
     pub fn create(name: &str, descriptor: &SecurityDescriptor) -> io::Result<Job> {
-        let text = wide_str(name);
+        Self::create_with(Some(name), descriptor)
+    }
+
+    /// Creates a job with no name (only its handle reaches it) whose processes all end when its
+    /// last handle closes: the one a gate starts its child in.
+    pub fn create_unnamed(descriptor: &SecurityDescriptor) -> io::Result<Job> {
+        Self::create_with(None, descriptor)
+    }
+
+    fn create_with(name: Option<&str>, descriptor: &SecurityDescriptor) -> io::Result<Job> {
+        let text = name.map(wide_str);
         let attributes = descriptor.attributes();
-        // SAFETY: valid attributes and name; the handle is owned.
-        let handle = unsafe { CreateJobObjectW(&raw const attributes, text.as_ptr()) };
+        // SAFETY: valid attributes and name (or none); the handle is owned.
+        let handle = unsafe {
+            CreateJobObjectW(
+                &raw const attributes,
+                text.as_ref().map_or(null(), Vec::as_ptr),
+            )
+        };
         // SAFETY: plain call, read right after the call it reports on.
         let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
         let job = Job(Handle::owned(handle)?);
         if existed {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
-                format!("the job {name} already exists"),
+                format!("the job {} already exists", name.unwrap_or("")),
             ));
         }
         // SAFETY: zeroed POD with one flag set.
@@ -977,14 +1014,38 @@ impl Suspended {
     }
 }
 
+/// Sets one attribute of an initialized list to `values`, which must outlive the list's use.
+fn set_attribute(
+    list: LPPROC_THREAD_ATTRIBUTE_LIST,
+    attribute: u32,
+    values: &[HANDLE],
+) -> io::Result<()> {
+    // SAFETY: an initialized list with room for the attribute; `values` outlives its use (the
+    // CreateProcessW call it is for), as the caller keeps it.
+    check(unsafe {
+        UpdateProcThreadAttribute(
+            list,
+            0,
+            attribute as usize,
+            values.as_ptr().cast(),
+            size_of_val(values),
+            null_mut(),
+            null(),
+        )
+    })
+}
+
 /// Creates `application` suspended, with no window of its own, the given standard handles and
-/// descriptor table, inheriting exactly `inherit` (deduplicated, made inheritable first).
+/// descriptor table, inheriting exactly `inherit` (deduplicated, made inheritable first), and
+/// inside `job` from its first instant (`PROC_THREAD_ATTRIBUTE_JOB_LIST`), so no moment exists in
+/// which the child is in no job of its creator's.
 pub fn create_suspended(
     application: &OsStr,
     command_line: &OsStr,
     standard: [RawHandle; 3],
     table: &[CrtEntry],
     inherit: &[RawHandle],
+    job: &Job,
 ) -> io::Result<Suspended> {
     let application = wide(application);
     let mut command_line = wide(command_line);
@@ -1014,47 +1075,33 @@ pub fn create_suspended(
         info.StartupInfo.lpReserved2 = table_bytes.as_mut_ptr();
     }
 
-    let mut attribute_storage: Vec<u64> = Vec::new();
-    let mut attributes: LPPROC_THREAD_ATTRIBUTE_LIST = null_mut();
-    if !handles.is_empty() {
-        let mut size = 0usize;
-        // SAFETY: size query; it fails and sets `size`.
-        unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &raw mut size) };
-        attribute_storage = vec![0u64; size.div_ceil(8)];
-        attributes = attribute_storage.as_mut_ptr().cast();
-        // SAFETY: a buffer of `size` bytes.
-        check(unsafe { InitializeProcThreadAttributeList(attributes, 1, 0, &raw mut size) })?;
-        // SAFETY: the list was initialized for one attribute; `handles` outlives the call that
-        // uses it (CreateProcessW below).
-        let updated = check(unsafe {
-            UpdateProcThreadAttribute(
-                attributes,
-                0,
-                PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-                handles.as_ptr().cast(),
-                handles.len() * size_of::<HANDLE>(),
-                null_mut(),
-                null(),
-            )
-        });
-        if let Err(error) = updated {
-            // SAFETY: initialized above.
-            unsafe { DeleteProcThreadAttributeList(attributes) };
-            return Err(error);
-        }
-        info.lpAttributeList = attributes;
+    // Two attributes: the child's job, and the handles it inherits (when it inherits any).
+    let jobs: [HANDLE; 1] = [job.0.raw()];
+    let mut size = 0usize;
+    // SAFETY: size query; it fails and sets `size`.
+    unsafe { InitializeProcThreadAttributeList(null_mut(), 2, 0, &raw mut size) };
+    let mut attribute_storage: Vec<u64> = vec![0u64; size.div_ceil(8)];
+    let attributes: LPPROC_THREAD_ATTRIBUTE_LIST = attribute_storage.as_mut_ptr().cast();
+    // SAFETY: a buffer of `size` bytes.
+    check(unsafe { InitializeProcThreadAttributeList(attributes, 2, 0, &raw mut size) })?;
+    // The child is in `job` from its first instant (Opus review of WP-W1).
+    let mut updated = set_attribute(attributes, PROC_THREAD_ATTRIBUTE_JOB_LIST, &jobs);
+    if updated.is_ok() && !handles.is_empty() {
+        updated = set_attribute(attributes, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, &handles);
     }
+    if let Err(error) = updated {
+        // SAFETY: initialized above.
+        unsafe { DeleteProcThreadAttributeList(attributes) };
+        return Err(error);
+    }
+    info.lpAttributeList = attributes;
 
     // SAFETY: zeroed POD output.
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
     let flags = CREATE_SUSPENDED
         | CREATE_UNICODE_ENVIRONMENT
         | CREATE_NO_WINDOW
-        | if handles.is_empty() {
-            0
-        } else {
-            EXTENDED_STARTUPINFO_PRESENT
-        };
+        | EXTENDED_STARTUPINFO_PRESENT;
     // SAFETY: every pointer is valid for the call; the environment and directory are inherited.
     let created = check(unsafe {
         CreateProcessW(
@@ -1070,10 +1117,8 @@ pub fn create_suspended(
             &raw mut process,
         )
     });
-    if !attributes.is_null() {
-        // SAFETY: initialized above, no longer used.
-        unsafe { DeleteProcThreadAttributeList(attributes) };
-    }
+    // SAFETY: initialized above, no longer used.
+    unsafe { DeleteProcThreadAttributeList(attributes) };
     drop(attribute_storage);
     created?;
     Ok(Suspended {
@@ -1198,6 +1243,61 @@ pub fn pipe_write_all(handle: RawHandle, mut data: &[u8]) -> io::Result<()> {
         data = &data[written..];
     }
     Ok(())
+}
+
+/// Opens the client end of a pipe for reading and writing (overlapped), allowing the server to
+/// identify this process but never to act as it (`SECURITY_IDENTIFICATION`), since the server isn't
+/// trusted until its owner is checked. A busy pipe is waited for up to 5 s.
+pub fn open_pipe_client(full: &str) -> io::Result<Handle> {
+    let name = wide_str(full);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        // SAFETY: valid name; the handle is owned and closed.
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                null(),
+                OPEN_EXISTING,
+                FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+                null_mut(),
+            )
+        };
+        match Handle::owned(handle) {
+            Ok(handle) => return Ok(handle),
+            Err(error)
+                if is_error(&error, ERROR_PIPE_BUSY) && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+/// The owner of the kernel object (a pipe) a handle reaches.
+pub fn object_owner(handle: &Handle) -> io::Result<Sid> {
+    let mut owner: PSID = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: a valid handle; the owner points into `descriptor`, which `Local` frees after the
+    // SID is copied out.
+    win32(unsafe {
+        GetSecurityInfo(
+            handle.raw(),
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &raw mut owner,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &raw mut descriptor,
+        )
+    })?;
+    let descriptor = Local(descriptor);
+    let sid = Sid::copy_from(owner);
+    drop(descriptor);
+    Ok(sid)
 }
 
 /// Creates one instance of an owner-only named pipe that refuses remote clients. The first

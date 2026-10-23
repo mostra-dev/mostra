@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { LineSplitter } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import { helperPath, readProcess } from "../../src/platform/index.ts";
+import { attach, connectSocket } from "../../src/protocol-server/client.ts";
 import {
   accessEntries,
   alive,
@@ -31,6 +32,7 @@ import {
   endpointExists,
   eventually,
   initializeParams,
+  sealedAgainstWrites,
   startDaemon,
   tempDir,
   testHome,
@@ -164,6 +166,13 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     } finally {
       rmSync(open, { recursive: true, force: true });
     }
+    // An ordinary user can create the global-namespace job a gate makes for its child, so a
+    // supervisor in another logon session finds it (Opus review of WP-W1).
+    const [job] = asOtherUser(`job:Global\\mostra-job-test-${process.pid}`) as unknown as {
+      created: boolean;
+      error?: number;
+    }[];
+    expect(job).toMatchObject({ created: true });
     await stopDaemon(socket);
     expect((await daemon.exited).code).toBe(0);
   });
@@ -218,6 +227,56 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     expect(existsSync(join(foreign, "store"))).toBe(false);
   }, 120_000);
 
+  it("tightens a widened home without unsealing its versions or following a link out of it (Opus review)", async () => {
+    const security = (path: string): string => {
+      const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+      const out = execFileSync(probe, ["security", path], { encoding: "utf8" });
+      return (JSON.parse(out) as { result: { sddl: string } }).result.sddl;
+    };
+    const icacls = (...args: string[]): void => {
+      execFileSync("C:\\Windows\\System32\\icacls.exe", args);
+    };
+    const home = testHome();
+    const first = await startDaemon(home);
+    const client = await connectTo(first.status.socket ?? "");
+    await client.call("mostra/initialize", initializeParams());
+    const page = join(tempDir("tighten-art"), "page.tsx");
+    cpSync(join(artifact("single-tsx"), "page.tsx"), page);
+    const published = await client.call("artifact/publish", { source: { path: page } });
+    expect(published.error).toBeUndefined();
+    const { versionId } = published.result as { versionId: string };
+    client.close();
+    await stopDaemon(first.status.socket ?? "");
+    const sealedFile = join(home.home, "versions", versionId, "manifest.json");
+    expect(sealedAgainstWrites(sealedFile)).toBe(true);
+
+    // Outside the home, a directory a junction inside the home points to.
+    const outside = tempDir("tighten-outside");
+    writeFileSync(join(outside, "kept.txt"), "x");
+    const outsideBefore = security(outside);
+    const fileBefore = security(join(outside, "kept.txt"));
+    execFileSync("cmd.exe", ["/c", "mklink", "/J", join(home.home, "cache", "outside"), outside]);
+    // The home widened (a restore that lost its list), and a file in it granted to everyone.
+    const loose = join(home.home, "logs", "loose.txt");
+    writeFileSync(loose, "x");
+    icacls(home.home, "/grant", "*S-1-1-0:(OI)(CI)R");
+    icacls(loose, "/grant", "*S-1-1-0:F");
+
+    const second = await startDaemon(home);
+    expect(second.status.status).toBe("started");
+    const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+    expect(log).toContain('"home.tightened"');
+    // The version stays sealed; the loose file is the user's alone; the junction's target is
+    // untouched.
+    expect(sealedAgainstWrites(sealedFile)).toBe(true);
+    expect(accessEntries(loose).some((entry) => entry.sid === "WD")).toBe(false);
+    expect(security(outside)).toBe(outsideBefore);
+    expect(security(join(outside, "kept.txt"))).toBe(fileBefore);
+    const [denied] = asOtherUser(`file:${loose}`);
+    expect(denied).toMatchObject({ read: false, readWrite: false });
+    await stopDaemon(second.status.socket ?? "");
+  }, 180_000);
+
   it("keeps a running home: Windows refuses to remove files in use, and the owner keeps serving", async () => {
     const home = testHome();
     const daemon = await startDaemon(home);
@@ -249,6 +308,105 @@ describe.runIf(WINDOWS)("Windows: the control pipe (D81 item 4, RT-06)", () => {
     const again = await startDaemon(home);
     expect(again.status).toMatchObject({ status: "attached", pid: daemon.status.pid });
     await stopDaemon(record(home.home).socket);
+    expect((await daemon.exited).code).toBe(0);
+  }, 60_000);
+
+  it("never talks to a pipe another user took under an old pipe's name (Opus review)", async () => {
+    const home = testHome();
+    const daemon = await startDaemon(home);
+    const old = daemon.status.socket ?? "";
+    await stopDaemon(old);
+    expect((await daemon.exited).code).toBe(0);
+    // The old name is free now; another user takes it.
+    const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+    const squatter = spawn(
+      probe,
+      [
+        "squat",
+        process.env["MOSTRA_TEST_OTHER_USER"] ?? "",
+        process.env["MOSTRA_TEST_OTHER_PASSWORD"] ?? "",
+        old.slice("\\\\.\\pipe\\".length),
+      ],
+      { stdio: ["pipe", "pipe", "inherit"], windowsHide: true },
+    );
+    try {
+      const [line] = (await once(squatter.stdout, "data")) as [Buffer];
+      expect(JSON.parse(line.toString("utf8"))).toMatchObject({ ok: true });
+      expect(await endpointExists(old)).toBe(true);
+      // A client refuses it before sending a byte, as if nothing served the name.
+      const refused = await connectSocket(old, 5000).then(
+        () => undefined,
+        (error: unknown) => error as { diagnostic?: { code: string; message: string } },
+      );
+      expect(refused?.diagnostic?.code).toBe("MOSTRA_HOST_CONNECTION_CLOSED");
+      expect(refused?.diagnostic?.message).toContain("another user");
+      await expect(attach(old, { name: "test", version: "0" }, 5000)).rejects.toMatchObject({
+        diagnostic: { code: "MOSTRA_HOST_CONNECTION_CLOSED" },
+      });
+    } finally {
+      squatter.stdin.end();
+      await once(squatter, "exit");
+    }
+  }, 60_000);
+
+  it("names the new pipe in instance.json even when the first rewrite fails (Opus review)", async () => {
+    const home = testHome();
+    const daemon = await startDaemon(home, {
+      env: { ...home.env, MOSTRA_TEST_FAULTS: "endpoint:moved:throw-once" },
+    });
+    const before = daemon.status.socket ?? "";
+    const helper = (await status(before)).processes.find((child) => child.kind === "control-pipe");
+    process.kill(helper?.pid ?? 0);
+    // The heal that binds the new pipe fails to announce it; the next one announces it again.
+    await eventually(
+      async () =>
+        record(home.home).socket !== before && (await endpointExists(record(home.home).socket)),
+      25_000,
+      "instance.json to name the served pipe",
+    );
+    const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+    expect(log).toContain('"protocol.endpoint_announce_failed"');
+    await stopDaemon(record(home.home).socket);
+    expect((await daemon.exited).code).toBe(0);
+  }, 60_000);
+
+  it("binds one pipe at a time when a bind takes longer than its checks (Opus review)", async () => {
+    const home = testHome();
+    // Every helper takes 7 s to report READY; the checks run every 5 s.
+    const daemon = await startDaemon(home, {
+      env: { ...home.env, MOSTRA_TEST_PIPE_SLOW_READY_MS: "7000" },
+    });
+    const before = daemon.status.socket ?? "";
+    const helper = (await status(before)).processes.find((child) => child.kind === "control-pipe");
+    process.kill(helper?.pid ?? 0);
+    await eventually(
+      async () =>
+        record(home.home).socket !== before && (await endpointExists(record(home.home).socket)),
+      30_000,
+      "the pipe to be served again",
+    );
+    // Long enough for an overlapping second heal to have bound a pipe of its own.
+    await new Promise((resolve) => setTimeout(resolve, 8000));
+    const helpers = (await status(record(home.home).socket)).processes.filter(
+      (child) => child.kind === "control-pipe",
+    );
+    expect(helpers).toHaveLength(1);
+    await stopDaemon(record(home.home).socket);
+    expect((await daemon.exited).code).toBe(0);
+  }, 90_000);
+
+  it("answers a request sent just before it stops, though its pipe's helper writes slowly (Opus review)", async () => {
+    const home = testHome();
+    const daemon = await startDaemon(home, {
+      env: { ...home.env, MOSTRA_TEST_PIPE_SLOW_WRITE_MS: "400" },
+    });
+    const client = await connectTo(daemon.status.socket ?? "");
+    expect((await client.call("mostra/initialize", initializeParams())).error).toBeUndefined();
+    // The answer is still queued in the helper when the instance closes its listener.
+    const answer = await client.call("mostra/shutdown", undefined, 20_000);
+    expect(answer.error).toBeUndefined();
+    expect(answer.result).toEqual({});
+    await client.closed;
     expect((await daemon.exited).code).toBe(0);
   }, 60_000);
 
@@ -427,6 +585,60 @@ describe.runIf(WINDOWS)("Windows: children end with their supervisor (RT-09, RT-
     } finally {
       supervisor.kill();
       await once(supervisor, "exit");
+    }
+  });
+});
+
+// The gate alone, started by the test (outside any supervisor), so what is judged is the gate's own
+// handling of its lifeline and job, not Node.js's job ending it (Opus review of WP-W1).
+describe.runIf(WINDOWS)("the gate on its own", () => {
+  const gate = (env: NodeJS.ProcessEnv, script: string) =>
+    spawn(helperPath(), ["gate", "--", process.execPath, "-e", script], {
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  const childrenOf = (pid: number): number[] => {
+    const out = execFileSync(helperPath(), ["processes"], { encoding: "utf8" });
+    const { result } = JSON.parse(out) as { result: { pid: number; ppid?: number }[] };
+    return result.filter((entry) => entry.ppid === pid).map((entry) => entry.pid);
+  };
+
+  it("never runs its command when its lifeline closes before go", async () => {
+    const marker = join(tempDir("gate-eof"), "ran.txt");
+    const child = gate({}, `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`);
+    const lifeline = child.stdio[3] as unknown as NodeJS.ReadWriteStream;
+    const report = await new Promise<string>((resolve) =>
+      lifeline.once("data", (chunk: Buffer) => resolve(chunk.toString("utf8"))),
+    );
+    expect(report).toContain('"startTime":"win/');
+    // Closing the test's end is what a dead supervisor does to the lifeline.
+    (lifeline as unknown as { destroy(): void }).destroy();
+    const [code] = (await once(child, "exit")) as [number | null];
+    expect(code).toBe(125);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("takes its child along when it dies between creating it and naming its job", async () => {
+    const child = gate(
+      { MOSTRA_TEST_GATE: "stall-after-create" },
+      "setInterval(() => {}, 1 << 30)",
+    );
+    await once(child, "spawn");
+    let created: number[] = [];
+    await eventually(
+      () => {
+        created = childrenOf(child.pid ?? 0);
+        return created.length === 1;
+      },
+      10_000,
+      "the gate's suspended child",
+    );
+    child.kill();
+    await once(child, "exit");
+    for (const pid of created) {
+      await eventually(() => !alive(pid), 10_000, `the suspended child ${pid} to end`);
     }
   });
 });

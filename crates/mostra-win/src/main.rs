@@ -12,6 +12,8 @@
 //! mostra-win whoami                         {"user","owner"}: this process's SID and default owner
 //! mostra-win gate -- <program> <args>…      the child gate (src/win/gate.rs); exits with the child's code
 //! mostra-win pipe <name>                    serves \\.\pipe\<name> over descriptor 4 (src/win/pipe.rs)
+//! mostra-win connect <name>                 a client of the pipe <name>, its owner checked, over
+//!                                           stdin and stdout (src/win/connect.rs)
 //! ```
 
 #[cfg(windows)]
@@ -33,7 +35,7 @@ mod windows {
     use std::io::Write;
     use std::path::Path;
 
-    use mostra_win::win::{acl, gate, pipe, process, sys};
+    use mostra_win::win::{acl, connect, gate, pipe, process, sys};
     use serde_json::{Value, json};
 
     fn print(value: &Value) {
@@ -76,6 +78,13 @@ mod windows {
                 Some(name) if !name.is_empty() && !name.contains('\\') => pipe::run(name),
                 _ => {
                     eprintln!("usage: mostra-win pipe <name>");
+                    2
+                }
+            },
+            "connect" => match rest.first().and_then(text) {
+                Some(name) if !name.is_empty() && !name.contains('\\') => connect::run(name),
+                _ => {
+                    eprintln!("usage: mostra-win connect <name>");
                     2
                 }
             },

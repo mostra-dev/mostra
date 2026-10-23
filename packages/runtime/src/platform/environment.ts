@@ -8,8 +8,13 @@ import { WINDOWS } from "./directories.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-const WINDOWS_BASE = [
-  "Path",
+/**
+ * What Windows itself gives every program and programs rely on, besides `Path`: the system's
+ * directories, the user's profile folders, the shell and how it finds programs, who the user is
+ * and the processor. None names a secret. The one list both the base and the artifact environment
+ * pass on Windows (`processes/environment.ts`).
+ */
+export const WINDOWS_SYSTEM_VARIABLES: readonly string[] = [
   "SystemRoot",
   "SystemDrive",
   "windir",
@@ -18,11 +23,27 @@ const WINDOWS_BASE = [
   "TEMP",
   "TMP",
   "USERPROFILE",
-  "LOCALAPPDATA",
+  "HOMEDRIVE",
+  "HOMEPATH",
   "APPDATA",
+  "LOCALAPPDATA",
+  "ProgramData",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "ProgramW6432",
+  "CommonProgramFiles",
+  "CommonProgramFiles(x86)",
+  "CommonProgramW6432",
+  "USERNAME",
+  "USERDOMAIN",
+  "COMPUTERNAME",
+  "OS",
   "NUMBER_OF_PROCESSORS",
   "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
 ];
+
+const WINDOWS_BASE = ["Path", ...WINDOWS_SYSTEM_VARIABLES];
 
 /** The base environment of a child, from the supervisor's `env`. */
 export function baseEnvironment(env: Environment): Record<string, string> {

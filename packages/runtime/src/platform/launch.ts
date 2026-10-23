@@ -14,7 +14,7 @@
  *   child's lifeline: closing it (a stop, or the supervisor's exit or crash) ends the job, child
  *   and descendants at once. Windows has no signals to ask a process to stop, so a stop is that:
  *   graceful work goes over the child's own channel first (D87). The reaper ends a recorded
- *   child's job, which it opens by the name the gate gave it (`Local\mostra-job-<pid>-<creation>`),
+ *   child's job, which it opens by the name the gate gave it (`Global\mostra-job-<pid>-<creation>`),
  *   and the child itself if it still runs as the recorded process.
  */
 import { type ChildProcess, spawn } from "node:child_process";

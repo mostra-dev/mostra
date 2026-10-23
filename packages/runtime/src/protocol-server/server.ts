@@ -127,6 +127,11 @@ export class ProtocolServer {
   #endpoint: string | undefined;
   #listenOptions: { launchPipe?: LaunchPipe; onMoved?: (path: string) => void } = {};
   #healTimer: ReturnType<typeof setInterval> | undefined;
+  /** A heal under way: one at a time, and `close` waits for it (Opus review of WP-W1). */
+  #healing: Promise<void> | undefined;
+  /** An endpoint that moved but whose `onMoved` failed: announced again by every heal until it holds. */
+  #unannounced: string | undefined;
+  #closed = false;
 
   constructor(options: ProtocolServerOptions) {
     this.#options = options;
@@ -228,23 +233,56 @@ export class ProtocolServer {
       (stream) => {
         this.serve("socket", stream, stream);
       },
-      this.#listenOptions.launchPipe,
+      {
+        ...(this.#listenOptions.launchPipe ? { launchPipe: this.#listenOptions.launchPipe } : {}),
+        onError: (error) => this.#options.log.error("protocol.listener_error", { error }),
+      },
     );
   }
 
-  async #heal(): Promise<void> {
+  #heal(): Promise<void> {
+    if (this.#closed) return Promise.resolve();
+    // A bind on Windows (a gated helper and its READY) can outlast the interval: one heal at a time.
+    this.#healing ??= this.#healOnce().finally(() => {
+      this.#healing = undefined;
+    });
+    return this.#healing;
+  }
+
+  async #healOnce(): Promise<void> {
+    if (this.#unannounced !== undefined) this.#announce(this.#unannounced);
     const listener = this.#listener;
     if (!listener || listener.intact()) return;
     // Close the old listener first: Node removes a Unix socket's file when its server closes, so
     // closing it after binding would remove the new socket.
     await listener.close();
+    if (this.#closed) return;
     try {
       const replacement = await this.#bind();
+      if (this.#closed) {
+        // The server closed while this bind ran: the endpoint is never served or announced.
+        await replacement.close();
+        return;
+      }
       this.#listener = replacement;
       this.#options.log.warn("protocol.socket_recreated", { path: replacement.path });
-      if (replacement.path !== listener.path) this.#listenOptions.onMoved?.(replacement.path);
+      if (replacement.path !== listener.path) this.#announce(replacement.path);
     } catch (error) {
       this.#options.log.warn("protocol.socket_recreate_failed", { path: listener.path, error });
+    }
+  }
+
+  /**
+   * Tells the instance the endpoint moved (it rewrites `instance.json`); when that fails, every
+   * later heal tries again, so starters are never left with a record naming a dead pipe.
+   */
+  #announce(path: string): void {
+    try {
+      this.#listenOptions.onMoved?.(path);
+      this.#unannounced = undefined;
+    } catch (error) {
+      this.#unannounced = path;
+      this.#options.log.warn("protocol.endpoint_announce_failed", { path, error });
     }
   }
 
@@ -354,14 +392,17 @@ export class ProtocolServer {
 
   /**
    * Stops listening, removes the socket file if it is still this server's, and closes every
-   * connection. Responses already sent are flushed first.
+   * connection. Responses already sent are flushed first: the connections end before the
+   * listener, which on Windows lets the pipe's helper hand them over before it exits.
    */
-  close(): void {
+  async close(): Promise<void> {
+    this.#closed = true;
     if (this.#healTimer) clearInterval(this.#healTimer);
+    await this.#healing;
+    for (const connection of this.#connections) connection.close();
     const listener = this.#listener;
     this.#listener = undefined;
-    void listener?.close();
-    for (const connection of this.#connections) connection.close();
+    await listener?.close();
   }
 
   async #dispatch(session: MutableSession, method: string, params: unknown): Promise<unknown> {

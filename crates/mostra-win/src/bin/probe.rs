@@ -2,14 +2,16 @@
 //! local user, try to open each path, and say what happened.
 //!
 //! ```text
-//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file, pipe or mkdir
-//!   (mkdir creates the directory as that user, so the user owns it)
+//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file, pipe, mkdir or job
+//!   (mkdir creates the directory as that user, so the user owns it; job creates a named job)
 //! → {"ok":true,"result":[{"path","read","readWrite","error"?}]}
 //! ```
 //! `read` opens for reading only (a directory: listing it), `readWrite` for reading and writing.
 //!
 //! ```text
 //! mostra-win-probe suspend|resume <pid>    freezes or thaws every thread of a process
+//! mostra-win-probe squat <user> <password> <name>
+//!                                          as that user, holds \\.\pipe\<name> until stdin ends
 //! ```
 
 #[cfg(windows)]
@@ -23,19 +25,13 @@ fn main() {
     if let [command, path] = arguments.as_slice()
         && command == "security"
     {
-        match sys::file_security(OsStr::new(path)) {
-            Ok(security) => println!(
-                "{}",
-                json!({ "ok": true, "result": { "sddl": security.sddl, "protected": security.protected } })
-            ),
-            Err(error) => {
-                println!(
-                    "{}",
-                    json!({ "ok": false, "error": { "message": error.to_string() } })
-                );
-                std::process::exit(1);
-            }
-        }
+        security(path);
+        return;
+    }
+    if let [command, user, password, name] = arguments.as_slice()
+        && command == "squat"
+    {
+        squat(user, password, name);
         return;
     }
     if let [command, pid] = arguments.as_slice()
@@ -76,6 +72,18 @@ fn main() {
             .iter()
             .map(|target| {
                 let (kind, path) = target.split_once(':').unwrap_or(("file", target));
+                if kind == "job" {
+                    // A named job in the global namespace, as a gate makes one.
+                    let made = sys::current_user()
+                        .and_then(|user| user.to_sddl())
+                        .and_then(|user| mostra_win::win::acl::owner_only_object(&user))
+                        .and_then(|descriptor| sys::Job::create(path, &descriptor));
+                    return json!({
+                        "path": target,
+                        "created": made.is_ok(),
+                        "error": made.err().and_then(|e| e.raw_os_error()),
+                    });
+                }
                 if kind == "mkdir" {
                     let made = std::fs::create_dir(path);
                     return json!({
@@ -107,6 +115,57 @@ fn main() {
             println!(
                 "{}",
                 json!({ "ok": false, "error": { "message": error.to_string(), "os": error.raw_os_error() } })
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Prints a path's security descriptor as SDDL and whether its list is protected.
+#[cfg(windows)]
+fn security(path: &str) {
+    use std::ffi::OsStr;
+
+    use mostra_win::win::sys;
+    use serde_json::json;
+    match sys::file_security(OsStr::new(path)) {
+        Ok(security) => println!(
+            "{}",
+            json!({ "ok": true, "result": { "sddl": security.sddl, "protected": security.protected } })
+        ),
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// As another user, creates `\\.\pipe\<name>` (owned by that user, open to everyone), says so
+/// on stdout and holds it until stdin ends: a pipe another user took under a name an instance once
+/// served (Opus review of WP-W1).
+#[cfg(windows)]
+fn squat(user: &str, password: &str, name: &str) {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let full = format!(r"\\.\pipe\{name}");
+    let created = sys::as_user(user, password, || {
+        sys::SecurityDescriptor::from_sddl("D:(A;;GA;;;WD)")
+            .and_then(|descriptor| sys::create_pipe_instance(&full, true, &descriptor))
+    });
+    match created {
+        Ok(Ok(pipe)) => {
+            println!("{}", json!({ "ok": true, "result": { "pipe": full } }));
+            let mut sink = String::new();
+            let _ = std::io::stdin().read_line(&mut sink);
+            drop(pipe);
+        }
+        Ok(Err(error)) | Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
             );
             std::process::exit(1);
         }

@@ -8,9 +8,11 @@
  * Either way the caller gets one stream per client and a listener it can check and replace: a
  * socket file that disappeared, or a pipe whose helper stopped, is bound again (D81 item 4).
  */
+
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, type Stats, statSync, unlinkSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import { Duplex } from "node:stream";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
@@ -37,7 +39,10 @@ export interface ControlListener {
   readonly path: string;
   /** Whether it still serves; false when its socket file is gone or its pipe's helper stopped. */
   intact(): boolean;
-  /** Stops serving and removes what it created. Existing client streams are the caller's. */
+  /**
+   * Stops serving and removes what it created. Client streams the caller ended first are handed
+   * over before the endpoint goes; any still open are ended here, after what they were sent.
+   */
   close(): Promise<void>;
 }
 
@@ -67,14 +72,22 @@ export function controlEndpoint(
   return path;
 }
 
+/** What a listener reports besides its clients. */
+export interface ListenOptions {
+  /** Starts the pipe's helper (Windows); default: behind a gate, unrecorded. */
+  readonly launchPipe?: LaunchPipe;
+  /** Receives the listener's errors after it is bound (a socket's `error` events). */
+  readonly onError?: (error: unknown) => void;
+}
+
 /** Binds `endpoint` and calls `onConnection` for every client. */
 export function listenControl(
   endpoint: string,
   onConnection: OnConnection,
-  launchPipe: LaunchPipe = launchPipeDirectly,
+  options: ListenOptions = {},
 ): Promise<ControlListener> {
-  if (WINDOWS) return listenPipe(endpoint, onConnection, launchPipe);
-  return listenSocket(endpoint, onConnection);
+  if (WINDOWS) return listenPipe(endpoint, onConnection, options.launchPipe ?? launchPipeDirectly);
+  return listenSocket(endpoint, onConnection, options.onError ?? (() => {}));
 }
 
 const PIPE_PREFIX = "\\\\.\\pipe\\";
@@ -102,7 +115,11 @@ const launchPipeDirectly: LaunchPipe = async (name) => {
   return { channel, exited, stop: () => launched.end(2000, []) };
 };
 
-async function listenSocket(path: string, onConnection: OnConnection): Promise<ControlListener> {
+async function listenSocket(
+  path: string,
+  onConnection: OnConnection,
+  onError: (error: unknown) => void,
+): Promise<ControlListener> {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   try {
     unlinkSync(path);
@@ -118,7 +135,7 @@ async function listenSocket(path: string, onConnection: OnConnection): Promise<C
     });
   });
   chmodSync(path, 0o600);
-  server.on("error", () => {});
+  server.on("error", onError);
   const stats: Stats = statSync(path);
   const same = (): boolean => {
     try {
@@ -157,6 +174,8 @@ const FATAL = 5;
 const MAX_FRAME = 1 << 20;
 /** How long the helper may take to create the pipe. */
 const READY_MS = 10_000;
+/** How long a closing listener waits for its helper to hand clients their bytes (its own 5 s). */
+const DRAIN_MS = 6000;
 
 function frame(connection: number, kind: number, payload?: Uint8Array): Buffer {
   const header = Buffer.alloc(9);
@@ -257,6 +276,19 @@ async function listenPipe(
     path: bound,
     intact: () => !exited && !failed,
     async close() {
+      // Every client's stream ends after what it was sent, in order on the one channel; then
+      // connection 0's CLOSE asks the helper to hand all of it over and exit (at most its 5 s
+      // drain). Only a helper that doesn't is stopped, which ends its job.
+      for (const stream of streams.values()) stream.end();
+      if (!exited) send(frame(0, CLOSE));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        helper.exited,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, DRAIN_MS);
+        }),
+      ]);
+      clearTimeout(timer);
       for (const stream of streams.values()) stream.destroy();
       streams.clear();
       await helper.stop();
@@ -289,5 +321,89 @@ function clientStream(id: number, send: (bytes: Buffer) => void, forget: () => v
       close();
       callback(error);
     },
+  });
+}
+
+/** Why a client couldn't open a control endpoint. */
+export class ControlConnectError extends Error {
+  /** `unreachable` (nothing serves it, or it timed out) or `not-owned` (another user's pipe). */
+  readonly reason: "unreachable" | "not-owned";
+  constructor(reason: "unreachable" | "not-owned", message: string) {
+    super(message);
+    this.name = "ControlConnectError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Connects to a home's control endpoint as a client. On Windows through `mostra-win connect`,
+ * which refuses a pipe another user created under the name (an old name `instance.json` still
+ * names may be free for anyone to take), and never lets the server act as this process: Node.js
+ * can check neither (Opus review of WP-W1). Rejects with a {@link ControlConnectError}.
+ */
+export function connectControl(endpoint: string, timeoutMs = 5000): Promise<Duplex> {
+  return WINDOWS ? connectPipe(endpoint, timeoutMs) : connectSocket(endpoint, timeoutMs);
+}
+
+function connectSocket(path: string, timeoutMs: number): Promise<Duplex> {
+  return new Promise((resolve, reject) => {
+    const socket: Socket = createConnection(path);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new ControlConnectError("unreachable", "timed out"));
+    }, timeoutMs);
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      clearTimeout(timer);
+      reject(new ControlConnectError("unreachable", error.code ?? "failed"));
+    });
+    socket.once("connect", () => {
+      clearTimeout(timer);
+      resolve(socket);
+    });
+  });
+}
+
+function connectPipe(endpoint: string, timeoutMs: number): Promise<Duplex> {
+  const name = endpoint.startsWith(PIPE_PREFIX) ? endpoint.slice(PIPE_PREFIX.length) : endpoint;
+  return new Promise((resolve, reject) => {
+    const child = spawn(helperPath(), ["connect", name], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let settled = false;
+    const fail = (reason: "unreachable" | "not-owned", message: string): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      reject(new ControlConnectError(reason, message));
+    };
+    const timer = setTimeout(() => fail("unreachable", "timed out"), timeoutMs);
+    child.once("error", (error) => fail("unreachable", error.message));
+    child.once("exit", (code) => fail(code === 3 ? "not-owned" : "unreachable", `exit ${code}`));
+    let text = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      if (settled) return;
+      text += chunk;
+      const end = text.indexOf("\n");
+      if (end < 0) return;
+      let line: { connected?: boolean; code?: string; error?: string } = {};
+      try {
+        line = JSON.parse(text.slice(0, end)) as typeof line;
+      } catch {
+        // Treated as a failure below.
+      }
+      if (line.connected !== true) {
+        fail(
+          line.code === "not-owned" ? "not-owned" : "unreachable",
+          line.error ?? text.slice(0, end),
+        );
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(Duplex.from({ readable: child.stdout, writable: child.stdin }));
+    });
   });
 }

@@ -33,8 +33,12 @@ describe("the platform layer (RT-10)", () => {
     expect(isUnder("/a/b/c.ts", "/a/b")).toBe(true);
     expect(isUnder("/a/b", "/a/b/")).toBe(true);
     expect(isUnder("/a/bc/d.ts", "/a/b")).toBe(false);
-    expect(isUnder("C:/work/src/x.tsx", "C:\\work\\src")).toBe(true);
+    // A backslash separates only on Windows; on POSIX `src\\x` is a sibling of `src`, never inside
+    // it (Opus review of WP-W1).
+    expect(isUnder("C:/work/src/x.tsx", "C:\\work\\src")).toBe(WINDOWS);
     expect(isUnder("C:\\work\\srcx\\x.tsx", "C:/work/src")).toBe(false);
+    expect(isUnder("/a/src\\x/evil.ts", "/a/src")).toBe(WINDOWS);
+    expect(isUnder("/a/src/x.ts", "/a/src\\")).toBe(WINDOWS);
     expect(pathKey("C:\\A\\b").length).toBe("C:\\A\\b".length);
     // Windows names compare without case; POSIX names don't.
     expect(isUnder("c:/WORK/src/x.tsx", "C:\\work\\src")).toBe(WINDOWS);

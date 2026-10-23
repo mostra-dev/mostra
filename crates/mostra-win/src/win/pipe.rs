@@ -9,19 +9,22 @@
 //! [connection: u32 LE][kind: u8][length: u32 LE][payload]
 //! kind 1 OPEN  helper → supervisor   a client connected
 //! kind 2 DATA  both ways             bytes of that connection
-//! kind 3 CLOSE both ways             that connection ended (or end it)
+//! kind 3 CLOSE both ways             that connection ended (or end it); on connection 0 from
+//!                                    the supervisor: stop, hand clients their bytes, exit
 //! kind 4 READY helper → supervisor   the pipe exists; payload: its full name (connection 0)
 //! kind 5 FATAL helper → supervisor   the pipe can't be served; payload: why (connection 0)
 //! ```
 //!
 //! When descriptor 4 closes (the supervisor stopped the pipe, exited or was killed), the helper
-//! exits and the pipe disappears with it.
+//! hands every client what it was already sent (at most [`DRAIN`] long), then exits, and the pipe
+//! disappears with it.
 
 use std::collections::HashMap;
 use std::io;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use super::acl;
 use super::sys::{self, Handle, RawHandle, SecurityDescriptor};
@@ -63,9 +66,63 @@ fn read_exact(handle: RawHandle, mut buffer: &mut [u8]) -> io::Result<bool> {
 }
 
 type Connections = Arc<Mutex<HashMap<u32, Sender<Vec<u8>>>>>;
+/// The connections' writers, joined before the helper exits so no answer already sent is lost.
+type Writers = Arc<Mutex<Vec<JoinHandle<()>>>>;
+
+/// How long the helper waits for its clients to take what they were sent once its channel closed.
+pub const DRAIN: Duration = Duration::from_secs(5);
+
+/// Ends the helper once the supervisor's channel closed: every connection's queue is written and
+/// flushed (a client that reads nothing is given up on after [`DRAIN`]), then the process exits.
+fn drain_and_exit(connections: &Connections, writers: &Writers) -> ! {
+    connections
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+    thread::spawn(|| {
+        thread::sleep(DRAIN);
+        std::process::exit(0);
+    });
+    let pending: Vec<JoinHandle<()>> = writers
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .drain(..)
+        .collect();
+    for writer in pending {
+        let _ = writer.join();
+    }
+    std::process::exit(0);
+}
+
+/// Tests only (`MOSTRA_TEST_PIPE_FATAL_ONCE`): the first helper to create the marker file fails
+/// after READY and stays alive, as one whose next pipe instance couldn't be created would; the
+/// supervisor must replace it. Otherwise hands the first instance back.
+fn fail_once_for_tests(out: &Sender<Vec<u8>>, first: Handle) -> Handle {
+    let Some(marker) = std::env::var_os("MOSTRA_TEST_PIPE_FATAL_ONCE") else {
+        return first;
+    };
+    if std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&marker)
+        .is_err()
+    {
+        return first;
+    }
+    let _ = out.send(frame(
+        0,
+        FATAL,
+        b"a test made this pipe fail after it was ready",
+    ));
+    drop(first);
+    loop {
+        thread::park();
+    }
+}
 
 /// Serves `\\.\pipe\<name>` until descriptor 4 closes; returns the exit code.
 pub fn run(name: &str) -> i32 {
+    sys::ignore_console_interrupts();
     let (table, _) = sys::inherited_descriptors();
     let Some(channel_handle) = table
         .get(4)
@@ -100,32 +157,23 @@ pub fn run(name: &str) -> i32 {
             return 1;
         }
     };
-    let _ = out.send(frame(0, READY, full.as_bytes()));
-    // Tests only: the first helper to create this file fails after READY and stays alive, as one
-    // whose next pipe instance couldn't be created would (the supervisor must replace it).
-    if let Some(marker) = std::env::var_os("MOSTRA_TEST_PIPE_FATAL_ONCE")
-        && std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&marker)
-            .is_ok()
+    // Tests only: a helper slow to report READY, slower than the supervisor's checks.
+    if let Some(delay) = std::env::var("MOSTRA_TEST_PIPE_SLOW_READY_MS")
+        .ok()
+        .and_then(|ms| ms.parse::<u64>().ok())
     {
-        let _ = out.send(frame(
-            0,
-            FATAL,
-            b"a test made this pipe fail after it was ready",
-        ));
-        drop(first);
-        loop {
-            thread::park();
-        }
+        thread::sleep(Duration::from_millis(delay));
     }
+    let _ = out.send(frame(0, READY, full.as_bytes()));
+    let first = fail_once_for_tests(&out, first);
 
     let connections: Connections = Arc::new(Mutex::new(HashMap::new()));
+    let writers: Writers = Arc::new(Mutex::new(Vec::new()));
     {
         let out = out.clone();
         let connections = Arc::clone(&connections);
-        thread::spawn(move || accept(&full, &descriptor, first, &out, &connections));
+        let writers = Arc::clone(&writers);
+        thread::spawn(move || accept(&full, &descriptor, first, &out, &connections, &writers));
     }
 
     // Frames from the supervisor.
@@ -133,14 +181,14 @@ pub fn run(name: &str) -> i32 {
     loop {
         match read_exact(channel_handle, &mut header) {
             Ok(true) => {}
-            _ => std::process::exit(0),
+            _ => drain_and_exit(&connections, &writers),
         }
         let connection = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
         let kind = header[4];
         let length = u32::from_le_bytes([header[5], header[6], header[7], header[8]]) as usize;
         let mut payload = vec![0u8; length];
         if !matches!(read_exact(channel_handle, &mut payload), Ok(true)) {
-            std::process::exit(0);
+            drain_and_exit(&connections, &writers);
         }
         let mut map = connections
             .lock()
@@ -153,6 +201,11 @@ pub fn run(name: &str) -> i32 {
                 {
                     map.remove(&connection);
                 }
+            }
+            // Connection 0's CLOSE: the supervisor stops serving the pipe.
+            CLOSE if connection == 0 => {
+                drop(map);
+                drain_and_exit(&connections, &writers);
             }
             CLOSE => {
                 // Dropping the sender ends the connection's writer, which flushes and disconnects.
@@ -169,6 +222,7 @@ fn accept(
     first: Handle,
     out: &Sender<Vec<u8>>,
     connections: &Connections,
+    writers: &Writers,
 ) {
     let mut instance = first;
     let mut next_id = 0u32;
@@ -196,11 +250,17 @@ fn accept(
         };
         let connected = std::mem::replace(&mut instance, fresh);
         next_id = next_id.wrapping_add(1).max(1);
-        serve(next_id, connected, out, connections);
+        serve(next_id, connected, out, connections, writers);
     }
 }
 
-fn serve(id: u32, pipe: Handle, out: &Sender<Vec<u8>>, connections: &Connections) {
+fn serve(
+    id: u32,
+    pipe: Handle,
+    out: &Sender<Vec<u8>>,
+    connections: &Connections,
+    writers: &Writers,
+) {
     let pipe = Arc::new(pipe);
     let (sender, receiver): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
     connections
@@ -210,14 +270,29 @@ fn serve(id: u32, pipe: Handle, out: &Sender<Vec<u8>>, connections: &Connections
     let _ = out.send(frame(id, OPEN, &[]));
 
     let writing = Arc::clone(&pipe);
-    thread::spawn(move || {
+    // Tests only: hold each write back, so bytes are still queued here when the supervisor stops.
+    let slow = std::env::var("MOSTRA_TEST_PIPE_SLOW_WRITE_MS")
+        .ok()
+        .and_then(|ms| ms.parse::<u64>().ok())
+        .map(Duration::from_millis);
+    let writer = thread::spawn(move || {
         for bytes in receiver {
+            if let Some(delay) = slow {
+                thread::sleep(delay);
+            }
             if sys::pipe_write_all(writing.borrow(), &bytes).is_err() {
                 break;
             }
         }
         sys::pipe_close(&writing);
     });
+    let mut all = writers
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Finished writers are let go, so a long-lived pipe doesn't keep one handle per client ever.
+    all.retain(|handle| !handle.is_finished());
+    all.push(writer);
+    drop(all);
 
     let reading = Arc::clone(&pipe);
     let out = out.clone();

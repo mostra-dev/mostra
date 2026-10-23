@@ -883,6 +883,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     await server.listen(home.socketPath, options.checkIntervalMs, {
       launchPipe,
       onMoved: (path) => {
+        faults.at("endpoint:moved");
         home.publish(options.mode, path);
         log.warn("home.endpoint_moved", { socket: path });
       },
@@ -899,7 +900,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // Undo what started before the home is released, so no listener or child outlives it.
     live.stop();
     interaction.stop();
-    server.close();
+    await server.close();
     await gateway.close();
     await pool.stopAll();
     await manager.stopAll();

@@ -7,7 +7,9 @@
  * `crates/mostra-win`.
  */
 export {
+  ControlConnectError,
   type ControlListener,
+  connectControl,
   controlEndpoint,
   type LaunchPipe,
   listenControl,
@@ -23,7 +25,7 @@ export {
   socketPathLimit,
   WINDOWS,
 } from "./directories.ts";
-export { baseEnvironment } from "./environment.ts";
+export { baseEnvironment, WINDOWS_SYSTEM_VARIABLES } from "./environment.ts";
 export {
   fsyncPath,
   isUnder,

@@ -4,6 +4,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
+use std::os::windows::fs::MetadataExt;
 use std::path::Path;
 
 use super::sys::{self, FileSecurity, SecurityDescriptor, Sid};
@@ -15,6 +16,8 @@ const SYSTEM: &str = "S-1-5-18";
 const READ_EXECUTE: &str = "0x1200a9";
 /// `OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE`.
 const INHERIT_BOTH: u8 = 0x3;
+/// `FILE_ATTRIBUTE_REPARSE_POINT`: a junction or a link, never followed by a walk.
+const REPARSE_POINT: u32 = 0x400;
 
 /// The descriptor of a directory only the user (and `SYSTEM`) can use, inherited by everything
 /// created inside it.
@@ -101,10 +104,60 @@ pub fn secure_directory(path: &Path) -> Result<Secured, Refused> {
     if owner_only_dacl(&security, &user_sddl) {
         return Ok(Secured::Kept);
     }
-    sys::reset_tree(path.as_os_str(), Some(&user), &descriptor)?;
+    // The directory itself, then every entry below that grants anyone but the user and `SYSTEM`
+    // anything. Entries already that narrow keep their lists: a sealed version stays sealed
+    // (Opus review of WP-W1). Links are never followed out of the home.
+    sys::set_file_security(path.as_os_str(), Some(&user), &descriptor)?;
+    walk(path, &mut |entry| {
+        let security = sys::file_security(entry.as_os_str())?;
+        if narrow(&security, &user_sddl) {
+            return Ok(());
+        }
+        sys::set_file_security(entry.as_os_str(), None, &descriptor)
+    })?;
     Ok(Secured::Tightened {
         from: security.sddl,
     })
+}
+
+/// Calls `visit` on every entry below `dir`, depth first, descending into directories but never
+/// through a reparse point (a junction into the warm set, a link): the walk stays in the tree.
+/// An entry removed meanwhile is skipped.
+fn walk(dir: &Path, visit: &mut dyn FnMut(&Path) -> io::Result<()>) -> io::Result<()> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let entry = entry?;
+        // A directory entry's metadata describes the entry itself, never its target.
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        if metadata.file_attributes() & REPARSE_POINT != 0 {
+            continue;
+        }
+        let path = entry.path();
+        match visit(&path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            result => result?,
+        }
+        if metadata.is_dir() {
+            walk(&path, visit)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether an entry's list grants nothing to anyone but the user and `SYSTEM`.
+fn narrow(security: &FileSecurity, user_sddl: &str) -> bool {
+    security
+        .aces
+        .iter()
+        .all(|ace| !ace.allows || ace.sid == user_sddl || ace.sid == SYSTEM)
 }
 
 /// Whether the user owns the object: as its own SID, or as the default owner its token gives the
@@ -127,7 +180,9 @@ pub fn owner_only_dacl(security: &FileSecurity, user_sddl: &str) -> bool {
 }
 
 /// Seals a version directory: everything in it becomes read-only for everyone (`seal`), or
-/// owner-only and writable again (`unseal`), for gc and the repair of a damaged version.
+/// owner-only and writable again (`unseal`), for gc and the repair of a damaged version. Every
+/// entry gets the list itself, so the walk never follows a junction out of the tree (a build's
+/// `node_modules` farm points into the warm set).
 pub fn reset_version(path: &OsStr, seal: bool) -> io::Result<()> {
     let user = sys::current_user()?.to_sddl()?;
     let descriptor = if seal {
@@ -135,5 +190,16 @@ pub fn reset_version(path: &OsStr, seal: bool) -> io::Result<()> {
     } else {
         owner_only(&user)?
     };
-    sys::reset_tree(path, None, &descriptor)
+    let root = Path::new(path);
+    if fs::symlink_metadata(root)?.file_attributes() & REPARSE_POINT != 0 {
+        return Err(io::Error::other(
+            "refusing to seal or unseal through a link",
+        ));
+    }
+    // Unsealing goes from the top down, so each directory may be entered again; sealing from the
+    // bottom up is the same set of calls, since the owner may always change a list.
+    sys::set_file_security(path, None, &descriptor)?;
+    walk(root, &mut |entry| {
+        sys::set_file_security(entry.as_os_str(), None, &descriptor)
+    })
 }

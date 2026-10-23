@@ -234,10 +234,13 @@ export async function replaceDirectoryLink(target: string, path: string): Promis
   if (moved) await unlinkDirectory(aside);
 }
 
-/** `path` without the separators it ends in (a loop: a regular expression here is quadratic). */
+/**
+ * `path` without the separators it ends in (a loop: a regular expression here is quadratic). On
+ * POSIX a backslash is an ordinary character of a name, never a separator.
+ */
 function trimSeparators(path: string): string {
   let end = path.length;
-  while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end--;
+  while (end > 0 && (path[end - 1] === "/" || (WINDOWS && path[end - 1] === "\\"))) end--;
   return path.slice(0, end);
 }
 
@@ -254,7 +257,8 @@ export function samePath(a: string, b: string): boolean {
  * the path's length, so an index found in it holds in the path too.
  */
 export function pathKey(path: string): string {
-  return nameKey(path.replaceAll("\\", "/"));
+  // Only Windows spells a separator `\\`; on POSIX it is part of a name (Opus review of WP-W1).
+  return nameKey(WINDOWS ? path.replaceAll("\\", "/") : path);
 }
 
 /** Whether `file` is `dir` itself or lies under it, however either spells its separators. */

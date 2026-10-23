@@ -14,7 +14,7 @@
 import type { Environment } from "./log.ts";
 
 /** What a fault point does. */
-export type FaultAction = "throw" | "crash" | "hang";
+export type FaultAction = "throw" | "throw-once" | "crash" | "hang";
 
 /** The test fault points of one instance. */
 export interface Faults {
@@ -47,7 +47,10 @@ export function faultsFrom(env: Environment): Faults {
     const separator = entry.lastIndexOf(":");
     const point = entry.slice(0, separator).trim();
     const action = entry.slice(separator + 1).trim();
-    if (point && (action === "throw" || action === "crash" || action === "hang"))
+    if (
+      point &&
+      (action === "throw" || action === "throw-once" || action === "crash" || action === "hang")
+    )
       configured.set(point, action);
   }
   return {
@@ -55,6 +58,10 @@ export function faultsFrom(env: Environment): Faults {
     at(point) {
       const action = configured.get(point);
       if (action === "throw") throw new InjectedFault(point);
+      if (action === "throw-once") {
+        configured.delete(point);
+        throw new InjectedFault(point);
+      }
       if (action === "crash") {
         process.kill(process.pid, "SIGKILL");
         // The signal is delivered at once; block until it lands so no later step runs.

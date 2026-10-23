@@ -31,10 +31,43 @@ const EXIT_NOT_RELEASED: i32 = 125;
 const EXIT_CANNOT_RUN: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 
+/// The child's descriptor table (the gate's, without the lifeline at 3) and the handles it
+/// inherits: its standard handles and every descriptor in that table.
+fn child_descriptors(
+    table: &[CrtEntry],
+    standard: [RawHandle; 3],
+) -> (Vec<CrtEntry>, Vec<RawHandle>) {
+    let mut child_table: Vec<CrtEntry> = table.to_vec();
+    if let Some(entry) = child_table.get_mut(3) {
+        *entry = CrtEntry {
+            flags: 0,
+            handle: RawHandle(INVALID_HANDLE_VALUE),
+        };
+    }
+    let mut inherit: Vec<RawHandle> = standard.to_vec();
+    inherit.extend(
+        child_table
+            .iter()
+            .filter(|entry| entry.flags != 0 && !entry.handle.is_invalid())
+            .map(|entry| entry.handle),
+    );
+    (child_table, inherit)
+}
+
+/// The user's SID as SDDL and the unnamed kill-on-close job a child is created in.
+fn holder_job() -> io::Result<(String, Job)> {
+    let user = sys::current_user()?.to_sddl()?;
+    let job = Job::create_unnamed(&acl::owner_only_object(&user)?)?;
+    Ok((user, job))
+}
+
 /// The name of the job of the child created at `created` with `pid`: the reaper opens it by the
 /// child's recorded identity (`FAILURE_MODEL` §2), and no other process has both.
 pub fn job_name(pid: u32, created: u64) -> String {
-    format!("Local\\mostra-job-{pid}-{created}")
+    // The global namespace, so a supervisor started in another logon session (SSH, a service)
+    // finds a predecessor's jobs; the name can't be taken first, since it holds the child's
+    // creation time, and an existing one is refused (Opus review of WP-W1).
+    format!("Global\\mostra-job-{pid}-{created}")
 }
 
 /// Appends `argument` to a command line, quoted as the Microsoft C runtime parses it.
@@ -112,6 +145,7 @@ fn read_line(lifeline: RawHandle) -> Option<String> {
 
 /// Runs the gate for `program` and `arguments`; returns the exit code.
 pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
+    sys::ignore_console_interrupts();
     let (table, standard) = sys::inherited_descriptors();
     let Some(lifeline) = table
         .get(3)
@@ -131,43 +165,47 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
         return EXIT_CANNOT_RUN;
     }
 
-    let mut child_table: Vec<CrtEntry> = table.clone();
-    if let Some(entry) = child_table.get_mut(3) {
-        *entry = CrtEntry {
-            flags: 0,
-            handle: RawHandle(INVALID_HANDLE_VALUE),
-        };
-    }
-    let mut inherit: Vec<RawHandle> = standard.to_vec();
-    inherit.extend(
-        child_table
-            .iter()
-            .filter(|entry| entry.flags != 0 && !entry.handle.is_invalid())
-            .map(|entry| entry.handle),
-    );
+    let (child_table, inherit) = child_descriptors(&table, standard);
 
     let line = command_line(program, arguments);
-    let suspended = match sys::create_suspended(program, &line, standard, &child_table, &inherit) {
-        Ok(suspended) => suspended,
+    // The child is created inside this unnamed kill-on-close job, so a gate that dies at any
+    // moment from here on takes its child with it; the named job the reaper finds nests in it
+    // once the child's creation time is known (Opus review of WP-W1).
+    let (user_sddl, holder) = match holder_job() {
+        Ok(found) => found,
         Err(error) => {
-            report(
-                lifeline,
-                &serde_json::json!({ "error": error.to_string(), "os": error.raw_os_error() }),
-            );
-            let missing = sys::is_error(&error, ERROR_FILE_NOT_FOUND)
-                || sys::is_error(&error, ERROR_PATH_NOT_FOUND);
-            return if missing {
-                EXIT_NOT_FOUND
-            } else {
-                EXIT_CANNOT_RUN
-            };
+            report(lifeline, &serde_json::json!({ "error": error.to_string() }));
+            return EXIT_CANNOT_RUN;
         }
     };
+    let suspended =
+        match sys::create_suspended(program, &line, standard, &child_table, &inherit, &holder) {
+            Ok(suspended) => suspended,
+            Err(error) => {
+                report(
+                    lifeline,
+                    &serde_json::json!({ "error": error.to_string(), "os": error.raw_os_error() }),
+                );
+                let missing = sys::is_error(&error, ERROR_FILE_NOT_FOUND)
+                    || sys::is_error(&error, ERROR_PATH_NOT_FOUND);
+                return if missing {
+                    EXIT_NOT_FOUND
+                } else {
+                    EXIT_CANNOT_RUN
+                };
+            }
+        };
+    // A test fault (MOSTRA_TEST_GATE=stall-after-create): a gate that stops between creating its
+    // child and naming its job, the moment a gate killed then must still take its child along.
+    if std::env::var_os("MOSTRA_TEST_GATE").is_some_and(|value| value == "stall-after-create") {
+        loop {
+            thread::park();
+        }
+    }
     let started = (|| -> io::Result<(u64, String, Job)> {
         let created = sys::creation_time(&suspended.process)?;
         let name = job_name(suspended.pid, created);
-        let user = sys::current_user()?.to_sddl()?;
-        let job = Job::create(&name, &acl::owner_only_object(&user)?)?;
+        let job = Job::create(&name, &acl::owner_only_object(&user_sddl)?)?;
         job.assign(&suspended.process)?;
         Ok((created, name, job))
     })();
