@@ -2,7 +2,8 @@
 //! local user, try to open each path, and say what happened.
 //!
 //! ```text
-//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file or pipe
+//! mostra-win-probe as-user <user> <password> <kind>:<path>…    kind: dir, file, pipe or mkdir
+//!   (mkdir creates the directory as that user, so the user owns it)
 //! → {"ok":true,"result":[{"path","read","readWrite","error"?}]}
 //! ```
 //! `read` opens for reading only (a directory: listing it), `readWrite` for reading and writing.
@@ -75,6 +76,14 @@ fn main() {
             .iter()
             .map(|target| {
                 let (kind, path) = target.split_once(':').unwrap_or(("file", target));
+                if kind == "mkdir" {
+                    let made = std::fs::create_dir(path);
+                    return json!({
+                        "path": target,
+                        "created": made.is_ok(),
+                        "error": made.err().and_then(|e| e.raw_os_error()),
+                    });
+                }
                 let path = OsStr::new(path);
                 let directory = kind == "dir";
                 let read = if directory {

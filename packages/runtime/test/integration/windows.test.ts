@@ -168,6 +168,56 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     expect((await daemon.exited).code).toBe(0);
   });
 
+  it("creates the home owner-only, tightens a wider one, and refuses one another user owns (D85)", async () => {
+    const security = (path: string): { protected: boolean; sddl: string } => {
+      const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+      const out = execFileSync(probe, ["security", path], { encoding: "utf8" });
+      return (JSON.parse(out) as { result: { protected: boolean; sddl: string } }).result;
+    };
+    const ownerOnly = (path: string): void => {
+      expect(security(path).protected, path).toBe(true);
+      const sids = new Set(accessEntries(path).map((entry) => entry.sid));
+      // The user and SYSTEM, nobody else: no Everyone, Users, Authenticated Users, Administrators.
+      expect(sids.size, [...sids].join(" ")).toBe(2);
+      expect(sids.has("SY")).toBe(true);
+      for (const wide of ["WD", "BU", "AU", "BA"]) expect(sids.has(wide)).toBe(false);
+    };
+    const everyone = (path: string): void => {
+      execFileSync("C:\\Windows\\System32\\icacls.exe", [path, "/grant", "*S-1-1-0:(OI)(CI)F"]);
+    };
+
+    // Created by Mostra: owner-only from the start.
+    const fresh = testHome();
+    const first = await startDaemon(fresh);
+    expect(first.status.status).toBe("started");
+    ownerOnly(fresh.home);
+    await stopDaemon(first.status.socket ?? "");
+
+    // A home the user owns but everyone may use is tightened, and the supervisor says so.
+    const wide = testHome();
+    mkdirSync(wide.home, { recursive: true });
+    everyone(wide.home);
+    expect(accessEntries(wide.home).some((entry) => entry.sid === "WD")).toBe(true);
+    const second = await startDaemon(wide);
+    expect(second.status.status).toBe("started");
+    ownerOnly(wide.home);
+    const log = readFileSync(join(wide.home, "logs", "supervisor.log"), "utf8");
+    expect(log).toContain('"home.tightened"');
+    await stopDaemon(second.status.socket ?? "");
+
+    // A home another user created (and so owns) is refused before anything is written in it.
+    const parent = tempDir("not-owned");
+    everyone(parent);
+    const foreign = join(parent, "home");
+    const [made] = asOtherUser(`mkdir:${foreign}`) as unknown as { created: boolean }[];
+    expect(made?.created).toBe(true);
+    const refused = await startDaemon({ ...testHome(), home: foreign });
+    expect(refused.status.status).toBe("failed");
+    expect(refused.status.diagnostic?.code).toBe("MOSTRA_HOME_NOT_OWNED");
+    expect((await refused.exited).code).toBe(3);
+    expect(existsSync(join(foreign, "store"))).toBe(false);
+  }, 120_000);
+
   it("keeps a running home: Windows refuses to remove files in use, and the owner keeps serving", async () => {
     const home = testHome();
     const daemon = await startDaemon(home);
