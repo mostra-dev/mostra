@@ -240,8 +240,11 @@ describe("builder failures (FAILURE_MODEL §2, §9)", () => {
     expect(response.error?.data.code).toBe("MOSTRA_BUILD_TIMEOUT");
     await eventually(
       async () => {
-        const status = result(await client.call("instance/status")) as { processes: unknown[] };
-        return status.processes.length === 0;
+        const status = result(await client.call("instance/status")) as {
+          processes: { kind: string }[];
+        };
+        // On Windows the control pipe's helper is the instance's own child (D150).
+        return status.processes.every((child) => child.kind === "control-pipe");
       },
       15_000,
       "the hung builder to be stopped",

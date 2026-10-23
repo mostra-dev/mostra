@@ -74,8 +74,16 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   // which calls `archive` (it opts into dryRun()) in a sandbox worker.
   const verdict = result(
     await client.call("artifact/verify", { source: { path: trapped } }, 300_000),
-  ) as { status: string; smoke: { interactions: number } };
-  expect(verdict.status).toBe("pass");
+  ) as {
+    status: string;
+    smoke: { interactions: number };
+    diagnostics?: { code: string; message: string }[];
+  };
+  // The codes and messages say why when it doesn't pass.
+  expect(
+    verdict.status,
+    JSON.stringify(verdict.diagnostics?.map(({ code, message }) => ({ code, message }))),
+  ).toBe("pass");
   expect(verdict.smoke.interactions).toBeGreaterThan(0);
   const verifiedRuns = readFileSync(marker, "utf8").trim().split("\n");
   expect(verifiedRuns.length).toBeGreaterThan(0);

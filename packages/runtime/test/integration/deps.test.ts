@@ -7,7 +7,6 @@
  * scripts in the install child's context (DP-05).
  */
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -23,6 +22,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { linkTarget } from "../../src/platform/index.ts";
 import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   alive,
@@ -37,6 +37,7 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  unsealTree,
   WINDOWS,
 } from "../support.ts";
 
@@ -60,6 +61,8 @@ async function start(
     env: {
       ...home.env,
       HOME: user,
+      // Windows programs (npm's ~/.npmrc among them) find the user's home through USERPROFILE.
+      ...(WINDOWS ? { USERPROFILE: user } : {}),
       npm_config_registry: options.registryUrl ?? registry.url,
       // Something only the supervisor has: it must never reach a lifecycle script (DP-05).
       MOSTRA_TEST_SUPERVISOR_ONLY: "supervisor-only-value",
@@ -131,16 +134,6 @@ const installsStarted = (target: Running): number => {
       (line) => line.includes('"event":"process.started"') && line.includes('"kind":"install"'),
     ).length;
 };
-
-/** Makes a sealed (read-only) tree removable. */
-function unseal(dir: string): void {
-  chmodSync(dir, 0o755);
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) unseal(path);
-    else chmodSync(path, 0o644);
-  }
-}
 
 const PEER_PAGE = [
   'import * as React from "react";',
@@ -397,7 +390,7 @@ describe("the lockfile in the version identity (DP-03)", () => {
     await stop(online);
     // The version's files and every layout are gone; only the store and the ledger remain.
     const versionDir = join(home.home, "versions", first.versionId);
-    unseal(versionDir);
+    unsealTree(versionDir);
     rmSync(versionDir, { recursive: true });
     rmSync(join(home.home, "deps", "locks"), { recursive: true });
     const before = registry.requests.length;
@@ -443,7 +436,7 @@ describe("the lockfile in the version identity (DP-03)", () => {
     await stop(online);
     rmSync(first, { recursive: true });
     const versionDir = join(home.home, "versions", receipt.versionId);
-    unseal(versionDir);
+    unsealTree(versionDir);
     rmSync(versionDir, { recursive: true });
     const second = warmCopy();
     const moved = await start({ home, env: { MOSTRA_WARM_DIR: second, MOSTRA_OFFLINE: "1" } });
@@ -452,9 +445,10 @@ describe("the lockfile in the version identity (DP-03)", () => {
       reused: true,
     });
     const [layout] = layouts(moved);
-    expect(realpathSync(join(home.home, "deps", "locks", layout as string, "warm"))).toBe(
-      realpathSync(join(second, "node_modules")),
-    );
+    // The layout's `warm` link stands for the moved warm set: a symlink to it, or on Windows a
+    // link farm whose marker names it (D150).
+    const target = await linkTarget(join(home.home, "deps", "locks", layout as string, "warm"));
+    expect(realpathSync(target ?? "")).toBe(realpathSync(join(second, "node_modules")));
   });
 });
 
@@ -634,7 +628,7 @@ describe("lifecycle scripts (DP-05)", () => {
     }
     // The artifact environment, not the supervisor's.
     expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
-    expect(record.env["HOME"]).toBe(target.user);
+    expect(record.env[WINDOWS ? "USERPROFILE" : "HOME"]).toBe(target.user);
     expect(record.env["INIT_CWD"]).toBe(layoutDir);
     expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
   });

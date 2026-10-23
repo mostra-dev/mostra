@@ -31,10 +31,12 @@ import {
   type Message,
   type RuntimeProcess,
   removeAll,
+  sealedAgainstWrites,
   startDaemon,
   type TestHome,
   tempDir,
   testHome,
+  unsealTree,
   WINDOWS,
 } from "../support.ts";
 
@@ -277,9 +279,11 @@ describe("content-addressed versions (VR-01)", () => {
     const dir = copyFixture("single-tsx");
     const receipt = await publish(join(dir, "page.tsx"));
     const version = join(home.home, "versions", receipt.versionId);
-    expect(statSync(join(version, "client/index.html")).mode & 0o222).toBe(0);
-    // Root writes through any mode, so the refusal is checked only for an ordinary user (as CI runs).
-    if (process.getuid?.() !== 0) {
+    expect(sealedAgainstWrites(join(version, "client/index.html"))).toBe(true);
+    expect(sealedAgainstWrites(version)).toBe(true);
+    // Root writes through any mode, and so does the Windows runners' administrator through any
+    // access list, so the refusal is checked only for an ordinary user (as the POSIX legs run).
+    if (process.getuid?.() !== 0 && !WINDOWS) {
       expect(() => writeFileSync(join(version, "client/index.html"), "tampered")).toThrow();
     }
   });
@@ -546,13 +550,11 @@ describe("review findings (D80)", () => {
     removeAll(version);
     expect(await publish(dir)).toEqual({ ...first, reused: true });
     expect(existsSync(join(version, "client", "index.html"))).toBe(true);
-    expect(statSync(version).mode & 0o777).toBe(0o555);
+    expect(sealedAgainstWrites(version)).toBe(true);
     const restored = recorded();
 
     // An edit inside the sealed directory is damage too.
-    chmodSync(version, 0o755);
-    chmodSync(join(version, "client"), 0o755);
-    chmodSync(join(version, "client", "index.html"), 0o644);
+    unsealTree(version);
     writeFileSync(join(version, "client", "index.html"), "<p>tampered</p>");
     expect(await publish(dir)).toEqual({ ...first, reused: true });
     expect(readFileSync(join(version, "client", "index.html"), "utf8")).not.toContain("tampered");

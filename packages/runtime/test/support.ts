@@ -15,6 +15,7 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -113,6 +114,30 @@ export function accessEntries(path: string): { sid: string; mask: number }[] {
 /** What may be written through an access mask: data, appended data, attributes, deletion, the list itself. */
 export const WRITE_RIGHTS =
   0x2 | 0x4 | 0x10 | 0x100 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000;
+
+/**
+ * Whether `path` is sealed against its owner's writes: no write bit on POSIX; on Windows no entry
+ * of its access list grants a write right (the runners' administrator passes any list through
+ * Node.js, so the list itself is what is judged, VERIFIED_FACTS WP-W1).
+ */
+export function sealedAgainstWrites(path: string): boolean {
+  if (!WINDOWS) return (statSync(path).mode & 0o222) === 0;
+  return accessEntries(path).every((entry) => (entry.mask & WRITE_RIGHTS) === 0);
+}
+
+/** Lifts a version's seal so a test can damage it: modes back on POSIX, the owner's list on Windows. */
+export function unsealTree(dir: string): void {
+  if (WINDOWS) {
+    execFileSync(helperPath(), ["unseal", dir], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  chmodSync(dir, 0o755);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) unsealTree(path);
+    else chmodSync(path, 0o644);
+  }
+}
 
 /** Removes a tree, including sealed (read-only) version directories. */
 export function removeAll(dir: string): void {
