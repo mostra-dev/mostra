@@ -83,7 +83,7 @@ Checks through the real interfaces: the built `mostra-runtime` as real processes
 - **Antivirus holding a file** during a rename: the retry is exercised only by what the runners' Defender does on its own.
 - **Windows arm64 seeds**: the seeds ran on x64; arm64 runs the same suites green.
 - **Windows arm64 legs take about 17 minutes** each (setup included; x64 takes 5 to 7), inside their 25-minute limit but past D50's 10-minute target; the suites are split in two groups already, and WP-W2, which adds suites, splits further or caches the helper's build.
-- **One Linux `core` integration run went silent for its 15 minutes** (CI run 39971478841, on `d2780d2`) and was cancelled; its rerun, and every run since, passed in about 8 minutes. The log shows nothing (Turbo prints a task's output when it ends), so the cause is unknown; a recurrence should be run with `--verbose` output streamed.
+- **Linux `core` integration runs sometimes go silent for their 15 minutes** and are cancelled (runs 39961330514, 39971478841 and 39983161420 on this branch; also on `main` at `ca21ff9`, run 39839492586, before this package), and pass on a rerun in about 8 minutes. It predates WP-W1, and its cause is unknown because `pnpm check` printed a job's output only when it ended: the integration jobs now run `pnpm check --stream`, so the next occurrence names where it stopped ([#55](https://github.com/mostra-dev/mostra/issues/55)).
 - **The full repository on Windows**: only the protocol's and the runtime's suites run there; the other packages are WP-W2's and WP-W3's, including the owner check of every client but the runtime's own (finding 4).
 
 ## The POSIX audit
