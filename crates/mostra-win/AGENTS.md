@@ -9,9 +9,10 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
 - **Owner-only means the user and `SYSTEM`, set at creation (D44, D85).** `secure-dir` creates a
   directory with a protected access list that grants only the current user and `SYSTEM`,
   inherited by everything inside. Over a wider tree the user owns it resets the directory and
-  every entry below that grants anyone else anything, one entry at a time through a handle on the
-  entry itself, never through a junction or link, and leaves narrower lists alone, so a sealed
-  version stays sealed ("bypass traverse checking" lets anyone open a file whose own entries
+  every entry below that grants anyone else anything, takes over every entry someone else owns
+  (refusing the home when one can't be taken), one entry at a time through a handle on the entry
+  itself, never through a junction or link, and leaves the user's narrower lists alone, so a
+  sealed version stays sealed ("bypass traverse checking" lets anyone open a file whose own entries
   allow it). A directory owned by someone else is refused, never changed. `seal` and `unseal`
   walk a version the same way.
 - **The control pipe admits only its owner (D81, D82).** `pipe` creates `\\.\pipe\<name>` with an
