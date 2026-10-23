@@ -140,7 +140,7 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   for (const line of ran) {
     const [pid, entry] = line.split(" ");
     expect(Number(pid)).not.toBe(daemon.status.pid);
-    expect(entry.replaceAll("\\", "/")).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+    expect((entry ?? "").replaceAll("\\", "/")).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
   }
 
   await client.call("mostra/shutdown", {});
