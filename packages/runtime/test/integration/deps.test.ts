@@ -573,65 +573,70 @@ describe("lifecycle scripts (DP-05)", () => {
     await eventually(() => !alive(script), 10_000, "the script to end");
   });
 
-  it("run in the install child, in the artifact's directory with the artifact environment", async () => {
-    const target = await start();
-    const dir = artifact({
-      "index.tsx":
-        'import "mostra-fixture-postinstall";\nexport default function Page() { return <p>installed</p>; }\n',
-    });
-    // A user's npm settings that would change what D95 promises; Mostra's own settings win.
-    writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
-    ok<Receipt>(await publish(target, dir));
-    const [layout] = layouts(target);
-    const layoutDir = join(target.home.home, "deps", "locks", layout as string);
-    const pnpmDir = join(layoutDir, "node_modules", ".pnpm");
-    const record = JSON.parse(
-      readFileSync(
-        join(
-          pnpmDir,
-          "mostra-fixture-postinstall@1.0.0",
-          "node_modules",
-          "mostra-fixture-postinstall",
-          "record.json",
+  it(
+    "run in the install child, in the artifact's directory with the artifact environment",
+    async () => {
+      const target = await start();
+      const dir = artifact({
+        "index.tsx":
+          'import "mostra-fixture-postinstall";\nexport default function Page() { return <p>installed</p>; }\n',
+      });
+      // A user's npm settings that would change what D95 promises; Mostra's own settings win.
+      writeFileSync(join(target.user, ".npmrc"), "ignore-scripts=true\nshamefully-hoist=true\n");
+      ok<Receipt>(await publish(target, dir));
+      const [layout] = layouts(target);
+      const layoutDir = join(target.home.home, "deps", "locks", layout as string);
+      const pnpmDir = join(layoutDir, "node_modules", ".pnpm");
+      const record = JSON.parse(
+        readFileSync(
+          join(
+            pnpmDir,
+            "mostra-fixture-postinstall@1.0.0",
+            "node_modules",
+            "mostra-fixture-postinstall",
+            "record.json",
+          ),
+          "utf8",
         ),
-        "utf8",
-      ),
-    ) as {
-      pid: number;
-      env: Record<string, string>;
-      ancestors: { pid: number; command: string; cwd: string | null }[];
-    };
-    const supervisor = target.daemon.status.pid as number;
-    // The script's ancestry: the shell pnpm runs it in, pnpm, then the install child (connected to
-    // the supervisor, D95), then the supervisor.
-    const index = record.ancestors.findIndex((process) =>
-      process.command.includes("deps/child/install"),
-    );
-    expect(index).toBeGreaterThanOrEqual(1);
-    const installChild = record.ancestors[index];
-    const pnpm = record.ancestors[index - 1];
-    expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
-    // On Windows the child's gate (`mostra-win gate`, D150) stands between it and the supervisor.
-    const above = WINDOWS ? index + 2 : index + 1;
-    if (WINDOWS) expect(record.ancestors[index + 1]?.command).toContain("mostra-win");
-    expect(record.ancestors[above]?.pid).toBe(supervisor);
-    expect(record.pid).not.toBe(supervisor);
-    expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
-      supervisor,
-    );
-    // The install child, and pnpm with it, run in the artifact's source directory. Windows shows
-    // no process's working directory to another; there INIT_CWD below and the gate's own spawn
-    // directory stand for it.
-    if (!WINDOWS) {
-      expect(installChild?.cwd).toBe(dir);
-      expect(pnpm?.cwd).toBe(dir);
-    }
-    // The artifact environment, not the supervisor's.
-    expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
-    expect(record.env[WINDOWS ? "USERPROFILE" : "HOME"]).toBe(target.user);
-    expect(record.env["INIT_CWD"]).toBe(layoutDir);
-    expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
-  });
+      ) as {
+        pid: number;
+        env: Record<string, string>;
+        ancestors: { pid: number; command: string; cwd: string | null }[];
+      };
+      const supervisor = target.daemon.status.pid as number;
+      // The script's ancestry: the shell pnpm runs it in, pnpm, then the install child (connected to
+      // the supervisor, D95), then the supervisor.
+      const index = record.ancestors.findIndex((process) =>
+        process.command.includes("deps/child/install"),
+      );
+      expect(index).toBeGreaterThanOrEqual(1);
+      const installChild = record.ancestors[index];
+      const pnpm = record.ancestors[index - 1];
+      expect(pnpm?.command).toContain("pnpm.cjs install --frozen-lockfile");
+      // On Windows the child's gate (`mostra-win gate`, D150) stands between it and the supervisor.
+      const above = WINDOWS ? index + 2 : index + 1;
+      if (WINDOWS) expect(record.ancestors[index + 1]?.command).toContain("mostra-win");
+      expect(record.ancestors[above]?.pid).toBe(supervisor);
+      expect(record.pid).not.toBe(supervisor);
+      expect(record.ancestors.slice(0, index).map((process) => process.pid)).not.toContain(
+        supervisor,
+      );
+      // The install child, and pnpm with it, run in the artifact's source directory. Windows shows
+      // no process's working directory to another; there INIT_CWD below and the gate's own spawn
+      // directory stand for it.
+      if (!WINDOWS) {
+        expect(installChild?.cwd).toBe(dir);
+        expect(pnpm?.cwd).toBe(dir);
+      }
+      // The artifact environment, not the supervisor's.
+      expect(record.env["MOSTRA_TEST_SUPERVISOR_ONLY"]).toBeUndefined();
+      expect(record.env[WINDOWS ? "USERPROFILE" : "HOME"]).toBe(target.user);
+      expect(record.env["INIT_CWD"]).toBe(layoutDir);
+      expect(Object.keys(record.env).filter((name) => name.startsWith("MOSTRA_"))).toEqual([]);
+    },
+    // Windows reads the script's ancestry through one CIM query (PowerShell), seconds of it.
+    WINDOWS ? 180_000 : undefined,
+  );
 });
 
 describe("gc and the dependency state (VR-06, D140 item 14)", () => {

@@ -87,7 +87,9 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
   expect(verdict.smoke.interactions).toBeGreaterThan(0);
   const verifiedRuns = readFileSync(marker, "utf8").trim().split("\n");
   expect(verifiedRuns.length).toBeGreaterThan(0);
-  for (const line of verifiedRuns) expect(line).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+  for (const line of verifiedRuns) {
+    expect(line.replaceAll("\\", "/")).toMatch(/worker\/(dist|src)\/main\.(js|ts)$/);
+  }
 
   const receipts = [];
   for (const path of [trapped, join(mdx, "page.mdx"), created.dir, trapped]) {
