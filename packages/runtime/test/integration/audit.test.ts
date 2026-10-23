@@ -179,4 +179,6 @@ it("loads no artifact module, no bundler and no browser in the supervisor across
     `globalThis.process.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(control)}, "ran");`,
   )();
   expect(readFileSync(control, "utf8")).toBe("ran");
-});
+  // One verify (a browser), a publish and action calls in a row: Windows arm64 runners take about
+  // twice x64's 42 s, past the suite's 60 s (WP-W1).
+}, 180_000);
