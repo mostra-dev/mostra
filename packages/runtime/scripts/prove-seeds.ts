@@ -106,6 +106,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-10",
+    name: "a pipe that failed after it was ready still counts as intact (GPT review finding 1)",
+    file: "src/platform/control.ts",
+    from: "            failed = true;\n            void helper.stop();",
+    to: "",
+    check: integration("windows.test.ts", "can no longer serve it"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
     name: "Windows is admitted without the development switch",
     file: "src/home/platform.ts",
     from: 'if (platform === "win32" && env[WINDOWS_DEV_SWITCH] === "1") return undefined;',

@@ -252,6 +252,28 @@ describe.runIf(WINDOWS)("Windows: the control pipe (D81 item 4, RT-06)", () => {
     expect((await daemon.exited).code).toBe(0);
   }, 60_000);
 
+  it("replaces a pipe whose helper lives on but can no longer serve it (GPT review finding 1)", async () => {
+    const home = testHome();
+    const marker = join(tempDir("pipe-fatal"), "failed-once");
+    const daemon = await startDaemon(home, {
+      env: { ...home.env, MOSTRA_TEST_PIPE_FATAL_ONCE: marker },
+    });
+    expect(daemon.status.status).toBe("started");
+    const before = daemon.status.socket ?? "";
+    // The first helper reported READY, then FATAL, and stays alive serving nothing.
+    await eventually(() => existsSync(marker), 10_000, "the first helper to fail");
+    await eventually(
+      async () =>
+        record(home.home).socket !== before && (await endpointExists(record(home.home).socket)),
+      15_000,
+      "a working pipe in place of the failed one",
+    );
+    const again = await startDaemon(home);
+    expect(again.status).toMatchObject({ status: "attached", pid: daemon.status.pid });
+    await stopDaemon(record(home.home).socket);
+    expect((await daemon.exited).code).toBe(0);
+  }, 60_000);
+
   it("reports MOSTRA_HOME_LOCKED with the owner's PID when the owner is frozen and its pipe gone", async () => {
     const home = testHome();
     const daemon = await startDaemon(home);

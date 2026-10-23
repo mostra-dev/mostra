@@ -179,6 +179,9 @@ async function listenPipe(
   const helper = await launchPipe(name);
   const streams = new Map<number, Duplex>();
   let exited = false;
+  let failed = false;
+  // Set once READY arrived; a FATAL after it means the listener failed rather than never started.
+  let path: string | undefined;
   void helper.exited.then(() => {
     exited = true;
     for (const stream of streams.values()) stream.destroy();
@@ -205,10 +208,21 @@ async function listenPipe(
         pending = pending.subarray(9 + length);
         if (kind === READY) {
           clearTimeout(timer);
-          resolve(payload.toString("utf8"));
+          // Recorded here, not after the await: a FATAL in the same chunk must see it.
+          path = payload.toString("utf8");
+          resolve(path);
         } else if (kind === FATAL) {
           clearTimeout(timer);
-          reject(new Error(`The control pipe can't be served: ${payload.toString("utf8")}`));
+          const why = `The control pipe can't be served: ${payload.toString("utf8")}`;
+          if (path === undefined) {
+            reject(new Error(why));
+          } else {
+            // Ready earlier, failed since (no further instance could be created): the endpoint
+            // is unusable though the helper lives, so the listener is no longer intact and is
+            // replaced by the server's next check (D81 item 4).
+            failed = true;
+            void helper.stop();
+          }
         } else if (kind === OPEN) {
           const stream = clientStream(id, send, () => streams.delete(id));
           streams.set(id, stream);
@@ -232,16 +246,16 @@ async function listenPipe(
     });
   });
   helper.channel.on("error", () => {});
-  let path: string;
+  let bound: string;
   try {
-    path = await ready;
+    bound = await ready;
   } catch (error) {
     await helper.stop();
     throw error;
   }
   return {
-    path,
-    intact: () => !exited,
+    path: bound,
+    intact: () => !exited && !failed,
     async close() {
       for (const stream of streams.values()) stream.destroy();
       streams.clear();

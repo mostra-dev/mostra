@@ -101,6 +101,25 @@ pub fn run(name: &str) -> i32 {
         }
     };
     let _ = out.send(frame(0, READY, full.as_bytes()));
+    // Tests only: the first helper to create this file fails after READY and stays alive, as one
+    // whose next pipe instance couldn't be created would (the supervisor must replace it).
+    if let Some(marker) = std::env::var_os("MOSTRA_TEST_PIPE_FATAL_ONCE")
+        && std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker)
+            .is_ok()
+    {
+        let _ = out.send(frame(
+            0,
+            FATAL,
+            b"a test made this pipe fail after it was ready",
+        ));
+        drop(first);
+        loop {
+            thread::park();
+        }
+    }
 
     let connections: Connections = Arc::new(Mutex::new(HashMap::new()));
     {

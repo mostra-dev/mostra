@@ -502,6 +502,17 @@ function alternatives(source: string): string[] | undefined {
   return parts;
 }
 
+/** Whether a pattern holds a backreference (`\1` to `\9`, `\k<name>`), escapes considered. */
+export function hasBackreference(pattern: string): boolean {
+  for (let index = 0; index < pattern.length; index++) {
+    if (pattern[index] !== "\\") continue;
+    const next = pattern[index + 1] ?? "";
+    if ((next >= "1" && next <= "9") || next === "k") return true;
+    index++;
+  }
+  return false;
+}
+
 /**
  * Whether a new pattern provably accepts every string the old one did: the old is `^X` (one
  * alternative) and the new is `^(?:X|…)`, the old body one of the group's alternatives. A pattern
@@ -509,6 +520,9 @@ function alternatives(source: string): string[] | undefined {
  */
 export function patternWidens(before: unknown, after: unknown): boolean {
   if (typeof before !== "string" || typeof after !== "string") return false;
+  // A backreference names a capture by number or name, and alternatives put before the old body
+  // can renumber its captures: `^(a)\1$` → `^(?:(b)|(a)\1$)` refuses `aa` (GPT review of WP-W1).
+  if (hasBackreference(before) || hasBackreference(after)) return false;
   if (!before.startsWith("^") || !after.startsWith("^(?:") || !after.endsWith(")")) return false;
   const old = before.slice(1);
   if ((alternatives(old)?.length ?? 0) !== 1) return false;

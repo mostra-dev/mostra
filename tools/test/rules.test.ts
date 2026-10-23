@@ -4,8 +4,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { eeLeaks } from "../api/pack.ts";
+import { directOwners } from "../check/plan.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
+import { listPackages } from "../lib/workspace.ts";
 import {
   privilegedImportProblems,
   releaseGroupProblems,
@@ -79,6 +81,13 @@ describe("schema compatibility", () => {
     expect(reasons(p("^/"), p("^(?:/|x)y"))).toEqual(["S: pattern added or changed"]);
     expect(reasons(p("^a|b"), p("^(?:a|b|c)"))).toEqual(["S: pattern added or changed"]);
     expect(reasons(p("^a"), p("^(?:a[|]|b)"))).toEqual(["S: pattern added or changed"]);
+    // Captures in an alternative before the old body renumber its backreferences (GPT review).
+    expect(reasons(p("^(a)\\1$"), p("^(?:(b)|(a)\\1$)"))).toEqual(["S: pattern added or changed"]);
+    expect(reasons(p("^(?<x>a)\\k<x>$"), p("^(?:(?<x>a)\\k<x>$|b)"))).toEqual([
+      "S: pattern added or changed",
+    ]);
+    // An escaped backslash before a digit is no backreference.
+    expect(reasons(p("^\\\\1"), p("^(?:\\\\1|b)"))).toEqual([]);
     expect(
       reasons({ S: { type: "string", minLength: 1 } }, { S: { type: "string", minLength: 2 } }),
     ).toEqual(["S: minLength raised"]);
@@ -450,5 +459,18 @@ describe("the release's publish job runs built-ins only (EN-05)", () => {
       expect.stringContaining('"tar"'),
       expect.stringContaining('"undici"'),
     ]);
+  });
+});
+
+describe("the plan's owners of a changed file", () => {
+  it("lets a change to the Windows helper affect the runtime, which runs it (GPT review of WP-W1)", () => {
+    const packages = listPackages();
+    expect(directOwners(packages, "crates/mostra-win/src/win/pipe.rs")).toEqual([
+      "@mostra/runtime",
+    ]);
+    expect(directOwners(packages, "packages/runtime/src/platform/control.ts")).toEqual([
+      "@mostra/runtime",
+    ]);
+    expect(directOwners(packages, "crates/mostra-winning/x.rs")).toEqual([]);
   });
 });
