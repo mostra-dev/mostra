@@ -313,9 +313,12 @@ describe("installing a pinned bundle (RT-01)", () => {
       // As if the install had run for two hours.
       const old = new Date(Date.now() - 2 * 60 * 60_000);
       utimesSync(lockPath, old, old);
-      vi.advanceTimersByTime(61_000);
+      // The lock file exists a moment before its holder writes its token and starts the touch
+      // interval, so the minute is advanced until the holder has touched it (main's CI met a
+      // single advance that came before the interval existed).
       let fresh = false;
       for (let i = 0; i < 100 && !fresh; i += 1) {
+        vi.advanceTimersByTime(61_000);
         await new Promise((done) => setTimeout(done, 20));
         fresh = existsSync(lockPath) && Date.now() - statSync(lockPath).mtimeMs < 60_000;
       }

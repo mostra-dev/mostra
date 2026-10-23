@@ -148,6 +148,9 @@ async function runTasks(jobs: readonly Job[], current: Plan): Promise<Outcome[]>
       "--summarize",
       // Streaming needs every task's lines as they come; otherwise only a failure's, at its end.
       values.stream ? "--output-logs=full" : "--output-logs=errors-only",
+      // On GitHub Actions Turbo groups each task's lines and prints them when it ends, which is
+      // what --stream is there to avoid (#55: a cancelled run showed every task but the hung one).
+      ...(values.stream ? ["--log-order=stream"] : []),
       "--ui=stream",
     ],
     (line) => {
