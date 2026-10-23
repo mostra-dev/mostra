@@ -453,8 +453,29 @@ export async function eventually(
   throw new Error(`Timed out waiting for ${what}.`);
 }
 
-/** The TCP addresses a process listens on, from the operating system (`lsof` or `ss`). */
+/**
+ * The TCP addresses a process listens on, from the operating system: `lsof` on macOS, `ss` on
+ * Linux, `netstat -ano` on Windows (whose columns are the protocol, the local and foreign
+ * addresses, the state and the owning PID).
+ */
 export function listening(pid: number): string[] {
+  if (WINDOWS) {
+    const out = execFileSync("netstat", ["-ano", "-p", "TCP"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    const v6 = execFileSync("netstat", ["-ano", "-p", "TCPv6"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return `${out}\n${v6}`
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/))
+      .filter(
+        (cols) => cols[0]?.startsWith("TCP") && cols[3] === "LISTENING" && cols[4] === String(pid),
+      )
+      .map((cols) => cols[1] ?? "");
+  }
   if (process.platform === "darwin") {
     const out = execFileSync(
       "lsof",
@@ -536,4 +557,40 @@ function procAddress6(hex: string): string {
   if (text === "0:0:0:0:0:0:0:0") return "::";
   if (text === "0:0:0:0:0:0:0:1") return "::1";
   return text;
+}
+
+/**
+ * The command line a process runs: `ps` on POSIX; on Windows its `CommandLine` from CIM (as Task
+ * Manager shows it).
+ */
+export function commandLineOf(pid: number): string {
+  if (WINDOWS) {
+    return execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    ).trim();
+  }
+  return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
+}
+
+/**
+ * Stops a process from running without ending it, or lets it run again: `SIGSTOP` and `SIGCONT`
+ * on POSIX; on Windows every thread suspended or resumed, through the helper's test probe.
+ */
+export function suspendProcess(pid: number, suspend: boolean): void {
+  if (!WINDOWS) {
+    process.kill(pid, suspend ? "SIGSTOP" : "SIGCONT");
+    return;
+  }
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  execFileSync(probe, [suspend ? "suspend" : "resume", String(pid)], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
 }

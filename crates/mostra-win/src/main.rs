@@ -14,6 +14,8 @@
 //! mostra-win pipe <name>                    serves \\.\pipe\<name> over descriptor 4 (src/win/pipe.rs)
 //! mostra-win connect <name>                 a client of the pipe <name>, its owner checked, over
 //!                                           stdin and stdout (src/win/connect.rs)
+//! mostra-win service-stop <event>           stops a running login-service launcher cleanly
+//!                                           (src/win/service.rs): {"signalled","stopped"}
 //! ```
 
 #[cfg(windows)]
@@ -35,7 +37,7 @@ mod windows {
     use std::io::Write;
     use std::path::Path;
 
-    use mostra_win::win::{acl, connect, gate, pipe, process, sys};
+    use mostra_win::win::{acl, connect, gate, pipe, process, service, sys};
     use serde_json::{Value, json};
 
     fn print(value: &Value) {
@@ -58,6 +60,24 @@ mod windows {
 
     fn text(argument: &OsString) -> Option<&str> {
         argument.to_str()
+    }
+
+    /// `mostra-win service-stop Local\mostra-service-<hash>`.
+    fn service_stop(rest: &[OsString]) -> i32 {
+        match rest.first().and_then(text) {
+            Some(name) if name.starts_with("Local\\mostra-service-") => {
+                match service::stop(name, 20_000) {
+                    Ok((signalled, stopped)) => {
+                        ok(&json!({ "signalled": signalled, "stopped": stopped }))
+                    }
+                    Err(error) => fail(&error.to_string(), Some(&error)),
+                }
+            }
+            _ => fail(
+                "usage: mostra-win service-stop Local\\mostra-service-<hash>",
+                None,
+            ),
+        }
     }
 
     pub fn main(arguments: &[OsString]) -> i32 {
@@ -149,6 +169,7 @@ mod windows {
                     (Err(error), _) | (_, Err(error)) => fail(&error.to_string(), Some(&error)),
                 }
             }
+            "service-stop" => service_stop(rest),
             _ => fail(&format!("unknown command {command}"), None),
         }
     }

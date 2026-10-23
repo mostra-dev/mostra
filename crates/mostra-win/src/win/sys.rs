@@ -14,7 +14,7 @@ use windows_sys::Win32::Foundation::{
     ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, ERROR_IO_PENDING, ERROR_MORE_DATA,
     ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, FILETIME,
     GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
-    LocalFree, STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WIN32_ERROR,
+    LocalFree, STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WAIT_TIMEOUT, WIN32_ERROR,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
@@ -31,16 +31,20 @@ use windows_sys::Win32::Security::{
     TokenOwner, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateDirectoryW, CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_FIRST_PIPE_INSTANCE,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_LIST_DIRECTORY, FILE_SHARE_DELETE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+    CreateDirectoryW, CreateFileW, FILE_APPEND_DATA, FILE_ATTRIBUTE_NORMAL,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_FLAG_OVERLAPPED, FILE_LIST_DIRECTORY, FILE_SHARE_DELETE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, FlushFileBuffers, OPEN_ALWAYS, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
     READ_CONTROL, ReadFile, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC, WRITE_OWNER,
     WriteFile,
 };
-use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+use windows_sys::Win32::System::Console::{
+    AttachConsole, CTRL_BREAK_EVENT, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+use windows_sys::Win32::System::Environment::SetEnvironmentVariableW;
 use windows_sys::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
@@ -53,13 +57,15 @@ use windows_sys::Win32::System::Pipes::{
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateEventW, CreateProcessW,
-    DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess,
-    GetExitCodeProcess, GetProcessTimes, GetStartupInfoW, INFINITE,
-    InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST, OpenProcess, OpenProcessToken,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, ResumeThread, STARTF_USESTDHANDLES,
-    STARTUPINFOEXW, STARTUPINFOW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+    CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, EVENT_MODIFY_STATE,
+    EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess, GetExitCodeProcess, GetProcessTimes,
+    GetStartupInfoW, INFINITE, InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
+    OpenEventW, OpenProcess, OpenProcessToken, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    PROC_THREAD_ATTRIBUTE_JOB_LIST, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_TERMINATE, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
+    SYNCHRONIZATION_SYNCHRONIZE, SetEvent, TerminateProcess, UpdateProcThreadAttribute,
+    WaitForMultipleObjects, WaitForSingleObject,
 };
 
 // Constants windows-sys keeps behind features this crate doesn't otherwise need.
@@ -1076,6 +1082,28 @@ pub fn create_suspended(
     inherit: &[RawHandle],
     job: &Job,
 ) -> io::Result<Suspended> {
+    create_suspended_with(
+        application,
+        command_line,
+        standard,
+        table,
+        inherit,
+        job,
+        false,
+    )
+}
+
+/// [`create_suspended`], and when `new_group` the child leads a console process group of its own
+/// (`CREATE_NEW_PROCESS_GROUP`), so [`send_ctrl_break`] can ask it, and only it, to stop.
+pub fn create_suspended_with(
+    application: &OsStr,
+    command_line: &OsStr,
+    standard: [RawHandle; 3],
+    table: &[CrtEntry],
+    inherit: &[RawHandle],
+    job: &Job,
+    new_group: bool,
+) -> io::Result<Suspended> {
     let application = wide(application);
     let mut command_line = wide(command_line);
     let mut handles: Vec<HANDLE> = Vec::new();
@@ -1130,7 +1158,12 @@ pub fn create_suspended(
     let flags = CREATE_SUSPENDED
         | CREATE_UNICODE_ENVIRONMENT
         | CREATE_NO_WINDOW
-        | EXTENDED_STARTUPINFO_PRESENT;
+        | EXTENDED_STARTUPINFO_PRESENT
+        | if new_group {
+            CREATE_NEW_PROCESS_GROUP
+        } else {
+            0
+        };
     // SAFETY: every pointer is valid for the call; the environment and directory are inherited.
     let created = check(unsafe {
         CreateProcessW(
@@ -1175,6 +1208,166 @@ pub fn wait_exit(process: &Handle) -> io::Result<u32> {
     // SAFETY: as above.
     check(unsafe { GetExitCodeProcess(process.raw(), &raw mut code) })?;
     Ok(code)
+}
+
+// ----- The login service's launcher -----
+
+/// Opens `path` for appending (created when missing), shared with every other reader and writer,
+/// inheritable by a child the caller names: a log many processes write lines to.
+pub fn open_append(path: &OsStr) -> io::Result<Handle> {
+    let text = wide(path);
+    // SAFETY: valid name; the handle is owned.
+    let handle = unsafe {
+        CreateFileW(
+            text.as_ptr(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            null_mut(),
+        )
+    };
+    Handle::owned(handle)
+}
+
+/// Opens the null device for reading: a child's standard input that is always at its end.
+pub fn open_null() -> io::Result<Handle> {
+    let text = wide_str("NUL");
+    // SAFETY: valid name; the handle is owned.
+    let handle = unsafe {
+        CreateFileW(
+            text.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            null(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            null_mut(),
+        )
+    };
+    Handle::owned(handle)
+}
+
+/// Sets a variable of this process's environment, which children created without an environment
+/// of their own inherit.
+pub fn set_environment_variable(name: &str, value: &OsStr) -> io::Result<()> {
+    let name = wide_str(name);
+    let value = wide(value);
+    // SAFETY: two valid null-terminated strings; this process's environment block is changed
+    // through the documented call, which Rust's `std::env` reads through as well.
+    check(unsafe { SetEnvironmentVariableW(name.as_ptr(), value.as_ptr()) })
+}
+
+/// Writes all of `data` to a file or pipe opened for synchronous writes.
+pub fn write_all(handle: &Handle, mut data: &[u8]) -> io::Result<()> {
+    while !data.is_empty() {
+        let mut written = 0u32;
+        let length = u32::try_from(data.len()).unwrap_or(u32::MAX);
+        // SAFETY: a valid buffer of `length` bytes and a synchronous handle.
+        check(unsafe {
+            WriteFile(
+                handle.raw(),
+                data.as_ptr(),
+                length,
+                &raw mut written,
+                null_mut(),
+            )
+        })?;
+        data = &data[written as usize..];
+    }
+    Ok(())
+}
+
+/// A named, manual-reset event: how `mostra-win service-stop` asks a running launcher to stop.
+pub struct NamedEvent(Handle);
+
+impl NamedEvent {
+    /// Creates the event `name` with `descriptor`; `None` when it exists already (another
+    /// launcher of the same service runs).
+    pub fn create(name: &str, descriptor: &SecurityDescriptor) -> io::Result<Option<NamedEvent>> {
+        let text = wide_str(name);
+        let attributes = descriptor.attributes();
+        // SAFETY: valid attributes and name; the handle is owned.
+        let handle = unsafe { CreateEventW(&raw const attributes, 1, 0, text.as_ptr()) };
+        // SAFETY: plain call, read right after the call it reports on.
+        let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
+        let event = NamedEvent(Handle::owned(handle)?);
+        Ok(if existed { None } else { Some(event) })
+    }
+
+    /// Opens the event `name` to signal or wait on it, or `None` when no event has the name.
+    pub fn open(name: &str) -> io::Result<Option<NamedEvent>> {
+        let text = wide_str(name);
+        // SAFETY: valid name; the handle is owned.
+        let handle = unsafe {
+            OpenEventW(
+                EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE,
+                0,
+                text.as_ptr(),
+            )
+        };
+        match Handle::owned(handle) {
+            Ok(handle) => Ok(Some(NamedEvent(handle))),
+            Err(error) if is_error(&error, ERROR_FILE_NOT_FOUND) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Signals it.
+    pub fn set(&self) -> io::Result<()> {
+        // SAFETY: a valid event handle with modify rights.
+        check(unsafe { SetEvent(self.0.raw()) })
+    }
+
+    /// The handle, for [`wait_any`].
+    pub fn borrow(&self) -> RawHandle {
+        self.0.borrow()
+    }
+}
+
+/// Waits until one of `handles` is signalled, at most `timeout_ms` (`None`: forever); the index
+/// of the first signalled, or `None` on timeout.
+pub fn wait_any(handles: &[RawHandle], timeout_ms: Option<u32>) -> io::Result<Option<usize>> {
+    let raw: Vec<HANDLE> = handles.iter().map(|handle| handle.0).collect();
+    let count = u32::try_from(raw.len()).unwrap_or(0);
+    // SAFETY: `count` valid handles.
+    let result =
+        unsafe { WaitForMultipleObjects(count, raw.as_ptr(), 0, timeout_ms.unwrap_or(INFINITE)) };
+    if result == WAIT_TIMEOUT {
+        return Ok(None);
+    }
+    let index = result.wrapping_sub(WAIT_OBJECT_0);
+    if index < count {
+        Ok(Some(index as usize))
+    } else {
+        Err(last_error())
+    }
+}
+
+/// The exit code of a process that has exited (`STILL_ACTIVE` while it runs).
+pub fn exit_code(process: &Handle) -> io::Result<u32> {
+    let mut code = 0u32;
+    // SAFETY: a valid process handle.
+    check(unsafe { GetExitCodeProcess(process.raw(), &raw mut code) })?;
+    Ok(code)
+}
+
+/// Sends Ctrl+Break to the console process group `pid` leads (a child created with
+/// [`create_suspended_with`]'s `new_group`), as a console's Ctrl+Break would: Node.js reports it
+/// as `SIGBREAK`, on which the runtime stops cleanly (D87, D150 item 6). This process attaches to
+/// the child's console for the call, then detaches again.
+pub fn send_ctrl_break(pid: u32) -> io::Result<()> {
+    // SAFETY: plain calls. A process without a console has nothing to free; attaching fails when
+    // the child has no console.
+    unsafe { FreeConsole() };
+    // SAFETY: as above.
+    check(unsafe { AttachConsole(pid) })?;
+    // SAFETY: the event goes to the group `pid` leads, which this process isn't in.
+    let sent = check(unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) });
+    // SAFETY: detaches from the child's console again.
+    unsafe { FreeConsole() };
+    sent
 }
 
 // ----- Overlapped I/O on pipes -----

@@ -150,3 +150,29 @@ export function runHelperAsync<T>(args: readonly string[]): Promise<T> {
     });
   });
 }
+
+/**
+ * The login service's launcher on Windows, `mostra-win-service.exe` beside the helper (D151): a
+ * program without a console that Task Scheduler runs at logon to keep the home's daemon running
+ * without a window. Throws `MOSTRA_ENV_HELPER_MISSING` when it isn't there.
+ */
+export function serviceLauncherPath(env: NodeJS.ProcessEnv = process.env): string {
+  const launcher = join(dirname(helperPath(env)), "mostra-win-service.exe");
+  if (!existsSync(launcher)) {
+    throw missing(`Mostra's Windows service launcher isn't installed; looked for ${launcher}.`);
+  }
+  return launcher;
+}
+
+/** This process's user as a SID string (`S-1-5-21-…`), from the helper's `whoami`. */
+export function currentUserSid(): string {
+  return runHelper<{ user: string }>(["whoami"]).user;
+}
+
+/**
+ * Asks the login service's launcher waiting on `event` to stop its daemon cleanly, and waits for
+ * it (at most the helper's 20 s): `stopped` is false when it still runs after that.
+ */
+export function stopServiceLauncher(event: string): { signalled: boolean; stopped: boolean } {
+  return runHelper<{ signalled: boolean; stopped: boolean }>(["service-stop", event]);
+}
