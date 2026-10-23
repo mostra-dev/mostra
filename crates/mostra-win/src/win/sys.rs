@@ -560,6 +560,35 @@ pub fn set_file_security(
     })
 }
 
+/// Makes `owner` the owner of `path` (never through a link), keeping its DACL.
+pub fn set_file_owner(path: &OsStr, owner: &Sid) -> io::Result<()> {
+    let name = wide(path);
+    // SAFETY: valid name; the handle is owned and closed.
+    let handle = Handle::owned(unsafe {
+        CreateFileW(
+            name.as_ptr(),
+            READ_CONTROL | WRITE_OWNER,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    })?;
+    // SAFETY: a valid handle with WRITE_OWNER; the SID outlives the call.
+    win32(unsafe {
+        SetSecurityInfo(
+            handle.raw(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            owner.as_psid(),
+            null_mut(),
+            null(),
+            null(),
+        )
+    })
+}
+
 /// Opens `path` (a file, a directory or a pipe) for reading and writing as the current thread's
 /// identity, then closes it; for the access probes.
 pub fn try_open(path: &OsStr, directory: bool) -> io::Result<()> {

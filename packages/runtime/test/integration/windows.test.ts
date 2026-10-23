@@ -200,9 +200,20 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     mkdirSync(wide.home, { recursive: true });
     everyone(wide.home);
     expect(accessEntries(wide.home).some((entry) => entry.sid === "WD")).toBe(true);
+    // Something in it another user made, and so owns: an owner may always grant itself access
+    // again, so tightening takes it over (GPT review of the Opus fixes).
+    const planted = join(wide.home, "planted");
+    const [plantedMade] = asOtherUser(`mkdir:${planted}`) as unknown as { created: boolean }[];
+    expect(plantedMade?.created).toBe(true);
+    // Owners as the descriptors spell them (SDDL may use an alias, such as LA, for the user).
+    const owner = (path: string): string =>
+      /^O:(.+?)(?:G:|D:)/.exec(security(path).sddl)?.[1] ?? "";
+    expect(owner(planted)).not.toBe(owner(wide.home));
     const second = await startDaemon(wide);
     expect(second.status.status).toBe("started");
     ownerOnly(wide.home);
+    ownerOnly(planted);
+    expect(owner(planted)).toBe(owner(wide.home));
     const log = readFileSync(join(wide.home, "logs", "supervisor.log"), "utf8");
     expect(log).toContain('"home.tightened"');
     await stopDaemon(second.status.socket ?? "");

@@ -105,16 +105,34 @@ pub fn secure_directory(path: &Path) -> Result<Secured, Refused> {
         return Ok(Secured::Kept);
     }
     // The directory itself, then every entry below that grants anyone but the user and `SYSTEM`
-    // anything. Entries already that narrow keep their lists: a sealed version stays sealed
-    // (Opus review of WP-W1). Links are never followed out of the home.
+    // anything, or that someone else owns (an owner may always change its list again). Entries
+    // already that narrow and the user's keep their lists: a sealed version stays sealed (Opus
+    // review of WP-W1). Links are never followed out of the home. An entry another account owns
+    // and won't hand over refuses the whole home, as a home it owns would.
     sys::set_file_security(path.as_os_str(), Some(&user), &descriptor)?;
+    let mut refused: Option<String> = None;
     walk(path, &mut |entry| {
         let security = sys::file_security(entry.as_os_str())?;
+        let foreign = !owned_by_user(&security, &user)?;
+        if foreign {
+            let taken = if narrow(&security, &user_sddl) {
+                sys::set_file_owner(entry.as_os_str(), &user)
+            } else {
+                sys::set_file_security(entry.as_os_str(), Some(&user), &descriptor)
+            };
+            if taken.is_err() {
+                refused.get_or_insert(security.owner.to_sddl()?);
+            }
+            return Ok(());
+        }
         if narrow(&security, &user_sddl) {
             return Ok(());
         }
         sys::set_file_security(entry.as_os_str(), None, &descriptor)
     })?;
+    if let Some(owner) = refused {
+        return Err(Refused::NotOwned { owner });
+    }
     Ok(Secured::Tightened {
         from: security.sddl,
     })

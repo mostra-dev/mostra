@@ -171,6 +171,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-10",
+    name: "tightening a home leaves another user owning what it made there (GPT review)",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: "        let foreign = !owned_by_user(&security, &user)?;",
+    to: "        let foreign = false;",
+    check: integration("windows.test.ts", "refuses one another user owns"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-10",
     name: "a job another session named is reaped only by its PID (Opus review)",
     file: "../../crates/mostra-win/src/win/process.rs",
     from: "if !job_found && liveness == Liveness::Running(created) {",
