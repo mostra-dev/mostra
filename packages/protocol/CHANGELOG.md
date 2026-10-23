@@ -1,5 +1,11 @@
 # @mostra/protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- [#54](https://github.com/mostra-dev/mostra/pull/54) [`bb00a14`](https://github.com/mostra-dev/mostra/commit/bb00a1474c4737e800d5c38824c3250fe3b43890) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Adds `MOSTRA_ENV_HELPER_MISSING`: on Windows the runtime needs its helper, `mostra-win.exe`, and reports this code when it can find none. A source path, an artifact path and `artifact/create`'s directory may also be a Windows absolute path (`C:\…`, `C:/…` or `\\server\share\…`), beside the POSIX `/…`; a drive-relative or root-relative path is still refused.
+
 ## 0.2.0
 
 ### Minor Changes
