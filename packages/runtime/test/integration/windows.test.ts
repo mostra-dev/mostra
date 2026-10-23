@@ -333,4 +333,28 @@ describe.runIf(WINDOWS)("Windows: children end with their supervisor (RT-09, RT-
     await new Promise((resolve) => setTimeout(resolve, 1500));
     expect(existsSync(marker)).toBe(false);
   });
+
+  it("holds a child at its gate for as long as its supervisor hasn't recorded it (issue #7)", async () => {
+    // Node.js's own job ends a dead supervisor's gates, so the gate's wait for "go" is what holds
+    // a child that a live, slow supervisor hasn't recorded yet.
+    const home = testHome();
+    const marker = join(tempDir("gate"), "ran.txt");
+    const supervisor = spawn(process.execPath, [fixture("windows-gated.mjs"), home.home, marker], {
+      env: { ...home.env, MOSTRA_TEST_FAULTS: "spawn:before-record:demo:hang" },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    let output = "";
+    supervisor.stdout?.setEncoding("utf8");
+    supervisor.stdout?.on("data", (chunk: string) => {
+      output += chunk;
+    });
+    try {
+      await eventually(() => output === "ready\n", 30_000, "the instance");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      supervisor.kill();
+      await once(supervisor, "exit");
+    }
+  });
 });

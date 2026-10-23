@@ -333,6 +333,8 @@ function createManager({
       // The same point for one kind of child (`spawn:before-record:demo`), for an instance whose
       // start already spawns children of its own (on Windows the control pipe's helper).
       faults.at(`spawn:before-record:${spec.kind}`);
+      // A supervisor stalled here (a test's `hang`) shows the child waiting at its gate, unrecorded.
+      if (faults.hangs(`spawn:before-record:${spec.kind}`)) await new Promise(() => {});
       if (!info) return;
       pid = info.pid;
       record({
