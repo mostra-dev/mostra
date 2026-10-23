@@ -1,6 +1,6 @@
 # WP-W1 progress: Windows I, platform layer, supervisor and ledger
 
-**Status:** In progress.
+**Status:** Candidate, presented to Mirza on 2026-10-23: CI green on `ad3882b` (every job, the Windows x64 and arm64 legs included), awaiting his acceptance, his approval of D150, the Claude Opus review (D144) and his review of the agent-facing prose.
 
 ## Baseline
 
@@ -12,6 +12,60 @@
 | `pnpm check` | 13 of 14 jobs green on macOS arm64 in 28 min; `unit` failed on one test, `@mostra/server`'s "abortSignal (AC-04) › is the current call's signal, and stops fetch and timers", which timed out at 5 s under the full run's load and passes alone (16 of 16, 0.6 s). The run overlapped the start of this package's first commit (the new `crates/mostra-win`, which builds and passes clippy on every target). |
 | Predecessors | WP-12 done ([PROGRESS-WP-12](PROGRESS-WP-12.md) on `origin/main`); no `RECOVERY-WP-W1-*.md` |
 | Local toolchain | Node 24.12.0, pnpm 12.9.0, Rust 1.97.1 with the `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc` targets for `cargo check` and clippy, macOS 26.2 arm64. Windows behavior is observed on GitHub's `windows-latest` (Windows Server 2025, x64) and `windows-11-arm` runners only. |
+
+## What was built
+
+- **The platform layer** (`packages/runtime/src/platform/`): directories (default homes, `%LOCALAPPDATA%\mostra` on Windows, owner-only checks), files (sync through a writable handle, renames that ride out sharing violations, link farms, sealing, path keys), identity (`win/<creation time>` on Windows), launch (the POSIX gate and groups moved unchanged; the Windows gate, its Job Object and the reaper), control (the socket, or the helper's pipe), environment and the helper's locator. `platform-layer.test.ts` refuses `process.platform` anywhere else in the runtime.
+- **`mostra-win`** (`crates/mostra-win`, unpublished): `secure-dir`, `seal`, `unseal`, `identity`, `processes`, `reap`, `whoami`, `gate` and `pipe`, over `windows-sys` 0.61.2, with `unsafe` only in `src/win/sys.rs`; a test-only `mostra-win-probe` (as another user, a path's access list, suspending a process, creating a directory as that user).
+- **The supervisor on Windows**: the owner-only home and pipe, racing starters through `instance.json`, a replaced pipe when its helper stops or fails, every child behind its gate in a kill-on-close job, recorded before it runs, reaped by named job and creation time; stops over `mostra/shutdown`, the console and stdio.
+- **Builder and dependency store on Windows**: Vite's and Windows' spellings of a path compared as one (`pathKey`, `isUnder`), link farms for the warm set and lock layouts, the install child in its job, snapshots synced through a writable handle, Windows' environment for builds and artifacts, double-quoted Windows paths in commands diagnostics name.
+- **The gate admits Windows behind `MOSTRA_DEV_WINDOWS=1`**, which only the CI legs set; every other platform, and Windows without it, fails closed.
+- **Protocol**: `AbsolutePath` (`SourceRef`, `ArtifactRef`, `artifact/create`'s `dir`) takes Windows drive and UNC paths, additively; the schema gate proves a pattern widened by alternatives (refusing any with a backreference); `MOSTRA_ENV_HELPER_MISSING`.
+- **CI**: a `windows` job, unit and integration on `windows-latest` and `windows-11-arm`, the helper built and linted natively, a second local user, the test homes' logs uploaded on failure; the plan treats `crates/mostra-win` as the runtime's. A temporary probe workflow (removed before the merge) first established the Windows facts, then proved RT-10's seeds on a Windows runner.
+- **Docs**: D150 (proposed), ARCHITECTURE §4, DATA_MODEL §1 and §3, FAILURE_MODEL §2, §3 and §10, INTERFACES §6, REPO_STANDARDS, VERIFIED_FACTS (WP-W1), `docs/agents/run-on-windows.md`, `crates/mostra-win/AGENTS.md`, the runtime's AGENTS.md, the WP-W2 and WP-W3 specifications (what this package hands them), changesets for the protocol and the runtime.
+
+## Decisions taken in the package
+
+**D150** (proposed, awaiting Mirza's approval), items 1 to 11: one platform module; the Rust helper over a native addon or `icacls`; owner-only as the user and `SYSTEM`; the helper's named pipe over loopback TCP with a token; a Job Object per child behind a suspended gate, identity by creation time; stopping without signals; the switch's name, `MOSTRA_DEV_WINDOWS=1`; Windows file semantics (retried renames, link farms, sealing after the rename, case); the Windows environment; the CI legs; `MOSTRA_ENV_HELPER_MISSING`. Choices made while building, inside it:
+- **Two routes to a dead supervisor's children:** libuv's own kill-on-close job ends the gates, and each gate's end closes its child's job; the reaper covers a gate that stopped watching (proven with a test hook, `MOSTRA_TEST_GATE=ignore-lifeline`, which also starts that gate outside libuv's job).
+- **Link farms instead of one junction** (found on the runners: pnpm's relative links inside the warm set break through a junction to the whole directory).
+- **A seal is judged by its access list in the tests:** the runners' administrator has backup and restore privileges enabled, which libuv's backup-semantics opens use to pass any list; the second local user is refused.
+- **A fault point per child kind** (`spawn:before-record:<kind>`), because an instance's own start already spawns the pipe's helper.
+
+## Evidence
+
+Checks through the real interfaces: the built `mostra-runtime` as real processes on GitHub's Windows runners (`windows-latest`, Windows Server 2025 x64; `windows-11-arm`), with a second local user (`mostraother`, created by the leg) for every access check; seeded violations through `prove-seeds.ts`. Windows behavior is observed only there.
+
+| ID | State | Check | Command | Result |
+|---|---|---|---|---|
+| RT-10 | verified | On both Windows runners, through the runtime's `windows` integration group (WP-01 to WP-04's suites and `windows.test.ts`): 16 `mostra-runtime daemon` starters racing over the Windows transport, three rounds, converge on one supervisor; five starters after a killed owner take the home once; a starter with another runtime directory finds the owner through `instance.json`; a frozen owner whose pipe is gone gives `MOSTRA_HOME_LOCKED` with its PID; a stopped pipe helper, and one that failed after it was ready, are replaced within 10 s and `instance.json` names the new pipe. Another local user can open neither the home, its ledger and files, a sealed version, nor the pipe (read or read/write), against a public-file control that user does open; a home Mostra creates is protected and grants only the user and `SYSTEM`, a wider one is tightened (`home.tightened`) and one another user owns is `MOSTRA_HOME_NOT_OWNED` before anything is written. A killed supervisor's child and grandchildren end through their job at once; with gates that stopped watching their lifeline, the next start reaps the family by PID and creation time and spares a decoy row whose PID a live process holds with another creation time; a child is never run before it is recorded, whether its supervisor dies or only stalls there (issue #7). The publish suites (snapshots, digests, sealing, crashes at every publish step, a hung and a crashing builder, ancestors, the RT-02 audit, rendering in Chromium) and the install suites (warm set and one React, on-demand packages and lockfiles, offline rebuilds, relinking after the warm set moved, lifecycle scripts in the install child's job with the artifact environment, gc of layouts and the store) pass. Running homes refuse removal, and `mostra/shutdown` stops a daemon with exit 0. Seeds red with their seed and green restored on a Windows runner: a home's list that admits everyone, the pipe's list that admits everyone, a job that outlives its last handle, a reaper that ignores creation times, a gate that runs before go, a pipe that failed after READY still counted intact; and on every platform, Windows admitted without the switch. macOS and Linux CI unchanged and green | `pnpm check --job unit` and `--job integration` with `MOSTRA_DEV_WINDOWS=1 MOSTRA_TEST_GROUP=windows` (CI `windows` job); `node packages/runtime/scripts/prove-seeds.ts --only RT-10` (probe workflow `seeds`, Windows x64) | CI run 39941984964 on `ad3882b`: all four Windows legs and every POSIX job green (integration x64 476 s, arm64 12 min); probe run 39941979201: 7 of 7 seeds red then green |
+
+**Checks that extend earlier packages' rows** (each stays with its owner): RT-07 (WP-02): the simulated platforms (win32 x64 and arm64, freebsd x64, linux ia32) still fail closed with `MOSTRA_PLATFORM_UNSUPPORTED`, exit 3, before the home or runtime directory exists, and on the Windows runners Windows itself without the switch fails closed for `daemon` and `host` (`platform.test.ts`, 10 of 10 on both runners). RT-06 and RT-09 (WP-02), VR-01 and VR-02 (WP-03), DP-01 to DP-05 (WP-04) now also hold on Windows through the same suites.
+
+**Skipped on Windows, each with its counterpart:** the socket-file removal and unreachable-socket cases (`instance.test.ts`) by the pipe-replacement and frozen-owner cases; SIGTERM and SIGINT by `mostra/shutdown`; `MOSTRA_HOME_GONE` by removal by "keeps a running home" (Windows refuses the removal); mode 0700 by the access-list case; the socket-length case has no Windows form; the POSIX reaping, gate and process-group suites by `windows.test.ts` and the Windows block of `processes.test.ts`; the unreadable-source case (`chmod 000`) has none (below).
+
+## Reviews (D80)
+
+- **My review of the full diff** found a reap the helper couldn't finish reported nothing (now `process.reap_incomplete`), a gate test that couldn't tell a gate waiting for go from Node.js's job ending it (a stalled-supervisor case added, with its seed), a merge marker left in DECISIONS.md, and D150's wording on names that differ only in case.
+- **CodeQL** on the pull request: a quadratic regular expression on paths (`samePath`, replaced by a loop), code built from a test path (now an argument), a possibly null ACE pointer (now checked; the two remaining alerts dismissed as false positives with the reason), and the POSIX gate's shell (moved unchanged; dismissed with the reason).
+- **GPT-6.1-Sol through `codex review --base origin/main`** (OpenAI, ChatGPT sign-in), effort high, on 2026-10-23 against `bf411d3`…`3a124b0`: 3,739,121 input tokens (3,586,560 cached), 10,017 output (4,934 reasoning). A GPT-only run, announced. 3 findings, all valid, all fixed:
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 (P2) A FATAL from the pipe helper after READY left the listener "intact", so the unusable pipe was never replaced | The listener records READY synchronously; a later FATAL marks it failed and stops the helper, so the next check binds a new pipe | `windows.test.ts` "replaces a pipe whose helper lives on but can no longer serve it" (test hook `MOSTRA_TEST_PIPE_FATAL_ONCE`); its seed red then green on Windows |
+| 2 (P2) A change only to `crates/mostra-win` affected no package, so no Windows leg ran | The plan treats `crates/mostra-win` as run by `@mostra/runtime` (`directOwners`) | `rules.test.ts` "the plan's owners of a changed file" |
+| 3 (P2) The widening proof accepted `^(a)\1$` → `^(?:(b)|(a)\1$)`, which refuses `aa` | A pattern with a backreference (numbered or named) is never proven to widen | `rules.test.ts`: red with the check removed, green restored |
+
+- **Copilot:** its quota is used up, as on earlier packages; it reviewed nothing.
+- **Claude Opus 5.5** (D144): the prompt is ready for Mirza to run.
+
+## Untested boundaries
+
+- **An ordinary (non-administrator) Windows user as the owner.** GitHub's runners run as an administrator with UAC off, whose enabled backup and restore privileges pass any access list through Node.js; the owner-write refusal of a seal and the `chmod 000` unreadable-source case are therefore checked on POSIX, and the Windows seal by its list and by the second user, who is an ordinary user.
+- **Ctrl+C and Ctrl+Break at a real console** stopping a daemon: handled (`SIGINT`, `SIGBREAK`) but not exercised; CI stops daemons over `mostra/shutdown`.
+- **Antivirus holding a file** during a rename: the retry is exercised only by what the runners' Defender does on its own.
+- **Windows arm64 seeds**: the seeds ran on x64; arm64 runs the same suites green.
+- **The full repository on Windows**: only the protocol's and the runtime's suites run there; the other packages are WP-W2's and WP-W3's.
 
 ## The POSIX audit
 
@@ -29,7 +83,7 @@ Every place the code before this package assumed POSIX (modes, signals, process 
 | `ledger/index.ts`, `home/settings.ts`, `home/record.ts` | `fsync` through a read-only descriptor; rename over an open file; removal of an open ledger detected by inode | `platform/files.ts`: sync through a writable handle; renames ride out sharing violations; on Windows an open ledger can't be removed or renamed at all (D150 item 8) |
 | `registry/store.ts` | sealing by `chmod 0444/0555`; removal after `chmod 0755`; a rename over a leftover directory | on Windows a protected read-only access list set after the rename into place, removed through `unseal`; renames retried (D150 items 3, 8) |
 | `publish/source.ts`, `publish/tar.ts` | names that differ only in case are two files; the execute bit from `mode & 0o111` | on Windows names compare without case (a collision names both); Windows keeps no execute bit, so none is recorded |
-| `deps/index.ts`, `builder/child/spa.ts`, `builder/child/dev.ts`, `verify/typecheck.ts` | directory symlinks (`warm`, `node_modules`), replaced by a rename of a new link | junctions on Windows, replaced by remove-then-create (`platform/files.ts`) |
+| `deps/index.ts`, `builder/child/spa.ts`, `builder/child/dev.ts`, `verify/typecheck.ts` | directory symlinks (`warm`, `node_modules`), replaced by a rename of a new link | on Windows a link farm (one junction per package to its real path, with a `.mostra-link` marker), built aside and renamed into place; a junction to the whole directory breaks the relative links pnpm makes inside it (VERIFIED_FACTS, WP-W1) |
 | `deps/child/install.ts` | pnpm in the install child's process group | on Windows in its Job Object; no console window |
 | `processes/environment.ts`, `builder/index.ts` | `PATH`, `HOME`, `TMPDIR` are enough; `:` separates `PATH`; names have one spelling | `platform/environment.ts` and the artifact environment add what Windows programs need, matched without case, with the host's delimiter |
 | `protocol/src/artifact.ts`, `methods/artifact/create.ts` | an absolute path starts with `/` | Windows drive and UNC paths too, additively (the schema gate proves the widening) |
