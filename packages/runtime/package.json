@@ -1,6 +1,6 @@
 {
   "name": "@mostra/runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The Mostra runtime: the supervisor that owns a home, its ledger, its child processes and the host protocol server (mostra-runtime host|daemon).",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

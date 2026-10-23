@@ -1,5 +1,16 @@
 # @mostra/runtime
 
+## 0.3.0
+
+### Minor Changes
+
+- [#54](https://github.com/mostra-dev/mostra/pull/54) [`bb00a14`](https://github.com/mostra-dev/mostra/commit/bb00a1474c4737e800d5c38824c3250fe3b43890) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The runtime gains a platform layer and runs its supervisor, ledger, builder and dependency store on Windows x64 and arm64, behind the development switch `MOSTRA_DEV_WINDOWS=1` until Windows support is complete: the home defaults to `%LOCALAPPDATA%\mostra` and is owner-only by access control, attached clients reach the supervisor through an owner-only named pipe, and every child runs in a Job Object that ends with it, recorded by PID and creation time. Every other platform still fails closed with `MOSTRA_PLATFORM_UNSUPPORTED`. `ProcessManager` gains `killAll()`, which ends every child at once at the supervisor's exit.
+
+### Patch Changes
+
+- Updated dependencies [[`bb00a14`](https://github.com/mostra-dev/mostra/commit/bb00a1474c4737e800d5c38824c3250fe3b43890)]:
+  - @mostra/protocol@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
