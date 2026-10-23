@@ -176,8 +176,9 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
       const out = execFileSync(probe, ["security", path], { encoding: "utf8" });
       return (JSON.parse(out) as { result: { protected: boolean; sddl: string } }).result;
     };
-    const ownerOnly = (path: string): void => {
-      expect(security(path).protected, path).toBe(true);
+    // A home is protected; what is inside may hold the home's entries by inheritance instead.
+    const ownerOnly = (path: string, inherited = false): void => {
+      if (!inherited) expect(security(path).protected, path).toBe(true);
       const sids = new Set(accessEntries(path).map((entry) => entry.sid));
       // The user and SYSTEM, nobody else: no Everyone, Users, Authenticated Users, Administrators.
       expect(sids.size, [...sids].join(" ")).toBe(2);
@@ -212,7 +213,7 @@ describe.runIf(WINDOWS)("Windows: owner-only home and transport (RT-10)", () => 
     const second = await startDaemon(wide);
     expect(second.status.status).toBe("started");
     ownerOnly(wide.home);
-    ownerOnly(planted);
+    ownerOnly(planted, true);
     expect(owner(planted)).toBe(owner(wide.home));
     const log = readFileSync(join(wide.home, "logs", "supervisor.log"), "utf8");
     expect(log).toContain('"home.tightened"');
