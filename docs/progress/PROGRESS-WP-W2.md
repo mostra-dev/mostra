@@ -1,6 +1,6 @@
 # WP-W2 progress: Windows II, gateway, workers, verify and CLI
 
-**Status:** Accepted by Mirza on 2026-10-24 ("Approved!", M37) with D151; the Claude Opus review's ten findings are fixed (below). Merge and release follow (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-24 ("Approved!", M37) with D151; the Claude Opus review's ten findings were fixed before the merge. Merged to `main` as `da6f7d6` (#62) and released as Mostra 0.4.0, Windows still behind `MOSTRA_DEV_WINDOWS=1` until WP-W3; finalized after the release (work-packages/README.md §4).
 
 ## Baseline
 
@@ -121,3 +121,17 @@ Windows behavior is observed only on those runners.
 
 - **No WebKit on Windows** (see "Decisions taken in the package"). The specification asks for Windows legs in the e2e job; they run Chromium and Firefox.
 - **The lingering refusal applies on every platform.** The gateway fix is not Windows-only: the cookie-clearing page was lost wherever a client read late.
+- **One follow-up to the merge on `main`** (#65): the Windows end-to-end tests get 60 s each. On `main`'s first run after #62 a Firefox test on Windows arm64 ran past 30 s, 13 s of it Firefox's launch under x64 emulation (Playwright ships no Windows arm64 builds, VERIFIED_FACTS).
+
+## Commits and publication
+
+- **Range:** `ecdceca..e66ab0b` on `main`: the signed-off commits of `wp/w2-windows-local` and the merge commit of [#62](https://github.com/mostra-dev/mostra/pull/62) (`da6f7d6`), then [#65](https://github.com/mostra-dev/mostra/pull/65) (`fc51c6f`) and the version pull request [#64](https://github.com/mostra-dev/mostra/pull/64) (`e66ab0b`).
+- **Merged:** #62 with CI run 40092846097 (53 of 53 jobs green on `52d0d3f`), then 477dab8's CI, Release and CodeQL green; every review thread resolved, no open code-scanning alert.
+- **Released, Mostra 0.4.0** (D36, `docs/agents/release.md`): [release run 40107767117](https://github.com/mostra-dev/mostra/actions/runs/40107767117) built, audited and smoke-tested the four bundles with no Node.js and published the immutable GitHub release [`v0.4.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.4.0) with its nine assets, the npm packages at 0.4.0 with provenance, and `mostra-host` 0.4.0 on crates.io. No Windows bundle yet (WP-W3).
+- **External checks, 2026-10-24:** `gh attestation verify mostra-0.4.0-darwin-arm64.tar.gz` passes and its SHA-256 matches `SHA256SUMS`; `npm view` shows 0.4.0 with an SLSA provenance attestation for `@mostra/cli`, `runtime`, `sdk`, `protocol` and `conformance`; crates.io's latest `mostra-host` is 0.4.0. On this Mac, with empty home, cache and config directories, `npm create mostra@0.4.0 my-artifact` installed the pinned bundle and scaffolded the artifact (2 min 14 s), `npx @mostra/cli@0.4.0 verify` passed and `publish` made `ver_6SM14ZJWWQJRP72RFN9BDBWF9W` on a 0.4.0 instance.
+- **Follow-ups filed:** [#66](https://github.com/mostra-dev/mostra/issues/66) (two one-off Windows browser failures on #64's first CI run: an emulated Firefox page closing on arm64, Chromium's `ERR_NO_BUFFER_SPACE` on x64; green on the rerun).
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, CI logs, traces and review texts in `~/.jcode/scratch/w2`, the external smoke in `/tmp/w2rel`, and test homes under the system's temporary directory.
+
+## Next
+
+WP-W3, Windows III: the bundles, the SDK, the Rust crate and conformance on Windows (`docs/design/work-packages/WP-W3.md`). It ships `mostra-win.exe` and `mostra-win-service.exe` in the Windows bundles, fetches the x64 verify browser on arm64 too (Playwright has no arm64 build), removes `MOSTRA_DEV_WINDOWS`, and gives the Rust crate the pipe-owner rule every TypeScript client now follows (D151 item 2).
