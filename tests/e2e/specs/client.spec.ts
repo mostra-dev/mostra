@@ -237,12 +237,16 @@ test.describe("tabs and devices converge (IN-03)", () => {
       const theirs = await phone.newPage();
       const myFrame = await openInShell(mine, url);
       const theirFrame = await openInShell(theirs, url);
-      // My save waits on the network while the phone saves the same field.
-      await mine.route("**/_mostra/v/*/fields", (route) => route.abort());
+      // My laptop loses the network while the phone saves the same field; when it comes back,
+      // the browser says so (`online`) and the page sends what it kept. A request refused by a
+      // route instead left the page in its retry backoff, which grows while the phone saves: on
+      // a slower machine (Windows' legs, WP-W2) the next retry came after the test's wait.
+      await laptop.setOffline(true);
       await myFrame.getByTestId("name").fill("mine");
+      await expect(myFrame.getByTestId("name-save")).toHaveText("offline");
       await theirFrame.getByTestId("name").fill("theirs");
       await saved(theirs);
-      await mine.unroute("**/_mostra/v/*/fields");
+      await laptop.setOffline(false);
       await expect(myFrame.getByTestId("name-conflict")).toBeVisible({ timeout: 15_000 });
       await expect(myFrame.getByTestId("name-theirs")).toHaveText("theirs");
       await expect(myFrame.getByTestId("name")).toHaveValue("mine");
