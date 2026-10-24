@@ -66,13 +66,15 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     // A run keeps the worker from its idle stop (1.5 s here) while the test looks at it: Windows'
     // process table takes PowerShell longer than that to read, and the stop could come between
     // two calls there (WP-W2).
-    const busy = (await page.run("actions.ts#slow", [8000])).json<RunState>();
+    // The run lasts until the test cancels it, however long Windows takes to answer.
+    const busy = (await page.run("actions.ts#slow", [120_000])).json<RunState>();
     const pid = (await page.call("actions.ts#pid", [])).value as number;
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "ready", pid });
     // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62).
     expect(commandLineOf(pid)).toContain("--max-old-space-size=96");
-    expect((await page.settled(busy.runId, 20_000)).status).toBe("succeeded");
+    await page.cancel(busy.runId);
+    expect((await page.settled(busy.runId, 20_000)).status).toBe("cancelled");
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call
     // starts a new one.
     await eventually(async () => !alive(pid), 10_000, "the idle worker to exit");

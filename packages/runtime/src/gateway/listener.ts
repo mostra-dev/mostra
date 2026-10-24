@@ -56,6 +56,33 @@ function writeRaw(
     ...(extra.headers ?? []),
   ];
   socket.end(`${headers.join("\r\n")}\r\n\r\n${body}`);
+  lingerAfterRefusal(socket);
+}
+
+/** How long a refused connection is read before it is closed regardless. */
+const LINGER_MS = 5000;
+/** How much of a refused request is read and dropped before the connection is closed. */
+const LINGER_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Reads and drops what the client is still sending after its refusal, until it closes the
+ * connection, for at most {@link LINGER_MS} and {@link LINGER_BYTES}. A socket closed with unread
+ * bytes is reset, and a reset can reach the client before it read the answer, which it then never
+ * sees: on Windows a browser sending a megabyte of cookies got a reset instead of the page that
+ * clears them (WP-W2). The answer is already written; this only keeps the connection open long
+ * enough for it to be read, as HTTP servers do for a "lingering close".
+ */
+function lingerAfterRefusal(socket: Duplex): void {
+  let read = 0;
+  const timer = setTimeout(() => socket.destroy(), LINGER_MS);
+  timer.unref();
+  socket.once("close", () => clearTimeout(timer));
+  socket.on("error", () => socket.destroy());
+  socket.on("data", (chunk: Buffer) => {
+    read += chunk.length;
+    if (read > LINGER_BYTES) socket.destroy();
+  });
+  socket.resume();
 }
 
 /**

@@ -575,8 +575,14 @@ export function commandLineOf(pid: number): string {
   if (WINDOWS) {
     // From the whole table (one CIM query that the gateway suite proves), so a process that
     // isn't there is an error naming it, never an empty command line.
-    const row = processTable().find((entry) => entry.pid === pid);
-    if (!row) throw new Error(`No process ${pid} is running.`);
+    const started = Date.now();
+    const table = processTable();
+    const row = table.find((entry) => entry.pid === pid);
+    if (!row) {
+      throw new Error(
+        `No process ${pid} is in the process table (${table.length} processes, read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
+      );
+    }
     return row.command;
   }
   return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();

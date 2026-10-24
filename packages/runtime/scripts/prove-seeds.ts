@@ -71,6 +71,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-11",
+    name: "a refusal closes its connection unread, and Windows resets it before the page arrives",
+    file: "src/gateway/listener.ts",
+    from: '  socket.end(`${headers.join("\\r\\n")}\\r\\n\\r\\n${body}`);\n  lingerAfterRefusal(socket);',
+    to: '  socket.end(`${headers.join("\\r\\n")}\\r\\n\\r\\n${body}`);',
+    check: hygiene("answers more than that with a page that clears"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
     name: "the secret store's directory grants everyone access",
     file: "../../crates/mostra-win/src/win/acl.rs",
     from: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})"',
