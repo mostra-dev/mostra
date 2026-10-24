@@ -2,7 +2,7 @@
  * Telemetry's rules (EN-08, D140 items 3 to 11), in-process: the decision order, the endpoint, the
  * time zones, the harness, the schema, the store, the question and the queue.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   mkdirSync,
@@ -480,6 +480,29 @@ function session(options: {
 const queued = (store: TelemetryStore): unknown[] =>
   store.queued(Date.now()).map((line) => JSON.parse(line));
 const END = { exit: 0, durationMs: 1200, hostInstance: false };
+
+describe("a lock that can never be taken (GPT review of WP-W2)", () => {
+  it("gives up within its 2 s instead of trying forever", () => {
+    const dir = configDir();
+    // A directory where the lock file goes, old enough to look abandoned: it can be neither
+    // created nor read, so breaking it "succeeds" without changing anything.
+    const lock = join(dir, "telemetry.lock");
+    mkdirSync(lock, { recursive: true });
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    // In a process of its own: a loop that never ends would hold this one past any time limit.
+    const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; process.stdout.write(String(new TelemetryStore(process.argv[1]).locked(() => "ran")));`;
+    const started = Date.now();
+    const ran = spawnSync(process.execPath, ["--input-type=module", "-e", script, dir], {
+      encoding: "utf8",
+      timeout: 15_000,
+    });
+    expect(ran.signal, "the lock was still being tried after 15 s").toBeNull();
+    expect(ran.stdout).toBe("undefined");
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+});
 
 describe("a config directory that can never exist (WP-W2)", () => {
   it("reads as unreadable, not as nothing stored yet, on every system", () => {

@@ -297,8 +297,11 @@ export class TelemetryStore {
         break;
       } catch (error) {
         if (!held((error as NodeJS.ErrnoException).code)) return undefined;
-        if (this.#breakStale()) continue;
+        // Every path back to the create checks the deadline, so nothing can hold the CLI here:
+        // a lock that can never be created or broken (GPT review of WP-W2: on Windows, access
+        // denied counts as held, and a lock that can't be opened reads as broken) gives up.
         if (Date.now() > deadline) return undefined;
+        if (this.#breakStale()) continue;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
       }
     }

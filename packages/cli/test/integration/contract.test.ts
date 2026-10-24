@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   artifactCreateMethod,
   CapabilityLink,
@@ -313,6 +314,25 @@ describe("every command, with --json and no terminal", () => {
     expect(installed.result).toMatchObject({ installed: true });
     const removed = await run(["daemon", "uninstall", "--no-start"], { code: 0, ok: true });
     expect(removed.result).toMatchObject({ installed: false });
+  });
+
+  it("starts the daemon from a relative MOSTRA_RUNTIME_BIN (GPT review of WP-W2)", async () => {
+    // The daemon runs in the file system's root, not the command's directory: a relative entry
+    // must reach it resolved where the command ran.
+    const own = testHome();
+    try {
+      const runtime = fileURLToPath(new URL("../../../runtime/dist/bin.js", import.meta.url));
+      const cwd = dirname(dirname(runtime));
+      const ran = await cli(["daemon", "start", "--json"], {
+        env: { ...own.env, MOSTRA_RUNTIME_BIN: join("dist", "bin.js") },
+        cwd,
+      });
+      const value = envelope(ran);
+      expect(value.ok, ran.stderr).toBe(true);
+      expect(value.result).toMatchObject({ running: true, started: true });
+    } finally {
+      await own.cleanup();
+    }
   });
 
   it("host speaks the protocol on stdout and nothing else", async () => {

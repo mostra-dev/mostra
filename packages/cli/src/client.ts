@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join, parse } from "node:path";
+import { join, parse, resolve } from "node:path";
 import type { Duplex } from "node:stream";
 import {
   ARTIFACT_PROGRESS,
@@ -147,7 +147,10 @@ export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> 
   const runtime = await locateRuntime(options.env);
   if (Date.now() >= deadlineAt) throw timedOut();
   const args = [
-    runtime.entry,
+    // Absolute: the daemon runs in the file system's root, where a relative entry (a relative
+    // `MOSTRA_RUNTIME_BIN`, checked against this process's directory) would name nothing (GPT
+    // review of WP-W2).
+    resolve(runtime.entry),
     "daemon",
     // The home this CLI resolved, so the daemon owns exactly it whatever its own environment.
     "--home",
