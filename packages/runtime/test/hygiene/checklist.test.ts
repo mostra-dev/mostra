@@ -829,14 +829,18 @@ describe("a full cookie jar (D98 item 9, Claude review finding 3)", () => {
 
   it("answers more than that with a page that clears the host's cookies", async () => {
     // Four times the limit: the gateway refuses after the first megabyte, while the rest is still
-    // on its way, and the answer must reach the client all the same (a reset lost it on Windows,
-    // WP-W2).
-    const junk = Array.from({ length: 1000 }, (_, index) => `junk${index}=${"x".repeat(4090)}`).join(
-      "; ",
-    );
+    // on its way, and the client reads only once it has sent everything. The answer must reach it
+    // all the same: a gateway that closed without reading the rest reset the connection, and on
+    // Windows the reset discarded the answer (WP-W2).
+    const junk = Array.from(
+      { length: 1000 },
+      (_, index) => `junk${index}=${"x".repeat(4090)}`,
+    ).join("; ");
     const answer = await raw(
       framePort,
       `GET / HTTP/1.1\r\nHost: 127.0.0.1:${framePort}\r\nCookie: ${junk}\r\n\r\n`,
+      "127.0.0.1",
+      { readAfterMs: 500 },
     );
     expect(answer.status).toBe(431);
     const text = answer.text.toLowerCase();

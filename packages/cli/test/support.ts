@@ -133,38 +133,69 @@ export function testHome(extra: Record<string, string> = {}): TestHome {
     config,
     env,
     async cleanup() {
-      const daemon = (() => {
-        try {
-          return (JSON.parse(readFileSync(join(home, "instance.json"), "utf8")) as { pid: number })
-            .pid;
-        } catch {
-          return undefined;
-        }
-      })();
-      await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
-      // Versions are sealed read-only; open them up before removing.
       if (WINDOWS) {
-        // `daemon stop` answers before the daemon has exited, and Windows refuses to remove the
-        // files a running process holds open (its ledger, its log).
-        const deadline = Date.now() + 15_000;
-        while (daemon !== undefined && Date.now() < deadline) {
-          try {
-            process.kill(daemon, 0);
-          } catch {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        await new Promise((done) =>
-          spawn(windowsHelper(), ["unseal", root]).on("exit", done).on("error", done),
-        );
-        rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+        await removeOnWindows(root, home, env);
         return;
       }
+      await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
+      // Versions are sealed read-only; open them up before removing.
       await new Promise((done) => spawn("chmod", ["-R", "u+w", root]).on("exit", done));
       rmSync(root, { recursive: true, force: true });
     },
   };
+}
+
+/** The daemon `instance.json` names, if any. */
+function daemonOf(home: string): number | undefined {
+  try {
+    return (JSON.parse(readFileSync(join(home, "instance.json"), "utf8")) as { pid: number }).pid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Removes a test's directory on Windows, which refuses to remove what a running process holds
+ * open (a daemon's ledger and log, or its working directory). A daemon may still be starting
+ * when a test ends (one that a timed-out command started writes `instance.json` later), so this
+ * stops whatever daemon the home names, waits for it to exit, and tries again until the
+ * directory is gone, for at most 30 s.
+ */
+async function removeOnWindows(
+  root: string,
+  home: string,
+  env: Record<string, string>,
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const daemon = daemonOf(home);
+    if (daemon !== undefined) {
+      await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
+      while (Date.now() < deadline && alive(daemon)) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    // Versions are sealed read-only; open them up before removing.
+    await new Promise((done) =>
+      spawn(windowsHelper(), ["unseal", root]).on("exit", done).on("error", done),
+    );
+    try {
+      rmSync(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** What one run of the CLI did. */
