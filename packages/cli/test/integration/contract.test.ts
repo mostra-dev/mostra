@@ -46,6 +46,7 @@ import {
   testHome,
   Viewer,
   WINDOWS,
+  windowsHelper,
 } from "../support.ts";
 
 let home: TestHome;
@@ -356,8 +357,13 @@ describe("every command, with --json and no terminal", () => {
         ...own.env,
         MOSTRA_RUNTIME_BIN: join("runtime", "bin.js"),
       };
-      // Windows has no runtime directory (its control endpoint is a named pipe, D150).
-      if (!WINDOWS) env["MOSTRA_RUNTIME_DIR"] = "run";
+      // Windows has no runtime directory (its control endpoint is a named pipe, D150); its
+      // helper, which the daemon starts its pipe with, is named relative instead, through a
+      // link, as the runtime is.
+      if (WINDOWS) {
+        symlinkSync(dirname(windowsHelper()), join(project, "helper"), "junction");
+        env["MOSTRA_WIN_HELPER"] = join("helper", "mostra-win.exe");
+      } else env["MOSTRA_RUNTIME_DIR"] = "run";
       const ran = await cli(["daemon", "start", "--json"], { env, cwd: project });
       const value = envelope(ran);
       expect(value.ok, `${ran.stdout}\n${ran.stderr}`).toBe(true);
@@ -371,10 +377,12 @@ describe("every command, with --json and no terminal", () => {
       await cli(["daemon", "stop", "--json"], { env, cwd: project });
     } finally {
       // The link goes first, so nothing that cleans up walks into the runtime's directory.
-      try {
-        unlinkSync(join(own.root, "project", "runtime"));
-      } catch {
-        // Never made.
+      for (const link of ["runtime", "helper"]) {
+        try {
+          unlinkSync(join(own.root, "project", link));
+        } catch {
+          // Never made.
+        }
       }
       await own.cleanup();
     }

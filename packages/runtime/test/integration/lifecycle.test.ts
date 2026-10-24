@@ -691,9 +691,13 @@ describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
       expect(JSON.parse(line), line).toMatchObject({ ok: true });
       const [program = "", ...args] = command;
       const ran = spawnSync(program, args, { timeout: 30_000, windowsHide: true });
-      expect(ran.status, "the launcher refuses to run").toBe(1);
-      const lines = logLines(home);
-      expect(lines.some((entry) => entry.event === "service.stop_event_taken")).toBe(true);
+      const lines = existsSync(join(home, "logs")) ? logLines(home) : [];
+      const seen = `${JSON.stringify(lines)}\n${ran.stderr}`;
+      expect(ran.status, `the launcher refuses to run: ${seen}`).toBe(1);
+      expect(
+        lines.some((entry) => entry.event === "service.stop_event_taken"),
+        seen,
+      ).toBe(true);
       expect(lines.some((entry) => entry.event === "service.daemon_started")).toBe(false);
       expect(record(home)).toBeUndefined();
     } finally {
