@@ -16,6 +16,11 @@ the protocol over its stdio.
   bundle's pin. A download is checked against the pin in `dist/bundles.json` before it is
   extracted, and it is extracted and checked in a scratch directory before it is renamed into the
   cache.
+- **A Windows pipe is opened only through the helper** (`src/control.ts`, D151).
+  `connectControl` opens a home's control endpoint: the Unix socket with `node:net`, or on Windows
+  `mostra-win connect` beside the runtime the caller resolved, which refuses a pipe another user
+  created under the name and never lets the server act as the client. Every client of a daemon
+  (the CLI, the end-to-end harness, and from WP-W3 the conformance kit) uses it.
 - **The cache is keyed by digest** (`<cache>/bundles/<archive sha256>/`). Concurrent installers of
   one bundle share a lock, but correctness never rests on it: an installer that loses the rename
   uses the winner's directory, which was checked before it was renamed.

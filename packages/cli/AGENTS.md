@@ -40,6 +40,12 @@ protocol over the home's socket.
   against the other. Names are matched as given, never canonicalized.
 - **The browser never gets a link's secret.** `mostra open` prints the link and opens a one-time
   launch URL (`view/launch`), run with direct arguments, never through a shell.
+- **A Windows pipe is opened only through the helper (D151).** Every session goes through the
+  SDK's `connectControl`, which on Windows runs `mostra-win connect` and refuses a pipe another
+  user created under the name `instance.json` names; a plain `net.connect` would hand that user the
+  CLI's requests.
+- **The platform gate is the runtime's** (`platform.ts`): macOS and Linux on x64 and arm64, Windows
+  only with `MOSTRA_DEV_WINDOWS=1` until WP-W3, everything else `MOSTRA_PLATFORM_UNSUPPORTED`.
 
 ## Public interface
 
@@ -57,6 +63,10 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
 
 ## Gotchas
 
+- On Windows the home defaults to `%LOCALAPPDATA%\mostra`, the config directory to
+  `%APPDATA%\mostra`, the opener is `explorer.exe` and `$BROWSER` is `;`-separated (D151). The
+  suites run there in the `windows-clients` group; Windows checks use the second local user
+  (`asOtherUser` in `test/support.ts`) where POSIX checks read modes.
 - Tests always set `MOSTRA_CONFIG_DIR` to a temporary directory, so no run writes a developer's
   real telemetry settings, and `MOSTRA_TEST_LOCALTIME` stands for `/etc/localtime` (empty for
   none), because CI machines' zone is UTC, an ask-first zone.

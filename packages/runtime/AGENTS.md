@@ -206,7 +206,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `workers` | The `WorkerLauncher` seam with the local and socket launchers (D124), and the pool: one worker per version, start, ping watchdog, idle eviction, crash kinds, backoff and parking (D129, D133) |
 | `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
 | `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
-| `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd) (D133) |
+| `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd, or Task Scheduler with the helper's windowless launcher on Windows) (D133, D151) |
 | `gc` | What keeps a version (`REFERENCE_SOURCES`, one named source per rule, checked against every ledger column that names a version by `test/unit/gc.test.ts`), the collection that marks versions in `version_collected` and removes their files, unreferenced snapshots, lock layouts, store packages and verify caches, serialized against publish, verify and installs by the instance's `Gate` (`src/gate.ts`), and `gc/run` (D140 item 14) |
 | `dev` | `mostra dev`'s sessions (D140 item 12): the source mirrored into `cache/dev/<session>/root`, the dev server in a builder child (`builder/child/dev.ts`, Vite in middleware mode, answering only with the session's secret), the sandbox the preview is served from (`verify/sandbox.ts` with `dev`), and `dev/start`, `dev/stop` and `dev/notify` |
 | `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
@@ -294,9 +294,10 @@ first module outside `protocol-server` needs it.
   `mostra/shutdown`, `shutdownDaemon` in `test/support.ts`), no process groups (Job Objects), no
   modes (access lists), files in use can't be removed or renamed, and paths use `\`. Code asks the
   platform layer; tests use `WINDOWS` from `test/support.ts` and give a Windows variant, or say
-  why a POSIX check doesn't apply. The Windows legs run the `windows` and `windows-publish` groups
-  (`MOSTRA_TEST_GROUP`, `vitest.config.ts`; a new Windows suite joins one of them) with `MOSTRA_DEV_WINDOWS=1` and the helper
-  Cargo builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
+  why a POSIX check doesn't apply. The Windows legs run the Windows groups
+  (`MOSTRA_TEST_GROUP`, `vitest.config.ts`), which partition every integration suite: a new suite
+  joins exactly one of them (`windows-groups.test.ts` fails otherwise), with `MOSTRA_DEV_WINDOWS=1`
+  and the helper Cargo builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits
   socket paths to 103 bytes, and its `os.tmpdir()` is long.
 - `net.Server.close()` removes the socket file. Close an old listener before binding its
