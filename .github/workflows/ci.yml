@@ -332,11 +332,15 @@ jobs:
         # No Safari runs on Windows, and Playwright's WebKit there is a port no viewer uses, whose
         # cookie store has no SameSite (Playwright's own tests expect `None` there): Windows'
         # viewers are Chromium's (Chrome, Edge) and Firefox (D151, VERIFIED_FACTS WP-W2).
+        # Playwright ships only x64 browsers for Windows: on arm64 Firefox runs emulated and closed
+        # pages by itself (#66), so Firefox runs on x64 and Chromium on both (D151 item 8, M38).
         exclude:
           - os: windows-latest
             browser: webkit
           - os: windows-11-arm
             browser: webkit
+          - os: windows-11-arm
+            browser: firefox
     runs-on: ${{ matrix.os }}
     # The tests take about 10 minutes at most; the rest is room for a slow mirror's first run on an
     # image (#58), before its downloads are cached.
