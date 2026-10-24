@@ -21,6 +21,11 @@ export default defineConfig({
   // share the runner's four cores, and Firefox there (software rendering, a profile per context)
   // took two tests at once past their 30 s (WP-W2's first runs).
   ...(process.platform === "win32" ? { workers: 1 } : {}),
+  // Each test's 30 s include its page's start: on the Windows arm64 runner Firefox took 13 s to
+  // launch and open a first page, and the first frame 9.5 s more while its worker started cold,
+  // so a test that opens three pages ran past 30 s with nothing wrong (main's run 40096242377).
+  // Windows gets 60 s.
+  ...(process.platform === "win32" ? { timeout: 60_000 } : {}),
   forbidOnly: !!process.env["CI"],
   retries: 0,
   reporter: process.env["CI"] ? [["github"], ["list"]] : "list",
