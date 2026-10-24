@@ -93,8 +93,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-11",
     name: "a lock this user can't create spins for 2 s under Windows' rules (Opus review of WP-W2)",
     file: "../cli/src/telemetry/store.ts",
-    from: '          if (code === "EEXIST") continue;\n          return undefined;',
-    to: "          continue;",
+    from: "          if (deniedAndAbsent >= DENIED_ROUNDS) return undefined;",
+    to: "",
     check: unit("telemetry.test.ts", "Windows' lock rules"),
     cwd: "../cli",
     // Windows' runners pass any access list (the test says why), so it runs on POSIX.

@@ -296,6 +296,10 @@ export class TelemetryStore {
     }
     const token = `${process.pid} ${randomUUID()}`;
     const deadline = Date.now() + 2000;
+    // Rounds in a row whose create was refused as access denied with no lock there to contend
+    // with. One such round can be a lock Windows finished deleting between the refusal and the
+    // look (CI: one of twelve first runs got no ID); several mean this user can't write here.
+    let deniedAndAbsent = 0;
     for (;;) {
       try {
         writeFileSync(this.#lockFile, token, { flag: "wx", mode: 0o600 });
@@ -310,13 +314,17 @@ export class TelemetryStore {
         const next = this.#breakStale();
         if (next === "absent") {
           // No lock there, though the create was refused. After `EEXIST` it was removed in
-          // between: try again. After access denied there was none to contend with (a lock
-          // Windows is still deleting can't be opened either, which isn't "absent"): this user
-          // can't write the directory, and waiting changes nothing.
+          // between: try again. After access denied, a lock Windows was deleting may have gone
+          // in between too, so the create is tried again after a pause, a few times; past that
+          // there is none to contend with: this user can't write the directory, and waiting
+          // changes nothing (Opus review of WP-W2, finding 2).
           if (code === "EEXIST") continue;
-          return undefined;
+          deniedAndAbsent += 1;
+          if (deniedAndAbsent >= DENIED_ROUNDS) return undefined;
+        } else {
+          deniedAndAbsent = 0;
+          if (next === "broken") continue;
         }
-        if (next === "broken") continue;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
       }
     }
@@ -378,6 +386,9 @@ export class TelemetryStore {
     return "broken";
   }
 }
+
+/** How many rounds in a row a create may be refused as access denied with no lock there. */
+const DENIED_ROUNDS = 3;
 
 /**
  * Whether a lock's exclusive create failed because another process holds it. On Windows a lock
