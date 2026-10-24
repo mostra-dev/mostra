@@ -268,14 +268,22 @@ export class LineClient {
     const index = this.#received.findIndex(match);
     if (index >= 0) return Promise.resolve(this.#received.splice(index, 1)[0] as Message);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("No matching message arrived.")), timeoutMs);
-      this.#waiters.push({
+      const waiter = {
         match,
-        resolve: (message) => {
+        resolve: (message: Message) => {
           clearTimeout(timer);
           resolve(message);
         },
-      });
+      };
+      // A waiter that timed out leaves the list: left there, it would take the next matching
+      // message for a promise nobody awaits any more, and that message would be lost (a host
+      // polling for port calls never answered one, WP-W2).
+      const timer = setTimeout(() => {
+        const index = this.#waiters.indexOf(waiter);
+        if (index >= 0) this.#waiters.splice(index, 1);
+        reject(new Error("No matching message arrived."));
+      }, timeoutMs);
+      this.#waiters.push(waiter);
     });
   }
 
