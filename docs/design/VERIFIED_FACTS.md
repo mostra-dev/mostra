@@ -553,7 +553,7 @@ Checked by the WP-W1 session on 2026-10-22 against GitHub's runner documentation
 
 ## WP-W2 re-verification (2026-10-23)
 
-Checked by the WP-W2 session on 2026-10-23 against Node.js's and Microsoft's documentation and runs on GitHub's Windows runners (`windows-latest`, Windows Server 2025 x64, and `windows-11-arm`; Node.js 24.12.0) through a probe workflow on the package's branch (`.github/workflows/w2-probe.yml`, removed before merging; run 40036412916), then the package's own Windows legs.
+Checked by the WP-W2 session on 2026-10-23 against Node.js's and Microsoft's documentation and runs on GitHub's Windows runners (`windows-latest`, Windows Server 2025 x64, and `windows-11-arm`; Node.js 24.12.0) through a probe workflow on the package's branch (`.github/workflows/w2-probe.yml`, removed before merging, at commit `813c964`; run 40036412916), then the package's own Windows legs.
 
 | Fact | Value | Source | Consequence |
 |---|---|---|---|

@@ -3,8 +3,7 @@
   "workspaces": {
     ".": {
       "entry": [],
-      "ignoreDependencies": ["@changesets/changelog-github", "@mostra/tools", "turbo"],
-      "ignore": [".github/w2-probe/**"]
+      "ignoreDependencies": ["@changesets/changelog-github", "@mostra/tools", "turbo"]
     },
     "packages/*": {
       "entry": ["src/index.ts", "scripts/*.ts"],
