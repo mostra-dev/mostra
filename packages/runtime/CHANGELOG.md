@@ -1,5 +1,23 @@
 # @mostra/runtime
 
+## 0.4.0
+
+### Minor Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`dbcfc31`](https://github.com/mostra-dev/mostra/commit/dbcfc31ff3bbb75a95d013317a528e6be3a16ea7) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows (still behind `MOSTRA_DEV_WINDOWS=1`), `mostra-runtime service install` registers the home's daemon as a Task Scheduler task at the user's logon, run without a window by `mostra-win-service.exe` beside the helper, which restarts it 10 s after an unexpected exit; `service uninstall` stops the daemon cleanly and removes the task. `service status` reports, on Windows, whether Task Scheduler holds the task (`registered`). A worker that ends with a Windows status reports it in hexadecimal (`0xC0000005`).
+
+### Patch Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`182e47d`](https://github.com/mostra-dev/mostra/commit/182e47d28a3659fbd1a5df3144e020a344f75d19) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra dev` keeps React Fast Refresh on Windows, where it recognises the entry as Vite names it (`C:/…`); it mirrors a file an editor holds or is saving on the next sync instead of losing the change, removes a file from the preview only when two syncs in a row miss it (an editor that moves the old file aside before writing the new one), titles a source without a manifest as publish does, and removes a session's directory through the platform layer, which rides out a file Windows still holds for a moment.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`a3f895a`](https://github.com/mostra-dev/mostra/commit/a3f895af2fc3a86cc974aa288a8f7053aa0206b0) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - An instance recognises its home however a client spells it: on Windows a short (8.3) name such as `C:\Users\RUNNER~1\…` or another case no longer refuses the session with `MOSTRA_HOME_MISMATCH`, and `mostra-runtime service` names the login service by the home as the daemon spells it.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`f65a3ff`](https://github.com/mostra-dev/mostra/commit/f65a3ff0d3440573b7848ff9c6f752f9ee64e2da) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The gateway reads and drops what a client is still sending after refusing its request (for at most 5 s and 16 MiB) instead of letting the connection close at once. A client that read its answer only after sending everything (a browser sending a megabyte of cookies, on Windows above all) got a reset instead of the page that clears its cookies.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`e9e52ec`](https://github.com/mostra-dev/mostra/commit/e9e52ec435f7847b96635e1e9bada74543b76602) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, the login service's daemon stops in order when the user's session ends. `mostra daemon uninstall` stops it in order from any logon session, and removes the task even when the home lost its definition. A task removed in Task Scheduler no longer keeps a hand-started daemon from its idle exit. The launcher's stop event has a random name, and the launcher refuses an event that another user created under it. A home is compared by its exact native real path, so two directories NTFS keeps apart are never the same home.
+- Updated dependencies [[`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f)]:
+  - @mostra/protocol@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

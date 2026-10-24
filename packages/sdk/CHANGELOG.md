@@ -1,5 +1,17 @@
 # @mostra/sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`5babe15`](https://github.com/mostra-dev/mostra/commit/5babe15751fe86a9e12ca7165683c8d866808c18) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Adds `connectControl`, which opens a home's control endpoint as a client: its Unix socket, or on Windows its owner-only pipe through the runtime's helper, refusing a pipe another user created under the name, found beside the runtime the caller resolved.
+
+### Patch Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`973bd3c`](https://github.com/mostra-dev/mostra/commit/973bd3c2d13c63e8d97e25c67ae1a65adcc1f2fd) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, `connectControl` finds the helper from where the runtime's code really is, as the runtime itself does, so a runtime reached through a link still finds its helper.
+- Updated dependencies [[`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f)]:
+  - @mostra/protocol@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes

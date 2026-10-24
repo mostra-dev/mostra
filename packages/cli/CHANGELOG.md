@@ -1,5 +1,30 @@
 # @mostra/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`5babe15`](https://github.com/mostra-dev/mostra/commit/5babe15751fe86a9e12ca7165683c8d866808c18) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The CLI admits Windows x64 and arm64 behind the development switch `MOSTRA_DEV_WINDOWS=1`, as the runtime does, and fails closed on any other platform or architecture. On Windows it reaches its daemon's pipe through `connectControl`, defaults its home to `%LOCALAPPDATA%\mostra` and its settings to `%APPDATA%\mostra`, opens links with the default browser through Explorer and reads `$BROWSER` as a `;`-separated list; telemetry reports `win32` as the system, and `mostra doctor` reports Windows as the runtime admits it.
+
+### Patch Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`74db4c1`](https://github.com/mostra-dev/mostra/commit/74db4c1cd9b6d8ed020641d8d846ada4f564d5c5) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The daemon and the telemetry flusher the CLI starts no longer keep the directory the command ran in as their working directory, so on Windows that directory can be renamed or removed while they run. A telemetry config directory that can never exist (a part of its path is a file) reads as unreadable on every system, as it did on macOS and Linux.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`8786a3e`](https://github.com/mostra-dev/mostra/commit/8786a3ee63ac708207394946a1dd43ea3b1c474c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra dev` also stops on Ctrl+Break, as a Windows console sends it.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`c41f76a`](https://github.com/mostra-dev/mostra/commit/c41f76ad11d247e7c115d835f26ccf0e7cb32ec8) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The CLI starts its daemon with an absolute runtime entry, so a relative `MOSTRA_RUNTIME_BIN` works again now that the daemon runs in its file system root, and the telemetry store gives up on a lock it can neither take nor break within its 2 s instead of trying forever.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`4c70f4b`](https://github.com/mostra-dev/mostra/commit/4c70f4b2272b4194015ab5282eb19014342f2376) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The daemon and the telemetry flusher, which run in their file system's root, get every relative path variable (`MOSTRA_RUNTIME_DIR`, `MOSTRA_HOME` and the rest) resolved against the command's directory. On Windows, a telemetry lock that this user can't create no longer keeps a command busy for 2 s.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`fd893ae`](https://github.com/mostra-dev/mostra/commit/fd893aee2dbcf801d409054220fd81db251de7d1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, `mostra open` writes its launch page under the user's own profile, never under a `%TEMP%` that other users may read. The conformance kit opens an instance's pipe through the SDK's `connectControl`, as every other client does.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`2f89021`](https://github.com/mostra-dev/mostra/commit/2f89021c078cf5839918c963e6e5146d6ac16a1c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, a telemetry store lock that another process has just released no longer makes a command give up on recording its event: the refusal Windows gives while the old lock is still being deleted counts as the lock being held, and the command waits for it as it does elsewhere.
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`127155e`](https://github.com/mostra-dev/mostra/commit/127155ea56afb0ccd1e17d26dddf6a4c98a441dd) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Telemetry events from Windows (`os: "win32"`) are queued: the event schema refused them, so a Windows CLI with telemetry on recorded nothing.
+- Updated dependencies [[`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f), [`973bd3c`](https://github.com/mostra-dev/mostra/commit/973bd3c2d13c63e8d97e25c67ae1a65adcc1f2fd), [`5babe15`](https://github.com/mostra-dev/mostra/commit/5babe15751fe86a9e12ca7165683c8d866808c18)]:
+  - @mostra/protocol@0.4.0
+  - @mostra/sdk@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes
