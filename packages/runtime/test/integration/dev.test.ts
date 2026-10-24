@@ -141,12 +141,34 @@ describe("mostra dev (VR-08)", () => {
       writeDevFixture(dir, "HEADING-SAVED", "SERVER-SAVED");
       rmSync(join(dir, "actions.ts~"));
       rmSync(join(dir, "synced.txt"));
+      // Changed server code restarts the session's worker and loads the page again, so a click
+      // before that reload is lost with the page: wait for the restart, then click until the new
+      // code answers (main's run 40107767091 clicked once, before the reload).
+      await eventually(
+        () =>
+          mine()
+            .slice(before)
+            .some((event) => event.kind === "server-restarted"),
+        60_000,
+        "the session's server restarted",
+      );
       await expect
         .poll(() => frame.locator("#title").innerText(), { timeout: 30_000 })
         .toBe("HEADING-SAVED");
-      await frame.locator("#call").click();
       await expect
-        .poll(() => frame.locator("#server").innerText(), { timeout: 30_000 })
+        .poll(
+          async () => {
+            await frame
+              .locator("#call")
+              .click({ timeout: 5000 })
+              .catch(() => {});
+            return frame
+              .locator("#server")
+              .innerText({ timeout: 5000 })
+              .catch(() => "");
+          },
+          { timeout: 60_000 },
+        )
         .toBe("SERVER-SAVED");
       // Never a missing module: no build failure reported.
       expect(
