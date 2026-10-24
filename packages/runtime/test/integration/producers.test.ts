@@ -129,10 +129,10 @@ describe("live producers (LL-04) and the secrets port (AC-06)", () => {
     })();
     const page = await openPage(actions.url);
     // The port's value wins over the store's; a name the port doesn't know falls back to it.
-    expect((await page.call("actions.ts#holds", ["VAULT_ONLY", "vault-value-123456"])).value).toBe(
-      true,
-    );
-    expect((await page.call("actions.ts#holds", ["SHARED", "from-the-vault-2"])).value).toBe(true);
+    const fromPort = await page.call("actions.ts#holds", ["VAULT_ONLY", "vault-value-123456"]);
+    expect(fromPort.value, fromPort.body).toBe(true);
+    const fromStore = await page.call("actions.ts#holds", ["SHARED", "from-the-vault-2"]);
+    expect(fromStore.value, fromStore.body).toBe(true);
     // A port answer is a secret like any other: redacted from what Mostra sends and keeps.
     expect((await page.call("actions.ts#named", ["VAULT_ONLY"])).value).toBe("[redacted]");
     answering = false;

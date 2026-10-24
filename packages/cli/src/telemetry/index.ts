@@ -210,7 +210,10 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
         at: minute(new Date(now())),
         installId: id.id,
         version: cliVersion(),
-        os: process.platform === "darwin" ? "darwin" : "linux",
+        os:
+          process.platform === "darwin" || process.platform === "win32"
+            ? process.platform
+            : "linux",
         arch: process.arch,
         node: Number(process.versions.node.split(".")[0]),
         harness,

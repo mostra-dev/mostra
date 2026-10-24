@@ -31,6 +31,7 @@ import {
   eventually,
   type TestHome,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 /** The SDK package this CLI depends on, as installed. */
@@ -294,8 +295,10 @@ describe("EN-08: telemetry from the standalone CLI", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
-  // Root writes anywhere: these need a directory the user can't write.
-  const asRoot = process.getuid?.() === 0;
+  // Root writes anywhere: these need a directory the user can't write. Windows has no mode that
+  // keeps its owner out of a directory (and the CI user is an administrator): there the test above,
+  // whose config path runs through a file, is the unwritable directory.
+  const asRoot = process.getuid?.() === 0 || WINDOWS;
 
   it("refuses telemetry on and off it can't record, and changes nothing (Opus review finding 6)", async () => {
     // A config directory that can't exist: a part of its path is a file. Unlike a directory

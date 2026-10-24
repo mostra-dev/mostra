@@ -6,14 +6,26 @@
  * the heap and watchdog limits apply, the daemon exits when idle and only then, the login
  * service's unit is written, and leased ports are reused after a restart (RT-08).
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { helperPath } from "../../src/platform/index.ts";
 import { type ActionPage, openPage, type RunState } from "../action-page.ts";
 import { send } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
-import { alive, connectTo, eventually, initializeParams, runBin, tempDir } from "../support.ts";
+import {
+  alive,
+  commandLineOf,
+  connectTo,
+  currentUserSid,
+  eventually,
+  initializeParams,
+  runBin,
+  suspendProcess,
+  tempDir,
+  WINDOWS,
+} from "../support.ts";
 
 interface Worker {
   artifactId: string;
@@ -29,11 +41,6 @@ interface Worker {
 async function workersOf(gateway: GatewayHome, versionId: string): Promise<Worker[]> {
   const status = ok<{ workers?: Worker[] }>(await gateway.client.call("instance/status", {}));
   return (status.workers ?? []).filter((worker) => worker.versionId === versionId);
-}
-
-/** The command line a process runs. */
-function commandOf(pid: number): string {
-  return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
 }
 
 describe("worker lifecycles (RT-03, RT-04)", () => {
@@ -57,11 +64,18 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
   it("starts a worker on first need, applies the heap limit, and evicts it after idle (RT-03, RT-08)", async () => {
     expect(await workersOf(gateway, actions.versionId)).toEqual([]);
     const page = await openPage(actions.url);
+    // A run keeps the worker from its idle stop (1.5 s here) while the test looks at it: Windows'
+    // process table takes PowerShell longer than that to read, and the stop could come between
+    // two calls there (WP-W2).
+    // The run lasts until the test cancels it, however long Windows takes to answer.
+    const busy = (await page.run("actions.ts#slow", [120_000])).json<RunState>();
     const pid = (await page.call("actions.ts#pid", [])).value as number;
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "ready", pid });
     // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62).
-    expect(commandOf(pid)).toContain("--max-old-space-size=96");
+    expect(commandLineOf(pid)).toContain("--max-old-space-size=96");
+    await page.cancel(busy.runId);
+    expect((await page.settled(busy.runId, 20_000)).status).toBe("cancelled");
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call
     // starts a new one.
     await eventually(async () => !alive(pid), 10_000, "the idle worker to exit");
@@ -137,8 +151,9 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     );
     // A run in flight, so idle eviction can't be what ends the worker.
     const busy = (await page.run("actions.ts#slow", [60_000])).json<RunState>();
-    // A stopped process answers nothing, not even through its channel thread.
-    process.kill(pid, "SIGSTOP");
+    // A stopped process answers nothing, not even through its channel thread (SIGSTOP; on
+    // Windows every thread suspended).
+    suspendProcess(pid, true);
     const started = Date.now();
     let crash: Record<string, unknown> | undefined;
     await eventually(async () => {
@@ -314,32 +329,37 @@ describe("the daemon's lifecycle (RT-08)", () => {
     await gateway.stop();
   }, 60_000);
 
-  it("never exits for lack of work while its home has a login service, whoever started it (D133)", async () => {
-    const gateway = new GatewayHome();
-    const user = tempDir("svc-idle", true);
-    const env = {
-      HOME: user,
-      XDG_CONFIG_HOME: join(user, ".config"),
-      MOSTRA_TEST_IDLE_EXIT_MS: "1000",
-    };
-    // The service's file, written without starting it: this daemon was started by hand.
-    const installed = runBin(["service", "install", "--home", gateway.home.home, "--no-start"], {
-      ...process.env,
-      ...env,
-    });
-    expect((await installed.exited).code).toBe(0);
-    await gateway.start({ env });
-    gateway.client.close();
-    await new Promise((resolve) => setTimeout(resolve, 3500));
-    expect(gateway.daemon.child.exitCode).toBeNull();
-    // Without the service, the same daemon exits once idle.
-    const removed = runBin(["service", "uninstall", "--home", gateway.home.home, "--no-start"], {
-      ...process.env,
-      ...env,
-    });
-    expect((await removed.exited).code).toBe(0);
-    await eventually(() => gateway.daemon.child.exitCode !== null, 15_000);
-  }, 60_000);
+  // On Windows the task must also be registered: "counts its task only while Task Scheduler holds it".
+  it.skipIf(WINDOWS)(
+    "never exits for lack of work while its home has a login service, whoever started it (D133)",
+    async () => {
+      const gateway = new GatewayHome();
+      const user = tempDir("svc-idle", true);
+      const env = {
+        HOME: user,
+        XDG_CONFIG_HOME: join(user, ".config"),
+        MOSTRA_TEST_IDLE_EXIT_MS: "1000",
+      };
+      // The service's file, written without starting it: this daemon was started by hand.
+      const installed = runBin(["service", "install", "--home", gateway.home.home, "--no-start"], {
+        ...process.env,
+        ...env,
+      });
+      expect((await installed.exited).code).toBe(0);
+      await gateway.start({ env });
+      gateway.client.close();
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+      expect(gateway.daemon.child.exitCode).toBeNull();
+      // Without the service, the same daemon exits once idle.
+      const removed = runBin(["service", "uninstall", "--home", gateway.home.home, "--no-start"], {
+        ...process.env,
+        ...env,
+      });
+      expect((await removed.exited).code).toBe(0);
+      await eventually(() => gateway.daemon.child.exitCode !== null, 15_000);
+    },
+    60_000,
+  );
 
   it("reuses the artifact's leased port after a restart", async () => {
     const gateway = new GatewayHome();
@@ -379,11 +399,20 @@ describe("the daemon's lifecycle (RT-08)", () => {
     };
     const installed = await run("install");
     expect(installed.service.installed).toBe(true);
-    const text = readFileSync(installed.service.file, "utf8");
+    // Task Scheduler's definitions are UTF-16 with a byte order mark.
+    const text = WINDOWS
+      ? readFileSync(installed.service.file, "utf16le").replace(/^\ufeff/, "")
+      : readFileSync(installed.service.file, "utf8");
     expect(installed.service.command).toContain("--always-on");
     expect(text).toContain("--always-on");
     expect(text).toContain(realpathSync(home));
-    if (process.platform === "darwin") {
+    if (WINDOWS) {
+      expect(installed.service.manager).toBe("task-scheduler");
+      expect(installed.service.file).toMatch(/\\service\\task\.xml$/);
+      expect(text).toContain("<LogonTrigger>");
+      expect(text).toContain("<LogonType>InteractiveToken</LogonType>");
+      expect(text).toContain("mostra-win-service.exe</Command>");
+    } else if (process.platform === "darwin") {
       expect(installed.service.manager).toBe("launchd");
       expect(installed.service.file).toMatch(
         /Library\/LaunchAgents\/dev\.mostra\.daemon\.[0-9A-Z]{16}\.plist$/,
@@ -405,4 +434,302 @@ describe("the daemon's lifecycle (RT-08)", () => {
     expect(removed.service.installed).toBe(false);
     expect(existsSync(installed.service.file)).toBe(false);
   }, 60_000);
+});
+
+/** The `Subsystem` field of a Windows executable's PE header: 2 is a program without a console. */
+function peSubsystem(path: string): number {
+  const bytes = readFileSync(path);
+  const header = bytes.readUInt32LE(0x3c);
+  // The optional header follows the 4-byte signature and the 20-byte file header; its
+  // `Subsystem` is at offset 68 in both PE32 and PE32+.
+  return bytes.readUInt16LE(header + 4 + 20 + 68);
+}
+
+/** Every line of the home's own logs (its `logs` directory), parsed. */
+function logLines(
+  home: string,
+): { event?: string; reason?: string; code?: number; pid?: number }[] {
+  const dir = join(home, "logs");
+  return readdirSync(dir).flatMap((file) =>
+    readFileSync(join(dir, file), "utf8")
+      .split(/\r?\n/)
+      .flatMap((line) => {
+        try {
+          return [
+            JSON.parse(line) as { event?: string; reason?: string; code?: number; pid?: number },
+          ];
+        } catch {
+          return [];
+        }
+      }),
+  );
+}
+
+describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
+  /** Runs `mostra-runtime service <action>` for `home`; its one JSON line. */
+  const service = async (action: string, home: string, extra: readonly string[] = []) => {
+    const child = runBin(["service", action, "--home", home, ...extra], process.env);
+    let out = "";
+    child.child.stdout?.setEncoding("utf8");
+    child.child.stdout?.on("data", (chunk: string) => {
+      out += chunk;
+    });
+    const exited = await child.exited;
+    expect(exited.code, out).toBe(0);
+    return JSON.parse(out) as {
+      service: { name: string; file: string; installed: boolean; command: string[] };
+    };
+  };
+  const record = (home: string): { pid: number; socket: string } | undefined => {
+    try {
+      return JSON.parse(readFileSync(join(home, "instance.json"), "utf8")) as {
+        pid: number;
+        socket: string;
+      };
+    } catch {
+      return undefined;
+    }
+  };
+  const registered = (name: string): boolean => {
+    try {
+      execFileSync("schtasks", ["/Query", "/TN", name], { stdio: "ignore", windowsHide: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const schtasks = (...args: string[]): void => {
+    try {
+      execFileSync("schtasks", args, { stdio: "ignore", windowsHide: true });
+    } catch {
+      // Not there, or not running.
+    }
+  };
+  /**
+   * Whatever a test left, the launcher and its daemon stop and the task goes: deleting the task
+   * alone leaves them running, and a running launcher keeps its program from being rebuilt.
+   */
+  const removeTask = async (home: string, name: string): Promise<void> => {
+    await service("uninstall", home).catch(() => undefined);
+    schtasks("/End", "/TN", name);
+    schtasks("/Delete", "/TN", name, "/F");
+  };
+  /** Waits for the task's daemon to own the home; its record. */
+  const daemonOf = async (home: string): Promise<{ pid: number; socket: string }> => {
+    await eventually(
+      () => {
+        const now = record(home);
+        return now !== undefined && alive(now.pid);
+      },
+      60_000,
+      "the task's daemon",
+    );
+    return record(home) as { pid: number; socket: string };
+  };
+  const probe = (): string => join(dirname(helperPath()), "mostra-win-probe.exe");
+
+  it("runs the daemon from a logon task without a window, restarts it after a crash, and leaves nothing behind when removed", async () => {
+    const home = realpathSync(tempDir("svc-win", true));
+    const installed = await service("install", home);
+    const { name } = installed.service;
+    try {
+      // Task Scheduler holds a task for this user's own logon, at the least privilege.
+      const user = currentUserSid();
+      const task = execFileSync("schtasks", ["/Query", "/TN", name, "/XML"], {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      // Task Scheduler keeps the principal as the SID it was given, writes the trigger's user as
+      // `COMPUTER\name`, and leaves out a run level at its default, the least privilege (seen on
+      // the runners).
+      const principal = /<Principal id="Author">([\s\S]*?)<\/Principal>/.exec(task)?.[1] ?? "";
+      expect(principal).toContain(`<UserId>${user}</UserId>`);
+      expect(principal).toContain("<LogonType>InteractiveToken</LogonType>");
+      expect(task).not.toContain("HighestAvailable");
+      const trigger = /<LogonTrigger>([\s\S]*?)<\/LogonTrigger>/.exec(task)?.[1] ?? "";
+      // Windows' own `whoami` (not Git's, which comes first on a runner's PATH) names the
+      // account as Windows spells it, `computer\\user` in lower case.
+      const account = execFileSync(
+        join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "whoami.exe"),
+        { encoding: "utf8", windowsHide: true },
+      ).trim();
+      expect(
+        trigger.includes(`<UserId>${user}</UserId>`) ||
+          trigger.toLowerCase().includes(`<userid>${account.toLowerCase()}</userid>`),
+        trigger,
+      ).toBe(true);
+      // Its program has no console, so a logon opens no window for it.
+      const launcher = installed.service.command[0] as string;
+      expect(launcher).toMatch(/mostra-win-service\.exe$/);
+      expect(peSubsystem(launcher)).toBe(2);
+      // `install` started it: the home's daemon runs, always-on, as the launcher's child.
+      const first = await daemonOf(home);
+      expect(commandLineOf(first.pid)).toContain("--always-on");
+      const client = await connectTo(first.socket);
+      ok(await client.call("mostra/initialize", initializeParams()));
+      const status = ok<{ idleExitAt?: string }>(await client.call("instance/status", {}));
+      expect(status.idleExitAt).toBeUndefined();
+      client.close();
+      // A crash (the daemon killed outright): the launcher starts it again 10 s later.
+      process.kill(first.pid);
+      await eventually(
+        () => {
+          const now = record(home);
+          return now !== undefined && now.pid !== first.pid && alive(now.pid);
+        },
+        60_000,
+        "the daemon started again",
+      );
+      const second = record(home) as { pid: number; socket: string };
+      // `uninstall` stops it cleanly (Ctrl+Break, D87): it removes `instance.json` as it exits,
+      // which a killed daemon never does, and the task and its definition are gone.
+      const removed = await service("uninstall", home);
+      expect(removed.service.installed).toBe(false);
+      await eventually(() => !alive(second.pid), 30_000, "the daemon to stop");
+      expect(existsSync(join(home, "instance.json"))).toBe(false);
+      expect(existsSync(installed.service.file)).toBe(false);
+      expect(registered(name)).toBe(false);
+      const lines = logLines(home);
+      expect(lines.some((line) => line.event === "service.daemon_exited" && line.code !== 0)).toBe(
+        true,
+      );
+      expect(lines.some((line) => line.event === "service.stopped")).toBe(true);
+      expect(
+        lines.some((line) => line.event === "instance.stopped" && line.reason === "SIGBREAK"),
+      ).toBe(true);
+      expect(lines.some((line) => line.event === "service.stop_forced")).toBe(false);
+    } finally {
+      await removeTask(home, name);
+    }
+  }, 180_000);
+
+  it("stops the daemon over its pipe when no event reaches the launcher, and removes a task whose definition the home lost (Opus review of WP-W2, findings 4 and 5)", async () => {
+    const home = realpathSync(tempDir("svc-pipe", true));
+    const installed = await service("install", home);
+    const { name } = installed.service;
+    try {
+      const daemon = await daemonOf(home);
+      // The home lost its definition (a restore, a hand): uninstall still finds the task. No event
+      // is known, as for a launcher in another logon session, so it stops the daemon over the
+      // home's pipe, which reaches it from any session, in order.
+      rmSync(installed.service.file);
+      const removed = await service("uninstall", home);
+      expect(removed.service.installed).toBe(false);
+      expect(registered(name), "the task Task Scheduler held").toBe(false);
+      await eventually(() => !alive(daemon.pid), 30_000, "the daemon to stop");
+      expect(existsSync(join(home, "instance.json")), "a daemon stopped in order").toBe(false);
+      const lines = logLines(home);
+      expect(
+        lines.some(
+          (line) =>
+            line.event === "instance.stopped" &&
+            line.reason === "mostra/shutdown from mostra-runtime-service",
+        ),
+      ).toBe(true);
+      // Its exit with code 0 ended the launcher; nothing was forced.
+      expect(lines.some((line) => line.event === "service.daemon_exited" && line.code === 0)).toBe(
+        true,
+      );
+      expect(lines.some((line) => line.event === "service.stop_forced")).toBe(false);
+    } finally {
+      await removeTask(home, name);
+    }
+  }, 180_000);
+
+  it("stops the daemon in order when the user's session ends (Opus review of WP-W2, finding 9)", async () => {
+    const home = realpathSync(tempDir("svc-end", true));
+    const installed = await service("install", home);
+    const { name } = installed.service;
+    try {
+      const daemon = await daemonOf(home);
+      const launcher = logLines(home).findLast((line) => line.event === "service.started")?.pid;
+      expect(launcher, "the launcher's process ID in its log").toBeTypeOf("number");
+      // What a logoff sends the session's windows (no runner can log its user off).
+      const sent = JSON.parse(
+        execFileSync(probe(), ["end-session", String(launcher)], {
+          encoding: "utf8",
+          windowsHide: true,
+        }),
+      ) as { result: { windows: number } };
+      expect(sent.result.windows, "the launcher's hidden window").toBeGreaterThan(0);
+      await eventually(() => !alive(daemon.pid), 15_000, "the daemon to stop");
+      expect(existsSync(join(home, "instance.json")), "a daemon stopped in order").toBe(false);
+      const lines = logLines(home);
+      expect(lines.some((line) => line.event === "service.session_ending")).toBe(true);
+      expect(
+        lines.some((line) => line.event === "instance.stopped" && line.reason === "SIGBREAK"),
+      ).toBe(true);
+      expect(lines.some((line) => line.event === "service.stop_forced")).toBe(false);
+      await eventually(() => !alive(launcher as number), 15_000, "the launcher to exit");
+    } finally {
+      await removeTask(home, name);
+    }
+  }, 180_000);
+
+  it("refuses a stop event another user created under its name (Opus review of WP-W2, finding 6)", async () => {
+    const user = process.env["MOSTRA_TEST_OTHER_USER"];
+    const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
+    if (!user || !password) {
+      throw new Error(
+        "Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).",
+      );
+    }
+    const home = realpathSync(tempDir("svc-squat", true));
+    // The definition alone: the test runs the launcher itself, as the task would.
+    const written = await service("install", home, ["--no-start"]);
+    const command = written.service.command;
+    const event = command[command.indexOf("--stop-event") + 1] as string;
+    const squatter = spawn(probe(), ["squat", user, password, event], {
+      stdio: ["pipe", "pipe", "inherit"],
+      windowsHide: true,
+    });
+    try {
+      const line = await new Promise<string>((resolve) => {
+        squatter.stdout.setEncoding("utf8");
+        squatter.stdout.once("data", (chunk: string) => resolve(chunk));
+      });
+      expect(JSON.parse(line), line).toMatchObject({ ok: true });
+      const [program = "", ...args] = command;
+      const ran = spawnSync(program, args, { timeout: 30_000, windowsHide: true });
+      const lines = existsSync(join(home, "logs")) ? logLines(home) : [];
+      const seen = `${JSON.stringify(lines)}\n${ran.stderr}`;
+      expect(ran.status, `the launcher refuses to run: ${seen}`).toBe(1);
+      expect(
+        lines.some((entry) => entry.event === "service.stop_event_taken"),
+        seen,
+      ).toBe(true);
+      expect(lines.some((entry) => entry.event === "service.daemon_started")).toBe(false);
+      expect(record(home)).toBeUndefined();
+    } finally {
+      squatter.stdin.end();
+      await service("uninstall", home, ["--no-start"]).catch(() => undefined);
+    }
+  }, 120_000);
+
+  it("counts its task only while Task Scheduler holds it, whoever started the daemon (D133; Opus review of WP-W2, finding 5)", async () => {
+    const gateway = new GatewayHome();
+    // The definition, registered without starting it: this daemon is started by hand.
+    const written = await service("install", gateway.home.home, ["--no-start"]);
+    const { name, file } = written.service;
+    try {
+      execFileSync("schtasks", ["/Create", "/TN", name, "/XML", file, "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      await gateway.start({
+        env: { MOSTRA_TEST_IDLE_EXIT_MS: "1000", MOSTRA_TEST_SERVICE_QUERY_MS: "500" },
+      });
+      gateway.client.close();
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+      expect(gateway.daemon.child.exitCode, "a daemon of a home with a service").toBeNull();
+      // The task removed in Task Scheduler's own window, its definition still in the home: the
+      // same daemon now exits once idle.
+      schtasks("/Delete", "/TN", name, "/F");
+      await eventually(() => gateway.daemon.child.exitCode !== null, 15_000, "an idle exit");
+    } finally {
+      await service("uninstall", gateway.home.home, ["--no-start"]).catch(() => undefined);
+      schtasks("/Delete", "/TN", name, "/F");
+      await gateway.stop().catch(() => undefined);
+    }
+  }, 120_000);
 });

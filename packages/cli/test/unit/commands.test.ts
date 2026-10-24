@@ -201,14 +201,23 @@ describe("the command line (AX-01)", () => {
 async function inProcess(
   argv: string[],
   platform?: string,
+  extraEnv: Record<string, string> = {},
 ): Promise<{ code: number; out: string[]; err: string }> {
   const out: string[] = [];
   let err = "";
+  // The Windows legs run behind the development switch (D150 item 7); a test of another platform
+  // gets only what it names.
+  const own =
+    platform === undefined && process.env["MOSTRA_DEV_WINDOWS"]
+      ? { MOSTRA_DEV_WINDOWS: process.env["MOSTRA_DEV_WINDOWS"] }
+      : {};
   const code = await run({
     argv,
     env: {
       MOSTRA_CONFIG_DIR: "/nonexistent-config-for-tests",
       MOSTRA_HOME: "/nonexistent-home-for-tests",
+      ...own,
+      ...extraEnv,
     },
     cwd: "/",
     stdout: (text) => out.push(text),
@@ -241,9 +250,23 @@ describe("--json (D140 item 16)", () => {
   });
 
   it("fails closed on an unsupported platform before touching anything", async () => {
-    const { code, out } = await inProcess(["--json", "list"], "win32");
-    expect(code).toBe(EXIT.environment);
-    expect(JSON.parse(out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    for (const platform of ["win32", "freebsd", "aix"]) {
+      const { code, out } = await inProcess(["--json", "list"], platform);
+      expect(code, platform).toBe(EXIT.environment);
+      expect(JSON.parse(out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    }
+  });
+
+  it("admits Windows only behind the development switch, as the runtime does (D150 item 7)", async () => {
+    const admitted = await inProcess(["--json", "--version"], "win32", { MOSTRA_DEV_WINDOWS: "1" });
+    expect(admitted.code).toBe(EXIT.ok);
+    for (const value of ["0", "true", "yes", ""]) {
+      const refused = await inProcess(["--json", "--version"], "win32", {
+        MOSTRA_DEV_WINDOWS: value,
+      });
+      expect(refused.code, value).toBe(EXIT.environment);
+      expect(JSON.parse(refused.out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    }
   });
 
   it("documents exit 4 wherever --timeout applies, and refuses --timeout where it doesn't", async () => {

@@ -17,7 +17,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { type FSWatcher, watch } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   ArtifactId,
@@ -38,13 +38,9 @@ import { type Dependencies, lockKey } from "../deps/index.ts";
 import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import type { Log } from "../log.ts";
+import { removeTree } from "../platform/index.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
-import {
-  extractManifest,
-  listSource,
-  type ResolvedSource,
-  resolveSource,
-} from "../publish/index.ts";
+import { defaultTitle, extractManifest, listSource, resolveSource } from "../publish/index.ts";
 import type { Registry } from "../registry/index.ts";
 import { type Sandbox, type SandboxOptions, startSandbox } from "../verify/index.ts";
 
@@ -98,7 +94,7 @@ export async function recoverDev(home: string, log: Log): Promise<void> {
   } catch {
     return;
   }
-  for (const name of left) await rm(join(devRoot(home), name), { recursive: true, force: true });
+  for (const name of left) await removeTree(join(devRoot(home), name));
   if (left.length > 0) log.info("dev.sessions_removed", { count: left.length });
 }
 
@@ -177,14 +173,24 @@ export function createDev(options: DevOptions): Dev {
     let manifestKey = "";
     let artifactId = "";
     const mirrored = new Map<string, string>();
+    /** When each mirrored file was first missed: a save that moves the old file aside first. */
+    const missing = new Map<string, number>();
 
-    /** Copies changed files into the mirror and removes deleted ones; what changed. */
+    /**
+     * Copies changed files into the mirror and removes deleted ones; what changed. Editors save
+     * in several ways (in place, a temporary file renamed over the old one, the old one renamed
+     * to a backup first), and on Windows an editor may hold a file it is writing so that nothing
+     * else can read it: a file that can't be read now is left for the next sync, never recorded,
+     * and a file is removed from the mirror only once it has been missing for
+     * {@link MISSING_GRACE_MS}, so a save never looks like a deletion (WP-W2).
+     */
     const sync = async (): Promise<DevChange[]> => {
       const files = await listSource(source);
       const changed: DevChange[] = [];
       const seen = new Set<string>();
       for (const file of files) {
         seen.add(file.path);
+        missing.delete(file.path);
         let info: Awaited<ReturnType<typeof stat>>;
         try {
           info = await stat(file.absolute);
@@ -195,13 +201,23 @@ export function createDev(options: DevOptions): Dev {
         const before = mirrored.get(file.path);
         if (before === key) continue;
         const target = join(root, "source", ...file.path.split("/"));
-        await mkdir(dirname(target), { recursive: true });
-        await copyFile(file.absolute, target);
+        try {
+          await mkdir(dirname(target), { recursive: true });
+          await copyFile(file.absolute, target);
+        } catch (error) {
+          log.info("dev.sync_deferred", { sessionId, file: file.path, error });
+          continue;
+        }
         mirrored.set(file.path, key);
         changed.push({ file: file.path, kind: before === undefined ? "add" : "change" });
       }
+      const now = Date.now();
       for (const path of [...mirrored.keys()]) {
         if (seen.has(path)) continue;
+        const since = missing.get(path) ?? now;
+        missing.set(path, since);
+        if (now - since < MISSING_GRACE_MS) continue;
+        missing.delete(path);
         mirrored.delete(path);
         await unlink(join(root, "source", ...path.split("/"))).catch(() => {});
         changed.push({ file: path, kind: "unlink" });
@@ -220,7 +236,7 @@ export function createDev(options: DevOptions): Dev {
         source.entry,
         await readFile(join(root, "source", source.entry), "utf8"),
       );
-      const manifest = extracted.manifest ?? { title: titleOf(source) };
+      const manifest = extracted.manifest ?? { title: defaultTitle(source) };
       const artifactId =
         manifest.id ??
         options.registry.artifactAt(source.bindingPath) ??
@@ -369,7 +385,9 @@ export function createDev(options: DevOptions): Dev {
       await child?.stop().catch(() => {});
       await sandbox?.close().catch(() => {});
       locksInUse.delete(sessionId);
-      await rm(dir, { recursive: true, force: true });
+      // Through the platform layer: on Windows a file the dev server or an antivirus scan still
+      // holds for a moment refuses removal, which it retries (D150 item 8).
+      await removeTree(dir);
     };
     const stop = async (): Promise<void> => {
       if (closed) return;
@@ -500,12 +518,12 @@ export function createDev(options: DevOptions): Dev {
   };
 }
 
-/** The title of a source without a manifest: its directory's or file's name (INTERFACES §2.2). */
-function titleOf(source: ResolvedSource): string {
-  const name =
-    source.kind === "dir" ? source.root.split("/").at(-1) : source.entry.replace(/\.[^.]+$/, "");
-  return name || "Untitled";
-}
+/**
+ * How long a mirrored file must stay missing before `mostra dev` removes it: an editor that moves
+ * the old file aside before writing the new one leaves a gap of milliseconds, a deletion lasts.
+ * The 1 s comparison notices the removal within this and a second more.
+ */
+const MISSING_GRACE_MS = 1500;
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 

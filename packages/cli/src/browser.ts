@@ -3,13 +3,16 @@
  * review finding 4). A program's arguments are readable by every local user (`ps`,
  * `/proc/<pid>/cmdline`), so the opener gets the path of a page that redirects to the launch URL,
  * written mode 0600 in a fresh directory of mode 0700, as Jupyter's server does for its token.
- * The launch ticket in the page is single-use and lives a minute, so a page left behind is
- * harmless; each launch removes the ones older than that.
+ * Windows has no modes: there the page goes under the user's own profile
+ * (`%LOCALAPPDATA%\mostra-cli\open`), whose access list only the user, `SYSTEM` and
+ * administrators pass, never under `%TEMP%`, which may name a folder other users can read (Opus
+ * review of WP-W2, finding 1). The launch ticket in the page is single-use and lives a minute, so a
+ * page left behind is harmless; each launch removes the ones older than that.
  */
 import { spawn } from "node:child_process";
-import { lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, win32 } from "node:path";
 import type { Environment } from "./home.ts";
 
 /** The prefix of the directories launch pages live in. */
@@ -121,10 +124,48 @@ export function splitCommand(command: string): string[] {
   return words;
 }
 
+/** The program that opens a file with its default application, by platform. */
+function platformOpener(platform: string): string[] {
+  if (platform === "darwin") return ["open"];
+  // Explorer opens a path with the program associated with its type, `.html` with the default
+  // browser, as a double click would (VERIFIED_FACTS, WP-W2); its arguments go to it directly,
+  // never through `cmd`.
+  if (platform === "win32") return ["explorer.exe"];
+  return ["xdg-open"];
+}
+
 /**
- * The commands that may open `target`, in order: each entry of `$BROWSER` (separated by `:`, its
- * `%s` replaced by the target, else the target appended, `%%` a literal `%`, as `xdg-open` and
- * Python's `webbrowser` read it), else the platform's opener.
+ * Splits a command as Windows programs read their command lines, for `$BROWSER` there: words
+ * separated by spaces, double quotes grouping words with spaces (`"C:\Program Files\Firefox\
+ * firefox.exe" %s`), and backslashes kept as they are.
+ */
+export function splitWindowsCommand(command: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let inWord = false;
+  let quoted = false;
+  for (const char of command) {
+    if (char === '"') {
+      quoted = !quoted;
+      inWord = true;
+    } else if (!quoted && /\s/.test(char)) {
+      if (inWord) words.push(word);
+      word = "";
+      inWord = false;
+    } else {
+      word += char;
+      inWord = true;
+    }
+  }
+  if (inWord) words.push(word);
+  return words;
+}
+
+/**
+ * The commands that may open `target`, in order: each entry of `$BROWSER` (separated by the
+ * platform's path delimiter, `:` or `;` on Windows, its `%s` replaced by the target, else the
+ * target appended, `%%` a literal `%`, as `xdg-open` and Python's `webbrowser` read it), else the
+ * platform's opener.
  */
 export function browserCommands(
   target: string,
@@ -132,13 +173,14 @@ export function browserCommands(
   platform: string = process.platform,
 ): string[][] {
   const chosen = env["BROWSER"];
-  const entries =
-    chosen !== undefined && chosen.trim() !== ""
-      ? chosen.split(":").filter((entry) => entry.trim() !== "")
-      : [platform === "darwin" ? "open" : "xdg-open"];
+  if (chosen === undefined || chosen.trim() === "") return [[...platformOpener(platform), target]];
+  const entries = chosen
+    .split(platform === "win32" ? ";" : ":")
+    .filter((entry) => entry.trim() !== "");
   const commands: string[][] = [];
   for (const entry of entries) {
-    const words = splitCommand(entry);
+    // A Windows path's backslashes are separators, never escapes.
+    const words = platform === "win32" ? splitWindowsCommand(entry) : splitCommand(entry);
     if (words.length === 0) continue;
     let substituted = false;
     const argv = words.map((word) =>
@@ -171,11 +213,27 @@ function start(argv: readonly string[]): Promise<boolean> {
   });
 }
 
+/**
+ * Where launch pages go: the system's temporary directory on POSIX (the page's modes protect it),
+ * the user's own profile on Windows, whatever `%TEMP%` names.
+ */
+export function launchBase(env: Environment, platform: string = process.platform): string {
+  if (platform !== "win32") return tmpdir();
+  const local = env["LOCALAPPDATA"];
+  const base =
+    local !== undefined && local !== "" && win32.isAbsolute(local)
+      ? local
+      : win32.join(homedir(), "AppData", "Local");
+  return win32.join(base, "mostra-cli", "open");
+}
+
 /** Opens `url` in a browser through a launch page; whether a browser command started. */
 export async function openInBrowser(url: string, env: Environment): Promise<boolean> {
   let page: string;
   try {
-    page = writeLaunchPage(url);
+    const base = launchBase(env);
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    page = writeLaunchPage(url, base);
   } catch {
     return false;
   }

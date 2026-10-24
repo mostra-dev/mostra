@@ -51,7 +51,7 @@ one.
 | `at` | `2026-11-10T14:05:00Z` | When, to the minute |
 | `installId` | a random UUID | Count installs without knowing who you are |
 | `version` | `1.0.0` | Know which versions fail |
-| `os`, `arch` | `darwin`, `arm64` | Platform support |
+| `os`, `arch` | `darwin`, `linux` or `win32`; `x64` or `arm64` | Platform support |
 | `node` | `22` | Which Node versions to support |
 | `harness` | `claude-code`, `codex`, `gemini-cli`, `opencode`, `cursor`, `other`, `none` | Which agents to work with next |
 | `ci` | `false` | Separate CI from people |

@@ -9,7 +9,7 @@
  * else await started.instance.stopped;
  * ```
  */
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -81,7 +81,7 @@ import {
 } from "../interaction/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { helperPath, type LaunchPipe } from "../platform/index.ts";
+import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
 import {
   artifactEnvironment,
   openProcessManager,
@@ -252,9 +252,17 @@ export async function startInstance(options: StartInstanceOptions): Promise<Star
 }
 
 function sameHome(home: string, path: string): boolean {
+  // The client's spelling may differ from the instance's: a link, or on Windows a short (8.3)
+  // name or another case (the CLI's `%TEMP%` is often `C:\Users\RUNNER~1\…`, WP-W2). The home is
+  // its native real path, and so is the client's once resolved: the file system itself spells
+  // both, so they compare exactly. Folding case here would join directories the file system keeps
+  // apart: a case-sensitive directory's `Home` and `home`, or a name with the Kelvin sign and one
+  // with `k`, which NTFS tells apart and JavaScript's lower case doesn't (Opus review of WP-W2,
+  // finding 7).
   try {
-    return realpathSync(path) === home;
+    return realPath(path) === home;
   } catch {
+    // A path that can't be resolved (it doesn't exist) is compared as written.
     return resolve(path) === home;
   }
 }

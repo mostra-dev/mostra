@@ -59,6 +59,202 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-W2: Windows II (RT-11): the gateway, workers, verify, the CLI and the login service.
+  {
+    requirement: "RT-11",
+    name: "the gateway listens on every interface, which the firewall blocks and asks about",
+    file: "src/addressing/index.ts",
+    from: "    server.listen({ port, host: address, exclusive: true });",
+    to: '    server.listen({ port, host: address === "127.0.0.1" ? "0.0.0.0" : address, exclusive: true });',
+    check: integration("gateway.test.ts", "never blocks, and so never asks about"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "a refusal closes its connection unread, and the reset loses the page that clears the cookies",
+    file: "src/gateway/listener.ts",
+    from: '  socket.end(`${headers.join("\\r\\n")}\\r\\n\\r\\n${body}`);\n  lingerAfterRefusal(socket);',
+    to: '  socket.end(`${headers.join("\\r\\n")}\\r\\n\\r\\n${body}`);',
+    check: hygiene("answers more than that with a page that clears"),
+    // Windows resets the connection at once and discards the answer; macOS's kernel often hands
+    // the answer over before the reset, so there the seed would be caught only by chance.
+    platform: "win32",
+  },
+  {
+    requirement: "EN-08",
+    name: "a lock that can be neither taken nor broken holds the CLI forever (GPT review of WP-W2)",
+    file: "../cli/src/telemetry/store.ts",
+    from: "        if (Date.now() > deadline) return undefined;\n        const next = this.#breakStale();",
+    to: "        const next = this.#breakStale();",
+    check: unit("telemetry.test.ts", "never be taken"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-11",
+    name: "a lock this user can't create spins for 2 s under Windows' rules (Opus review of WP-W2)",
+    file: "../cli/src/telemetry/store.ts",
+    from: '          if (code === "EEXIST") continue;\n          return undefined;',
+    to: "          continue;",
+    check: unit("telemetry.test.ts", "Windows' lock rules"),
+    cwd: "../cli",
+    // Windows' runners pass any access list (the test says why), so it runs on POSIX.
+    platform: "posix",
+  },
+
+  {
+    requirement: "RT-11",
+    name: "the daemon starts in the root with a relative runtime entry (GPT review of WP-W2)",
+    file: "../cli/src/client.ts",
+    from: "    resolve(runtime.entry),",
+    to: "    runtime.entry,",
+    check: integration("contract.test.ts", "relative path variables"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-11",
+    name: "a detached process gets the command's relative path variables unresolved (Opus review of WP-W2)",
+    file: "../cli/src/detached.ts",
+    from: "      result[name] = resolve(cwd, value);",
+    to: "      result[name] = value;",
+    check: integration("contract.test.ts", "relative path variables"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-11",
+    name: "the secret store's directory grants everyone access",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})"',
+    to: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})(A;OICI;FA;;;WD)"',
+    check: integration("actions.test.ts", "keeps secrets out of logs"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "a client opens a Windows pipe with net.connect, whoever created it",
+    file: "../sdk/src/control.ts",
+    from: '  if ((options.platform ?? process.platform) === "win32") {',
+    to: '  if ((options.platform ?? process.platform) === "never") {',
+    check: integration("windows.test.ts"),
+    cwd: "../cli",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "a launch page goes to a %TEMP% other users can read (Opus review of WP-W2)",
+    file: "../cli/src/browser.ts",
+    from: '  if (platform !== "win32") return tmpdir();',
+    to: "  return tmpdir();",
+    check: integration("contract.test.ts", "a viewer can open \\(J1\\)|open --browser hands"),
+    cwd: "../cli",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "an instance refuses its home spelled with a short (8.3) name or another case",
+    file: "src/instance/index.ts",
+    from: "    return realPath(path) === home;",
+    to: "    return resolve(path) === home;",
+    check: integration("windows.test.ts", "the same home under its short name"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "two homes NTFS keeps apart are one to JavaScript's lower case (Opus review of WP-W2)",
+    file: "src/instance/index.ts",
+    from: "    return realPath(path) === home;",
+    to: "    return realPath(path).toLowerCase() === home.toLowerCase();",
+    check: integration("windows.test.ts", "the same home under its short name"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "an uninstall that can't reach the launcher kills the daemon (Opus review of WP-W2)",
+    file: "src/service/unit.ts",
+    from: "  if (!signalled) await shutDownInstance(home, options.client);",
+    to: "",
+    check: integration("lifecycle.test.ts", "over its pipe when no event reaches"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "an uninstall leaves a task whose definition the home lost (Opus review of WP-W2)",
+    file: "src/service/unit.ts",
+    from: "    !options.noStart &&\n    taskRegistered(status);",
+    to: "    !options.noStart &&\n    false;",
+    check: integration("lifecycle.test.ts", "over its pipe when no event reaches"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "a task removed in Task Scheduler still keeps a daemon from its idle exit (Opus review of WP-W2)",
+    file: "src/service/unit.ts",
+    from: '    return status.manager !== "task-scheduler" || registeredLately(status);',
+    to: "    return true;",
+    check: integration("lifecycle.test.ts", "counts its task only while Task Scheduler holds it"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "the launcher takes another user's stop event for its own (Opus review of WP-W2)",
+    file: "../../crates/mostra-win/src/win/service.rs",
+    from: "    Ok(event.owner()?.equals(&user))",
+    to: "    Ok(event.owner().is_ok() || user.equals(&user))",
+    check: integration("lifecycle.test.ts", "refuses a stop event another user created"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "the end of the session kills the daemon (Opus review of WP-W2)",
+    file: "../../crates/mostra-win/src/win/service.rs",
+    from: "        &[process, signals.stop.borrow(), signals.ending.borrow()],",
+    to: "        &[process, signals.stop.borrow()],",
+    check: integration("lifecycle.test.ts", "when the user's session ends"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "telemetry's schema refuses Windows' events",
+    file: "../cli/src/telemetry/events.ts",
+    from: '  os: z.enum(["darwin", "linux", "win32"]),',
+    to: '  os: z.enum(["darwin", "linux"]),',
+    check: unit("telemetry.test.ts", "names every system"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-11",
+    name: "the login service's launcher has a console, so a logon opens a window",
+    file: "../../crates/mostra-win/src/bin/service.rs",
+    from: '#![cfg_attr(windows, windows_subsystem = "windows")]',
+    to: '#![cfg_attr(windows, windows_subsystem = "console")]',
+    check: integration("lifecycle.test.ts", "runs the daemon from a logon task"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "the login service's launcher never starts a crashed daemon again",
+    file: "../../crates/mostra-win/src/win/service.rs",
+    from: '                    &serde_json::json!({ "code": code, "restartInMs": RESTART_DELAY_MS }),\n                );',
+    to: '                    &serde_json::json!({ "code": code, "restartInMs": RESTART_DELAY_MS }),\n                );\n                return 1;',
+    check: integration("lifecycle.test.ts", "runs the daemon from a logon task"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "mostra dev misses its entry under Vite's spelling of a Windows path",
+    file: "src/builder/child/dev.ts",
+    from: '      if (pathKey(id.split("?")[0] ?? "") !== entryKey',
+    to: '      if ((id.split("?")[0] ?? "") !== entryFile',
+    check: unit("dev-plugin.test.ts"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "mostra dev takes an editor's backup-then-write save for a deletion",
+    file: "src/dev/index.ts",
+    from: "const MISSING_GRACE_MS = 1500;",
+    to: "const MISSING_GRACE_MS = 0;",
+    check: integration("dev.test.ts", "editor's save"),
+  },
   // WP-W1: Windows (RT-10). The helper's seeds rebuild it (cargo) before their checks.
   {
     requirement: "RT-10",
@@ -3053,8 +3249,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-08",
     name: "a crashed process's lock is never taken over",
     file: "../cli/src/telemetry/store.ts",
-    from: "        if (this.#breakStale()) continue;",
-    to: "        if (Date.now() < 0 && this.#breakStale()) continue;",
+    from: "        const next = this.#breakStale();",
+    to: '        const next = Date.now() < 0 ? this.#breakStale() : "held";',
     check: unit("telemetry.test.ts", "crashed process"),
     cwd: "../cli",
   },
@@ -3095,7 +3291,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "AX-09",
     name: "open puts the launch URL on the browser's command line (Opus review 4)",
     file: "../cli/src/browser.ts",
-    from: "    page = writeLaunchPage(url);",
+    from: "    page = writeLaunchPage(url, base);",
     to: "    page = url;",
     check: integration("contract.test.ts"),
     cwd: "../cli",
@@ -3104,8 +3300,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-08",
     name: "a lock a reused PID names holds every command up (Opus review 5)",
     file: "../cli/src/telemetry/store.ts",
-    from: "    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return false;",
-    to: "    if (ownerAlive(seen)) return false;",
+    from: '    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return "held";',
+    to: '    if (ownerAlive(seen)) return "held";',
     check: unit("telemetry.test.ts", "Opus review finding 5"),
     cwd: "../cli",
   },
@@ -3223,14 +3419,34 @@ function build(seed?: Seed): void {
   const shell = WINDOWS_HOST;
   if (seed?.platform === "win32") {
     if (seed.file.includes("crates/mostra-win")) {
-      // A seed that doesn't compile is a broken seed, not a caught one: say why.
-      execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
-        cwd: root,
-        stdio: ["ignore", "ignore", "inherit"],
-      });
+      // A seed that doesn't compile is a broken seed, not a caught one: say why. Windows' virus
+      // scan holds a program it just saw written for a moment, and Cargo can't replace it then
+      // ("Access is denied", seen in WP-W2's seed runs), so a failed build is tried twice more.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+            cwd: root,
+            stdio: ["ignore", "ignore", "inherit"],
+          });
+          break;
+        } catch (error) {
+          if (attempt === 3) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+        }
+      }
     }
-    // Only the packages Windows runs so far (WP-W1): the protocol and the runtime.
-    for (const name of ["@mostra/protocol", "@mostra/runtime"]) {
+    // The packages Windows runs so far (WP-W1, WP-W2).
+    for (const name of [
+      "@mostra/protocol",
+      "@mostra/server",
+      "@mostra/worker",
+      "@mostra/react",
+      "@mostra/shell",
+      "@mostra/verify",
+      "@mostra/runtime",
+      "@mostra/sdk",
+      "@mostra/cli",
+    ]) {
       execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
     }
     return;
@@ -3251,24 +3467,28 @@ function build(seed?: Seed): void {
   }
 }
 
+/** An argument as cmd.exe passes it on when a shell runs the command (Windows only). */
+function quoteForShell(argument: string): string {
+  return WINDOWS_HOST && /[\s"'&|<>^]/.test(argument)
+    ? `"${argument.replaceAll('"', '""')}"`
+    : argument;
+}
+
 function check(seed: Seed): { ok: boolean; summary: string } {
   const result = seed.e2e
     ? spawnSync("npx", ["playwright", "test", ...seed.check], {
         cwd: join(root, "tests", "e2e"),
         encoding: "utf8",
       })
-    : spawnSync(
-        process.execPath,
-        [
-          join(runtime, seed.cwd ?? ".", "node_modules", "vitest", "vitest.mjs"),
-          "run",
-          ...seed.check,
-        ],
-        {
-          cwd: join(runtime, seed.cwd ?? "."),
-          encoding: "utf8",
-        },
-      );
+    : // Through pnpm, as `pnpm check` runs a suite: its `vitest` shim puts pnpm's hoisted
+      // packages on NODE_PATH, which a supervisor started from a checkout needs to load
+      // oxc-parser's native binding (found in WP-W2: VR-08's dev seeds came back red when vitest
+      // ran without it). pnpm is a `.cmd` on Windows, which only a shell runs.
+      spawnSync("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
+        cwd: join(runtime, seed.cwd ?? "."),
+        encoding: "utf8",
+        shell: WINDOWS_HOST,
+      });
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
   const summary =
     text

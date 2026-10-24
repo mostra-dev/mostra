@@ -358,9 +358,10 @@ export function runBin(
   args: readonly string[],
   env: NodeJS.ProcessEnv,
   nodeArgs: readonly string[] = [],
+  node: string = process.execPath,
 ): RuntimeProcess {
   if (!existsSync(BIN)) throw new Error(`${BIN} is missing: build @mostra/runtime first.`);
-  const child = spawn(process.execPath, [...nodeArgs, BIN, ...args], {
+  const child = spawn(node, [...nodeArgs, BIN, ...args], {
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -388,12 +389,19 @@ export interface DaemonStatus {
 /** Starts `mostra-runtime daemon` and waits for its status line. */
 export async function startDaemon(
   testHome: TestHome,
-  options: { env?: NodeJS.ProcessEnv; nodeArgs?: readonly string[]; args?: readonly string[] } = {},
+  options: {
+    env?: NodeJS.ProcessEnv;
+    nodeArgs?: readonly string[];
+    args?: readonly string[];
+    /** The Node.js to run it on: this process's by default. */
+    node?: string;
+  } = {},
 ): Promise<RuntimeProcess & { status: DaemonStatus }> {
   const started = runBin(
     ["daemon", "--home", testHome.home, ...(options.args ?? [])],
     options.env ?? testHome.env,
     options.nodeArgs,
+    options.node,
   );
   const status = await new Promise<DaemonStatus>((resolve, reject) => {
     const splitter = new LineSplitter();
@@ -453,8 +461,29 @@ export async function eventually(
   throw new Error(`Timed out waiting for ${what}.`);
 }
 
-/** The TCP addresses a process listens on, from the operating system (`lsof` or `ss`). */
+/**
+ * The TCP addresses a process listens on, from the operating system: `lsof` on macOS, `ss` on
+ * Linux, `netstat -ano` on Windows (whose columns are the protocol, the local and foreign
+ * addresses, the state and the owning PID).
+ */
 export function listening(pid: number): string[] {
+  if (WINDOWS) {
+    const out = execFileSync("netstat", ["-ano", "-p", "TCP"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    const v6 = execFileSync("netstat", ["-ano", "-p", "TCPv6"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return `${out}\n${v6}`
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/))
+      .filter(
+        (cols) => cols[0]?.startsWith("TCP") && cols[3] === "LISTENING" && cols[4] === String(pid),
+      )
+      .map((cols) => cols[1] ?? "");
+  }
   if (process.platform === "darwin") {
     const out = execFileSync(
       "lsof",
@@ -536,4 +565,105 @@ function procAddress6(hex: string): string {
   if (text === "0:0:0:0:0:0:0:0") return "::";
   if (text === "0:0:0:0:0:0:0:1") return "::1";
   return text;
+}
+
+/**
+ * The command line a process runs: `ps` on POSIX; on Windows its `CommandLine` from CIM (as Task
+ * Manager shows it).
+ */
+export function commandLineOf(pid: number): string {
+  if (WINDOWS) {
+    // From the whole table (one CIM query that the gateway suite proves), so a process that
+    // isn't there is an error naming it, never an empty command line.
+    const started = Date.now();
+    const table = processTable();
+    const row = table.find((entry) => entry.pid === pid);
+    if (!row) {
+      throw new Error(
+        `No process ${pid} is in the process table (${table.length} processes, read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
+      );
+    }
+    return row.command;
+  }
+  return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
+}
+
+/**
+ * Stops a process from running without ending it, or lets it run again: `SIGSTOP` and `SIGCONT`
+ * on POSIX; on Windows every thread suspended or resumed, through the helper's test probe.
+ */
+export function suspendProcess(pid: number, suspend: boolean): void {
+  if (!WINDOWS) {
+    process.kill(pid, suspend ? "SIGSTOP" : "SIGCONT");
+    return;
+  }
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  execFileSync(probe, [suspend ? "suspend" : "resume", String(pid)], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+}
+
+/** What another local user could do with a path (`mostra-win-probe as-user`). */
+export interface Opened {
+  readonly path: string;
+  readonly read: boolean;
+  readonly readWrite: boolean;
+}
+
+/**
+ * Windows: opens each `kind:path` (`file`, `dir`, `pipe`, `mkdir`) as the second local user the CI
+ * leg creates, through the helper's probe. A missing user is a failure, never a skip
+ * (docs/agents/run-on-windows.md).
+ */
+export function asOtherUser(...targets: string[]): Opened[] {
+  const user = process.env["MOSTRA_TEST_OTHER_USER"];
+  const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
+  if (!user || !password) {
+    throw new Error("Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).");
+  }
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  const out = execFileSync(probe, ["as-user", user, password, ...targets], { encoding: "utf8" });
+  const answer = JSON.parse(out) as { ok: boolean; result?: Opened[]; error?: unknown };
+  if (!answer.ok || !answer.result) throw new Error(`probe failed: ${out}`);
+  return answer.result;
+}
+
+/** Windows: the SID (`S-1-5-21-…`) of the user the tests run as, from the helper. */
+export function currentUserSid(): string {
+  const out = execFileSync(helperPath(), ["whoami"], { encoding: "utf8", windowsHide: true });
+  return (JSON.parse(out) as { result: { user: string } }).result.user;
+}
+
+/** Every process's ID, parent and command line: `ps` on POSIX, CIM's `Win32_Process` on Windows. */
+export function processTable(): { pid: number; ppid: number; command: string }[] {
+  if (WINDOWS) {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
+      ],
+      { encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+    );
+    const rows = JSON.parse(out) as {
+      ProcessId: number;
+      ParentProcessId: number;
+      Name: string;
+      CommandLine: string | null;
+    }[];
+    return rows.map((row) => ({
+      pid: row.ProcessId,
+      ppid: row.ParentProcessId,
+      command: row.CommandLine ?? row.Name,
+    }));
+  }
+  return execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
+    .split("\n")
+    .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] ?? "" }))
+    .filter((row) => row.command !== "ps -A -o pid=,ppid=,command=");
 }

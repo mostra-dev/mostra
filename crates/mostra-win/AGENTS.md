@@ -37,6 +37,14 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
   running process's creation time matches the record, so a reused PID is never touched; when the
   job's name can't be opened (another logon session's), it ends the child's descendants, each a
   child of its parent only when created after it.
+- **The login service runs the daemon without a window and keeps it running (D151).**
+  `mostra-win-service` (windows subsystem, so a logon opens no console for it) is a Task Scheduler
+  task's action: it runs the daemon with `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP` in a
+  kill-on-close job, its output appended to the service log, starts it again 10 s after an exit
+  that isn't 0, and on its stop event (`service-stop`, which `service uninstall` sends) asks the
+  daemon to stop with Ctrl+Break, ending the job only past 15 s. The event's name has a random
+  part, and the launcher and `service-stop` refuse an event another user owns. A hidden top-level
+  window hears the end of the user's session, which stops the daemon the same way within 4 s.
 - **`unsafe` lives in `src/win/sys.rs` only**, each call with a SAFETY note; the workspace's
   `unsafe_code = "forbid"` is relaxed to `deny` for this crate alone.
 
@@ -44,12 +52,15 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
 
 The binary's commands, listed with their JSON answers in `src/main.rs`. `mostra-win-probe` (test
 only, never shipped) opens paths and pipes as another user (`as-user`), holds a
-pipe as another user (`squat`), prints a path's descriptor (`security`), and freezes or thaws a
-process (`suspend`, `resume`) for RT-10's checks.
+pipe as another user (`squat`), prints a path's descriptor (`security`), freezes or thaws a
+process (`suspend`, `resume`), and runs a program leading a console group of its own (`group`) to
+send it Ctrl+Break (`ctrl-break`), for RT-10's and RT-11's checks. `mostra-win-service` is the
+second shipped binary (D151).
 
 ## Tests to run
 
 The helper runs only on Windows, so its behavior is checked through the runtime's suites on the
-Windows CI legs (`packages/runtime/test/integration/windows.test.ts` and the `windows` and `windows-publish` groups).
+Windows CI legs (`packages/runtime/test/integration/windows.test.ts`, the lifecycle suite's login
+service, and every Windows group of `packages/runtime/vitest.config.ts`).
 Locally: `cargo clippy -p mostra-win --target x86_64-pc-windows-msvc --all-targets -- -D warnings`
 and the same for `aarch64-pc-windows-msvc` ([playbook](../../docs/agents/run-on-windows.md)).

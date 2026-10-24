@@ -134,7 +134,7 @@ export interface Publisher {
 const ENTRY_NAMES = ["index.tsx", "index.jsx", "index.mdx"];
 
 /** The title of an artifact without a manifest: its directory's name, or a single file's own name. */
-function defaultTitle(source: ResolvedSource): string {
+export function defaultTitle(source: ResolvedSource): string {
   if (source.kind === "dir") return basename(source.root);
   const stem = basename(source.entry, extname(source.entry));
   return stem === "page" || stem === "index" ? basename(source.root) : stem;

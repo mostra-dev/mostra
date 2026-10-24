@@ -2,9 +2,10 @@
  * Telemetry's rules (EN-08, D140 items 3 to 11), in-process: the decision order, the endpoint, the
  * time zones, the harness, the schema, the store, the question and the queue.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -17,7 +18,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { decide, endpointOf } from "../../src/telemetry/decision.ts";
 import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/events.ts";
@@ -281,6 +282,17 @@ describe("the event schema (D140 item 8)", () => {
     }
   });
 
+  it("names every system Mostra runs on, and nothing else (WP-W2: Windows' events were dropped)", () => {
+    for (const os of ["darwin", "linux", "win32"]) {
+      expect(TelemetryEvent.safeParse({ ...common, os, event: "cli.first_run" }).success).toBe(
+        true,
+      );
+    }
+    expect(
+      TelemetryEvent.safeParse({ ...common, os: "freebsd", event: "cli.first_run" }).success,
+    ).toBe(false);
+  });
+
   it("buckets durations and rounds times down to the minute", () => {
     expect(
       [0, 999, 1000, 4999, 5000, 29_999, 30_000, 119_999, 120_000, 599_999, 600_000].map(
@@ -303,18 +315,26 @@ describe("the event schema (D140 item 8)", () => {
   });
 });
 
+/**
+ * Whether files keep POSIX modes. Windows has none: the store lives in the user's own profile
+ * (`%APPDATA%\mostra`, D151), whose access list admits only them, the system and administrators.
+ */
+const POSIX_MODES = process.platform !== "win32";
+
 describe("the store (D140 item 5)", () => {
   it("keeps its directory 0700 and its files 0600, and reads a damaged file as off", () => {
     const dir = join(configDir(), "nested");
     const store = new TelemetryStore(dir);
     store.update((current) => ({ ...current, choice: "on" }));
-    expect(statSync(dir).mode & 0o777).toBe(0o700);
-    expect(statSync(store.settingsFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) {
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(store.settingsFile).mode & 0o777).toBe(0o600);
+    }
     store.append(
       [JSON.stringify({ ...common, event: "cli.first_run", at: minute(new Date()) })],
       Date.now(),
     );
-    expect(statSync(store.queueFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) expect(statSync(store.queueFile).mode & 0o777).toBe(0o600);
     // A damaged file, in a store of its own.
     const damaged = new TelemetryStore(configDir());
     writeFileSync(damaged.settingsFile, "{ not json");
@@ -332,7 +352,7 @@ describe("the store (D140 item 5)", () => {
     const fresh = new TelemetryStore(configDir());
     const made = fresh.installId();
     expect(made?.created).toBe(true);
-    expect(statSync(fresh.idFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) expect(statSync(fresh.idFile).mode & 0o777).toBe(0o600);
     expect(fresh.read()).toMatchObject({ ok: true, settings: { installId: made?.id } });
     fresh.update((current) => ({ ...current, choice: "on" }));
     expect(readFileSync(fresh.settingsFile, "utf8")).not.toContain(made?.id ?? "-");
@@ -372,7 +392,7 @@ describe("the store (D140 item 5)", () => {
       utimesSync(lock, old, old);
     }
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    const script = `import { TelemetryStore } from ${JSON.stringify(entry)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
     // Every process waits for one start signal, so they make their IDs at the same moment.
     const go = join(dir, "..", `go-${randomUUID()}`);
     const running = Array.from(
@@ -392,7 +412,8 @@ describe("the store (D140 item 5)", () => {
     await new Promise((done) => setTimeout(done, 600));
     writeFileSync(go, "");
     const ids = await Promise.all(running);
-    expect(new Set(ids).size).toBe(1);
+    // Every process says the same ID (the list, so a failure shows who said what).
+    expect(ids).toEqual(ids.map(() => ids[0]));
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
     // Every process got the lock (a crashed owner's lock was taken over), and the lock is gone
     // with nothing left beside it.
@@ -460,6 +481,73 @@ function session(options: {
 const queued = (store: TelemetryStore): unknown[] =>
   store.queued(Date.now()).map((line) => JSON.parse(line));
 const END = { exit: 0, durationMs: 1200, hostInstance: false };
+
+describe("a lock that can never be taken (GPT review of WP-W2)", () => {
+  it("gives up within its 2 s instead of trying forever", () => {
+    const dir = configDir();
+    // A directory where the lock file goes, old enough to look abandoned: it can be neither
+    // created nor read, so breaking it "succeeds" without changing anything.
+    const lock = join(dir, "telemetry.lock");
+    mkdirSync(lock, { recursive: true });
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    // In a process of its own: a loop that never ends would hold this one past any time limit.
+    const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; process.stdout.write(String(new TelemetryStore(process.argv[1]).locked(() => "ran")));`;
+    const started = Date.now();
+    const ran = spawnSync(process.execPath, ["--input-type=module", "-e", script, dir], {
+      encoding: "utf8",
+      timeout: 15_000,
+    });
+    expect(ran.signal, "the lock was still being tried after 15 s").toBeNull();
+    expect(ran.stdout).toBe("undefined");
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+});
+
+describe("a config directory this user can't write (Opus review of WP-W2, finding 2)", () => {
+  // Under Windows' rules access denied on the lock's create may be a lock being deleted, so it
+  // counts as held; when no lock file exists at all it can't be, and the store gives up at once
+  // instead of spinning for its 2 s. A read-only directory gives access denied on POSIX too, so
+  // the Windows rules run here; Windows' own runners pass any access list (their administrator's
+  // backup privileges), so the case can't be made there.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "gives up at once under Windows' lock rules",
+    () => {
+      const dir = configDir();
+      mkdirSync(dir, { recursive: true });
+      chmodSync(dir, 0o500);
+      try {
+        const started = performance.now();
+        const cpuBefore = process.cpuUsage();
+        expect(new TelemetryStore(dir, "win32").locked(() => "ran")).toBeUndefined();
+        expect(performance.now() - started).toBeLessThan(500);
+        const cpu = process.cpuUsage(cpuBefore);
+        expect((cpu.user + cpu.system) / 1000).toBeLessThan(500);
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+    },
+  );
+});
+
+describe("a config directory that can never exist (WP-W2)", () => {
+  it("reads as unreadable, not as nothing stored yet, on every system", () => {
+    const root = configDir();
+    mkdirSync(root, { recursive: true });
+    const blocker = join(root, "not-a-directory");
+    writeFileSync(blocker, "");
+    for (const dir of [join(blocker, "mostra"), join(blocker, "deeper", "mostra")]) {
+      const read = new TelemetryStore(dir).read();
+      expect(read.ok, dir).toBe(false);
+    }
+    // A directory that doesn't exist yet is just empty.
+    expect(new TelemetryStore(join(root, "fresh", "mostra")).read()).toEqual({
+      ok: true,
+      settings: {},
+    });
+  });
+});
 
 describe("the notice, the question and the queue (D140 items 6, 11)", () => {
   it("elsewhere: the notice once before the first event, then events with consent default", async () => {

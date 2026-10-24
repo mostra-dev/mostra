@@ -17,14 +17,16 @@ place Windows behavior is observed, so the loop is a push and a CI run.
    check a Windows variant (`describe.runIf(WINDOWS)`) that proves the same guarantee the Windows
    way, or skip it with a comment naming where Windows covers it. Never let a Windows-only check
    skip silently on Windows: a missing prerequisite (the second user, the helper) is a failure.
-3. **Push and read the leg.** The `windows` job runs `pnpm check --job unit|integration` with
-   `MOSTRA_DEV_WINDOWS=1`, `MOSTRA_TEST_GROUP=windows` or `windows-publish` (the suites in
-   `packages/runtime/vitest.config.ts`'s two Windows groups, one machine each) and a second local
-   user (`MOSTRA_TEST_OTHER_USER`, `MOSTRA_TEST_OTHER_PASSWORD`).
+3. **Push and read the leg.** The `windows` job runs `pnpm check --job unit|hygiene|integration`
+   with `MOSTRA_DEV_WINDOWS=1`, `MOSTRA_TEST_GROUP` set to one of the Windows groups in
+   `packages/runtime/vitest.config.ts` (they partition every runtime suite, one machine each;
+   `windows-clients` is the CLI's) and a second local user (`MOSTRA_TEST_OTHER_USER`,
+   `MOSTRA_TEST_OTHER_PASSWORD`); the `windows-gateway` leg also turns the firewall and its audit
+   on. The `e2e` job runs the browser suites there too. A new suite joins exactly one Windows group.
    Read a failing leg's log with `gh run view <run> --log-failed`, or the whole job with
    `gh api repos/mostra-dev/mostra/actions/jobs/<job>/logs`.
 4. **Observe Windows behavior you depend on** before building on it: the helper's
-   `mostra-win-probe` (`as-user`, `suspend`, `resume`) and a short script in a test are how the
+   `mostra-win-probe` (`as-user`, `suspend`, `resume`, `group` and `ctrl-break`) and a short script in a test are how the
    facts in VERIFIED_FACTS (WP-W1) were seen. Record each new fact there with the run that showed it.
 5. **Replay Windows seeds on a Windows runner.** A seed with `platform: "win32"` in
    `packages/runtime/scripts/prove-seeds.ts` runs only there:

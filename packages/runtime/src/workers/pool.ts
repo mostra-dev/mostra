@@ -210,6 +210,19 @@ const PINGS_MISSED_BEFORE_STOP = 3;
  */
 const OOM_STALL_FRACTION = 0.8;
 
+/**
+ * An exit code as people look it up: a Windows status (`0xC0000005`, an access violation) in
+ * hexadecimal, any other code as a number. Node.js reports a Windows status as an unsigned
+ * 32-bit number; on POSIX codes are below 256.
+ */
+export function exitCodeText(code: number | null): string {
+  if (code === null) return "?";
+  if (code >= 0x80000000 || code < 0) {
+    return `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
+  }
+  return String(code);
+}
+
 function crashed(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_RUNTIME_WORKER_CRASHED", { message }));
 }
@@ -298,7 +311,7 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     const how =
       exit.signal !== null
         ? `it was ended by ${exit.signal}`
-        : `it exited with code ${exit.code ?? "?"}`;
+        : `it exited with code ${exitCodeText(exit.code)}`;
     return { kind: "crash", cause: last ? `${how}: ${last.slice(0, 300)}` : how };
   };
 

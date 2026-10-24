@@ -16,6 +16,7 @@ import {
   connectTo,
   eventually,
   initializeParams,
+  KILLED,
   type LineClient,
   type Message,
 } from "../support.ts";
@@ -732,7 +733,8 @@ describe("delivery to a host's submissions port (IN-12, IN-06, H-04)", () => {
     host.answer(first, { accepted: true });
     // The supervisor dies after the answer arrives and before it records it.
     const exited = await gateway.daemon.exited;
-    expect(exited.signal).toBe("SIGKILL");
+    // SIGKILL on POSIX; on Windows the process ends itself outright, with exit code 1.
+    expect({ code: exited.code, signal: exited.signal }).toEqual(KILLED);
     await gateway.start();
     const again = await Host.connect(gateway, "crash-host", { ports: ["submissions"] });
     const second = await again.next("port/submissions.deliver");

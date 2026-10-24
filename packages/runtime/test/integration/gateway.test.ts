@@ -5,30 +5,41 @@
  * port, and the methods `view/url`, `view/rotate` and `view/revoke` (HY-03).
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, parseLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
-import { listening, runBin, testHome } from "../support.ts";
+import {
+  eventually,
+  listening,
+  processTable,
+  runBin,
+  tempDir,
+  testHome,
+  WINDOWS,
+} from "../support.ts";
 
 const DAY = 86_400_000;
 
 /** Every process below `pid`, from the operating system's process table. */
 function descendants(pid: number): { pid: number; command: string }[] {
-  const rows = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
-    .split("\n")
-    .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
-    .filter((match): match is RegExpExecArray => match !== null)
-    .map((match) => ({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] ?? "" }));
+  const rows = processTable();
   const found: { pid: number; command: string }[] = [];
   const queue = [pid];
   while (queue.length > 0) {
     const parent = queue.shift();
     for (const row of rows) {
-      if (row.ppid === parent && row.command !== "ps -A -o pid=,ppid=,command=") {
+      if (row.ppid === parent) {
         found.push({ pid: row.pid, command: row.command });
         queue.push(row.pid);
       }
@@ -71,10 +82,20 @@ describe("serving versions (RT-05, VR-03)", () => {
     const deep = await browser.navigate(`${opened.frameOrigin}/reports/42`, opened.link.shell);
     expect(deep.status).toBe(200);
     expect(deep.body).toBe(opened.page.body);
-    // The process table and the instance agree: no worker, builder or any other child.
+    // The process table and the instance agree: no worker, builder or any other child. On Windows
+    // the instance always runs one, its control pipe's helper behind its gate (D150 item 4), with
+    // the console host Windows gives a console program.
     const status = await gateway.status();
-    expect(status.processes).toEqual([]);
-    expect(descendants(gateway.daemon.child.pid as number)).toEqual([]);
+    expect((status.processes as { kind: string }[]).map((child) => child.kind)).toEqual(
+      WINDOWS ? ["control-pipe"] : [],
+    );
+    const below = descendants(gateway.daemon.child.pid as number);
+    if (WINDOWS) {
+      expect(below.length).toBeGreaterThan(0);
+      for (const child of below) {
+        expect(child.command).toMatch(/mostra-win(\.exe)?"? (gate|pipe)\b|conhost\.exe/i);
+      }
+    } else expect(below).toEqual([]);
   });
 
   it("reaches nothing but the published client build (route enumeration)", async () => {
@@ -694,4 +715,74 @@ describe("a damaged version (FAILURE_MODEL §3)", () => {
       await gateway.stop();
     }
   });
+});
+
+/**
+ * Windows: what the firewall logged as blocked (event 5031, "blocked an application from
+ * accepting incoming connections on the network": the event behind the "Windows Defender Firewall
+ * has blocked some features of this app" prompt) since `since`, for programs whose path contains
+ * `name`. Needs the firewall on and the Filtering Platform Connection audit, which the CI leg sets.
+ */
+function firewallBlocks(since: Date, name: string): string[] {
+  const script = [
+    `$since = [datetime]::Parse('${since.toISOString()}').ToLocalTime()`,
+    `$events = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5031; StartTime = $since } -ErrorAction SilentlyContinue`,
+    `$events | Where-Object { $_.Message -like '*${name}*' } | ForEach-Object { $_.Message.Replace([char]13, ' ').Replace([char]10, ' ') }`,
+  ].join("; ");
+  const out = execFileSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", script],
+    {
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+  return out.split(/\r?\n/).filter((line) => line.trim() !== "");
+}
+
+describe.runIf(WINDOWS)("the Windows firewall (RT-11, WP-W2)", () => {
+  it("never blocks, and so never asks about, the loopback gateway; a wildcard listener it does (the control)", async () => {
+    // Firewall rules and prompts are per program path, and the runner's own Node.js may already
+    // have rules: each side runs on a copy of Node.js of its own, which the firewall has never
+    // seen.
+    const dir = tempDir("firewall", true);
+    const tag = `mostra-fw-${process.pid}-${Date.now()}`;
+    const controlNode = join(dir, `${tag}-control.exe`);
+    const gatewayNode = join(dir, `${tag}-gateway.exe`);
+    copyFileSync(process.execPath, controlNode);
+    copyFileSync(process.execPath, gatewayNode);
+    const since = new Date(Date.now() - 1000);
+
+    // The control: the same Node.js listening on every interface is blocked, so a check that
+    // finds nothing below is a real absence, not a firewall or an audit that is off.
+    execFileSync(
+      controlNode,
+      [
+        "-e",
+        "const s = require('node:net').createServer(); s.listen(0, '0.0.0.0', () => setTimeout(() => s.close(), 2000));",
+      ],
+      { windowsHide: true },
+    );
+    await eventually(
+      () => firewallBlocks(since, `${tag}-control`).length > 0,
+      30_000,
+      "the firewall's block of a wildcard listener (is the firewall on, and its audit?)",
+    );
+
+    // The gateway on its default bind: the shell and an artifact's listener, both bound.
+    const gateway = await new GatewayHome().start({ node: gatewayNode });
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      await openLink(new Browser(), receipt.url);
+      // Judged by the firewall's own record alone, so a gateway that listened everywhere is caught
+      // by what the firewall did (its addresses are "loopback only by default"'s to check; Opus
+      // review of WP-W2, finding 8). The control's event arrived within seconds; give the
+      // gateway's as long, and more.
+      expect(listening(gateway.daemon.child.pid as number).length).toBeGreaterThanOrEqual(2);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      expect(firewallBlocks(since, `${tag}-gateway`)).toEqual([]);
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
 });

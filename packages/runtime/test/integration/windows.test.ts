@@ -15,7 +15,7 @@
  * The other user is the one the CI leg creates (`MOSTRA_TEST_OTHER_USER`,
  * `MOSTRA_TEST_OTHER_PASSWORD`); without them the access checks fail, never skip, on Windows.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -28,6 +28,7 @@ import { attach, connectSocket } from "../../src/protocol-server/client.ts";
 import {
   accessEntries,
   alive,
+  asOtherUser,
   connectTo,
   endpointExists,
   eventually,
@@ -47,26 +48,6 @@ const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 const artifact = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/artifacts/${name}`, import.meta.url));
-
-interface Opened {
-  readonly path: string;
-  readonly read: boolean;
-  readonly readWrite: boolean;
-}
-
-/** Opens each `kind:path` as the other local user, through the helper's probe. */
-function asOtherUser(...targets: string[]): Opened[] {
-  const user = process.env["MOSTRA_TEST_OTHER_USER"];
-  const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
-  if (!user || !password) {
-    throw new Error("Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).");
-  }
-  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
-  const out = execFileSync(probe, ["as-user", user, password, ...targets], { encoding: "utf8" });
-  const answer = JSON.parse(out) as { ok: boolean; result?: Opened[]; error?: unknown };
-  if (!answer.ok || !answer.result) throw new Error(`probe failed: ${out}`);
-  return answer.result;
-}
 
 function probe(command: "suspend" | "resume", pid: number): void {
   const binary = join(dirname(helperPath()), "mostra-win-probe.exe");
@@ -654,5 +635,57 @@ describe.runIf(WINDOWS)("the gate on its own", () => {
     child.kill();
     await once(child, "exit");
     await eventually(() => !alive(created), 10_000, `the suspended child ${created} to end`);
+  });
+});
+
+describe.runIf(WINDOWS)("a home's spellings on Windows (RT-11, D151 item 5)", () => {
+  /** The 8.3 spelling of an existing path, as Windows' own `cmd` gives it. */
+  function shortName(path: string): string {
+    const ran = spawnSync("cmd.exe", ["/d", "/s", "/c", `"for %I in ("${path}") do @echo %~sI"`], {
+      encoding: "utf8",
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    });
+    return ran.stdout.trim();
+  }
+
+  it("is the same home under its short name or another case, and another home under a name only JavaScript's lower case makes equal (Opus review of WP-W2, findings 7 and 8)", async () => {
+    const base = testHome();
+    // A long name with a space, which always has an 8.3 spelling where 8.3 names are made
+    // (Windows' system volume); a `k`, which the Kelvin sign below stands beside.
+    const root = join(dirname(base.home), "Long kiosk home");
+    const home = { ...base, home: join(root, "home") };
+    mkdirSync(home.home, { recursive: true });
+    const daemon = await startDaemon(home);
+    expect(daemon.status.status).toBe("started");
+    const client = await connectTo(daemon.status.socket as string);
+    try {
+      const initialize = (path: string) =>
+        client.call("mostra/initialize", initializeParams({ home: { path } }));
+      const short = shortName(home.home);
+      expect(short, "this volume makes 8.3 names (the check needs one)").not.toBe(home.home);
+      expect(short).toMatch(/~/);
+      // A refused initialize leaves the session uninitialized, so each spelling is tried in turn.
+      expect((await initialize(home.home.toUpperCase())).error).toBeUndefined();
+      const again = await connectTo(daemon.status.socket as string);
+      expect(
+        (await again.call("mostra/initialize", initializeParams({ home: { path: short } }))).error,
+      ).toBeUndefined();
+      again.close();
+      // `\u212A` (KELVIN SIGN) lowers to `k` in JavaScript, but NTFS keeps it apart from `k`: a
+      // directory named with it is another directory, and another home.
+      const kelvin = join(dirname(root), "Long \u212Aiosk home", "home");
+      mkdirSync(kelvin, { recursive: true });
+      const other = await connectTo(daemon.status.socket as string);
+      const refused = await other.call(
+        "mostra/initialize",
+        initializeParams({ home: { path: kelvin } }),
+      );
+      expect(refused.error?.data.code).toBe("MOSTRA_HOME_MISMATCH");
+      other.close();
+    } finally {
+      client.close();
+      await stopDaemon(daemon.status.socket as string);
+    }
   });
 });

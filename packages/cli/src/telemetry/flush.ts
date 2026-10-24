@@ -5,10 +5,12 @@
  * but `Content-Type`, `User-Agent` and the ones HTTP itself needs, and keeps what a failed
  * attempt couldn't send for the next flush.
  */
+
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
+import { detachedDirectory, detachedEnvironment } from "../detached.ts";
 import type { Environment } from "../home.ts";
 import { cliVersion, fromSource, packageRoot } from "../version.ts";
 import { buildEndpoint, decide } from "./decision.ts";
@@ -133,7 +135,11 @@ export function startFlusher(store: TelemetryStore, env: Environment, now: numbe
     const child = spawn(process.execPath, [...nodeArgs, entry, store.dir], {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env, ...env } as NodeJS.ProcessEnv,
+      // Not the command's directory but its file system's root, which always exists: on Windows
+      // a process's working directory can't be removed or renamed while it runs, and the flusher
+      // outlives the command (WP-W2).
+      cwd: detachedDirectory(store.dir),
+      env: detachedEnvironment({ ...process.env, ...env }) as NodeJS.ProcessEnv,
     });
     child.on("error", () => {});
     child.unref();

@@ -56,6 +56,41 @@ function writeRaw(
     ...(extra.headers ?? []),
   ];
   socket.end(`${headers.join("\r\n")}\r\n\r\n${body}`);
+  lingerAfterRefusal(socket);
+}
+
+/** Connections already answered with a refusal: a later parse error on them changes nothing. */
+const refusedSockets = new WeakSet<Duplex>();
+
+/** How long a refused connection is read before it is closed regardless. */
+const LINGER_MS = 5000;
+/** How much of a refused request is read and dropped before the connection is closed. */
+const LINGER_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Reads and drops what the client is still sending after its refusal, until it closes the
+ * connection, for at most {@link LINGER_MS} and {@link LINGER_BYTES}. A socket closed with unread
+ * bytes is reset, and a reset can reach the client before it read the answer, which it then never
+ * sees: on Windows a browser sending a megabyte of cookies got a reset instead of the page that
+ * clears them (WP-W2). The answer is already written; this only keeps the connection open long
+ * enough for it to be read, as HTTP servers do for a "lingering close".
+ */
+function lingerAfterRefusal(socket: Duplex): void {
+  refusedSockets.add(socket);
+  // Node's HTTP server keeps feeding what arrives to the request parser that just failed, which
+  // fails again (a second `clientError`) and ends the connection: from here on this reads alone.
+  socket.removeAllListeners("data");
+  socket.once("end", () => socket.destroy());
+  let read = 0;
+  const timer = setTimeout(() => socket.destroy(), LINGER_MS);
+  timer.unref();
+  socket.once("close", () => clearTimeout(timer));
+  socket.on("error", () => socket.destroy());
+  socket.on("data", (chunk: Buffer) => {
+    read += chunk.length;
+    if (read > LINGER_BYTES) socket.destroy();
+  });
+  socket.resume();
 }
 
 /**
@@ -161,6 +196,7 @@ export function createListener(options: {
   });
   // A client that sends something Node can't parse gets a 400 and its connection closed.
   server.on("clientError", (error: NodeJS.ErrnoException, socket) => {
+    if (refusedSockets.has(socket)) return;
     if (!socket.writable) {
       socket.destroy();
       return;

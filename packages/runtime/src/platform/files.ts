@@ -14,7 +14,15 @@
  * - **Names.** Windows file names are case-insensitive: two names that differ only in case are
  *   one file.
  */
-import { closeSync, type Dirent, fsyncSync, openSync, renameSync, statSync } from "node:fs";
+import {
+  closeSync,
+  type Dirent,
+  fsyncSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import {
   chmod,
   lstat,
@@ -245,6 +253,16 @@ function trimSeparators(path: string): string {
 }
 
 /** Whether a link points at `target` (paths compared as this file system compares them). */
+/**
+ * A path's real path as the system spells it: links followed, and on Windows its short (8.3)
+ * names, such as `C:\Users\RUNNER~1`, written out in full and its case as stored, which only the
+ * system's own resolution does (`realpathSync.native`); Node.js's JavaScript resolution keeps
+ * them, so two spellings of one directory would differ. Throws when the path doesn't exist.
+ */
+export function realPath(path: string): string {
+  return WINDOWS ? realpathSync.native(path) : realpathSync(path);
+}
+
 export function samePath(a: string, b: string): boolean {
   const normal = (path: string): string =>
     nameKey(trimSeparators(resolve(path.startsWith("\\\\?\\") ? path.slice(4) : path)));

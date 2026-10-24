@@ -6,8 +6,8 @@
  */
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { createConnection, type Socket } from "node:net";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import type { Duplex } from "node:stream";
 import {
   ARTIFACT_PROGRESS,
   CLI_CLIENT_NAME,
@@ -23,6 +23,8 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { connectControl, type Runtime } from "@mostra/sdk";
+import { detachedDirectory, detachedEnvironment } from "./detached.ts";
 import { type Environment, locateRuntime } from "./home.ts";
 import { cliVersion } from "./version.ts";
 
@@ -98,6 +100,17 @@ export async function connect(options: ConnectOptions): Promise<InstanceConnecti
   return open(started.socket, options, started.status === "started");
 }
 
+/**
+ * Opens the endpoint `instance.json` or a starting daemon named: a Unix socket, or on Windows the
+ * owner-only pipe through the runtime's helper, which refuses a pipe another user created under
+ * the name (D150, the SDK's `connectControl`). Only Windows needs the runtime resolved first.
+ */
+async function openEndpoint(endpoint: string, options: ConnectOptions): Promise<Duplex> {
+  const runtime: Runtime | undefined =
+    process.platform === "win32" ? (await locateRuntime(options.env)).runtime : undefined;
+  return connectControl(endpoint, { runtime, env: options.env, timeoutMs: ATTACH_TIMEOUT_MS });
+}
+
 /** The socket `instance.json` records (D81), if the file exists and reads. */
 function readSocket(home: string): string | undefined {
   try {
@@ -135,7 +148,10 @@ export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> 
   const runtime = await locateRuntime(options.env);
   if (Date.now() >= deadlineAt) throw timedOut();
   const args = [
-    runtime.entry,
+    // Absolute: the daemon runs in the file system's root, where a relative entry (a relative
+    // `MOSTRA_RUNTIME_BIN`, checked against this process's directory) would name nothing (GPT
+    // review of WP-W2).
+    resolve(runtime.entry),
     "daemon",
     // The home this CLI resolved, so the daemon owns exactly it whatever its own environment.
     "--home",
@@ -144,8 +160,15 @@ export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> 
   return new Promise((resolve, reject) => {
     const child = spawn(runtime.node, args, {
       detached: true,
+      // Not the command's directory but its home's file system root, which always exists: the
+      // daemon outlives the command by up to 30 idle minutes, and on Windows nobody can remove or
+      // rename a running process's working directory, so a project the CLI ran in would stay
+      // locked (WP-W2).
+      cwd: detachedDirectory(options.home),
+      // No console window for the daemon on Windows.
+      windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, ...options.env } as NodeJS.ProcessEnv,
+      env: detachedEnvironment({ ...process.env, ...options.env }) as NodeJS.ProcessEnv,
     });
     const splitter = new LineSplitter();
     let settled = false;
@@ -218,21 +241,7 @@ async function open(
   options: ConnectOptions,
   started: boolean,
 ): Promise<InstanceConnection> {
-  const socket = await new Promise<Socket>((resolve, reject) => {
-    const connection = createConnection(socketPath);
-    const timer = setTimeout(() => {
-      connection.destroy();
-      reject(closed(socketPath, "timed out"));
-    }, ATTACH_TIMEOUT_MS);
-    connection.once("error", (error: NodeJS.ErrnoException) => {
-      clearTimeout(timer);
-      reject(closed(socketPath, error.code ?? "failed"));
-    });
-    connection.once("connect", () => {
-      clearTimeout(timer);
-      resolve(connection);
-    });
-  });
+  const socket = await openEndpoint(socketPath, options);
   const handlers = new Map<string, (params: unknown) => void>();
   const peer = new RpcPeer({
     send: (message) => {
@@ -295,14 +304,6 @@ async function open(
       socket.destroy();
     },
   };
-}
-
-function closed(path: string, why: string): RpcError {
-  return new RpcError(
-    createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
-      message: `Couldn't reach the instance at ${path} (${why}).`,
-    }),
-  );
 }
 
 /** A limit as people write it: `250 ms`, `5 s`, `1.5 s`. */

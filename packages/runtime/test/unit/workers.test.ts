@@ -12,6 +12,7 @@ import {
   type WorkerVersion,
 } from "../../src/workers/index.ts";
 import type { WorkerChannel, WorkerExit } from "../../src/workers/launcher.ts";
+import { exitCodeText } from "../../src/workers/pool.ts";
 
 /**
  * A launcher whose workers answer at once and take `stopMs` to exit when asked to stop; with
@@ -156,5 +157,16 @@ describe("the worker pool (RT-03)", () => {
     expect(launched[0]?.exited).toBe(true);
     expect(pool.running(version.ref.versionId)).toBeUndefined();
     await pool.stopAll();
+  });
+});
+
+describe("a worker's exit code in its crash cause (WP-W2)", () => {
+  it("names a Windows status in hexadecimal, as people look it up, and other codes as numbers", () => {
+    expect(exitCodeText(1)).toBe("1");
+    expect(exitCodeText(134)).toBe("134");
+    expect(exitCodeText(null)).toBe("?");
+    // An access violation, as Node.js reports it on Windows (unsigned), and signed.
+    expect(exitCodeText(3221225477)).toBe("0xC0000005");
+    expect(exitCodeText(-1073741819)).toBe("0xC0000005");
   });
 });

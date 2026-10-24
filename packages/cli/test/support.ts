@@ -3,11 +3,11 @@
  * config directory, the built `mostra` run as a real process, its envelope read and checked, a
  * viewer that submits through the browser protocol, and a fake telemetry collector.
  */
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage } from "node:http";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { expect } from "vitest";
@@ -15,7 +15,50 @@ import { expect } from "vitest";
 /** The built binary. */
 export const BIN: string = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 
-/** A test's own home, runtime and config directories, under /tmp (macOS socket paths are short). */
+/** Whether the tests run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
+export const WINDOWS: boolean = process.platform === "win32";
+
+/** The Windows helper a checkout's Cargo build made (`MOSTRA_WIN_HELPER` overrides it). */
+export function windowsHelper(): string {
+  return (
+    process.env["MOSTRA_WIN_HELPER"] ||
+    fileURLToPath(new URL("../../../target/release/mostra-win.exe", import.meta.url))
+  );
+}
+
+/** Windows: the helper's test probe (`mostra-win-probe`), beside the helper Cargo built. */
+export function probePath(): string {
+  return join(dirname(windowsHelper()), "mostra-win-probe.exe");
+}
+
+/**
+ * Windows: what the second local user the CI leg creates (`MOSTRA_TEST_OTHER_USER`) can open of
+ * each `file:` or `dir:` path, through the helper's test probe. A missing user is a failure, never
+ * a skip (docs/agents/run-on-windows.md).
+ */
+export function asOtherUser(
+  ...targets: string[]
+): { path: string; read: boolean; readWrite: boolean }[] {
+  const user = process.env["MOSTRA_TEST_OTHER_USER"];
+  const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
+  if (!user || !password) {
+    throw new Error("Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).");
+  }
+  const out = execFileSync(probePath(), ["as-user", user, password, ...targets], {
+    encoding: "utf8",
+  });
+  const answer = JSON.parse(out) as {
+    ok: boolean;
+    result?: { path: string; read: boolean; readWrite: boolean }[];
+  };
+  if (!answer.ok || !answer.result) throw new Error(`probe failed: ${out}`);
+  return answer.result;
+}
+
+/**
+ * A test's own home, runtime and config directories: under /tmp on POSIX (macOS socket paths are
+ * short), under the system's temporary folder on Windows, whose control endpoint is a pipe.
+ */
 export interface TestHome {
   readonly root: string;
   readonly home: string;
@@ -30,7 +73,11 @@ function baseEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (name.startsWith("npm_") || name.startsWith("MOSTRA_") || name === "DO_NOT_TRACK") continue;
+    if (name.startsWith("npm_") || name === "DO_NOT_TRACK") continue;
+    // Mostra's own variables stay out, but for Windows' development switch and the helper the
+    // Windows legs name (D150).
+    if (name.startsWith("MOSTRA_") && name !== "MOSTRA_DEV_WINDOWS" && name !== "MOSTRA_WIN_HELPER")
+      continue;
     // No agent's marker leaks from the shell that runs the tests into the CLI under test.
     if (
       [
@@ -52,6 +99,11 @@ function baseEnv(): Record<string, string> {
 
 /** Where Playwright keeps its browsers by default (playwright-core's registry). */
 function playwrightBrowsers(): string {
+  if (WINDOWS)
+    return join(
+      process.env["LOCALAPPDATA"] || join(homedir(), "AppData", "Local"),
+      "ms-playwright",
+    );
   return process.platform === "darwin"
     ? join(homedir(), "Library", "Caches", "ms-playwright")
     : join(process.env["XDG_CACHE_HOME"] || join(homedir(), ".cache"), "ms-playwright");
@@ -59,7 +111,7 @@ function playwrightBrowsers(): string {
 
 /** Makes a fresh home. Tests of other features than telemetry run with no collector. */
 export function testHome(extra: Record<string, string> = {}): TestHome {
-  const root = mkdtempSync("/tmp/mcli-");
+  const root = mkdtempSync(join(WINDOWS ? tmpdir() : "/tmp", "mcli-"));
   const home = join(root, "home");
   const config = join(root, "config");
   const env = {
@@ -81,12 +133,69 @@ export function testHome(extra: Record<string, string> = {}): TestHome {
     config,
     env,
     async cleanup() {
+      if (WINDOWS) {
+        await removeOnWindows(root, home, env);
+        return;
+      }
       await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
       // Versions are sealed read-only; open them up before removing.
       await new Promise((done) => spawn("chmod", ["-R", "u+w", root]).on("exit", done));
       rmSync(root, { recursive: true, force: true });
     },
   };
+}
+
+/** The daemon `instance.json` names, if any. */
+function daemonOf(home: string): number | undefined {
+  try {
+    return (JSON.parse(readFileSync(join(home, "instance.json"), "utf8")) as { pid: number }).pid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Removes a test's directory on Windows, which refuses to remove what a running process holds
+ * open (a daemon's ledger and log, or its working directory). A daemon may still be starting
+ * when a test ends (one that a timed-out command started writes `instance.json` later), so this
+ * stops whatever daemon the home names, waits for it to exit, and tries again until the
+ * directory is gone, for at most 30 s.
+ */
+async function removeOnWindows(
+  root: string,
+  home: string,
+  env: Record<string, string>,
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const daemon = daemonOf(home);
+    if (daemon !== undefined) {
+      await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
+      while (Date.now() < deadline && alive(daemon)) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    // Versions are sealed read-only; open them up before removing.
+    await new Promise((done) =>
+      spawn(windowsHelper(), ["unseal", root]).on("exit", done).on("error", done),
+    );
+    try {
+      rmSync(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** What one run of the CLI did. */
@@ -107,7 +216,9 @@ export function cli(
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [BIN, ...args], {
       env: options.env,
-      cwd: options.cwd ?? options.env["MOSTRA_HOME"]?.replace(/\/home$/, "") ?? process.cwd(),
+      cwd:
+        options.cwd ??
+        (options.env["MOSTRA_HOME"] ? dirname(options.env["MOSTRA_HOME"]) : process.cwd()),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";

@@ -89,5 +89,6 @@
     }
   },
   "ignore": ["docs/design/evaluations/**"],
-  "ignoreExportsUsedInFile": true
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": ["netstat", "schtasks", "whoami", "icacls"]
 }

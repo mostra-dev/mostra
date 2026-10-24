@@ -20,10 +20,13 @@ import type { Environment } from "../home.ts";
 import { usage } from "../parse.ts";
 import { arg, artifactRef, flag } from "./shared.ts";
 
-/** Whether this session can show a browser: not over SSH without a display. */
+/**
+ * Whether this session can show a browser: not over SSH without a display. On macOS and Windows a
+ * local session always has the user's desktop; an SSH session there has none.
+ */
 export function hasDisplay(env: Environment, platform: string = process.platform): boolean {
   const ssh = env["SSH_CONNECTION"] !== undefined || env["SSH_TTY"] !== undefined;
-  if (platform === "darwin") return !ssh;
+  if (platform === "darwin" || platform === "win32") return !ssh;
   return env["DISPLAY"] !== undefined || env["WAYLAND_DISPLAY"] !== undefined;
 }
 

@@ -16,6 +16,7 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  WINDOWS,
 } from "./support.ts";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/artifacts/", import.meta.url));
@@ -61,11 +62,14 @@ export class GatewayHome {
   }
 
   /** Starts (or restarts) the daemon, with extra arguments and environment. */
-  async start(options: { args?: readonly string[]; env?: NodeJS.ProcessEnv } = {}): Promise<this> {
+  async start(
+    options: { args?: readonly string[]; env?: NodeJS.ProcessEnv; node?: string } = {},
+  ): Promise<this> {
     const env = { ...this.home.env, ...options.env };
     this.daemon = await startDaemon(this.home, {
       env,
       ...(options.args ? { args: options.args } : {}),
+      ...(options.node ? { node: options.node } : {}),
     });
     if (this.daemon.status.status !== "started") {
       throw new Error(`daemon ${this.daemon.status.status}: ${JSON.stringify(this.daemon.status)}`);
@@ -77,11 +81,21 @@ export class GatewayHome {
 
   /** Stops the daemon and waits for it to exit. */
   async stop(): Promise<void> {
-    this.client?.close();
     if (this.daemon && this.daemon.child.exitCode === null) {
-      this.daemon.child.kill("SIGTERM");
-      await this.daemon.exited;
+      if (WINDOWS) {
+        // Windows has no signal that asks a process to stop: the daemon stops over the protocol,
+        // as `mostra daemon stop` stops it (D87, D150 item 6); a kill only if it doesn't.
+        await this.client?.call("mostra/shutdown", {}, 15_000).catch(() => undefined);
+        const timer = setTimeout(() => this.daemon.child.kill(), 20_000);
+        await this.daemon.exited;
+        clearTimeout(timer);
+      } else {
+        this.client?.close();
+        this.daemon.child.kill("SIGTERM");
+        await this.daemon.exited;
+      }
     }
+    this.client?.close();
   }
 
   /** Copies a fixture and publishes it. */

@@ -186,13 +186,28 @@ export function raw(
   port: number,
   text: string | Buffer,
   host = "127.0.0.1",
+  options: {
+    /**
+     * Reads nothing until the whole request is sent and this long has passed, as a busy client
+     * would: an answer the server reset in the meantime is then lost, as it would be for that
+     * client (a server that closes without reading what was sent resets the connection).
+     */
+    readonly readAfterMs?: number;
+  } = {},
 ): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const socket = connect({ host, port });
     let received = "";
     let idle: NodeJS.Timeout | undefined;
     socket.setTimeout(10_000, () => socket.destroy(new Error("raw request timed out")));
-    socket.on("connect", () => socket.write(text));
+    if (options.readAfterMs !== undefined) socket.pause();
+    socket.on("connect", () =>
+      socket.write(text, () => {
+        if (options.readAfterMs !== undefined) {
+          setTimeout(() => socket.resume(), options.readAfterMs);
+        }
+      }),
+    );
     socket.on("data", (chunk) => {
       received += chunk.toString("latin1");
       // A complete answer on a connection the server keeps open: stop waiting once it goes quiet.

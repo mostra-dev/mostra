@@ -15,9 +15,10 @@ export { extractManifest } from "./manifest.ts";
 export { artifactMethods, canonicalRef } from "./methods.ts";
 export {
   createPublisher,
+  defaultTitle,
   type Publisher,
   versionDamage,
   versionOutputDigest,
 } from "./publisher.ts";
-export { listSource, type ResolvedSource, resolveSource } from "./source.ts";
+export { listSource, resolveSource } from "./source.ts";
 export { readTar } from "./tar.ts";

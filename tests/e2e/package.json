@@ -2,7 +2,7 @@
   "name": "@mostra/e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "Cross-package end-to-end suites with Playwright Test in Chromium, Firefox and WebKit (REPO_STANDARDS §2, §6).",
+  "description": "Cross-package end-to-end suites with Playwright Test in Chromium, Firefox and WebKit (REPO_STANDARDS \u00a72, \u00a76).",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
   "devDependencies": {
     "@mostra/cli": "workspace:*",
     "@mostra/runtime": "workspace:*",
+    "@mostra/sdk": "workspace:*",
     "@mostra/server": "workspace:*",
     "@mostra/shell": "workspace:*",
     "@playwright/test": "catalog:",

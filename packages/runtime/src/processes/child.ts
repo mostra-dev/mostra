@@ -10,6 +10,7 @@
  * ```
  */
 import { type JsonRpcParams, RpcPeer } from "@mostra/protocol";
+import { WINDOWS } from "../platform/index.ts";
 
 /** Options for {@link connectToSupervisor}. */
 export interface SupervisorConnectionOptions {
@@ -61,10 +62,12 @@ export function connectToSupervisor(
  * to signal: the child's gate ends its Job Object, descendants included, once the child exits.
  */
 function exitWithGroup(): void {
-  try {
-    process.kill(-process.pid, "SIGTERM");
-  } catch {
-    // The group is already gone.
+  if (!WINDOWS) {
+    try {
+      process.kill(-process.pid, "SIGTERM");
+    } catch {
+      // The group is already gone.
+    }
   }
   process.exit(0);
 }

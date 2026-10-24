@@ -33,6 +33,7 @@ export {
   linkTarget,
   nameKey,
   pathKey,
+  realPath,
   removeTree,
   renamePath,
   renamePathSync,
@@ -41,6 +42,12 @@ export {
   sealPlaced,
   sealTree,
 } from "./files.ts";
-export { helperPath, runtimeRoot } from "./helper.ts";
+export {
+  currentUserSid,
+  helperPath,
+  runtimeRoot,
+  serviceLauncherPath,
+  stopServiceLauncher,
+} from "./helper.ts";
 export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
 export { adoptable, launch, reapRecorded } from "./launch.ts";

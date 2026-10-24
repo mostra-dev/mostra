@@ -10,8 +10,13 @@
 //!
 //! ```text
 //! mostra-win-probe suspend|resume <pid>    freezes or thaws every thread of a process
+//! mostra-win-probe group <pid file> -- <program> <args>…
+//!                                          runs it leading a console process group of its own
+//! mostra-win-probe ctrl-break <pid>        sends that group Ctrl+Break, as a console would
+//! mostra-win-probe end-session <pid>       sends that process's windows what a logoff sends
 //! mostra-win-probe squat <user> <password> <name>
-//!                                          as that user, holds \\.\pipe\<name> until stdin ends
+//!                                          as that user, holds \\.\pipe\<name> (or the event
+//!                                          <name>, when it starts `Local\`) until stdin ends
 //! ```
 
 #[cfg(windows)]
@@ -35,27 +40,24 @@ fn main() {
         return;
     }
     if let [command, pid] = arguments.as_slice()
+        && (command == "ctrl-break" || command == "end-session")
+    {
+        std::process::exit(if command == "ctrl-break" {
+            ctrl_break(pid)
+        } else {
+            end_session(pid)
+        });
+    }
+    if let [command, pid_file, separator, program, rest @ ..] = arguments.as_slice()
+        && command == "group"
+        && separator == "--"
+    {
+        std::process::exit(group(pid_file, program, rest));
+    }
+    if let [command, pid] = arguments.as_slice()
         && (command == "suspend" || command == "resume")
     {
-        {
-            let Ok(pid) = pid.parse() else {
-                std::process::exit(2)
-            };
-            match sys::suspend_process(pid, command == "suspend") {
-                Ok(threads) => println!(
-                    "{}",
-                    json!({ "ok": true, "result": { "threads": threads } })
-                ),
-                Err(error) => {
-                    println!(
-                        "{}",
-                        json!({ "ok": false, "error": { "message": error.to_string() } })
-                    );
-                    std::process::exit(1);
-                }
-            }
-            return;
-        }
+        std::process::exit(suspend(pid, command == "suspend"));
     }
     let [command, user, password, targets @ ..] = arguments.as_slice() else {
         println!(
@@ -131,6 +133,110 @@ fn security(path: &str) {
     }
 }
 
+/// Sends Ctrl+Break to the console process group `pid` leads; prints one JSON answer.
+#[cfg(windows)]
+fn suspend(pid: &str, suspend: bool) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::suspend_process(pid, suspend) {
+        Ok(threads) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "threads": threads } })
+            );
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+#[cfg(windows)]
+fn end_session(pid: &str) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::end_session_of(pid, 10_000) {
+        Ok(windows) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "windows": windows } })
+            );
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+#[cfg(windows)]
+fn ctrl_break(pid: &str) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::send_ctrl_break(pid) {
+        Ok(()) => {
+            println!("{}", json!({ "ok": true, "result": {} }));
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+/// Runs `program` as the leader of a console process group of its own, on this console and with
+/// these standard streams, writes its PID to `pid_file`, and exits with its code: so a test can
+/// send it Ctrl+Break (`ctrl-break <pid>`) as a person at the console would, and nothing else.
+#[cfg(windows)]
+fn group(pid_file: &str, program: &str, arguments: &[String]) -> i32 {
+    use std::os::windows::process::CommandExt;
+    /// `CREATE_NEW_PROCESS_GROUP`.
+    const NEW_GROUP: u32 = 0x0000_0200;
+    let mut child = match std::process::Command::new(program)
+        .args(arguments)
+        .creation_flags(NEW_GROUP)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            eprintln!("mostra-win-probe group: {error}");
+            return 127;
+        }
+    };
+    if let Err(error) = std::fs::write(pid_file, child.id().to_string()) {
+        eprintln!("mostra-win-probe group: {error}");
+        let _ = child.kill();
+        return 127;
+    }
+    child
+        .wait()
+        .ok()
+        .and_then(|status| status.code())
+        .unwrap_or(1)
+}
+
 /// As another user, creates `\\.\pipe\<name>` (owned by that user, open to everyone), says so
 /// on stdout and holds it until stdin ends: a pipe another user took under a name an instance once
 /// served (Opus review of WP-W1).
@@ -138,6 +244,10 @@ fn security(path: &str) {
 fn squat(user: &str, password: &str, name: &str) {
     use mostra_win::win::sys;
     use serde_json::json;
+    if name.starts_with("Local\\") {
+        squat_event(user, password, name);
+        return;
+    }
     let full = format!(r"\\.\pipe\{name}");
     let created = sys::as_user(user, password, || {
         // Several instances, so each client the test opens finds one free.
@@ -158,6 +268,52 @@ fn squat(user: &str, password: &str, name: &str) {
             println!(
                 "{}",
                 json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Creates the named event `name` (in this session's `Local\` namespace), open to everyone and
+/// owned by that user, and holds it until stdin ends: an event someone else created first under a
+/// name the launcher uses. The other user's own token may not create objects in this session's
+/// namespace, so the probe creates it and makes that user its owner (`SeRestorePrivilege`, which
+/// the runners' administrator holds); the owner is what the launcher checks.
+#[cfg(windows)]
+fn squat_event(user: &str, password: &str, name: &str) {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let created = (|| -> std::io::Result<(sys::NamedEvent, String)> {
+        let other = sys::as_user(user, password, sys::thread_user)??;
+        let sid = other.to_sddl()?;
+        sys::enable_privilege("SeRestorePrivilege")?;
+        let descriptor = sys::SecurityDescriptor::from_sddl(&format!("O:{sid}D:(A;;GA;;;WD)"))?;
+        let event = match sys::NamedEvent::create(name, &descriptor)? {
+            sys::Created::New(event) | sys::Created::Existing(event) => event,
+        };
+        let owner = event.owner()?;
+        if !owner.equals(&other) {
+            return Err(std::io::Error::other(format!(
+                "the event's owner is {}, not {sid}",
+                owner.to_sddl()?
+            )));
+        }
+        Ok((event, sid))
+    })();
+    match created {
+        Ok((event, owner)) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "event": name, "owner": owner } })
+            );
+            let mut sink = String::new();
+            let _ = std::io::stdin().read_line(&mut sink);
+            drop(event);
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string(), "os": error.raw_os_error() } })
             );
             std::process::exit(1);
         }

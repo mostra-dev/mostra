@@ -16,6 +16,7 @@ import { ControlsPolicy } from '@mostra/protocol';
 import { DependencyPolicy } from '@mostra/protocol';
 import { Diagnostic } from '@mostra/protocol';
 import { DraftMirror } from '@mostra/protocol';
+import { Duplex } from 'node:stream';
 import { EventFilter } from '@mostra/protocol';
 import { EventRecord } from '@mostra/protocol';
 import { InstanceCapabilities } from '@mostra/protocol';
@@ -83,6 +84,17 @@ export function checkTree(root: string, manifest: BundleFiles, options?: {
     readonly allowExtra?: (path: string) => boolean;
     readonly limit?: number;
 }): Promise<TreeProblems>;
+
+// @public
+export function connectControl(endpoint: string, options?: ControlOptions): Promise<Duplex>;
+
+// @public
+export interface ControlOptions {
+    readonly env?: Environment | undefined;
+    readonly platform?: string | undefined;
+    readonly runtime?: Runtime | undefined;
+    readonly timeoutMs?: number | undefined;
+}
 
 // @public
 export function createMostra(options: MostraOptions): Promise<Mostra>;

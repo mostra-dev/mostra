@@ -30,9 +30,22 @@ const { values } = parseArgs({
     home: { type: "string" },
     worker: { type: "string" },
     warm: { type: "string" },
+    launches: { type: "string" },
   },
 });
 const { socket: socketPath, home, worker, warm } = values;
+/** Where launches are recorded: beside the socket, or where `--launches` says (a pipe has no directory). */
+const launchesFile = values.launches ?? `${socketPath}.launches`;
+const WINDOWS = process.platform === "win32";
+/** Ends a worker and what it started: its process group on POSIX; on Windows, which has none, itself. */
+const end = (child) => {
+  try {
+    if (WINDOWS) child.kill();
+    else process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+};
 if (!socketPath || !home || !worker || !warm) {
   process.stderr.write(
     "usage: worker-host.mjs --socket <path> --home <home> --worker <main.js> --warm <node_modules>\n",
@@ -48,7 +61,7 @@ function modulesOf(versionDir) {
   return join(home, "deps", "locks", digest, "node_modules");
 }
 
-rmSync(socketPath, { force: true });
+if (!WINDOWS) rmSync(socketPath, { force: true });
 const children = new Set();
 
 const server = createServer((connection) => {
@@ -70,7 +83,7 @@ const server = createServer((connection) => {
       );
       return;
     }
-    appendFileSync(`${socketPath}.launches`, `${JSON.stringify({ ...spec, pid: process.pid })}\n`);
+    appendFileSync(launchesFile, `${JSON.stringify({ ...spec, pid: process.pid })}\n`);
     child = spawn(
       process.execPath,
       [
@@ -83,7 +96,13 @@ const server = createServer((connection) => {
         "--modules",
         modulesOf(join(home, "versions", match[1])),
       ],
-      { env: spec.env, stdio: ["ignore", "ignore", "pipe", "pipe"], detached: true },
+      // The channel is overlapped on Windows, so both ends read and write at once.
+      {
+        env: spec.env,
+        stdio: ["ignore", "ignore", "pipe", WINDOWS ? "overlapped" : "pipe"],
+        detached: true,
+        windowsHide: true,
+      },
     );
     children.add(child);
     const channel = child.stdio[3];
@@ -110,26 +129,14 @@ const server = createServer((connection) => {
   connection.on("data", onFirst);
   connection.on("error", () => {});
   connection.on("close", () => {
-    if (child && child.exitCode === null && child.signalCode === null) {
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch {
-        // Already gone.
-      }
-    }
+    if (child && child.exitCode === null && child.signalCode === null) end(child);
   });
 });
 
 server.listen(socketPath, () => process.stdout.write(`${JSON.stringify({ listening: socketPath })}\n`));
 
 const stop = () => {
-  for (const child of children) {
-    try {
-      process.kill(-child.pid, "SIGKILL");
-    } catch {
-      // Already gone.
-    }
-  }
+  for (const child of children) end(child);
   server.close();
   process.exit(0);
 };

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 /**
  * `mostra-runtime`, the runtime bundle's entry point (D85).
@@ -33,6 +33,7 @@ import {
 } from "@mostra/protocol";
 import { checkPlatform, resolveHomePath } from "./home/index.ts";
 import { type Instance, runtimeVersion, startInstance } from "./instance/index.ts";
+import { realPath } from "./platform/index.ts";
 import { installService, serviceStatus, uninstallService } from "./service/index.ts";
 
 /** Exit codes, as INTERFACES §9 defines them for the CLI. */
@@ -122,7 +123,7 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   const [mode, ...rest] = positionals;
   if (mode === "service" && !values.help)
-    return service(rest, values.home, values["no-start"] === true);
+    return await service(rest, values.home, values["no-start"] === true);
   if (values.help || (mode !== "host" && mode !== "daemon") || rest.length > 0) {
     (values.help ? process.stdout : process.stderr).write(`${USAGE}\n`);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -179,7 +180,11 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 /** `mostra-runtime service …`: the home's login service, as one JSON line (D62, RT-08). */
-function service(args: readonly string[], home: string | undefined, noStart: boolean): number {
+async function service(
+  args: readonly string[],
+  home: string | undefined,
+  noStart: boolean,
+): Promise<number> {
   const [action, ...extra] = args;
   if ((action !== "install" && action !== "uninstall" && action !== "status") || extra.length > 0) {
     process.stderr.write(`${USAGE}\n`);
@@ -194,15 +199,18 @@ function service(args: readonly string[], home: string | undefined, noStart: boo
     const resolved = resolveHomePath({ home, env: process.env });
     mkdirSync(resolved, { recursive: true, mode: 0o700 });
     const spec = {
-      home: realpathSync(resolved),
+      // As the daemon spells its home, so the service's name and hash are the daemon's (D82).
+      home: realPath(resolved),
       node: process.execPath,
       entry: fileURLToPath(import.meta.url),
     };
+    // Who asks, should a Windows uninstall stop the daemon over its pipe.
+    const client = { name: "mostra-runtime-service", version: runtimeVersion() };
     const status =
       action === "install"
-        ? installService(spec, { noStart })
+        ? await installService(spec, { noStart, client })
         : action === "uninstall"
-          ? uninstallService(spec, { noStart })
+          ? await uninstallService(spec, { noStart, client })
           : serviceStatus(spec);
     process.stdout.write(`${JSON.stringify({ status: "ok", action, service: status })}\n`);
     return EXIT.ok;

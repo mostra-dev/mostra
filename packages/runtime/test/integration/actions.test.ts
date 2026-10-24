@@ -6,11 +6,13 @@
  * name and never anything Mostra keeps; live sources flow without durable events.
  */
 import { type ChildProcess, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -27,7 +29,16 @@ import {
   resultOf,
 } from "../action-page.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
-import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
+import {
+  accessEntries,
+  asOtherUser,
+  connectTo,
+  currentUserSid,
+  eventually,
+  initializeParams,
+  tempDir,
+  WINDOWS,
+} from "../support.ts";
 
 const MAIL_TOKEN = "tok-live-9f8e7d6c5b4a";
 
@@ -38,18 +49,27 @@ const WORKER_HOST = fileURLToPath(new URL("../fixtures/worker-host.mjs", import.
 const WARM = realpathSync(fileURLToPath(new URL("../../../warm/node_modules", import.meta.url)));
 
 /** Starts the separately started worker host (D124) for a home, and waits until it listens. */
-async function startWorkerHost(home: string): Promise<{ socket: string; process: ChildProcess }> {
-  const socket = join(tempDir("wh", true), "host.sock");
+async function startWorkerHost(
+  home: string,
+): Promise<{ socket: string; launches: string; process: ChildProcess }> {
+  const dir = tempDir("wh", true);
+  // A Unix socket, or on Windows a named pipe (which lives in no directory).
+  const socket = WINDOWS ? `\\\\.\\pipe\\mostra-wh-${randomUUID()}` : join(dir, "host.sock");
+  const launches = join(dir, "launches");
   const child = spawn(
     process.execPath,
-    [WORKER_HOST, "--socket", socket, "--home", home, "--worker", WORKER_MAIN, "--warm", WARM],
+    [
+      WORKER_HOST,
+      ...["--socket", socket, "--launches", launches, "--home", home],
+      ...["--worker", WORKER_MAIN, "--warm", WARM],
+    ],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   await new Promise<void>((resolve, reject) => {
     child.stdout?.once("data", () => resolve());
     child.once("exit", (code) => reject(new Error(`worker host exited (${code})`)));
   });
-  return { socket, process: child };
+  return { socket, launches, process: child };
 }
 
 // The action suite runs against both launchers: the local one, and a worker host started on its
@@ -61,7 +81,7 @@ describe.each([
   const gateway = new GatewayHome();
   const mail = new FakeMail();
   let actions: Receipt & { dir: string };
-  let host: { socket: string; process: ChildProcess } | undefined;
+  let host: { socket: string; launches: string; process: ChildProcess } | undefined;
 
   beforeAll(async () => {
     await mail.start();
@@ -126,7 +146,7 @@ describe.each([
     // Through the host: the launch named the version by reference only, no directory, and
     // carried no secret in its environment (D124).
     expect(ready).toMatchObject([{ state: "ready" }]);
-    const launches = readFileSync(`${host?.socket}.launches`, "utf8")
+    const launches = readFileSync(host?.launches as string, "utf8")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -357,14 +377,45 @@ describe.each([
       }),
     );
     expect(JSON.stringify(events)).not.toContain(MAIL_TOKEN);
-    // The value only lives in the owner-only store: 0600 files in 0700 directories (D44).
+    // The value only lives in the owner-only store (D44): 0600 files in 0700 directories on POSIX;
+    // on Windows a list that grants only the user and the system, inherited from the home (D150),
+    // which another local user can't open, beside a control file that user can.
     const stored = join(gateway.home.home, "secrets", actions.artifactId, "MAIL_TOKEN");
     expect(readFileSync(stored, "utf8")).toBe(MAIL_TOKEN);
-    expect(statSync(stored).mode & 0o777).toBe(0o600);
-    expect(statSync(join(gateway.home.home, "secrets", actions.artifactId)).mode & 0o777).toBe(
-      0o700,
-    );
-    expect(statSync(join(gateway.home.home, "secrets")).mode & 0o777).toBe(0o700);
+    const secretDirs = [
+      join(gateway.home.home, "secrets", actions.artifactId),
+      join(gateway.home.home, "secrets"),
+    ];
+    if (WINDOWS) {
+      // The user and SYSTEM, nobody else. A descriptor names well-known accounts by their SDDL
+      // aliases: SYSTEM is `SY`, and a runner's built-in administrator (RID 500) is `LA`.
+      const user = currentUserSid();
+      const owners = [user, ...(user.endsWith("-500") ? ["LA"] : []), "SY", "S-1-5-18"];
+      for (const path of [stored, ...secretDirs]) {
+        const sids = new Set(accessEntries(path).map((entry) => entry.sid));
+        expect(sids.size, `${path}: ${[...sids].join(" ")}`).toBe(2);
+        for (const sid of sids) expect(owners, path).toContain(sid);
+      }
+      const open = join("C:\\", `mostra-public-${process.pid}`);
+      mkdirSync(open, { recursive: true });
+      writeFileSync(join(open, "readable.txt"), "x");
+      try {
+        const [control, ...results] = asOtherUser(
+          `file:${join(open, "readable.txt")}`,
+          `file:${stored}`,
+          ...secretDirs.map((dir) => `dir:${dir}`),
+        );
+        expect(control).toMatchObject({ read: true });
+        for (const result of results) {
+          expect(result, result.path).toMatchObject({ read: false, readWrite: false });
+        }
+      } finally {
+        rmSync(open, { recursive: true, force: true });
+      }
+    } else {
+      expect(statSync(stored).mode & 0o777).toBe(0o600);
+      for (const dir of secretDirs) expect(statSync(dir).mode & 0o777).toBe(0o700);
+    }
   });
 
   it("gives server code no secret through its environment: only by name, through Mostra (D124)", async () => {

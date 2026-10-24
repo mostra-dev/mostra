@@ -27,6 +27,7 @@ import { docsIndex, indexMarkdown, nearestTopics } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
 import { embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
 import { usage } from "../parse.ts";
+import { checkPlatform } from "../platform.ts";
 import { TelemetryStore, TURNED, telemetryStatus } from "../telemetry/index.ts";
 import { NOTICE_DEFAULT } from "../telemetry/words.ts";
 import { cliVersion } from "../version.ts";
@@ -199,7 +200,8 @@ async function service(
 const noStart = {
   name: "no-start",
   kind: "boolean" as const,
-  summary: "Write or remove the service's file without asking launchd or systemd to load it.",
+  summary:
+    "Write or remove the service's definition without asking launchd, systemd or Task Scheduler to load it.",
 };
 
 /** `mostra daemon start`. */
@@ -294,7 +296,7 @@ export const daemonStatusCommand: CommandDef = defineCommand({
 export const daemonInstallCommand: CommandDef = defineCommand({
   path: ["daemon", "install"],
   summary:
-    "Run the home's daemon as a login service (launchd or systemd), so links answer at any hour.",
+    "Run the home's daemon as a login service (launchd, systemd or Task Scheduler), so links answer at any hour.",
   flags: [noStart],
   output: { type: "ServiceStatus", topic: "cli" },
   exits: [],
@@ -447,20 +449,15 @@ export const doctorCommand: CommandDef = defineCommand({
   async run(context) {
     const checks: DoctorCheck[] = [];
     const node = Number(process.versions.node.split(".")[0]);
+    const unsupported = checkPlatform(process.platform, process.arch, context.env);
     checks.push(
-      process.platform === "darwin" || process.platform === "linux"
+      unsupported === undefined
         ? {
             name: "platform",
             status: "ok",
             detail: `${process.platform} ${process.arch}, Node ${process.versions.node}`,
           }
-        : {
-            name: "platform",
-            status: "error",
-            diagnostic: createDiagnostic("MOSTRA_PLATFORM_UNSUPPORTED", {
-              message: `Mostra runs on macOS and Linux; this is ${process.platform}.`,
-            }),
-          },
+        : { name: "platform", status: "error", diagnostic: unsupported },
     );
     if (node < 24) {
       checks.push({

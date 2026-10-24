@@ -79,16 +79,16 @@ export const devCommand: CommandDef = defineCommand({
       `Development preview, not published: ${started.url}\nPress Ctrl-C to stop.\n`,
     );
     for (const event of early.splice(0)) if (event.sessionId === sessionId) show(event);
-    // The session lasts until Ctrl-C (or SIGTERM), or until the instance ends it.
+    // The session lasts until Ctrl-C (or SIGTERM; Ctrl+Break on Windows), or until the instance
+    // ends it.
     let stop: () => void = () => {};
+    const signals = ["SIGINT", "SIGTERM", "SIGBREAK"] as const;
     const ended = await new Promise<"signal" | "closed">((done) => {
       stop = (): void => done("signal");
-      process.once("SIGINT", stop);
-      process.once("SIGTERM", stop);
+      for (const signal of signals) process.once(signal, stop);
       void connection?.closed.then(() => done("closed"));
     });
-    process.off("SIGINT", stop);
-    process.off("SIGTERM", stop);
+    for (const signal of signals) process.off(signal, stop);
     if (ended === "closed") {
       throw new RpcError(
         createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {

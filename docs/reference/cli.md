@@ -715,13 +715,13 @@ Example:
 ## mostra daemon install
 
 ```text
-Run the home's daemon as a login service (launchd or systemd), so links answer at any hour.
+Run the home's daemon as a login service (launchd, systemd or Task Scheduler), so links answer at any hour.
 
 Usage:
   mostra daemon install [flags]
 
 Flags:
-  --no-start                   Write or remove the service's file without asking launchd or systemd to load it.
+  --no-start                   Write or remove the service's definition without asking launchd, systemd or Task Scheduler to load it.
 
 Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).
@@ -751,7 +751,7 @@ Usage:
   mostra daemon uninstall [flags]
 
 Flags:
-  --no-start                   Write or remove the service's file without asking launchd or systemd to load it.
+  --no-start                   Write or remove the service's definition without asking launchd, systemd or Task Scheduler to load it.
 
 Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).

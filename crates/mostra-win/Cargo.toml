@@ -14,6 +14,12 @@ authors.workspace = true
 name = "mostra-win"
 path = "src/main.rs"
 
+# The login service's launcher (D151): a program with no console, which Task Scheduler runs at
+# logon to keep the home's daemon running without a window. Shipped beside `mostra-win`.
+[[bin]]
+name = "mostra-win-service"
+path = "src/bin/service.rs"
+
 # Test probes only: opening a path or the control pipe as another user (RT-10's access check).
 # Never shipped.
 [[bin]]
@@ -26,15 +32,19 @@ serde_json = "1.0.150"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
   "Win32_System_Console",
   "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Environment",
   "Win32_System_IO",
   "Win32_System_JobObjects",
+  "Win32_System_LibraryLoader",
   "Win32_System_Pipes",
   "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 # The workspace forbids `unsafe`; this crate is the one place that calls Win32 directly. Its

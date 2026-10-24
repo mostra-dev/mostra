@@ -5,17 +5,23 @@
  * off stdout. J1 runs through it end to end: new, verify, publish, open, a viewer's submission,
  * wait and results (WP-10's handoff).
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
   fstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
+  rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   artifactCreateMethod,
   CapabilityLink,
@@ -29,14 +35,18 @@ import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
 import {
+  asOtherUser,
   BIN,
   cli,
   envelope,
   eventually,
+  probePath,
   type Ran,
   type TestHome,
   testHome,
   Viewer,
+  WINDOWS,
+  windowsHelper,
 } from "../support.ts";
 
 let home: TestHome;
@@ -198,13 +208,36 @@ describe("every command, with --json and no terminal", () => {
   });
 
   it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
-    // A stand-in browser: it records the arguments it was started with.
+    // A stand-in browser: Node.js running a script that records the arguments it was started with
+    // (a program on every platform; Windows runs no shell script).
     const record = join(home.root, "browser-argv.txt");
-    const opener = join(home.root, "fake-browser.sh");
-    writeFileSync(opener, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, { mode: 0o755 });
-    // A `$BROWSER` list whose first entry doesn't exist, and whose second takes the page by %s.
+    const opener = join(home.root, "fake-browser.mjs");
+    writeFileSync(
+      opener,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(record)}, process.argv.slice(2).join("\\n") + "\\n");\n`,
+    );
+    // A `$BROWSER` list (`:` separated, `;` on Windows) whose first entry doesn't exist, and whose
+    // second takes the page by %s.
+    const separator = WINDOWS ? ";" : ":";
+    const browser = `"${process.execPath}" "${opener}" --new %s`;
+    // Windows: `%TEMP%` names a folder every local user may read, as an administrator's `C:\Temp`
+    // does; the page must not go there (Opus review of WP-W2, finding 1). A file put straight in
+    // it is the control: the other user reads that one.
+    const shared = join(home.root, "shared-temp");
+    const sharedEnv: Record<string, string> = {};
+    if (WINDOWS) {
+      mkdirSync(shared, { recursive: true });
+      execFileSync("icacls", [shared, "/grant", "*S-1-5-32-545:(OI)(CI)RX"], { stdio: "ignore" });
+      writeFileSync(join(shared, "control.txt"), "readable");
+      sharedEnv["TEMP"] = shared;
+      sharedEnv["TMP"] = shared;
+    }
     const opened = await cli(["open", artifactId, "--browser", "--json"], {
-      env: { ...home.env, BROWSER: `${join(home.root, "missing-browser")}:${opener} --new %s` },
+      env: {
+        ...home.env,
+        ...sharedEnv,
+        BROWSER: `${join(home.root, "missing-browser")}${separator}${browser}`,
+      },
     });
     const value = envelope(opened);
     expect(value.result).toMatchObject({ opened: true });
@@ -222,8 +255,23 @@ describe("every command, with --json and no terminal", () => {
     const mode = fstatSync(handle).mode & 0o777;
     const text = readFileSync(handle, "utf8");
     closeSync(handle);
-    expect(mode).toBe(0o600);
-    expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
+    if (WINDOWS) {
+      // Windows keeps no modes: the page is under the user's own profile, never `%TEMP%`, and
+      // another local user can neither list nor read it (the profile's access list), though they
+      // read what `%TEMP%` holds.
+      expect(page.startsWith(shared)).toBe(false);
+      expect(
+        asOtherUser(`file:${page}`, `dir:${dirname(page)}`, `file:${join(shared, "control.txt")}`),
+      ).toEqual([
+        expect.objectContaining({ read: false, readWrite: false }),
+        expect.objectContaining({ read: false, readWrite: false }),
+        expect.objectContaining({ read: true }),
+      ]);
+      rmSync(dirname(page), { recursive: true, force: true });
+    } else {
+      expect(mode).toBe(0o600);
+      expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
+    }
     expect(text).not.toContain(linkSecret);
     const launch = /location\.replace\("([^"]+)"\)/.exec(text)?.[1] as string;
     expect(launch).toMatch(
@@ -293,6 +341,53 @@ describe("every command, with --json and no terminal", () => {
     expect(removed.result).toMatchObject({ installed: false });
   });
 
+  it("starts the daemon with relative path variables, as the command's directory names them (GPT and Opus reviews of WP-W2)", async () => {
+    // The daemon runs in the file system's root, not the command's directory: every relative
+    // path variable must reach it resolved where the command ran.
+    const own = testHome();
+    try {
+      const project = join(own.root, "project");
+      mkdirSync(project, { recursive: true });
+      // The runtime's built directory, reached through a link inside the project, so the relative
+      // entry names nothing from any other directory (a `../..` path would still reach it from
+      // the file system's root, where `..` stays at the root).
+      const dist = fileURLToPath(new URL("../../../runtime/dist", import.meta.url));
+      symlinkSync(dist, join(project, "runtime"), "junction");
+      const env: Record<string, string> = {
+        ...own.env,
+        MOSTRA_RUNTIME_BIN: join("runtime", "bin.js"),
+      };
+      // Windows has no runtime directory (its control endpoint is a named pipe, D150); its
+      // helper, which the daemon starts its pipe with, is named relative instead, through a
+      // link, as the runtime is.
+      if (WINDOWS) {
+        symlinkSync(dirname(windowsHelper()), join(project, "helper"), "junction");
+        env["MOSTRA_WIN_HELPER"] = join("helper", "mostra-win.exe");
+      } else env["MOSTRA_RUNTIME_DIR"] = "run";
+      const ran = await cli(["daemon", "start", "--json"], { env, cwd: project });
+      const value = envelope(ran);
+      expect(value.ok, `${ran.stdout}\n${ran.stderr}`).toBe(true);
+      expect(value.result).toMatchObject({ running: true, started: true });
+      if (!WINDOWS) {
+        expect(
+          value.instance?.socket.startsWith(join(realpathSync(project), "run")),
+          value.instance?.socket,
+        ).toBe(true);
+      }
+      await cli(["daemon", "stop", "--json"], { env, cwd: project });
+    } finally {
+      // The link goes first, so nothing that cleans up walks into the runtime's directory.
+      for (const link of ["runtime", "helper"]) {
+        try {
+          unlinkSync(join(own.root, "project", link));
+        } catch {
+          // Never made.
+        }
+      }
+      await own.cleanup();
+    }
+  });
+
   it("host speaks the protocol on stdout and nothing else", async () => {
     const other = testHome();
     try {
@@ -322,10 +417,22 @@ describe("every command, with --json and no terminal", () => {
   });
 
   it("dev streams NDJSON envelopes until Ctrl-C, then its result (VR-08, D140 items 12 and 15)", async () => {
-    const child = spawn(process.execPath, [BIN, "dev", artifactDir, "--json"], {
-      env: home.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    // Ctrl-C at a terminal; on Windows Ctrl+Break, which the probe sends to a group of its own
+    // (Ctrl-C can't reach a process that leads its own console group).
+    const pidFile = join(home.root, "dev.pid");
+    const child = WINDOWS
+      ? spawn(
+          probePath(),
+          ["group", pidFile, "--", process.execPath, BIN, "dev", artifactDir, "--json"],
+          {
+            env: home.env,
+            stdio: ["pipe", "pipe", "pipe"],
+          },
+        )
+      : spawn(process.execPath, [BIN, "dev", artifactDir, "--json"], {
+          env: home.env,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
     child.stdin.end();
     let stdout = "";
     child.stdout.setEncoding("utf8");
@@ -343,7 +450,11 @@ describe("every command, with --json and no terminal", () => {
     expect(first.event.kind).toBe("started");
     expect(first.event.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/);
     expect(first.instance?.home).toBeDefined();
-    child.kill("SIGINT");
+    if (WINDOWS) {
+      execFileSync(probePath(), ["ctrl-break", readFileSync(pidFile, "utf8").trim()], {
+        windowsHide: true,
+      });
+    } else child.kill("SIGINT");
     const code = await closed;
     expect(code).toBe(0);
     const lines = stdout

@@ -9,7 +9,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname, join, posix } from "node:path";
 import { expect, test } from "@playwright/test";
 import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
@@ -33,7 +33,10 @@ async function serveExport(
   target: "static" | "mcp-app",
 ): Promise<{ readonly url: string; readonly server: Server }> {
   const server = createServer((request, response) => {
-    const path = normalize(decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname));
+    // URL paths are `/`-separated on every platform (`normalize` would make them `\` on Windows).
+    const path = posix.normalize(
+      decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname),
+    );
     const file = path === "/" ? "/index.html" : path;
     try {
       let body: Buffer | string = readFileSync(join(clientDir, file));
