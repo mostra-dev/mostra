@@ -423,8 +423,8 @@ catalogs:
       specifier: 8.71.0
       version: 8.71.0
     undici:
-      specifier: 8.11.2
-      version: 8.11.2
+      specifier: 8.12.2
+      version: 8.12.2
     uplot:
       specifier: 1.6.32
       version: 1.6.32
@@ -799,7 +799,7 @@ importers:
         version: 7.5.22
       undici:
         specifier: 'catalog:'
-        version: 8.11.2
+        version: 8.12.2
     devDependencies:
       '@mostra/runtime':
         specifier: workspace:*
@@ -5905,8 +5905,8 @@ packages:
   undici-types@7.24.6:
     resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
 
-  undici@8.11.2:
-    resolution: {integrity: sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==}
+  undici@8.12.2:
+    resolution: {integrity: sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==}
     engines: {node: '>=22.19.0'}
 
   unicode-emoji-modifier-base@1.0.0:
@@ -11186,7 +11186,7 @@ snapshots:
 
   undici-types@7.24.6: {}
 
-  undici@8.11.2: {}
+  undici@8.12.2: {}
 
   unicode-emoji-modifier-base@1.0.0: {}
 
