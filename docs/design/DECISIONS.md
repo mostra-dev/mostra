@@ -43,6 +43,7 @@
 | M33 | 2026-10-22T09:40:00Z | Approved, as part of a set of planning recommendations ("I basically approve everything"), that the remote design pass keep the hosted shell's framing configurable so a later embed mode needs no migration. Recorded as D145. |
 | M34 | 2026-10-22T12:01:05Z | Approved native Windows before the first release, built right after WP-12: "Yes, sure. We can call them WP-W1...Wn, I guess n would be something around 2-4." Recorded as D146. |
 | M35 | 2026-10-22T19:40:24Z | Accepted a set of recommendations ("All as recommended"), among them: harness plugins built to pass the plugin directories' review on the first scan; an MCP server that a harness plugin starts counts as embedded use and sends no telemetry; agent-facing prose accepted in one batch at the end of each package. Recorded as D147 to D149. |
+| M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
 
@@ -1113,6 +1114,8 @@ The session verifies each rule against the directories' own pages on the day and
 8. **CI.** The Windows legs run every runtime integration suite, in seven groups that partition them (a unit test fails on a suite in none or two), the CLI's suites, the hygiene checklist, and the browser suites in Chromium and Firefox, on x64 and arm64 (Safari doesn't run on Windows, and Playwright's WebKit port there, which no viewer uses, keeps no SameSite on its cookies: WebKit stays on macOS, the closest to Safari, and Linux); `WINDOWS_PACKAGES` gains the server, worker, verify, shell, react, CLI and end-to-end packages.
 
 *Rejected:* the Run key and an `S4U` task (item 1); relying on Task Scheduler's restart (item 1); each client finding the helper its own way (item 2); XDG directories on Windows (item 3).
+
+*Amended at M38 (delegated):* item 8's browser legs run Chromium on x64 and arm64 and Firefox on x64 only. Playwright 1.64 ships only x64 browsers for Windows (VERIFIED_FACTS, WP-W2), so on arm64 Firefox runs under emulation, where it twice closed a fresh page by itself (#66); Chromium on arm64 keeps the gateway's arm64 runtime under a browser, and Firefox on x64 keeps Firefox's behavior. The arm64 Firefox leg returns when Playwright ships a native build. Whether the ledger's synchronous flushes to the runners' OS disk stall the Windows suites (#66) is measured first thing in WP-W3, which owns the Windows homes' disks for its bundles.
 
 ## Research consensus adopted
 
