@@ -51,7 +51,7 @@ function unreachable(endpoint: string, why: string): RpcError {
  * `bin/mostra-win.exe`, else, for a checkout's `packages/runtime/dist/bin.js`, Cargo's
  * `target/release` then `target/debug`. Throws `MOSTRA_ENV_HELPER_MISSING` when none exists.
  */
-function windowsHelper(runtime: Runtime | undefined, env: Environment): string {
+export function windowsHelper(runtime: Runtime | undefined, env: Environment): string {
   const override = env["MOSTRA_WIN_HELPER"];
   if (override) {
     if (existsSync(override)) return override;

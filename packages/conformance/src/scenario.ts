@@ -12,7 +12,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
 import {
   createDiagnostic,
@@ -24,6 +23,7 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { connectControl, resolveRuntime } from "@mostra/sdk";
 import type { Fixture } from "./fixtures.ts";
 import { HostUnderTest } from "./harness/client.ts";
 import type { StartParams, StartResult, StoreResult } from "./harness/protocol.ts";
@@ -337,10 +337,10 @@ export async function connectSocket(
   path: string,
   revisions: readonly string[] = HOST_PROTOCOL_REVISIONS,
 ): Promise<SocketSession & { initialize: Promise<unknown> }> {
-  const socket = await new Promise<ReturnType<typeof createConnection>>((resolve, reject) => {
-    const connection = createConnection(path);
-    connection.once("connect", () => resolve(connection));
-    connection.once("error", reject);
+  // As every client reaches an instance: on Windows through the helper beside the runtime, which
+  // refuses a pipe another user created under the name (D150 item 4).
+  const socket = await connectControl(path, {
+    runtime: process.platform === "win32" ? await resolveRuntime() : undefined,
   });
   const peer = new RpcPeer({
     send: (message) => {

@@ -14,6 +14,7 @@ import {
   openSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -218,9 +219,22 @@ describe("every command, with --json and no terminal", () => {
     // second takes the page by %s.
     const separator = WINDOWS ? ";" : ":";
     const browser = `"${process.execPath}" "${opener}" --new %s`;
+    // Windows: `%TEMP%` names a folder every local user may read, as an administrator's `C:\Temp`
+    // does; the page must not go there (Opus review of WP-W2, finding 1). A file put straight in
+    // it is the control: the other user reads that one.
+    const shared = join(home.root, "shared-temp");
+    const sharedEnv: Record<string, string> = {};
+    if (WINDOWS) {
+      mkdirSync(shared, { recursive: true });
+      execFileSync("icacls", [shared, "/grant", "*S-1-5-32-545:(OI)(CI)RX"], { stdio: "ignore" });
+      writeFileSync(join(shared, "control.txt"), "readable");
+      sharedEnv["TEMP"] = shared;
+      sharedEnv["TMP"] = shared;
+    }
     const opened = await cli(["open", artifactId, "--browser", "--json"], {
       env: {
         ...home.env,
+        ...sharedEnv,
         BROWSER: `${join(home.root, "missing-browser")}${separator}${browser}`,
       },
     });
@@ -241,12 +255,18 @@ describe("every command, with --json and no terminal", () => {
     const text = readFileSync(handle, "utf8");
     closeSync(handle);
     if (WINDOWS) {
-      // Windows keeps no modes: the page is in the user's own temporary folder, which another
-      // local user can neither list nor read (the profile's access list).
-      expect(asOtherUser(`file:${page}`, `dir:${dirname(page)}`)).toEqual([
+      // Windows keeps no modes: the page is under the user's own profile, never `%TEMP%`, and
+      // another local user can neither list nor read it (the profile's access list), though they
+      // read what `%TEMP%` holds.
+      expect(page.startsWith(shared)).toBe(false);
+      expect(
+        asOtherUser(`file:${page}`, `dir:${dirname(page)}`, `file:${join(shared, "control.txt")}`),
+      ).toEqual([
         expect.objectContaining({ read: false, readWrite: false }),
         expect.objectContaining({ read: false, readWrite: false }),
+        expect.objectContaining({ read: true }),
       ]);
+      rmSync(dirname(page), { recursive: true, force: true });
     } else {
       expect(mode).toBe(0o600);
       expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);

@@ -3,13 +3,16 @@
  * review finding 4). A program's arguments are readable by every local user (`ps`,
  * `/proc/<pid>/cmdline`), so the opener gets the path of a page that redirects to the launch URL,
  * written mode 0600 in a fresh directory of mode 0700, as Jupyter's server does for its token.
- * The launch ticket in the page is single-use and lives a minute, so a page left behind is
- * harmless; each launch removes the ones older than that.
+ * Windows has no modes: there the page goes under the user's own profile
+ * (`%LOCALAPPDATA%\mostra-cli\open`), whose access list only the user, `SYSTEM` and
+ * administrators pass, never under `%TEMP%`, which may name a folder other users can read (Opus
+ * review of WP-W2, finding 1). The launch ticket in the page is single-use and lives a minute, so a
+ * page left behind is harmless; each launch removes the ones older than that.
  */
 import { spawn } from "node:child_process";
-import { lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, win32 } from "node:path";
 import type { Environment } from "./home.ts";
 
 /** The prefix of the directories launch pages live in. */
@@ -210,11 +213,27 @@ function start(argv: readonly string[]): Promise<boolean> {
   });
 }
 
+/**
+ * Where launch pages go: the system's temporary directory on POSIX (the page's modes protect it),
+ * the user's own profile on Windows, whatever `%TEMP%` names.
+ */
+export function launchBase(env: Environment, platform: string = process.platform): string {
+  if (platform !== "win32") return tmpdir();
+  const local = env["LOCALAPPDATA"];
+  const base =
+    local !== undefined && local !== "" && win32.isAbsolute(local)
+      ? local
+      : win32.join(homedir(), "AppData", "Local");
+  return win32.join(base, "mostra-cli", "open");
+}
+
 /** Opens `url` in a browser through a launch page; whether a browser command started. */
 export async function openInBrowser(url: string, env: Environment): Promise<boolean> {
   let page: string;
   try {
-    page = writeLaunchPage(url);
+    const base = launchBase(env);
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    page = writeLaunchPage(url, base);
   } catch {
     return false;
   }

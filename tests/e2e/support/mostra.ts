@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { connectControl } from "@mostra/sdk";
+import { connectControl, resolveRuntime } from "@mostra/sdk";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 /** The runtime's binary, built by `pnpm --filter @mostra/runtime build`. */
@@ -32,6 +32,7 @@ export const SHELL = join(ROOT, "packages", "shell", "dist", "index.html");
 /** Whether the suites run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
 export const WINDOWS: boolean = process.platform === "win32";
 /** The Windows helper Cargo built, which opens the daemon's pipe and unseals versions (D150). */
+/** The Windows helper, for the harness's own cleanup (unsealing a test home's versions). */
 export const WIN_HELPER: string =
   process.env["MOSTRA_WIN_HELPER"] || join(ROOT, "target", "release", "mostra-win.exe");
 /**
@@ -130,9 +131,11 @@ export class Client {
 
   /** Connects and initializes, as the e2e client or as a host with ports and home settings. */
   static async connect(socketPath: string, options: ConnectOptions = {}): Promise<Client> {
-    // As every client reaches it: on Windows through the helper, which refuses a pipe another
-    // user created under the name (D150 item 4).
-    const socket = await connectControl(socketPath, { env: { MOSTRA_WIN_HELPER: WIN_HELPER } });
+    // As every client reaches it: on Windows through the helper beside the runtime the SDK
+    // resolves, which refuses a pipe another user created under the name (D150 item 4).
+    const socket = await connectControl(socketPath, {
+      runtime: await resolveRuntime({ env: { ...process.env, MOSTRA_RUNTIME_BIN: BIN } }),
+    });
     const client = new Client(socket);
     client.#onPortCall = options.onPortCall;
     await client.call("mostra/initialize", {
