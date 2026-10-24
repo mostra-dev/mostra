@@ -17,10 +17,25 @@ import {
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { CLI, readRun, SCRATCH, WIN_HELPER, WINDOWS } from "../support/mostra.ts";
 
 const run = readRun();
+
+/**
+ * Opens a launch page from disk and waits until it sent the browser on to the shell. The page
+ * leaves at once, so its own load may never be reported: Firefox on Windows ended the navigation
+ * to it as "interrupted by another navigation" (WP-W2), which is the redirect, not a failure.
+ */
+async function openLaunchPage(target: Page, file: string): Promise<void> {
+  const arrived = target.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/, { timeout: 15_000 });
+  // Awaited below; a navigation that fails first mustn't leave it unhandled.
+  arrived.catch(() => {});
+  await target.goto(pathToFileURL(file).href, { waitUntil: "commit" }).catch((error: Error) => {
+    if (!/interrupted by another navigation/.test(error.message)) throw error;
+  });
+  await arrived;
+}
 
 test("the launch page from mostra open opens the artifact once", async ({ page }) => {
   const scratch = realpathSync.native(mkdtempSync(join(SCRATCH, "mostra-e2e-open-")));
@@ -70,16 +85,14 @@ test("the launch page from mostra open opens the artifact once", async ({ page }
     await expect.poll(recorded, { timeout: 10_000 }).toMatch(/\.html$/);
     const file = recorded();
     // Opened from disk, the page goes on to the shell, whose exchange spends the ticket.
-    await page.goto(pathToFileURL(file).href);
-    await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/, { timeout: 15_000 });
+    await openLaunchPage(page, file);
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 15_000 });
     // The ticket left the address bar, as a token does.
     expect(new URL(page.url()).hash).toBe("");
     // The same page again: its ticket is spent, so the shell says the link doesn't work.
     const again = await page.context().browser()?.newPage();
     if (!again) throw new Error("no second page");
-    await again.goto(pathToFileURL(file).href);
-    await again.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/, { timeout: 15_000 });
+    await openLaunchPage(again, file);
     await expect(again.locator("html")).toHaveAttribute("data-shell", "error", { timeout: 15_000 });
     await again.close();
   } finally {

@@ -4,7 +4,7 @@
  * viewer that submits through the browser protocol, and a fake telemetry collector.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -133,13 +133,32 @@ export function testHome(extra: Record<string, string> = {}): TestHome {
     config,
     env,
     async cleanup() {
+      const daemon = (() => {
+        try {
+          return (JSON.parse(readFileSync(join(home, "instance.json"), "utf8")) as { pid: number })
+            .pid;
+        } catch {
+          return undefined;
+        }
+      })();
       await cli(["daemon", "stop", "--json"], { env }).catch(() => undefined);
       // Versions are sealed read-only; open them up before removing.
       if (WINDOWS) {
+        // `daemon stop` answers before the daemon has exited, and Windows refuses to remove the
+        // files a running process holds open (its ledger, its log).
+        const deadline = Date.now() + 15_000;
+        while (daemon !== undefined && Date.now() < deadline) {
+          try {
+            process.kill(daemon, 0);
+          } catch {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
         await new Promise((done) =>
           spawn(windowsHelper(), ["unseal", root]).on("exit", done).on("error", done),
         );
-        rmSync(root, { recursive: true, force: true, maxRetries: 5 });
+        rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
         return;
       }
       await new Promise((done) => spawn("chmod", ["-R", "u+w", root]).on("exit", done));

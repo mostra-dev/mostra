@@ -66,8 +66,12 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     const pid = (await page.call("actions.ts#pid", [])).value as number;
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "ready", pid });
-    // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62).
+    // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62), read while a run
+    // keeps the worker from its idle stop: Windows' process table takes PowerShell a second or
+    // two to read, longer than the test's idle limit.
+    const busy = (await page.run("actions.ts#slow", [6000])).json<RunState>();
     expect(commandLineOf(pid)).toContain("--max-old-space-size=96");
+    expect((await page.settled(busy.runId, 20_000)).status).toBe("succeeded");
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call
     // starts a new one.
     await eventually(async () => !alive(pid), 10_000, "the idle worker to exit");
@@ -495,8 +499,12 @@ describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
       expect(principal).toContain("<LogonType>InteractiveToken</LogonType>");
       expect(task).not.toContain("HighestAvailable");
       const trigger = /<LogonTrigger>([\s\S]*?)<\/LogonTrigger>/.exec(task)?.[1] ?? "";
-      // `whoami` names the account as Windows spells it, `computer\\user` in lower case.
-      const account = execFileSync("whoami", { encoding: "utf8", windowsHide: true }).trim();
+      // Windows' own `whoami` (not Git's, which comes first on a runner's PATH) names the
+      // account as Windows spells it, `computer\\user` in lower case.
+      const account = execFileSync(
+        join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "whoami.exe"),
+        { encoding: "utf8", windowsHide: true },
+      ).trim();
       expect(
         trigger.includes(`<UserId>${user}</UserId>`) ||
           trigger.toLowerCase().includes(`<userid>${account.toLowerCase()}</userid>`),
@@ -553,13 +561,18 @@ describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
       ).toBe(true);
       expect(lines.some((line) => line.event === "service.stop_forced")).toBe(false);
     } finally {
-      try {
-        execFileSync("schtasks", ["/Delete", "/TN", name, "/F"], {
-          stdio: "ignore",
-          windowsHide: true,
-        });
-      } catch {
-        // Already gone.
+      // Whatever failed, the launcher and its daemon stop: deleting the task alone leaves them
+      // running, and a running launcher keeps its program from being rebuilt.
+      await run("uninstall").catch(() => undefined);
+      for (const args of [
+        ["/End", "/TN", name],
+        ["/Delete", "/TN", name, "/F"],
+      ]) {
+        try {
+          execFileSync("schtasks", args, { stdio: "ignore", windowsHide: true });
+        } catch {
+          // Already gone.
+        }
       }
     }
   }, 180_000);

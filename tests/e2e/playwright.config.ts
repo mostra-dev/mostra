@@ -17,6 +17,10 @@ export default defineConfig({
   // One real daemon for the run, with the render fixtures published (support/mostra.ts).
   globalSetup: "./global-setup.ts",
   fullyParallel: true,
+  // On Windows one test at a time: the daemon, its workers and a browser's several contexts
+  // share the runner's four cores, and Firefox there (software rendering, a profile per context)
+  // took two tests at once past their 30 s (WP-W2's first runs).
+  ...(process.platform === "win32" ? { workers: 1 } : {}),
   forbidOnly: !!process.env["CI"],
   retries: 0,
   reporter: process.env["CI"] ? [["github"], ["list"]] : "list",

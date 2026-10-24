@@ -3306,11 +3306,21 @@ function build(seed?: Seed): void {
   const shell = WINDOWS_HOST;
   if (seed?.platform === "win32") {
     if (seed.file.includes("crates/mostra-win")) {
-      // A seed that doesn't compile is a broken seed, not a caught one: say why.
-      execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
-        cwd: root,
-        stdio: ["ignore", "ignore", "inherit"],
-      });
+      // A seed that doesn't compile is a broken seed, not a caught one: say why. Windows' virus
+      // scan holds a program it just saw written for a moment, and Cargo can't replace it then
+      // ("Access is denied", seen in WP-W2's seed runs), so a failed build is tried twice more.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+            cwd: root,
+            stdio: ["ignore", "ignore", "inherit"],
+          });
+          break;
+        } catch (error) {
+          if (attempt === 3) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+        }
+      }
     }
     // The packages Windows runs so far (WP-W1, WP-W2).
     for (const name of [
