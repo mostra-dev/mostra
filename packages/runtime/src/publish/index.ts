@@ -15,6 +15,7 @@ export { extractManifest } from "./manifest.ts";
 export { artifactMethods, canonicalRef } from "./methods.ts";
 export {
   createPublisher,
+  defaultTitle,
   type Publisher,
   versionDamage,
   versionOutputDigest,

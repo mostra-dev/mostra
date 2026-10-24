@@ -338,11 +338,14 @@ export async function startDev(
  * statically.
  */
 export function manifestExportPlugin(entryFile: string): Plugin {
+  // Vite names modules with `/` on every platform (`C:/…` on Windows), so the entry is compared
+  // as the platform layer spells paths, never as the system does.
+  const entryKey = pathKey(entryFile);
   return {
     name: "mostra:dev-manifest-export",
     enforce: "pre",
     transform(code, id) {
-      if (id.split("?")[0] !== entryFile || !/\.[jt]sx$/.test(entryFile)) return null;
+      if (pathKey(id.split("?")[0] ?? "") !== entryKey || !/\.[jt]sx$/.test(entryFile)) return null;
       const parsed = parseSync(entryFile, code, {
         lang: entryFile.endsWith(".tsx") ? "tsx" : "jsx",
       });

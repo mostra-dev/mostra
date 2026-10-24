@@ -29,6 +29,7 @@ import {
   listening,
   tempDir,
   testHome,
+  WINDOWS,
 } from "../support.ts";
 
 interface DevEvent {
@@ -545,7 +546,11 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
         await owner.call("dev/start", { source: { path: dir } }, 120_000),
       );
       const linked = join(home.home, "cache", "dev", started.sessionId, "root", "node_modules");
-      const layout = realpathSync(linked);
+      // A link to the layout on POSIX; on Windows a link farm whose marker names it (D150 item 8).
+      const layout = WINDOWS
+        ? (JSON.parse(readFileSync(join(linked, ".mostra-link"), "utf8")) as { target: string })
+            .target
+        : realpathSync(linked);
       expect(layout).toContain(join("deps", "locks"));
       interface Collected {
         readonly lockLayouts: { readonly count: number };
