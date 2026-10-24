@@ -40,12 +40,7 @@ import type { Gate } from "../gate.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
-import {
-  defaultTitle,
-  extractManifest,
-  listSource,
-  resolveSource,
-} from "../publish/index.ts";
+import { defaultTitle, extractManifest, listSource, resolveSource } from "../publish/index.ts";
 import type { Registry } from "../registry/index.ts";
 import { type Sandbox, type SandboxOptions, startSandbox } from "../verify/index.ts";
 

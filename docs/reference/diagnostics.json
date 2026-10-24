@@ -420,8 +420,8 @@
       "phase": "host",
       "title": "Login service could not be installed",
       "hint": "Read the message, fix what it names, and run the install again.",
-      "explanation": "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.",
-      "fix": "Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`."
+      "explanation": "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent, systemd user unit or Task Scheduler task failed, or `launchctl`, `systemctl --user` or `schtasks` refused it.",
+      "fix": "Check the named file's directory permissions; on Linux, that a systemd user session is running (`systemctl --user status`); on Windows, that Task Scheduler runs and your account may create tasks (`schtasks /Query`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`."
     },
     {
       "code": "MOSTRA_ENV_SHELL_MISSING",
@@ -583,7 +583,7 @@
       "title": "Long-lived artifacts without an always-on daemon",
       "hint": "Run `mostra daemon install` so the home's daemon runs as a login service and these artifacts answer at any hour.",
       "explanation": "The home has artifacts with submission policy `none`, which are meant to stay open (dashboards, task managers, D63), but no login service runs its daemon. Without one, the daemon exits after 30 idle minutes and their links stop answering until a command starts it again.",
-      "fix": "Run `mostra daemon install`. It registers a launchd or systemd user service that keeps the home's daemon running; `mostra daemon uninstall` removes it."
+      "fix": "Run `mostra daemon install`. It registers a login service (a launchd agent, a systemd user service or a Task Scheduler task) that keeps the home's daemon running; `mostra daemon uninstall` removes it."
     },
     {
       "code": "MOSTRA_HOME_NOT_OWNED",

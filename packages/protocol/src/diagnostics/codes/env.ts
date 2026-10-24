@@ -76,8 +76,8 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
     hint: "Read the message, fix what it names, and run the install again.",
     docs: {
       explanation:
-        "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.",
-      fix: "Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.",
+        "`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent, systemd user unit or Task Scheduler task failed, or `launchctl`, `systemctl --user` or `schtasks` refused it.",
+      fix: "Check the named file's directory permissions; on Linux, that a systemd user session is running (`systemctl --user status`); on Windows, that Task Scheduler runs and your account may create tasks (`schtasks /Query`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.",
     },
   },
   MOSTRA_ENV_BROWSER_MISSING: {

@@ -132,7 +132,7 @@ export const homeDiagnostics: AreaCatalog<HomeDiagnosticCode> = {
     docs: {
       explanation:
         "The home has artifacts with submission policy `none`, which are meant to stay open (dashboards, task managers, D63), but no login service runs its daemon. Without one, the daemon exits after 30 idle minutes and their links stop answering until a command starts it again.",
-      fix: "Run `mostra daemon install`. It registers a launchd or systemd user service that keeps the home's daemon running; `mostra daemon uninstall` removes it.",
+      fix: "Run `mostra daemon install`. It registers a login service (a launchd agent, a systemd user service or a Task Scheduler task) that keeps the home's daemon running; `mostra daemon uninstall` removes it.",
     },
   },
   MOSTRA_HOME_GC_INCOMPLETE: {

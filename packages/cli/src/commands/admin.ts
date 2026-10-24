@@ -200,7 +200,8 @@ async function service(
 const noStart = {
   name: "no-start",
   kind: "boolean" as const,
-  summary: "Write or remove the service's file without asking launchd or systemd to load it.",
+  summary:
+    "Write or remove the service's definition without asking launchd, systemd or Task Scheduler to load it.",
 };
 
 /** `mostra daemon start`. */
@@ -295,7 +296,7 @@ export const daemonStatusCommand: CommandDef = defineCommand({
 export const daemonInstallCommand: CommandDef = defineCommand({
   path: ["daemon", "install"],
   summary:
-    "Run the home's daemon as a login service (launchd or systemd), so links answer at any hour.",
+    "Run the home's daemon as a login service (launchd, systemd or Task Scheduler), so links answer at any hour.",
   flags: [noStart],
   output: { type: "ServiceStatus", topic: "cli" },
   exits: [],

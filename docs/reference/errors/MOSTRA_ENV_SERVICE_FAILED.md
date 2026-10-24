@@ -12,11 +12,11 @@ Login service could not be installed. Severity: error. Phase: host.
 
 ## What it means
 
-`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent or systemd user unit failed, or `launchctl` or `systemctl --user` refused to load it.
+`mostra daemon install` couldn't register the home's daemon as a login service: writing the launchd agent, systemd user unit or Task Scheduler task failed, or `launchctl`, `systemctl --user` or `schtasks` refused it.
 
 ## How to fix it
 
-Check the named file's directory permissions, and on Linux that a systemd user session is running (`systemctl --user status`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.
+Check the named file's directory permissions; on Linux, that a systemd user session is running (`systemctl --user status`); on Windows, that Task Scheduler runs and your account may create tasks (`schtasks /Query`). On a machine without one, start the daemon from your own login scripts with `mostra daemon start`.
 
 ## Hint
 
