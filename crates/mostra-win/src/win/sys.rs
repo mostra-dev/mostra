@@ -263,7 +263,10 @@ fn token_info(class: i32) -> io::Result<Vec<u64>> {
     let mut token: HANDLE = null_mut();
     // SAFETY: opens this process's own token for querying.
     check(unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) })?;
-    let token = Handle::owned(token)?;
+    token_info_of(&Handle::owned(token)?, class)
+}
+
+fn token_info_of(token: &Handle, class: i32) -> io::Result<Vec<u64>> {
     let mut length = 0u32;
     // SAFETY: size query; it fails with ERROR_INSUFFICIENT_BUFFER and sets `length`.
     let ok = unsafe { GetTokenInformation(token.raw(), class, null_mut(), 0, &raw mut length) };
@@ -295,6 +298,70 @@ pub fn current_user() -> io::Result<Sid> {
     // SID points inside the buffer.
     let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
     Ok(Sid::copy_from(user.User.Sid))
+}
+
+/// The user the current thread acts as: under [`as_user`], that user (test probes).
+pub fn thread_user() -> io::Result<Sid> {
+    use windows_sys::Win32::System::Threading::{GetCurrentThread, OpenThreadToken};
+    let mut token: HANDLE = null_mut();
+    // SAFETY: opens this thread's impersonation token for querying, as the process.
+    check(unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &raw mut token) })?;
+    let buffer = token_info_of(&Handle::owned(token)?, TokenUser)?;
+    // SAFETY: as in `current_user`.
+    let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+    Ok(Sid::copy_from(user.User.Sid))
+}
+
+/// Enables a privilege this process's token holds (`SeRestorePrivilege`, which lets a test probe
+/// make another user the owner of an object it creates). Fails when the token lacks it.
+pub fn enable_privilege(name: &str) -> io::Result<()> {
+    use windows_sys::Win32::Foundation::{ERROR_NOT_ALL_ASSIGNED, LUID};
+    use windows_sys::Win32::Security::{
+        AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
+        TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES,
+    };
+    let text = wide_str(name);
+    let mut luid = LUID {
+        LowPart: 0,
+        HighPart: 0,
+    };
+    // SAFETY: a valid name; the LUID is written.
+    check(unsafe { LookupPrivilegeValueW(null(), text.as_ptr(), &raw mut luid) })?;
+    let mut token: HANDLE = null_mut();
+    // SAFETY: opens this process's own token to adjust it.
+    check(unsafe {
+        OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            &raw mut token,
+        )
+    })?;
+    let token = Handle::owned(token)?;
+    let privileges = TOKEN_PRIVILEGES {
+        PrivilegeCount: 1,
+        Privileges: [LUID_AND_ATTRIBUTES {
+            Luid: luid,
+            Attributes: SE_PRIVILEGE_ENABLED,
+        }],
+    };
+    // SAFETY: a valid token with adjust rights and one privilege.
+    check(unsafe {
+        AdjustTokenPrivileges(
+            token.raw(),
+            0,
+            &raw const privileges,
+            0,
+            null_mut(),
+            null_mut(),
+        )
+    })?;
+    // SAFETY: plain call, read right after the call it reports on.
+    if unsafe { GetLastError() } == ERROR_NOT_ALL_ASSIGNED {
+        return Err(io::Error::from_raw_os_error(
+            ERROR_NOT_ALL_ASSIGNED.cast_signed(),
+        ));
+    }
+    Ok(())
 }
 
 /// The owner this process gives the objects it creates (the token's default owner): the user, or

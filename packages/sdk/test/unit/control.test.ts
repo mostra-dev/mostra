@@ -5,7 +5,7 @@
  * helpers (Opus review of WP-W2, finding 10). The package map keeps the two apart (neither may
  * import the other), so this test pins the SDK's order to the runtime's.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,7 +25,7 @@ function touch(path: string): string {
 
 describe("the Windows helper a client opens a pipe with", () => {
   it("is MOSTRA_WIN_HELPER, else the bundle's bin\\mostra-win.exe, else a checkout's Cargo build, release before debug", () => {
-    const root = mkdtempSync(join(tmpdir(), "mostra-helper-"));
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "mostra-helper-")));
     made.push(root);
     const entry = touch(join(root, "packages", "runtime", "dist", "bin.js"));
     const checkout: Runtime = {
@@ -51,5 +51,12 @@ describe("the Windows helper a client opens a pipe with", () => {
     } as unknown as Runtime;
     expect(windowsHelper(inBundle, {})).toBe(bundled);
     expect(() => windowsHelper(undefined, {})).toThrow(/No runtime was resolved/);
+    // Reached through a link (a relative MOSTRA_RUNTIME_BIN through a project's link), the
+    // runtime is still the checkout's, as the runtime itself finds its helper.
+    const project = join(root, "project");
+    mkdirSync(project, { recursive: true });
+    symlinkSync(join(root, "packages", "runtime", "dist"), join(project, "runtime"), "junction");
+    const linked: Runtime = { ...checkout, runtimeEntry: join(project, "runtime", "bin.js") };
+    expect(windowsHelper(linked, {})).toBe(release);
   });
 });

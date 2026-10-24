@@ -274,25 +274,43 @@ fn squat(user: &str, password: &str, name: &str) {
     }
 }
 
-/// As that user, creates the named event `name` (in this session's `Local\` namespace) open to
-/// everyone, and holds it until stdin ends: what someone who wanted to keep a launcher from
-/// starting, or to stop it, would do.
+/// Creates the named event `name` (in this session's `Local\` namespace), open to everyone and
+/// owned by that user, and holds it until stdin ends: an event someone else created first under a
+/// name the launcher uses. The other user's own token may not create objects in this session's
+/// namespace, so the probe creates it and makes that user its owner (`SeRestorePrivilege`, which
+/// the runners' administrator holds); the owner is what the launcher checks.
 #[cfg(windows)]
 fn squat_event(user: &str, password: &str, name: &str) {
     use mostra_win::win::sys;
     use serde_json::json;
-    let created = sys::as_user(user, password, || {
-        sys::SecurityDescriptor::from_sddl("D:(A;;GA;;;WD)")
-            .and_then(|descriptor| sys::NamedEvent::create(name, &descriptor))
-    });
+    let created = (|| -> std::io::Result<(sys::NamedEvent, String)> {
+        let other = sys::as_user(user, password, sys::thread_user)??;
+        let sid = other.to_sddl()?;
+        sys::enable_privilege("SeRestorePrivilege")?;
+        let descriptor = sys::SecurityDescriptor::from_sddl(&format!("O:{sid}D:(A;;GA;;;WD)"))?;
+        let event = match sys::NamedEvent::create(name, &descriptor)? {
+            sys::Created::New(event) | sys::Created::Existing(event) => event,
+        };
+        let owner = event.owner()?;
+        if !owner.equals(&other) {
+            return Err(std::io::Error::other(format!(
+                "the event's owner is {}, not {sid}",
+                owner.to_sddl()?
+            )));
+        }
+        Ok((event, sid))
+    })();
     match created {
-        Ok(Ok(sys::Created::New(event) | sys::Created::Existing(event))) => {
-            println!("{}", json!({ "ok": true, "result": { "event": name } }));
+        Ok((event, owner)) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "event": name, "owner": owner } })
+            );
             let mut sink = String::new();
             let _ = std::io::stdin().read_line(&mut sink);
             drop(event);
         }
-        Ok(Err(error)) | Err(error) => {
+        Err(error) => {
             println!(
                 "{}",
                 json!({ "ok": false, "error": { "message": error.to_string(), "os": error.raw_os_error() } })

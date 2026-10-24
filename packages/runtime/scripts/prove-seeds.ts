@@ -97,6 +97,8 @@ const SEEDS: readonly Seed[] = [
     to: "          continue;",
     check: unit("telemetry.test.ts", "Windows' lock rules"),
     cwd: "../cli",
+    // Windows' runners pass any access list (the test says why), so it runs on POSIX.
+    platform: "posix",
   },
 
   {

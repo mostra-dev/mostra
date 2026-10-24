@@ -13,7 +13,7 @@
  * runtime bundle's `bin/mostra-win.exe`, else a development checkout's Cargo build.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { Duplex } from "node:stream";
@@ -65,7 +65,9 @@ export function windowsHelper(runtime: Runtime | undefined, env: Environment): s
       ? [join(runtime.bundle.root, "bin", "mostra-win.exe")]
       : ["release", "debug"].map((profile) =>
           resolve(
-            dirname(runtime.runtimeEntry),
+            // The runtime's own order (`helperPath`) starts from where its code really is, so a
+            // link to its entry (a relative `MOSTRA_RUNTIME_BIN` through a junction) changes nothing.
+            dirname(realEntry(runtime.runtimeEntry)),
             "..",
             "..",
             "..",
@@ -81,6 +83,14 @@ export function windowsHelper(runtime: Runtime | undefined, env: Environment): s
     );
   }
   return found;
+}
+
+function realEntry(entry: string): string {
+  try {
+    return realpathSync.native(entry);
+  } catch {
+    return entry;
+  }
 }
 
 function missingHelper(message: string): RpcError {
