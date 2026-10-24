@@ -103,6 +103,9 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
       await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
         timeout: 20_000,
       });
+      // The failures are over: nothing else goes through the test's interception, which once
+      // held a save's POST until the test ended (Firefox on Windows, WP-W2).
+      await page.unrouteAll({ behavior: "wait" });
       const frame = page.frameLocator("iframe.mostra-frame");
       await expect(frame.getByTestId("mode")).toHaveText("live");
       await frame.getByTestId("notes").fill("after a failed start");

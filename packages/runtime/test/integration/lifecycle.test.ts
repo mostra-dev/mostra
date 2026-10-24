@@ -495,7 +495,8 @@ describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
       expect(principal).toContain("<LogonType>InteractiveToken</LogonType>");
       expect(task).not.toContain("HighestAvailable");
       const trigger = /<LogonTrigger>([\s\S]*?)<\/LogonTrigger>/.exec(task)?.[1] ?? "";
-      const account = `${process.env["COMPUTERNAME"] ?? ""}\\${process.env["USERNAME"] ?? ""}`;
+      // `whoami` names the account as Windows spells it, `computer\\user` in lower case.
+      const account = execFileSync("whoami", { encoding: "utf8", windowsHide: true }).trim();
       expect(
         trigger.includes(`<UserId>${user}</UserId>`) ||
           trigger.toLowerCase().includes(`<userid>${account.toLowerCase()}</userid>`),

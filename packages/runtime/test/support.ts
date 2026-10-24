@@ -573,16 +573,11 @@ function procAddress6(hex: string): string {
  */
 export function commandLineOf(pid: number): string {
   if (WINDOWS) {
-    return execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`,
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).trim();
+    // From the whole table (one CIM query that the gateway suite proves), so a process that
+    // isn't there is an error naming it, never an empty command line.
+    const row = processTable().find((entry) => entry.pid === pid);
+    if (!row) throw new Error(`No process ${pid} is running.`);
+    return row.command;
   }
   return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
 }

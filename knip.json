@@ -3,28 +3,13 @@
   "workspaces": {
     ".": {
       "entry": [],
-      "ignoreDependencies": [
-        "@changesets/changelog-github",
-        "@mostra/tools",
-        "turbo"
-      ],
-      "ignore": [
-        ".github/w2-probe/**"
-      ]
+      "ignoreDependencies": ["@changesets/changelog-github", "@mostra/tools", "turbo"],
+      "ignore": [".github/w2-probe/**"]
     },
     "packages/*": {
-      "entry": [
-        "src/index.ts",
-        "scripts/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "scripts/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignore": [
-        "test/fixtures/artifacts/**"
-      ]
+      "entry": ["src/index.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignore": ["test/fixtures/artifacts/**"]
     },
     "tools": {
       "entry": [
@@ -35,61 +20,24 @@
         "test/**/*.test.ts",
         "github/*.ts"
       ],
-      "project": [
-        "**/*.ts",
-        "!**/fixtures/**"
-      ],
-      "ignore": [
-        "**/fixtures/**"
-      ],
-      "ignoreDependencies": [
-        "@arethetypeswrong/cli",
-        "publint",
-        "@mostra/tools-ts6"
-      ]
+      "project": ["**/*.ts", "!**/fixtures/**"],
+      "ignore": ["**/fixtures/**"],
+      "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "@mostra/tools-ts6"]
     },
     "tools/ts6": {
-      "entry": [
-        "*.mjs"
-      ],
-      "project": [
-        "*.mjs"
-      ]
+      "entry": ["*.mjs"],
+      "project": ["*.mjs"]
     },
     "tests/*": {
-      "entry": [
-        "*.config.ts",
-        "**/*.spec.ts",
-        "global-setup.ts"
-      ],
-      "project": [
-        "**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@mostra/cli",
-        "@mostra/runtime",
-        "@mostra/server",
-        "@mostra/shell"
-      ],
-      "ignore": [
-        "fixtures/**"
-      ]
+      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
+      "project": ["**/*.ts"],
+      "ignoreDependencies": ["@mostra/cli", "@mostra/runtime", "@mostra/server", "@mostra/shell"],
+      "ignore": ["fixtures/**"]
     },
     "packages/runtime": {
-      "entry": [
-        "src/index.ts",
-        "src/bin.ts",
-        "src/builder/child/main.ts",
-        "scripts/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "scripts/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignore": [
-        "test/fixtures/artifacts/**"
-      ],
+      "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignore": ["test/fixtures/artifacts/**"],
       "ignoreDependencies": [
         "tailwindcss",
         "pnpm",
@@ -98,43 +46,21 @@
         "@mostra/warm",
         "@mostra/worker"
       ],
-      "ignoreBinaries": [
-        "ss",
-        "lsof",
-        "ps",
-        "plutil"
-      ]
+      "ignoreBinaries": ["ss", "lsof", "ps", "plutil"]
     },
     "packages/cli": {
-      "entry": [
-        "src/index.ts",
-        "src/bin.ts",
-        "src/telemetry/flush-main.ts",
-        "scripts/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "scripts/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@mostra/runtime"
-      ]
+      "entry": ["src/index.ts", "src/bin.ts", "src/telemetry/flush-main.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
     },
     "packages/warm": {
       "entry": [],
       "project": [],
-      "ignoreDependencies": [
-        ".+"
-      ]
+      "ignoreDependencies": [".+"]
     },
     "packages/bundle": {
-      "entry": [
-        "scripts/*.ts"
-      ],
-      "project": [
-        "scripts/**/*.ts"
-      ],
+      "entry": ["scripts/*.ts"],
+      "project": ["scripts/**/*.ts"],
       "ignoreDependencies": [
         "@mostra/cli",
         "@mostra/runtime",
@@ -145,61 +71,25 @@
       ]
     },
     "packages/sdk": {
-      "entry": [
-        "src/index.ts",
-        "src/setup-main.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@mostra/runtime"
-      ]
+      "entry": ["src/index.ts", "src/setup-main.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
     },
     "packages/conformance": {
-      "entry": [
-        "src/index.ts",
-        "src/cli.ts",
-        "src/reference-host.ts",
-        "test/fixtures/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@mostra/runtime"
-      ]
+      "entry": ["src/index.ts", "src/cli.ts", "src/reference-host.ts", "test/fixtures/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@mostra/runtime"]
     },
     "packages/create-mostra": {
-      "entry": [
-        "src/index.ts",
-        "src/bin.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "test/**/*.ts"
-      ]
+      "entry": ["src/index.ts", "src/bin.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "packages/shell": {
-      "entry": [
-        "src/main.tsx",
-        "index.html",
-        "vite.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "test/**/*.ts"
-      ]
+      "entry": ["src/main.tsx", "index.html", "vite.config.ts"],
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.ts"]
     }
   },
-  "ignore": [
-    "docs/design/evaluations/**"
-  ],
+  "ignore": ["docs/design/evaluations/**"],
   "ignoreExportsUsedInFile": true,
-  "ignoreBinaries": [
-    "netstat",
-    "schtasks"
-  ]
+  "ignoreBinaries": ["netstat", "schtasks", "whoami"]
 }
