@@ -63,13 +63,14 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
   it("starts a worker on first need, applies the heap limit, and evicts it after idle (RT-03, RT-08)", async () => {
     expect(await workersOf(gateway, actions.versionId)).toEqual([]);
     const page = await openPage(actions.url);
+    // A run keeps the worker from its idle stop (1.5 s here) while the test looks at it: Windows'
+    // process table takes PowerShell longer than that to read, and the stop could come between
+    // two calls there (WP-W2).
+    const busy = (await page.run("actions.ts#slow", [8000])).json<RunState>();
     const pid = (await page.call("actions.ts#pid", [])).value as number;
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "ready", pid });
-    // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62), read while a run
-    // keeps the worker from its idle stop: Windows' process table takes PowerShell a second or
-    // two to read, longer than the test's idle limit.
-    const busy = (await page.run("actions.ts#slow", [6000])).json<RunState>();
+    // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62).
     expect(commandLineOf(pid)).toContain("--max-old-space-size=96");
     expect((await page.settled(busy.runId, 20_000)).status).toBe("succeeded");
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call

@@ -296,7 +296,7 @@ export class TelemetryStore {
         writeFileSync(this.#lockFile, token, { flag: "wx", mode: 0o600 });
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") return undefined;
+        if (!held((error as NodeJS.ErrnoException).code)) return undefined;
         if (this.#breakStale()) continue;
         if (Date.now() > deadline) return undefined;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
@@ -356,6 +356,19 @@ export class TelemetryStore {
     }
     return true;
   }
+}
+
+/**
+ * Whether a lock's exclusive create failed because another process holds it. On Windows a lock
+ * its owner just removed stays "delete pending" while anyone still has it open (another process
+ * judging its age), and creating it again meanwhile is refused as access denied, not `EEXIST`
+ * (WP-W2: twelve first runs at once on an arm64 runner): that is contention too, never a reason
+ * to give up.
+ */
+function held(code: string | undefined): boolean {
+  return (
+    code === "EEXIST" || (process.platform === "win32" && (code === "EPERM" || code === "EACCES"))
+  );
 }
 
 /** Whether `dir` can never be created: its nearest existing ancestor isn't a directory. */

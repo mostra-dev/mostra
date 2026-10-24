@@ -411,7 +411,8 @@ describe("the store (D140 item 5)", () => {
     await new Promise((done) => setTimeout(done, 600));
     writeFileSync(go, "");
     const ids = await Promise.all(running);
-    expect(new Set(ids).size).toBe(1);
+    // Every process says the same ID (the list, so a failure shows who said what).
+    expect(ids).toEqual(ids.map(() => ids[0]));
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
     // Every process got the lock (a crashed owner's lock was taken over), and the lock is gone
     // with nothing left beside it.
