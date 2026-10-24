@@ -48,7 +48,16 @@ jobs:
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - run: cargo build -p mostra-win --release --locked
-      - run: pnpm --filter @mostra/protocol --filter @mostra/react --filter @mostra/runtime build
+      # The packages Windows runs (WP-W1, WP-W2); each seed rebuilds what it plants into.
+      - run: pnpm --filter "@mostra/runtime..." --filter "@mostra/cli..." build
+      # Seeds whose checks render, verify or preview (WP-W2) need the verify browser.
+      - run: pnpm --filter @mostra/runtime exec playwright install --only-shell chromium
+      # RT-11's firewall seed: the firewall on, its blocked listeners logged (event 5031).
+      - name: The firewall on, its blocks audited
+        shell: pwsh
+        run: |
+          Set-NetFirewallProfile -All -Enabled True
+          auditpol /set /subcategory:"Filtering Platform Connection" /success:enable /failure:enable
       - name: A second local user, for the access checks
         shell: pwsh
         run: |

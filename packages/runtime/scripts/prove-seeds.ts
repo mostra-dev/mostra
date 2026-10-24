@@ -3344,24 +3344,28 @@ function build(seed?: Seed): void {
   }
 }
 
+/** An argument as cmd.exe passes it on when a shell runs the command (Windows only). */
+function quoteForShell(argument: string): string {
+  return WINDOWS_HOST && /[\s"'&|<>^]/.test(argument)
+    ? `"${argument.replaceAll('"', '""')}"`
+    : argument;
+}
+
 function check(seed: Seed): { ok: boolean; summary: string } {
   const result = seed.e2e
     ? spawnSync("npx", ["playwright", "test", ...seed.check], {
         cwd: join(root, "tests", "e2e"),
         encoding: "utf8",
       })
-    : spawnSync(
-        process.execPath,
-        [
-          join(runtime, seed.cwd ?? ".", "node_modules", "vitest", "vitest.mjs"),
-          "run",
-          ...seed.check,
-        ],
-        {
-          cwd: join(runtime, seed.cwd ?? "."),
-          encoding: "utf8",
-        },
-      );
+    : // Through pnpm, as `pnpm check` runs a suite: its `vitest` shim puts pnpm's hoisted
+      // packages on NODE_PATH, which a supervisor started from a checkout needs to load
+      // oxc-parser's native binding (found in WP-W2: VR-08's dev seeds came back red when vitest
+      // ran without it). pnpm is a `.cmd` on Windows, which only a shell runs.
+      spawnSync("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
+        cwd: join(runtime, seed.cwd ?? "."),
+        encoding: "utf8",
+        shell: WINDOWS_HOST,
+      });
   const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
   const summary =
     text
