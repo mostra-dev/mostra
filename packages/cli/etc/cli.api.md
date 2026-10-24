@@ -142,6 +142,7 @@ export function run(io: RunnerIo): Promise<number>;
 
 // @public
 export interface RunnerIo {
+    readonly arch?: string;
     readonly argv: readonly string[];
     readonly cwd: string;
     readonly env: Environment;

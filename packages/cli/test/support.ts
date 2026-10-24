@@ -18,8 +18,8 @@ export const BIN: string = fileURLToPath(new URL("../dist/bin.js", import.meta.u
 /** Whether the tests run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
 export const WINDOWS: boolean = process.platform === "win32";
 
-/** The Windows helper a checkout's Cargo build made, for unsealing versions before removal. */
-function windowsHelper(): string {
+/** The Windows helper a checkout's Cargo build made (`MOSTRA_WIN_HELPER` overrides it). */
+export function windowsHelper(): string {
   return (
     process.env["MOSTRA_WIN_HELPER"] ||
     fileURLToPath(new URL("../../../target/release/mostra-win.exe", import.meta.url))

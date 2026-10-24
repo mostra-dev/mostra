@@ -37,7 +37,7 @@ const common = {
   at: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/),
   installId: z.uuid(),
   version: z.string().regex(/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/),
-  os: z.enum(["darwin", "linux"]),
+  os: z.enum(["darwin", "linux", "win32"]),
   arch: z.string().regex(/^[a-z0-9]{2,12}$/),
   node: z.int().min(0).max(999),
   harness: z.enum([...HARNESSES, "other", "none"]),

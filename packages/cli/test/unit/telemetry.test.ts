@@ -281,6 +281,17 @@ describe("the event schema (D140 item 8)", () => {
     }
   });
 
+  it("names every system Mostra runs on, and nothing else (WP-W2: Windows' events were dropped)", () => {
+    for (const os of ["darwin", "linux", "win32"]) {
+      expect(TelemetryEvent.safeParse({ ...common, os, event: "cli.first_run" }).success).toBe(
+        true,
+      );
+    }
+    expect(
+      TelemetryEvent.safeParse({ ...common, os: "freebsd", event: "cli.first_run" }).success,
+    ).toBe(false);
+  });
+
   it("buckets durations and rounds times down to the minute", () => {
     expect(
       [0, 999, 1000, 4999, 5000, 29_999, 30_000, 119_999, 120_000, 599_999, 600_000].map(
