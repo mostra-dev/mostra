@@ -1,6 +1,6 @@
 # WP-W2 progress: Windows II, gateway, workers, verify and CLI
 
-**Status:** Candidate, awaiting Mirza's acceptance and the Claude Opus review (D144). D151 is proposed with it.
+**Status:** Accepted by Mirza on 2026-10-24 ("Approved!", M37) with D151; the Claude Opus review's ten findings are fixed (below). Merge and release follow (work-packages/README.md §4).
 
 ## Baseline
 
@@ -51,7 +51,7 @@
 
 ## Decisions taken in the package
 
-**D151** (proposed for Mirza's approval with this candidate), items 1 to 8. Choices made while building, inside it:
+**D151** (approved at M37), items 1 to 8, amended by the Opus review's fixes. Choices made while building, inside it:
 - **A temporary probe first.** `813c964` added it and `83c355b` removed it. It established the Windows facts before anything was built on them.
 - **WebKit stays off the Windows e2e legs.** On Windows, Playwright's WebKit port keeps no SameSite on cookies (Playwright's own tests expect `None` there), and no viewer uses it. Safari's engine keeps its legs on macOS.
 - **Windows runs one e2e test at a time.** With two at once, Firefox there took tests past their 30 s limit.
@@ -68,7 +68,7 @@ Windows behavior is observed only on those runners.
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
-| RT-11 | validated | On both Windows runners, every Windows leg of CI passes, as do macOS and Linux:<br>• **Integration**: every runtime suite (gateway, interaction, workers that crash, run out of memory or busy-loop, actions, live data, verify and its failure modes, `dev` with hot updates and an editor's backup-then-write save), and the CLI's suites (`open` through a stand-in browser whose launch page another user can't read, the daemon's pipe refused when another user took its name, the daemon keeping no hold on the directory it started from).<br>• **Hygiene**: the checklist against a real gateway.<br>• **Browsers**: Chromium and Firefox (controls, the shell, actions, versions, pages, `open`).<br>• **Login service**: `daemon install` writes a logon task for the user's SID. Its launcher is a windows-subsystem program (PE subsystem 2). It runs the always-on daemon without a window and starts it again after a kill. `uninstall` stops the daemon with Ctrl+Break (`instance.stopped`, `SIGBREAK`, nothing forced) and leaves no task and no `instance.json`.<br>• **Firewall**: a gateway on a Node.js the firewall has never seen logs no block (event 5031), while a wildcard listener does.<br>• **Secret store**: its files grant only the user and `SYSTEM`, and the second user can't read them.<br>**Seeds**: 11 of 11 red when planted and green when restored on Windows x64: the firewall, the lingering refusal, the relative runtime entry, the secret store's access list, the pipe owner, 8.3 home names, the telemetry schema, the launcher's console, the launcher's restart, Vite's path spelling and the editor save. The first 9 of them also on arm64. | `pnpm check --job unit\|integration\|hygiene\|e2e` with `MOSTRA_DEV_WINDOWS=1` (CI's Windows legs); `gh workflow run windows-seeds.yml -f only=RT-11` | CI run 40082018456 on `83c355b`: all 53 jobs green. Windows integration groups take 4 to 7 min on x64 and 7 to 14 min on arm64. Seed runs 40082034522 (x64, 11 of 11) and 40077458287 (arm64, 9 of 9) |
+| RT-11 | validated | On both Windows runners, every Windows leg of CI passes, as do macOS and Linux:<br>• **Integration**: every runtime suite (gateway, interaction, workers that crash, run out of memory or busy-loop, actions, live data, verify and its failure modes, `dev` with hot updates and an editor's backup-then-write save), and the CLI's suites (`open` through a stand-in browser whose launch page another user can't read, the daemon's pipe refused when another user took its name, the daemon keeping no hold on the directory it started from).<br>• **Hygiene**: the checklist against a real gateway.<br>• **Browsers**: Chromium and Firefox (controls, the shell, actions, versions, pages, `open`).<br>• **Login service**: `daemon install` writes a logon task for the user's SID. Its launcher is a windows-subsystem program (PE subsystem 2). It runs the always-on daemon without a window and starts it again after a kill. `uninstall` stops the daemon with Ctrl+Break (`instance.stopped`, `SIGBREAK`, nothing forced) and leaves no task and no `instance.json`.<br>• **Firewall**: a gateway on a Node.js the firewall has never seen logs no block (event 5031), while a wildcard listener does.<br>• **Secret store**: its files grant only the user and `SYSTEM`, and the second user can't read them.<br>**Login service, after the Opus review**: an uninstall with no event in reach stops the daemon over its pipe and removes a task whose definition the home lost; the end of the session stops the daemon in order; a stop event another user owns is refused; a task removed in Task Scheduler stops counting for the idle check.<br>**Homes**: a home's 8.3 spelling and another case are the same home, a Kelvin-sign twin is another.<br>**Seeds**: RT-11's 20 seeds. On Windows x64, the 19 that run there are red when planted and green when restored; the 20th (the telemetry lock) needs POSIX and is red then green on macOS, as are the 4 other portable ones. | `pnpm check --job unit\|integration\|hygiene\|e2e` with `MOSTRA_DEV_WINDOWS=1` (CI's Windows legs); `gh workflow run windows-seeds.yml -f only=RT-11` | CI run 40092846097 on `52d0d3f`: all 53 jobs green (also 40082018456 on `83c355b` and 40083519550 on `1ad2c3d`). Windows integration groups take 4 to 7 min on x64 and 7 to 14 min on arm64. Seed run 40092848509 (x64, 19 of 19), earlier 40077458287 (arm64, the first 9) |
 
 **Still open: a real logon.** The task's logon trigger is checked in its definition, and the task is started with `schtasks /Run`. A runner has no interactive logon, so whether the service starts at login is unproven. It needs a Windows 11 machine (see "Untested boundaries").
 
@@ -86,10 +86,27 @@ Windows behavior is observed only on those runners.
   1. (P1) The telemetry lock's loop could skip its deadline, so a lock that could be neither taken nor broken held the CLI forever. The loop now checks the deadline on every path. A unit test runs the lock in a process of its own with a time limit.
   2. (P2) Once the daemon ran in the file system's root, a relative `MOSTRA_RUNTIME_BIN` named nothing. The entry is now made absolute first, and a contract test covers it.
 - **Copilot**: didn't review; its quota is used up, as on earlier packages.
-- **Claude Opus 5.5** (D144): the prompt is ready for Mirza to run.
+- **Claude Opus 5.5** (D144), run by Mirza through Claude Code against `1ad2c3d` from the prompt the session wrote, posted on the pull request on 2026-10-24 ([review 5637871189](https://github.com/mostra-dev/mostra/pull/62#pullrequestreview-5637871189)). It ran nothing on Windows, so it marked the findings that depend on Windows behavior "possible". Token usage isn't reported by that surface. Ten findings, every one taken as valid and fixed, each with a test and a seed red when planted and green when restored (on Windows where the seed is Windows'):
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 (possible) On Windows the launch page took `%TEMP%`'s access list, which may let other users read the ticket | The page goes under `%LOCALAPPDATA%\mostra-cli\open`, never `%TEMP%` | `contract.test.ts` "open --browser": `TEMP` points at a folder every user reads, and the second user reads a file there but not the page; seed |
+| 2 A lock file that can't be created made Windows spin for 2 s | Access denied with no lock file present gives up at once; every retry checks the deadline | `telemetry.test.ts` "gives up at once under Windows' lock rules" (POSIX, since the runners' administrator passes any access list); seed |
+| 3 Relative `MOSTRA_*` paths resolved against the root once the daemon and flusher ran there | Every path variable is made absolute against the command's directory before a detached start | `detached.test.ts` classifies every Mostra variable a process reads; `contract.test.ts` starts a daemon with a relative runtime entry through a link and a relative runtime directory; seeds |
+| 4 (possible) An uninstall from another logon session killed the daemon | With no event in reach, `uninstall` stops the daemon with `mostra/shutdown` over the pipe | `lifecycle.test.ts` "over its pipe when no event reaches the launcher"; seed |
+| 5 Only `task.xml`'s existence counted; a task removed in Task Scheduler still counted, and a lost definition left the task | The definition is written only once Task Scheduler took the task; the idle check asks Task Scheduler at most once a minute; uninstall removes a task the home lost | `lifecycle.test.ts` "counts its task only while Task Scheduler holds it" and the lost-definition case; two seeds |
+| 6 (possible) Anyone could create the stop event's predictable name first | The name has a random part, and the launcher and `service-stop` refuse an event another user owns | `lifecycle.test.ts` "refuses a stop event another user created"; seed |
+| 7 (possible) `samePath`'s case folding could make two homes NTFS keeps apart one | Homes compare by their exact native real paths | `windows.test.ts` "a home's spellings": a Kelvin-sign twin is another home; seed |
+| 8 Two seeds were caught only by chance | A dedicated test makes the 8.3 spelling itself; the firewall test judges by the firewall's record alone | the two seeds red on what they plant |
+| 9 (possible) Logoff ended the daemon without an orderly stop | The launcher's hidden window hears the session's end and stops the daemon with Ctrl+Break | `lifecycle.test.ts` "when the user's session ends" (the probe sends what a logoff sends); seed |
+| 10 Several ways to find the helper | The e2e harness and the conformance kit use the SDK's `connectControl` with the runtime they resolve, and an SDK test pins the order to the runtime's | `control.test.ts`; Windows CI then found the SDK starting from a link's path where the runtime starts from the real one, fixed in `973bd3c` |
+
+  Fixing them, Windows CI also found the launcher's refusal logged under the wrong event name (a field named `event` overwrote the line's own), fixed in `52d0d3f`.
 
 ## Untested boundaries
 
+- **A real logoff.** The launcher's handling of a session's end is proven with the messages a logoff sends, sent by the probe; no runner can log its user off.
+- **The telemetry lock under a real access list on Windows.** The runners' administrator passes any list, so the immediate give-up is proven under Windows' rules on POSIX.
 - **The login service's logon.**
   - A real logon starting the task was never exercised (above). The task and its launcher were run with `schtasks /Run` on the runner's administrator account.
   - Logoff ending the job was never exercised.
