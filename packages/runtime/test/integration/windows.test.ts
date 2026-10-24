@@ -28,6 +28,7 @@ import { attach, connectSocket } from "../../src/protocol-server/client.ts";
 import {
   accessEntries,
   alive,
+  asOtherUser,
   connectTo,
   endpointExists,
   eventually,
@@ -47,26 +48,6 @@ const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 const artifact = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/artifacts/${name}`, import.meta.url));
-
-interface Opened {
-  readonly path: string;
-  readonly read: boolean;
-  readonly readWrite: boolean;
-}
-
-/** Opens each `kind:path` as the other local user, through the helper's probe. */
-function asOtherUser(...targets: string[]): Opened[] {
-  const user = process.env["MOSTRA_TEST_OTHER_USER"];
-  const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
-  if (!user || !password) {
-    throw new Error("Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).");
-  }
-  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
-  const out = execFileSync(probe, ["as-user", user, password, ...targets], { encoding: "utf8" });
-  const answer = JSON.parse(out) as { ok: boolean; result?: Opened[]; error?: unknown };
-  if (!answer.ok || !answer.result) throw new Error(`probe failed: ${out}`);
-  return answer.result;
-}
 
 function probe(command: "suspend" | "resume", pid: number): void {
   const binary = join(dirname(helperPath()), "mostra-win-probe.exe");

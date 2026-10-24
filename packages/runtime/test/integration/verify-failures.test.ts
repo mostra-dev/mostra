@@ -60,7 +60,7 @@ function fakeRunner(settings: Record<string, string>): {
     `${Object.entries({ MOSTRA_TEST_FAKE_RUNNER_DIR: dir, ...settings })
       .map(([name, value]) => `process.env.${name} = ${JSON.stringify(value)};`)
       .join("\n")}
-await import(${JSON.stringify(fileURLToPath(new URL("../fixtures/fake-verify-runner.mjs", import.meta.url)))});
+await import(${JSON.stringify(new URL("../fixtures/fake-verify-runner.mjs", import.meta.url).href)});
 `,
   );
   return { entry, dir };

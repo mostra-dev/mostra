@@ -288,11 +288,20 @@ jobs:
           "::add-mask::$password"
           "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
           "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
+      # The firewall check (RT-11): the firewall on in every profile, and blocked listeners logged
+      # (event 5031), so the gateway suite can show a loopback bind is never blocked, against a
+      # wildcard control that is.
+      - name: The firewall on, its blocks audited (RT-11)
+        if: steps.gate.outputs.run && matrix.suite.group == 'windows-gateway'
+        shell: pwsh
+        run: |
+          Set-NetFirewallProfile -All -Enabled True
+          auditpol /set /subcategory:"Filtering Platform Connection" /success:enable /failure:enable
       # Built versions and verify render in Chromium; @mostra/react's hooks too (Vitest browser mode).
       - name: Install the Playwright Chromium headless shell
         if: steps.gate.outputs.run
         run: pnpm --filter @mostra/runtime exec playwright install --only-shell chromium
-      - name: pnpm check --job ${{ matrix.job }}
+      - name: pnpm check --job ${{ matrix.suite.job }}
         if: steps.gate.outputs.run
         env:
           JOB: ${{ matrix.suite.job }}

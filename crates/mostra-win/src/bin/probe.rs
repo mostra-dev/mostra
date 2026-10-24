@@ -10,6 +10,9 @@
 //!
 //! ```text
 //! mostra-win-probe suspend|resume <pid>    freezes or thaws every thread of a process
+//! mostra-win-probe group <pid file> -- <program> <args>…
+//!                                          runs it leading a console process group of its own
+//! mostra-win-probe ctrl-break <pid>        sends that group Ctrl+Break, as a console would
 //! mostra-win-probe squat <user> <password> <name>
 //!                                          as that user, holds \\.\pipe\<name> until stdin ends
 //! ```
@@ -33,6 +36,17 @@ fn main() {
     {
         squat(user, password, name);
         return;
+    }
+    if let [command, pid] = arguments.as_slice()
+        && command == "ctrl-break"
+    {
+        std::process::exit(ctrl_break(pid));
+    }
+    if let [command, pid_file, separator, program, rest @ ..] = arguments.as_slice()
+        && command == "group"
+        && separator == "--"
+    {
+        std::process::exit(group(pid_file, program, rest));
     }
     if let [command, pid] = arguments.as_slice()
         && (command == "suspend" || command == "resume")
@@ -129,6 +143,60 @@ fn security(path: &str) {
             std::process::exit(1);
         }
     }
+}
+
+/// Sends Ctrl+Break to the console process group `pid` leads; prints one JSON answer.
+#[cfg(windows)]
+fn ctrl_break(pid: &str) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::send_ctrl_break(pid) {
+        Ok(()) => {
+            println!("{}", json!({ "ok": true, "result": {} }));
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+/// Runs `program` as the leader of a console process group of its own, on this console and with
+/// these standard streams, writes its PID to `pid_file`, and exits with its code: so a test can
+/// send it Ctrl+Break (`ctrl-break <pid>`) as a person at the console would, and nothing else.
+#[cfg(windows)]
+fn group(pid_file: &str, program: &str, arguments: &[String]) -> i32 {
+    use std::os::windows::process::CommandExt;
+    /// `CREATE_NEW_PROCESS_GROUP`.
+    const NEW_GROUP: u32 = 0x0000_0200;
+    let mut child = match std::process::Command::new(program)
+        .args(arguments)
+        .creation_flags(NEW_GROUP)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            eprintln!("mostra-win-probe group: {error}");
+            return 127;
+        }
+    };
+    if let Err(error) = std::fs::write(pid_file, child.id().to_string()) {
+        eprintln!("mostra-win-probe group: {error}");
+        let _ = child.kill();
+        return 127;
+    }
+    child
+        .wait()
+        .ok()
+        .and_then(|status| status.code())
+        .unwrap_or(1)
 }
 
 /// As another user, creates `\\.\pipe\<name>` (owned by that user, open to everyone), says so

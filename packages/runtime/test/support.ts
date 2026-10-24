@@ -358,9 +358,10 @@ export function runBin(
   args: readonly string[],
   env: NodeJS.ProcessEnv,
   nodeArgs: readonly string[] = [],
+  node: string = process.execPath,
 ): RuntimeProcess {
   if (!existsSync(BIN)) throw new Error(`${BIN} is missing: build @mostra/runtime first.`);
-  const child = spawn(process.execPath, [...nodeArgs, BIN, ...args], {
+  const child = spawn(node, [...nodeArgs, BIN, ...args], {
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -388,12 +389,19 @@ export interface DaemonStatus {
 /** Starts `mostra-runtime daemon` and waits for its status line. */
 export async function startDaemon(
   testHome: TestHome,
-  options: { env?: NodeJS.ProcessEnv; nodeArgs?: readonly string[]; args?: readonly string[] } = {},
+  options: {
+    env?: NodeJS.ProcessEnv;
+    nodeArgs?: readonly string[];
+    args?: readonly string[];
+    /** The Node.js to run it on: this process's by default. */
+    node?: string;
+  } = {},
 ): Promise<RuntimeProcess & { status: DaemonStatus }> {
   const started = runBin(
     ["daemon", "--home", testHome.home, ...(options.args ?? [])],
     options.env ?? testHome.env,
     options.nodeArgs,
+    options.node,
   );
   const status = await new Promise<DaemonStatus>((resolve, reject) => {
     const splitter = new LineSplitter();
@@ -593,4 +601,68 @@ export function suspendProcess(pid: number, suspend: boolean): void {
     encoding: "utf8",
     windowsHide: true,
   });
+}
+
+/** What another local user could do with a path (`mostra-win-probe as-user`). */
+export interface Opened {
+  readonly path: string;
+  readonly read: boolean;
+  readonly readWrite: boolean;
+}
+
+/**
+ * Windows: opens each `kind:path` (`file`, `dir`, `pipe`, `mkdir`) as the second local user the CI
+ * leg creates, through the helper's probe. A missing user is a failure, never a skip
+ * (docs/agents/run-on-windows.md).
+ */
+export function asOtherUser(...targets: string[]): Opened[] {
+  const user = process.env["MOSTRA_TEST_OTHER_USER"];
+  const password = process.env["MOSTRA_TEST_OTHER_PASSWORD"];
+  if (!user || !password) {
+    throw new Error("Set MOSTRA_TEST_OTHER_USER and MOSTRA_TEST_OTHER_PASSWORD (the CI leg does).");
+  }
+  const probe = join(dirname(helperPath()), "mostra-win-probe.exe");
+  const out = execFileSync(probe, ["as-user", user, password, ...targets], { encoding: "utf8" });
+  const answer = JSON.parse(out) as { ok: boolean; result?: Opened[]; error?: unknown };
+  if (!answer.ok || !answer.result) throw new Error(`probe failed: ${out}`);
+  return answer.result;
+}
+
+/** Windows: the SID (`S-1-5-21-…`) of the user the tests run as, from the helper. */
+export function currentUserSid(): string {
+  const out = execFileSync(helperPath(), ["whoami"], { encoding: "utf8", windowsHide: true });
+  return (JSON.parse(out) as { result: { user: string } }).result.user;
+}
+
+/** Every process's ID, parent and command line: `ps` on POSIX, CIM's `Win32_Process` on Windows. */
+export function processTable(): { pid: number; ppid: number; command: string }[] {
+  if (WINDOWS) {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
+      ],
+      { encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+    );
+    const rows = JSON.parse(out) as {
+      ProcessId: number;
+      ParentProcessId: number;
+      Name: string;
+      CommandLine: string | null;
+    }[];
+    return rows.map((row) => ({
+      pid: row.ProcessId,
+      ppid: row.ParentProcessId,
+      command: row.CommandLine ?? row.Name,
+    }));
+  }
+  return execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
+    .split("\n")
+    .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] ?? "" }))
+    .filter((row) => row.command !== "ps -A -o pid=,ppid=,command=");
 }

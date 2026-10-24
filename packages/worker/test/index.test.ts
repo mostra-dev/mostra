@@ -4,7 +4,7 @@
  * lines in the run log, and live producers (RT-03, AC-01, AC-04, D19 seam 3, D124).
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -46,7 +46,7 @@ async function bad() { return new (class Nope {})(); }
 async function capability() {
   return {
     file: readFileSync(new URL(import.meta.url), "utf8").length > 0,
-    process: execFileSync("/bin/echo", ["hi"], { encoding: "utf8" }).trim(),
+    process: execFileSync(process.execPath, ["-e", "process.stdout.write('hi')"], { encoding: "utf8" }).trim(),
   };
 }
 async function raise() { signal("reply-sent", { id: 1 }); emit("host.mail.sent", { id: 1 }); return "ok"; }
@@ -88,7 +88,11 @@ async function startWorker(): Promise<Harness> {
   writeFileSync(join(versionDir, "server", "entry.mjs"), SERVER_CODE);
   const outputDigest = createHash("sha256").update("fixture").digest("hex");
   writeFileSync(join(versionDir, "manifest.json"), JSON.stringify({ outputDigest }));
-  const socketPath = join(mkdtempSync("/tmp/mw-"), "s");
+  // A Unix socket under /tmp (macOS limits socket paths to 103 bytes), or a named pipe on Windows.
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\mw-${randomUUID()}`
+      : join(mkdtempSync("/tmp/mw-"), "s");
   const server: Server = createServer();
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
   const accepted = new Promise<Socket>((resolve) => server.once("connection", resolve));
@@ -144,11 +148,13 @@ async function startWorker(): Promise<Harness> {
   });
   cleanups.push(() => {
     try {
-      process.kill(-(child.pid ?? 0), "SIGKILL");
+      // Its process group on POSIX; on Windows, which has none, the worker itself.
+      if (process.platform === "win32") child.kill();
+      else process.kill(-(child.pid ?? 0), "SIGKILL");
     } catch {}
     socket.destroy();
     server.close();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   });
   const started = await harness.peer.request(
     "worker/start",

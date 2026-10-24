@@ -52,7 +52,10 @@ export async function leak() {
 /** Full capability (AC-01): a file, a process and the network. */
 export async function capability(url: string) {
   const file = readFileSync(new URL(import.meta.url), "utf8").length > 0;
-  const processOutput = execFileSync("/bin/echo", ["from a process"], { encoding: "utf8" }).trim();
+  // Node.js itself, a program on every platform (Windows has no /bin/echo).
+  const processOutput = execFileSync(process.execPath, ["-e", "process.stdout.write('from a process')"], {
+    encoding: "utf8",
+  }).trim();
   const network = await (await fetch(url)).text();
   return { file, process: processOutput, network, pid: process.pid };
 }
