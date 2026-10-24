@@ -132,6 +132,18 @@ Windows behavior is observed only on those runners.
 - **Follow-ups filed:** [#66](https://github.com/mostra-dev/mostra/issues/66) (two one-off Windows browser failures on #64's first CI run: an emulated Firefox page closing on arm64, Chromium's `ERR_NO_BUFFER_SPACE` on x64; green on the rerun).
 - **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, CI logs, traces and review texts in `~/.jcode/scratch/w2`, the external smoke in `/tmp/w2rel`, and test homes under the system's temporary directory.
 
+## After the report
+
+Mirza accepted the closeout at M38 and delegated its three open points (D151, amended):
+- **#70:** the Windows browser legs run Chromium on x64 and arm64 and Firefox on x64 only, since Playwright's Windows browsers are x64 builds and Firefox under emulation twice closed a fresh page. WP-W3's specification takes WP-W2's handoff, starting with the measurement of the runners' disk flushes (#66) and the release rehearsal (#69).
+- **Mostra HQ:** the roadmap marks WP-W2 done ([mostra-hq #49](https://github.com/mostra-dev/mostra-hq/pull/49)).
+- **#68:** WP-W2's own `mostra dev` editor-save test clicked before the reload a server change causes. It now waits for the restart.
+- **#72:** three causes the Windows legs exposed after the merge.
+  - The Opus review's lock fix gave up when a lock Windows was deleting finished in between, so one of twelve first runs got no install ID. Such a round is now retried, at most three times in a row. The `@mostra/cli` changeset ships with the next release.
+  - The runtime's test client kept a timed-out waiter, which swallowed the next message. This was the secrets-port failures, including WP-W2's `producers.test.ts:132`.
+  - The RT-03 idle test read the pool before the pool had recorded the worker's exit.
+- **Still open:** #66 (the remaining Windows browser and gateway flakes, measured first in WP-W3), #69 (the release rehearsal on pull requests without a changeset) and #35 (the `mostra dev` suite losing its instance, now seen on macOS too).
+
 ## Next
 
 WP-W3, Windows III: the bundles, the SDK, the Rust crate and conformance on Windows (`docs/design/work-packages/WP-W3.md`). It ships `mostra-win.exe` and `mostra-win-service.exe` in the Windows bundles, fetches the x64 verify browser on arm64 too (Playwright has no arm64 build), removes `MOSTRA_DEV_WINDOWS`, and gives the Rust crate the pipe-owner rule every TypeScript client now follows (D151 item 2).
