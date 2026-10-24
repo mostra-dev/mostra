@@ -774,10 +774,11 @@ describe.runIf(WINDOWS)("the Windows firewall (RT-11, WP-W2)", () => {
     try {
       const receipt = await gateway.publish("single-tsx", "page.tsx");
       await openLink(new Browser(), receipt.url);
-      const addresses = listening(gateway.daemon.child.pid as number);
-      expect(addresses.length).toBeGreaterThanOrEqual(2);
-      for (const address of addresses) expect(address).toMatch(/^127\.0\.0\.1:\d+$/);
-      // The control's event arrived within seconds; give the gateway's as long, and more.
+      // Judged by the firewall's own record alone, so a gateway that listened everywhere is caught
+      // by what the firewall did (its addresses are "loopback only by default"'s to check; Opus
+      // review of WP-W2, finding 8). The control's event arrived within seconds; give the
+      // gateway's as long, and more.
+      expect(listening(gateway.daemon.child.pid as number).length).toBeGreaterThanOrEqual(2);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       expect(firewallBlocks(since, `${tag}-gateway`)).toEqual([]);
     } finally {

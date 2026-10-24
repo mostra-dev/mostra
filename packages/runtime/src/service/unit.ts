@@ -8,14 +8,27 @@
  * which also does the restarting (Task Scheduler's own setting didn't, VERIFIED_FACTS WP-W2). The
  * definition carries no secret: the daemon reads them from the home (D44).
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, win32 } from "node:path";
-import { createDiagnostic, RpcError } from "@mostra/protocol";
-import { homeHash } from "../home/index.ts";
+import {
+  type ClientInfo,
+  createDiagnostic,
+  mostraShutdownMethod,
+  RpcError,
+} from "@mostra/protocol";
+import { homeHash, readLiveInstanceRecord } from "../home/index.ts";
 import type { Environment } from "../log.ts";
-import { currentUserSid, OS, serviceLauncherPath, stopServiceLauncher } from "../platform/index.ts";
+import {
+  currentUserSid,
+  isSameProcess,
+  OS,
+  serviceLauncherPath,
+  stopServiceLauncher,
+} from "../platform/index.ts";
+import { attach } from "../protocol-server/index.ts";
 
 /** Where a home's service is, and whether it is there. */
 export interface ServiceStatus {
@@ -90,7 +103,7 @@ export function serviceFor(spec: ServiceSpec): ServiceStatus {
       command: [
         spec.launcher ?? launcherOrName(),
         "--stop-event",
-        stopEvent(hash),
+        stopEventOf(file) ?? newStopEvent(hash),
         "--log",
         win32.join(spec.home, "logs", "service.log"),
         ...windowsServiceVariables(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]),
@@ -118,8 +131,23 @@ function windowsServiceVariables(env: Environment): [string, string][] {
   });
 }
 
-/** The event that asks a home's launcher to stop (`Local\`: this logon session's namespace). */
-const stopEvent = (hash: string): string => `Local\\mostra-service-${hash}`;
+/**
+ * A new name for the event that asks a home's launcher to stop: in `Local\` (the logon session's
+ * namespace, the only one an ordinary user may create names in), with a random part, so nobody who
+ * can't read the task or the home can create it first (Opus review of WP-W2, finding 6).
+ */
+const newStopEvent = (hash: string): string =>
+  `Local\\mostra-service-${hash.toLowerCase()}-${randomBytes(8).toString("hex")}`;
+
+/** The stop event a definition Mostra wrote names, if the file is there. */
+function stopEventOf(file: string): string | undefined {
+  try {
+    const text = readFileSync(file).toString("utf16le");
+    return /--stop-event (Local\\mostra-service-[0-9a-z]+-[0-9a-f]{16})\b/.exec(text)?.[1];
+  } catch {
+    return undefined;
+  }
+}
 
 /** The launcher's path, or its bare name where it isn't installed (a status only reads it). */
 function launcherOrName(): string {
@@ -203,10 +231,42 @@ function taskFile(spec: ServiceSpec, status: ServiceStatus): string {
  */
 export function hasLoginService(home: string, env: Environment = process.env): boolean {
   try {
-    return serviceFor({ home, node: "", entry: "", env }).installed;
+    const status = serviceFor({ home, node: "", entry: "", env });
+    if (!status.installed) return false;
+    return status.manager !== "task-scheduler" || registeredLately(status);
   } catch {
     return false;
   }
+}
+
+/** What the idle check last learnt of each task: whether Task Scheduler holds it, and when. */
+const registrations = new Map<string, { registered?: boolean; at: number; asking: boolean }>();
+
+/**
+ * Whether Task Scheduler held the task when last asked, asking again in the background at most
+ * once a minute: the idle check runs every few seconds and must never wait for `schtasks`. A task
+ * removed in Task Scheduler's own window then stops counting, so a daemon started by hand exits
+ * when idle again (Opus review of WP-W2, finding 5). Until the first answer, the definition in the
+ * home counts.
+ */
+function registeredLately(status: ServiceStatus): boolean {
+  const interval = Number(process.env["MOSTRA_TEST_SERVICE_QUERY_MS"]) || 60_000;
+  const entry = registrations.get(status.name) ?? { at: Number.NEGATIVE_INFINITY, asking: false };
+  registrations.set(status.name, entry);
+  if (!entry.asking && Date.now() - entry.at >= interval) {
+    entry.asking = true;
+    execFile(
+      "schtasks",
+      ["/Query", "/TN", status.name],
+      { timeout: 30_000, windowsHide: true },
+      (error) => {
+        entry.registered = error === null;
+        entry.at = Date.now();
+        entry.asking = false;
+      },
+    );
+  }
+  return entry.registered ?? true;
 }
 
 const xml = (text: string): string =>
@@ -301,6 +361,8 @@ WantedBy=default.target
 export interface ServiceOptions {
   /** Write the file only, without asking the service manager to start it (tests). */
   readonly noStart?: boolean;
+  /** Who asks, when a Windows uninstall stops the daemon over its pipe. */
+  readonly client?: ClientInfo;
 }
 
 function run(command: string, args: readonly string[]): void {
@@ -328,7 +390,10 @@ function readDefinition(status: ServiceStatus): string {
 }
 
 /** Installs the home's daemon as a login service and starts it, replacing an earlier one. */
-export function installService(spec: ServiceSpec, options: ServiceOptions = {}): ServiceStatus {
+export async function installService(
+  spec: ServiceSpec,
+  options: ServiceOptions = {},
+): Promise<ServiceStatus> {
   // On Windows a launcher that isn't there is MOSTRA_ENV_HELPER_MISSING before anything is written.
   const status = serviceFor(
     (spec.platform ?? OS) === "win32" && spec.launcher === undefined
@@ -336,14 +401,27 @@ export function installService(spec: ServiceSpec, options: ServiceOptions = {}):
       : spec,
   );
   const text = serviceFile(spec, status);
+  // Windows: the home keeps the definition only once Task Scheduler took it, so a definition in
+  // the home names a task that was registered (Opus review of WP-W2, finding 5).
+  const registering = status.manager === "task-scheduler" && !options.noStart;
+  const written = registering ? `${status.file}.new` : status.file;
   try {
     mkdirSync(dirname(status.file), { recursive: true });
     mkdirSync(join(spec.home, "logs"), { recursive: true, mode: 0o700 });
-    if (status.installed && !options.noStart) stopService(status);
-    writeFileSync(status.file, encoded(status, text), { mode: 0o644 });
+    if (status.installed && !options.noStart) await stopService(status, spec.home, options);
+    writeFileSync(written, encoded(status, text), { mode: 0o644 });
   } catch (error) {
     if (error instanceof RpcError) throw error;
     throw failed(`Writing ${status.file} failed: ${(error as Error).message}`);
+  }
+  if (registering) {
+    try {
+      run("schtasks", ["/Create", "/TN", status.name, "/XML", written, "/F"]);
+      renameSync(written, status.file);
+    } finally {
+      rmSync(written, { force: true });
+    }
+    registrations.delete(status.name);
   }
   if (!options.noStart) {
     if (status.manager === "launchd") {
@@ -352,46 +430,86 @@ export function installService(spec: ServiceSpec, options: ServiceOptions = {}):
       run("systemctl", ["--user", "daemon-reload"]);
       run("systemctl", ["--user", "enable", "--now", status.name]);
     } else {
-      // Registered for the user's own logons, which needs no elevation (InteractiveToken), and
-      // started now, as launchd's RunAtLoad and systemd's `--now` start theirs.
-      run("schtasks", ["/Create", "/TN", status.name, "/XML", status.file, "/F"]);
+      // Registered above for the user's own logons, which needs no elevation (InteractiveToken),
+      // and started now, as launchd's RunAtLoad and systemd's `--now` start theirs.
       run("schtasks", ["/Run", "/TN", status.name]);
     }
   }
   return { ...status, installed: true };
 }
 
-function stopService(status: ServiceStatus): void {
+async function stopService(
+  status: ServiceStatus,
+  home: string,
+  options: ServiceOptions,
+): Promise<void> {
   try {
     if (status.manager === "launchd") run("launchctl", ["bootout", `gui/${uid()}/${status.name}`]);
     else if (status.manager === "systemd")
       run("systemctl", ["--user", "disable", "--now", status.name]);
-    else stopTask(status);
+    else await stopTask(status, home, options);
   } catch {
     // Not loaded: nothing to stop.
   }
 }
 
 /**
- * Stops and deletes a home's task: its launcher stops the daemon cleanly first (Ctrl+Break, which
- * the runtime handles as `mostra/shutdown`, D87), then the task is ended, which ends whatever its
- * job still holds, and deleted.
+ * Stops and deletes a home's task, the daemon first and in order (D87), as launchd's `bootout`
+ * and systemd's `disable --now` send it SIGTERM:
+ * - through the launcher's stop event, when this logon session has it: the launcher gives the
+ *   daemon Ctrl+Break, which the runtime handles as `mostra/shutdown`;
+ * - otherwise (the launcher runs in another session, as when the user is logged on at the console
+ *   and uninstalls over SSH, or the home lost the definition naming the event) with
+ *   `mostra/shutdown` over the home's pipe, which reaches the daemon from any session; its exit
+ *   with code 0 ends the launcher (Opus review of WP-W2, finding 4);
+ *
+ * then the task is ended, which ends whatever its job still holds, and deleted.
  */
-function stopTask(status: ServiceStatus): void {
-  const event = status.command[status.command.indexOf("--stop-event") + 1];
-  if (event !== undefined) {
+async function stopTask(
+  status: ServiceStatus,
+  home: string,
+  options: ServiceOptions,
+): Promise<void> {
+  const event = status.installed
+    ? status.command[status.command.indexOf("--stop-event") + 1]
+    : undefined;
+  let signalled = false;
+  // A test stands for another session's launcher, whose event this session can't see.
+  if (event !== undefined && process.env["MOSTRA_TEST_SERVICE_STOP"] !== "pipe") {
     try {
-      stopServiceLauncher(event);
+      signalled = stopServiceLauncher(event).signalled;
     } catch {
-      // No launcher runs, or the helper couldn't ask: ending the task below stops it.
+      // The helper couldn't ask: the pipe below stops the daemon.
     }
   }
+  if (!signalled) await shutDownInstance(home, options.client);
   try {
     run("schtasks", ["/End", "/TN", status.name]);
   } catch {
     // Not running.
   }
   run("schtasks", ["/Delete", "/TN", status.name, "/F"]);
+  registrations.delete(status.name);
+}
+
+/** Asks the home's running daemon, if any, to stop (`mostra/shutdown`), and waits until it has. */
+async function shutDownInstance(home: string, client: ClientInfo | undefined): Promise<void> {
+  const record = await readLiveInstanceRecord(home);
+  if (record === undefined || record.mode !== "daemon") return;
+  try {
+    const session = await attach(record.socket, client ?? { name: "mostra-service", version: "0" });
+    await session.client.peer
+      .call(mostraShutdownMethod, {}, { timeoutMs: 10_000 })
+      .catch(() => undefined);
+    session.client.close();
+  } catch {
+    // Unreachable: ending the task stops it.
+    return;
+  }
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline && (await isSameProcess(record.pid, record.startTime))) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 /** Whether Task Scheduler holds the home's task. */
@@ -404,11 +522,24 @@ function taskRegistered(status: ServiceStatus): boolean {
   }
 }
 
-/** Stops and removes the home's login service; a home without one is left as it is. */
-export function uninstallService(spec: ServiceSpec, options: ServiceOptions = {}): ServiceStatus {
+/**
+ * Stops and removes the home's login service; a home without one is left as it is. On Windows a
+ * task Task Scheduler still holds is removed though the home lost its definition (restored from a
+ * backup, removed by hand), or the task would keep starting the daemon at every logon (Opus review
+ * of WP-W2, finding 5).
+ */
+export async function uninstallService(
+  spec: ServiceSpec,
+  options: ServiceOptions = {},
+): Promise<ServiceStatus> {
   const status = serviceFor(spec);
-  if (!status.installed) return status;
-  if (!options.noStart) stopService(status);
+  const orphaned =
+    !status.installed &&
+    status.manager === "task-scheduler" &&
+    !options.noStart &&
+    taskRegistered(status);
+  if (!status.installed && !orphaned) return status;
+  if (!options.noStart) await stopService(status, spec.home, options);
   rmSync(status.file, { force: true });
   if (!options.noStart && status.manager === "systemd") {
     try {

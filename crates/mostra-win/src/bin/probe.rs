@@ -13,8 +13,10 @@
 //! mostra-win-probe group <pid file> -- <program> <args>…
 //!                                          runs it leading a console process group of its own
 //! mostra-win-probe ctrl-break <pid>        sends that group Ctrl+Break, as a console would
+//! mostra-win-probe end-session <pid>       sends that process's windows what a logoff sends
 //! mostra-win-probe squat <user> <password> <name>
-//!                                          as that user, holds \\.\pipe\<name> until stdin ends
+//!                                          as that user, holds \\.\pipe\<name> (or the event
+//!                                          <name>, when it starts `Local\`) until stdin ends
 //! ```
 
 #[cfg(windows)]
@@ -38,9 +40,13 @@ fn main() {
         return;
     }
     if let [command, pid] = arguments.as_slice()
-        && command == "ctrl-break"
+        && (command == "ctrl-break" || command == "end-session")
     {
-        std::process::exit(ctrl_break(pid));
+        std::process::exit(if command == "ctrl-break" {
+            ctrl_break(pid)
+        } else {
+            end_session(pid)
+        });
     }
     if let [command, pid_file, separator, program, rest @ ..] = arguments.as_slice()
         && command == "group"
@@ -51,25 +57,7 @@ fn main() {
     if let [command, pid] = arguments.as_slice()
         && (command == "suspend" || command == "resume")
     {
-        {
-            let Ok(pid) = pid.parse() else {
-                std::process::exit(2)
-            };
-            match sys::suspend_process(pid, command == "suspend") {
-                Ok(threads) => println!(
-                    "{}",
-                    json!({ "ok": true, "result": { "threads": threads } })
-                ),
-                Err(error) => {
-                    println!(
-                        "{}",
-                        json!({ "ok": false, "error": { "message": error.to_string() } })
-                    );
-                    std::process::exit(1);
-                }
-            }
-            return;
-        }
+        std::process::exit(suspend(pid, command == "suspend"));
     }
     let [command, user, password, targets @ ..] = arguments.as_slice() else {
         println!(
@@ -147,6 +135,56 @@ fn security(path: &str) {
 
 /// Sends Ctrl+Break to the console process group `pid` leads; prints one JSON answer.
 #[cfg(windows)]
+fn suspend(pid: &str, suspend: bool) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::suspend_process(pid, suspend) {
+        Ok(threads) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "threads": threads } })
+            );
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+#[cfg(windows)]
+fn end_session(pid: &str) -> i32 {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let Ok(pid) = pid.parse() else {
+        return 2;
+    };
+    match sys::end_session_of(pid, 10_000) {
+        Ok(windows) => {
+            println!(
+                "{}",
+                json!({ "ok": true, "result": { "windows": windows } })
+            );
+            0
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            1
+        }
+    }
+}
+
+#[cfg(windows)]
 fn ctrl_break(pid: &str) -> i32 {
     use mostra_win::win::sys;
     use serde_json::json;
@@ -206,6 +244,10 @@ fn group(pid_file: &str, program: &str, arguments: &[String]) -> i32 {
 fn squat(user: &str, password: &str, name: &str) {
     use mostra_win::win::sys;
     use serde_json::json;
+    if name.starts_with("Local\\") {
+        squat_event(user, password, name);
+        return;
+    }
     let full = format!(r"\\.\pipe\{name}");
     let created = sys::as_user(user, password, || {
         // Several instances, so each client the test opens finds one free.
@@ -226,6 +268,34 @@ fn squat(user: &str, password: &str, name: &str) {
             println!(
                 "{}",
                 json!({ "ok": false, "error": { "message": error.to_string() } })
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// As that user, creates the named event `name` (in this session's `Local\` namespace) open to
+/// everyone, and holds it until stdin ends: what someone who wanted to keep a launcher from
+/// starting, or to stop it, would do.
+#[cfg(windows)]
+fn squat_event(user: &str, password: &str, name: &str) {
+    use mostra_win::win::sys;
+    use serde_json::json;
+    let created = sys::as_user(user, password, || {
+        sys::SecurityDescriptor::from_sddl("D:(A;;GA;;;WD)")
+            .and_then(|descriptor| sys::NamedEvent::create(name, &descriptor))
+    });
+    match created {
+        Ok(Ok(sys::Created::New(event) | sys::Created::Existing(event))) => {
+            println!("{}", json!({ "ok": true, "result": { "event": name } }));
+            let mut sink = String::new();
+            let _ = std::io::stdin().read_line(&mut sink);
+            drop(event);
+        }
+        Ok(Err(error)) | Err(error) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": { "message": error.to_string(), "os": error.raw_os_error() } })
             );
             std::process::exit(1);
         }

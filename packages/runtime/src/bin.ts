@@ -123,7 +123,7 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   const [mode, ...rest] = positionals;
   if (mode === "service" && !values.help)
-    return service(rest, values.home, values["no-start"] === true);
+    return await service(rest, values.home, values["no-start"] === true);
   if (values.help || (mode !== "host" && mode !== "daemon") || rest.length > 0) {
     (values.help ? process.stdout : process.stderr).write(`${USAGE}\n`);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -180,7 +180,11 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 /** `mostra-runtime service …`: the home's login service, as one JSON line (D62, RT-08). */
-function service(args: readonly string[], home: string | undefined, noStart: boolean): number {
+async function service(
+  args: readonly string[],
+  home: string | undefined,
+  noStart: boolean,
+): Promise<number> {
   const [action, ...extra] = args;
   if ((action !== "install" && action !== "uninstall" && action !== "status") || extra.length > 0) {
     process.stderr.write(`${USAGE}\n`);
@@ -200,11 +204,13 @@ function service(args: readonly string[], home: string | undefined, noStart: boo
       node: process.execPath,
       entry: fileURLToPath(import.meta.url),
     };
+    // Who asks, should a Windows uninstall stop the daemon over its pipe.
+    const client = { name: "mostra-runtime-service", version: runtimeVersion() };
     const status =
       action === "install"
-        ? installService(spec, { noStart })
+        ? await installService(spec, { noStart, client })
         : action === "uninstall"
-          ? uninstallService(spec, { noStart })
+          ? await uninstallService(spec, { noStart, client })
           : serviceStatus(spec);
     process.stdout.write(`${JSON.stringify({ status: "ok", action, service: status })}\n`);
     return EXIT.ok;

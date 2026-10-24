@@ -2,6 +2,9 @@
  * The login service's definitions (RT-08, RT-11): the Windows task (D151), checked here on every
  * platform; the Windows suites register and run it for real.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { serviceFile, serviceFor, windowsArgument } from "../../src/service/unit.ts";
 
@@ -35,7 +38,7 @@ describe("the Windows login service's task (D151)", () => {
     expect(status.command).toEqual([
       spec.launcher,
       "--stop-event",
-      expect.stringMatching(/^Local\\mostra-service-[0-9A-Z]{16}$/),
+      expect.stringMatching(/^Local\\mostra-service-[0-9a-z]{16}-[0-9a-f]{16}$/),
       "--log",
       `${spec.home}\\logs\\service.log`,
       "--env",
@@ -62,4 +65,28 @@ describe("the Windows login service's task (D151)", () => {
     );
     expect(text).not.toMatch(/SECRET|hunter2|PASSWORD/i);
   });
+
+  it("names its stop event with a random part, so nobody can create it first (Opus review of WP-W2, finding 6)", () => {
+    const event = (status: ReturnType<typeof serviceFor>): string | undefined =>
+      status.command[status.command.indexOf("--stop-event") + 1];
+    expect(event(serviceFor(spec))).not.toBe(event(serviceFor(spec)));
+  });
+
+  it.runIf(process.platform === "win32")(
+    "keeps the event its definition names, so an uninstall finds the launcher",
+    () => {
+      const home = mkdtempSync(join(tmpdir(), "mostra-task-"));
+      try {
+        const local = { ...spec, home };
+        const first = serviceFor(local);
+        mkdirSync(join(home, "service"), { recursive: true });
+        writeFileSync(first.file, Buffer.from(`\ufeff${serviceFile(local, first)}`, "utf16le"));
+        const again = serviceFor(local);
+        expect(again.command).toEqual(first.command);
+        expect(serviceFile(local, again)).toBe(serviceFile(local, first));
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 });

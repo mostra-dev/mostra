@@ -13,8 +13,9 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, ERROR_BROKEN_PIPE, ERROR_FILE_NOT_FOUND, ERROR_HANDLE_EOF,
     ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, ERROR_IO_PENDING, ERROR_MORE_DATA,
     ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, FILETIME,
-    GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
-    LocalFree, STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WAIT_TIMEOUT, WIN32_ERROR,
+    GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, HWND,
+    INVALID_HANDLE_VALUE, LPARAM, LRESULT, LocalFree, STILL_ACTIVE, SetHandleInformation,
+    WAIT_OBJECT_0, WAIT_TIMEOUT, WIN32_ERROR, WPARAM,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
@@ -52,6 +53,7 @@ use windows_sys::Win32::System::JobObjects::{
     JobObjectBasicProcessIdList, JobObjectExtendedLimitInformation, OpenJobObjectW,
     QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
 };
+use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
@@ -67,6 +69,12 @@ use windows_sys::Win32::System::Threading::{
     SYNCHRONIZATION_SYNCHRONIZE, SetEvent, TerminateProcess, UpdateProcThreadAttribute,
     WaitForMultipleObjects, WaitForSingleObject,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, ENDSESSION_LOGOFF, EnumWindows, GetMessageW,
+    GetWindowThreadProcessId, MSG, RegisterClassW, SMTO_ABORTIFHUNG, SendMessageTimeoutW,
+    TranslateMessage, WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW, WS_OVERLAPPED,
+};
+use windows_sys::core::BOOL;
 
 // Constants windows-sys keeps behind features this crate doesn't otherwise need.
 const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
@@ -1282,10 +1290,17 @@ pub fn write_all(handle: &Handle, mut data: &[u8]) -> io::Result<()> {
 /// A named, manual-reset event: how `mostra-win service-stop` asks a running launcher to stop.
 pub struct NamedEvent(Handle);
 
+/// What [`NamedEvent::create`] found.
+pub enum Created {
+    /// The event is new: this process made it.
+    New(NamedEvent),
+    /// An event of that name existed already; check its [`NamedEvent::owner`] before trusting it.
+    Existing(NamedEvent),
+}
+
 impl NamedEvent {
-    /// Creates the event `name` with `descriptor`; `None` when it exists already (another
-    /// launcher of the same service runs).
-    pub fn create(name: &str, descriptor: &SecurityDescriptor) -> io::Result<Option<NamedEvent>> {
+    /// Creates the event `name` with `descriptor`, or opens the one that exists already.
+    pub fn create(name: &str, descriptor: &SecurityDescriptor) -> io::Result<Created> {
         let text = wide_str(name);
         let attributes = descriptor.attributes();
         // SAFETY: valid attributes and name; the handle is owned.
@@ -1293,7 +1308,11 @@ impl NamedEvent {
         // SAFETY: plain call, read right after the call it reports on.
         let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
         let event = NamedEvent(Handle::owned(handle)?);
-        Ok(if existed { None } else { Some(event) })
+        Ok(if existed {
+            Created::Existing(event)
+        } else {
+            Created::New(event)
+        })
     }
 
     /// Opens the event `name` to signal or wait on it, or `None` when no event has the name.
@@ -1302,7 +1321,7 @@ impl NamedEvent {
         // SAFETY: valid name; the handle is owned.
         let handle = unsafe {
             OpenEventW(
-                EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE,
+                EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE | READ_CONTROL,
                 0,
                 text.as_ptr(),
             )
@@ -1312,6 +1331,11 @@ impl NamedEvent {
             Err(error) if is_error(&error, ERROR_FILE_NOT_FOUND) => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    /// Who owns it: an event someone else created under a name Mostra uses isn't Mostra's.
+    pub fn owner(&self) -> io::Result<Sid> {
+        object_owner(&self.0)
     }
 
     /// Signals it.
@@ -1370,12 +1394,178 @@ pub fn send_ctrl_break(pid: u32) -> io::Result<()> {
     sent
 }
 
+// ----- The end of the user's session -----
+
+/// What the session window's procedure uses: the event it sets when the session ends, the event
+/// it waits on before letting the session end, and how long it waits.
+static SESSION: std::sync::OnceLock<(usize, usize, u32)> = std::sync::OnceLock::new();
+
+/// The session window's procedure. `WM_QUERYENDSESSION` agrees; `WM_ENDSESSION` for an ending
+/// session sets `ending`, then holds the session open until `finished` is set (at most the wait
+/// given): returning from it lets Windows end the process.
+extern "system" fn session_procedure(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match message {
+        WM_QUERYENDSESSION => 1,
+        WM_ENDSESSION => {
+            if wparam != 0
+                && let Some(&(ending, finished, wait_ms)) = SESSION.get()
+            {
+                // SAFETY: both handles stay open for the life of the process (the launcher keeps
+                // them).
+                unsafe {
+                    SetEvent(ending as HANDLE);
+                    WaitForSingleObject(finished as HANDLE, wait_ms);
+                }
+            }
+            0
+        }
+        // SAFETY: the default handling of every other message.
+        _ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
+    }
+}
+
+/// Watches for the end of the user's session (a logoff, a shutdown or a restart) through a hidden
+/// top-level window, which Windows asks before the session ends (a program with no window, or only
+/// a message-only one, hears nothing). On the end it sets `ending` and keeps the session open until
+/// `finished` is set, at most `wait_ms`. Runs on a thread of its own for the life of the process.
+pub fn watch_session_end(ending: RawHandle, finished: RawHandle, wait_ms: u32) -> io::Result<()> {
+    if SESSION
+        .set((ending.0 as usize, finished.0 as usize, wait_ms))
+        .is_err()
+    {
+        return Err(io::Error::other("the session is watched already"));
+    }
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<io::Result<()>>();
+    std::thread::spawn(move || {
+        let class = wide_str(SESSION_WINDOW_CLASS);
+        // SAFETY: plain calls; the class and window live until the process ends.
+        unsafe {
+            let instance = GetModuleHandleW(null());
+            let mut definition: WNDCLASSW = zeroed();
+            definition.lpfnWndProc = Some(session_procedure);
+            definition.hInstance = instance;
+            definition.lpszClassName = class.as_ptr();
+            if RegisterClassW(&raw const definition) == 0 {
+                let _ = ready_tx.send(Err(last_error()));
+                return;
+            }
+            // Top-level and never shown: Windows sends the session messages to it.
+            let window = CreateWindowExW(
+                0,
+                class.as_ptr(),
+                class.as_ptr(),
+                WS_OVERLAPPED,
+                0,
+                0,
+                0,
+                0,
+                null_mut(),
+                null_mut(),
+                instance,
+                null(),
+            );
+            if window.is_null() {
+                let _ = ready_tx.send(Err(last_error()));
+                return;
+            }
+            let _ = ready_tx.send(Ok(()));
+            let mut message: MSG = zeroed();
+            while GetMessageW(&raw mut message, null_mut(), 0, 0) > 0 {
+                TranslateMessage(&raw const message);
+                DispatchMessageW(&raw const message);
+            }
+        }
+    });
+    ready_rx
+        .recv()
+        .unwrap_or_else(|_| Err(io::Error::other("the session window's thread ended")))
+}
+
+/// The class name of the launcher's hidden session window, by which a test finds it.
+pub const SESSION_WINDOW_CLASS: &str = "MostraServiceSession";
+
+/// Sends a process's top-level windows what Windows sends when the session ends: the question,
+/// then the end (`ENDSESSION_LOGOFF`). Waits for each answer, at most `timeout_ms`; how many windows
+/// it reached. For tests: no runner can log its user off.
+pub fn end_session_of(pid: u32, timeout_ms: u32) -> io::Result<usize> {
+    struct Search {
+        pid: u32,
+        windows: Vec<HWND>,
+    }
+    extern "system" fn each(window: HWND, data: LPARAM) -> BOOL {
+        // SAFETY: `data` is the `Search` below, alive for the enumeration.
+        let search = unsafe { &mut *(data as *mut Search) };
+        let mut owner = 0u32;
+        // SAFETY: a window handle Windows just gave us.
+        unsafe { GetWindowThreadProcessId(window, &raw mut owner) };
+        if owner == search.pid {
+            search.windows.push(window);
+        }
+        1
+    }
+    // ENDSESSION_LOGOFF is 0x8000_0000: the flag word, carried in the LPARAM's low 32 bits.
+    let logoff = LPARAM::try_from(ENDSESSION_LOGOFF).unwrap_or(LPARAM::MIN);
+    let mut search = Search {
+        pid,
+        windows: Vec::new(),
+    };
+    // SAFETY: the callback reads `search` only during the call.
+    check(unsafe { EnumWindows(Some(each), (&raw mut search) as LPARAM) })?;
+    for &window in &search.windows {
+        let mut answer = 0usize;
+        // SAFETY: plain calls on windows that may have gone, which only fail.
+        unsafe {
+            SendMessageTimeoutW(
+                window,
+                WM_QUERYENDSESSION,
+                0,
+                logoff,
+                SMTO_ABORTIFHUNG,
+                timeout_ms,
+                &raw mut answer,
+            );
+            SendMessageTimeoutW(
+                window,
+                WM_ENDSESSION,
+                1,
+                logoff,
+                SMTO_ABORTIFHUNG,
+                timeout_ms,
+                &raw mut answer,
+            );
+        }
+    }
+    Ok(search.windows.len())
+}
+
 // ----- Overlapped I/O on pipes -----
 
-/// A manual-reset event for one overlapped operation at a time.
-struct Event(Handle);
+/// An unnamed manual-reset event: for one overlapped operation at a time, or for one thread to
+/// tell another something happened.
+pub struct Event(Handle);
 
 impl Event {
+    /// A new event, not set.
+    pub fn unnamed() -> io::Result<Event> {
+        Event::new()
+    }
+
+    /// Sets it.
+    pub fn set(&self) -> io::Result<()> {
+        // SAFETY: a valid event handle.
+        check(unsafe { SetEvent(self.0.raw()) })
+    }
+
+    /// The handle, for [`wait_any`].
+    pub fn borrow(&self) -> RawHandle {
+        self.0.borrow()
+    }
+
     fn new() -> io::Result<Event> {
         // SAFETY: plain call; the handle is owned.
         Ok(Event(Handle::owned(unsafe {
