@@ -33,6 +33,7 @@ export {
   linkTarget,
   nameKey,
   pathKey,
+  realPath,
   removeTree,
   renamePath,
   renamePathSync,

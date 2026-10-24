@@ -20,5 +20,5 @@ export {
   versionDamage,
   versionOutputDigest,
 } from "./publisher.ts";
-export { listSource, type ResolvedSource, resolveSource } from "./source.ts";
+export { listSource, resolveSource } from "./source.ts";
 export { readTar } from "./tar.ts";

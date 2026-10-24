@@ -9,7 +9,7 @@
  * else await started.instance.stopped;
  * ```
  */
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -81,7 +81,7 @@ import {
 } from "../interaction/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { helperPath, type LaunchPipe } from "../platform/index.ts";
+import { helperPath, type LaunchPipe, realPath, samePath } from "../platform/index.ts";
 import {
   artifactEnvironment,
   openProcessManager,
@@ -252,10 +252,12 @@ export async function startInstance(options: StartInstanceOptions): Promise<Star
 }
 
 function sameHome(home: string, path: string): boolean {
+  // The client's spelling may differ from the instance's: a link, or on Windows a short (8.3)
+  // name or another case (the CLI's `%TEMP%` is often `C:\Users\RUNNER~1\…`, WP-W2).
   try {
-    return realpathSync(path) === home;
+    return samePath(realPath(path), home);
   } catch {
-    return resolve(path) === home;
+    return samePath(resolve(path), home);
   }
 }
 

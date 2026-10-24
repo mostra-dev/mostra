@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 /**
  * `mostra-runtime`, the runtime bundle's entry point (D85).
@@ -33,6 +33,7 @@ import {
 } from "@mostra/protocol";
 import { checkPlatform, resolveHomePath } from "./home/index.ts";
 import { type Instance, runtimeVersion, startInstance } from "./instance/index.ts";
+import { realPath } from "./platform/index.ts";
 import { installService, serviceStatus, uninstallService } from "./service/index.ts";
 
 /** Exit codes, as INTERFACES §9 defines them for the CLI. */
@@ -194,7 +195,8 @@ function service(args: readonly string[], home: string | undefined, noStart: boo
     const resolved = resolveHomePath({ home, env: process.env });
     mkdirSync(resolved, { recursive: true, mode: 0o700 });
     const spec = {
-      home: realpathSync(resolved),
+      // As the daemon spells its home, so the service's name and hash are the daemon's (D82).
+      home: realPath(resolved),
       node: process.execPath,
       entry: fileURLToPath(import.meta.url),
     };
