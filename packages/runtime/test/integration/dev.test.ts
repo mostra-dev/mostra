@@ -12,6 +12,8 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -109,6 +111,59 @@ describe("mostra dev (VR-08)", () => {
       events.some((event) => event.kind === "built" && event.files?.includes("index.tsx")),
     );
     await page.close();
+  }, 120_000);
+
+  it("takes an editor's save that moves the old file aside for a save, and a deletion for a deletion (WP-W2)", async () => {
+    writeDevFixture(dir);
+    writeFileSync(join(dir, "notes.txt"), "kept until deleted\n");
+    const started = ok<{ url: string; sessionId: string }>(
+      await client.call("dev/start", { source: { path: dir } }, 120_000),
+    );
+    const page = await browser.newPage();
+    try {
+      await page.goto(started.url);
+      const frame = page.frameLocator("iframe");
+      await expect
+        .poll(() => frame.locator("#title").innerText(), { timeout: 30_000 })
+        .toBe("HEADING-ONE");
+      const mine = (): DevEvent[] =>
+        events.filter((event) => event.sessionId === started.sessionId);
+      const before = mine().length;
+      const source = join(gateway.home.home, "cache", "dev", started.sessionId, "root", "source");
+      // A "backup, then write" save (Vim's default, some Windows editors) of the server code the
+      // entry imports: the file is gone for a moment, longer than the mirror takes to sync.
+      renameSync(join(dir, "actions.ts"), join(dir, "actions.ts~"));
+      // A file written with the rename shows when the mirror has synced during the gap.
+      writeFileSync(join(dir, "synced.txt"), "x");
+      await eventually(() => existsSync(join(source, "synced.txt")), 900, "a sync in the gap");
+      // It kept the file, so nothing that imports it broke.
+      expect(existsSync(join(source, "actions.ts"))).toBe(true);
+      writeDevFixture(dir, "HEADING-SAVED", "SERVER-SAVED");
+      rmSync(join(dir, "actions.ts~"));
+      rmSync(join(dir, "synced.txt"));
+      await expect
+        .poll(() => frame.locator("#title").innerText(), { timeout: 30_000 })
+        .toBe("HEADING-SAVED");
+      await frame.locator("#call").click();
+      await expect
+        .poll(() => frame.locator("#server").innerText(), { timeout: 30_000 })
+        .toBe("SERVER-SAVED");
+      // Never a missing module: no build failure reported.
+      expect(
+        mine()
+          .slice(before)
+          .filter((event) => event.kind === "diagnostics"),
+      ).toEqual([]);
+      // A file deleted for good leaves the preview.
+      const mirrored = join(source, "notes.txt");
+      expect(existsSync(mirrored)).toBe(true);
+      rmSync(join(dir, "notes.txt"));
+      await eventually(() => !existsSync(mirrored), 10_000, "the deleted file to leave the mirror");
+    } finally {
+      await page.close();
+      writeDevFixture(dir);
+      ok(await client.call("dev/stop", { sessionId: started.sessionId }));
+    }
   }, 120_000);
 
   it("runs server code for real, and restarts it when it changes", async () => {

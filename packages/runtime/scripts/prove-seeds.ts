@@ -59,6 +59,89 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-W2: Windows II (RT-11): the gateway, workers, verify, the CLI and the login service.
+  {
+    requirement: "RT-11",
+    name: "the gateway listens on every interface, which the firewall blocks and asks about",
+    file: "src/addressing/index.ts",
+    from: "    server.listen({ port, host: address, exclusive: true });",
+    to: '    server.listen({ port, host: address === "127.0.0.1" ? "0.0.0.0" : address, exclusive: true });',
+    check: integration("gateway.test.ts", "never blocks, and so never asks about"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "the secret store's directory grants everyone access",
+    file: "../../crates/mostra-win/src/win/acl.rs",
+    from: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})"',
+    to: '"O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;{SYSTEM})(A;OICI;FA;;;WD)"',
+    check: integration("actions.test.ts", "keeps secrets out of logs"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "a client opens a Windows pipe with net.connect, whoever created it",
+    file: "../sdk/src/control.ts",
+    from: '  if ((options.platform ?? process.platform) === "win32") {',
+    to: '  if ((options.platform ?? process.platform) === "never") {',
+    check: integration("windows.test.ts"),
+    cwd: "../cli",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "an instance refuses its home spelled with a short (8.3) name",
+    file: "src/instance/index.ts",
+    from: "    return samePath(realPath(path), home);",
+    to: "    return samePath(path, home);",
+    check: integration("contract.test.ts", "state get, set and patch"),
+    cwd: "../cli",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "telemetry's schema refuses Windows' events",
+    file: "../cli/src/telemetry/events.ts",
+    from: '  os: z.enum(["darwin", "linux", "win32"]),',
+    to: '  os: z.enum(["darwin", "linux"]),',
+    check: unit("telemetry.test.ts", "names every system"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RT-11",
+    name: "the login service's launcher has a console, so a logon opens a window",
+    file: "../../crates/mostra-win/src/bin/service.rs",
+    from: '#![cfg_attr(windows, windows_subsystem = "windows")]',
+    to: '#![cfg_attr(windows, windows_subsystem = "console")]',
+    check: integration("lifecycle.test.ts", "runs the daemon from a logon task"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "the login service's launcher never starts a crashed daemon again",
+    file: "../../crates/mostra-win/src/win/service.rs",
+    from: '                    &serde_json::json!({ "code": code, "restartInMs": RESTART_DELAY_MS }),\n                );',
+    to: '                    &serde_json::json!({ "code": code, "restartInMs": RESTART_DELAY_MS }),\n                );\n                return code;',
+    check: integration("lifecycle.test.ts", "runs the daemon from a logon task"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "mostra dev misses its entry under Vite's spelling of a Windows path",
+    file: "src/builder/child/dev.ts",
+    from: '      if (pathKey(id.split("?")[0] ?? "") !== entryKey',
+    to: '      if ((id.split("?")[0] ?? "") !== entryFile',
+    check: unit("dev-plugin.test.ts"),
+    platform: "win32",
+  },
+  {
+    requirement: "RT-11",
+    name: "mostra dev takes an editor's backup-then-write save for a deletion",
+    file: "src/dev/index.ts",
+    from: "const MISSING_GRACE_MS = 1500;",
+    to: "const MISSING_GRACE_MS = 0;",
+    check: integration("dev.test.ts", "editor's save"),
+  },
   // WP-W1: Windows (RT-10). The helper's seeds rebuild it (cargo) before their checks.
   {
     requirement: "RT-10",
@@ -3229,8 +3312,18 @@ function build(seed?: Seed): void {
         stdio: ["ignore", "ignore", "inherit"],
       });
     }
-    // Only the packages Windows runs so far (WP-W1): the protocol and the runtime.
-    for (const name of ["@mostra/protocol", "@mostra/runtime"]) {
+    // The packages Windows runs so far (WP-W1, WP-W2).
+    for (const name of [
+      "@mostra/protocol",
+      "@mostra/server",
+      "@mostra/worker",
+      "@mostra/react",
+      "@mostra/shell",
+      "@mostra/verify",
+      "@mostra/runtime",
+      "@mostra/sdk",
+      "@mostra/cli",
+    ]) {
       execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
     }
     return;

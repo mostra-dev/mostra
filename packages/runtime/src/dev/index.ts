@@ -173,16 +173,16 @@ export function createDev(options: DevOptions): Dev {
     let manifestKey = "";
     let artifactId = "";
     const mirrored = new Map<string, string>();
-    /** Mirrored files the last listing missed: a save that moves the old file aside first. */
-    const missing = new Set<string>();
+    /** When each mirrored file was first missed: a save that moves the old file aside first. */
+    const missing = new Map<string, number>();
 
     /**
      * Copies changed files into the mirror and removes deleted ones; what changed. Editors save
      * in several ways (in place, a temporary file renamed over the old one, the old one renamed
      * to a backup first), and on Windows an editor may hold a file it is writing so that nothing
      * else can read it: a file that can't be read now is left for the next sync, never recorded,
-     * and a file is removed from the mirror only when two syncs in a row miss it, so a save never
-     * looks like a deletion (WP-W2).
+     * and a file is removed from the mirror only once it has been missing for
+     * {@link MISSING_GRACE_MS}, so a save never looks like a deletion (WP-W2).
      */
     const sync = async (): Promise<DevChange[]> => {
       const files = await listSource(source);
@@ -211,12 +211,12 @@ export function createDev(options: DevOptions): Dev {
         mirrored.set(file.path, key);
         changed.push({ file: file.path, kind: before === undefined ? "add" : "change" });
       }
+      const now = Date.now();
       for (const path of [...mirrored.keys()]) {
         if (seen.has(path)) continue;
-        if (!missing.has(path)) {
-          missing.add(path);
-          continue;
-        }
+        const since = missing.get(path) ?? now;
+        missing.set(path, since);
+        if (now - since < MISSING_GRACE_MS) continue;
         missing.delete(path);
         mirrored.delete(path);
         await unlink(join(root, "source", ...path.split("/"))).catch(() => {});
@@ -517,6 +517,13 @@ export function createDev(options: DevOptions): Dev {
     },
   };
 }
+
+/**
+ * How long a mirrored file must stay missing before `mostra dev` removes it: an editor that moves
+ * the old file aside before writing the new one leaves a gap of milliseconds, a deletion lasts.
+ * The 1 s comparison notices the removal within this and a second more.
+ */
+const MISSING_GRACE_MS = 1500;
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
