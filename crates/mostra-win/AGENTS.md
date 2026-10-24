@@ -41,8 +41,10 @@ the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` onl
   `mostra-win-service` (windows subsystem, so a logon opens no console for it) is a Task Scheduler
   task's action: it runs the daemon with `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP` in a
   kill-on-close job, its output appended to the service log, starts it again 10 s after an exit
-  that isn't 0, and on its named stop event (`service-stop`, which `service uninstall` sends) asks
-  the daemon to stop with Ctrl+Break, ending the job only past 15 s.
+  that isn't 0, and on its stop event (`service-stop`, which `service uninstall` sends) asks the
+  daemon to stop with Ctrl+Break, ending the job only past 15 s. The event's name has a random
+  part, and the launcher and `service-stop` refuse an event another user owns. A hidden top-level
+  window hears the end of the user's session, which stops the daemon the same way within 4 s.
 - **`unsafe` lives in `src/win/sys.rs` only**, each call with a SAFETY note; the workspace's
   `unsafe_code = "forbid"` is relaxed to `deny` for this crate alone.
 
