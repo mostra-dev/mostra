@@ -1,5 +1,13 @@
 # @mostra/verify
 
+## 0.4.0
+
+### Patch Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`4b6a4cb`](https://github.com/mostra-dev/mostra/commit/4b6a4cbaaea9dfbd6964bbc1cdedfb51e5bdbf01) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows a worker or the verify runner that ends no longer signals a process group, which Windows doesn't have: its gate's Job Object ends its descendants.
+- Updated dependencies [[`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f)]:
+  - @mostra/protocol@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes

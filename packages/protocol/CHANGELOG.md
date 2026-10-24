@@ -1,5 +1,11 @@
 # @mostra/protocol
 
+## 0.4.0
+
+### Patch Changes
+
+- [#62](https://github.com/mostra-dev/mostra/pull/62) [`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `MOSTRA_ENV_SERVICE_FAILED` and `MOSTRA_HOME_NOT_ALWAYS_ON` name Task Scheduler, the login service on Windows, beside launchd and systemd.
+
 ## 0.3.0
 
 ### Minor Changes

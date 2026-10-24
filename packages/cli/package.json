@@ -1,6 +1,6 @@
 {
   "name": "@mostra/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The mostra command: author, verify, publish, share and wait on agent artifacts, as a thin client of the Mostra host protocol.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

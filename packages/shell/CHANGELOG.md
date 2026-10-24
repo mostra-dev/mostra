@@ -1,5 +1,12 @@
 # @mostra/shell
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`fe84a16`](https://github.com/mostra-dev/mostra/commit/fe84a160c095c6dfe29f3ed5c956ae36407c788f)]:
+  - @mostra/protocol@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes
