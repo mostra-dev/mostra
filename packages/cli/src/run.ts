@@ -33,6 +33,7 @@ import {
   resolveHome,
 } from "./home.ts";
 import { globalFlags, parseCommandLine } from "./parse.ts";
+import { checkPlatform } from "./platform.ts";
 import { telemetrySession } from "./telemetry/index.ts";
 import { cliVersion } from "./version.ts";
 
@@ -54,6 +55,8 @@ export interface RunnerIo {
   readonly tty: { readonly stdin: boolean; readonly stdout: boolean; readonly stderr: boolean };
   /** The platform; default process.platform. */
   readonly platform?: string;
+  /** The architecture; default process.arch. */
+  readonly arch?: string;
 }
 
 /** The diagnostic an exception is, for the envelope: its own, or an internal error. */
@@ -140,13 +143,8 @@ export async function run(io: RunnerIo): Promise<number> {
 
   // Every entry point fails closed on an unsupported platform before touching the home (D35).
   const platform = io.platform ?? process.platform;
-  if (platform !== "darwin" && platform !== "linux") {
-    return fail(
-      createDiagnostic("MOSTRA_PLATFORM_UNSUPPORTED", {
-        message: `Mostra runs on macOS and Linux; this is ${platform}.`,
-      }),
-    );
-  }
+  const unsupported = checkPlatform(platform, io.arch ?? process.arch, io.env);
+  if (unsupported) return fail(unsupported);
 
   let parsed: ReturnType<typeof parseCommandLine>;
   try {

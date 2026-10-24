@@ -51,12 +51,18 @@ else if (args.includes("wait")) setInterval(() => {}, 1000);
 else process.exit(exit ? Number(exit.slice(5)) : 0);
 `;
 
-const dir = mkdtempSync("/tmp/mcb-");
+/**
+ * The npm bootstrap installs a runtime bundle, and Windows gets its bundles with WP-W3 (D146), which
+ * runs this suite there; until then the SDK's `bundlePlatform()` refuses Windows.
+ */
+const NO_BUNDLE = process.platform === "win32";
+const dir = NO_BUNDLE ? "" : mkdtempSync("/tmp/mcb-");
 const version = "0.0.0-boot";
 let pins = "";
 let wrongPins = "";
 
 beforeAll(async () => {
+  if (NO_BUNDLE) return;
   const platform = bundlePlatform();
   const top = bundleAssetName(version, platform).replace(/\.tar\.gz$/, "");
   const root = join(dir, "build", top);
@@ -129,7 +135,9 @@ beforeAll(async () => {
   writeFileSync(pins, pinsOf(asset.sha256));
   writeFileSync(wrongPins, pinsOf("0".repeat(64)));
 });
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+  if (!NO_BUNDLE) rmSync(dir, { recursive: true, force: true });
+});
 
 /** The built `mostra`, outside any bundle, pointed at the synthetic release by a file: mirror. */
 function mostra(
@@ -173,7 +181,7 @@ function mostra(
   });
 }
 
-describe("the npm bootstrap (RT-01)", () => {
+describe.skipIf(NO_BUNDLE)("the npm bootstrap (RT-01)", () => {
   it("installs the pinned bundle once, then runs its mostra on its Node.js with the same arguments", async () => {
     const cache = join(dir, "cache-ok");
     const first = await mostra(["verify", "./my artifact", "--json", "exit-7"], pins, cache);

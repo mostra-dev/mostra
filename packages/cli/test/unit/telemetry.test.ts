@@ -17,7 +17,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { decide, endpointOf } from "../../src/telemetry/decision.ts";
 import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/events.ts";
@@ -303,18 +303,26 @@ describe("the event schema (D140 item 8)", () => {
   });
 });
 
+/**
+ * Whether files keep POSIX modes. Windows has none: the store lives in the user's own profile
+ * (`%APPDATA%\mostra`, D151), whose access list admits only them, the system and administrators.
+ */
+const POSIX_MODES = process.platform !== "win32";
+
 describe("the store (D140 item 5)", () => {
   it("keeps its directory 0700 and its files 0600, and reads a damaged file as off", () => {
     const dir = join(configDir(), "nested");
     const store = new TelemetryStore(dir);
     store.update((current) => ({ ...current, choice: "on" }));
-    expect(statSync(dir).mode & 0o777).toBe(0o700);
-    expect(statSync(store.settingsFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) {
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(store.settingsFile).mode & 0o777).toBe(0o600);
+    }
     store.append(
       [JSON.stringify({ ...common, event: "cli.first_run", at: minute(new Date()) })],
       Date.now(),
     );
-    expect(statSync(store.queueFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) expect(statSync(store.queueFile).mode & 0o777).toBe(0o600);
     // A damaged file, in a store of its own.
     const damaged = new TelemetryStore(configDir());
     writeFileSync(damaged.settingsFile, "{ not json");
@@ -332,7 +340,7 @@ describe("the store (D140 item 5)", () => {
     const fresh = new TelemetryStore(configDir());
     const made = fresh.installId();
     expect(made?.created).toBe(true);
-    expect(statSync(fresh.idFile).mode & 0o777).toBe(0o600);
+    if (POSIX_MODES) expect(statSync(fresh.idFile).mode & 0o777).toBe(0o600);
     expect(fresh.read()).toMatchObject({ ok: true, settings: { installId: made?.id } });
     fresh.update((current) => ({ ...current, choice: "on" }));
     expect(readFileSync(fresh.settingsFile, "utf8")).not.toContain(made?.id ?? "-");
@@ -372,7 +380,7 @@ describe("the store (D140 item 5)", () => {
       utimesSync(lock, old, old);
     }
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    const script = `import { TelemetryStore } from ${JSON.stringify(entry)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
     // Every process waits for one start signal, so they make their IDs at the same moment.
     const go = join(dir, "..", `go-${randomUUID()}`);
     const running = Array.from(

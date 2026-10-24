@@ -5,7 +5,7 @@
  * off stdout. J1 runs through it end to end: new, verify, publish, open, a viewer's submission,
  * wait and results (WP-10's handoff).
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -29,14 +29,17 @@ import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
 import {
+  asOtherUser,
   BIN,
   cli,
   envelope,
   eventually,
+  probePath,
   type Ran,
   type TestHome,
   testHome,
   Viewer,
+  WINDOWS,
 } from "../support.ts";
 
 let home: TestHome;
@@ -198,13 +201,23 @@ describe("every command, with --json and no terminal", () => {
   });
 
   it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
-    // A stand-in browser: it records the arguments it was started with.
+    // A stand-in browser: Node.js running a script that records the arguments it was started with
+    // (a program on every platform; Windows runs no shell script).
     const record = join(home.root, "browser-argv.txt");
-    const opener = join(home.root, "fake-browser.sh");
-    writeFileSync(opener, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, { mode: 0o755 });
-    // A `$BROWSER` list whose first entry doesn't exist, and whose second takes the page by %s.
+    const opener = join(home.root, "fake-browser.mjs");
+    writeFileSync(
+      opener,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(record)}, process.argv.slice(2).join("\\n") + "\\n");\n`,
+    );
+    // A `$BROWSER` list (`:` separated, `;` on Windows) whose first entry doesn't exist, and whose
+    // second takes the page by %s.
+    const separator = WINDOWS ? ";" : ":";
+    const browser = `"${process.execPath}" "${opener}" --new %s`;
     const opened = await cli(["open", artifactId, "--browser", "--json"], {
-      env: { ...home.env, BROWSER: `${join(home.root, "missing-browser")}:${opener} --new %s` },
+      env: {
+        ...home.env,
+        BROWSER: `${join(home.root, "missing-browser")}${separator}${browser}`,
+      },
     });
     const value = envelope(opened);
     expect(value.result).toMatchObject({ opened: true });
@@ -222,8 +235,17 @@ describe("every command, with --json and no terminal", () => {
     const mode = fstatSync(handle).mode & 0o777;
     const text = readFileSync(handle, "utf8");
     closeSync(handle);
-    expect(mode).toBe(0o600);
-    expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
+    if (WINDOWS) {
+      // Windows keeps no modes: the page is in the user's own temporary folder, which another
+      // local user can neither list nor read (the profile's access list).
+      expect(asOtherUser(`file:${page}`, `dir:${dirname(page)}`)).toEqual([
+        expect.objectContaining({ read: false, readWrite: false }),
+        expect.objectContaining({ read: false, readWrite: false }),
+      ]);
+    } else {
+      expect(mode).toBe(0o600);
+      expect(statSync(dirname(page)).mode & 0o777).toBe(0o700);
+    }
     expect(text).not.toContain(linkSecret);
     const launch = /location\.replace\("([^"]+)"\)/.exec(text)?.[1] as string;
     expect(launch).toMatch(
@@ -322,10 +344,22 @@ describe("every command, with --json and no terminal", () => {
   });
 
   it("dev streams NDJSON envelopes until Ctrl-C, then its result (VR-08, D140 items 12 and 15)", async () => {
-    const child = spawn(process.execPath, [BIN, "dev", artifactDir, "--json"], {
-      env: home.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    // Ctrl-C at a terminal; on Windows Ctrl+Break, which the probe sends to a group of its own
+    // (Ctrl-C can't reach a process that leads its own console group).
+    const pidFile = join(home.root, "dev.pid");
+    const child = WINDOWS
+      ? spawn(
+          probePath(),
+          ["group", pidFile, "--", process.execPath, BIN, "dev", artifactDir, "--json"],
+          {
+            env: home.env,
+            stdio: ["pipe", "pipe", "pipe"],
+          },
+        )
+      : spawn(process.execPath, [BIN, "dev", artifactDir, "--json"], {
+          env: home.env,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
     child.stdin.end();
     let stdout = "";
     child.stdout.setEncoding("utf8");
@@ -343,7 +377,11 @@ describe("every command, with --json and no terminal", () => {
     expect(first.event.kind).toBe("started");
     expect(first.event.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/);
     expect(first.instance?.home).toBeDefined();
-    child.kill("SIGINT");
+    if (WINDOWS) {
+      execFileSync(probePath(), ["ctrl-break", readFileSync(pidFile, "utf8").trim()], {
+        windowsHide: true,
+      });
+    } else child.kill("SIGINT");
     const code = await closed;
     expect(code).toBe(0);
     const lines = stdout
