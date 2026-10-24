@@ -79,7 +79,13 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call
     // starts a new one.
     await eventually(async () => !alive(pid), 10_000, "the idle worker to exit");
-    expect((await workersOf(gateway, actions.versionId))[0]?.state).toBe("stopped");
+    // The pool learns of the exit from the worker's channel, a moment after the process is gone
+    // (on Windows after its gate exits too: one arm64 run read "ready" in between).
+    await eventually(
+      async () => (await workersOf(gateway, actions.versionId))[0]?.state === "stopped",
+      10_000,
+      "the pool to record the worker stopped",
+    );
     const next = (await page.call("actions.ts#pid", [])).value as number;
     expect(next).not.toBe(pid);
   });
