@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import type { Duplex } from "node:stream";
 import {
   ARTIFACT_PROGRESS,
@@ -156,6 +156,11 @@ export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> 
   return new Promise((resolve, reject) => {
     const child = spawn(runtime.node, args, {
       detached: true,
+      // Not the command's directory but its home's file system root, which always exists: the
+      // daemon outlives the command by up to 30 idle minutes, and on Windows nobody can remove or
+      // rename a running process's working directory, so a project the CLI ran in would stay
+      // locked (WP-W2).
+      cwd: parse(options.home).root,
       // No console window for the daemon on Windows.
       windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],

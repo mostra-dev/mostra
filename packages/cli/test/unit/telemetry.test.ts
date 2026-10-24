@@ -480,6 +480,24 @@ const queued = (store: TelemetryStore): unknown[] =>
   store.queued(Date.now()).map((line) => JSON.parse(line));
 const END = { exit: 0, durationMs: 1200, hostInstance: false };
 
+describe("a config directory that can never exist (WP-W2)", () => {
+  it("reads as unreadable, not as nothing stored yet, on every system", () => {
+    const root = configDir();
+    mkdirSync(root, { recursive: true });
+    const blocker = join(root, "not-a-directory");
+    writeFileSync(blocker, "");
+    for (const dir of [join(blocker, "mostra"), join(blocker, "deeper", "mostra")]) {
+      const read = new TelemetryStore(dir).read();
+      expect(read.ok, dir).toBe(false);
+    }
+    // A directory that doesn't exist yet is just empty.
+    expect(new TelemetryStore(join(root, "fresh", "mostra")).read()).toEqual({
+      ok: true,
+      settings: {},
+    });
+  });
+});
+
 describe("the notice, the question and the queue (D140 items 6, 11)", () => {
   it("elsewhere: the notice once before the first event, then events with consent default", async () => {
     const run = session({ env: { MOSTRA_TELEMETRY_DEBUG: "" } });

@@ -5,7 +5,7 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { connectControl } from "@mostra/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -83,5 +83,23 @@ describe.runIf(WINDOWS)("the CLI on Windows (RT-11)", () => {
     const value = envelope(ran);
     expect(value.result).toMatchObject({ running: false });
     expect(ran.ms - baselineMs).toBeLessThan(2500);
+  });
+});
+
+describe.runIf(WINDOWS)("the CLI's daemon on Windows (RT-11)", () => {
+  it("never holds the directory the CLI ran in, which Windows would then refuse to rename", async () => {
+    const home = testHome();
+    try {
+      const project = join(home.root, "project");
+      mkdirSync(project, { recursive: true });
+      const started = envelope(
+        await cli(["daemon", "start", "--json"], { env: home.env, cwd: project }),
+      );
+      expect(started.ok).toBe(true);
+      // The daemon runs on; a working directory it kept would refuse this (EBUSY).
+      renameSync(project, join(home.root, "renamed"));
+    } finally {
+      await home.cleanup();
+    }
   });
 });

@@ -19,9 +19,10 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /** What `telemetry.json` holds. */
 export interface TelemetrySettings {
@@ -85,6 +86,10 @@ export class TelemetryStore {
 
   /** The settings; a file that isn't telemetry settings is unreadable, never guessed at. */
   read(): ReadSettings {
+    // A directory that can never exist (a part of its path is a file) is unreadable, never
+    // "nothing stored yet". POSIX says so for every read (ENOTDIR); Windows answers ENOENT, which
+    // would read as the default, on, though nothing could ever be recorded (WP-W2).
+    if (blocked(this.dir)) return { ok: false, file: this.dir };
     const id = this.#readId();
     if (id === null) return { ok: false, file: this.idFile };
     let text: string;
@@ -350,6 +355,20 @@ export class TelemetryStore {
       rmSync(aside, { force: true });
     }
     return true;
+  }
+}
+
+/** Whether `dir` can never be created: its nearest existing ancestor isn't a directory. */
+function blocked(dir: string): boolean {
+  for (let path = dir; ; path = dirname(path)) {
+    try {
+      return !statSync(path).isDirectory();
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOTDIR") return true;
+      if (code !== "ENOENT") return false;
+    }
+    if (dirname(path) === path) return false;
   }
 }
 
