@@ -92,8 +92,9 @@ fn note(log: &Handle, level: &str, event: &str, fields: &serde_json::Value) {
         "event": event,
     });
     if let (Some(line), Some(fields)) = (line.as_object_mut(), fields.as_object()) {
+        // The line's own keys win: a field named like one never hides what the line is.
         for (key, value) in fields {
-            line.insert(key.clone(), value.clone());
+            line.entry(key.clone()).or_insert_with(|| value.clone());
         }
     }
     let mut text = line.to_string();
@@ -223,7 +224,7 @@ pub fn run(options: &Options) -> i32 {
                         &log,
                         "error",
                         "service.stop_event_taken",
-                        &serde_json::json!({ "event": options.stop_event }),
+                        &serde_json::json!({ "stopEvent": options.stop_event }),
                     );
                     1
                 }
