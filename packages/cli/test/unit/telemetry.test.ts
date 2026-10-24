@@ -5,6 +5,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -502,6 +503,32 @@ describe("a lock that can never be taken (GPT review of WP-W2)", () => {
     expect(ran.stdout).toBe("undefined");
     expect(Date.now() - started).toBeLessThan(10_000);
   });
+});
+
+describe("a config directory this user can't write (Opus review of WP-W2, finding 2)", () => {
+  // Under Windows' rules access denied on the lock's create may be a lock being deleted, so it
+  // counts as held; when no lock file exists at all it can't be, and the store gives up at once
+  // instead of spinning for its 2 s. A read-only directory gives access denied on POSIX too, so
+  // the Windows rules run here; Windows' own runners pass any access list (their administrator's
+  // backup privileges), so the case can't be made there.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "gives up at once under Windows' lock rules",
+    () => {
+      const dir = configDir();
+      mkdirSync(dir, { recursive: true });
+      chmodSync(dir, 0o500);
+      try {
+        const started = performance.now();
+        const cpuBefore = process.cpuUsage();
+        expect(new TelemetryStore(dir, "win32").locked(() => "ran")).toBeUndefined();
+        expect(performance.now() - started).toBeLessThan(500);
+        const cpu = process.cpuUsage(cpuBefore);
+        expect((cpu.user + cpu.system) / 1000).toBeLessThan(500);
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+    },
+  );
 });
 
 describe("a config directory that can never exist (WP-W2)", () => {

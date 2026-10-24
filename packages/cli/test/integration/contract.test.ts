@@ -10,12 +10,16 @@ import {
   closeSync,
   existsSync,
   fstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   artifactCreateMethod,
@@ -316,21 +320,42 @@ describe("every command, with --json and no terminal", () => {
     expect(removed.result).toMatchObject({ installed: false });
   });
 
-  it("starts the daemon from a relative MOSTRA_RUNTIME_BIN (GPT review of WP-W2)", async () => {
-    // The daemon runs in the file system's root, not the command's directory: a relative entry
-    // must reach it resolved where the command ran.
+  it("starts the daemon with relative path variables, as the command's directory names them (GPT and Opus reviews of WP-W2)", async () => {
+    // The daemon runs in the file system's root, not the command's directory: every relative
+    // path variable must reach it resolved where the command ran.
     const own = testHome();
     try {
-      const runtime = fileURLToPath(new URL("../../../runtime/dist/bin.js", import.meta.url));
-      const cwd = dirname(dirname(runtime));
-      const ran = await cli(["daemon", "start", "--json"], {
-        env: { ...own.env, MOSTRA_RUNTIME_BIN: join("dist", "bin.js") },
-        cwd,
-      });
+      const project = join(own.root, "project");
+      mkdirSync(project, { recursive: true });
+      // The runtime's built directory, reached through a link inside the project, so the relative
+      // entry names nothing from any other directory (a `../..` path would still reach it from
+      // the file system's root, where `..` stays at the root).
+      const dist = fileURLToPath(new URL("../../../runtime/dist", import.meta.url));
+      symlinkSync(dist, join(project, "runtime"), "junction");
+      const env: Record<string, string> = {
+        ...own.env,
+        MOSTRA_RUNTIME_BIN: join("runtime", "bin.js"),
+      };
+      // Windows has no runtime directory (its control endpoint is a named pipe, D150).
+      if (!WINDOWS) env["MOSTRA_RUNTIME_DIR"] = "run";
+      const ran = await cli(["daemon", "start", "--json"], { env, cwd: project });
       const value = envelope(ran);
-      expect(value.ok, ran.stderr).toBe(true);
+      expect(value.ok, `${ran.stdout}\n${ran.stderr}`).toBe(true);
       expect(value.result).toMatchObject({ running: true, started: true });
+      if (!WINDOWS) {
+        expect(
+          value.instance?.socket.startsWith(join(realpathSync(project), "run")),
+          value.instance?.socket,
+        ).toBe(true);
+      }
+      await cli(["daemon", "stop", "--json"], { env, cwd: project });
     } finally {
+      // The link goes first, so nothing that cleans up walks into the runtime's directory.
+      try {
+        unlinkSync(join(own.root, "project", "runtime"));
+      } catch {
+        // Never made.
+      }
       await own.cleanup();
     }
   });

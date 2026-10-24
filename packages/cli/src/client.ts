@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join, parse, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Duplex } from "node:stream";
 import {
   ARTIFACT_PROGRESS,
@@ -24,6 +24,7 @@ import {
   RpcPeer,
 } from "@mostra/protocol";
 import { connectControl, type Runtime } from "@mostra/sdk";
+import { detachedDirectory, detachedEnvironment } from "./detached.ts";
 import { type Environment, locateRuntime } from "./home.ts";
 import { cliVersion } from "./version.ts";
 
@@ -163,11 +164,11 @@ export async function startDaemon(options: ConnectOptions): Promise<DaemonLine> 
       // daemon outlives the command by up to 30 idle minutes, and on Windows nobody can remove or
       // rename a running process's working directory, so a project the CLI ran in would stay
       // locked (WP-W2).
-      cwd: parse(options.home).root,
+      cwd: detachedDirectory(options.home),
       // No console window for the daemon on Windows.
       windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, ...options.env } as NodeJS.ProcessEnv,
+      env: detachedEnvironment({ ...process.env, ...options.env }) as NodeJS.ProcessEnv,
     });
     const splitter = new LineSplitter();
     let settled = false;

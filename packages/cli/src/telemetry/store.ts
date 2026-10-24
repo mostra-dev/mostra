@@ -75,9 +75,12 @@ export class TelemetryStore {
   readonly queueFile: string;
   readonly idFile: string;
   readonly #lockFile: string;
+  readonly #platform: string;
 
-  constructor(dir: string) {
+  /** `platform` is the system whose lock rules apply: this process's, but for tests. */
+  constructor(dir: string, platform: string = process.platform) {
     this.dir = dir;
+    this.#platform = platform;
     this.settingsFile = join(dir, "telemetry.json");
     this.queueFile = join(dir, "telemetry-queue.ndjson");
     this.idFile = join(dir, "telemetry-id");
@@ -268,6 +271,8 @@ export class TelemetryStore {
 
   #prepareDir(): void {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    // Windows has no modes: the directory keeps the access list `%APPDATA%` hands down.
+    if (this.#platform === "win32") return;
     try {
       chmodSync(this.dir, 0o700);
     } catch {
@@ -296,12 +301,22 @@ export class TelemetryStore {
         writeFileSync(this.#lockFile, token, { flag: "wx", mode: 0o600 });
         break;
       } catch (error) {
-        if (!held((error as NodeJS.ErrnoException).code)) return undefined;
-        // Every path back to the create checks the deadline, so nothing can hold the CLI here:
-        // a lock that can never be created or broken (GPT review of WP-W2: on Windows, access
-        // denied counts as held, and a lock that can't be opened reads as broken) gives up.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (!held(code, this.#platform)) return undefined;
+        // Every path back to the create checks the deadline, so nothing can hold the CLI here
+        // (GPT review of WP-W2), and only a lock that just went is tried again without a pause,
+        // so nothing spins either (Opus review of WP-W2, finding 2).
         if (Date.now() > deadline) return undefined;
-        if (this.#breakStale()) continue;
+        const next = this.#breakStale();
+        if (next === "absent") {
+          // No lock there, though the create was refused. After `EEXIST` it was removed in
+          // between: try again. After access denied there was none to contend with (a lock
+          // Windows is still deleting can't be opened either, which isn't "absent"): this user
+          // can't write the directory, and waiting changes nothing.
+          if (code === "EEXIST") continue;
+          return undefined;
+        }
+        if (next === "broken") continue;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
       }
     }
@@ -324,11 +339,13 @@ export class TelemetryStore {
   }
 
   /**
-   * Takes a crashed owner's lock away; `true` when the caller should try again at once. The lock
-   * is moved aside under a name of this process's own (a rename is atomic, so of two processes
-   * breaking it one gets it), and a lock that turns out to be another, live owner's goes back.
+   * Takes a crashed owner's lock away. The lock is moved aside under a name of this process's own
+   * (a rename is atomic, so of two processes breaking it one gets it), and a lock that turns out
+   * to be another, live owner's goes back. Answers `broken` when the caller should try again at
+   * once, `absent` when no lock file exists, and `held` when the caller should wait: a live
+   * owner's lock, or one that can't be read (on Windows, a lock being deleted).
    */
-  #breakStale(): boolean {
+  #breakStale(): "broken" | "absent" | "held" {
     // One descriptor for the age and the contents, so both describe the same file.
     let seen: string;
     let age: number;
@@ -336,19 +353,20 @@ export class TelemetryStore {
     try {
       handle = openSync(this.#lockFile, "r");
       age = Date.now() - fstatSync(handle).mtimeMs;
-      if (age <= STALE_LOCK_MS) return false;
+      if (age <= STALE_LOCK_MS) return "held";
       seen = readFileSync(handle, "utf8");
-    } catch {
-      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "held";
     } finally {
       if (handle !== undefined) closeSync(handle);
     }
-    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return false;
+    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return "held";
     const aside = `${this.#lockFile}.${process.pid}.${randomUUID()}.stale`;
     try {
       renameSync(this.#lockFile, aside);
-    } catch {
-      return true;
+    } catch (error) {
+      // Another breaker moved it first: try for it at once; anything else, wait.
+      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "broken" : "held";
     }
     try {
       if (readFileSync(aside, "utf8") !== seen) linkSync(aside, this.#lockFile);
@@ -357,7 +375,7 @@ export class TelemetryStore {
     } finally {
       rmSync(aside, { force: true });
     }
-    return true;
+    return "broken";
   }
 }
 
@@ -368,10 +386,8 @@ export class TelemetryStore {
  * (WP-W2: twelve first runs at once on an arm64 runner): that is contention too, never a reason
  * to give up.
  */
-function held(code: string | undefined): boolean {
-  return (
-    code === "EEXIST" || (process.platform === "win32" && (code === "EPERM" || code === "EACCES"))
-  );
+function held(code: string | undefined, platform: string): boolean {
+  return code === "EEXIST" || (platform === "win32" && (code === "EPERM" || code === "EACCES"));
 }
 
 /** Whether `dir` can never be created: its nearest existing ancestor isn't a directory. */
