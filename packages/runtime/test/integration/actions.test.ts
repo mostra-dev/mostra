@@ -387,9 +387,14 @@ describe.each([
       join(gateway.home.home, "secrets"),
     ];
     if (WINDOWS) {
-      const owners = [currentUserSid(), "S-1-5-18"];
+      // The user and SYSTEM, nobody else. A descriptor names well-known accounts by their SDDL
+      // aliases: SYSTEM is `SY`, and a runner's built-in administrator (RID 500) is `LA`.
+      const user = currentUserSid();
+      const owners = [user, ...(user.endsWith("-500") ? ["LA"] : []), "SY", "S-1-5-18"];
       for (const path of [stored, ...secretDirs]) {
-        for (const entry of accessEntries(path)) expect(owners, path).toContain(entry.sid);
+        const sids = new Set(accessEntries(path).map((entry) => entry.sid));
+        expect(sids.size, `${path}: ${[...sids].join(" ")}`).toBe(2);
+        for (const sid of sids) expect(owners, path).toContain(sid);
       }
       const open = join("C:\\", `mostra-public-${process.pid}`);
       mkdirSync(open, { recursive: true });

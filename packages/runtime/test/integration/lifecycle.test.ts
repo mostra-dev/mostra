@@ -487,10 +487,20 @@ describe.runIf(WINDOWS)("the login service on Windows (RT-11, D151)", () => {
         encoding: "utf8",
         windowsHide: true,
       });
-      expect(task).toMatch(/<LogonTrigger>[\s\S]*<UserId>S-1-5-[\d-]+<\/UserId>/);
-      expect(task).toContain(user);
-      expect(task).toContain("<LogonType>InteractiveToken</LogonType>");
-      expect(task).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+      // Task Scheduler keeps the principal as the SID it was given, writes the trigger's user as
+      // `COMPUTER\name`, and leaves out a run level at its default, the least privilege (seen on
+      // the runners).
+      const principal = /<Principal id="Author">([\s\S]*?)<\/Principal>/.exec(task)?.[1] ?? "";
+      expect(principal).toContain(`<UserId>${user}</UserId>`);
+      expect(principal).toContain("<LogonType>InteractiveToken</LogonType>");
+      expect(task).not.toContain("HighestAvailable");
+      const trigger = /<LogonTrigger>([\s\S]*?)<\/LogonTrigger>/.exec(task)?.[1] ?? "";
+      const account = `${process.env["COMPUTERNAME"] ?? ""}\\${process.env["USERNAME"] ?? ""}`;
+      expect(
+        trigger.includes(`<UserId>${user}</UserId>`) ||
+          trigger.toLowerCase().includes(`<userid>${account.toLowerCase()}</userid>`),
+        trigger,
+      ).toBe(true);
       // Its program has no console, so a logon opens no window for it.
       const launcher = installed.service.command[0] as string;
       expect(launcher).toMatch(/mostra-win-service\.exe$/);

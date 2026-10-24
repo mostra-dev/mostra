@@ -579,7 +579,7 @@ export function commandLineOf(pid: number): string {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+        `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`,
       ],
       { encoding: "utf8", windowsHide: true },
     ).trim();
