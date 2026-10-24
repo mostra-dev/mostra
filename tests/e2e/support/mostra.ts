@@ -5,7 +5,7 @@
  * need in a file inside the run's private directory, named by `MOSTRA_E2E_RUN`; global teardown
  * stops it.
  */
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
@@ -16,9 +16,11 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs";
-import { createConnection, type Socket } from "node:net";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { connectControl } from "@mostra/sdk";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 /** The runtime's binary, built by `pnpm --filter @mostra/runtime build`. */
@@ -27,6 +29,16 @@ export const BIN = join(ROOT, "packages", "runtime", "dist", "bin.js");
 export const CLI = join(ROOT, "packages", "cli", "dist", "bin.js");
 /** The shell's built files, which the gateway serves. */
 export const SHELL = join(ROOT, "packages", "shell", "dist", "index.html");
+/** Whether the suites run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
+export const WINDOWS: boolean = process.platform === "win32";
+/** The Windows helper Cargo built, which opens the daemon's pipe and unseals versions (D150). */
+export const WIN_HELPER: string =
+  process.env["MOSTRA_WIN_HELPER"] || join(ROOT, "target", "release", "mostra-win.exe");
+/**
+ * Where runs live: the real `/tmp` on POSIX (macOS limits socket paths to 103 bytes), the user's
+ * own temporary folder on Windows, in its long spelling.
+ */
+export const SCRATCH: string = WINDOWS ? realpathSync.native(tmpdir()) : realpathSync("/tmp");
 /** The artifacts WP-03 rendered from a test server; here they go through the gateway. */
 export const FIXTURES = join(ROOT, "packages", "runtime", "test", "fixtures", "artifacts");
 /**
@@ -56,7 +68,6 @@ export function readRun(): Run {
   return JSON.parse(readFileSync(file, "utf8")) as Run;
 }
 
-/** A host protocol connection to the daemon's socket. */
 /** Answers the instance's port calls (`port/<name>.<method>`) on a host's connection. */
 export type PortHandler = (method: string, params: unknown) => unknown;
 
@@ -72,14 +83,15 @@ export interface ConnectOptions {
   readonly onPortCall?: PortHandler;
 }
 
+/** A host protocol connection to the daemon's socket, or on Windows its pipe. */
 export class Client {
-  readonly #socket: Socket;
+  readonly #socket: Duplex;
   readonly #pending = new Map<number, (message: Record<string, unknown>) => void>();
   #buffer = "";
   #next = 1;
   #onPortCall: PortHandler | undefined;
 
-  private constructor(socket: Socket) {
+  private constructor(socket: Duplex) {
     this.#socket = socket;
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
@@ -118,11 +130,9 @@ export class Client {
 
   /** Connects and initializes, as the e2e client or as a host with ports and home settings. */
   static async connect(socketPath: string, options: ConnectOptions = {}): Promise<Client> {
-    const socket = createConnection(socketPath);
-    await new Promise((resolve, reject) => {
-      socket.once("connect", resolve);
-      socket.once("error", reject);
-    });
+    // As every client reaches it: on Windows through the helper, which refuses a pipe another
+    // user created under the name (D150 item 4).
+    const socket = await connectControl(socketPath, { env: { MOSTRA_WIN_HELPER: WIN_HELPER } });
     const client = new Client(socket);
     client.#onPortCall = options.onPortCall;
     await client.call("mostra/initialize", {
@@ -160,9 +170,15 @@ export class Client {
  * directory is made writable before its entries go.
  */
 export function removeTree(root: string): void {
-  // Only a run directory this harness made: `mostra-e2e-*` directly in the real `/tmp`.
-  if (dirname(root) !== realpathSync("/tmp") || !basename(root).startsWith("mostra-e2e-")) {
+  // Only a run directory this harness made: `mostra-e2e-*` directly in the scratch directory.
+  if (dirname(root) !== SCRATCH || !basename(root).startsWith("mostra-e2e-")) {
     throw new Error(`refusing to remove ${root}`);
+  }
+  if (WINDOWS) {
+    // Sealed versions keep a read-only access list, which the helper resets (D150 item 3).
+    spawnSync(WIN_HELPER, ["unseal", root], { windowsHide: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
+    return;
   }
   const open = (dir: string): void => {
     chmodSync(dir, 0o700);
@@ -189,7 +205,7 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
       throw new Error(`${file} is missing: build @mostra/runtime and @mostra/shell first.`);
   }
   // Short paths: macOS limits socket paths to 103 bytes.
-  const root = options.root ?? realpathSync(mkdtempSync("/tmp/mostra-e2e-"));
+  const root = options.root ?? realpathSync.native(mkdtempSync(join(SCRATCH, "mostra-e2e-")));
   const home = join(root, "home");
   const { MOSTRA_HOME: _home, ...inherited } = process.env;
   const env = Object.fromEntries(

@@ -18,17 +18,36 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
-import { CLI, readRun } from "../support/mostra.ts";
+import { CLI, readRun, SCRATCH, WIN_HELPER, WINDOWS } from "../support/mostra.ts";
 
 const run = readRun();
 
 test("the launch page from mostra open opens the artifact once", async ({ page }) => {
-  const scratch = realpathSync(mkdtempSync("/tmp/mostra-e2e-open-"));
+  const scratch = realpathSync.native(mkdtempSync(join(SCRATCH, "mostra-e2e-open-")));
   try {
-    // A stand-in browser that records what it was asked to open and opens nothing itself.
+    // A stand-in browser that records what it was asked to open and opens nothing itself:
+    // Node.js running a script, a program on every platform.
     const record = join(scratch, "argv.txt");
-    const opener = join(scratch, "browser.sh");
-    writeFileSync(opener, `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, { mode: 0o755 });
+    const opener = join(scratch, "browser.mjs");
+    writeFileSync(
+      opener,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(record)}, process.argv.slice(2).join("\\n") + "\\n");\n`,
+    );
+    const windows = WINDOWS
+      ? {
+          // What Windows gives every program, and the development switch the legs run behind.
+          ...Object.fromEntries(
+            ["SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "LOCALAPPDATA", "APPDATA"]
+              .filter((name) => process.env[name] !== undefined)
+              .map((name) => [name, process.env[name] as string]),
+          ),
+          MOSTRA_DEV_WINDOWS: "1",
+          MOSTRA_WIN_HELPER: WIN_HELPER,
+          USERPROFILE: scratch,
+          TEMP: scratch,
+          TMP: scratch,
+        }
+      : {};
     const { stdout } = await promisify(execFile)(
       process.execPath,
       [CLI, "open", run.receipts.tsx.artifactId, "--browser", "--json"],
@@ -38,9 +57,10 @@ test("the launch page from mostra open opens the artifact once", async ({ page }
           HOME: scratch,
           MOSTRA_HOME: run.home,
           MOSTRA_CONFIG_DIR: join(scratch, "config"),
-          BROWSER: opener,
+          BROWSER: `"${process.execPath}" "${opener}"`,
           // The launch page goes into the scratch directory, which the test removes.
           TMPDIR: scratch,
+          ...windows,
         },
       },
     );
@@ -63,6 +83,6 @@ test("the launch page from mostra open opens the artifact once", async ({ page }
     await expect(again.locator("html")).toHaveAttribute("data-shell", "error", { timeout: 15_000 });
     await again.close();
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true, maxRetries: 5 });
   }
 });

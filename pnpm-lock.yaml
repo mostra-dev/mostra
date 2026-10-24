@@ -1093,6 +1093,9 @@ importers:
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@mostra/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@mostra/server':
         specifier: workspace:*
         version: link:../../packages/server
