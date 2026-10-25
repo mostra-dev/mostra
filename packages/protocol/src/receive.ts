@@ -83,10 +83,14 @@ function rebuild(schema: z.ZodType): z.ZodType {
       return cloned(schema, { element: open(def["element"] as z.ZodType) });
     case "object": {
       const shape = def["shape"] as Record<string, z.ZodType>;
+      const catchall = def["catchall"] as z.ZodType | undefined;
       return cloned(schema, {
         shape: Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, open(value)])),
-        // A strict object would refuse a field a newer peer adds; it is dropped instead.
-        catchall: undefined,
+        // A strict object (catchall `never`) would refuse a field a newer peer adds: it is dropped
+        // instead. A loose object keeps passing its fields through, and a typed catchall keeps
+        // checking them (GPT review of MT-01: the bridge's host context passes fields through).
+        catchall:
+          catchall === undefined || defOf(catchall).type === "never" ? undefined : open(catchall),
       });
     }
     case "record":

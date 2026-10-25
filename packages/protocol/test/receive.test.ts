@@ -10,6 +10,7 @@ import {
   RpcError,
   RpcPeer,
   receivable,
+  uiInitialize,
 } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import * as z from "zod";
@@ -60,6 +61,27 @@ describe("receivable (#45)", () => {
       ],
       byState: { a: "paused" },
       pair: ["suspended", 2],
+    });
+  });
+
+  it("keeps what a loose object passes through, and a catchall's checks (GPT review finding 1)", () => {
+    // `ui/initialize`'s host context passes extra fields through (MCP Apps' safe-area insets);
+    // a receiving copy that dropped them would hide what the page could read before.
+    const result = {
+      protocolVersion: "2026-01-26",
+      hostInfo: { name: "shell", version: "1" },
+      hostCapabilities: {},
+      hostContext: { theme: "dark", safeAreaInsets: { top: 1, right: 0, bottom: 2, left: 0 } },
+    };
+    const read = receivable(uiInitialize.result).parse(result) as typeof result;
+    expect(read.hostContext.safeAreaInsets).toEqual({ top: 1, right: 0, bottom: 2, left: 0 });
+    // A catchall with a type keeps checking the fields it admits, opened like any other value.
+    const counted = z.object({ name: z.string() }).catchall(z.number());
+    expect(receivable(counted).parse({ name: "a", extra: 2 })).toEqual({ name: "a", extra: 2 });
+    expect(receivable(counted).safeParse({ name: "a", extra: "two" }).success).toBe(false);
+    // A strict object's refusal of unknown fields is what goes: they are dropped, not refused.
+    expect(receivable(z.strictObject({ name: z.string() })).parse({ name: "a", more: 1 })).toEqual({
+      name: "a",
     });
   });
 
