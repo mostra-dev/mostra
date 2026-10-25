@@ -1,7 +1,8 @@
-# Workspace layout and dependency policy (REPO_STANDARDS §4, §10).
-# Every dependency version lives in a catalog below; package.json files use `catalog:` or
-# `workspace:*` only, which `pnpm check` enforces (tools/repo-lint).
 packages:
+  # Workspace layout and dependency policy (REPO_STANDARDS §4, §10).
+  # Every dependency version lives in a catalog below; package.json files use `catalog:` or
+  # `workspace:*` only, which `pnpm check` enforces (tools/repo-lint). The file starts with a key:
+  # Renovate's security updates dropped a comment that opened it (D152).
   - packages/*
   - plugins/*
   - apps/*
