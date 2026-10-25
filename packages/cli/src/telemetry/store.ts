@@ -407,14 +407,24 @@ export function replace(
 }
 
 /** Whether this process can create a file in `dir`: a probe of its own, removed at once. */
-function writable(dir: string): boolean {
+export function writable(
+  dir: string,
+  remove: (path: string) => void = (path) => rmSync(path, { force: true }),
+): boolean {
   const probe = join(dir, `.probe-${process.pid}-${randomUUID()}`);
   try {
     writeFileSync(probe, "", { flag: "wx", mode: 0o600 });
   } catch {
     return false;
   }
-  rmSync(probe, { force: true });
+  // The probe was made, so the directory is writable whatever its removal meets: on Windows an
+  // antivirus or the indexer may hold the new file for a moment (EBUSY, EPERM), and telemetry never
+  // stops a command (D140 item 5; Opus review of MT-01, 8). An empty probe left behind is harmless.
+  try {
+    remove(probe);
+  } catch {
+    // Left for the next probe's directory to carry; nothing reads it.
+  }
   return true;
 }
 

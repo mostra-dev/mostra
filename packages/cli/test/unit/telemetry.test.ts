@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -25,7 +26,7 @@ import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/even
 import { flush } from "../../src/telemetry/flush.ts";
 import { detectHarness } from "../../src/telemetry/harness.ts";
 import { telemetrySession } from "../../src/telemetry/index.ts";
-import { replace, TelemetryStore } from "../../src/telemetry/store.ts";
+import { replace, TelemetryStore, writable } from "../../src/telemetry/store.ts";
 import { asksFirst } from "../../src/telemetry/timezone.ts";
 import { ANSWER, NOTICE_ASK_FIRST, NOTICE_DEFAULT, QUESTION } from "../../src/telemetry/words.ts";
 import { buildZoneSets } from "../../src/telemetry/zone-sets.ts";
@@ -761,6 +762,20 @@ describe("replacing a telemetry file (MT-01)", () => {
       calls: () => calls,
     };
   };
+
+  it("counts a directory it made a probe in as writable, whatever the probe's removal meets (Opus review of MT-01, 8)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mostra-probe-"));
+    try {
+      const held = (): void => {
+        throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      };
+      expect(writable(dir, held)).toBe(true);
+      expect(writable(dir)).toBe(true);
+      expect(writable(join(dir, "missing", "deeper"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it("tries again while Windows refuses to replace a file another process has open", () => {
     const fake = refused(3, "EPERM");

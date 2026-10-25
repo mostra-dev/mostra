@@ -132,7 +132,9 @@ export const verifyCommand: CommandDef = defineCommand({
     return {
       result: verdict,
       human: verdictText(verdict),
-      ...(verdict.status === "fail" ? { exit: EXIT.failure } : {}),
+      // Only a verdict this CLI knows means passing exits 0: a newer instance's status it doesn't
+      // know (#45 lets it arrive) fails the command, never passes it (Opus review of MT-01, 2).
+      ...(verdict.status === "pass" ? {} : { exit: EXIT.failure }),
     };
   },
 });
