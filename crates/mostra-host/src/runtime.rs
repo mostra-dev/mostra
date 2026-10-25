@@ -143,9 +143,12 @@ impl std::fmt::Debug for RuntimeOptions {
 /// A development checkout's runtime beside this crate: `packages/runtime/dist/bin.js`.
 fn development() -> Option<PathBuf> {
     let entry = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/runtime/dist/bin.js");
-    entry
-        .exists()
-        .then(|| entry.canonicalize().unwrap_or(entry))
+    entry.exists().then(|| {
+        entry
+            .canonicalize()
+            .map(crate::bundle::plain_path)
+            .unwrap_or(entry)
+    })
 }
 
 /// A named bundle, checked and set up when its marker doesn't match it.

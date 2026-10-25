@@ -166,8 +166,19 @@ async fn once(
             ),
         ))
     };
-    if let Some(path) = url.strip_prefix("file://") {
-        let mut file = tokio::fs::File::open(path).await.map_err(|e| {
+    if url.starts_with("file:") {
+        // The URL's own path, decoded as the SDK's `fileURLToPath` reads it: `file:///C:/…` on
+        // Windows, `file:///…` elsewhere.
+        let path = url::Url::parse(url)
+            .ok()
+            .and_then(|parsed| parsed.to_file_path().ok())
+            .ok_or_else(|| {
+                Failure::Final(Error::new(
+                    "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED",
+                    format!("{} isn't a file URL of this system.", printable(url)),
+                ))
+            })?;
+        let mut file = tokio::fs::File::open(&path).await.map_err(|e| {
             Failure::Final(Error::new(
                 "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED",
                 format!("Couldn't read {}: {e}", printable(url)),

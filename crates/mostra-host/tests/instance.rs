@@ -93,6 +93,15 @@ fn fixture() -> Option<Fixture> {
     })
 }
 
+/// A path's real path, as the instance reports it (without Windows' `\\?\` prefix).
+fn real(path: &Path) -> PathBuf {
+    let real = path.canonicalize().unwrap();
+    match real.to_string_lossy().strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => real,
+    }
+}
+
 fn options(fixture: &Fixture) -> Options {
     Options::new(&fixture.home)
         .client("mostra-host-tests", "0")
@@ -109,10 +118,7 @@ async fn a_spawned_instance_answers_typed_calls_and_resumes_a_named_event_stream
     let mostra = Mostra::spawn(options(&fixture)).await.unwrap();
     assert_eq!(mostra.revision(), "2026-10-10");
     assert_eq!(mostra.instance().mode.as_str(), "host");
-    assert_eq!(
-        Path::new(&mostra.instance().home),
-        fixture.home.canonicalize().unwrap()
-    );
+    assert_eq!(Path::new(&mostra.instance().home), real(&fixture.home));
     assert!(
         mostra
             .capabilities()

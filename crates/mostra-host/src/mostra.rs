@@ -205,8 +205,11 @@ impl Options {
         } else {
             std::env::current_dir().unwrap_or_default().join(&self.home)
         };
-        // A symlinked home is the same home (D82): the instance compares real paths.
-        home.canonicalize().unwrap_or(home)
+        // A symlinked home is the same home (D82): the instance compares real paths, spelled as
+        // the system's own APIs spell them (no `\\?\` prefix on Windows).
+        home.canonicalize()
+            .map(crate::bundle::plain_path)
+            .unwrap_or(home)
     }
 }
 

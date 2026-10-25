@@ -189,14 +189,12 @@ fn env(cache: &Path, mirror: &Path) -> Environment {
     );
     env.insert(
         "MOSTRA_BUNDLE_MIRROR".into(),
-        if cfg!(windows) {
-            format!(
-                "file:///{}",
-                mirror.display().to_string().replace('\\', "/")
-            )
-        } else {
-            format!("file://{}", mirror.display())
-        },
+        // The SDK's form: a file URL of the directory (`file:///C:/…` on Windows).
+        url::Url::from_directory_path(mirror)
+            .unwrap()
+            .as_str()
+            .trim_end_matches('/')
+            .to_owned(),
     );
     env.insert("PATH".into(), std::env::var("PATH").unwrap_or_default());
     env

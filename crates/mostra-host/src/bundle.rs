@@ -189,7 +189,7 @@ pub fn is_windows_bundle(platform: &str) -> bool {
 
 /// A path as Windows' own APIs spell it, without the `\\?\` prefix `canonicalize` adds, so it
 /// compares with the root the bundle's setup (Node.js's `realpath.native`) records.
-fn plain_path(path: PathBuf) -> PathBuf {
+pub(crate) fn plain_path(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         return PathBuf::from(format!(r"\\{rest}"));

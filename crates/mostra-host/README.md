@@ -43,4 +43,6 @@ mostra.close().await?;
 - **No Node.js to install.** The crate downloads the runtime bundle its release pins, checks every
   byte against the pins and caches it by digest, shared with the TypeScript SDK.
 
-macOS and glibc Linux on arm64 and x64. The crate sends no telemetry. Apache-2.0.
+macOS, glibc Linux and Windows on arm64 and x64. On Windows the crate attaches over the home's
+named pipe, which it refuses unless its owner is your user. The crate sends no telemetry.
+Apache-2.0.
