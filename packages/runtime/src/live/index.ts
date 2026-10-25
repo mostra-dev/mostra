@@ -279,6 +279,8 @@ export function createLive(options: LiveOptions): Live {
         throw error;
       }
     } catch (error) {
+      // A start the park cut short: the park's own failure stands (#42).
+      if (parkedVersions.has(versionId)) return;
       const diagnostic = error instanceof RpcError ? error.diagnostic : undefined;
       fail(artifactId, key, {
         message: diagnostic?.message ?? String(error),
@@ -484,11 +486,18 @@ export function createLive(options: LiveOptions): Live {
     },
 
     crashed(crash) {
+      const ended = new Set(crash.liveKeys);
       for (const [id, producer] of running) {
-        if (producer.versionId === crash.versionId) running.delete(id);
+        if (producer.versionId !== crash.versionId) continue;
+        running.delete(id);
+        ended.add(producer.key);
       }
       if (crash.parked) {
-        for (const key of crash.liveKeys) {
+        // Every source of the parked version says so, not only the producers the worker had
+        // started when it crashed: one being started then, or due after the backoff, never runs
+        // again either, and its page would otherwise wait on it without a word (#42).
+        for (const source of described.get(crash.versionId) ?? []) ended.add(source.key);
+        for (const key of ended) {
           fail(crash.artifactId, key, {
             code: "MOSTRA_RUNTIME_WORKER_PARKED",
             message: `The artifact's server code keeps crashing, so its live sources stopped (${crash.cause}).`,

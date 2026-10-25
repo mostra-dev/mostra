@@ -2078,6 +2078,21 @@ const SEEDS: readonly Seed[] = [
     check: integration("lifecycle.test.ts", "parks a worker that keeps crashing"),
   },
   {
+    requirement: "RT-03",
+    name: "a park reports only the producers its worker had started (#42)",
+    file: "src/live/index.ts",
+    from: "        for (const source of described.get(crash.versionId) ?? []) ended.add(source.key);",
+    to: "",
+    also: [
+      {
+        file: "src/live/index.ts",
+        from: "      if (parkedVersions.has(versionId)) return;",
+        to: "",
+      },
+    ],
+    check: unit("live.test.ts"),
+  },
+  {
     requirement: "RT-04",
     name: "the watchdog never kills a busy-looping worker",
     file: "src/workers/pool.ts",
