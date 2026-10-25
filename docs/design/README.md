@@ -8,13 +8,13 @@
 | **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
 | **Plan update** | 2026-10-16 (M20, D116 to D127): the remote server, relay and team features join v1; Windows and the terminal packages follow the first release as `v1.1`; new packages WP-28 to WP-32. 2026-10-22 (M34, D146): Windows moves into v1.0 as WP-W1 to WP-W3, built after WP-12; WP-32 is withdrawn. |
-| **Next unit** | WP-W3 (work-package mode, D146; WP-W2 is done and Mostra 0.4.0 is released with Windows still behind its development switch, see [PROGRESS-WP-W2](../progress/PROGRESS-WP-W2.md)). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
+| **Next unit** | WP-W3 (work-package mode, D146; WP-W2 is done, and the maintenance unit MT-01 after it (D152, [PROGRESS-MT-01](../progress/PROGRESS-MT-01.md)) released Mostra 0.5.0 with Windows still behind its development switch). Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
 
 ## Reading order
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D152, with source messages M1 to M39. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D152, with source messages M1 to M40. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J14, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, and the resolution of every seed open question (§15).

@@ -1,6 +1,6 @@
 # MT-01 progress: CI, Blacksmith runners, Renovate and the open issues
 
-**Status:** In progress. A maintenance unit between WP-W2 and WP-W3, approved by Mirza on 2026-10-24 ("I absolutely approve/accept all of your decisions"). It owns no requirement of its own: it re-checks EN-07 (WP-01's row, CI under 10 minutes for a typical pull request), lands the open Renovate updates and closes or schedules the open issues. Its decision is D152.
+**Status:** Done. Accepted by Mirza on 2026-10-25 ("i accept"), merged to `main` through the merge queue as `a402574` (#75) and released as Mostra 0.5.0, Windows still behind `MOSTRA_DEV_WINDOWS=1` until WP-W3. A maintenance unit between WP-W2 and WP-W3, approved by Mirza on 2026-10-24 ("I absolutely approve/accept all of your decisions"). It owns no requirement of its own: it re-checks EN-07 (WP-01's row, CI under 10 minutes for a typical pull request), lands the open Renovate updates and closes or schedules the open issues. Its decision is D152.
 
 ## Baseline
 
@@ -99,8 +99,6 @@ Accepted by Mirza on 2026-10-25 ("I approve the agent-facing prose if you're con
 
 ## Untested boundaries
 
-- **The merge queue itself.** Its ruleset is applied at #75's merge, and #75 is the first pull request through it; `merge_group` runs are proven only by the plan's tests until then.
-- **`release.yml` on `main`.** It calls `release-build.yml` with every platform and then publishes; the rehearsal exercises the same reusable workflow on every platform, but a real publish waits for the next release.
 - **The nightly run** and its skip of a commit that already passed: tested in the plan, first run on `main` the night after the merge.
 - **Caches** saved by `main` and restored by pull requests (above).
 - **Blacksmith's own month boundary.** The window is a rolling 31 days, so Linux jobs return to Blacksmith only once the last 31 days are under the threshold, whatever day Blacksmith's month starts; that can leave free minutes unused, never pay for any.
@@ -109,7 +107,7 @@ Accepted by Mirza on 2026-10-25 ("I approve the agent-facing prose if you're con
 ## Deviations
 
 - **#74 closed, continued in #75**: one commit's subject was 107 characters, over the commits gate's 100, and history is never rewritten. #75 carries the same tree with that commit's subject shortened and the later commits re-applied (`cherry-pick -x`).
-- **Two temporary branches**: `probe/mt01-telemetry` (the Windows probe) and `probe/mt01-typical` (#76, the typical pull request). Neither merges.
+- **Two temporary branches**: `probe/mt01-telemetry` (the Windows probe) and `probe/mt01-typical` (#76, the typical pull request, closed unmerged). Both deleted once measured.
 - **D152 item 5 grew while measuring**: the five-macOS-legs budget, the balanced groups and the Windows shards came from #76's runs, not from the plan Mirza approved; they change no requirement and keep every leg in the merge queue.
 
 ## Issues
@@ -117,8 +115,21 @@ Accepted by Mirza on 2026-10-25 ("I approve the agent-facing prose if you're con
 | Issue | Disposition |
 |---|---|
 | #17, #42, #45, #69 | Fixed here; closed by the merge |
-| #38, #60, #63 | Landed here through the catalogs; Renovate closes them once `main` has the versions |
+| #38, #60, #63 | Landed here through the catalogs; Renovate closed them once `main` had the versions |
 | #66 | WP-W3, as its specification says (the disk measurement first); MT-01's Windows x64 stalls added to it |
 | #35, #55 | WP-13 checks them at its baseline (its specification), with the supervisor logs failed legs now keep |
 | #39, #46 | Kept open for the next occurrence; their diagnostics are in place |
 | #4 | Renovate's Dependency Dashboard; stays |
+
+## Commits and publication
+
+- **Range:** `0836e57..ebd0fa6` on `main`: the signed-off commits of `mt/01-ci-r2` and the merge commit of [#75](https://github.com/mostra-dev/mostra/pull/75) (`a402574`), then the version pull request [#77](https://github.com/mostra-dev/mostra/pull/77) (`ebd0fa6`).
+- **The merge queue, live.** `node tools/github/settings.ts apply`, then `verify`: the settings match (the ruleset's rules reordered to the order GitHub keeps, `58274e1`). The forbidden action: `PUT /repos/mostra-dev/mostra/pulls/75/merge` on #75's green head was refused with "Repository rule violations found: Changes must be made through the merge queue", and `main` stayed at `0836e57`. #75 then merged through the queue (merge-group CI run 40215382424: 59 jobs, 20.2 min, green; no CodeQL run was waited for, Opus review finding 6). #77's first queue run failed on a one-off Windows arm64 crash of Vitest's own process (run 40218439160, added to #66) and merged on the second (40219954665).
+- **Released, Mostra 0.5.0** (D36, `docs/agents/release.md`): [release run 40221837162](https://github.com/mostra-dev/mostra/actions/runs/40221837162), the first through the split `release.yml` and `release-build.yml`, built, audited and smoke-tested the four bundles with no Node.js and published the immutable GitHub release [`v0.5.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.5.0) with its nine assets, the npm packages at 0.5.0 with provenance and `mostra-host` 0.5.0 on crates.io.
+- **External checks, 2026-10-25:** `gh attestation verify mostra-0.5.0-darwin-arm64.tar.gz --repo mostra-dev/mostra` passes and the archive matches `SHA256SUMS`; `npm view` shows 0.5.0 with an SLSA provenance attestation for `@mostra/cli`, `runtime`, `sdk`, `protocol`, `conformance` and `react`, and `create-mostra` at 0.5.0; crates.io's latest `mostra-host` is 0.5.0. On this Mac, with empty home, cache, config and npm cache directories, `npm create mostra@0.5.0 my-artifact` installed the pinned bundle and scaffolded the artifact (114 s), `npx @mostra/cli@0.5.0 verify` passed and `publish` made `ver_GRVV8RBVK8NVQ3ES6SQV52AMDD`.
+- **Repository settings changed live:** outside contributors' runs need approval (`all_external_contributors`); the `ci:full` label; the merge queue on `main`; the repository variables `BLACKSMITH_BUDGET` (set to 100 for the fallback check, then removed). The Blacksmith app and `BLACKSMITH_TOKEN` are Mirza's.
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, measurements, CI logs, review texts and the clean-machine smoke in `~/.jcode/scratch/ci`, and test homes under the system's temporary directory.
+
+## Next
+
+WP-W3, Windows III: the bundles, the SDK, the Rust crate and conformance on Windows (`docs/design/work-packages/WP-W3.md`). Its specification takes MT-01's CI handoff: the Windows legs it adds join the plan in `tools/check/matrix.ts` (one place), pull requests run Windows x64 and the merge queue arm64, and #66 (with MT-01's Windows stalls and arm64 crash) is measured first.
