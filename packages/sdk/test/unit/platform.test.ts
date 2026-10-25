@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { glibcRuntime } from "../../src/platform.ts";
+import { cacheRoot } from "../../src/bundle/cache.ts";
+import { bundlePlatform, glibcRuntime } from "../../src/platform.ts";
 import { pinsFile } from "../../src/runtime.ts";
 
 describe("the platform gate reads glibc without blocking its host (Opus review finding 4)", () => {
@@ -52,5 +53,43 @@ describe("the test pins override (Opus review finding 8)", () => {
     expect(pinsFile({}, "/work/mostra/packages/sdk")).toBe(
       join("/work/mostra/packages/sdk", "dist", "bundles.json"),
     );
+  });
+});
+
+describe("which bundle a machine takes (RT-07, RT-12, D146)", () => {
+  it("takes Windows on x64 and arm64 like macOS and glibc Linux", () => {
+    expect(bundlePlatform({ platform: "win32", arch: "x64" })).toBe("win32-x64");
+    expect(bundlePlatform({ platform: "win32", arch: "arm64" })).toBe("win32-arm64");
+    expect(bundlePlatform({ platform: "darwin", arch: "arm64" })).toBe("darwin-arm64");
+    expect(bundlePlatform({ platform: "linux", arch: "x64", glibc: "2.39" })).toBe("linux-x64");
+  });
+
+  it("fails closed on every other platform, before any download", () => {
+    for (const facts of [
+      { platform: "win32", arch: "ia32" },
+      { platform: "freebsd", arch: "x64" },
+      { platform: "linux", arch: "ia32", glibc: "2.39" },
+      { platform: "linux", arch: "x64" },
+      { platform: "aix", arch: "ppc64" },
+    ]) {
+      expect(() => bundlePlatform(facts), JSON.stringify(facts)).toThrow(
+        expect.objectContaining({
+          diagnostic: expect.objectContaining({ code: "MOSTRA_PLATFORM_UNSUPPORTED" }),
+        }),
+      );
+    }
+  });
+});
+
+describe("the bundle cache's directory", () => {
+  it("is %LOCALAPPDATA%\\mostra-cache on Windows, beside the home", () => {
+    expect(cacheRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32")).toBe(
+      "C:\\Users\\a\\AppData\\Local\\mostra-cache",
+    );
+    expect(cacheRoot({ USERPROFILE: "C:\\Users\\a" }, "win32")).toBe(
+      "C:\\Users\\a\\AppData\\Local\\mostra-cache",
+    );
+    expect(cacheRoot({ HOME: "/Users/a" }, "darwin")).toBe("/Users/a/Library/Caches/mostra");
+    expect(cacheRoot({ HOME: "/home/a" }, "linux")).toBe("/home/a/.cache/mostra");
   });
 });

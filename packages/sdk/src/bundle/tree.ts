@@ -2,12 +2,33 @@
  * A bundle's files against its manifest (RT-01): one walk that both writes `files.json` (the
  * assembler) and checks an extracted bundle against it (setup), so the two can't disagree about
  * what counts. Links must stay inside the bundle; nothing may be missing, changed or extra.
+ *
+ * On Windows (D153) a link is read as the relative, `/`-separated path from its directory to its
+ * target, whether it is a symbolic link (`..\\x`, as pnpm makes them for an administrator) or a
+ * junction (an absolute target, as setup makes them for everyone), so `files.json` reads the same
+ * on every system; and no file is executable, since Windows keeps no execute bit (D150 item 8).
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readdir, readlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BundleFileEntry, BundleFiles, BundleLinkEntry } from "@mostra/protocol";
+
+/** Whether this process runs on Windows, whose links and modes the walk reads its own way. */
+const WINDOWS = process.platform === "win32";
+
+/**
+ * A link's target as the manifest spells it: relative to the link's directory, `/`-separated.
+ * POSIX targets are kept exactly as written; a Windows junction's absolute target, and a Windows
+ * symbolic link's `\\`-separated one, are rewritten into that form.
+ */
+export function linkTarget(root: string, path: string, written: string): string {
+  if (!WINDOWS) return written;
+  // A junction's target may carry the `\\?\` prefix of Windows' own namespace.
+  const plain = written.startsWith("\\\\?\\") ? written.slice(4) : written;
+  const target = isAbsolute(plain) ? relative(dirname(join(root, path)), plain) : plain;
+  return target.split(sep).join("/");
+}
 
 /** The SHA-256 and size of one file, read as a stream. */
 export async function hashFile(path: string): Promise<{ sha256: string; size: number }> {
@@ -36,10 +57,12 @@ async function walk(root: string, exclude: (path: string) => boolean): Promise<W
       if (exclude(path)) continue;
       if (entry.isDirectory()) await visit(path);
       else if (entry.isSymbolicLink()) {
-        out.push({ kind: "link", path, target: await readlink(join(root, path)) });
+        const written = await readlink(join(root, path));
+        out.push({ kind: "link", path, target: linkTarget(root, path, written) });
       } else if (entry.isFile()) {
-        const stats = await lstat(join(root, path));
-        out.push({ kind: "file", path, executable: (stats.mode & 0o100) !== 0 });
+        // Windows keeps no execute bit: Node.js reports one there for every file it can read.
+        const executable = WINDOWS ? false : ((await lstat(join(root, path))).mode & 0o100) !== 0;
+        out.push({ kind: "file", path, executable });
       } else out.push({ kind: "other", path });
     }
   };
@@ -67,7 +90,7 @@ async function mapLimit<T, R>(
 
 /** Whether a link's target is relative and resolves inside `root`. */
 export function linkStaysInside(root: string, path: string, target: string): boolean {
-  if (isAbsolute(target)) return false;
+  if (isAbsolute(target) || target.includes("\\") || target.includes("\0")) return false;
   const base = resolve(root);
   const resolved = resolve(base, dirname(path), target);
   return resolved === base || resolved.startsWith(base + sep);
@@ -118,10 +141,19 @@ export type TreeProblems = readonly string[];
 export async function checkTree(
   root: string,
   manifest: BundleFiles,
-  options: { readonly allowExtra?: (path: string) => boolean; readonly limit?: number } = {},
+  options: {
+    readonly allowExtra?: (path: string) => boolean;
+    readonly limit?: number;
+    /**
+     * Whether the links are checked; `false` checks the files alone and lets each listed link be
+     * there or not, for a Windows bundle whose junctions setup makes after a rename (D153).
+     */
+    readonly links?: boolean;
+  } = {},
 ): Promise<TreeProblems> {
   const limit = options.limit ?? 20;
   const allowExtra = options.allowExtra ?? (() => false);
+  const checkLinks = options.links ?? true;
   const problems: string[] = [];
   const add = (problem: string): void => {
     if (problems.length < limit) problems.push(problem);
@@ -153,7 +185,7 @@ export async function checkTree(
       if (!allowExtra(entry.path)) add(`${entry.path}: not in the bundle's file list`);
     }
   }
-  for (const [path, link] of expectedLinks) {
+  for (const [path, link] of checkLinks ? expectedLinks : new Map<string, BundleLinkEntry>()) {
     const actual = found.get(path);
     if (actual?.kind !== "link") add(`${path}: missing link`);
     else if (actual.target !== link.target)

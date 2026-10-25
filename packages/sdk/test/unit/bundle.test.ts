@@ -23,7 +23,16 @@ import {
   setupBundle,
 } from "@mostra/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BROWSER_FILE, fileServer, pinsEnv, syntheticBundle, tempDir } from "../support.ts";
+import {
+  BROWSER_FILE,
+  fileServer,
+  LINK_PATH,
+  NODE_PATH,
+  pinsEnv,
+  syntheticBundle,
+  tempDir,
+  WINDOWS,
+} from "../support.ts";
 
 let dir: ReturnType<typeof tempDir>;
 beforeEach(() => {
@@ -361,27 +370,45 @@ describe("checking a bundle that is already installed", () => {
     ).toBe("MOSTRA_ENV_BUNDLE_INVALID");
   });
 
-  it("finds a link that leaves the tree, a missing link and an execute bit that changed", async () => {
+  it("finds a link that leaves the tree and a missing link", async () => {
     const synthetic = await syntheticBundle(dir.path);
     const manifest = await describeTree(
       synthetic.root,
       (path) => path === "bundle.json" || path === "files.json",
     );
-    const { chmodSync, rmSync, symlinkSync } = await import("node:fs");
-    chmodSync(join(synthetic.root, "node/bin/node"), 0o644);
-    rmSync(join(synthetic.root, "lib/node_modules/.bin/fake-playwright"));
-    symlinkSync("/etc/passwd", join(synthetic.root, "lib/escape"));
+    const { rmSync, symlinkSync } = await import("node:fs");
+    rmSync(join(synthetic.root, LINK_PATH));
+    if (WINDOWS)
+      symlinkSync(
+        process.env["SystemRoot"] ?? "C:\\Windows",
+        join(synthetic.root, "lib/escape"),
+        "junction",
+      );
+    else symlinkSync("/etc/passwd", join(synthetic.root, "lib/escape"));
     const problems = await checkTree(synthetic.root, manifest, {
       allowExtra: (path) => path === "bundle.json" || path === "files.json",
     });
     expect(problems).toEqual(
       expect.arrayContaining([
-        "node/bin/node: not executable",
-        "lib/node_modules/.bin/fake-playwright: missing link",
+        `${LINK_PATH}: missing link`,
         "lib/escape: not in the bundle's file list",
       ]),
     );
     await expect(describeTree(synthetic.root)).rejects.toThrow("links outside the tree");
+  });
+
+  it.skipIf(WINDOWS)("finds an execute bit that changed (POSIX: Windows keeps none)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const manifest = await describeTree(
+      synthetic.root,
+      (path) => path === "bundle.json" || path === "files.json",
+    );
+    const { chmodSync } = await import("node:fs");
+    chmodSync(join(synthetic.root, NODE_PATH), 0o644);
+    const problems = await checkTree(synthetic.root, manifest, {
+      allowExtra: (path) => path === "bundle.json" || path === "files.json",
+    });
+    expect(problems).toEqual([`${NODE_PATH}: not executable`]);
   });
 });
 
@@ -392,7 +419,7 @@ describe("finding the runtime", () => {
       env: { PATH: process.env["PATH"] ?? "", MOSTRA_BUNDLE: synthetic.root },
     });
     expect(runtime.source).toBe("bundle");
-    expect(runtime.node).toBe(join(synthetic.root, "node/bin/node"));
+    expect(runtime.node).toBe(join(synthetic.root, NODE_PATH));
     expect(runtime.runtimeEntry).toBe(
       join(synthetic.root, "lib/node_modules/@mostra/runtime/dist/bin.js"),
     );
@@ -417,7 +444,8 @@ describe("finding the runtime", () => {
 });
 
 describe("the platform gate", () => {
-  it("refuses Windows, other architectures and Linux without glibc before any download", () => {
+  // Windows takes its own bundles since WP-W3 (D146); every other platform still fails closed.
+  it("refuses other systems and architectures and Linux without glibc before any download", () => {
     const code = (facts: Parameters<typeof bundlePlatform>[0]): string => {
       try {
         bundlePlatform(facts);
@@ -426,7 +454,9 @@ describe("the platform gate", () => {
         return (error as RpcError).diagnostic.code;
       }
     };
-    expect(code({ platform: "win32", arch: "x64" })).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    expect(code({ platform: "win32", arch: "x64" })).toBe("ok");
+    expect(code({ platform: "win32", arch: "ia32" })).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+    expect(code({ platform: "freebsd", arch: "x64" })).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
     expect(code({ platform: "linux", arch: "ia32", glibc: "2.39" })).toBe(
       "MOSTRA_PLATFORM_UNSUPPORTED",
     );
@@ -443,34 +473,37 @@ describe("a bundle's links (RT-01)", () => {
   });
   afterEach(() => scratch.cleanup());
 
-  it("refuses a link that leaves the bundle, even when its file list names it", async () => {
-    const root = join(scratch.path, "bundle");
-    mkdirSync(join(root, "lib"), { recursive: true });
-    writeFileSync(join(root, "lib", "a.js"), "a");
-    symlinkSync("a.js", join(root, "lib", "inside"));
-    symlinkSync("../../outside", join(root, "lib", "escape"));
-    // describeTree never lists such a link …
-    await expect(describeTree(root)).rejects.toThrow("links outside the tree");
-    // … and a list that does (a tampered or hand-made bundle) fails the check.
-    const listed = {
-      schemaVersion: 1 as const,
-      files: [
-        {
-          path: "lib/a.js",
-          size: 1,
-          sha256: createHash("sha256").update("a").digest("hex"),
-          executable: false,
-        },
-      ],
-      links: [
-        { path: "lib/escape", target: "../../outside" },
-        { path: "lib/inside", target: "a.js" },
-      ],
-    };
-    const problems = await checkTree(root, listed);
-    expect(problems.join("\n")).toContain("lib/escape: links outside the bundle");
-    expect(problems.join("\n")).not.toContain("lib/inside");
-  });
+  it.skipIf(WINDOWS)(
+    "refuses a link that leaves the bundle, even when its file list names it",
+    async () => {
+      const root = join(scratch.path, "bundle");
+      mkdirSync(join(root, "lib"), { recursive: true });
+      writeFileSync(join(root, "lib", "a.js"), "a");
+      symlinkSync("a.js", join(root, "lib", "inside"));
+      symlinkSync("../../outside", join(root, "lib", "escape"));
+      // describeTree never lists such a link …
+      await expect(describeTree(root)).rejects.toThrow("links outside the tree");
+      // … and a list that does (a tampered or hand-made bundle) fails the check.
+      const listed = {
+        schemaVersion: 1 as const,
+        files: [
+          {
+            path: "lib/a.js",
+            size: 1,
+            sha256: createHash("sha256").update("a").digest("hex"),
+            executable: false,
+          },
+        ],
+        links: [
+          { path: "lib/escape", target: "../../outside" },
+          { path: "lib/inside", target: "a.js" },
+        ],
+      };
+      const problems = await checkTree(root, listed);
+      expect(problems.join("\n")).toContain("lib/escape: links outside the bundle");
+      expect(problems.join("\n")).not.toContain("lib/inside");
+    },
+  );
 
   it("fetches a browser that differs from its pin again into an empty directory, and never downloads the bundle again (Opus review finding 5)", async () => {
     const synthetic = await syntheticBundle(dir.path);
@@ -505,29 +538,33 @@ describe("a bundle's links (RT-01)", () => {
     expect(await readSetup(bundle)).toBeDefined();
   });
 
-  it("keeps a bundle whose check fails for a reason that isn't the bundle's, and says why (Opus review finding 5)", async () => {
-    const synthetic = await syntheticBundle(dir.path);
-    const release = pathToFileURL(dir.path).href;
-    const env = pinsEnv(dir.path, synthetic, release, { FAKE_BROWSER_FAIL: "1" });
-    await failure(installPinned(synthetic.pins(release), { env, platform: bundlePlatform() }));
-    const root = bundleDir(env, synthetic.sha256);
-    const { chmodSync } = await import("node:fs");
-    const unreadable = join(root, "lib/node_modules/@mostra/cli/dist/bin.js");
-    chmodSync(unreadable, 0o000);
-    try {
-      const error = await installPinned(synthetic.pins(release), {
-        env,
-        platform: bundlePlatform(),
-      }).catch((caught: unknown) => caught);
-      expect(error).toBeInstanceOf(Error);
-      expect(
-        error instanceof RpcError && error.diagnostic.code === "MOSTRA_ENV_BUNDLE_INVALID",
-      ).toBe(false);
-      expect(existsSync(join(root, "bundle.json"))).toBe(true);
-    } finally {
-      chmodSync(unreadable, 0o644);
-    }
-  });
+  // POSIX: an administrator, as Windows' runners are, reads a file whatever its access list says.
+  it.skipIf(WINDOWS)(
+    "keeps a bundle whose check fails for a reason that isn't the bundle's, and says why (Opus review finding 5)",
+    async () => {
+      const synthetic = await syntheticBundle(dir.path);
+      const release = pathToFileURL(dir.path).href;
+      const env = pinsEnv(dir.path, synthetic, release, { FAKE_BROWSER_FAIL: "1" });
+      await failure(installPinned(synthetic.pins(release), { env, platform: bundlePlatform() }));
+      const root = bundleDir(env, synthetic.sha256);
+      const { chmodSync } = await import("node:fs");
+      const unreadable = join(root, "lib/node_modules/@mostra/cli/dist/bin.js");
+      chmodSync(unreadable, 0o000);
+      try {
+        const error = await installPinned(synthetic.pins(release), {
+          env,
+          platform: bundlePlatform(),
+        }).catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(Error);
+        expect(
+          error instanceof RpcError && error.diagnostic.code === "MOSTRA_ENV_BUNDLE_INVALID",
+        ).toBe(false);
+        expect(existsSync(join(root, "bundle.json"))).toBe(true);
+      } finally {
+        chmodSync(unreadable, 0o644);
+      }
+    },
+  );
 
   it("names no credential a mirror's or proxy's URL carries when the browser can't be fetched (Opus review finding 3)", async () => {
     const synthetic = await syntheticBundle(dir.path);

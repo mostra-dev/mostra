@@ -4,15 +4,31 @@
  * absolute paths, `..` and writing through a link; it does create a link whatever its target, so
  * setup then checks the whole tree against the bundle's file list (`checkTree`), which refuses any
  * file or link it doesn't list and any link that leaves the bundle. A pinned archive's SHA-256 is
- * checked before any of this.
+ * checked before any of this. A Windows archive holds no links at all (D153): one that does is
+ * refused, since its junctions are made by setup, from `files.json`.
  */
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import { x } from "tar";
 
 const ACCEPTED = new Set(["File", "OldFile", "ContiguousFile", "Directory", "SymbolicLink"]);
 
+/** Options of {@link extractBundle}. */
+export interface ExtractOptions {
+  /** `keep` extracts symbolic links; `refuse` refuses an archive that has any (Windows'). */
+  readonly links?: "keep" | "refuse";
+}
+
 /** Extracts `archive` (a `.tar.gz` with one top directory `top`) into the empty directory `into`. */
-export async function extractBundle(archive: string, into: string, top: string): Promise<void> {
+export async function extractBundle(
+  archive: string,
+  into: string,
+  top: string,
+  options: ExtractOptions = {},
+): Promise<void> {
+  const accepted =
+    options.links === "refuse"
+      ? new Set([...ACCEPTED].filter((type) => type !== "SymbolicLink"))
+      : ACCEPTED;
   let refused: string | undefined;
   try {
     await x({
@@ -27,7 +43,7 @@ export async function extractBundle(archive: string, into: string, top: string):
       filter: (path, entry) => {
         const type = "type" in entry ? String(entry.type) : "File";
         const inside = path === `${top}/` || path === top || path.startsWith(`${top}/`);
-        if (!inside || !ACCEPTED.has(type)) {
+        if (!inside || !accepted.has(type)) {
           refused ??= `${path} (${type})`;
           return false;
         }

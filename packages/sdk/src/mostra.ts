@@ -397,6 +397,8 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
   const child = spawn(runtime.node, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: env as NodeJS.ProcessEnv,
+    // A Windows host with no console of its own (a desktop app) opens no window for its instance.
+    windowsHide: true,
   });
   const logTail: string[] = [];
   const exited = new Promise<InstanceExit>((done) => {

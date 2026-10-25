@@ -6,6 +6,7 @@
  * hand, and for the Rust crate (WP-12), so there is one implementation of what "ready" means.
  */
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -14,9 +15,11 @@ import {
   BundleInfo,
   BundleSetup,
   createDiagnostic,
+  isWindowsBundle,
   RpcError,
 } from "@mostra/protocol";
 import { scrubUrls } from "./download.ts";
+import { LinkRefused, makeJunctions } from "./links.ts";
 import { checkTree, hashFile, safeRelative } from "./tree.ts";
 
 /** The environment setup reads. */
@@ -90,14 +93,28 @@ export async function readBundle(root: string): Promise<Bundle> {
   return { root, info };
 }
 
-/** The setup marker, when it describes exactly this bundle. */
+/**
+ * The bundle's real path: links followed, Windows' short names written out, the case as the file
+ * system keeps it. A Windows bundle's junctions point into it, and its marker names it.
+ */
+export function realRoot(root: string): string {
+  return realpathSync.native(root);
+}
+
+/**
+ * The setup marker, when it describes exactly this bundle. A Windows bundle's marker must also
+ * name the root it sits at now: its junctions point into the root setup ran at, so a bundle moved
+ * or copied since is set up again, which makes them afresh (D153).
+ */
 export async function readSetup(bundle: Bundle): Promise<BundleSetup | undefined> {
   try {
     const marker = BundleSetup.parse(
       JSON.parse(await readFile(join(bundle.root, BUNDLE_SETUP_MARKER), "utf8")),
     );
     const { info } = bundle;
-    return marker.files === info.files.sha256 &&
+    const here = isWindowsBundle(info.platform) ? marker.root === realRoot(bundle.root) : true;
+    return here &&
+      marker.files === info.files.sha256 &&
       marker.version === info.version &&
       marker.platform === info.platform &&
       marker.browser.revision === info.browser.revision
@@ -120,8 +137,8 @@ export function setupExtras(path: string): boolean {
   );
 }
 
-/** Checks the bundle's files; throws `MOSTRA_ENV_BUNDLE_INVALID` naming what differs. */
-export async function checkFiles(bundle: Bundle): Promise<void> {
+/** The bundle's `files.json`, once its SHA-256 is the one `bundle.json` pins. */
+async function readManifest(bundle: Bundle): Promise<BundleFiles> {
   const { root, info } = bundle;
   const listing = join(root, info.files.path);
   const { sha256 } = await hashFile(listing).catch(() => ({ sha256: "" }));
@@ -130,7 +147,39 @@ export async function checkFiles(bundle: Bundle): Promise<void> {
   }
   const manifest = BundleFiles.safeParse(JSON.parse(await readFile(listing, "utf8")));
   if (!manifest.success) throw invalid(`${info.files.path} isn't a bundle's file list.`);
-  const problems = await checkTree(root, manifest.data, { allowExtra: setupExtras });
+  return manifest.data;
+}
+
+/**
+ * Makes a Windows bundle's links, each a junction at the bundle's real path (D153); nothing for
+ * any other bundle, whose archive carries its links. Throws `MOSTRA_ENV_BUNDLE_INVALID` for a link
+ * the bundle can't have.
+ */
+export async function makeLinks(bundle: Bundle): Promise<void> {
+  if (!isWindowsBundle(bundle.info.platform)) return;
+  const manifest = await readManifest(bundle);
+  try {
+    await makeJunctions(realRoot(bundle.root), manifest);
+  } catch (error) {
+    if (error instanceof LinkRefused) throw invalid(`The runtime bundle's links: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Checks the bundle's files; throws `MOSTRA_ENV_BUNDLE_INVALID` naming what differs. With
+ * `links: false` the files alone are checked (a Windows bundle before {@link makeLinks}).
+ */
+export async function checkFiles(
+  bundle: Bundle,
+  options: { readonly links?: boolean } = {},
+): Promise<void> {
+  const { root, info } = bundle;
+  const manifest = await readManifest(bundle);
+  const problems = await checkTree(root, manifest, {
+    allowExtra: setupExtras,
+    links: options.links ?? true,
+  });
   if (problems.length > 0) {
     throw invalid(
       `Mostra ${info.version}'s runtime bundle for ${info.platform} differs from its file list: ${problems.join("; ")}.`,
@@ -202,6 +251,7 @@ async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<vo
         cwd: root,
         env: installEnvironment(bundle, options.env ?? process.env),
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
         ...(options.signal ? { signal: options.signal } : {}),
         timeout: 15 * 60_000,
       },
@@ -239,6 +289,9 @@ async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<vo
 export async function setupBundle(root: string, options: SetupOptions = {}): Promise<BundleSetup> {
   const env = options.env ?? process.env;
   const bundle = await readBundle(root);
+  // A Windows bundle's junctions are made where it sits now, each read back as it is made; a
+  // tree checked a moment ago (`filesChecked`, before the cache's rename) needs nothing more.
+  await makeLinks(bundle);
   if (!options.filesChecked) {
     options.onStep?.("files");
     await checkFiles(bundle);
@@ -270,6 +323,7 @@ export async function setupBundle(root: string, options: SetupOptions = {}): Pro
     files: bundle.info.files.sha256,
     browser: { revision: bundle.info.browser.revision },
     at: new Date().toISOString(),
+    root: realRoot(root),
   };
   const temporary = join(root, `${BUNDLE_SETUP_MARKER}.tmp-${process.pid}`);
   await writeFile(temporary, `${JSON.stringify(marker, null, 2)}\n`);
