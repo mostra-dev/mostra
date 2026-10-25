@@ -359,7 +359,7 @@ export const buildDiagnosticCodes: readonly ["MOSTRA_BUILD_FAILED", "MOSTRA_BUIL
 export const BUNDLE_NAME = "mostra-runtime-bundle";
 
 // @public
-export const BUNDLE_PLATFORMS: readonly ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"];
+export const BUNDLE_PLATFORMS: readonly ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64"];
 
 // @public
 export const BUNDLE_SETUP_MARKER = ".mostra-setup.json";
@@ -474,6 +474,7 @@ export interface BundleSetup {
     };
     readonly files: string;
     readonly platform: BundlePlatform;
+    readonly root?: string;
     readonly schemaVersion: 1;
     readonly version: string;
 }
@@ -1442,6 +1443,9 @@ export function isFinalRunStatus(status: RunStatus): boolean;
 
 // @public
 export function isJsonContentType(value: string | undefined): boolean;
+
+// @public
+export function isWindowsBundle(platform: BundlePlatform): boolean;
 
 // @public
 export const JSON_RPC_ERROR_CODES: {

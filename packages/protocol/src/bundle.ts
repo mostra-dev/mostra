@@ -218,7 +218,10 @@ export const BundleAsset: z.ZodType<BundleAsset> = z
     // (Opus review finding 8), and `BundlePins` checks it names its release and platform.
     file: z
       .string()
-      .regex(/^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux|win32)-(arm64|x64)\.tar\.gz$/),
+      // Widened for Windows as the schema gate can prove: the old pattern is one alternative.
+      .regex(
+        /^(?:mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\.tar\.gz$|mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-win32-(arm64|x64)\.tar\.gz$)/,
+      ),
     sha256,
     size: z.int().positive(),
     unpackedSize: z.int().positive(),

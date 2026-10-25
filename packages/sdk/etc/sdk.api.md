@@ -77,12 +77,15 @@ export interface CallOptions {
 export function checkBrowser(bundle: Bundle): Promise<readonly string[]>;
 
 // @public
-export function checkFiles(bundle: Bundle): Promise<void>;
+export function checkFiles(bundle: Bundle, options?: {
+    readonly links?: boolean;
+}): Promise<void>;
 
 // @public
 export function checkTree(root: string, manifest: BundleFiles, options?: {
     readonly allowExtra?: (path: string) => boolean;
     readonly limit?: number;
+    readonly links?: boolean;
 }): Promise<TreeProblems>;
 
 // @public
