@@ -1016,6 +1016,15 @@ const SEEDS: readonly Seed[] = [
     check: ["test/bridge.test.ts"],
     cwd: "../protocol",
   },
+  {
+    requirement: "RT-11",
+    name: "a telemetry file's replacement gives up at Windows' first refusal (MT-01)",
+    file: "../cli/src/telemetry/store.ts",
+    from: '      if (platform !== "win32" || !shared || Date.now() > deadline) throw error;',
+    to: "      throw error;",
+    check: unit("telemetry.test.ts", "tries again while Windows refuses"),
+    cwd: "../cli",
+  },
   // MT-01 (D152): the CI plan, its runner choice and the release rehearsal (EN-07, #69).
   {
     requirement: "EN-07",

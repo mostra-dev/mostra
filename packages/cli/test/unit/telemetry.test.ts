@@ -25,7 +25,7 @@ import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/even
 import { flush } from "../../src/telemetry/flush.ts";
 import { detectHarness } from "../../src/telemetry/harness.ts";
 import { telemetrySession } from "../../src/telemetry/index.ts";
-import { TelemetryStore } from "../../src/telemetry/store.ts";
+import { replace, TelemetryStore } from "../../src/telemetry/store.ts";
 import { asksFirst } from "../../src/telemetry/timezone.ts";
 import { ANSWER, NOTICE_ASK_FIRST, NOTICE_DEFAULT, QUESTION } from "../../src/telemetry/words.ts";
 import { buildZoneSets } from "../../src/telemetry/zone-sets.ts";
@@ -747,5 +747,38 @@ describe("the flusher (D140 item 6)", () => {
       server.closeAllConnections();
       await new Promise((done) => server.close(done));
     }
+  });
+});
+
+describe("replacing a telemetry file (MT-01)", () => {
+  const refused = (times: number, code: string) => {
+    let calls = 0;
+    return {
+      rename: () => {
+        calls += 1;
+        if (calls <= times) throw Object.assign(new Error(code), { code });
+      },
+      calls: () => calls,
+    };
+  };
+
+  it("tries again while Windows refuses to replace a file another process has open", () => {
+    const fake = refused(3, "EPERM");
+    replace("from", "to", "win32", fake.rename);
+    expect(fake.calls()).toBe(4);
+  });
+
+  it("gives up after a second, and never retries elsewhere or other errors", () => {
+    const always = refused(Number.POSITIVE_INFINITY, "EBUSY");
+    const started = Date.now();
+    expect(() => replace("from", "to", "win32", always.rename)).toThrow("EBUSY");
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1000);
+    expect(Date.now() - started).toBeLessThan(3000);
+    const posix = refused(1, "EPERM");
+    expect(() => replace("from", "to", "linux", posix.rename)).toThrow("EPERM");
+    expect(posix.calls()).toBe(1);
+    const missing = refused(1, "ENOENT");
+    expect(() => replace("from", "to", "win32", missing.rename)).toThrow("ENOENT");
+    expect(missing.calls()).toBe(1);
   });
 });

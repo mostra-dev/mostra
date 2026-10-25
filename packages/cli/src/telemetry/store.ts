@@ -386,11 +386,16 @@ export class TelemetryStore {
  * traced on `windows-latest`); the rename is tried again for up to a second, as the runtime's
  * renames are (D150 item 8), and never turned into a copy.
  */
-function replace(from: string, to: string, platform: string): void {
+export function replace(
+  from: string,
+  to: string,
+  platform: string,
+  rename: (from: string, to: string) => void = renameSync,
+): void {
   const deadline = Date.now() + 1000;
   for (let pause = 5; ; pause = Math.min(pause * 2, 100)) {
     try {
-      renameSync(from, to);
+      rename(from, to);
       return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
