@@ -118,7 +118,16 @@ export interface CiMatrix extends CiScope {
   readonly conformance: readonly Leg[];
   /** Absent when no published package or distribution file changed. */
   readonly release: Rehearsal | null;
+  /** Legs this pull request leaves to the merge queue, which runs every leg (the summary's). */
+  readonly deferred: readonly string[];
 }
+
+/**
+ * GitHub runs at most five macOS jobs at once, on every plan (VERIFIED_FACTS, MT-01), so a pull
+ * request gets at most five macOS legs: a sixth would only wait for a free one. They are taken in
+ * this order, the rest left to the merge queue, which runs every leg before anything merges.
+ */
+export const MACOS_PULL_REQUEST_LEGS = 5;
 
 /** The checks that need no browser, real process or Rust toolchain: one machine runs them all. */
 const STATIC_JOBS: readonly JobName[] = [
@@ -229,6 +238,29 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
           : []),
       ]
     : [];
+  const integration = has("integration")
+    ? posix.flatMap(({ os, runner }) => POSIX_GROUPS.map((group) => ({ os, runner, group })))
+    : [];
+  const rust = has("rust") ? posix : [];
+  const conformance = has("conformance") ? posix : [];
+  // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
+  // then the Rust crate and the conformance kit (POSIX like Linux, where they still run).
+  const macos: { readonly list: string; readonly leg: Leg }[] = [
+    ...integration.map((leg) => ({ list: "integration", leg })),
+    ...e2e.map((leg) => ({ list: "e2e", leg })),
+    ...rust.map((leg) => ({ list: "rust", leg })),
+    ...conformance.map((leg) => ({ list: "conformance", leg })),
+  ].filter(({ leg }) => leg["os"] === "macos");
+  const dropped = new Set<Leg>(
+    all ? [] : macos.slice(MACOS_PULL_REQUEST_LEGS).map(({ leg }) => leg),
+  );
+  const keep = (legs: readonly Leg[]): Leg[] => legs.filter((leg) => !dropped.has(leg));
+  const deferred = macos
+    .filter(({ leg }) => dropped.has(leg))
+    .map(({ list, leg }) => {
+      const detail = leg["group"] ?? leg["browser"];
+      return `${list} (macos${detail ? `, ${detail}` : ""})`;
+    });
   return {
     ...scope,
     jobs: [...applies],
@@ -245,14 +277,13 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
         : [],
     unit: has("unit") ? [{ os: "linux", runner: runners.linux.large }] : [],
     hygiene: has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : [],
-    integration: has("integration")
-      ? posix.flatMap(({ os, runner }) => POSIX_GROUPS.map((group) => ({ os, runner, group })))
-      : [],
+    integration: keep(integration),
     windows,
-    e2e,
-    rust: has("rust") ? posix : [],
-    conformance: has("conformance") ? posix : [],
+    e2e: keep(e2e),
+    rust: keep(rust),
+    conformance: keep(conformance),
     release: scope.run ? rehearsal(plan, all, runners) : null,
+    deferred,
   };
 }
 

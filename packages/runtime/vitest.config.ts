@@ -4,17 +4,25 @@ import { configDefaults, defineConfig } from "vitest/config";
  * The integration suites in groups, each its own CI machine per platform (REPO_STANDARDS §6), so
  * the job stays inside its time while verify's real-browser suites grow. `MOSTRA_TEST_GROUP`
  * picks one; unset, every suite runs (`pnpm check --job integration` on a laptop). The groups
- * partition the files by name, so a new suite always lands in exactly one: `verify*` suites in
- * `verify` (but the failure suite, which has a group of its own), everything else in `core`.
+ * partition the files by name, so a new suite always lands in exactly one: `verify*` suites and
+ * `dev` (the other sandboxed preview) in `verify`, the failure suites (verify's, publishing's and
+ * workers' crashes) in `verify-failures`, everything else in `core`. Suites run one at a time, so a
+ * group's time is the sum of its files': these keep the groups within about a minute of each other
+ * on macOS (MT-01; `core` had been 8 min against 3.5 for the others).
  * `clients` is the CLI's, the SDK's and `create-mostra`'s suites (WP-11): none of the runtime's,
  * so their instances never compete with the runtime's suites for one machine's CPU.
  */
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
+const DEV = "test/integration/dev.test.ts";
+const FAULTS = ["test/integration/publish-faults.test.ts", "test/integration/lifecycle.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
-  core: { include: ["test/integration/**/*.test.ts"], exclude: [VERIFY_SUITES] },
-  verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
-  "verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+  core: {
+    include: ["test/integration/**/*.test.ts"],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS],
+  },
+  verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
+  "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
   clients: { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
   // runs them about twice as slowly as x64). They partition the files too, in their own way: a

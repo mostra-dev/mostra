@@ -87,6 +87,11 @@ export function summary(matrix: CiMatrix, runners: Runners): string {
     `- jobs: ${matrix.jobs.join(", ") || "none"}`,
     `- Linux on ${runners.pool}: ${runners.reason}`,
     `- release rehearsal: ${matrix.release ? matrix.release.reason : "none (no package or distribution file changed)"}`,
+    ...(matrix.deferred.length > 0
+      ? [
+          `- left to the merge queue (GitHub runs five macOS jobs at once): ${matrix.deferred.join(", ")}`,
+        ]
+      : []),
     "",
   ].join("\n");
 }

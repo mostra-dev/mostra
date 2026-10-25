@@ -1,9 +1,10 @@
 /**
  * The Windows legs run every integration suite (WP-W2, D146): their groups partition
  * `test/integration`, so a new suite can't be left off Windows by accident, and a suite that runs
- * twice would cost a machine for nothing.
+ * twice would cost a machine for nothing. The macOS and Linux groups partition it too (MT-01).
  */
 import { readdirSync } from "node:fs";
+import { matchesGlob } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { INTEGRATION_GROUPS } from "../../vitest.config.ts";
@@ -31,5 +32,21 @@ describe("the Windows integration groups (WP-W2)", () => {
     }
     expect([...counts.keys()].sort()).toEqual(suites);
     for (const [file, count] of counts) expect(count, file).toBe(1);
+  });
+});
+
+describe("the macOS and Linux integration groups (MT-01)", () => {
+  it("run every suite exactly once", () => {
+    const groups = ["core", "verify", "verify-failures"].map(
+      (name) => [name, INTEGRATION_GROUPS[name]] as const,
+    );
+    const member = (group: { include: string[]; exclude: string[] }, file: string): boolean =>
+      group.include.some((glob) => matchesGlob(file, glob)) &&
+      !group.exclude.some((glob) => matchesGlob(file, glob));
+    for (const file of suites) {
+      const owners = groups.filter(([, group]) => group && member(group, file)).map(([n]) => n);
+      expect(owners, file).toHaveLength(1);
+    }
+    expect(INTEGRATION_GROUPS["clients"]?.include).toEqual([]);
   });
 });
