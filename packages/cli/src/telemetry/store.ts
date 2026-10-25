@@ -334,7 +334,9 @@ export class TelemetryStore {
   #release(token: string): void {
     try {
       if (readFileSync(this.#lockFile, "utf8") === token) rmSync(this.#lockFile, { force: true });
-    } catch {
+      else process.stderr.write("PROBE release: not ours\n");
+    } catch (error) {
+      process.stderr.write(`PROBE release failed ${(error as NodeJS.ErrnoException).code}\n`);
       // Gone already.
     }
   }
@@ -367,6 +369,7 @@ export class TelemetryStore {
       renameSync(this.#lockFile, aside);
     } catch (error) {
       // Another breaker moved it first: try for it at once; anything else, wait.
+      process.stderr.write(`PROBE aside ${(error as NodeJS.ErrnoException).code}\n`);
       return (error as NodeJS.ErrnoException).code === "ENOENT" ? "broken" : "held";
     }
     try {
