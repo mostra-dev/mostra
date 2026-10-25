@@ -188,6 +188,11 @@ const BUNDLE_PLATFORMS = [
   { platform: "linux-arm64", runner: "ubuntu-24.04-arm" },
 ] as const;
 
+/** `leg` split into `total` machines, each running one part of its tests (`MOSTRA_E2E_SHARD`). */
+function shards(leg: Leg, total: number): Leg[] {
+  return Array.from({ length: total }, (_, i) => ({ ...leg, shard: `${i + 1}/${total}` }));
+}
+
 /** Lays a plan out for a scope and the run's runners. */
 export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix {
   const applies = new Set(
@@ -228,13 +233,12 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
             (browser) => ({ os, runner, browser }),
           ),
         ),
-        ...["chromium", "firefox"].map((browser) => ({
-          os: "windows-x64",
-          runner: runners.windows.x64,
-          browser,
-        })),
+        // Windows runs one test at a time, so its slowest engines are split across machines:
+        // Firefox on x64 (7 min alone) and emulated Chromium on arm64 (10 min).
+        { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
+        ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all
-          ? [{ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }]
+          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 2)
           : []),
       ]
     : [];

@@ -410,7 +410,7 @@ jobs:
   # Playwright's WebKit there keeps no SameSite on cookies, and its Windows browsers are x64
   # builds, so arm64 runs Chromium only (emulated Firefox closed pages by itself, #66; D151 item 8).
   e2e:
-    name: e2e (${{ matrix.leg.os }}, ${{ matrix.leg.browser }})
+    name: e2e (${{ matrix.leg.os }}, ${{ matrix.leg.browser }}${{ matrix.leg.shard && format(', {0}', matrix.leg.shard) || '' }})
     needs: plan
     if: needs.plan.outputs.e2e != '[]'
     strategy:
@@ -423,6 +423,7 @@ jobs:
     timeout-minutes: 25
     env:
       MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
+      MOSTRA_E2E_SHARD: ${{ matrix.leg.shard || '' }}
       # Windows runs only behind the development switch until WP-W3 (D146, D150).
       MOSTRA_DEV_WINDOWS: ${{ startsWith(matrix.leg.os, 'windows') && '1' || '' }}
     defaults:
@@ -459,7 +460,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}
+          name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}
           path: tests/e2e/test-results
           retention-days: 7
 

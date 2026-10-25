@@ -11,6 +11,14 @@ const browser = process.env["MOSTRA_E2E_BROWSER"];
 if (browser && !projects.some((project) => project.name === browser)) {
   throw new Error(`MOSTRA_E2E_BROWSER is chromium, firefox or webkit, not "${browser}".`);
 }
+// One part of the engine's tests, `<current>/<total>`: CI splits the engines that run one test at
+// a time on Windows across machines (MT-01, tools/check/matrix.ts).
+const shardText = process.env["MOSTRA_E2E_SHARD"] ?? "";
+const shardMatch = /^([1-9]\d*)\/([1-9]\d*)$/.exec(shardText);
+if (shardText && (!shardMatch || Number(shardMatch[1]) > Number(shardMatch[2]))) {
+  throw new Error(`MOSTRA_E2E_SHARD is <current>/<total>, such as 1/2, not "${shardText}".`);
+}
+const shard = shardMatch ? { current: Number(shardMatch[1]), total: Number(shardMatch[2]) } : null;
 
 export default defineConfig({
   testDir: "./specs",
@@ -26,6 +34,7 @@ export default defineConfig({
   // so a test that opens three pages ran past 30 s with nothing wrong (main's run 40096242377).
   // Windows gets 60 s.
   ...(process.platform === "win32" ? { timeout: 60_000 } : {}),
+  shard,
   forbidOnly: !!process.env["CI"],
   retries: 0,
   reporter: process.env["CI"] ? [["github"], ["list"]] : "list",

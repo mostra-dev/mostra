@@ -53,7 +53,7 @@
     },
     "e2e": {
       "dependsOn": ["^build"],
-      "env": ["MOSTRA_E2E_BROWSER"],
+      "env": ["MOSTRA_E2E_BROWSER", "MOSTRA_E2E_SHARD"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
       "outputs": []
     }
