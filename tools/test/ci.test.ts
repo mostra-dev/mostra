@@ -25,14 +25,14 @@ const inputs = (over: Partial<RunnerInputs> = {}): RunnerInputs => ({
   trusted: true,
   status: "UP",
   usage: 100,
-  budget: 3000,
+  budget: 6000,
   threshold: 0.9,
   ...over,
 });
 
 describe("the runner choice (D152)", () => {
   it("uses Blacksmith for Linux while the month's usage is under its threshold", () => {
-    const runners = chooseRunners(inputs({ usage: 2699 }));
+    const runners = chooseRunners(inputs({ usage: 5399 }));
     expect(runners.pool).toBe("blacksmith");
     expect(runners.linux).toEqual(BLACKSMITH_LINUX);
     // macOS and Windows never leave GitHub's runners.
@@ -46,7 +46,7 @@ describe("the runner choice (D152)", () => {
       expect(runners.linux).toEqual(GITHUB_RUNNERS.linux);
       return runners.pool;
     };
-    expect(github({ usage: 2700 })).toBe("github");
+    expect(github({ usage: 5400 })).toBe("github");
     expect(github({ usage: 99999 })).toBe("github");
     expect(github({ usage: undefined })).toBe("github");
     expect(github({ status: undefined })).toBe("github");

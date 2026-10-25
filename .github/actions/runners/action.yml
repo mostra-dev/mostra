@@ -15,9 +15,11 @@ inputs:
     required: false
     default: auto
   budget:
-    description: Blacksmith billing minutes a month (repository variable BLACKSMITH_BUDGET).
+    description: >-
+      Blacksmith billing minutes a month (repository variable BLACKSMITH_BUDGET): 6000, its free
+      3,000 2-vCPU minutes, which its CLI counts as 2 billing minutes each.
     required: false
-    default: "3000"
+    default: "6000"
   threshold:
     description: The share of the budget after which Linux jobs move to GitHub (BLACKSMITH_THRESHOLD).
     required: false

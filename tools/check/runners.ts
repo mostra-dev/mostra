@@ -12,7 +12,8 @@
  * Blacksmith's status page; a missing or unreadable file means "unknown". The decision prints as
  * JSON on stdout, and as `runners=<json>` in `$GITHUB_OUTPUT` when that is set. Settings come from
  * the environment: `CI_RUNNERS` (`auto`, the default, `github` or `blacksmith`),
- * `BLACKSMITH_BUDGET` (billing minutes a month, default 3000), `BLACKSMITH_THRESHOLD` (the share
+ * `BLACKSMITH_BUDGET` (billing minutes a month, default 6000: Blacksmith's free 3,000 2-vCPU
+ * minutes, since its CLI counts a 2-vCPU minute as 2 billing minutes), `BLACKSMITH_THRESHOLD` (the share
  * of the budget after which jobs move to GitHub, default 0.9) and `MOSTRA_CI_TRUSTED` (`1` when
  * the run may use Blacksmith at all: not a fork's pull request, and the token is there).
  *
@@ -149,7 +150,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     trusted: process.env["MOSTRA_CI_TRUSTED"] === "1",
     status: pageStatus(readOptional(values.status)),
     usage: usageMinutes(readOptional(values.usage)),
-    budget: numberFrom(process.env["BLACKSMITH_BUDGET"], 3000),
+    budget: numberFrom(process.env["BLACKSMITH_BUDGET"], 6000),
     threshold: numberFrom(process.env["BLACKSMITH_THRESHOLD"], 0.9),
   });
   const json = JSON.stringify(runners);

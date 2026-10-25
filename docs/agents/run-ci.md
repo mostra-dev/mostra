@@ -33,7 +33,7 @@ The plan job's summary shows the scope, the runners chosen and every leg.
 4. **Choose where Linux jobs run.** The repository variable `CI_RUNNERS` is `auto` (default),
    `github` or `blacksmith`: `gh variable set CI_RUNNERS --body github`. Under `auto`, Linux jobs
    run on Blacksmith while its usage over the last 31 days is below `BLACKSMITH_THRESHOLD` (0.9)
-   of `BLACKSMITH_BUDGET` (3000 billing minutes, its free allowance), and on GitHub's runners
+   of `BLACKSMITH_BUDGET` (6000 billing minutes: its free 3,000 2-vCPU minutes, each 2 billing minutes), and on GitHub's runners
    otherwise, also whenever Blacksmith's status page isn't up, its usage can't be read or the run
    has no secrets (a fork). `blacksmith` overrides the budget and an unreadable usage or status
    page, never a fork or an outage the status page reports. Publishing, bundle builds and
