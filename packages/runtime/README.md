@@ -34,7 +34,8 @@ version. `artifact/create`, `artifact/list` and `artifact/get` complete the auth
 
 ## Platforms
 
-macOS and Linux, on x64 and arm64. Elsewhere, including Windows, it stops with
-`MOSTRA_PLATFORM_UNSUPPORTED` before touching the home.
+macOS, Linux and Windows, on x64 and arm64. Elsewhere it stops with `MOSTRA_PLATFORM_UNSUPPORTED`
+before touching the home. On Windows the control endpoint is an owner-only named pipe that the
+helper `mostra-win.exe` serves, and every child runs in a Job Object (D150).
 
 Part of [Mostra](https://github.com/mostra-dev/mostra), the agent artifact runtime. Apache-2.0.

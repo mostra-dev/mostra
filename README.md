@@ -20,8 +20,7 @@ choose, and the answers flow back to the agent through whatever host it runs in.
 ## Status
 
 The v1 design is accepted, and implementation is under way, one work package at a time. Nothing
-is published to npm yet. Mostra runs on macOS and Linux; Windows support is being built for the
-first release.
+is published to npm yet. Mostra runs on macOS, glibc-based Linux and Windows, each on x64 and arm64.
 
 | Package | What it is | Status |
 |---|---|---|

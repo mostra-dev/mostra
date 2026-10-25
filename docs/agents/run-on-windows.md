@@ -18,11 +18,13 @@ place Windows behavior is observed, so the loop is a push and a CI run.
    way, or skip it with a comment naming where Windows covers it. Never let a Windows-only check
    skip silently on Windows: a missing prerequisite (the second user, the helper) is a failure.
 3. **Push and read the leg.** The `windows` job runs `pnpm check --job unit|hygiene|integration`
-   with `MOSTRA_DEV_WINDOWS=1`, `MOSTRA_TEST_GROUP` set to one of the Windows groups in
+   with `MOSTRA_TEST_GROUP` set to one of the Windows groups in
    `packages/runtime/vitest.config.ts` (they partition every runtime suite, one machine each;
-   `windows-clients` is the CLI's) and a second local user (`MOSTRA_TEST_OTHER_USER`,
+   `windows-clients` is the CLI's, the SDK's, `create-mostra`'s and the kit's) and a second local user (`MOSTRA_TEST_OTHER_USER`,
    `MOSTRA_TEST_OTHER_PASSWORD`); the `windows-gateway` leg also turns the firewall and its audit
-   on. The `e2e` job runs the browser suites there too. A new suite joins exactly one Windows group.
+   on. The `e2e` job runs the browser suites there too, the `rust` and `conformance` jobs the
+   crate and the kit's Rust reference host, and the release rehearsal builds and smoke-tests the
+   Windows bundles. A new suite joins exactly one Windows group.
    Read a failing leg's log with `gh run view <run> --log-failed`, or the whole job with
    `gh api repos/mostra-dev/mostra/actions/jobs/<job>/logs`.
 4. **Observe Windows behavior you depend on** before building on it: the helper's
