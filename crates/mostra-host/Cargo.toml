@@ -1,6 +1,6 @@
 [package]
 name = "mostra-host"
-version = "0.4.0"
+version = "0.5.0"
 description = "Host Mostra, the agent artifact runtime, from Rust: the host protocol's wire types, a tokio client, spawn and attach, the runtime bundle and the host ports."
 edition.workspace = true
 rust-version.workspace = true

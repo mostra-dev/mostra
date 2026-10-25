@@ -1,5 +1,15 @@
 # @mostra/runtime
 
+## 0.5.0
+
+### Patch Changes
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`5afc703`](https://github.com/mostra-dev/mostra/commit/5afc70310653dabcf886df19d1a19754bf3290aa) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - When an artifact's server code keeps crashing and its worker is parked, every live source of that version now says so (`MOSTRA_RUNTIME_WORKER_PARKED`). Before, a source whose producer was still starting at the last crash showed a generic failure, or nothing at all, and its page waited without a word ([#42](https://github.com/mostra-dev/mostra/issues/42)).
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`e48e7aa`](https://github.com/mostra-dev/mostra/commit/e48e7aad93787e3f2a8e41c6088239bcc2f11178) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Security updates: Vite 8.3.3 for the builder (its `launch-editor` could be led to run a command on Windows, GHSA-587h-7wmj-h5pm), Zod 4.6.6 for every wire schema (validating an oversized constrained collection could exhaust memory, GHSA-mrhx-c7xc-m3w5), and undici 8.12.2 for the SDK's bundle downloads (unbounded memory in its EventSource parser, GHSA-4qv8-2p9j-2685).
+- Updated dependencies [[`7893700`](https://github.com/mostra-dev/mostra/commit/78937009ac67a4780b3c29017b5e84dd818d6f75), [`c3c0052`](https://github.com/mostra-dev/mostra/commit/c3c0052183bcc02b27d755001419d1e55a3a8e7f), [`e48e7aa`](https://github.com/mostra-dev/mostra/commit/e48e7aad93787e3f2a8e41c6088239bcc2f11178)]:
+  - @mostra/protocol@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
