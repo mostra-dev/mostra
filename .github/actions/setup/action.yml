@@ -16,6 +16,11 @@ outputs:
       of native programs, such as Playwright's browsers, are keyed by it: a browser built for one
       release can't load another's libraries (WebKit for Ubuntu 24.04 needs libicudata.so.74).
     value: ${{ steps.image.outputs.image }}
+  turbo-key:
+    description: >-
+      The key this job's Turborepo cache saves under. Only runs on main save it (an
+      `actions/cache/save` step at the job's end), so pull requests restore main's.
+    value: ${{ steps.turbo-key.outputs.key }}
 runs:
   using: composite
   steps:
@@ -64,11 +69,19 @@ runs:
       with:
         path: ${{ steps.store.outputs.path }}
         key: pnpm-store-${{ steps.image.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
+    # Restored here and saved at the job's end, on main only (an `actions/cache/save` step): every run
+    # saving its own copy filled the repository's cache with entries no other run reads (MT-01).
+    - name: The Turborepo cache's key
+      id: turbo-key
+      shell: bash
+      env:
+        KEY: turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
     - name: Restore the Turborepo cache
-      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: .turbo/cache
-        key: turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        key: ${{ steps.turbo-key.outputs.key }}
         restore-keys: |
           turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-
           turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-

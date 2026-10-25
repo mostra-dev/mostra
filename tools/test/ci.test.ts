@@ -323,6 +323,51 @@ describe("the CI workflow's shape (D152)", () => {
     );
   });
 
+  it("saves caches only on main, and every job that restores Turbo's cache saves it there", () => {
+    interface Step {
+      uses?: string;
+      if?: string;
+      id?: string;
+      with?: Record<string, unknown>;
+    }
+    // Saved only on main: the condition requires it, and nothing in it can lift the requirement.
+    const onMain = (condition: string | undefined): boolean =>
+      condition?.includes("github.ref == 'refs/heads/main'") === true && !condition.includes("||");
+    const check = (where: string, list: Step[]): void => {
+      for (const step of list) {
+        const uses = step.uses ?? "";
+        // `actions/cache` itself saves on every run, pull requests' included.
+        expect(uses.startsWith("actions/cache@"), `${where}: ${uses}`).toBe(false);
+        if (uses.startsWith("actions/cache/save@")) expect(onMain(step.if), where).toBe(true);
+        if (uses.startsWith("Swatinem/rust-cache@"))
+          expect(step.with?.["save-if"], where).toBe(`\${{ github.ref == 'refs/heads/main' }}`);
+      }
+    };
+    for (const action of ["setup", "browsers"]) {
+      const file = parse(
+        readFileSync(fromRoot(`.github/actions/${action}/action.yml`), "utf8"),
+      ) as {
+        runs: { steps: Step[] };
+      };
+      check(action, file.runs.steps);
+    }
+    for (const [name, job] of Object.entries(jobs)) {
+      const steps = ((job as { steps?: Step[] }).steps ?? []) as Step[];
+      check(name, steps);
+      const setup = steps.find((step) => step.uses === "./.github/actions/setup");
+      if (!setup || name === "plan") continue;
+      expect(setup.id, name).toBe("setup");
+      expect(
+        steps.some(
+          (step) =>
+            step.uses?.startsWith("actions/cache/save@") &&
+            step.with?.["key"] === `\${{ steps.setup.outputs.turbo-key }}`,
+        ),
+        `${name} restores Turbo's cache and never saves it`,
+      ).toBe(true);
+    }
+  });
+
   it("is triggered by pull requests ready for review, the queue, the night and hand only", () => {
     expect(Object.keys(workflow.on).sort()).toEqual(
       ["merge_group", "pull_request", "schedule", "workflow_dispatch"].sort(),

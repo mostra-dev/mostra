@@ -1124,6 +1124,15 @@ const SEEDS: readonly Seed[] = [
     to: "    exclude: [VERIFY_SUITES, ...FAULTS],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
+  {
+    requirement: "EN-07",
+    name: "a pull request saves its own Turbo cache",
+    file: "../../.github/workflows/ci.yml",
+    from: "      - name: Save the Turborepo cache (main only)\n        if: github.ref == 'refs/heads/main'",
+    to: "      - name: Save the Turborepo cache (main only)\n        if: always()",
+    check: ["test/ci.test.ts", "-t", "saves caches only on main"],
+    cwd: "../../tools",
+  },
   // MT-01, #45: receivers read what a newer peer adds within a revision.
   {
     requirement: "HO-07",
