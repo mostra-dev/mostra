@@ -1,5 +1,20 @@
 # @mostra/cli
 
+## 0.5.0
+
+### Patch Changes
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`911f8f7`](https://github.com/mostra-dev/mostra/commit/911f8f7b3b036e7c6626088c4b4b44371b641935) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, when creating the telemetry lock is refused and no lock file is there, the CLI now checks whether it can write its config directory at all (a file of its own) instead of giving up after three such rounds, so a lock other processes keep taking and releasing is waited for until the usual 2 s.
+  
+  On Windows, the CLI's telemetry settings and queue are replaced with retries for up to a second while another process has the file open, which Windows refuses; before, such a command lost its install ID or its notice (seen in CI with twelve processes starting at once).
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`aa3031f`](https://github.com/mostra-dev/mostra/commit/aa3031f7548aaace9976444d422c4d13813f2c37) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra verify`, `mostra doctor` and `mostra wait` treat a status they don't know, which a newer Mostra may send, as a failure: `verify` exits 0 only on a passing verdict, `doctor` fails on any check that isn't `ok` or `warning`, and `wait` ends with exit 1 instead of waiting again. A telemetry probe file Windows briefly holds no longer interrupts a command.
+
+- [#72](https://github.com/mostra-dev/mostra/pull/72) [`ed8a382`](https://github.com/mostra-dev/mostra/commit/ed8a382e57b9f6b25e34fbd1e04b50ad852d6ff9) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, a telemetry lock that another process finished deleting just as this one tried to take it no longer makes this process give up without an install ID; a directory this user can't write still gives up within about 60 ms.
+- Updated dependencies [[`7893700`](https://github.com/mostra-dev/mostra/commit/78937009ac67a4780b3c29017b5e84dd818d6f75), [`c3c0052`](https://github.com/mostra-dev/mostra/commit/c3c0052183bcc02b27d755001419d1e55a3a8e7f), [`e48e7aa`](https://github.com/mostra-dev/mostra/commit/e48e7aad93787e3f2a8e41c6088239bcc2f11178)]:
+  - @mostra/protocol@0.5.0
+  - @mostra/sdk@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

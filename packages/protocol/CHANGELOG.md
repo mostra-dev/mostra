@@ -1,5 +1,17 @@
 # @mostra/protocol
 
+## 0.5.0
+
+### Minor Changes
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`c3c0052`](https://github.com/mostra-dev/mostra/commit/c3c0052183bcc02b27d755001419d1e55a3a8e7f) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A client no longer refuses an answer from a newer Mostra for a value it doesn't know yet. `RpcPeer.call` reads results, and the SDK reads port requests and event pages, through the new `receivable(schema)`: an enum value or a union member a newer instance added within the revision arrives as sent, while everything else is still checked ([#45](https://github.com/mostra-dev/mostra/issues/45)).
+
+### Patch Changes
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`7893700`](https://github.com/mostra-dev/mostra/commit/78937009ac67a4780b3c29017b5e84dd818d6f75) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The JSON-RPC core carries only the six HOST diagnostics it raises, not the whole HOST catalog, so browser bundles that use it are about 2 kB smaller (the core alone from 5.8 to 3.8 kB, brotli) and stop growing with each new HOST code ([#17](https://github.com/mostra-dev/mostra/issues/17)).
+
+- [#75](https://github.com/mostra-dev/mostra/pull/75) [`e48e7aa`](https://github.com/mostra-dev/mostra/commit/e48e7aad93787e3f2a8e41c6088239bcc2f11178) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Security updates: Vite 8.3.3 for the builder (its `launch-editor` could be led to run a command on Windows, GHSA-587h-7wmj-h5pm), Zod 4.6.6 for every wire schema (validating an oversized constrained collection could exhaust memory, GHSA-mrhx-c7xc-m3w5), and undici 8.12.2 for the SDK's bundle downloads (unbounded memory in its EventSource parser, GHSA-4qv8-2p9j-2685).
+
 ## 0.4.0
 
 ### Patch Changes
