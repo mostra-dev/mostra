@@ -118,7 +118,7 @@ interface LiveRow {
 
 const keyOf = (artifactId: string, key: string): string => `${artifactId}\u0000${key}`;
 
-/** After a worker couldn't start to describe its sources, how long before it is tried again. */
+/** After a worker couldn't start to describe its sources, how long before it's tried again. */
 const DISCOVERY_RETRY_MS = 60_000;
 
 function tooLarge(key: string): RpcError {
