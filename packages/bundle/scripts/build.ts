@@ -348,6 +348,11 @@ async function pruneDeploy(stage: string, version: string): Promise<void> {
   }
   // pnpm's own install state, which names the directory it deployed into, wherever deploy left it.
   await removeEverywhere(lib, (name) => /^\.pnpm-workspace-state(-v\d+)?\.json$/.test(name));
+  // On Windows pnpm writes each `node_modules/.bin` entry as shim files (sh, `.cmd`, `.ps1`) whose
+  // NODE_PATH names the build machine's store, where POSIX has relative links. Nothing in a bundle
+  // runs them (its launchers are `bin/`, its programs run on its Node.js by path), so a Windows
+  // bundle carries none.
+  if (WINDOWS) await removeDirectoriesNamed(lib, ".bin");
   const store = join(warm, "node_modules", ".pnpm");
   for (const entry of await readdir(store)) {
     if (/^@[^+@]*$/.test(entry)) await rm(join(store, entry), { recursive: true, force: true });
@@ -363,6 +368,16 @@ async function pruneDeploy(stage: string, version: string): Promise<void> {
     }
     delete data["devDependencies"];
     await writeFile(manifest, `${JSON.stringify(data, null, 2)}\n`);
+  }
+}
+
+/** Removes every directory under `dir` named `name`, without following links. */
+async function removeDirectoriesNamed(dir: string, name: string): Promise<void> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const path = join(dir, entry.name);
+    if (entry.name === name) await rm(path, { recursive: true, force: true });
+    else await removeDirectoriesNamed(path, name);
   }
 }
 
