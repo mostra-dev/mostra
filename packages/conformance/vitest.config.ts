@@ -9,7 +9,11 @@ import { defineConfig } from "vitest/config";
  */
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integration =
-  group === undefined || group === "" || group === "clients"
+  group === undefined ||
+  group === "" ||
+  group === "clients" ||
+  // Windows runs the clients' suites in its own group (WP-W3).
+  group === "windows-clients"
     ? ["test/integration/**/*.test.ts"]
     : [];
 

@@ -240,7 +240,11 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.rust) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 15
+    # Windows compiles the workspace from cold in about as long as the rest takes (WP-W3).
+    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 15 }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +260,20 @@ jobs:
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
+      # The runtime the crate's suites spawn needs its Windows helper (D150), and the pipe-owner
+      # check a second local user (D150 item 4, WP-W3).
+      - name: Build the Windows helper
+        if: runner.os == 'Windows'
+        run: cargo build -p mostra-win --release --locked
+      - name: A second local user, for the pipe-owner check
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $password = "Mw3-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
       - name: pnpm check --job rust
         env:
           # The crate's instance suites fail, never skip, when the runtime didn't build.
@@ -269,7 +287,7 @@ jobs:
           path: .turbo/cache
           key: ${{ steps.setup.outputs.turbo-key }}
 
-  # The host conformance kit against the Rust reference host on both POSIX platforms (HO-05):
+  # The host conformance kit against the Rust reference host on macOS, Linux and Windows (HO-05):
   # every port, standalone, and broken with its baseline. The TypeScript reference host runs in
   # the integration job's `clients` group. The kit's shell scenario renders in Chromium.
   conformance:
@@ -281,7 +299,10 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.conformance) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 20 }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,6 +315,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build the Windows helper
+        if: runner.os == 'Windows'
+        run: cargo build -p mostra-win --release --locked
       - uses: ./.github/actions/browsers
         with:
           browser: chromium-headless-shell

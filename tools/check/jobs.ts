@@ -32,6 +32,10 @@ export const WINDOWS_PACKAGES: readonly string[] = [
   "@mostra/react",
   "@mostra/cli",
   "@mostra/e2e",
+  // WP-W3: the SDK, `npm create mostra` and the conformance kit's TypeScript reference host.
+  "@mostra/sdk",
+  "create-mostra",
+  "@mostra/conformance",
 ];
 
 /** The names of the jobs, in REPO_STANDARDS §6 order. */
@@ -83,6 +87,8 @@ export interface Job {
 }
 
 const BIN = "node_modules/.bin";
+/** Turbo's launcher, which Node.js runs on every system (the `.bin` shim is a `.cmd` on Windows). */
+const TURBO = "node_modules/turbo/bin/turbo";
 const TS6_BIN = "tools/ts6/node_modules/.bin";
 const RUST = [
   /^crates\//,
@@ -233,8 +239,9 @@ export const JOBS: readonly Job[] = [
     steps: () => [
       {
         label: "build the runtime",
-        command: `${BIN}/turbo`,
-        args: ["run", "build", "--filter=@mostra/runtime...", "--output-logs=errors-only"],
+        // Turbo's own launcher through Node.js: the `.bin` shim is a `.cmd` on Windows.
+        command: "node",
+        args: [TURBO, "run", "build", "--filter=@mostra/runtime...", "--output-logs=errors-only"],
       },
       {
         label: "nextest",
@@ -266,8 +273,9 @@ export const JOBS: readonly Job[] = [
       return [
         {
           label: "build the runtime and the kit",
-          command: `${BIN}/turbo`,
+          command: "node",
           args: [
+            TURBO,
             "run",
             "build",
             "--filter=@mostra/runtime...",

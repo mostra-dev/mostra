@@ -275,8 +275,9 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const integration = has("integration")
     ? posix.flatMap(({ os, runner }) => POSIX_GROUPS.map((group) => ({ os, runner, group })))
     : [];
-  const rust = has("rust") ? posix : [];
-  const conformance = has("conformance") ? posix : [];
+  // The crate and the kit run on Windows too (WP-W3): x64 on pull requests, arm64 in the queue.
+  const rust = has("rust") ? [...posix, ...windowsOs] : [];
+  const conformance = has("conformance") ? [...posix, ...windowsOs] : [];
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
   // then the Rust crate and the conformance kit (POSIX like Linux, where they still run).
   const macos: { readonly list: string; readonly leg: Leg }[] = [

@@ -132,11 +132,19 @@ describe("what runs when (D152)", () => {
     expect(ordinary.integration.filter((leg) => leg["os"] === "macos")).toHaveLength(4);
     expect(ordinary.e2e.filter((leg) => leg["os"] === "macos")).toHaveLength(1);
     expect(ordinary.deferred).toEqual(["rust (macos)", "conformance (macos)"]);
-    // Linux keeps every leg, and the queue runs them all on macOS too.
-    expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux"]);
-    expect(ordinary.conformance.map((leg) => leg["os"])).toEqual(["linux"]);
+    // Linux and Windows x64 keep every leg (WP-W3), and the queue runs them all on macOS and
+    // Windows arm64 too.
+    expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux", "windows-x64"]);
+    expect(ordinary.conformance.map((leg) => leg["os"])).toEqual(["linux", "windows-x64"]);
     const queued = ciMatrix(queue, runtime, github);
     expect(onMacos(queued).length).toBeGreaterThan(MACOS_PULL_REQUEST_LEGS);
+    for (const legs of [queued.rust, queued.conformance])
+      expect(legs.map((leg) => leg["os"])).toEqual([
+        "linux",
+        "macos",
+        "windows-x64",
+        "windows-arm64",
+      ]);
     expect(queued.deferred).toEqual([]);
     // A crate-only change fits: its macOS legs all stay.
     const crate = ciMatrix(pr, change(["crates/mostra-host/src/lib.rs"], []), github);
