@@ -11,7 +11,9 @@ imports nothing but `zod` (tools/package-map.ts).
   definitions and enum values. The `api` job's schema check rejects anything else against the
   base; a breaking change needs a new entry in `HOST_PROTOCOL_REVISIONS`. A receiver reads what
   a peer sends through `receivable(schema)`, which accepts enum values and union members a newer
-  peer added and still checks everything else (#45); `RpcPeer.call` does so for results.
+  peer added and still checks everything else (#45); `RpcPeer.call` does so for results. Code
+  that gates on such a value (a verdict, a check, a wait) passes only on a value it knows means
+  passing, so a newer value fails closed.
 - **Stable diagnostic codes (AX-03).** A released code keeps its meaning and is never removed; mark
   it `deprecated` instead. Every code has a title, hint and docs text.
 - **One JSON-RPC core (D83).** `src/rpc/` holds the only JSON-RPC implementation: `RpcPeer`,

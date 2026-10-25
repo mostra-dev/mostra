@@ -85,6 +85,53 @@ describe("receivable (#45)", () => {
     });
   });
 
+  it("reads a message the schema accepts exactly as the schema does (Opus review 1)", () => {
+    // A member whose tag is an enum: widened, it would take every tag and strip `b`.
+    const Tagged = z.discriminatedUnion("k", [
+      z.object({ k: z.enum(["a", "x"]), a: z.number().optional() }),
+      z.object({ k: z.literal("b"), b: z.number() }),
+    ]);
+    expect(receivable(Tagged).parse({ k: "b", b: 1 })).toEqual({ k: "b", b: 1 });
+    expect(receivable(Tagged).parse({ k: "x", a: 2 })).toEqual({ k: "x", a: 2 });
+    // A plain union whose first member, opened, would also match the second's messages.
+    const Plain = z.union([
+      z.object({ state: z.enum(["queued"]) }),
+      z.object({ state: z.enum(["done"]), result: z.number() }),
+    ]);
+    expect(receivable(Plain).parse({ state: "done", result: 3 })).toEqual({
+      state: "done",
+      result: 3,
+    });
+    // What only a newer peer sends still arrives, its tag kept.
+    expect(receivable(Tagged).parse({ k: "c", c: true })).toEqual({ k: "c", c: true });
+  });
+
+  it("keeps an enum's own checks and an enum-keyed record's keys (Opus review 2)", () => {
+    const Refined = z.enum(["x", "y"]).refine((value) => value !== "y");
+    expect(receivable(Refined).safeParse("y").success).toBe(false);
+    expect(receivable(Refined).parse("z")).toBe("z");
+    const Counts = z.record(z.enum(["a", "b"]), z.number());
+    expect(receivable(Counts).safeParse({ a: 1 }).success).toBe(false);
+    expect(receivable(Counts).safeParse({ a: 1, b: "two" }).success).toBe(false);
+    expect(receivable(Counts).parse({ a: 1, b: 2, c: 3 })).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it("opens a recursive schema without recursing forever (Opus review 7)", () => {
+    const Node = z.object({
+      name: z.string(),
+      kind: z.enum(["file", "dir"]),
+      get children() {
+        return z.array(Node).optional();
+      },
+    });
+    const open = receivable(Node);
+    const tree = { name: "a", kind: "dir", children: [{ name: "b", kind: "link" }] };
+    expect(open.parse(tree)).toEqual(tree);
+    expect(open.safeParse({ name: "a", kind: "dir", children: [{ kind: "file" }] }).success).toBe(
+      false,
+    );
+  });
+
   it("still refuses what no peer of this revision could send", () => {
     const open = receivable(Message);
     expect(open.safeParse(sample).success).toBe(true);
