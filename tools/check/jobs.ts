@@ -4,6 +4,7 @@
  * apart from the cross-platform legs and GitHub's hosted scanners.
  */
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fromRoot } from "../lib/repo.ts";
 import { affectsPackages, type Plan, touches } from "./plan.ts";
 
@@ -269,7 +270,9 @@ export const JOBS: readonly Job[] = [
     alone: true,
     steps: () => {
       const kit = ["packages/conformance/dist/cli.js", "--host"];
-      const host = "target/debug/mostra-host-reference";
+      // The command line runs through the system's shell: `cmd.exe` on Windows reads `/` as a
+      // switch, so the path takes the platform's separators.
+      const host = join("target", "debug", "mostra-host-reference");
       return [
         {
           label: "build the runtime and the kit",

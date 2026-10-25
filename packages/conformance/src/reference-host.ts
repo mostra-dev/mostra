@@ -18,6 +18,8 @@
  * Its own runtime is found like any SDK host's (`MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, the pinned
  * bundle, a development checkout).
  */
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   type ArtifactSummary,
@@ -332,10 +334,23 @@ export async function runReferenceHost(
   });
 }
 
-if (
-  import.meta.url === `file://${process.argv[1]}` ||
-  process.argv[1]?.endsWith("reference-host.js")
-) {
+/**
+ * Whether this module is the program Node.js was started with: by file URL, which spells a
+ * Windows path (`file:///D:/…`) as no string concatenation does, through any link, or as the
+ * installed binary (`mostra-conformance-reference-host`, a link or npm's shim to `dist/`).
+ */
+function isMain(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    if (pathToFileURL(realpathSync(entry)).href === import.meta.url) return true;
+  } catch {
+    // An entry that doesn't exist as a file is judged by its name alone.
+  }
+  return entry.endsWith("reference-host.js");
+}
+
+if (isMain()) {
   const { values } = parseArgs({
     options: {
       standalone: { type: "boolean" },

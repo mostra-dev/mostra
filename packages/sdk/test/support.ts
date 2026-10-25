@@ -404,6 +404,11 @@ export async function eventually(
 /** Where Playwright keeps its browsers by default (playwright-core's registry). */
 function playwrightBrowsers(): string {
   const home = process.env["HOME"] ?? "";
+  if (process.platform === "win32")
+    return join(
+      process.env["LOCALAPPDATA"] || join(process.env["USERPROFILE"] ?? "", "AppData", "Local"),
+      "ms-playwright",
+    );
   return process.platform === "darwin"
     ? join(home, "Library", "Caches", "ms-playwright")
     : join(process.env["XDG_CACHE_HOME"] || join(home, ".cache"), "ms-playwright");

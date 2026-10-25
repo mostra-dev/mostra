@@ -13,13 +13,17 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 const BIN = fileURLToPath(new URL("../../dist/bin.js", import.meta.url));
-// Real path: on macOS /tmp is a link to /private/tmp, and the CLI reports real paths.
-const root = realpathSync(mkdtempSync("/tmp/mcm-"));
+// Real path: on macOS /tmp is a link to /private/tmp, and the CLI reports real paths. /tmp keeps
+// the control socket's path short on POSIX (D82); Windows has a pipe and no /tmp.
+const root = realpathSync.native(
+  mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "mcm-")),
+);
 const env: Record<string, string> = {};
 for (const [name, value] of Object.entries(process.env)) {
   if (value === undefined || name.startsWith("npm_") || name.startsWith("MOSTRA_")) continue;

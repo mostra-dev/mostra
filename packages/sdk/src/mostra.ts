@@ -338,7 +338,11 @@ function portNames(ports: Ports): PortName[] {
   return names;
 }
 
-/** Ends the child: stdin closed, then SIGTERM after `graceMs`, then SIGKILL after 5 s more. */
+/**
+ * Ends the child: stdin closed (which stops it, D87), then SIGTERM after `graceMs`, then SIGKILL
+ * after 5 s more. Windows has no signals between processes (D150 item 6): there the first of
+ * them ends the process at once.
+ */
 function stopChild(
   child: ChildProcess,
   exited: Promise<InstanceExit>,
