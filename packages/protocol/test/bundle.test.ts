@@ -5,6 +5,7 @@ import {
   BundlePins,
   BundleSetup,
   bundleAssetName,
+  isWindowsBundle,
 } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -33,14 +34,27 @@ const info = {
 
 describe("the runtime bundle's contract (RT-01)", () => {
   it("names one archive per release and platform", () => {
-    expect(BUNDLE_PLATFORMS).toEqual(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]);
+    // Windows joined the bundle platforms with WP-W3 (D146).
+    expect(BUNDLE_PLATFORMS).toEqual([
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-x64",
+      "linux-arm64",
+      "win32-x64",
+      "win32-arm64",
+    ]);
     expect(bundleAssetName("0.1.0", "linux-arm64")).toBe("mostra-0.1.0-linux-arm64.tar.gz");
+    expect(bundleAssetName("0.6.0", "win32-arm64")).toBe("mostra-0.6.0-win32-arm64.tar.gz");
+    expect(isWindowsBundle("win32-x64")).toBe(true);
+    expect(isWindowsBundle("linux-x64")).toBe(false);
   });
 
   it("reads a bundle.json and refuses one that isn't a bundle's", () => {
     expect(BundleInfo.parse(info)).toEqual(info);
     expect(BundleInfo.safeParse({ ...info, name: "something-else" }).success).toBe(false);
-    expect(BundleInfo.safeParse({ ...info, platform: "win32-x64" }).success).toBe(false);
+    expect(BundleInfo.safeParse({ ...info, platform: "win32-x64" }).success).toBe(true);
+    expect(BundleInfo.safeParse({ ...info, platform: "freebsd-x64" }).success).toBe(false);
+    expect(BundleInfo.safeParse({ ...info, platform: "win32-ia32" }).success).toBe(false);
     expect(
       BundleInfo.safeParse({ ...info, files: { path: "/etc/passwd", sha256: digest } }).success,
     ).toBe(false);
@@ -95,5 +109,9 @@ describe("the runtime bundle's contract (RT-01)", () => {
       at: "2026-10-19T00:00:00.000Z",
     };
     expect(BundleSetup.parse(marker)).toEqual(marker);
+    // A Windows bundle's marker names the root its junctions point into (D153).
+    const windows = { ...marker, platform: "win32-x64", root: "C:\\Users\\a\\mostra-0.1.0" };
+    expect(BundleSetup.parse(windows)).toEqual(windows);
+    expect(BundleSetup.safeParse({ ...marker, root: "" }).success).toBe(false);
   });
 });

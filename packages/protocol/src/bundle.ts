@@ -11,8 +11,13 @@
  * files.json        BundleFiles: every other file and link of the archive with its SHA-256
  * node/             the official Node.js distribution for the platform
  * lib/node_modules/ Mostra's packages (cli, runtime, worker, verify, shell, sdk, warm) and theirs
- * bin/              the mostra, mostra-runtime and mostra-setup launchers
+ * bin/              the mostra, mostra-runtime and mostra-setup launchers (POSIX scripts, or on
+ *                   Windows `.exe` launchers beside the helpers mostra-win and mostra-win-service)
  * ```
+ *
+ * A Windows archive holds no links: an ordinary Windows user can't create symbolic links, so its
+ * `files.json` lists the links, each to a directory inside the bundle, and setup makes each one a
+ * junction at the bundle's real path (D153).
  *
  * The verify browser isn't in the archive: setup downloads the pinned revision through the
  * bundle's own Playwright and checks every file against `BundleInfo.browser.files` (D142).
@@ -20,9 +25,15 @@
 import * as z from "zod";
 import { wireRegistry } from "./wire-registry.ts";
 
-/** The platforms v1 ships a bundle for (D35; Windows follows in v1.1, D120). */
-export const BUNDLE_PLATFORMS: readonly ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"] =
-  ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"];
+/** The platforms v1 ships a bundle for (D35, D146): macOS, glibc Linux and Windows. */
+export const BUNDLE_PLATFORMS: readonly [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-x64",
+  "linux-arm64",
+  "win32-x64",
+  "win32-arm64",
+] = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64"];
 
 /** One platform a bundle is built for: `<os>-<arch>` as Node names them. */
 export type BundlePlatform = (typeof BUNDLE_PLATFORMS)[number];
@@ -32,6 +43,11 @@ export const BUNDLE_NAME = "mostra-runtime-bundle";
 
 /** The marker setup writes at a bundle's root once its files and its browser are verified. */
 export const BUNDLE_SETUP_MARKER = ".mostra-setup.json";
+
+/** Whether a platform's bundle is a Windows one, whose links setup makes as junctions (D153). */
+export function isWindowsBundle(platform: BundlePlatform): boolean {
+  return platform.startsWith("win32-");
+}
 
 /** The archive a release attaches for a version and platform. */
 export function bundleAssetName(version: string, platform: BundlePlatform): string {
@@ -79,7 +95,10 @@ export const BundleFileEntry: z.ZodType<BundleFileEntry> = z
   })
   .register(wireRegistry, { id: "BundleFileEntry" });
 
-/** One symbolic link of a bundle. Its target is relative and resolves inside the bundle. */
+/**
+ * One symbolic link of a bundle. Its target is relative and resolves inside the bundle. In a
+ * Windows bundle every link names a directory, and setup makes it a junction (D153).
+ */
 export interface BundleLinkEntry {
   /** The link itself, relative to the bundle's root. */
   readonly path: string;
@@ -199,7 +218,7 @@ export const BundleAsset: z.ZodType<BundleAsset> = z
     // (Opus review finding 8), and `BundlePins` checks it names its release and platform.
     file: z
       .string()
-      .regex(/^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\.tar\.gz$/),
+      .regex(/^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux|win32)-(arm64|x64)\.tar\.gz$/),
     sha256,
     size: z.int().positive(),
     unpackedSize: z.int().positive(),
@@ -249,6 +268,12 @@ export interface BundleSetup {
   readonly browser: { readonly revision: string };
   /** When setup finished (RFC 3339). */
   readonly at: string;
+  /**
+   * The bundle's real path when setup ran. A Windows bundle's junctions name their targets by
+   * absolute path, so a Windows bundle whose marker names another root (it was moved or copied)
+   * is set up again, which makes its junctions afresh (D153). Absent in markers before WP-W3.
+   */
+  readonly root?: string;
 }
 
 /** The setup marker's schema. */
@@ -260,5 +285,6 @@ export const BundleSetup: z.ZodType<BundleSetup> = z
     files: sha256,
     browser: z.object({ revision: z.string().min(1) }),
     at: z.string(),
+    root: z.string().min(1).exactOptional(),
   })
   .register(wireRegistry, { id: "BundleSetup" });

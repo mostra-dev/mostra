@@ -123,6 +123,7 @@ export {
   BundlePlatformSchema,
   BundleSetup,
   bundleAssetName,
+  isWindowsBundle,
 } from "./bundle.ts";
 export { canonicalJson } from "./canonical.ts";
 export {
