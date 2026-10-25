@@ -15,6 +15,8 @@
         "bin/*.ts",
         "*/cli.ts",
         "check/fix.ts",
+        "check/ci.ts",
+        "check/runners.ts",
         "docs/*.ts",
         "test/**/*.test.ts",
         "github/*.ts"

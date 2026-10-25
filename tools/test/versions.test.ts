@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apply, bumped, crateProblems, next, pendingBump } from "../release/versions.ts";
+import { apply, bumped, crateProblems, next, pendingBump, rehearsal } from "../release/versions.ts";
 
 /** A tiny workspace: the group, a non-member, the host crate and changesets. */
 function workspace(changesets: Record<string, string>): string {
@@ -67,6 +67,16 @@ describe("release versions (D143)", () => {
       'name = "mostra-host"\nversion = "0.2.0"',
     );
     expect(crateProblems(root)).toEqual([]);
+  });
+
+  it("rehearses the next patch when npm already has the tree's version and nothing is pending (#69)", () => {
+    const root = workspace({});
+    expect(rehearsal(() => true, root)).toEqual({ rehearse: true, version: "0.1.1" });
+    // A version pull request: its version isn't on npm yet, so it is built as it stands.
+    expect(rehearsal(() => false, root)).toEqual({ rehearse: false, version: "0.1.0" });
+    const pending = workspace({ "a.md": '---\n"@mostra/sdk": minor\n---\n\nA feature.\n' });
+    expect(rehearsal(() => true, pending)).toEqual({ rehearse: true, version: "0.2.0" });
+    expect(rehearsal(() => false, pending)).toEqual({ rehearse: true, version: "0.2.0" });
   });
 
   it("finds a crate that left the group's version", () => {

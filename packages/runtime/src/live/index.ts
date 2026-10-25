@@ -147,6 +147,12 @@ export function createLive(options: LiveOptions): Live {
   const retryAt = new Map<string, number>();
   /** Versions whose producers stopped because their worker is parked, by version, to their artifact. */
   const parkedVersions = new Map<string, string>();
+  /** Why each parked version parked: its sources' error names the last cause. */
+  const parkCauses = new Map<string, string>();
+  const parkError = (cause: string): WireError => ({
+    code: "MOSTRA_RUNTIME_WORKER_PARKED",
+    message: `The artifact's server code keeps crashing, so its live sources stopped (${cause}).`,
+  });
   let timer: ReturnType<typeof setInterval> | undefined;
   let scheduled = false;
   let stopped = false;
@@ -279,6 +285,15 @@ export function createLive(options: LiveOptions): Live {
         throw error;
       }
     } catch (error) {
+      // A start the park cut short says the park, never its own failure (#42). The park may not
+      // have named this source: a worker that never answered its start told nobody its sources
+      // (GPT review of MT-01).
+      if (parkedVersions.has(versionId)) {
+        if (failures.get(id)?.code !== "MOSTRA_RUNTIME_WORKER_PARKED") {
+          fail(artifactId, key, parkError(parkCauses.get(versionId) ?? "its last start failed"));
+        }
+        return;
+      }
       const diagnostic = error instanceof RpcError ? error.diagnostic : undefined;
       fail(artifactId, key, {
         message: diagnostic?.message ?? String(error),
@@ -484,18 +499,21 @@ export function createLive(options: LiveOptions): Live {
     },
 
     crashed(crash) {
+      const ended = new Set(crash.liveKeys);
       for (const [id, producer] of running) {
-        if (producer.versionId === crash.versionId) running.delete(id);
+        if (producer.versionId !== crash.versionId) continue;
+        running.delete(id);
+        ended.add(producer.key);
       }
       if (crash.parked) {
-        for (const key of crash.liveKeys) {
-          fail(crash.artifactId, key, {
-            code: "MOSTRA_RUNTIME_WORKER_PARKED",
-            message: `The artifact's server code keeps crashing, so its live sources stopped (${crash.cause}).`,
-          });
-        }
+        // Every source of the parked version says so, not only the producers the worker had
+        // started when it crashed: one being started then, or due after the backoff, never runs
+        // again either, and its page would otherwise wait on it without a word (#42).
+        for (const source of described.get(crash.versionId) ?? []) ended.add(source.key);
+        for (const key of ended) fail(crash.artifactId, key, parkError(crash.cause));
         retryAt.set(crash.versionId, Number.POSITIVE_INFINITY);
         parkedVersions.set(crash.versionId, crash.artifactId);
+        parkCauses.set(crash.versionId, crash.cause);
         return;
       }
       retryAt.set(crash.versionId, Date.now() + crash.backoffMs);
@@ -521,6 +539,7 @@ export function createLive(options: LiveOptions): Live {
       for (const [versionId, owner] of parkedVersions) {
         if (owner !== artifactId) continue;
         parkedVersions.delete(versionId);
+        parkCauses.delete(versionId);
         retryAt.delete(versionId);
         cleared = true;
       }

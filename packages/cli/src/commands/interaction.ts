@@ -69,6 +69,17 @@ export const waitCommand: CommandDef = defineCommand({
       if (result.status === "satisfied") {
         return { result, human: `${result.event.type} at cursor ${result.cursor}\n` };
       }
+      // Waiting again is for still_waiting alone: an answer a newer instance gives that this CLI
+      // doesn't know ends the wait as a failure, so it is neither looped on nor taken for a
+      // submission (Opus review of MT-01, 2).
+      if (result.status !== "still_waiting") {
+        return {
+          result,
+          // The type names only the statuses this CLI was built with; the value may be newer.
+          human: `wait ended with "${String((result as { status: unknown }).status)}", which this CLI doesn't know\n`,
+          exit: EXIT.failure,
+        };
+      }
       // No limit: wait again from the newest cursor examined, so nothing is missed.
       if (deadline === undefined) {
         after = result.cursor;

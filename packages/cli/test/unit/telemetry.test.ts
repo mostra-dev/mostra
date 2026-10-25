@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -25,7 +26,7 @@ import { durationBucket, minute, TelemetryEvent } from "../../src/telemetry/even
 import { flush } from "../../src/telemetry/flush.ts";
 import { detectHarness } from "../../src/telemetry/harness.ts";
 import { telemetrySession } from "../../src/telemetry/index.ts";
-import { TelemetryStore } from "../../src/telemetry/store.ts";
+import { replace, TelemetryStore, writable } from "../../src/telemetry/store.ts";
 import { asksFirst } from "../../src/telemetry/timezone.ts";
 import { ANSWER, NOTICE_ASK_FIRST, NOTICE_DEFAULT, QUESTION } from "../../src/telemetry/words.ts";
 import { buildZoneSets } from "../../src/telemetry/zone-sets.ts";
@@ -392,7 +393,7 @@ describe("the store (D140 item 5)", () => {
       utimesSync(lock, old, old);
     }
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const read = store.read(); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none " + JSON.stringify({ read, id: id ?? null, after: store.read(), shown: shown !== undefined }));`;
     // Every process waits for one start signal, so they make their IDs at the same moment.
     const go = join(dir, "..", `go-${randomUUID()}`);
     const running = Array.from(
@@ -412,7 +413,8 @@ describe("the store (D140 item 5)", () => {
     await new Promise((done) => setTimeout(done, 600));
     writeFileSync(go, "");
     const ids = await Promise.all(running);
-    // Every process says the same ID (the list, so a failure shows who said what).
+    // Every process says the same ID (the list, so a failure shows who said what, and a process
+    // without one says what it read and which step gave up).
     expect(ids).toEqual(ids.map(() => ids[0]));
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
     // Every process got the lock (a crashed owner's lock was taken over), and the lock is gone
@@ -746,5 +748,52 @@ describe("the flusher (D140 item 6)", () => {
       server.closeAllConnections();
       await new Promise((done) => server.close(done));
     }
+  });
+});
+
+describe("replacing a telemetry file (MT-01)", () => {
+  const refused = (times: number, code: string) => {
+    let calls = 0;
+    return {
+      rename: () => {
+        calls += 1;
+        if (calls <= times) throw Object.assign(new Error(code), { code });
+      },
+      calls: () => calls,
+    };
+  };
+
+  it("counts a directory it made a probe in as writable, whatever the probe's removal meets (Opus review of MT-01, 8)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mostra-probe-"));
+    try {
+      const held = (): void => {
+        throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      };
+      expect(writable(dir, held)).toBe(true);
+      expect(writable(dir)).toBe(true);
+      expect(writable(join(dir, "missing", "deeper"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tries again while Windows refuses to replace a file another process has open", () => {
+    const fake = refused(3, "EPERM");
+    replace("from", "to", "win32", fake.rename);
+    expect(fake.calls()).toBe(4);
+  });
+
+  it("gives up after a second, and never retries elsewhere or other errors", () => {
+    const always = refused(Number.POSITIVE_INFINITY, "EBUSY");
+    const started = Date.now();
+    expect(() => replace("from", "to", "win32", always.rename)).toThrow("EBUSY");
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1000);
+    expect(Date.now() - started).toBeLessThan(3000);
+    const posix = refused(1, "EPERM");
+    expect(() => replace("from", "to", "linux", posix.rename)).toThrow("EPERM");
+    expect(posix.calls()).toBe(1);
+    const missing = refused(1, "ENOENT");
+    expect(() => replace("from", "to", "win32", missing.rename)).toThrow("ENOENT");
+    expect(missing.calls()).toBe(1);
   });
 });

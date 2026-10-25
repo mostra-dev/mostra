@@ -15,6 +15,7 @@
  */
 import type { Diagnostic } from "../diagnostics/diagnostic.ts";
 import type { MethodDefinition } from "../method.ts";
+import { receivable } from "../receive.ts";
 import { hostDiagnostic, JSON_RPC_ERROR_CODES, RpcError } from "./error.ts";
 import {
   classifyMessage,
@@ -185,7 +186,9 @@ export class RpcPeer {
 
   /**
    * Calls a protocol method: validates the params before sending and the result on arrival. A
-   * result that fails the method's schema rejects with `MOSTRA_HOST_MALFORMED`.
+   * result that fails the method's schema rejects with `MOSTRA_HOST_MALFORMED`. The result is
+   * read as {@link receivable} reads it, so an enum value or union member a newer peer added
+   * within the revision arrives as sent (#45).
    */
   async call<P, R>(
     definition: MethodDefinition<P, R>,
@@ -194,7 +197,7 @@ export class RpcPeer {
   ): Promise<R> {
     const checked = parseParams(definition, params, this.#options.docsBase);
     const raw = await this.request(definition.method, checked as JsonRpcParams, options);
-    const parsed = definition.result.safeParse(raw);
+    const parsed = receivable(definition.result).safeParse(raw);
     if (parsed.success) return parsed.data;
     throw new RpcError(
       this.#diagnostic(

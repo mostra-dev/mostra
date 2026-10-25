@@ -1,7 +1,8 @@
-# Workspace layout and dependency policy (REPO_STANDARDS §4, §10).
-# Every dependency version lives in a catalog below; package.json files use `catalog:` or
-# `workspace:*` only, which `pnpm check` enforces (tools/repo-lint).
 packages:
+  # Workspace layout and dependency policy (REPO_STANDARDS §4, §10).
+  # Every dependency version lives in a catalog below; package.json files use `catalog:` or
+  # `workspace:*` only, which `pnpm check` enforces (tools/repo-lint). The file starts with a key:
+  # Renovate's security updates dropped a comment that opened it (D152).
   - packages/*
   - plugins/*
   - apps/*
@@ -39,7 +40,7 @@ saveWorkspaceProtocol: rolling
 
 catalog:
   # Runtime dependencies of published packages
-  zod: 4.6.5
+  zod: 4.6.6
   better-sqlite3: 13.0.3
   oxc-parser: 0.152.0
   ignore: 7.0.12
@@ -47,7 +48,7 @@ catalog:
   '@types/semver': 7.8.0
   # The SDK's bundle manager (WP-11): tar extraction, and fetch through the environment's proxy
   tar: 7.5.22
-  undici: 8.11.2
+  undici: 8.12.2
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
   '@hono/node-server': 2.1.3
@@ -57,7 +58,7 @@ catalog:
   pnpm: 10.34.6
 
   # The builder child (WP-03): Vite 8 with React, MDX 3 and Tailwind 4 (VERIFIED_FACTS, WP-03)
-  vite: 8.3.2
+  vite: 8.3.3
   '@vitejs/plugin-react': 6.1.1
   '@mdx-js/mdx': 3.1.1
   remark-frontmatter: 5.0.0

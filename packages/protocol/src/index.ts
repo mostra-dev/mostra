@@ -485,6 +485,7 @@ export {
   type WaitResult,
   waitMethod,
 } from "./methods/wait/wait.ts";
+export { receivable } from "./receive.ts";
 export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,

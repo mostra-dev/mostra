@@ -432,6 +432,17 @@ interface DoctorCheck {
 }
 
 /** `mostra doctor`. */
+/**
+ * The check that fails `mostra doctor`: the first whose status isn't one this CLI knows is no
+ * failure, so a newer instance's status it doesn't know counts as an error (Opus review of MT-01,
+ * 2), never as passing.
+ */
+export function firstFailing<T extends { readonly status: string }>(
+  checks: readonly T[],
+): T | undefined {
+  return checks.find((check) => check.status !== "ok" && check.status !== "warning");
+}
+
 export const doctorCommand: CommandDef = defineCommand({
   path: ["doctor"],
   summary:
@@ -522,7 +533,7 @@ export const doctorCommand: CommandDef = defineCommand({
       status: "ok",
       detail: telemetry.text.split("\n")[0] as string,
     });
-    const firstError = checks.find((check) => check.status === "error");
+    const firstError = firstFailing(checks);
     const human = checks
       .map((check) => {
         const mark = check.status === "ok" ? "ok  " : check.status === "warning" ? "warn" : "FAIL";

@@ -2,7 +2,10 @@
  * Errors on a JSON-RPC connection. Every error carries a diagnostic (INTERFACES §1, §6): the
  * JSON-RPC `error.code` says which kind of failure it is, and `error.data` is the diagnostic.
  */
-import { type HostDiagnosticCode, hostDiagnostics } from "../diagnostics/codes/host.ts";
+import {
+  type CoreHostDiagnosticCode,
+  coreHostDiagnostics,
+} from "../diagnostics/codes/host-core.ts";
 import { Diagnostic } from "../diagnostics/diagnostic.ts";
 import { buildDiagnostic, type DiagnosticDetails } from "../diagnostics/spec.ts";
 import type { JsonRpcErrorObject } from "./messages.ts";
@@ -95,13 +98,13 @@ export class RpcError extends Error {
 }
 
 /**
- * Builds a HOST-area diagnostic from that area's catalog alone, so the JSON-RPC core doesn't pull
- * every area's text into browser bundles (D83).
+ * Builds one of the HOST-area diagnostics the JSON-RPC core raises, from their own catalog, so the
+ * core pulls neither the other areas' text nor the rest of HOST's into browser bundles (D83, #17).
  */
 export function hostDiagnostic(
-  code: HostDiagnosticCode,
+  code: CoreHostDiagnosticCode,
   details: DiagnosticDetails,
   docsBase?: string,
 ): Diagnostic {
-  return buildDiagnostic(code, hostDiagnostics[code], details, docsBase);
+  return buildDiagnostic(code, coreHostDiagnostics[code], details, docsBase);
 }

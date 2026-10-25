@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Dependency updates (REPO_STANDARDS §10): a 7-day minimum release age, SHA-pinned actions, grouped updates, Conventional Commits with a DCO sign-off.",
+  "description": "Dependency updates (REPO_STANDARDS §10, D152): a 7-day minimum release age, SHA-pinned actions, grouped updates, Conventional Commits with a DCO sign-off. Pull requests open as drafts, which CI doesn't run: mark one ready for review (gh pr ready) to check it. They rebase only on conflicts, since the merge queue tests each against main's head.",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":pinDevDependencies"],
   "timezone": "UTC",
   "schedule": ["before 6am on monday"],
@@ -13,8 +13,14 @@
   "commitBody": "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
+  "draftPR": true,
+  "rebaseWhen": "conflicted",
   "osvVulnerabilityAlerts": true,
-  "vulnerabilityAlerts": { "minimumReleaseAge": null, "labels": ["dependencies", "security"] },
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null,
+    "draftPR": true,
+    "labels": ["dependencies", "security"]
+  },
   "packageRules": [
     {
       "description": "Minor and patch npm updates travel together, one pull request a week.",
@@ -36,6 +42,13 @@
       "matchCurrentVersion": "6.x",
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "The pnpm the runtime bundle ships for installs stays on 10 (D94: pnpm 11 and later carry pnpr/ code); the repository's own pnpm (packageManager) is unaffected.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["pnpm"],
+      "matchCurrentVersion": "10.x",
+      "allowedVersions": "<11"
     },
     {
       "description": "Node stays on the LTS line D48 names; the move to 26 is a deliberate change.",

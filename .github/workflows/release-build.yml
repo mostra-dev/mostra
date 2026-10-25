@@ -1,0 +1,262 @@
+# The release's build and proof (EN-05, D142 item 9, D152), called by CI to rehearse a release and
+# by release.yml to build one it then publishes:
+#
+#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01)
+#   smoke       each bundle on a fresh runner with no Node.js on PATH: checked, tampering refused,
+#               set up, new, verify, publish, moved, published again
+#   packages    the bundle pins in @mostra/sdk, every npm package packed and checked, and
+#               `npm publish --dry-run` of each: the release dry run
+#   npm-smoke   the packed packages through npm on an older Node.js: create-mostra, verify, publish
+#   npm-old-node  the packed packages on Node.js 20, which they refuse with a diagnostic
+#
+# Bundles always build and smoke-test on GitHub's runners, the images a published release is built
+# on; only the packing and the old-Node.js check may run on Blacksmith (`linux-runner`). Nothing
+# here publishes or holds a credential that could: release.yml's publish job downloads the
+# artifacts this workflow uploads.
+name: Release build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version the bundles and packages carry
+        type: string
+        required: true
+      rehearse:
+        description: Write `version` into the checkout first (a rehearsal, D143)
+        type: boolean
+        default: false
+      mode:
+        description: fresh (build everything) or finish (a published release's own archives and tag)
+        type: string
+        default: fresh
+      node:
+        description: The bundles' Node.js version (packages/bundle/node.json)
+        type: string
+        required: true
+      platforms:
+        description: JSON list of { platform, runner } to bundle and smoke-test
+        type: string
+        required: true
+      npm-smoke:
+        description: JSON list of { platform, runner } for the npm path on Node.js 22
+        type: string
+        required: true
+      linux-runner:
+        description: The runner of the packing and old-Node.js jobs
+        type: string
+        default: ubuntu-24.04
+      rehearsal:
+        description: >-
+          A rehearsal (CI), which may build only some platforms and pins exactly those; a release
+          (release.yml) leaves it false and needs every platform's bundle
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  LEFTHOOK: "0"
+  TURBO_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+  FORCE_COLOR: "0"
+
+jobs:
+  bundle:
+    name: bundle (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        if: inputs.mode != 'finish'
+        with:
+          job: bundle
+      # Changesets pending, or a version npm already has: build the version a rehearsal makes
+      # (versions.ts, D143, #69).
+      - name: Rehearse the next version
+        if: inputs.rehearse
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node tools/release/versions.ts rehearse --version "$VERSION"
+      - name: Build the bundle
+        if: inputs.mode != 'finish'
+        run: node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
+      # Finishing a published release: its own archive, checked against its record and the
+      # release's digest, never a new build (the published @mostra/sdk pins these bytes).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: inputs.mode == 'finish'
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: The published release's bundle
+        if: inputs.mode == 'finish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ matrix.platform }}
+        run: node packages/bundle/scripts/github-release.ts fetch --platform "$PLATFORM" --out "$RUNNER_TEMP/bundle"
+      - name: Audit what it ships
+        if: inputs.mode != 'finish'
+        env:
+          VERSION: ${{ inputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: node tools/license-audit/cli.ts --bundle "$RUNNER_TEMP/bundle/stage/mostra-$VERSION-$PLATFORM"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/bundle/mostra-*.tar.gz
+            ${{ runner.temp }}/bundle/mostra-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # A fresh runner per platform, with no Node.js set up and none on the PATH the test uses.
+  smoke:
+    name: smoke (${{ matrix.platform }}, no Node.js)
+    needs: bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packages/bundle/scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: ${{ runner.temp }}/assets
+      - name: new, verify and publish with no Node.js
+        env:
+          VERSION: ${{ inputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          record="$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.json"
+          sha=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$record")
+          sh packages/bundle/scripts/smoke.sh "$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.tar.gz" "$sha"
+
+  packages:
+    name: packages (pins, pack, npm publish --dry-run)
+    needs: bundle
+    runs-on: ${{ inputs.linux-runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Finishing a published release packs from the release's own tag, so every tarball npm still
+      # lacks is the one the original run would have published (pnpm's tarballs are reproducible).
+      - name: The release's own source (finishing a published release)
+        if: inputs.mode == 'finish'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$VERSION" in *[!0-9A-Za-z.+-]* | "") echo "Unexpected version: $VERSION" >&2; exit 1 ;; esac
+          git fetch --no-tags --depth 1 origin "+refs/tags/v$VERSION:refs/tags/v$VERSION"
+          git checkout --detach "v$VERSION"
+      - uses: ./.github/actions/setup
+        with:
+          job: release-packages
+      - name: Rehearse the next version
+        if: inputs.rehearse
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node tools/release/versions.ts rehearse --version "$VERSION"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundle-*
+          path: ${{ runner.temp }}/assets
+          merge-multiple: true
+      - name: Build the published packages
+        run: pnpm exec turbo run build --filter=./packages/*
+      - name: Pin the bundles in @mostra/sdk
+        env:
+          # A rehearsal pins exactly the platforms it built (a pull request's may be a subset,
+          # D152); a release pins every platform or fails.
+          PLATFORMS: ${{ inputs.rehearsal && join(fromJSON(inputs.platforms).*.platform, ',') || '' }}
+        run: node packages/bundle/scripts/pins.ts --assets "$RUNNER_TEMP/assets" ${PLATFORMS:+--platforms "$PLATFORMS"}
+      - name: Pack and check every package
+        run: node packages/bundle/scripts/publish-npm.ts pack --out "$RUNNER_TEMP/npm"
+      - name: The release dry run
+        run: node packages/bundle/scripts/publish-npm.ts publish --from "$RUNNER_TEMP/npm" --dry-run
+      - name: Release notes
+        run: node packages/bundle/scripts/notes.ts > "$RUNNER_TEMP/npm/notes.md"
+      # The crate carries the same pins as @mostra/sdk (D143): its build embeds them. Packaging it
+      # here builds it from what crates.io would get, as the npm dry run does for the packages.
+      - name: Package the crates with the release's pins
+        run: |
+          cp packages/sdk/dist/bundles.json crates/mostra-host/bundles.json
+          cp packages/sdk/dist/bundles.json "$RUNNER_TEMP/npm/crate-pins.json"
+          cargo package --locked --allow-dirty -p mostra-host
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-packages
+          path: |
+            ${{ runner.temp }}/npm
+            ${{ runner.temp }}/assets/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  npm-smoke:
+    name: npm-smoke (${{ matrix.platform }}, Node.js 22)
+    needs: packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.npm-smoke) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packages/bundle/scripts
+      # An older Node.js line than the bundle's, as many machines have: Mostra runs on its own.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: ${{ runner.temp }}/assets
+      - name: create-mostra, verify and publish through npm
+        env:
+          NODE_VERSION: ${{ inputs.node }}
+        run: sh packages/bundle/scripts/npm-smoke.sh "$RUNNER_TEMP/release/npm" "$RUNNER_TEMP/assets" "$NODE_VERSION"
+
+  # A Node.js too old to start Mostra: refused at once with MOSTRA_ENV_NODE_UNSUPPORTED.
+  npm-old-node:
+    name: npm-old-node (Node.js 20)
+    needs: packages
+    runs-on: ${{ inputs.linux-runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packages/bundle/scripts
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: ${{ runner.temp }}/release
+      - name: mostra and create-mostra refuse Node.js 20
+        run: sh packages/bundle/scripts/npm-old-node.sh "$RUNNER_TEMP/release/npm"

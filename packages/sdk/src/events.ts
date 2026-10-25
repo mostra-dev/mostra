@@ -17,6 +17,7 @@ import {
   eventsUnsubscribeMethod,
   type MethodDefinition,
   RpcError,
+  receivable,
 } from "@mostra/protocol";
 
 /** One page of events. */
@@ -109,7 +110,8 @@ class EventStream implements AsyncIterator<EventPage> {
   }
 
   #receive(params: unknown): void {
-    const parsed = EventsNotifyParams.safeParse(params);
+    // Events of types a newer instance added arrive too, never dropping their page (#45).
+    const parsed = receivable(EventsNotifyParams).safeParse(params);
     if (!parsed.success) return;
     if (parsed.data.subscriptionId !== this.#subscription) {
       this.#early?.push(parsed.data);

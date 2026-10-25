@@ -259,14 +259,14 @@ export class TelemetryStore {
     }
     const temporary = `${this.queueFile}.${process.pid}.tmp`;
     writeFileSync(temporary, `${lines.join("\n")}\n`, { mode: 0o600 });
-    renameSync(temporary, this.queueFile);
+    replace(temporary, this.queueFile, this.#platform);
   }
 
   #write(settings: TelemetrySettings): void {
     const { installId: _id, ...stored } = settings;
     const temporary = `${this.settingsFile}.${process.pid}.tmp`;
     writeFileSync(temporary, `${JSON.stringify(stored, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temporary, this.settingsFile);
+    replace(temporary, this.settingsFile, this.#platform);
   }
 
   #prepareDir(): void {
@@ -296,10 +296,6 @@ export class TelemetryStore {
     }
     const token = `${process.pid} ${randomUUID()}`;
     const deadline = Date.now() + 2000;
-    // Rounds in a row whose create was refused as access denied with no lock there to contend
-    // with. One such round can be a lock Windows finished deleting between the refusal and the
-    // look (CI: one of twelve first runs got no ID); several mean this user can't write here.
-    let deniedAndAbsent = 0;
     for (;;) {
       try {
         writeFileSync(this.#lockFile, token, { flag: "wx", mode: 0o600 });
@@ -314,17 +310,14 @@ export class TelemetryStore {
         const next = this.#breakStale();
         if (next === "absent") {
           // No lock there, though the create was refused. After `EEXIST` it was removed in
-          // between: try again. After access denied, a lock Windows was deleting may have gone
-          // in between too, so the create is tried again after a pause, a few times; past that
-          // there is none to contend with: this user can't write the directory, and waiting
-          // changes nothing (Opus review of WP-W2, finding 2).
+          // between: try again. After access denied, either a lock Windows was deleting went in
+          // between (twelve processes at once keep that happening), or this user can't write the
+          // directory and waiting changes nothing (Opus review of WP-W2, finding 2). A file of
+          // this process's own tells which, whatever the timing (MT-01: a count of such rounds
+          // in a row still gave up under contention).
           if (code === "EEXIST") continue;
-          deniedAndAbsent += 1;
-          if (deniedAndAbsent >= DENIED_ROUNDS) return undefined;
-        } else {
-          deniedAndAbsent = 0;
-          if (next === "broken") continue;
-        }
+          if (!writable(this.dir)) return undefined;
+        } else if (next === "broken") continue;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
       }
     }
@@ -387,8 +380,53 @@ export class TelemetryStore {
   }
 }
 
-/** How many rounds in a row a create may be refused as access denied with no lock there. */
-const DENIED_ROUNDS = 3;
+/**
+ * Renames `from` over `to`. Windows refuses to replace a file another process has open, as a
+ * process reading the settings outside the lock does, with `EPERM` (MT-01: CI's install-ID race,
+ * traced on `windows-latest`); the rename is tried again for up to a second, as the runtime's
+ * renames are (D150 item 8), and never turned into a copy.
+ */
+export function replace(
+  from: string,
+  to: string,
+  platform: string,
+  rename: (from: string, to: string) => void = renameSync,
+): void {
+  const deadline = Date.now() + 1000;
+  for (let pause = 5; ; pause = Math.min(pause * 2, 100)) {
+    try {
+      rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const shared = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (platform !== "win32" || !shared || Date.now() > deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pause);
+    }
+  }
+}
+
+/** Whether this process can create a file in `dir`: a probe of its own, removed at once. */
+export function writable(
+  dir: string,
+  remove: (path: string) => void = (path) => rmSync(path, { force: true }),
+): boolean {
+  const probe = join(dir, `.probe-${process.pid}-${randomUUID()}`);
+  try {
+    writeFileSync(probe, "", { flag: "wx", mode: 0o600 });
+  } catch {
+    return false;
+  }
+  // The probe was made, so the directory is writable whatever its removal meets: on Windows an
+  // antivirus or the indexer may hold the new file for a moment (EBUSY, EPERM), and telemetry never
+  // stops a command (D140 item 5; Opus review of MT-01, 8). An empty probe left behind is harmless.
+  try {
+    remove(probe);
+  } catch {
+    // Left for the next probe's directory to carry; nothing reads it.
+  }
+  return true;
+}
 
 /**
  * Whether a lock's exclusive create failed because another process holds it. On Windows a lock

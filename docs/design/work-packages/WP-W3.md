@@ -42,7 +42,8 @@ Design detail for this package:
 - The development switch from WP-W1 (`MOSTRA_DEV_WINDOWS`, D150) is removed: Windows is supported, and RT-07's fail-closed check covers the platforms still unsupported.
 - From WP-W1 (D150): the bundles carry `mostra-win.exe` in `bin/` (the runtime finds it there), built for each architecture; the SDK and the Rust crate attach over the pipe `instance.json` names, and refuse it unless its owner is the user (the SDK through `mostra-win connect`, the crate with `GetSecurityInfo` on its handle, opened with `SECURITY_IDENTIFICATION`), since another user can create a pipe under a name no instance serves (WP-W1's Opus review); the bundle's launchers become `.cmd` or executables.
 - From WP-W2 (D151): the bundles also carry `mostra-win-service.exe`, the login service's windowless launcher; the SDK's `connectControl` already opens the pipe through `mostra-win connect` (the CLI, the e2e harness and the conformance kit use it), so the Rust crate is the one client left to give the owner check; Playwright ships only x64 browsers for Windows, so the arm64 bundle fetches the x64 Chrome Headless Shell, which runs emulated (measure verify's time there and record it).
-- First, from WP-W2's closeout (#66): measure how long the ledger's synchronous flushes take on the runners' OS disk (`C:`, where `%TEMP%` and the test homes live) against the workspace disk (`D:`), on both architectures; if `C:` stalls the supervisor, the Windows suites' homes move to `D:` and the finding is recorded (a user's own disk is the bundle's concern too). Also #69: a pull request that changes a package without a changeset fails the release rehearsal, which this package's release work can fix.
+- First, from WP-W2's closeout (#66): measure how long the ledger's synchronous flushes take on the runners' OS disk (`C:`, where `%TEMP%` and the test homes live) against the workspace disk (`D:`), on both architectures; if `C:` stalls the supervisor, the Windows suites' homes move to `D:` and the finding is recorded (a user's own disk is the bundle's concern too).
+- From MT-01 (D152): pull requests run the Windows legs on x64 only, and the merge queue adds arm64 and the four-platform release rehearsal (`release-build.yml`, which CI calls and `release.yml` reuses on `main`); the Windows bundles join that workflow, so the queue rehearses them with the others. #69 (the rehearsal on a pull request without a changeset) is fixed: with none pending, it rehearses the next patch. The test homes' supervisor logs of a failed integration leg are kept on every system.
 - Docs: installation, the host guides and troubleshooting cover Windows.
 - From this package on, every package keeps the Windows legs green (for example WP-13's tunnel binaries and WP-14 and WP-15's host configuration paths).
 
@@ -60,6 +61,8 @@ Plus the files every WP reads ([README.md](README.md) §1).
 - ../REPO_STANDARDS.md §6, §9
 - WP-11's and WP-12's progress reports
 - WP-W1's and WP-W2's progress reports and delegated decisions
+- MT-01's progress report and D152
+- ../../agents/run-ci.md
 
 ## Acceptance evidence
 

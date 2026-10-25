@@ -1,0 +1,78 @@
+name: Install Playwright browsers
+description: >-
+  One Playwright browser (or Chromium's headless shell), cached by browser, image and Playwright
+  version, never by lockfile, so a dependency update reuses the browsers it didn't change. On
+  Linux the engine's system packages come from apt, whose downloads are cached the same way (#58).
+  Caches are saved only from main, so pull requests restore main's and never evict them.
+inputs:
+  browser:
+    description: chromium-headless-shell, chromium, firefox or webkit.
+    required: true
+  package:
+    description: The workspace package whose Playwright installs it.
+    required: true
+  image:
+    description: The setup action's `image` output.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Playwright's version and cache directory
+      id: where
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        version=$(pnpm --filter "$PACKAGE" exec playwright --version | awk '{print $2}')
+        case "$RUNNER_OS" in
+          macOS) dir="~/Library/Caches/ms-playwright" ;;
+          Windows) dir="~/AppData/Local/ms-playwright" ;;
+          *) dir="~/.cache/ms-playwright" ;;
+        esac
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+    - name: Restore the browser
+      id: browser
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ steps.where.outputs.dir }}
+        key: playwright-${{ inputs.browser }}-${{ inputs.image }}-${{ steps.where.outputs.version }}
+    - name: Keep apt's downloads (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        mkdir -p "$HOME/apt-archives/partial"
+        printf 'Dir::Cache::Archives "%s/apt-archives/";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\nAPT::Keep-Downloaded-Packages "true";\n' "$HOME" | sudo tee /etc/apt/apt.conf.d/90mostra-keep-downloads > /dev/null
+    - name: Restore apt's downloads (Linux)
+      id: apt
+      if: runner.os == 'Linux'
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ~/apt-archives/*.deb
+        key: apt-${{ inputs.browser }}-${{ inputs.image }}-${{ steps.where.outputs.version }}
+        restore-keys: apt-${{ inputs.browser }}-${{ inputs.image }}-
+    - name: Install
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+        BROWSER: ${{ inputs.browser }}
+      run: |
+        case "$BROWSER" in
+          chromium-headless-shell) args="--only-shell chromium" ;;
+          *) args="$BROWSER" ;;
+        esac
+        deps=""
+        if [ "$RUNNER_OS" != Windows ]; then deps="--with-deps"; fi
+        pnpm --filter "$PACKAGE" exec playwright install $deps $args
+    - name: Save the browser (main only)
+      if: github.ref == 'refs/heads/main' && steps.browser.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ steps.where.outputs.dir }}
+        key: playwright-${{ inputs.browser }}-${{ inputs.image }}-${{ steps.where.outputs.version }}
+    - name: Save apt's downloads (main only)
+      if: runner.os == 'Linux' && github.ref == 'refs/heads/main' && steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ~/apt-archives/*.deb
+        key: apt-${{ inputs.browser }}-${{ inputs.image }}-${{ steps.where.outputs.version }}

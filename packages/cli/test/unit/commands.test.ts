@@ -7,8 +7,12 @@
 import { PassThrough } from "node:stream";
 import { diagnosticCatalog } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
+import type { CommandContext } from "../../src/command.ts";
 import { commandName } from "../../src/command.ts";
+import { firstFailing } from "../../src/commands/admin.ts";
+import { verifyCommand } from "../../src/commands/authoring.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
+import { waitCommand } from "../../src/commands/interaction.ts";
 import { EXIT, exitCodeFor } from "../../src/exit.ts";
 import { commandDefinition, commandHelp } from "../../src/help.ts";
 import { parseCommandLine } from "../../src/parse.ts";
@@ -301,5 +305,62 @@ describe("--json (D140 item 16)", () => {
       ok: true,
       result: { command: "publish", output: { type: "PublishReceipt" } },
     });
+  });
+});
+
+describe("a status a newer instance adds (Opus review of MT-01, 2; #45)", () => {
+  /** A command's context whose instance answers every call with `answer`. */
+  const context = (
+    args: Record<string, string>,
+    flags: Record<string, string>,
+    answer: unknown,
+  ): CommandContext =>
+    ({
+      args,
+      flags,
+      cwd: process.cwd(),
+      json: true,
+      timeoutMs: undefined,
+      env: {},
+      home: "/nowhere",
+      tty: { stdin: false, stdout: false, stderr: false },
+      call: async () => answer,
+      connection: async () => undefined,
+      log() {},
+      emit() {},
+      warn() {},
+      record() {},
+    }) as unknown as CommandContext;
+
+  it("fails verify unless the verdict passed", async () => {
+    const verdict = (status: string) => ({ status, diagnostics: [], screenshots: [] });
+    const exit = async (status: string) =>
+      (await verifyCommand.run(context({ path: "." }, {}, verdict(status)))).exit;
+    expect(await exit("pass")).toBeUndefined();
+    expect(await exit("fail")).toBe(EXIT.failure);
+    expect(await exit("blocked")).toBe(EXIT.failure);
+  });
+
+  it("ends a wait on a status it doesn't know as a failure, never waiting again", async () => {
+    let calls = 0;
+    const waiting = context({ artifact: "." }, { until: "submitted" }, undefined);
+    const outcome = await waitCommand.run({
+      ...waiting,
+      call: async () => {
+        calls++;
+        // A wait that would wait again fails here instead of spinning forever.
+        if (calls > 3) throw new Error("the wait asked again");
+        return { status: "expired", cursor: "c" };
+      },
+    } as CommandContext);
+    expect(calls).toBe(1);
+    expect(outcome.exit).toBe(EXIT.failure);
+  });
+
+  it("fails doctor on a check status it doesn't know", () => {
+    const check = (status: string) => ({ name: status, status });
+    expect(firstFailing([check("ok"), check("warning")])).toBeUndefined();
+    expect(firstFailing([check("ok"), check("error")])?.name).toBe("error");
+    expect(firstFailing([check("ok"), check("critical")])?.name).toBe("critical");
   });
 });

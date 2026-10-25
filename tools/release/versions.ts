@@ -3,18 +3,23 @@
  * request's release rehearsal uses.
  *
  *   node tools/release/versions.ts next       the version the pending changesets make
- *   node tools/release/versions.ts plan       `rehearse=` and, when rehearsing, `version=` lines
- *   node tools/release/versions.ts rehearse   sets that version in the working tree (CI only)
+ *   node tools/release/versions.ts plan       `rehearse=` and `version=` lines: what a rehearsal builds
+ *   node tools/release/versions.ts rehearse [--version <v>]
+ *                                             sets that version (default `next`) in the working
+ *                                             tree (CI only)
  *   node tools/release/versions.ts sync       sets the publishable crates to the group's version
  *   node tools/release/versions.ts check      fails when a crate's version isn't the group's
  *
  * A pull request (or `main` before its version pull request) carries changesets for a version
  * npm doesn't have yet, while its package.json files still name the last release, which npm
  * refuses to publish over even in a dry run. So the rehearsal packs, builds and dry-runs the next
- * version: `rehearse` writes it into the runner's checkout, never into a commit. `sync` runs
+ * version: `rehearse` writes it into the runner's checkout, never into a commit. A pull request
+ * with no changeset whose version npm already has (it changes a package's tests, say) rehearses
+ * the next patch, the least a release of it could be (#69). `sync` runs
  * after `pnpm changeset version` in the version pull request (docs/agents/release.md), since
  * Changesets knows nothing of Cargo. Node.js built-ins only: the release jobs run it.
  */
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,6 +96,42 @@ export function next(root: string = ROOT): string {
   return bump === undefined ? current(root) : bumped(current(root), bump);
 }
 
+/** What a release rehearsal builds: the version, and whether it differs from the tree's. */
+export interface Rehearsal {
+  readonly rehearse: boolean;
+  readonly version: string;
+}
+
+/**
+ * The version a rehearsal builds: the pending changesets' version; else, when npm already has the
+ * tree's version (so even a dry run over it is refused), the next patch (#69); else the tree's own
+ * (a version pull request, before its merge publishes it).
+ */
+export function rehearsal(published: (version: string) => boolean, root: string = ROOT): Rehearsal {
+  const bump = pendingBump(root);
+  if (bump !== undefined) return { rehearse: true, version: bumped(current(root), bump) };
+  const version = current(root);
+  return published(version)
+    ? { rehearse: true, version: bumped(version, "patch") }
+    : { rehearse: false, version };
+}
+
+/**
+ * Whether npm has `@mostra/sdk` at `version`. A package or version npm doesn't know is false; any
+ * other failure (the registry unreachable) throws, so a plan never guesses.
+ */
+export function onNpm(version: string): boolean {
+  const result = spawnSync("npm", ["view", `@mostra/sdk@${version}`, "version", "--json"], {
+    encoding: "utf8",
+  });
+  if (result.status === 0) {
+    const text = result.stdout.trim();
+    return text !== "" && JSON.parse(text) === version;
+  }
+  if (/E404|404 Not Found/.test(`${result.stdout}${result.stderr}`)) return false;
+  throw new Error(`npm view @mostra/sdk@${version} failed: ${result.stderr.trim()}`);
+}
+
 /** The crates that publish (`publish` not `false`), and the ones that are reserved. */
 export function crates(root: string = ROOT): { name: string; path: string; publish: boolean }[] {
   const out: { name: string; path: string; publish: boolean }[] = [];
@@ -159,12 +200,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const command = process.argv[2];
   if (command === "next") console.log(next());
   else if (command === "plan") {
-    // For the release workflow's plan: with changesets pending, a run rehearses their version.
-    const rehearse = pendingBump() !== undefined;
-    console.log(`rehearse=${rehearse}`);
-    if (rehearse) console.log(`version=${next()}`);
+    // For CI's plan: the version a release rehearsal builds (D143, #69).
+    const plan = rehearsal(onNpm);
+    console.log(`rehearse=${plan.rehearse}`);
+    console.log(`version=${plan.version}`);
   } else if (command === "rehearse") {
-    const version = next();
+    const at = process.argv.indexOf("--version");
+    const version = at > 0 ? process.argv[at + 1] : next();
+    if (version === undefined || !/^\d+\.\d+\.\d+$/.test(version)) {
+      console.error(`rehearse: "${version}" isn't a release version`);
+      process.exit(2);
+    }
     apply(version);
     console.log(`rehearsing ${version}`);
   } else if (command === "sync") {
@@ -175,7 +221,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const problem of problems) console.error(problem);
     process.exitCode = problems.length > 0 ? 1 : 0;
   } else {
-    console.error("usage: versions.ts next | plan | rehearse | sync | check");
+    console.error("usage: versions.ts next | plan | rehearse [--version <v>] | sync | check");
     process.exitCode = 2;
   }
 }

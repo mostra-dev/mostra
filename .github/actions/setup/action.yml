@@ -1,5 +1,10 @@
 name: Set up the workspace
-description: Node from .node-version, pnpm from packageManager, a cached store, a frozen install, and the Turborepo cache for this job.
+description: >-
+  Node from .node-version, pnpm from packageManager, the pnpm store restored from main's cache, a
+  frozen install, and the Turborepo cache for this job. The store sits in the runner's temporary
+  directory, on the workspace's own drive, so pnpm links packages instead of copying them (on
+  Windows the default store is on C: and the workspace often on D:). Only runs on main save the
+  store, so pull requests never evict main's caches (the repository's 10 GB, D152).
 inputs:
   job:
     description: The check job name, used to key the Turborepo cache.
@@ -11,6 +16,11 @@ outputs:
       of native programs, such as Playwright's browsers, are keyed by it: a browser built for one
       release can't load another's libraries (WebKit for Ubuntu 24.04 needs libicudata.so.74).
     value: ${{ steps.image.outputs.image }}
+  turbo-key:
+    description: >-
+      The key this job's Turborepo cache saves under. Only runs on main save it (an
+      `actions/cache/save` step at the job's end), so pull requests restore main's.
+    value: ${{ steps.turbo-key.outputs.key }}
 runs:
   using: composite
   steps:
@@ -27,20 +37,51 @@ runs:
         fi
         echo "image=$release-$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
     - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      with:
-        cache: true
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version-file: .node-version
         package-manager-cache: false
+    - name: The pnpm store's path
+      id: store
+      shell: bash
+      run: echo "path=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_OUTPUT"
+    # An older store from main serves a changed lockfile too: install fetches only the difference.
+    - name: Restore the pnpm store
+      id: restore
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: pnpm-store-${{ steps.image.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ steps.image.outputs.image }}-
     - name: Install dependencies
       shell: bash
-      run: pnpm install --frozen-lockfile
+      env:
+        STORE: ${{ steps.store.outputs.path }}
+      run: pnpm install --frozen-lockfile --store-dir "$STORE"
+    - name: Save the pnpm store (main only)
+      if: github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        STORE: ${{ steps.store.outputs.path }}
+      run: pnpm store prune --store-dir "$STORE"
+    - if: github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: pnpm-store-${{ steps.image.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
+    # Restored here and saved at the job's end, on main only (an `actions/cache/save` step): every run
+    # saving its own copy filled the repository's cache with entries no other run reads (MT-01).
+    - name: The Turborepo cache's key
+      id: turbo-key
+      shell: bash
+      env:
+        KEY: turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
     - name: Restore the Turborepo cache
-      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: .turbo/cache
-        key: turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        key: ${{ steps.turbo-key.outputs.key }}
         restore-keys: |
           turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-${{ hashFiles('pnpm-lock.yaml') }}-
           turbo-${{ steps.image.outputs.image }}-${{ inputs.job }}-
