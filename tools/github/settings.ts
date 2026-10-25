@@ -42,6 +42,22 @@ const SECURITY = {
 const RELEASE_ENVIRONMENT = "release";
 const RELEASE_BRANCHES = ["main"];
 
+/**
+ * Who needs a maintainer's approval before Actions runs their pull request: everyone outside the
+ * repository, not only first-time contributors (D152). A fork's run gets no secrets, but it still
+ * spends runner time; nothing runs for a stranger until someone looks.
+ */
+const FORK_APPROVAL = "all_external_contributors";
+
+/** Labels the workflow reads: `ci:full` runs a pull request as the merge queue does (D152). */
+const LABELS = [
+  {
+    name: "ci:full",
+    color: "1d76db",
+    description: "Run every CI leg on this pull request, as the merge queue does (D152)",
+  },
+] as const;
+
 interface Ruleset {
   readonly name: string;
   readonly [key: string]: unknown;
@@ -126,6 +142,17 @@ function verify(): string[] {
   }
   const immutable = gh([`repos/${REPO}/immutable-releases`]) as { enabled: boolean };
   if (!immutable.enabled) problems.push("immutable releases are off");
+  const approval = gh([`repos/${REPO}/actions/permissions/fork-pr-contributor-approval`]) as {
+    approval_policy: string;
+  };
+  if (approval.approval_policy !== FORK_APPROVAL)
+    problems.push(
+      `fork pull requests need approval for ${approval.approval_policy}, want ${FORK_APPROVAL}`,
+    );
+  const labels = gh([`repos/${REPO}/labels?per_page=100`]) as { name: string }[];
+  for (const label of LABELS)
+    if (!labels.some((candidate) => candidate.name === label.name))
+      problems.push(`the label "${label.name}" is missing`);
   const live = gh([`repos/${REPO}/rulesets`]) as { id: number; name: string }[];
   for (const ruleset of desiredRulesets()) {
     const match = live.find((candidate) => candidate.name === ruleset.name);
@@ -203,6 +230,27 @@ function apply(): void {
     );
   }
   gh(["-X", "PUT", `repos/${REPO}/immutable-releases`]);
+  gh([
+    "-X",
+    "PUT",
+    `repos/${REPO}/actions/permissions/fork-pr-contributor-approval`,
+    "-f",
+    `approval_policy=${FORK_APPROVAL}`,
+  ]);
+  const labels = gh([`repos/${REPO}/labels?per_page=100`]) as { name: string }[];
+  for (const label of LABELS) {
+    const exists = labels.some((candidate) => candidate.name === label.name);
+    gh([
+      "-X",
+      exists ? "PATCH" : "POST",
+      exists ? `repos/${REPO}/labels/${encodeURIComponent(label.name)}` : `repos/${REPO}/labels`,
+      ...(exists ? [] : ["-f", `name=${label.name}`]),
+      "-f",
+      `color=${label.color}`,
+      "-f",
+      `description=${label.description}`,
+    ]);
+  }
   const live = gh([`repos/${REPO}/rulesets`]) as { id: number; name: string }[];
   for (const ruleset of desiredRulesets()) {
     const match = live.find((candidate) => candidate.name === ruleset.name);
