@@ -50,13 +50,12 @@ test("the launch page from mostra open opens the artifact once", async ({ page }
     );
     const windows = WINDOWS
       ? {
-          // What Windows gives every program, and the development switch the legs run behind.
+          // What Windows gives every program, and the helper the legs build.
           ...Object.fromEntries(
             ["SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "LOCALAPPDATA", "APPDATA"]
               .filter((name) => process.env[name] !== undefined)
               .map((name) => [name, process.env[name] as string]),
           ),
-          MOSTRA_DEV_WINDOWS: "1",
           MOSTRA_WIN_HELPER: WIN_HELPER,
           USERPROFILE: scratch,
           TEMP: scratch,

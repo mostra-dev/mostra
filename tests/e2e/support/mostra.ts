@@ -29,7 +29,7 @@ export const BIN = join(ROOT, "packages", "runtime", "dist", "bin.js");
 export const CLI = join(ROOT, "packages", "cli", "dist", "bin.js");
 /** The shell's built files, which the gateway serves. */
 export const SHELL = join(ROOT, "packages", "shell", "dist", "index.html");
-/** Whether the suites run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
+/** Whether the suites run on Windows (D146). */
 export const WINDOWS: boolean = process.platform === "win32";
 /** The Windows helper Cargo built, which opens the daemon's pipe and unseals versions (D150). */
 /** The Windows helper, for the harness's own cleanup (unsealing a test home's versions). */

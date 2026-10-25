@@ -45,7 +45,6 @@ describe("what the CLI's detached processes get", () => {
     // new variable can't reach a detached process unresolved unnoticed.
     const notPaths = [
       "MOSTRA_BUNDLE_MIRROR",
-      "MOSTRA_DEV_WINDOWS",
       "MOSTRA_OFFLINE",
       "MOSTRA_TELEMETRY",
       "MOSTRA_TELEMETRY_DEBUG",

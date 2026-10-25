@@ -394,11 +394,14 @@ const SEEDS: readonly Seed[] = [
     platform: "posix",
   },
   {
-    requirement: "RT-10",
-    name: "Windows is admitted without the development switch",
+    // WP-W3 removed the development switch this seed once planted around (RT-10's "Windows
+    // admitted without the switch", D146): Windows is supported, and what still fails closed is
+    // every other system and architecture, Windows' own unsupported ones included.
+    requirement: "RT-07",
+    name: "Windows is admitted on an architecture Mostra doesn't support",
     file: "src/home/platform.ts",
-    from: 'if (platform === "win32" && env[WINDOWS_DEV_SWITCH] === "1") return undefined;',
-    to: 'if (platform === "win32") return undefined;',
+    from: "if (ARCHITECTURES.includes(arch) && OPERATING_SYSTEMS.includes(platform)) return undefined;",
+    to: 'if (platform === "win32" || (ARCHITECTURES.includes(arch) && OPERATING_SYSTEMS.includes(platform))) return undefined;',
     check: integration("platform.test.ts", "fails closed"),
   },
   // WP-11: the runtime bundle, the bootstrap, the SDK and embedded telemetry.

@@ -121,11 +121,11 @@ export function serviceFor(spec: ServiceSpec): ServiceStatus {
 
 /**
  * What a Windows task passes on besides the user's logon environment, which Task Scheduler gives
- * it: the development switch while Windows needs it (D150 item 7, until WP-W3), the helper a
- * checkout names, and the locale and time zone, as the POSIX units carry theirs. Nothing secret.
+ * it: the helper a checkout names, and the locale and time zone, as the POSIX units carry theirs.
+ * Nothing secret.
  */
 function windowsServiceVariables(env: Environment): [string, string][] {
-  return ["MOSTRA_DEV_WINDOWS", "MOSTRA_WIN_HELPER", "LANG", "TZ"].flatMap((name) => {
+  return ["MOSTRA_WIN_HELPER", "LANG", "TZ"].flatMap((name) => {
     const value = env[name];
     return value ? [[name, value] as [string, string]] : [];
   });

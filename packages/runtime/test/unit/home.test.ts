@@ -184,44 +184,36 @@ describe.skipIf(WINDOWS)("owned directories (D85)", () => {
 });
 
 describe("platform gate (D35, RT-07)", () => {
-  it("accepts macOS and Linux on x64 and arm64", () => {
-    for (const os of ["darwin", "linux"]) {
+  it("accepts macOS, Linux and Windows on x64 and arm64", () => {
+    for (const os of ["darwin", "linux", "win32"]) {
       for (const arch of ["x64", "arm64"]) expect(checkPlatform(os, arch)).toBeUndefined();
     }
     expect(platformName("linux", "arm64")).toBe("linux-arm64");
   });
 
-  it("refuses Windows and every other platform with MOSTRA_PLATFORM_UNSUPPORTED", () => {
+  it("refuses every other platform with MOSTRA_PLATFORM_UNSUPPORTED", () => {
     for (const [os, arch] of [
-      ["win32", "x64"],
-      ["win32", "arm64"],
+      ["win32", "ia32"],
       ["freebsd", "x64"],
       ["linux", "ia32"],
       ["darwin", "ppc64"],
     ] as const) {
-      const diagnostic = checkPlatform(os, arch, {});
+      const diagnostic = checkPlatform(os, arch);
       expect(diagnostic?.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
       expect(diagnostic?.phase).toBe("platform");
       expect(diagnostic?.message).toContain(`${os}-${arch}`);
     }
-    expect(checkPlatform("win32", "x64", {})?.message).toContain("Windows");
+    expect(checkPlatform("win32", "ia32")?.message).toContain("Windows (win32-ia32)");
   });
 
-  it("admits Windows on x64 and arm64 only behind MOSTRA_DEV_WINDOWS=1 (D146)", () => {
-    const on = { MOSTRA_DEV_WINDOWS: "1" };
-    for (const arch of ["x64", "arm64"]) expect(checkPlatform("win32", arch, on)).toBeUndefined();
-    for (const value of ["", "0", "true", "yes"]) {
-      expect(checkPlatform("win32", "x64", { MOSTRA_DEV_WINDOWS: value })?.code).toBe(
-        "MOSTRA_PLATFORM_UNSUPPORTED",
-      );
-    }
-    // The switch admits Windows alone: every other platform still fails closed.
+  it("admits Windows on x64 and arm64 like macOS and Linux, and nothing else besides (D146)", () => {
+    for (const arch of ["x64", "arm64"]) expect(checkPlatform("win32", arch)).toBeUndefined();
     for (const [os, arch] of [
       ["win32", "ia32"],
       ["freebsd", "x64"],
       ["linux", "ia32"],
     ] as const) {
-      expect(checkPlatform(os, arch, on)?.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+      expect(checkPlatform(os, arch)?.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
     }
   });
 });

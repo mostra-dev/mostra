@@ -15,7 +15,7 @@ import { expect } from "vitest";
 /** The built binary. */
 export const BIN: string = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 
-/** Whether the tests run on Windows (behind `MOSTRA_DEV_WINDOWS=1`, D150 item 7). */
+/** Whether the tests run on Windows (D146). */
 export const WINDOWS: boolean = process.platform === "win32";
 
 /** The Windows helper a checkout's Cargo build made (`MOSTRA_WIN_HELPER` overrides it). */
@@ -74,10 +74,8 @@ function baseEnv(): Record<string, string> {
   for (const [name, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     if (name.startsWith("npm_") || name === "DO_NOT_TRACK") continue;
-    // Mostra's own variables stay out, but for Windows' development switch and the helper the
-    // Windows legs name (D150).
-    if (name.startsWith("MOSTRA_") && name !== "MOSTRA_DEV_WINDOWS" && name !== "MOSTRA_WIN_HELPER")
-      continue;
+    // Mostra's own variables stay out, but for the helper the Windows legs name (D150).
+    if (name.startsWith("MOSTRA_") && name !== "MOSTRA_WIN_HELPER") continue;
     // No agent's marker leaks from the shell that runs the tests into the CLI under test.
     if (
       [

@@ -362,10 +362,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The Windows legs (WP-W1, WP-W2, D146): the unit, hygiene and integration jobs for the packages
-  # ported so far (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the merge queue,
-  # nightly and with ci:full). The runtime runs on Windows only behind the development switch
-  # `MOSTRA_DEV_WINDOWS`, which only these legs set; it finds the Windows helper Cargo builds here
+  # The Windows legs (WP-W1 to WP-W3, D146): the unit, hygiene and integration jobs for the
+  # packages Windows runs (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the
+  # merge queue, nightly and with ci:full). The runtime finds the Windows helper Cargo builds here
   # (`crates/mostra-win`). The integration suites run in groups, one machine each
   # (packages/runtime/vitest.config.ts), with a second local user for the access checks (RT-10,
   # RT-11).
@@ -380,7 +379,6 @@ jobs:
     runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 25
     env:
-      MOSTRA_DEV_WINDOWS: "1"
       MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
     defaults:
       run:
@@ -470,8 +468,6 @@ jobs:
     env:
       MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
       MOSTRA_E2E_SHARD: ${{ matrix.leg.shard || '' }}
-      # Windows runs only behind the development switch until WP-W3 (D146, D150).
-      MOSTRA_DEV_WINDOWS: ${{ startsWith(matrix.leg.os, 'windows') && '1' || '' }}
     defaults:
       run:
         shell: bash
