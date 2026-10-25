@@ -93,7 +93,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "RT-11",
     name: "a lock this user can't create spins for 2 s under Windows' rules (Opus review of WP-W2)",
     file: "../cli/src/telemetry/store.ts",
-    from: "          if (deniedAndAbsent >= DENIED_ROUNDS) return undefined;",
+    from: "          if (!writable(this.dir)) return undefined;",
     to: "",
     check: unit("telemetry.test.ts", "Windows' lock rules"),
     cwd: "../cli",
