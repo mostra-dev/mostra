@@ -155,11 +155,15 @@ describe("what runs when (D152)", () => {
       const matrix = ciMatrix(scope, everything, github);
       expect(matrix.legs).toBe("all");
       expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(9);
-      expect(matrix.e2e).toContainEqual({
-        os: "windows-arm64",
-        runner: "windows-11-arm",
-        browser: "chromium",
-      });
+      // Windows' slowest engines run in two parts each, together every test once.
+      const parts = (os: string, browser: string): (string | undefined)[] =>
+        matrix.e2e
+          .filter((leg) => leg["os"] === os && leg["browser"] === browser)
+          .map((leg) => leg["shard"]);
+      expect(parts("windows-arm64", "chromium")).toEqual(["1/2", "2/2"]);
+      expect(parts("windows-x64", "firefox")).toEqual(["1/2", "2/2"]);
+      expect(parts("windows-x64", "chromium")).toEqual([undefined]);
+      expect(parts("linux", "firefox")).toEqual([undefined]);
       expect(matrix.release?.platforms.length).toBe(4);
     }
     expect(queue.scope).toBe("affected");
