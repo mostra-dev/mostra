@@ -40,7 +40,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     WriteFile,
 };
 use windows_sys::Win32::System::Console::{
-    AttachConsole, CTRL_BREAK_EVENT, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
+    AttachConsole, CTRL_BREAK_EVENT, FreeConsole, GenerateConsoleCtrlEvent, GetStdHandle,
+    STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleCtrlHandler,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
@@ -48,7 +49,8 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
 use windows_sys::Win32::System::Environment::SetEnvironmentVariableW;
 use windows_sys::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
     JOBOBJECT_BASIC_PROCESS_ID_LIST, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JobObjectBasicProcessIdList, JobObjectExtendedLimitInformation, OpenJobObjectW,
     QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
@@ -916,6 +918,34 @@ pub fn ignore_console_interrupts() {
     unsafe { SetConsoleCtrlHandler(None, 1) };
 }
 
+/// A console handler that takes every event as handled, so this process outlives them.
+unsafe extern "system" fn outlive_console_event(_event: u32) -> BOOL {
+    1
+}
+
+/// Lets this process outlive Ctrl+C and Ctrl+Break at its console, while a child that shares the
+/// console still gets them: unlike [`ignore_console_interrupts`], a handler isn't inherited (a
+/// child started after `SetConsoleCtrlHandler(NULL, TRUE)` would ignore Ctrl+C too). A launcher
+/// waits for its child, which decides what Ctrl+C means, and exits with its code.
+pub fn outlive_console_interrupts() {
+    // SAFETY: a handler with the documented signature, valid for the process's life.
+    unsafe { SetConsoleCtrlHandler(Some(outlive_console_event), 1) };
+}
+
+/// This process's standard input, output and error, as `GetStdHandle` reports them (a console's,
+/// or whatever its parent redirected them to); an absent one is invalid.
+pub fn standard_handles() -> [RawHandle; 3] {
+    [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE].map(|which| {
+        // SAFETY: plain query; the handle stays this process's.
+        let handle = unsafe { GetStdHandle(which) };
+        RawHandle(if handle.is_null() {
+            INVALID_HANDLE_VALUE
+        } else {
+            handle
+        })
+    })
+}
+
 // ----- Job objects -----
 
 /// A Job Object.
@@ -934,7 +964,29 @@ impl Job {
         Self::create_with(None, descriptor)
     }
 
+    /// Creates a job with no name whose process ends when the job's last handle closes, while every
+    /// process that process starts is outside the job (`JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`, as
+    /// libuv's own job is): a launcher's child dies with the launcher, and a daemon the child
+    /// starts outlives both.
+    pub fn create_for_launcher(descriptor: &SecurityDescriptor) -> io::Result<Job> {
+        Self::create_with_limits(
+            None,
+            descriptor,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK
+                | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+        )
+    }
+
     fn create_with(name: Option<&str>, descriptor: &SecurityDescriptor) -> io::Result<Job> {
+        Self::create_with_limits(name, descriptor, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+    }
+
+    fn create_with_limits(
+        name: Option<&str>,
+        descriptor: &SecurityDescriptor,
+        flags: u32,
+    ) -> io::Result<Job> {
         let text = name.map(wide_str);
         let attributes = descriptor.attributes();
         // SAFETY: valid attributes and name (or none); the handle is owned.
@@ -955,7 +1007,7 @@ impl Job {
         }
         // SAFETY: zeroed POD with one flag set.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        limits.BasicLimitInformation.LimitFlags = flags;
         // SAFETY: a valid job handle and a correctly sized structure.
         check(unsafe {
             SetInformationJobObject(
@@ -1168,6 +1220,25 @@ pub fn create_suspended(
     )
 }
 
+/// [`create_suspended`] for a launcher's child: it shares this process's console (it gets the
+/// console's Ctrl+C and writes to it), with no descriptor table but the standard handles.
+pub fn create_suspended_in_console(
+    application: &OsStr,
+    command_line: &OsStr,
+    standard: [RawHandle; 3],
+    job: &Job,
+) -> io::Result<Suspended> {
+    create_process(
+        application,
+        command_line,
+        standard,
+        &[],
+        &standard,
+        job,
+        CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+    )
+}
+
 /// [`create_suspended`], and when `new_group` the child leads a console process group of its own
 /// (`CREATE_NEW_PROCESS_GROUP`), so [`send_ctrl_break`] can ask it, and only it, to stop.
 pub fn create_suspended_with(
@@ -1178,6 +1249,37 @@ pub fn create_suspended_with(
     inherit: &[RawHandle],
     job: &Job,
     new_group: bool,
+) -> io::Result<Suspended> {
+    let flags = CREATE_SUSPENDED
+        | CREATE_UNICODE_ENVIRONMENT
+        | CREATE_NO_WINDOW
+        | EXTENDED_STARTUPINFO_PRESENT
+        | if new_group {
+            CREATE_NEW_PROCESS_GROUP
+        } else {
+            0
+        };
+    create_process(
+        application,
+        command_line,
+        standard,
+        table,
+        inherit,
+        job,
+        flags,
+    )
+}
+
+/// Creates `application` with `flags`, the given standard handles and descriptor table,
+/// inheriting exactly `inherit`, inside `job` from its first instant.
+fn create_process(
+    application: &OsStr,
+    command_line: &OsStr,
+    standard: [RawHandle; 3],
+    table: &[CrtEntry],
+    inherit: &[RawHandle],
+    job: &Job,
+    flags: u32,
 ) -> io::Result<Suspended> {
     let application = wide(application);
     let mut command_line = wide(command_line);
@@ -1230,15 +1332,6 @@ pub fn create_suspended_with(
 
     // SAFETY: zeroed POD output.
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
-    let flags = CREATE_SUSPENDED
-        | CREATE_UNICODE_ENVIRONMENT
-        | CREATE_NO_WINDOW
-        | EXTENDED_STARTUPINFO_PRESENT
-        | if new_group {
-            CREATE_NEW_PROCESS_GROUP
-        } else {
-            0
-        };
     // SAFETY: every pointer is valid for the call; the environment and directory are inherited.
     let created = check(unsafe {
         CreateProcessW(

@@ -20,6 +20,12 @@ path = "src/main.rs"
 name = "mostra-win-service"
 path = "src/bin/service.rs"
 
+# The runtime bundle's launcher (WP-W3, D153): copied into a Windows bundle's `bin\` as
+# `mostra.exe`, `mostra-runtime.exe` and `mostra-setup.exe`.
+[[bin]]
+name = "mostra-launch"
+path = "src/bin/launch.rs"
+
 # Test probes only: opening a path or the control pipe as another user (RT-10's access check).
 # Never shipped.
 [[bin]]
