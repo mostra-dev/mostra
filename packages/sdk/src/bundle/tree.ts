@@ -90,7 +90,7 @@ async function mapLimit<T, R>(
 
 /** Whether a link's target is relative and resolves inside `root`. */
 export function linkStaysInside(root: string, path: string, target: string): boolean {
-  if (isAbsolute(target) || target.includes("\\") || target.includes("\0")) return false;
+  if (isAbsolute(target) || /[\\:\0]/.test(target)) return false;
   const base = resolve(root);
   const resolved = resolve(base, dirname(path), target);
   return resolved === base || resolved.startsWith(base + sep);

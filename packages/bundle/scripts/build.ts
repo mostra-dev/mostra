@@ -60,6 +60,22 @@ function git(args: readonly string[]): string | undefined {
   return result.status === 0 ? result.stdout.trim() : undefined;
 }
 
+/**
+ * The program and arguments that run `command args`. On Windows pnpm is a `.cmd` shim, which
+ * Node.js starts only through `cmd.exe` (CVE-2024-27980): its arguments here are this script's own
+ * (subcommands, flags and paths, never anyone's input), checked to hold nothing `cmd.exe` would
+ * read as syntax, and quoted.
+ */
+function commandFor(command: string, args: readonly string[]): [string, string[], boolean] {
+  if (!WINDOWS || command !== "pnpm") return [command, [...args], false];
+  for (const arg of args) {
+    if (!/^[\w.:\\/=@+,-]+$/.test(arg))
+      fail([`a pnpm argument cmd.exe would misread: ${arg}`], "bundle");
+  }
+  const line = ["pnpm", ...args].map((arg) => `"${arg}"`).join(" ");
+  return [process.env["ComSpec"] ?? "cmd.exe", ["/d", "/s", "/c", `"${line}"`], true];
+}
+
 /** Runs a command with its output passed through, resolving with its exit code. */
 function runStreaming(
   command: string,
@@ -67,10 +83,12 @@ function runStreaming(
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<number> {
   return new Promise((done) => {
-    const child = spawn(command, args, {
+    const [program, argv, verbatim] = commandFor(command, args);
+    const child = spawn(program, argv, {
       cwd: options.cwd ?? ROOT,
       env: options.env ?? process.env,
       stdio: ["ignore", "inherit", "inherit"],
+      windowsVerbatimArguments: verbatim,
     });
     child.on("error", (error) => {
       console.error(`${command}: ${error.message}`);
@@ -404,11 +422,17 @@ async function checkLinks(root: string): Promise<void> {
  * this build, and passes; anything else that matches fails closed.
  */
 function checkMachinePaths(root: string): void {
-  const pnpmValue = (key: string): string =>
-    spawnSync("pnpm", key === "store" ? ["store", "path"] : ["config", "get", key], {
+  const pnpmValue = (key: string): string => {
+    const [program, argv, verbatim] = commandFor(
+      "pnpm",
+      key === "store" ? ["store", "path"] : ["config", "get", key],
+    );
+    return spawnSync(program, argv, {
       cwd: ROOT,
       encoding: "utf8",
+      windowsVerbatimArguments: verbatim,
     }).stdout.trim();
+  };
   const candidates = [ROOT, out, pnpmValue("store"), pnpmValue("cache-dir")];
   const needles = [
     ...new Set(
