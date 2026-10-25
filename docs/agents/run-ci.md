@@ -39,6 +39,10 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    page, never a fork or an outage the status page reports. Publishing, bundle builds and
    smoke tests always use GitHub's runners (npm trusted publishing needs them). macOS and Windows
    always run on GitHub's.
+   A fork's pull request runs its own copy of these workflows, so the fallback binds only runs from
+   this repository's branches. An outside contributor's run starts only once it is approved: read
+   its changes to `.github/` and `tools/check/` before approving it, or adding it to the merge
+   queue, whose run has the repository's secrets.
 5. **See Blacksmith's usage.** `blacksmith usage --since 30d --breakdown-by runner_type,workflow`
    (the CLI signed in with `blacksmith auth login`), or the plan job's summary.
 6. **Find what made a run slow.** Per job, `gh api repos/mostra-dev/mostra/actions/runs/<id>/jobs`
