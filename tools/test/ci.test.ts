@@ -277,6 +277,23 @@ describe("the CI workflow's shape (D152)", () => {
     }
   });
 
+  it("rehearses the release as a rehearsal; release.yml builds it as a release (every platform)", () => {
+    const release = parse(readFileSync(fromRoot(".github/workflows/release.yml"), "utf8")) as {
+      jobs: Record<string, Job & { with?: Record<string, unknown> }>;
+    };
+    const ciCall = jobs["release"] as Job & { with?: Record<string, unknown> };
+    expect(ciCall.with?.["rehearsal"]).toBe(true);
+    const releaseCall = release.jobs["build"];
+    expect(releaseCall?.uses).toBe("./.github/workflows/release-build.yml");
+    expect(releaseCall?.with?.["rehearsal"] ?? false).toBe(false);
+    const platforms = JSON.parse(String(releaseCall?.with?.["platforms"])) as {
+      platform: string;
+    }[];
+    expect(platforms.map((leg) => leg.platform).sort()).toEqual(
+      ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].sort(),
+    );
+  });
+
   it("is triggered by pull requests ready for review, the queue, the night and hand only", () => {
     expect(Object.keys(workflow.on).sort()).toEqual(
       ["merge_group", "pull_request", "schedule", "workflow_dispatch"].sort(),

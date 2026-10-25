@@ -480,6 +480,7 @@ jobs:
       platforms: ${{ toJSON(fromJSON(needs.plan.outputs.release).platforms) }}
       npm-smoke: ${{ toJSON(fromJSON(needs.plan.outputs.release).npmSmoke) }}
       linux-runner: ${{ fromJSON(needs.plan.outputs.release).linux }}
+      rehearsal: true
 
   dependency-review:
     name: dependency review
