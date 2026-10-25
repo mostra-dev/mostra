@@ -392,7 +392,7 @@ describe("the store (D140 item 5)", () => {
       utimesSync(lock, old, old);
     }
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none");`;
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); const store = new TelemetryStore(process.argv[1]); const read = store.read(); const id = store.installId(); const shown = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(shown && id ? id.id : "none " + JSON.stringify({ read, id: id ?? null, after: store.read(), shown: shown !== undefined }));`;
     // Every process waits for one start signal, so they make their IDs at the same moment.
     const go = join(dir, "..", `go-${randomUUID()}`);
     const running = Array.from(
@@ -412,7 +412,8 @@ describe("the store (D140 item 5)", () => {
     await new Promise((done) => setTimeout(done, 600));
     writeFileSync(go, "");
     const ids = await Promise.all(running);
-    // Every process says the same ID (the list, so a failure shows who said what).
+    // Every process says the same ID (the list, so a failure shows who said what, and a process
+    // without one says what it read and which step gave up).
     expect(ids).toEqual(ids.map(() => ids[0]));
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
     // Every process got the lock (a crashed owner's lock was taken over), and the lock is gone
