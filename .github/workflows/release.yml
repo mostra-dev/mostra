@@ -83,9 +83,9 @@ jobs:
       mode: ${{ needs.plan.outputs.mode }}
       node: ${{ needs.plan.outputs.node }}
       platforms: >-
-        [{"platform":"darwin-arm64","runner":"macos-15"},{"platform":"darwin-x64","runner":"macos-15-intel"},{"platform":"linux-x64","runner":"ubuntu-24.04"},{"platform":"linux-arm64","runner":"ubuntu-24.04-arm"}]
+        [{"platform":"darwin-arm64","runner":"macos-15"},{"platform":"darwin-x64","runner":"macos-15-intel"},{"platform":"linux-x64","runner":"ubuntu-24.04"},{"platform":"linux-arm64","runner":"ubuntu-24.04-arm"},{"platform":"win32-x64","runner":"windows-2025"},{"platform":"win32-arm64","runner":"windows-11-arm"}]
       npm-smoke: >-
-        [{"platform":"linux-x64","runner":"ubuntu-24.04"},{"platform":"darwin-arm64","runner":"macos-15"}]
+        [{"platform":"linux-x64","runner":"ubuntu-24.04"},{"platform":"darwin-arm64","runner":"macos-15"},{"platform":"win32-x64","runner":"windows-2025"},{"platform":"win32-arm64","runner":"windows-11-arm"}]
       linux-runner: ubuntu-24.04
 
   publish:

@@ -8,11 +8,14 @@
  * 2. unpacks the official Node.js distribution, checked against `packages/bundle/node.json`;
  * 3. deploys `@mostra/bundle`'s production dependencies, hoisted, as `lib/node_modules`, and the
  *    warm set apart, isolated, as `lib/node_modules/@mostra/warm`;
- * 4. writes the launchers, `LICENSE` and `NOTICE`;
+ * 4. writes the launchers (POSIX scripts; on Windows the `.exe` launcher and the helpers,
+ *    `mostra-win.exe` and `mostra-win-service.exe`, built by Cargo), `LICENSE` and `NOTICE`;
  * 5. fetches the verify browser once to pin its files (it never enters the archive);
  * 6. writes `files.json` (the SDK's own `describeTree`) and `bundle.json`;
  * 7. packs `mostra-<version>-<platform>.tar.gz` with sorted entries, no owners and one fixed time,
  *    and writes `mostra-<version>-<platform>.json`, its asset record (size, SHA-256, unpacked size).
+ *    A Windows archive holds no links: `files.json` lists them, each to a directory, and setup
+ *    makes each a junction, since an ordinary Windows user can't create symbolic links (D153).
  *
  * A bundle is built on the platform it is for: the native packages and the browser are this
  * machine's. Release CI runs it on one runner per platform (REPO_STANDARDS §9).
@@ -31,10 +34,16 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { c } from "tar";
+
+/** Whether this build is for Windows, whose bundle differs in its launchers, Node.js and links. */
+const WINDOWS = process.platform === "win32";
+
+/** The Node.js executable inside a bundle: `node/bin/node`, or `node/node.exe` on Windows. */
+const NODE_PATH = WINDOWS ? "node/node.exe" : "node/bin/node";
 
 /** The repository root. */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -143,9 +152,12 @@ async function nodeArchive(platform: string): Promise<{ file: string; version: s
   const expected = pins.archives[platform];
   if (!expected || !/^[0-9a-f]{64}$/.test(expected))
     fail([`packages/bundle/node.json pins no SHA-256 for ${platform}.`], "bundle");
-  if (!/^\d+\.\d+\.\d+$/.test(pins.version) || !/^(darwin|linux)-(arm64|x64)$/.test(platform))
+  if (!/^\d+\.\d+\.\d+$/.test(pins.version) || !/^(darwin|linux|win32)-(arm64|x64)$/.test(platform))
     fail([`packages/bundle/node.json names no release ${pins.version} for ${platform}.`], "bundle");
-  const name = `node-v${pins.version}-${platform}.tar.gz`;
+  // Node.js names its Windows builds `win-<arch>` and ships them as zip archives.
+  const name = platform.startsWith("win32-")
+    ? `node-v${pins.version}-win-${platform.slice("win32-".length)}.zip`
+    : `node-v${pins.version}-${platform}.tar.gz`;
   const file = values["node-archive"] ?? fromRoot(".cache", "bundle", name);
   // A cached archive is used only if it matches the pin; anything else is fetched again.
   const cached = await readFile(file).catch(() => undefined);
@@ -171,6 +183,82 @@ function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Builds the Windows helpers and the launcher with Cargo (release, locked) and returns where they
+ * are. The build machine's paths are mapped away (`--remap-path-prefix`), so a panic's location
+ * names `crates/…` and `cargo/…`, never the checkout or the user's Cargo home.
+ */
+async function windowsBinaries(): Promise<string> {
+  const cargoHome = process.env["CARGO_HOME"] ?? join(process.env["USERPROFILE"] ?? "", ".cargo");
+  const remap = [`--remap-path-prefix=${ROOT}=.`, `--remap-path-prefix=${cargoHome}=cargo`];
+  const flags = [process.env["RUSTFLAGS"], ...remap].filter(Boolean).join(" ");
+  const bins = ["mostra-win", "mostra-win-service", "mostra-launch"].flatMap((bin) => [
+    "--bin",
+    bin,
+  ]);
+  const code = await runStreaming(
+    "cargo",
+    ["build", "--release", "--locked", "-p", "mostra-win", ...bins],
+    {
+      env: { ...process.env, RUSTFLAGS: flags },
+    },
+  );
+  if (code !== 0) fail([`cargo build exited ${code}.`], "bundle");
+  return fromRoot("target", "release");
+}
+
+/**
+ * The license texts of every third-party crate compiled into the Windows programs (their MIT and
+ * Apache-2.0 terms ask a binary to carry them): the crates `cargo tree` lists for `mostra-win` on
+ * this machine, each with the license files of its own source. Fails on a crate without one.
+ */
+function rustLicenses(): string {
+  const tree = spawnSync(
+    "cargo",
+    ["tree", "--locked", "-p", "mostra-win", "-e", "normal", "--prefix", "none", "--format", "{p}"],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  if (tree.status !== 0) fail([`cargo tree: ${tree.stderr.trim()}`], "bundle");
+  const wanted = new Set(
+    tree.stdout
+      .split("\n")
+      .map((line) => /^(\S+) v(\S+)/.exec(line.trim()))
+      .filter((match): match is RegExpExecArray => match !== null && match[1] !== "mostra-win")
+      .map((match) => `${match[1]}@${match[2]}`),
+  );
+  const metadata = spawnSync("cargo", ["metadata", "--locked", "--format-version", "1"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (metadata.status !== 0) fail([`cargo metadata: ${metadata.stderr.trim()}`], "bundle");
+  const packages = (
+    JSON.parse(metadata.stdout) as {
+      packages: { name: string; version: string; license?: string; manifest_path: string }[];
+    }
+  ).packages.filter((pkg) => wanted.has(`${pkg.name}@${pkg.version}`));
+  if (packages.length !== wanted.size)
+    fail([`cargo metadata names ${packages.length} of ${wanted.size} crates.`], "bundle");
+  const sections: string[] = [
+    "Third-party crates compiled into mostra.exe, mostra-runtime.exe, mostra-setup.exe,",
+    "mostra-win.exe and mostra-win-service.exe, with their license texts.",
+    "",
+  ];
+  for (const pkg of packages.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    const dir = dirname(pkg.manifest_path);
+    const files = readdirSync(dir)
+      .filter((name) => /^(licen[cs]e|copying|notice)/i.test(name))
+      .sort();
+    if (files.length === 0) fail([`${pkg.name} ${pkg.version} has no license file.`], "bundle");
+    sections.push(
+      `${"=".repeat(78)}\n${pkg.name} ${pkg.version} (${pkg.license ?? "see below"})\n`,
+    );
+    for (const file of files)
+      sections.push(`--- ${file}\n\n${readFileSync(join(dir, file), "utf8").trim()}\n`);
+  }
+  return `${sections.join("\n")}\n`;
+}
+
 /** The launchers in `bin/`: each runs its entry with the bundle's own Node.js, from any path. */
 function launcher(entry: string): string {
   return [
@@ -192,8 +280,10 @@ async function entries(base: string, dir: string): Promise<string[]> {
     );
     for (const child of children) {
       const path = join(current, child.name);
+      // A Windows archive carries no links: `files.json` lists them, and setup makes them (D153).
+      if (WINDOWS && child.isSymbolicLink()) continue;
       found.push(relative(base, path));
-      if (child.isDirectory()) await visit(path);
+      if (child.isDirectory() && !child.isSymbolicLink()) await visit(path);
     }
   };
   found.push(relative(base, dir));
@@ -278,7 +368,10 @@ async function checkNoHardLinks(root: string): Promise<void> {
     fail(linked.slice(0, 50), `bundle: ${linked.length} files are hard links (deploy must copy)`);
 }
 
-/** Fails when a link in the tree doesn't resolve to something inside it. */
+/**
+ * Fails when a link in the tree doesn't resolve to something inside it, and on Windows when one
+ * names a file: setup makes each a junction, which can only name a directory (D153).
+ */
 async function checkLinks(root: string): Promise<void> {
   const { readlink, realpath } = await import("node:fs/promises");
   const broken: string[] = [];
@@ -288,8 +381,13 @@ async function checkLinks(root: string): Promise<void> {
       const path = join(dir, entry.name);
       if (entry.isSymbolicLink()) {
         const target = await realpath(path).catch(() => undefined);
-        if (target === undefined || !(target === realRoot || target.startsWith(`${realRoot}/`)))
+        if (
+          target === undefined ||
+          !(target === realRoot || target.startsWith(`${realRoot}${sep}`))
+        )
           broken.push(`${relative(root, path)} -> ${await readlink(path)}`);
+        else if (WINDOWS && !(await stat(target)).isDirectory())
+          broken.push(`${relative(root, path)} -> ${await readlink(path)} (a file)`);
       } else if (entry.isDirectory()) await visit(path);
     }
   };
@@ -316,7 +414,9 @@ function checkMachinePaths(root: string): void {
     ...new Set(
       candidates
         .filter((path) => path.length > 1 && path !== "undefined")
-        .flatMap((path) => [path, existsSync(path) ? realpathSync(path) : path]),
+        .flatMap((path) => [path, existsSync(path) ? realpathSync(path) : path])
+        // Windows tools write a path with either separator.
+        .flatMap((path) => (WINDOWS ? [path, path.replaceAll("\\", "/")] : [path])),
     ),
   ];
   const args = ["-rlIF", ...needles.flatMap((needle) => ["-e", needle]), root];
@@ -333,6 +433,19 @@ function checkMachinePaths(root: string): void {
   }
   if (flagged.length > 0)
     step(`${flagged.length} third-party files name a path only as their published copies do`);
+  // Mostra's own Windows programs are binaries, which grep's -I skips: they are searched as bytes.
+  if (WINDOWS) {
+    const ours = ["mostra", "mostra-runtime", "mostra-setup", "mostra-win", "mostra-win-service"];
+    const programs = ours.map((name) => join(root, "bin", `${name}.exe`));
+    const patterns = needles.flatMap((needle) => ["-e", needle]);
+    const binary = spawnSync("grep", ["-laF", ...patterns, ...programs], { encoding: "utf8" });
+    if (binary.status === 0) {
+      const named = binary.stdout.trim().split("\n");
+      fail(named, "bundle: Mostra's Windows programs name the build machine's paths");
+    }
+    if (binary.status !== 1)
+      fail([`grep exited ${binary.status}: ${binary.stderr.trim()}`], "bundle");
+  }
 }
 
 /**
@@ -396,14 +509,18 @@ async function main(): Promise<void> {
   const node = await nodeArchive(platform);
   step(`unpacking Node.js ${node.version}`);
   await mkdir(join(stage, "node"));
+  // Windows' own tar (bsdtar) reads Node.js's zip; a Git or MSYS tar on the PATH can't.
+  const tar = WINDOWS
+    ? join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "tar.exe")
+    : "tar";
   const untar = spawnSync(
-    "tar",
-    ["-xzf", node.file, "-C", join(stage, "node"), "--strip-components=1"],
-    {
-      encoding: "utf8",
-    },
+    tar,
+    [WINDOWS ? "-xf" : "-xzf", node.file, "-C", join(stage, "node"), "--strip-components=1"],
+    { encoding: "utf8" },
   );
-  if (untar.status !== 0) fail([`tar: ${untar.stderr.trim()}`], "bundle");
+  if (untar.status !== 0) fail([`tar: ${untar.stderr?.trim() || untar.error?.message}`], "bundle");
+  if (!existsSync(join(stage, NODE_PATH)))
+    fail([`${NODE_PATH} is missing from Node.js's archive.`], "bundle");
 
   step("deploying Mostra's packages (hoisted)");
   await run("pnpm", [
@@ -450,13 +567,25 @@ async function main(): Promise<void> {
     if (!existsSync(join(stage, entry))) fail([`${entry} is missing from the bundle.`], "bundle");
   }
   await mkdir(join(stage, "bin"));
-  for (const [name, entry] of [
-    ["mostra", entriesOf.cli],
-    ["mostra-runtime", entriesOf.runtime],
-    ["mostra-setup", entriesOf.setup],
-  ] as const) {
-    await writeFile(join(stage, "bin", name), launcher(entry));
-    await chmod(join(stage, "bin", name), 0o755);
+  if (WINDOWS) {
+    // One launcher, three names: each runs the entry its name picks (crates/mostra-win,
+    // src/win/launch.rs); beside them the helper and the login service's launcher (D150, D151).
+    step("building the Windows launcher and helpers");
+    const built = await windowsBinaries();
+    for (const name of ["mostra", "mostra-runtime", "mostra-setup"])
+      await copyFile(join(built, "mostra-launch.exe"), join(stage, "bin", `${name}.exe`));
+    for (const name of ["mostra-win", "mostra-win-service"])
+      await copyFile(join(built, `${name}.exe`), join(stage, "bin", `${name}.exe`));
+    await writeFile(join(stage, "bin", "THIRD-PARTY-LICENSES.txt"), rustLicenses());
+  } else {
+    for (const [name, entry] of [
+      ["mostra", entriesOf.cli],
+      ["mostra-runtime", entriesOf.runtime],
+      ["mostra-setup", entriesOf.setup],
+    ] as const) {
+      await writeFile(join(stage, "bin", name), launcher(entry));
+      await chmod(join(stage, "bin", name), 0o755);
+    }
   }
   await copyFile(fromRoot("LICENSE"), join(stage, "LICENSE"));
   await copyFile(fromRoot("NOTICE"), join(stage, "NOTICE"));
@@ -471,7 +600,7 @@ async function main(): Promise<void> {
   const browsers = join(out, "browsers");
   await rm(browsers, { recursive: true, force: true });
   const install = await runStreaming(
-    join(stage, "node", "bin", "node"),
+    join(stage, NODE_PATH),
     [join(stage, playwright, "cli.js"), "install", "chromium-headless-shell"],
     { env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers } },
   );
@@ -503,7 +632,7 @@ async function main(): Promise<void> {
     name: protocol.BUNDLE_NAME,
     version,
     platform,
-    node: { version: node.version, path: "node/bin/node" },
+    node: { version: node.version, path: NODE_PATH },
     entries: entriesOf,
     files: { path: "files.json", sha256: await sha256(join(stage, "files.json")) },
     browser: {

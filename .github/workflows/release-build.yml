@@ -1,9 +1,12 @@
 # The release's build and proof (EN-05, D142 item 9, D152), called by CI to rehearse a release and
 # by release.yml to build one it then publishes:
 #
-#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01)
+#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01,
+#               RT-12; on Windows with its launcher and helpers, built by Cargo)
 #   smoke       each bundle on a fresh runner with no Node.js on PATH: checked, tampering refused,
-#               set up, new, verify, publish, moved, published again
+#               set up, new, verify, publish, a submission through the shell, wait, results,
+#               moved, published again (on Windows in Git's sh, with long paths off, as Windows
+#               ships them)
 #   packages    the bundle pins in @mostra/sdk, every npm package packed and checked, and
 #               `npm publish --dry-run` of each: the release dry run
 #   npm-smoke   the packed packages through npm on an older Node.js: create-mostra, verify, publish
@@ -70,7 +73,11 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.platforms) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 40
+    # Windows runs the same steps in Git's bash.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,7 +133,10 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.platforms) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,6 +146,12 @@ jobs:
         with:
           name: bundle-${{ matrix.platform }}
           path: ${{ runner.temp }}/assets
+      # Windows ships with paths past 260 characters off; GitHub's images turn them on. A bundle
+      # in a user's cache nests deeper than that, so the smoke test runs as Windows ships.
+      - name: Long paths off, as Windows ships
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
       - name: new, verify and publish with no Node.js
         env:
           VERSION: ${{ inputs.version }}
@@ -215,12 +231,19 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.npm-smoke) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: packages/bundle/scripts
+      - name: Long paths off, as Windows ships
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
       # An older Node.js line than the bundle's, as many machines have: Mostra runs on its own.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

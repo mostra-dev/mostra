@@ -167,6 +167,8 @@ const DISTRIBUTION: readonly RegExp[] = [
   /^packages\/sdk\/src\/(bundle\/|runtime\.ts$|setup-main\.ts$|platform\.ts$)/,
   /^packages\/cli\/src\/(bootstrap|node-gate|platform)\.ts$/,
   /^packages\/create-mostra\/src\//,
+  // The Windows bundles' launcher and helpers (D150, D151, D153).
+  /^crates\/mostra-win\//,
   /^tools\/release\//,
   /^tools\/license-audit\//,
   /^pnpm-lock\.yaml$/,
@@ -194,6 +196,8 @@ const BUNDLE_PLATFORMS = [
   { platform: "darwin-x64", runner: "macos-15-intel" },
   { platform: "linux-x64", runner: "ubuntu-24.04" },
   { platform: "linux-arm64", runner: "ubuntu-24.04-arm" },
+  { platform: "win32-x64", runner: "windows-2025" },
+  { platform: "win32-arm64", runner: "windows-11-arm" },
 ] as const;
 
 /** `leg` split into `total` machines, each running one part of its tests (`MOSTRA_E2E_SHARD`). */
@@ -332,6 +336,8 @@ function rehearsal(plan: Plan, all: boolean, runners: Runners): Rehearsal | null
       ? [
           { platform: "linux-x64", runner: "ubuntu-24.04" },
           { platform: "darwin-arm64", runner: "macos-15" },
+          { platform: "win32-x64", runner: "windows-2025" },
+          { platform: "win32-arm64", runner: "windows-11-arm" },
         ]
       : [{ platform: "linux-x64", runner: "ubuntu-24.04" }],
     linux: runners.linux.large,
