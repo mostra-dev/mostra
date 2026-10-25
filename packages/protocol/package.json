@@ -84,7 +84,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "4.5 kB"
+      "limit": "5 kB"
     },
     {
       "name": "@mostra/protocol IDs alone (zod excluded)",

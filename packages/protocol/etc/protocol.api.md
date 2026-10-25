@@ -1857,6 +1857,9 @@ export const PublishReceipt: z.ZodType<PublishReceipt>;
 export function readViewContext(wire: ViewContextWire): ViewContext;
 
 // @public
+export function receivable<T>(schema: z.ZodType<T>): z.ZodType<T>;
+
+// @public
 export interface Rect {
     readonly height: number;
     readonly width: number;

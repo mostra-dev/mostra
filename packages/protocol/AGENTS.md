@@ -9,7 +9,9 @@ imports nothing but `zod` (tools/package-map.ts).
 
 - **Additive evolution (D32, HO-07).** Within a revision, wire schemas only gain optional fields,
   definitions and enum values. The `api` job's schema check rejects anything else against the
-  base; a breaking change needs a new entry in `HOST_PROTOCOL_REVISIONS`.
+  base; a breaking change needs a new entry in `HOST_PROTOCOL_REVISIONS`. A receiver reads what
+  a peer sends through `receivable(schema)`, which accepts enum values and union members a newer
+  peer added and still checks everything else (#45); `RpcPeer.call` does so for results.
 - **Stable diagnostic codes (AX-03).** A released code keeps its meaning and is never removed; mark
   it `deprecated` instead. Every code has a title, hint and docs text.
 - **One JSON-RPC core (D83).** `src/rpc/` holds the only JSON-RPC implementation: `RpcPeer`,

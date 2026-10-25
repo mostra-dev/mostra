@@ -1016,6 +1016,25 @@ const SEEDS: readonly Seed[] = [
     check: ["test/bridge.test.ts"],
     cwd: "../protocol",
   },
+  // MT-01, #45: receivers read what a newer peer adds within a revision.
+  {
+    requirement: "HO-07",
+    name: "a client refuses a result with an enum value a newer instance added (#45)",
+    file: "../protocol/src/rpc/peer.ts",
+    from: "    const parsed = receivable(definition.result).safeParse(raw);",
+    to: "    const parsed = definition.result.safeParse(raw);",
+    check: ["test/receive.test.ts", "-t", "RpcPeer.call"],
+    cwd: "../protocol",
+  },
+  {
+    requirement: "HO-07",
+    name: "a receiving schema keeps its enums closed (#45)",
+    file: "../protocol/src/receive.ts",
+    from: "      return strings(schema) ? z.string() : schema;",
+    to: "      return schema;",
+    check: ["test/receive.test.ts", "-t", "a newer peer adds"],
+    cwd: "../protocol",
+  },
   {
     requirement: "SH-04",
     name: "the bridge accepts messages from any window",

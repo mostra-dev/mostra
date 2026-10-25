@@ -59,6 +59,7 @@ import {
   type ResultsMarkdown,
   RpcError,
   RpcPeer,
+  receivable,
   resultsGetMethod,
   type SourceRef,
   type StateGetResult,
@@ -436,7 +437,9 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
           -32601,
         );
       }
-      const parsed = definition.params.safeParse(params);
+      // A newer instance may send enum values and union members this host's schemas don't
+      // name yet (#45): the port's handler meets them, as it meets any value it can't act on.
+      const parsed = receivable(definition.params).safeParse(params);
       if (!parsed.success) {
         throw new RpcError(
           createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {

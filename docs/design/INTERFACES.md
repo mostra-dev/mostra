@@ -22,7 +22,7 @@
   Event cursors are decimal strings of a home-wide integer.
 - **Time.** RFC 3339 UTC strings with milliseconds. Durations in flags and manifests are strings like `30m`, `2h` or `24h`.
 - **Errors.** Every error, at every interface, is the diagnostic object of §13 (`code`, `severity`, `message`, `hint`, `docs`, optional location and fix). The host protocol wraps it in a JSON-RPC error whose `data` is the diagnostic. The CLI prints it as JSON in `--json` mode.
-- **Revisions.** The host protocol and the browser protocol each carry a dated revision (`2026-11-01` style), negotiated at connect and additive within a revision (D32, D59).
+- **Revisions.** The host protocol and the browser protocol each carry a dated revision (`2026-11-01` style), negotiated at connect and additive within a revision (D32, D59). A receiver reads what it is sent with the wire schemas opened for that rule (`receivable` in `@mostra/protocol`): an enum value or a union member a newer peer added arrives as sent, and a field it added is dropped, as the Rust crate reads them (D152, #45).
 
 ## 2. Artifact author API
 
