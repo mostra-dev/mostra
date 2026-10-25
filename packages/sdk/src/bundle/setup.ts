@@ -168,7 +168,7 @@ export async function makeLinks(bundle: Bundle): Promise<void> {
 
 /**
  * Checks the bundle's files; throws `MOSTRA_ENV_BUNDLE_INVALID` naming what differs. With
- * `links: false` the files alone are checked (a Windows bundle before {@link makeLinks}).
+ * `links: false` the files alone are checked (a Windows bundle before `makeLinks` made its junctions).
  */
 export async function checkFiles(
   bundle: Bundle,
