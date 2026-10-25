@@ -44,9 +44,15 @@ struct Fixture {
 /// A home, a runtime directory short enough for a socket, and a one-file artifact.
 fn fixture() -> Option<Fixture> {
     let entry = runtime()?;
+    // A short directory on POSIX, for the socket's path; Windows has a pipe instead (D150).
+    let base = if cfg!(windows) {
+        std::env::temp_dir()
+    } else {
+        PathBuf::from("/tmp")
+    };
     let dir = tempfile::Builder::new()
         .prefix("mh")
-        .tempdir_in("/tmp")
+        .tempdir_in(base)
         .unwrap();
     let home = dir.path().join("home");
     let run = dir.path().join("run");
@@ -59,7 +65,11 @@ fn fixture() -> Option<Fixture> {
     )
     .unwrap();
     let mut env: BTreeMap<String, String> = std::env::vars()
-        .filter(|(name, _)| !name.starts_with("MOSTRA_") && !name.starts_with("npm_config_"))
+        // Mostra's own variables stay out, but for the Windows helper a checkout names (D150).
+        .filter(|(name, _)| {
+            (!name.starts_with("MOSTRA_") || name == "MOSTRA_WIN_HELPER")
+                && !name.starts_with("npm_config_")
+        })
         .collect();
     env.insert(
         "MOSTRA_RUNTIME_BIN".into(),

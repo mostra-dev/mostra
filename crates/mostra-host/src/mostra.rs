@@ -359,6 +359,9 @@ impl Mostra {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // A Windows host with no console of its own (a desktop app) opens no window for it.
+        #[cfg(windows)]
+        command.creation_flags(crate::bundle::CREATE_NO_WINDOW);
         let mut child = command.spawn().map_err(|e| {
             Error::new(
                 "MOSTRA_ENV_RUNTIME_MISSING",
@@ -434,8 +437,7 @@ impl Mostra {
             socket = Some(started);
             runtime = Some(resolved);
         }
-        let stream = stream.expect("connected above");
-        let (reader, writer) = stream.into_split();
+        let (reader, writer) = stream.expect("connected above");
         let peer = Peer::start(reader, writer, Arc::new(options.ports.clone()));
         let session = Self::open(&peer, &options).await;
         match session {
@@ -702,7 +704,9 @@ impl Mostra {
     }
 
     /// Ends the session. A spawned instance is stopped: its stdin closes, it is sent SIGTERM if
-    /// it hasn't exited within 10 s, and SIGKILL 5 s later. An attached daemon keeps running.
+    /// it hasn't exited within 10 s, and SIGKILL 5 s later (on Windows, which has no signals
+    /// between processes, it is ended after the 10 s, D150 item 6). An attached daemon keeps
+    /// running.
     /// It takes `&self`, so a host that shares its handle (`Arc<Mostra>`) can close it while
     /// other tasks hold it: their calls in flight, and any later ones, end with
     /// `MOSTRA_HOST_CONNECTION_CLOSED`. A second close returns `None`.
@@ -745,8 +749,9 @@ fn decode<T: serde::de::DeserializeOwned>(method: &str, value: Value) -> Result<
     })
 }
 
-/// Stops a spawned instance: stdin is already closed by the peer; SIGTERM after `grace`,
-/// SIGKILL 5 s later.
+/// Stops a spawned instance: stdin is already closed by the peer, which stops it (D87, D150
+/// item 6); SIGTERM after `grace`, and it is killed 5 s later (on Windows at once, after
+/// `grace`: no signal reaches another process there).
 async fn stop(child: &tokio::sync::Mutex<Option<Child>>, grace: Duration) -> Option<InstanceExit> {
     let mut guard = child.lock().await;
     let mut child = guard.take()?;
@@ -756,21 +761,38 @@ async fn stop(child: &tokio::sync::Mutex<Option<Child>>, grace: Duration) -> Opt
             code: status.code(),
         });
     }
-    if let Some(pid) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
-        let _ = nix::sys::signal::kill(
-            nix::unistd::Pid::from_raw(pid),
-            nix::sys::signal::Signal::SIGTERM,
-        );
-    }
-    if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
-        return Some(InstanceExit {
-            code: status.code(),
-        });
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGTERM,
+            );
+        }
+        if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+            return Some(InstanceExit {
+                code: status.code(),
+            });
+        }
     }
     let _ = child.kill().await;
     child.wait().await.ok().map(|status| InstanceExit {
         code: status.code(),
     })
+}
+
+/// `DETACHED_PROCESS` and `CREATE_NEW_PROCESS_GROUP`: a daemon with no console, which a console's
+/// Ctrl+C doesn't reach.
+#[cfg(windows)]
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
+/// The root of the file system `path` is on (`/`, `C:\\`), which always exists.
+fn file_system_root(path: &Path) -> PathBuf {
+    path.ancestors()
+        .last()
+        .map_or_else(|| PathBuf::from("/"), Path::to_path_buf)
 }
 
 /// The socket `instance.json` records (D81), if the file exists and reads.
@@ -780,14 +802,25 @@ fn recorded_socket(home: &Path) -> Option<PathBuf> {
     record["socket"].as_str().map(PathBuf::from)
 }
 
-async fn connect(socket: &Path) -> Result<tokio::net::UnixStream> {
+/// The two halves of a connection to a home's control endpoint.
+type Halves = (
+    Box<dyn tokio::io::AsyncRead + Send + Unpin>,
+    Box<dyn tokio::io::AsyncWrite + Send + Unpin>,
+);
+
+/// Connects to the control endpoint `instance.json` names: the home's Unix socket.
+#[cfg(unix)]
+async fn connect(socket: &Path) -> Result<Halves> {
     match tokio::time::timeout(
         Duration::from_secs(5),
         tokio::net::UnixStream::connect(socket),
     )
     .await
     {
-        Ok(Ok(stream)) => Ok(stream),
+        Ok(Ok(stream)) => {
+            let (reader, writer) = stream.into_split();
+            Ok((Box::new(reader), Box::new(writer)))
+        }
         Ok(Err(error)) => Err(Error::closed(format!(
             "The instance's socket {} can't be reached ({error}).",
             socket.display()
@@ -797,6 +830,62 @@ async fn connect(socket: &Path) -> Result<tokio::net::UnixStream> {
             socket.display()
         ))),
     }
+}
+
+/// `SECURITY_IDENTIFICATION`: the pipe's server may learn who the client is, never act as it.
+#[cfg(windows)]
+const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
+
+/// `ERROR_PIPE_BUSY`: every instance of the pipe is taken for a moment.
+#[cfg(windows)]
+const ERROR_PIPE_BUSY: i32 = 231;
+
+/// Connects to the control endpoint `instance.json` names: the home's named pipe on Windows,
+/// opened so its server can't act as this process (`SECURITY_IDENTIFICATION`), and refused
+/// unless its owner is this user, before a byte is sent: another user may create a pipe under a
+/// name `instance.json` still names while no instance serves it (D150 item 4, D151 item 2), as
+/// `mostra-win connect` refuses it for the TypeScript clients.
+#[cfg(windows)]
+async fn connect(pipe: &Path) -> Result<Halves> {
+    use std::os::windows::io::AsRawHandle as _;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let client = loop {
+        match tokio::net::windows::named_pipe::ClientOptions::new()
+            .security_qos_flags(SECURITY_IDENTIFICATION)
+            .open(pipe)
+        {
+            Ok(client) => break client,
+            Err(error)
+                if error.raw_os_error() == Some(ERROR_PIPE_BUSY)
+                    && tokio::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(error) => {
+                return Err(Error::closed(format!(
+                    "The instance's pipe {} can't be reached ({error}).",
+                    pipe.display()
+                )));
+            }
+        }
+    };
+    match crate::windows::owned_by_current_user(client.as_raw_handle()) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(Error::closed(format!(
+                "The instance's pipe {} belongs to another user, so it isn't this home's.",
+                pipe.display()
+            )));
+        }
+        Err(error) => {
+            return Err(Error::closed(format!(
+                "The owner of the instance's pipe {} can't be read ({error}).",
+                pipe.display()
+            )));
+        }
+    }
+    let (reader, writer) = tokio::io::split(client);
+    Ok((Box::new(reader), Box::new(writer)))
 }
 
 /// Starts the home's daemon, detached, and reads the one line it prints: where it listens, or
@@ -822,7 +911,15 @@ async fn start_daemon(runtime: &Runtime, home: &Path, options: &Options) -> Resu
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .process_group(0);
+        // The daemon outlives this process by up to 30 idle minutes: it runs in its home's file
+        // system root, never this process's directory, which Windows wouldn't let anyone rename
+        // or remove while it runs (D151 item 3).
+        .current_dir(file_system_root(home));
+    #[cfg(unix)]
+    command.process_group(0);
+    // Detached from this process's console, in a console group of its own, as the CLI starts it.
+    #[cfg(windows)]
+    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     let mut child = command.spawn().map_err(|e| {
         Error::new(
             "MOSTRA_ENV_RUNTIME_MISSING",
@@ -870,4 +967,62 @@ async fn start_daemon(runtime: &Runtime, home: &Path, options: &Options) -> Resu
         .as_str()
         .map(PathBuf::from)
         .ok_or_else(|| Error::closed("The home's daemon didn't say where it listens."))
+}
+
+/// The control pipe's owner rule on Windows (D150 item 4, WP-W3): the crate talks only to a pipe
+/// its own user owns.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use std::io::BufRead as _;
+
+    use super::{Path, connect};
+
+    #[tokio::test]
+    async fn connects_to_a_pipe_its_own_user_owns() {
+        let name = format!(r"\\.\pipe\mostra-host-own-{}", std::process::id());
+        let server = tokio::net::windows::named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&name)
+            .unwrap();
+        let serving = tokio::spawn(async move { server.connect().await.map(|()| server) });
+        assert!(connect(Path::new(&name)).await.is_ok());
+        serving.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn refuses_a_pipe_another_user_created_under_the_name() {
+        let (Ok(user), Ok(password)) = (
+            std::env::var("MOSTRA_TEST_OTHER_USER"),
+            std::env::var("MOSTRA_TEST_OTHER_PASSWORD"),
+        ) else {
+            assert!(
+                std::env::var("MOSTRA_HOST_REQUIRE_RUNTIME").is_err(),
+                "CI names a second local user for this check"
+            );
+            eprintln!("skipped: no second local user (MOSTRA_TEST_OTHER_USER)");
+            return;
+        };
+        let probe =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/release/mostra-win-probe.exe");
+        let name = format!("mostra-host-squat-{}", std::process::id());
+        let mut squatter = std::process::Command::new(&probe)
+            .args(["squat", &user, &password, &name])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|e| panic!("{}: {e}", probe.display()));
+        let mut line = String::new();
+        std::io::BufReader::new(squatter.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        assert!(line.contains("\"ok\":true"), "the squatter said {line}");
+        let refused = connect(Path::new(&format!(r"\\.\pipe\{name}")))
+            .await
+            .err()
+            .expect("a pipe another user owns is refused");
+        assert_eq!(refused.code(), "MOSTRA_HOST_CONNECTION_CLOSED");
+        assert!(refused.message().contains("another user"), "{refused}");
+        drop(squatter.stdin.take());
+        squatter.wait().unwrap();
+    }
 }

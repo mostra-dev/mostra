@@ -6,8 +6,9 @@
 //! 4. a development checkout's built runtime beside this crate;
 //!
 //! else `MOSTRA_ENV_BUNDLE_UNAVAILABLE`. A bundle is checked before anything in it runs, and set
-//! up when its marker doesn't match it. The platform gate comes first: macOS and glibc Linux on
-//! arm64 and x64; anything else fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35, D120).
+//! up when its marker doesn't match it. The platform gate comes first: macOS, glibc Linux and
+//! Windows on arm64 and x64; anything else fails closed with `MOSTRA_PLATFORM_UNSUPPORTED` (D35,
+//! D146).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -20,7 +21,7 @@ use crate::error::{Error, Result};
 ///
 /// # Errors
 ///
-/// `MOSTRA_PLATFORM_UNSUPPORTED` for Windows, other architectures and Linux without glibc.
+/// `MOSTRA_PLATFORM_UNSUPPORTED` for other systems and architectures and Linux without glibc.
 pub fn platform() -> Result<&'static str> {
     let unsupported = |message: String| Error::new("MOSTRA_PLATFORM_UNSUPPORTED", message);
     let name = match (std::env::consts::OS, std::env::consts::ARCH) {
@@ -28,9 +29,11 @@ pub fn platform() -> Result<&'static str> {
         ("macos", "x86_64") => "darwin-x64",
         ("linux", "aarch64") => "linux-arm64",
         ("linux", "x86_64") => "linux-x64",
+        ("windows", "aarch64") => "win32-arm64",
+        ("windows", "x86_64") => "win32-x64",
         (os, arch) => {
             return Err(unsupported(format!(
-                "Mostra doesn't run on {os}-{arch}; it supports macOS and Linux on x64 and arm64."
+                "Mostra doesn't run on {os}-{arch}; it supports macOS, Linux and Windows on x64 and arm64."
             )));
         }
     };
@@ -43,7 +46,7 @@ pub fn platform() -> Result<&'static str> {
         };
         if !Path::new(loader).exists() {
             return Err(unsupported(
-                "Mostra's Linux bundle needs glibc, and this system has none (musl, as on Alpine Linux); it supports macOS and glibc-based Linux on x64 and arm64.".to_owned(),
+                "Mostra's Linux bundle needs glibc, and this system has none (musl, as on Alpine Linux); it supports macOS, glibc-based Linux and Windows on x64 and arm64.".to_owned(),
             ));
         }
     }
@@ -156,7 +159,8 @@ async fn from_bundle(root: &Path, options: &RuntimeOptions) -> Result<Runtime> {
         };
         progress(InstallStep::Files);
         let checking = bundle.clone();
-        tokio::task::spawn_blocking(move || bundle::check_files(&checking))
+        // A Windows bundle's junctions are its setup's to make, after this (D153).
+        tokio::task::spawn_blocking(move || bundle::check_as_extracted(&checking))
             .await
             .map_err(|e| Error::new("MOSTRA_ENV_BUNDLE_INVALID", e.to_string()))??;
         progress(InstallStep::Browser);
