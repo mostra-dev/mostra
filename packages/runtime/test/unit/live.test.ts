@@ -83,4 +83,46 @@ describe("live sources of a parked worker (RT-03, #42)", () => {
       published.filter((entry) => entry.error?.code !== "MOSTRA_RUNTIME_WORKER_PARKED"),
     ).toEqual([]);
   });
+
+  it("say so when their worker never started at all (GPT review finding 2)", async () => {
+    // A worker that fails before `worker/start` answers: the live module never learns its sources,
+    // and the pool parks the version inside the acquire that then rejects.
+    const published: { key: string; error?: WireError }[] = [];
+    let live: ReturnType<typeof createLive> | undefined;
+    let attempts = 0;
+    const options = {
+      ledger: {},
+      log: { info() {}, warn() {}, error() {}, debug() {} },
+      bus: {
+        liveInterest: () => [{ artifactId: ARTIFACT, key: "counter" }],
+        publishLive: (_artifactId: string, message: { live: { key: string; error?: WireError } }) =>
+          published.push(message.live),
+      },
+      pool: {
+        acquire: async () => {
+          attempts++;
+          live?.crashed({ ...park, cause: "it exited with code 1 before it started" });
+          throw new Error("The server code couldn't start: it exited with code 1.");
+        },
+        release() {},
+      },
+      interaction: { subscribedArtifacts: () => new Set<string>() },
+      latest: () => ({ versionId: VERSION, sources: [{ key: "counter", always: false }] }),
+      artifactsWithLive: () => [ARTIFACT],
+      version: () => ({ ref: { versionId: VERSION }, artifactId: ARTIFACT }),
+      reconcileMs: 60_000,
+    } as unknown as LiveOptions;
+    live = createLive(options);
+    live.reconcile();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(attempts).toBe(1);
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({
+      key: "counter",
+      error: { code: "MOSTRA_RUNTIME_WORKER_PARKED" },
+    });
+    expect(live.failures(ARTIFACT)).toEqual([
+      { key: "counter", error: expect.objectContaining({ code: "MOSTRA_RUNTIME_WORKER_PARKED" }) },
+    ]);
+  });
 });

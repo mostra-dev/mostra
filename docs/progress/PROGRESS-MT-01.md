@@ -74,7 +74,10 @@ MT-01 owns no requirement (D152). Its own checks are below; the ones that extend
 ## Reviews (D80)
 
 - **My review of the diff**, during the work and against the final state: the measurements found two defects (the subset rehearsal's pins, the budget's unit), both fixed with tests; the CI and release workflows were re-read against the old ones for permissions, concurrency, finish mode and the order release-then-npm.
-- **GPT-6.1-Sol** (`codex review`) and **Claude Opus 5.5** (D144): pending, to be announced and run before acceptance.
+- **GPT-6.1-Sol** through `codex review --base origin/main` (OpenAI, ChatGPT sign-in, codex-cli 0.162.1), effort high, on 2026-10-25 against `d1c60a5`: 3,980,763 input tokens (3,816,960 cached) and 9,268 output (4,530 reasoning). A GPT-only run, announced first (D34). Two findings, both valid, both reproduced by the reviewer and fixed with a test red on the old code and a seed red planted and green restored:
+  1. (P2) `receivable` cleared every object's catchall, so a loose object stopped passing its fields through: the bridge's `ui/initialize` host context (MCP Apps' `safeAreaInsets`, which `BridgeHostContext` allows) reached the page without them. Only a strict object's `never` catchall is relaxed now; a loose one keeps passing fields through and a typed one keeps checking them. Test: `receive.test.ts` "keeps what a loose object passes through"; seed HO-07.
+  2. (P2) A worker that failed six times before answering `worker/start` parked with no live source named (the live module never learned them), and #42's guard then silenced the start's own failure, so the source never said it was parked. The park now records its cause, and a start the park cut short reports the park for its own source unless that source already says so. Test: `live.test.ts` "never started at all"; seed RT-03; `lifecycle.test.ts`'s park test green on the fix.
+- **Claude Opus 5.5** (D144): pending; Mirza runs it from the prompt the session wrote.
 - **Copilot**: no review (its quota).
 
 ## Untested boundaries

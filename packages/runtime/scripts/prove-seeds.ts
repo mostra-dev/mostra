@@ -1136,6 +1136,15 @@ const SEEDS: readonly Seed[] = [
   // MT-01, #45: receivers read what a newer peer adds within a revision.
   {
     requirement: "HO-07",
+    name: "a receiver drops what a loose object passes through",
+    file: "../protocol/src/receive.ts",
+    from: '          catchall === undefined || defOf(catchall).type === "never" ? undefined : open(catchall),',
+    to: "          undefined,",
+    check: ["test/receive.test.ts", "-t", "loose object passes through"],
+    cwd: "../protocol",
+  },
+  {
+    requirement: "HO-07",
     name: "a client refuses a result with an enum value a newer instance added (#45)",
     file: "../protocol/src/rpc/peer.ts",
     from: "    const parsed = receivable(definition.result).safeParse(raw);",
@@ -2222,11 +2231,19 @@ const SEEDS: readonly Seed[] = [
     also: [
       {
         file: "src/live/index.ts",
-        from: "      if (parkedVersions.has(versionId)) return;",
-        to: "",
+        from: "      if (parkedVersions.has(versionId)) {",
+        to: "      if (false) {",
       },
     ],
     check: unit("live.test.ts"),
+  },
+  {
+    requirement: "RT-03",
+    name: "a never-started worker's park leaves its sources silent (GPT review of MT-01)",
+    file: "src/live/index.ts",
+    from: '        if (failures.get(id)?.code !== "MOSTRA_RUNTIME_WORKER_PARKED") {',
+    to: "        if (false) {",
+    check: unit("live.test.ts", "never started at all"),
   },
   {
     requirement: "RT-04",
