@@ -151,7 +151,7 @@ jobs:
         run: node tools/check/cli.ts $JOBS $SCOPE --verbose
 
   unit:
-    name: unit
+    name: unit (${{ matrix.leg.os }})
     needs: plan
     if: needs.plan.outputs.unit != '[]'
     strategy:
@@ -189,7 +189,7 @@ jobs:
         run: node tools/check/cli.ts --job unit $SCOPE --verbose
 
   hygiene:
-    name: hygiene
+    name: hygiene (${{ matrix.leg.os }})
     needs: plan
     if: needs.plan.outputs.hygiene != '[]'
     strategy:

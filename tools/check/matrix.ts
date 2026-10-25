@@ -243,8 +243,8 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
             },
           ]
         : [],
-    unit: has("unit") ? [{ runner: runners.linux.large }] : [],
-    hygiene: has("hygiene") ? [{ runner: runners.linux.large }] : [],
+    unit: has("unit") ? [{ os: "linux", runner: runners.linux.large }] : [],
+    hygiene: has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : [],
     integration: has("integration")
       ? posix.flatMap(({ os, runner }) => POSIX_GROUPS.map((group) => ({ os, runner, group })))
       : [],
