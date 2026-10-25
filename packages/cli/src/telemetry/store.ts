@@ -259,14 +259,14 @@ export class TelemetryStore {
     }
     const temporary = `${this.queueFile}.${process.pid}.tmp`;
     writeFileSync(temporary, `${lines.join("\n")}\n`, { mode: 0o600 });
-    renameSync(temporary, this.queueFile);
+    replace(temporary, this.queueFile, this.#platform);
   }
 
   #write(settings: TelemetrySettings): void {
     const { installId: _id, ...stored } = settings;
     const temporary = `${this.settingsFile}.${process.pid}.tmp`;
     writeFileSync(temporary, `${JSON.stringify(stored, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temporary, this.settingsFile);
+    replace(temporary, this.settingsFile, this.#platform);
   }
 
   #prepareDir(): void {
@@ -377,6 +377,27 @@ export class TelemetryStore {
       rmSync(aside, { force: true });
     }
     return "broken";
+  }
+}
+
+/**
+ * Renames `from` over `to`. Windows refuses to replace a file another process has open, as a
+ * process reading the settings outside the lock does, with `EPERM` (MT-01: CI's install-ID race,
+ * traced on `windows-latest`); the rename is tried again for up to a second, as the runtime's
+ * renames are (D150 item 8), and never turned into a copy.
+ */
+function replace(from: string, to: string, platform: string): void {
+  const deadline = Date.now() + 1000;
+  for (let pause = 5; ; pause = Math.min(pause * 2, 100)) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const shared = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (platform !== "win32" || !shared || Date.now() > deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pause);
+    }
   }
 }
 
