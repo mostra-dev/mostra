@@ -1,13 +1,31 @@
-# The pull-request and main-branch gates (REPO_STANDARDS §6). Every job runs exactly one job of
-# `pnpm check` (tools/check/jobs.ts), so a job that passes here passes locally and the reverse.
-# Later work packages add their suites to these jobs, not new workflow files.
+# The pull-request, merge-queue and nightly gates (REPO_STANDARDS §6, D152). The plan job decides
+# what runs and where (tools/check/ci.ts): each job below runs one part of `pnpm check`
+# (tools/check/jobs.ts) on the machines the plan lists, so a job that passes here passes locally
+# and the reverse, and a job no change needs takes no runner.
+#
+#   pull request          affected jobs; Linux, macOS, Windows x64; release rehearsed on linux-x64
+#   label ci:full         everything, as the merge queue runs it
+#   a bot's draft         nothing, until it is ready for review (gh pr ready)
+#   merge queue           affected jobs on every leg, Windows arm64 and every release platform too
+#   nightly (main)        everything, unless the last nightly run passed on the same commit
+#   by hand               everything (`full: false` for the affected jobs)
+#
+# Linux jobs run on Blacksmith while its monthly budget lasts and on GitHub's runners otherwise
+# (.github/actions/runners); macOS and Windows always on GitHub's.
 name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Check every package (off checks only what the branch changed since main)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -17,10 +35,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Pull requests check what they affect; main checks everything.
-  SCOPE: ${{ github.event_name == 'pull_request' && '--affected' || '' }}
   # The pull request's own head, so the commits job skips GitHub's synthetic merge commit.
   MOSTRA_HEAD: ${{ github.event.pull_request.head.sha }}
+  # In the merge queue, what the group is compared against: main as the queue found it.
+  MOSTRA_BASE: ${{ github.event.merge_group.base_sha }}
   LEFTHOOK: "0"
   TURBO_TELEMETRY_DISABLED: "1"
   DO_NOT_TRACK: "1"
@@ -30,9 +48,89 @@ jobs:
   plan:
     name: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # the nightly run looks up the last nightly run
+      pull-requests: read # a pull request's draft state and labels as they are now
     outputs:
-      jobs: ${{ steps.plan.outputs.jobs }}
+      run: ${{ steps.plan.outputs.run }}
+      scope: ${{ steps.plan.outputs.scope }}
+      static: ${{ steps.plan.outputs.static }}
+      unit: ${{ steps.plan.outputs.unit }}
+      hygiene: ${{ steps.plan.outputs.hygiene }}
+      integration: ${{ steps.plan.outputs.integration }}
+      windows: ${{ steps.plan.outputs.windows }}
+      e2e: ${{ steps.plan.outputs.e2e }}
+      rust: ${{ steps.plan.outputs.rust }}
+      conformance: ${{ steps.plan.outputs.conformance }}
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.release.outputs.version }}
+      rehearse: ${{ steps.release.outputs.rehearse }}
+      node: ${{ steps.release.outputs.node }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      # Before anything is installed: the token reaches only Blacksmith's pinned CLI. A fork's pull
+      # request gets no secrets, so its token is empty and its Linux jobs run on GitHub's runners.
+      - name: Choose the runners
+        id: runners
+        uses: ./.github/actions/runners
+        with:
+          token: ${{ secrets.BLACKSMITH_TOKEN }}
+          policy: ${{ vars.CI_RUNNERS }}
+          budget: ${{ vars.BLACKSMITH_BUDGET }}
+          threshold: ${{ vars.BLACKSMITH_THRESHOLD }}
+      - name: The last nightly run (nightly only)
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event schedule --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
+          if [ "$last" = "$SHA" ]; then echo "MOSTRA_CI_NIGHTLY_PASSED=1" >> "$GITHUB_ENV"; fi
+      # As they are now, not as the event saw them: a re-run after adding ci:full honors it.
+      - name: The pull request as it is now (pull requests only)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" > "$RUNNER_TEMP/pull.json"
+      - uses: ./.github/actions/setup
+        with:
+          job: plan
+      - name: What runs, and where
+        id: plan
+        env:
+          MOSTRA_CI_RUNNERS: ${{ steps.runners.outputs.runners }}
+          MOSTRA_CI_PULL: ${{ runner.temp }}/pull.json
+        run: node tools/check/ci.ts
+      # The version the release rehearsal builds (D143, #69): the pending changesets' version, or
+      # the next patch when npm already has this one.
+      - name: The rehearsal's version
+        id: release
+        if: steps.plan.outputs.release != 'null'
+        run: |
+          node tools/release/versions.ts plan >> "$GITHUB_OUTPUT"
+          echo "node=$(node -p 'require("./packages/bundle/node.json").version')" >> "$GITHUB_OUTPUT"
+
+  # The cheap checks together on one machine (format-lint, types, build, boundaries, api, licenses,
+  # docs, commits, as the change needs them): one Turborepo run shares their builds.
+  static:
+    name: static (${{ matrix.leg.names }})
+    needs: plan
+    if: needs.plan.outputs.static != '[]'
+    strategy:
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.static) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,88 +138,87 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          job: plan
-      - name: Compute the affected jobs
-        id: plan
-        run: |
-          plan=$(node tools/check/cli.ts --plan --json $SCOPE)
-          echo "$plan"
-          echo "jobs=$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).jobs))' "$plan")" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Plan"
-            echo
-            echo '```json'
-            echo "$plan"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          job: static
+      - name: Rust toolchain cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: static
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: pnpm check ${{ matrix.leg.jobs }}
+        env:
+          JOBS: ${{ matrix.leg.jobs }}
+          SCOPE: ${{ needs.plan.outputs.scope }}
+        run: node tools/check/cli.ts $JOBS $SCOPE --verbose
 
-  check:
-    name: ${{ matrix.job }}
+  unit:
+    name: unit
     needs: plan
-    if: needs.plan.outputs.jobs != '[]'
+    if: needs.plan.outputs.unit != '[]'
     strategy:
-      fail-fast: false
       matrix:
-        job: [format-lint, types, unit, hygiene, build, boundaries, api, licenses, docs, commits]
-    runs-on: ubuntu-latest
+        leg: ${{ fromJSON(needs.plan.outputs.unit) }}
+    runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 15
     steps:
-      - name: Skip when not affected
-        id: gate
-        env:
-          JOBS: ${{ needs.plan.outputs.jobs }}
-          JOB: ${{ matrix.job }}
-        run: |
-          if echo "$JOBS" | grep -q "\"$JOB\""; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Not affected by this change." >> "$GITHUB_STEP_SUMMARY"
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.run
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
         id: setup
-        if: steps.gate.outputs.run
         with:
-          job: ${{ matrix.job }}
+          job: unit
       - name: Rust toolchain cache
-        if: steps.gate.outputs.run && (matrix.job == 'format-lint' || matrix.job == 'unit')
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: ${{ matrix.job }}
+          key: unit
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install cargo-deny
-        if: steps.gate.outputs.run && matrix.job == 'unit'
         uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-deny@0.20.2
       # @mostra/react's hooks render in Chromium (Vitest browser mode, WP-07, AU-08).
-      - name: Cache the Playwright browser
-        if: steps.gate.outputs.run && matrix.job == 'unit'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - uses: ./.github/actions/browsers
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-unit-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install the Playwright Chromium headless shell
-        if: steps.gate.outputs.run && matrix.job == 'unit'
-        run: pnpm --filter @mostra/react exec playwright install --with-deps --only-shell chromium
-      - name: pnpm check --job ${{ matrix.job }}
-        if: steps.gate.outputs.run
+          browser: chromium-headless-shell
+          package: "@mostra/react"
+          image: ${{ steps.setup.outputs.image }}
+      - name: pnpm check --job unit
         env:
-          JOB: ${{ matrix.job }}
-        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose
+          SCOPE: ${{ needs.plan.outputs.scope }}
+        run: node tools/check/cli.ts --job unit $SCOPE --verbose
+
+  hygiene:
+    name: hygiene
+    needs: plan
+    if: needs.plan.outputs.hygiene != '[]'
+    strategy:
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.hygiene) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: hygiene
+      - name: pnpm check --job hygiene
+        env:
+          SCOPE: ${{ needs.plan.outputs.scope }}
+        run: node tools/check/cli.ts --job hygiene $SCOPE --verbose
 
   rust:
-    name: rust (${{ matrix.os }})
+    name: rust (${{ matrix.leg.os }})
     needs: plan
-    if: contains(needs.plan.outputs.jobs, '"rust"')
+    if: needs.plan.outputs.rust != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        leg: ${{ fromJSON(needs.plan.outputs.rust) }}
+    runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -132,6 +229,8 @@ jobs:
         with:
           job: rust
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
@@ -139,20 +238,21 @@ jobs:
         env:
           # The crate's instance suites fail, never skip, when the runtime didn't build.
           MOSTRA_HOST_REQUIRE_RUNTIME: "1"
+          SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
 
-  # The host conformance kit against the Rust reference host on both v1 platforms (HO-05):
+  # The host conformance kit against the Rust reference host on both POSIX platforms (HO-05):
   # every port, standalone, and broken with its baseline. The TypeScript reference host runs in
   # the integration job's `clients` group. The kit's shell scenario renders in Chromium.
   conformance:
-    name: conformance (${{ matrix.os }})
+    name: conformance (${{ matrix.leg.os }})
     needs: plan
-    if: contains(needs.plan.outputs.jobs, '"conformance"')
+    if: needs.plan.outputs.conformance != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        leg: ${{ fromJSON(needs.plan.outputs.conformance) }}
+    runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,35 +264,34 @@ jobs:
         with:
           job: conformance
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: Cache the Playwright browser
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install the Playwright Chromium headless shell
-        run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/browsers
+        with:
+          browser: chromium-headless-shell
+          package: "@mostra/runtime"
+          image: ${{ steps.setup.outputs.image }}
       - name: pnpm check --job conformance
+        env:
+          SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job conformance $SCOPE --verbose
 
-  # Suites through real Mostra processes (sockets, process groups, start times) on both v1
-  # platforms (D86). The plan runs it when the runtime, the protocol or a client package (CLI,
-  # SDK, create-mostra) is affected. The suites run in groups, one machine each
-  # (`MOSTRA_TEST_GROUP`, packages/runtime/vitest.config.ts), so the job stays inside the
-  # 10-minute target (D50): the clients' suites have their own (WP-11), so their instances never
-  # starve the runtime's.
+  # Suites through real Mostra processes (sockets, process groups, start times) on both POSIX
+  # platforms (D86), in groups, one machine each (`MOSTRA_TEST_GROUP`,
+  # packages/runtime/vitest.config.ts): the clients' suites have their own (WP-11), so their
+  # instances never starve the runtime's.
   integration:
-    name: integration (${{ matrix.os }}, ${{ matrix.group }})
+    name: integration (${{ matrix.leg.os }}, ${{ matrix.leg.group }})
     needs: plan
-    if: contains(needs.plan.outputs.jobs, '"integration"')
+    if: needs.plan.outputs.integration != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        group: [core, verify, verify-failures, clients]
-    runs-on: ${{ matrix.os }}
+        leg: ${{ fromJSON(needs.plan.outputs.integration) }}
+    runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 15
     env:
-      MOSTRA_TEST_GROUP: ${{ matrix.group }}
+      MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -203,84 +302,61 @@ jobs:
         with:
           job: integration
       # Built versions are rendered in Chromium (WP-03, AU-01, AU-02).
-      - name: Cache the Playwright browser
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - uses: ./.github/actions/browsers
         with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install the Playwright Chromium headless shell
-        run: pnpm --filter @mostra/runtime exec playwright install --with-deps --only-shell chromium
+          browser: chromium-headless-shell
+          package: "@mostra/runtime"
+          image: ${{ steps.setup.outputs.image }}
       - name: pnpm check --job integration
+        env:
+          SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream
 
-  # The Windows legs (WP-W1, WP-W2, D146): the unit, integration and hygiene jobs for the packages
-  # ported so far (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 and arm64. The runtime runs on
-  # Windows only behind the development switch `MOSTRA_DEV_WINDOWS`, which only these legs set; it
-  # finds the Windows helper Cargo builds here (`crates/mostra-win`). The integration suites run in
-  # groups, one machine each (packages/runtime/vitest.config.ts), with a second local user for the
-  # access checks (RT-10, RT-11).
+  # The Windows legs (WP-W1, WP-W2, D146): the unit, hygiene and integration jobs for the packages
+  # ported so far (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the merge queue,
+  # nightly and with ci:full). The runtime runs on Windows only behind the development switch
+  # `MOSTRA_DEV_WINDOWS`, which only these legs set; it finds the Windows helper Cargo builds here
+  # (`crates/mostra-win`). The integration suites run in groups, one machine each
+  # (packages/runtime/vitest.config.ts), with a second local user for the access checks (RT-10,
+  # RT-11).
   windows:
-    name: ${{ matrix.suite.job }} (${{ matrix.os }}${{ matrix.suite.job == 'integration' && format(', {0}', matrix.suite.group) || '' }})
+    name: ${{ matrix.leg.job }} (${{ matrix.leg.os }}${{ matrix.leg.job == 'integration' && format(', {0}', matrix.leg.group) || '' }})
     needs: plan
-    if: contains(needs.plan.outputs.jobs, '"unit"') || contains(needs.plan.outputs.jobs, '"integration"') || contains(needs.plan.outputs.jobs, '"hygiene"')
+    if: needs.plan.outputs.windows != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, windows-11-arm]
-        suite:
-          - { job: unit, group: windows }
-          - { job: hygiene, group: windows }
-          - { job: integration, group: windows }
-          - { job: integration, group: windows-publish }
-          - { job: integration, group: windows-gateway }
-          - { job: integration, group: windows-workers }
-          - { job: integration, group: windows-verify }
-          - { job: integration, group: windows-verify-failures }
-          - { job: integration, group: windows-clients }
-    runs-on: ${{ matrix.os }}
+        leg: ${{ fromJSON(needs.plan.outputs.windows) }}
+    runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 25
     env:
       MOSTRA_DEV_WINDOWS: "1"
-      MOSTRA_TEST_GROUP: ${{ matrix.suite.group }}
+      MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
     defaults:
       run:
         shell: bash
     steps:
-      - name: Skip when not affected
-        id: gate
-        env:
-          JOBS: ${{ needs.plan.outputs.jobs }}
-          JOB: ${{ matrix.suite.job }}
-        run: |
-          if echo "$JOBS" | grep -q "\"$JOB\""; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Not affected by this change." >> "$GITHUB_STEP_SUMMARY"
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.run
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
         id: setup
-        if: steps.gate.outputs.run
         with:
-          job: windows-${{ matrix.suite.job }}-${{ matrix.suite.group }}
+          job: windows-${{ matrix.leg.job }}-${{ matrix.leg.group }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        if: steps.gate.outputs.run
         with:
           key: windows-helper
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build the Windows helper
-        if: steps.gate.outputs.run
         run: cargo build -p mostra-win --release --locked
-      # The helper's Windows code compiles only on Windows, so the format-lint job's clippy (Linux)
+      # The helper's Windows code compiles only on Windows, so the static job's clippy (Linux)
       # never sees it; it is linted here, on each architecture.
       - name: Lint the Windows helper
-        if: steps.gate.outputs.run && matrix.suite.job == 'unit'
+        if: matrix.leg.job == 'unit'
         run: cargo clippy -p mostra-win --all-targets --locked -- -D warnings
       - name: A second local user, for the access checks (RT-10)
-        if: steps.gate.outputs.run && matrix.suite.job != 'unit'
+        if: matrix.leg.job != 'unit'
         shell: pwsh
         run: |
           $password = "Mw1-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
@@ -292,63 +368,53 @@ jobs:
       # (event 5031), so the gateway suite can show a loopback bind is never blocked, against a
       # wildcard control that is.
       - name: The firewall on, its blocks audited (RT-11)
-        if: steps.gate.outputs.run && matrix.suite.group == 'windows-gateway'
+        if: matrix.leg.group == 'windows-gateway'
         shell: pwsh
         run: |
           Set-NetFirewallProfile -All -Enabled True
           auditpol /set /subcategory:"Filtering Platform Connection" /success:enable /failure:enable
       # Built versions and verify render in Chromium; @mostra/react's hooks too (Vitest browser mode).
-      - name: Install the Playwright Chromium headless shell
-        if: steps.gate.outputs.run
-        run: pnpm --filter @mostra/runtime exec playwright install --only-shell chromium
-      - name: pnpm check --job ${{ matrix.suite.job }}
-        if: steps.gate.outputs.run
+      - uses: ./.github/actions/browsers
+        with:
+          browser: chromium-headless-shell
+          package: "@mostra/runtime"
+          image: ${{ steps.setup.outputs.image }}
+      - name: pnpm check --job ${{ matrix.leg.job }}
         env:
-          JOB: ${{ matrix.suite.job }}
+          JOB: ${{ matrix.leg.job }}
+          SCOPE: ${{ needs.plan.outputs.scope }}
           MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
         run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
       - name: Keep the test homes' supervisor logs
-        if: failure() && steps.gate.outputs.run
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: logs-${{ matrix.suite.job }}-${{ matrix.suite.group }}-${{ matrix.os }}
+          name: logs-${{ matrix.leg.job }}-${{ matrix.leg.group }}-${{ matrix.leg.os }}
           path: ${{ runner.temp }}/mostra-test-logs
           retention-days: 7
           if-no-files-found: ignore
 
-  # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), on both v1
-  # platforms: WebKit on macOS is the closest Playwright gets to Safari.
-  # One engine per machine (REPO_STANDARDS §6's matrix): the three on one macOS runner had grown to
-  # 11 to 14 minutes of a 15-minute limit and went past it (WP-12).
+  # Capability links in Chromium, Firefox and WebKit through the real gateway (WP-05), one engine
+  # per machine (WP-12: three on one macOS runner went past 15 minutes). WebKit on macOS is the
+  # closest Playwright gets to Safari. Windows' viewers are Chromium's (Chrome, Edge) and Firefox:
+  # Playwright's WebKit there keeps no SameSite on cookies, and its Windows browsers are x64
+  # builds, so arm64 runs Chromium only (emulated Firefox closed pages by itself, #66; D151 item 8).
   e2e:
-    name: e2e (${{ matrix.os }}, ${{ matrix.browser }})
+    name: e2e (${{ matrix.leg.os }}, ${{ matrix.leg.browser }})
     needs: plan
-    if: contains(needs.plan.outputs.jobs, '"e2e"')
+    if: needs.plan.outputs.e2e != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
-        browser: [chromium, firefox, webkit]
-        # No Safari runs on Windows, and Playwright's WebKit there is a port no viewer uses, whose
-        # cookie store has no SameSite (Playwright's own tests expect `None` there): Windows'
-        # viewers are Chromium's (Chrome, Edge) and Firefox (D151, VERIFIED_FACTS WP-W2).
-        # Playwright ships only x64 browsers for Windows: on arm64 Firefox runs emulated and closed
-        # pages by itself (#66), so Firefox runs on x64 and Chromium on both (D151 item 8, M38).
-        exclude:
-          - os: windows-latest
-            browser: webkit
-          - os: windows-11-arm
-            browser: webkit
-          - os: windows-11-arm
-            browser: firefox
-    runs-on: ${{ matrix.os }}
+        leg: ${{ fromJSON(needs.plan.outputs.e2e) }}
+    runs-on: ${{ matrix.leg.runner }}
     # The tests take about 10 minutes at most; the rest is room for a slow mirror's first run on an
     # image (#58), before its downloads are cached.
     timeout-minutes: 25
     env:
-      MOSTRA_E2E_BROWSER: ${{ matrix.browser }}
+      MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
       # Windows runs only behind the development switch until WP-W3 (D146, D150).
-      MOSTRA_DEV_WINDOWS: ${{ startsWith(matrix.os, 'windows') && '1' || '' }}
+      MOSTRA_DEV_WINDOWS: ${{ startsWith(matrix.leg.os, 'windows') && '1' || '' }}
     defaults:
       run:
         shell: bash
@@ -361,50 +427,54 @@ jobs:
         id: setup
         with:
           job: e2e
-      - name: Cache the Playwright browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-e2e-${{ matrix.browser }}-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-      # An engine's system packages come from the image's apt mirror, which some days takes most
-      # of the job's time (#58): apt keeps what it downloads in a cached directory, so a slow
-      # mirror costs only the first run on an image.
-      - name: Keep apt's downloads (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p "$HOME/apt-archives/partial"
-          printf 'Dir::Cache::Archives "%s/apt-archives/";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\nAPT::Keep-Downloaded-Packages "true";\n' "$HOME" | sudo tee /etc/apt/apt.conf.d/90mostra-keep-downloads
-      - name: Cache apt's downloads (Linux)
-        if: runner.os == 'Linux'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/apt-archives/*.deb
-          key: apt-e2e-${{ matrix.browser }}-${{ steps.setup.outputs.image }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            apt-e2e-${{ matrix.browser }}-${{ steps.setup.outputs.image }}-
       # The runtime's Windows helper (D150).
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: runner.os == 'Windows'
         with:
           key: windows-helper
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build the Windows helper
         if: runner.os == 'Windows'
         run: cargo build -p mostra-win --release --locked
-      - name: Install the engine
-        run: pnpm --filter @mostra/e2e exec playwright install --with-deps ${{ matrix.browser }}
+      - uses: ./.github/actions/browsers
+        with:
+          browser: ${{ matrix.leg.browser }}
+          package: "@mostra/e2e"
+          image: ${{ steps.setup.outputs.image }}
       - name: pnpm check --job e2e
+        env:
+          SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job e2e $SCOPE --verbose
       - name: Keep the traces of failed tests
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-traces-${{ matrix.os }}-${{ matrix.browser }}
+          name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}
           path: tests/e2e/test-results
           retention-days: 7
 
+  # The release rehearsal (EN-05, D142 item 9): bundles built, audited and smoke-tested with no
+  # Node.js, every package packed and dry-run published, the npm path smoke-tested. Pull requests
+  # rehearse linux-x64 unless distribution files changed; the merge queue rehearses every platform,
+  # so nothing reaches main that breaks a bundle.
+  release:
+    name: release
+    needs: plan
+    if: needs.plan.outputs.release != 'null' && needs.plan.outputs.release != ''
+    uses: ./.github/workflows/release-build.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      rehearse: ${{ needs.plan.outputs.rehearse == 'true' }}
+      mode: fresh
+      node: ${{ needs.plan.outputs.node }}
+      platforms: ${{ toJSON(fromJSON(needs.plan.outputs.release).platforms) }}
+      npm-smoke: ${{ toJSON(fromJSON(needs.plan.outputs.release).npmSmoke) }}
+      linux-runner: ${{ fromJSON(needs.plan.outputs.release).linux }}
+
   dependency-review:
     name: dependency review
-    if: github.event_name == 'pull_request'
+    needs: plan
+    if: github.event_name == 'pull_request' && needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -416,11 +486,15 @@ jobs:
           fail-on-severity: moderate
           deny-licenses: AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, BUSL-1.1, SSPL-1.0, Elastic-2.0
 
-  # The one check branch protection requires: green only when every job above passed or was skipped.
+  # The one check the main ruleset requires, on pull requests and in the merge queue: green only
+  # when every job above passed or was skipped by the plan. It is skipped itself only when the plan
+  # ran and decided the run checks nothing, which happens only for a bot's draft (that GitHub won't
+  # merge) and a nightly run already done; a plan that failed fails it.
   ci-ok:
     name: ci-ok
-    if: always()
-    needs: [plan, check, rust, conformance, integration, windows, e2e, dependency-review]
+    if: always() && (needs.plan.result != 'success' || needs.plan.outputs.run == 'true')
+    needs:
+      [plan, static, unit, hygiene, rust, conformance, integration, windows, e2e, release, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

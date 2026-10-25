@@ -1,9 +1,12 @@
 # Code scanning (STANDARDS supply chain, EN-06): CodeQL on every pull request, on main and weekly,
-# for the TypeScript and JavaScript code, the GitHub Actions workflows and the Rust crates.
+# for the TypeScript and JavaScript code, the GitHub Actions workflows and the Rust crates. A bot's
+# draft pull request (Renovate's, D152) is scanned once it is marked ready for review, as CI runs
+# it then; main's ruleset keeps it from merging before.
 name: CodeQL
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   schedule:
@@ -20,6 +23,7 @@ concurrency:
 jobs:
   analyze:
     name: codeql (${{ matrix.language }})
+    if: github.event_name != 'pull_request' || !(github.event.pull_request.draft && github.event.pull_request.user.type == 'Bot')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

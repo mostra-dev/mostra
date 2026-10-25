@@ -1,0 +1,7 @@
+{
+  "$comment": "Blacksmith's CLI, which CI's plan job runs to read this month's Blacksmith usage (D152, .github/actions/runners). Pinned by version and SHA-256 of its release binary (https://clireleases.blacksmith.sh/cli/<version>/linux/amd64/blacksmith, checked against its .sha256 on 2026-10-24); a new version is a deliberate change.",
+  "version": "v0.5.3",
+  "sha256": {
+    "linux-amd64": "089a301ea5cc93a7560c7f1106911547fdfd46fc5c0cef7079e2a62a22e971ce"
+  }
+}

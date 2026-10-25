@@ -1,0 +1,72 @@
+name: Choose the runners
+description: >-
+  Blacksmith's Linux runners while Blacksmith usage over the last 31 days is under its monthly
+  budget, GitHub's otherwise (D152, tools/check/runners.ts). A rolling window bounds every billing
+  month, wherever Blacksmith's month starts. Every doubt chooses GitHub. Needs Node.js set up. The
+  token reaches only Blacksmith's own CLI, pinned by version and SHA-256, in a home of its own
+  that is removed afterwards; nothing installed from the repository runs while it is present.
+inputs:
+  token:
+    description: The Blacksmith organization token (secret BLACKSMITH_TOKEN); empty for untrusted runs.
+    required: false
+    default: ""
+  policy:
+    description: auto, github or blacksmith (repository variable CI_RUNNERS).
+    required: false
+    default: auto
+  budget:
+    description: Blacksmith billing minutes a month (repository variable BLACKSMITH_BUDGET).
+    required: false
+    default: "3000"
+  threshold:
+    description: The share of the budget after which Linux jobs move to GitHub (BLACKSMITH_THRESHOLD).
+    required: false
+    default: "0.9"
+outputs:
+  runners:
+    description: The chosen runners as JSON (tools/check/runners.ts `Runners`).
+    value: ${{ steps.choose.outputs.runners }}
+runs:
+  using: composite
+  steps:
+    - name: Blacksmith's status and its usage over the last 31 days
+      shell: bash
+      env:
+        BLACKSMITH_TOKEN: ${{ inputs.token }}
+        POLICY: ${{ inputs.policy }}
+      run: |
+        dir="$RUNNER_TEMP/blacksmith"
+        mkdir -p "$dir"
+        curl -fsS --max-time 10 https://status.blacksmith.sh/summary.json -o "$dir/status.json" || rm -f "$dir/status.json"
+        if [ -z "$BLACKSMITH_TOKEN" ] || [ "$POLICY" = github ]; then exit 0; fi
+        version=$(node -p 'require("./tools/check/blacksmith-cli.json").version')
+        expected=$(node -p 'require("./tools/check/blacksmith-cli.json").sha256["linux-amd64"]')
+        if ! curl -fsSL --max-time 60 "https://clireleases.blacksmith.sh/cli/$version/linux/amd64/blacksmith" -o "$dir/blacksmith"; then
+          echo "::warning::Blacksmith's CLI didn't download; Linux jobs run on GitHub's runners."
+          exit 0
+        fi
+        actual=$(sha256sum "$dir/blacksmith" | cut -d' ' -f1)
+        if [ "$actual" != "$expected" ]; then
+          echo "::warning::Blacksmith's CLI $version has SHA-256 $actual, not the pinned $expected; Linux jobs run on GitHub's runners."
+          exit 0
+        fi
+        chmod +x "$dir/blacksmith"
+        export HOME="$dir/home" BLACKSMITH_DISABLE_AUTO_UPDATE=1
+        mkdir -p "$HOME"
+        if printf '%s' "$BLACKSMITH_TOKEN" | "$dir/blacksmith" auth login --api-token - --non-interactive --organization mostra-dev >/dev/null 2>&1 &&
+          "$dir/blacksmith" usage --start-time "$(date -u -d '31 days ago' +%Y-%m-%dT%H:%M:%SZ)" --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --format json > "$dir/usage.json" 2>/dev/null; then
+          :
+        else
+          rm -f "$dir/usage.json"
+          echo "::warning::Blacksmith's usage couldn't be read; Linux jobs run on GitHub's runners."
+        fi
+        rm -rf "$HOME" "$dir/blacksmith"
+    - name: Choose
+      id: choose
+      shell: bash
+      env:
+        CI_RUNNERS: ${{ inputs.policy }}
+        BLACKSMITH_BUDGET: ${{ inputs.budget }}
+        BLACKSMITH_THRESHOLD: ${{ inputs.threshold }}
+        MOSTRA_CI_TRUSTED: ${{ inputs.token != '' && '1' || '' }}
+      run: node tools/check/runners.ts --usage "$RUNNER_TEMP/blacksmith/usage.json" --status "$RUNNER_TEMP/blacksmith/status.json"
