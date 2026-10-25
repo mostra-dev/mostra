@@ -55,8 +55,10 @@ runs:
         chmod +x "$dir/blacksmith"
         export HOME="$dir/home" BLACKSMITH_DISABLE_AUTO_UPDATE=1
         mkdir -p "$HOME"
-        if printf '%s' "$BLACKSMITH_TOKEN" | "$dir/blacksmith" auth login --api-token - --non-interactive --organization mostra-dev >/dev/null 2>&1 &&
-          "$dir/blacksmith" usage --start-time "$(date -u -d '31 days ago' +%Y-%m-%dT%H:%M:%SZ)" --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --format json > "$dir/usage.json" 2>/dev/null; then
+        # Each call gets 30 s: an API that takes the connection and never answers would otherwise
+        # hold the plan until its own time limit and fail every job (Opus review of MT-01, 3).
+        if printf '%s' "$BLACKSMITH_TOKEN" | timeout 30 "$dir/blacksmith" auth login --api-token - --non-interactive --organization mostra-dev >/dev/null 2>&1 &&
+          timeout 30 "$dir/blacksmith" usage --start-time "$(date -u -d '31 days ago' +%Y-%m-%dT%H:%M:%SZ)" --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --format json > "$dir/usage.json" 2>/dev/null; then
           :
         else
           rm -f "$dir/usage.json"

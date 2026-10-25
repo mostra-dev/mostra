@@ -145,6 +145,31 @@ describe("what runs when (D152)", () => {
     expect(crate.conformance.map((leg) => leg["os"])).toContain("macos");
   });
 
+  it("names each leg's Turbo cache apart from every other leg's on its OS (Opus review 9)", () => {
+    const matrix = ciMatrix(queue, everything, github);
+    const lists = {
+      static: matrix.static,
+      unit: matrix.unit,
+      hygiene: matrix.hygiene,
+      integration: matrix.integration,
+      windows: matrix.windows,
+      e2e: matrix.e2e,
+      rust: matrix.rust,
+      conformance: matrix.conformance,
+    };
+    const seen = new Set<string>();
+    for (const [list, legs] of Object.entries(lists)) {
+      for (const leg of legs) {
+        expect(leg["cache"], list).toBeTruthy();
+        const key = `${leg["os"] ?? "linux"} ${leg["cache"]}`;
+        expect(seen.has(key), `${list}: ${key} twice`).toBe(false);
+        seen.add(key);
+      }
+    }
+    expect(matrix.integration.map((leg) => leg["cache"])).toContain("integration-verify-failures");
+    expect(matrix.e2e.map((leg) => leg["cache"])).toContain("e2e-firefox-2of2");
+  });
+
   it("gives the merge queue, the nightly run and ci:full every leg", () => {
     for (const scope of [
       queue,
@@ -223,6 +248,15 @@ describe("what runs when (D152)", () => {
       expect(matrix.release?.platforms.length, file).toBe(4);
     }
     expect(ciMatrix(pr, change(["packages/cli/README.md"], []), github).release).toBeNull();
+    // The crate is packaged in the rehearsal: a change to it alone, or to Cargo's inputs, runs
+    // it on Linux, where `cargo package` runs (Opus review of MT-01, 4).
+    for (const file of ["crates/mostra-host/src/lib.rs", "Cargo.lock", "rust-toolchain.toml"]) {
+      const matrix = ciMatrix(pr, change([file], []), github);
+      expect(
+        matrix.release?.platforms.map((leg) => leg["platform"]),
+        file,
+      ).toEqual(["linux-x64"]);
+    }
   });
 });
 
@@ -357,6 +391,8 @@ describe("the CI workflow's shape (D152)", () => {
       const setup = steps.find((step) => step.uses === "./.github/actions/setup");
       if (!setup || name === "plan") continue;
       expect(setup.id, name).toBe("setup");
+      // The leg's own cache name, from the plan (Opus review 9).
+      expect(setup.with?.["job"], name).toBe(`\${{ matrix.leg.cache }}`);
       expect(
         steps.some(
           (step) =>
@@ -366,6 +402,21 @@ describe("the CI workflow's shape (D152)", () => {
         `${name} restores Turbo's cache and never saves it`,
       ).toBe(true);
     }
+  });
+
+  it("bounds every network call the runner choice makes, so a hung vendor means GitHub (Opus review 3)", () => {
+    const action = parse(readFileSync(fromRoot(".github/actions/runners/action.yml"), "utf8")) as {
+      runs: { steps: { run?: string }[] };
+    };
+    const script = action.runs.steps.map((step) => step.run ?? "").join("\n");
+    const curls = script.split("\n").filter((line) => /\bcurl\b/.test(line));
+    expect(curls.length).toBeGreaterThan(0);
+    for (const line of curls) expect(line, line.trim()).toMatch(/--max-time \d+/);
+    const calls = [...script.matchAll(/(\S+\s+)?"\$dir\/blacksmith" (\w+)/g)];
+    expect(calls.map((call) => call[2])).toEqual(["auth", "usage"]);
+    for (const call of calls) expect(call[1]?.trim(), call[0]).toMatch(/^timeout$|^\d+$/);
+    expect(script).toMatch(/timeout 30 "\$dir\/blacksmith" auth/);
+    expect(script).toMatch(/timeout 30 "\$dir\/blacksmith" usage/);
   });
 
   it("is triggered by pull requests ready for review, the queue, the night and hand only", () => {

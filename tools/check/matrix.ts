@@ -173,11 +173,19 @@ const DISTRIBUTION: readonly RegExp[] = [
   /^pnpm-workspace\.yaml$/,
 ];
 
-/** Files a release carries or checks: a change to any of them runs the rehearsal. */
+/**
+ * Files a release carries or checks: a change to any of them runs the rehearsal. The crate is
+ * packaged there (`cargo package -p mostra-host`, on Linux), so its sources and Cargo's inputs run
+ * it too (Opus review of MT-01, 4); `tools/lib/`, which the release scripts import, makes every run
+ * a full one already (plan.ts).
+ */
 const RELEASE_INPUTS: readonly RegExp[] = [
   ...DISTRIBUTION,
   /^packages\/(?!.*\.md$).+/,
   /^tools\/api\//,
+  /^crates\/mostra-host\//,
+  /^Cargo\.(toml|lock)$/,
+  /^rust-toolchain\.toml$/,
 ];
 
 /** Release platforms and the runners that build them (D142 item 1): always GitHub's. */
@@ -190,7 +198,25 @@ const BUNDLE_PLATFORMS = [
 
 /** `leg` split into `total` machines, each running one part of its tests (`MOSTRA_E2E_SHARD`). */
 function shards(leg: Leg, total: number): Leg[] {
-  return Array.from({ length: total }, (_, i) => ({ ...leg, shard: `${i + 1}/${total}` }));
+  return Array.from({ length: total }, (_, i) => ({
+    ...leg,
+    shard: `${i + 1}/${total}`,
+    part: `${i + 1}of${total}`,
+  }));
+}
+
+/**
+ * Each leg with `cache`, the name its Turborepo cache is kept under (with the runner's OS image,
+ * which the setup action adds): one per leg of a job on one image, so two legs never save over
+ * each other and a pull request restores the leg's own (Opus review of MT-01, 9).
+ */
+function cached(job: string, legs: readonly Leg[]): Leg[] {
+  return legs.map((leg) => ({
+    ...leg,
+    cache: [job, leg["job"], leg["group"], leg["browser"], leg["part"]]
+      .filter((part) => part !== undefined)
+      .join("-"),
+  }));
 }
 
 /** Lays a plan out for a scope and the run's runners. */
@@ -269,7 +295,8 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
     ...scope,
     jobs: [...applies],
     scopeFlag: scope.scope === "affected" ? "--affected" : "",
-    static:
+    static: cached(
+      "static",
       staticJobs.length > 0
         ? [
             {
@@ -279,13 +306,17 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
             },
           ]
         : [],
-    unit: has("unit") ? [{ os: "linux", runner: runners.linux.large }] : [],
-    hygiene: has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : [],
-    integration: keep(integration),
-    windows,
-    e2e: keep(e2e),
-    rust: keep(rust),
-    conformance: keep(conformance),
+    ),
+    unit: cached("unit", has("unit") ? [{ os: "linux", runner: runners.linux.large }] : []),
+    hygiene: cached(
+      "hygiene",
+      has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : [],
+    ),
+    integration: cached("integration", keep(integration)),
+    windows: cached("windows", windows),
+    e2e: cached("e2e", keep(e2e)),
+    rust: cached("rust", keep(rust)),
+    conformance: cached("conformance", keep(conformance)),
     release: scope.run ? rehearsal(plan, all, runners) : null,
     deferred,
   };

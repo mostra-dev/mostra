@@ -140,7 +140,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: static
+          job: ${{ matrix.leg.cache }}
       - name: Rust toolchain cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -175,7 +175,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: unit
+          job: ${{ matrix.leg.cache }}
       - name: Rust toolchain cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -219,7 +219,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: hygiene
+          job: ${{ matrix.leg.cache }}
       - name: pnpm check --job hygiene
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
@@ -249,7 +249,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: rust
+          job: ${{ matrix.leg.cache }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -290,7 +290,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: conformance
+          job: ${{ matrix.leg.cache }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -334,7 +334,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: integration
+          job: ${{ matrix.leg.cache }}
       # Built versions are rendered in Chromium (WP-03, AU-01, AU-02).
       - uses: ./.github/actions/browsers
         with:
@@ -393,7 +393,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: windows-${{ matrix.leg.job }}-${{ matrix.leg.group }}
+          job: ${{ matrix.leg.cache }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: windows-helper
@@ -483,7 +483,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          job: e2e
+          job: ${{ matrix.leg.cache }}
       # The runtime's Windows helper (D150).
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: runner.os == 'Windows'
