@@ -28,7 +28,9 @@ the real interface.
 - `pnpm gen package|diagnostic|protocol-method`: start new things in the right shape.
 
 Playbooks for recurring tasks are in [docs/agents/](docs/agents/); each ends in a completion
-check. The second time you do something by hand, turn it into a generator or a playbook.
+check. CI runs what a change affects: [run-ci.md](docs/agents/run-ci.md) covers merging through the
+merge queue, running everything (`ci:full`), Renovate's drafts, and a slow or red run. The second
+time you do something by hand, turn it into a generator or a playbook.
 
 ## Packages and boundaries
 

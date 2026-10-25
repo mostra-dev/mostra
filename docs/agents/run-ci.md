@@ -29,7 +29,7 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    `gh pr merge <number> --merge`. The pull request joins the merge queue, which runs `CI` on the
    pull request merged with `main` (and with whatever is ahead of it in the queue) and merges it
    when that run's `ci-ok` passes. A failure there takes it out of the queue; fix it and add it
-   again. Never bring a branch up to date by hand to merge it: the queue does that.
+   again. The queue brings the pull request up to date with `main`, so its branch stays as it is.
 4. **Choose where Linux jobs run.** The repository variable `CI_RUNNERS` is `auto` (default),
    `github` or `blacksmith`: `gh variable set CI_RUNNERS --body github`. Under `auto`, Linux jobs
    run on Blacksmith while its usage over the last 31 days is below `BLACKSMITH_THRESHOLD` (0.9)
