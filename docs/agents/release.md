@@ -5,9 +5,11 @@ release publishes every package of the fixed release group at one version, the f
 bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) the crates
 (EN-05, D67, `.github/workflows/release.yml`).
 
-1. **The package is merged.** Its changesets are on `main`, and `main`'s `Release` workflow run is
-   green: every bundle built, audited and smoke-tested with no Node.js, every package packed and
-   dry-run published, and the npm path smoke-tested on Node.js 22. Don't release a red `main`.
+1. **The package is merged.** Its changesets are on `main`, merged through the merge queue, whose
+   `CI` run of the merge group was green, its release rehearsal included (`release-build.yml`):
+   every bundle built, audited and smoke-tested with no Node.js, every package packed and dry-run
+   published, and the npm path smoke-tested on Node.js 22. `main` itself runs no rehearsal (D152);
+   the nightly `CI` run checks it whole. Don't release from a `main` whose nightly is red.
 2. **The first release only: Mirza's account steps.** He runs `tools/release/npm-setup.sh` in a
    terminal (signed in to npm as an owner of `@mostra` and `create-mostra`, 2FA on). It
    authenticates once (he chooses "skip two-factor authentication for the next 5 minutes"), then
@@ -25,10 +27,11 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`.
    Commit `chore(release): Mostra <version>` with `git commit -s`, push, and open the pull request
    with the version's changelog. Every package of the group and the host crate move to one
-   version; nothing else changes. Before this pull request, every pull request's `Release`
-   run rehearses the version its pending changesets make (`versions.ts plan` and `rehearse`):
-   npm refuses even a dry run over a version it has.
-4. **Merge it when CI is green.** On `main` the `Release` workflow's `plan` job
+   version; nothing else changes. Before this pull request, `CI`'s release rehearsal rehearses
+   the version its pending changesets make (`versions.ts plan` and `rehearse`), or the next patch
+   when none is pending and npm already has the tree's version (#69): npm refuses even a dry run
+   over a version it has. The version pull request itself rehearses its own version.
+4. **Merge it through the merge queue when CI is green.** On `main` the `Release` workflow's `plan` job
    (`packages/bundle/scripts/github-release.ts state`) sees a version with no changeset pending
    and no published release, and the `publish` job runs in the `release` environment (only `main`
    may deploy there, one run at a time). In this order: it attests the bundles; publishes the
