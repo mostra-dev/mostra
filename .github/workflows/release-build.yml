@@ -95,7 +95,9 @@ jobs:
         run: node tools/release/versions.ts rehearse --version "$VERSION"
       - name: Build the bundle
         if: inputs.mode != 'finish'
-        run: node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
+        # Through pnpm, which names itself to the assembler (npm_execpath): on Windows pnpm is a
+        # .cmd shim Node.js can't start without cmd.exe.
+        run: pnpm exec node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
       # Finishing a published release: its own archive, checked against its record and the
       # release's digest, never a new build (the published @mostra/sdk pins these bytes).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

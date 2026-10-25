@@ -2,7 +2,7 @@
 /**
  * The runtime bundle assembler (RT-01, D142): builds this platform's bundle from the workspace.
  *
- *   node packages/bundle/scripts/build.ts --out <dir> [--skip-build] [--node-archive <file>]
+ *   pnpm exec node packages/bundle/scripts/build.ts --out <dir> [--skip-build] [--node-archive <file>]
  *
  * 1. builds the packages the bundle carries (Turborepo);
  * 2. unpacks the official Node.js distribution, checked against `packages/bundle/node.json`;
@@ -61,19 +61,27 @@ function git(args: readonly string[]): string | undefined {
 }
 
 /**
- * The program and arguments that run `command args`. On Windows pnpm is a `.cmd` shim, which
- * Node.js starts only through `cmd.exe` (CVE-2024-27980): its arguments here are this script's own
- * (subcommands, flags and paths, never anyone's input), checked to hold nothing `cmd.exe` would
- * read as syntax, and quoted.
+ * The program and arguments that run `command args`. pnpm is started as the program that runs
+ * this script names itself (`npm_execpath`, under `pnpm exec`: on Windows `pnpm.exe`), never
+ * through its `.cmd` shim, which Node.js starts only through `cmd.exe` (CVE-2024-27980) and whose
+ * `%~dp0` names the wrong directory when `cmd.exe` gets it quoted (VERIFIED_FACTS, WP-W3).
  */
 function commandFor(command: string, args: readonly string[]): [string, string[], boolean] {
-  if (!WINDOWS || command !== "pnpm") return [command, [...args], false];
-  for (const arg of args) {
-    if (!/^[\w.:\\/=@+,-]+$/.test(arg))
-      fail([`a pnpm argument cmd.exe would misread: ${arg}`], "bundle");
+  if (command !== "pnpm") return [command, [...args], false];
+  const own = process.env["npm_execpath"];
+  if (own && /pnpm/i.test(own)) {
+    if (/\.[cm]?js$/.test(own)) return [process.execPath, [own, ...args], false];
+    return [own, [...args], false];
   }
-  const line = ["pnpm", ...args].map((arg) => `"${arg}"`).join(" ");
-  return [process.env["ComSpec"] ?? "cmd.exe", ["/d", "/s", "/c", `"${line}"`], true];
+  if (WINDOWS) {
+    fail(
+      [
+        "On Windows run the assembler through pnpm: pnpm exec node packages/bundle/scripts/build.ts",
+      ],
+      "bundle",
+    );
+  }
+  return ["pnpm", [...args], false];
 }
 
 /** Runs a command with its output passed through, resolving with its exit code. */
