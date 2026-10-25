@@ -46,6 +46,12 @@ on:
         description: The runner of the packing and old-Node.js jobs
         type: string
         default: ubuntu-24.04
+      rehearsal:
+        description: >-
+          A rehearsal (CI), which may build only some platforms and pins exactly those; a release
+          (release.yml) leaves it false and needs every platform's bundle
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -174,7 +180,11 @@ jobs:
       - name: Build the published packages
         run: pnpm exec turbo run build --filter=./packages/*
       - name: Pin the bundles in @mostra/sdk
-        run: node packages/bundle/scripts/pins.ts --assets "$RUNNER_TEMP/assets"
+        env:
+          # A rehearsal pins exactly the platforms it built (a pull request's may be a subset,
+          # D152); a release pins every platform or fails.
+          PLATFORMS: ${{ inputs.rehearsal && join(fromJSON(inputs.platforms).*.platform, ',') || '' }}
+        run: node packages/bundle/scripts/pins.ts --assets "$RUNNER_TEMP/assets" ${PLATFORMS:+--platforms "$PLATFORMS"}
       - name: Pack and check every package
         run: node packages/bundle/scripts/publish-npm.ts pack --out "$RUNNER_TEMP/npm"
       - name: The release dry run
