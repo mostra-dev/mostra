@@ -8,7 +8,7 @@ lists the jobs.
 
 | Event | What runs |
 |---|---|
-| A pull request opened, pushed to, reopened or marked ready | The jobs the change affects (`pnpm check --plan --affected`), on Linux, macOS and Windows x64; the release rehearsal on linux-x64 when a package changed, on all four platforms when anything a bundle or a release reads changed |
+| A pull request opened, pushed to, reopened or marked ready | The jobs the change affects (`pnpm check --plan --affected`), on Linux, macOS (at most five legs: GitHub runs five macOS jobs at once) and Windows x64; the release rehearsal on linux-x64 when a package changed, on all four platforms when anything a bundle or a release reads changed |
 | The `ci:full` label on a pull request | Everything, on every leg, as the merge queue runs it (takes effect on the next push or re-run) |
 | A bot's draft pull request (Renovate) | Nothing, until it is ready for review |
 | The merge queue | The affected jobs on every leg: Windows arm64 and the four-platform rehearsal join; this run gates the merge |

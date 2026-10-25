@@ -1107,6 +1107,23 @@ const SEEDS: readonly Seed[] = [
     check: ["test/versions.test.ts", "-t", "next patch"],
     cwd: "../../tools",
   },
+  {
+    requirement: "EN-07",
+    name: "a pull request takes more macOS legs than GitHub runs at once",
+    file: "../../tools/check/matrix.ts",
+    from: "    all ? [] : macos.slice(MACOS_PULL_REQUEST_LEGS).map(({ leg }) => leg),",
+    to: "    [],",
+    check: ["test/ci.test.ts", "-t", "at most five macOS legs"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
+    name: "a POSIX integration suite runs in two groups",
+    file: "vitest.config.ts",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS],",
+    to: "    exclude: [VERIFY_SUITES, ...FAULTS],",
+    check: unit("windows-groups.test.ts", "macOS and Linux"),
+  },
   // MT-01, #45: receivers read what a newer peer adds within a revision.
   {
     requirement: "HO-07",

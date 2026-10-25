@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ciEvent, outputLines } from "../check/ci.ts";
-import { ciMatrix, ciScope, FULL_LABEL } from "../check/matrix.ts";
+import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
 import type { Plan } from "../check/plan.ts";
 import {
   BLACKSMITH_LINUX,
@@ -118,6 +118,31 @@ describe("what runs when (D152)", () => {
     expect(
       ciMatrix(queue, everything, github).e2e.filter((leg) => leg["os"] === "macos"),
     ).toHaveLength(3);
+  });
+
+  it("gives a pull request at most five macOS legs, and the queue the rest", () => {
+    const onMacos = (matrix: ReturnType<typeof ciMatrix>) =>
+      [matrix.integration, matrix.e2e, matrix.rust, matrix.conformance]
+        .flat()
+        .filter((leg) => leg["os"] === "macos");
+    // A runtime change: four integration groups, WebKit, the crate and the kit would be seven.
+    const runtime = change(["packages/runtime/src/a.ts"], ["@mostra/runtime"]);
+    const ordinary = ciMatrix(pr, runtime, github);
+    expect(onMacos(ordinary)).toHaveLength(MACOS_PULL_REQUEST_LEGS);
+    expect(ordinary.integration.filter((leg) => leg["os"] === "macos")).toHaveLength(4);
+    expect(ordinary.e2e.filter((leg) => leg["os"] === "macos")).toHaveLength(1);
+    expect(ordinary.deferred).toEqual(["rust (macos)", "conformance (macos)"]);
+    // Linux keeps every leg, and the queue runs them all on macOS too.
+    expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux"]);
+    expect(ordinary.conformance.map((leg) => leg["os"])).toEqual(["linux"]);
+    const queued = ciMatrix(queue, runtime, github);
+    expect(onMacos(queued).length).toBeGreaterThan(MACOS_PULL_REQUEST_LEGS);
+    expect(queued.deferred).toEqual([]);
+    // A crate-only change fits: its macOS legs all stay.
+    const crate = ciMatrix(pr, change(["crates/mostra-host/src/lib.rs"], []), github);
+    expect(crate.deferred).toEqual([]);
+    expect(crate.rust.map((leg) => leg["os"])).toContain("macos");
+    expect(crate.conformance.map((leg) => leg["os"])).toContain("macos");
   });
 
   it("gives the merge queue, the nightly run and ci:full every leg", () => {
