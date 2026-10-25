@@ -310,7 +310,17 @@ jobs:
       - name: pnpm check --job integration
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
+          MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
         run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream
+      # A supervisor that stopped answering mid-suite leaves only its log to say why (#35, #55).
+      - name: Keep the test homes' supervisor logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logs-integration-${{ matrix.leg.group }}-${{ matrix.leg.os }}
+          path: ${{ runner.temp }}/mostra-test-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # The Windows legs (WP-W1, WP-W2, D146): the unit, hygiene and integration jobs for the packages
   # ported so far (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the merge queue,
