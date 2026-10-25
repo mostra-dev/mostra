@@ -220,7 +220,15 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
     for (let i = 0; i < 6; i++) {
       const done = await crashes(page, "actions.ts#crash");
       expect(done.error?.code).toBe("MOSTRA_ACTION_INTERRUPTED");
-      if (i < 5) expect((await workersOf(gateway, actions.versionId))[0]?.state).toBe("backoff");
+      // Each crash is counted and none of the first five parks the worker. Its state right after
+      // a crash is "backoff" only until the 100 ms backoff ends and the live producer starts it
+      // again, which a slow runner's status call can come after (Windows x64, MT-01): the
+      // backoff itself is proven by the crash events below.
+      if (i < 5)
+        expect((await workersOf(gateway, actions.versionId))[0]).toMatchObject({
+          crashes: i + 1,
+          state: expect.not.stringMatching(/^parked$/),
+        });
     }
     // Each backoff doubles (100 ms first in this test; 1 s to 60 s by default); the sixth crash
     // in ten minutes parks the worker.
