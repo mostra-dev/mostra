@@ -67,7 +67,9 @@ MT-01 owns no requirement (D152). Its own checks are below; the ones that extend
 | Outside contributors' approval, the `ci:full` label (D152 item 8) | verified | `gh api …/actions/permissions/fork-pr-contributor-approval`; `gh label list` | `all_external_contributors`; `ci:full` exists. `tools/github/settings.ts verify` reports only the merge-queue ruleset, applied at the merge |
 | Caches saved only on `main` (D152 item 7) | plausible | `tools/test/ci.test.ts` over `ci.yml` and the composite actions; an EN-07 seed; `gh cache list` | No pull request of #74 to #76 saved a pnpm store, browser, apt or cargo cache (all 60 such entries are `main`'s or the old workflow's Renovate runs'); they did save 295 Turbo entries (937 MB), which led to Turbo's restore-then-save-on-main; that `main`'s nightly run saves and pull requests restore is first observed after the merge |
 
-**Each `pnpm check` gate** ran green on #75's full runs: static (format-lint, types, build, boundaries, api, licenses, docs, commits), unit, hygiene, integration (macOS, Linux and Windows groups), e2e (every engine and leg), rust, conformance and the release rehearsal.
+**Locally**, `pnpm check` on the final tree (`843eb06`, macOS arm64) took 27 min 22 s: every job green but e2e, where two WebKit action tests (`actions.spec.ts:60`, `:101`) ran past their time beside the other jobs' processes; WebKit's e2e alone right after: green in 125 s. As in WP-07's to WP-W2's baselines, a full local run loads one laptop with what CI spreads over 59 machines.
+
+**Each `pnpm check` gate** ran green on #75's full runs, last on the final tree (CI run 40194345859: 59 jobs, 16.0 min, green at the first attempt): static (format-lint, types, build, boundaries, api, licenses, docs, commits), unit, hygiene, integration (macOS, Linux and Windows groups), e2e (every engine and leg), rust, conformance and the release rehearsal.
 
 ## Reviews (D80)
 
