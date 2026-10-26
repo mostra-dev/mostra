@@ -661,8 +661,8 @@ export function currentUserSid(): string {
  * Every process below `pid`, with its command line. On Windows the tree comes from the helper's
  * `processes` (a process snapshot: milliseconds), a child counted only when created after its
  * parent, since a parent PID can name a later process; only those processes' command lines are
- * then read, in one filtered CIM query. The whole CIM table took 21 to 34 s of a 60 s test on the
- * runners, once all of it (WP-W3). A process that exits meanwhile is left out, as the table would.
+ * then read, in one filtered CIM query, instead of the whole table (5 s on Windows x64 and 37 s
+ * on arm64 in WP-W3's probe). A process that exits meanwhile is left out, as the table would.
  */
 export function descendantsOf(pid: number): { pid: number; command: string }[] {
   if (!WINDOWS) {
