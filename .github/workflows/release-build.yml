@@ -193,7 +193,8 @@ jobs:
             $options = @{ FilePath = $file; Credential = $credential; LoadUserProfile = $true; WorkingDirectory = $dir; Wait = $true; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = "$dir\$log.out"; RedirectStandardError = "$dir\$log.err" }
             if ($arguments.Count -gt 0) { $options.ArgumentList = $arguments }
             $p = Start-Process @options
-            Get-Content "$dir\$log.out", "$dir\$log.err" -ErrorAction SilentlyContinue
+            # Shown, never returned: a script block returns all its output, and only the code counts.
+            Get-Content "$dir\$log.out", "$dir\$log.err" -ErrorAction SilentlyContinue | Out-Host
             return $p.ExitCode
           }
           $code = & $run "$env:SystemRoot\System32\whoami.exe" @("/groups") "whoami"
