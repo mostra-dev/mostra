@@ -14,7 +14,15 @@ spawn(
     "-e",
     `require("node:fs").writeFileSync(${JSON.stringify(file)}, String(process.pid)); setInterval(() => {}, 1000);`,
   ],
-  { stdio: ["ignore", "inherit", "ignore"], windowsHide: true },
+  {
+    stdio: ["ignore", "inherit", "ignore"],
+    windowsHide: true,
+    // On Windows, Node.js puts every child it starts in libuv's kill-on-close job, which would end
+    // this one with the shim; a host written in another language (the Rust reference host's
+    // instance) starts children outside any such job. `detached` keeps it out, as they do. On
+    // POSIX it stays in the shim's process group, as a host's children do.
+    detached: process.platform === "win32",
+  },
 ).unref();
 
 await serveHarness({

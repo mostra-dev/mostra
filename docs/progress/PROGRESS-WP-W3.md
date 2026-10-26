@@ -48,7 +48,22 @@ The checks go through the real interfaces: the six bundles built, audited and sm
   1. (P2) A relative `MOSTRA_RUNTIME_BIN` or bundle path reached a daemon the crate starts in its file system's root, which then named nothing: `resolve_runtime` returns absolute paths, and the daemon's Mostra path variables are made absolute as the CLI's are (one list, kept equal by a test). `attach_starts_the_daemon_from_a_runtime_named_relative_to_the_host` is red without the fix, with the reviewer's failure ("The home's daemon exited before it said where it listens"), and green with it.
   2. (P2) The kit judged a NULL access list (`NO_ACCESS_CONTROL`, which grants everyone everything) owner-only for a secret file: refused now, wherever SDDL writes the flag; a unit test and an RT-12 seed, red then green.
 - **Copilot**: no review (its quota).
-- **Claude Opus 5.5** (D144): the prompt is ready for Mirza to run (at the candidate).
+- **Claude Opus 5.5** (D144), run by Mirza through Claude Code (`/code-review`, high effort) against `a6cd05e` from the prompt the session wrote, posted on #79 on 2026-10-26 ([comment](https://github.com/mostra-dev/mostra/pull/79#issuecomment-6412387083)). It ran nothing on Windows, so it marked the Windows-only findings "possible", and judged sound: the junction writer's containment, the SDK and the crate agreeing on root spellings and the marker, the pipe's owner check before any byte, the launcher's quoting and handles, the switch's removal. Token usage isn't reported by that surface. Ten findings, every one taken on its merits and fixed in `9d96c60`:
+
+| Finding | Fix | Proof |
+|---|---|---|
+| 1 The crate's Windows cache fell back to `C:\mostra-cache`, which any user can create in, when the host's environment named no profile | The host's environment, then this process's profile, then `home_dir`, as the SDK falls back to `homedir()`; on POSIX `home_dir` before `/` too | `cache_root_tests` red on the old code, green |
+| 2 A relative `MOSTRA_CACHE_DIR` left the crate's runtime paths relative, for a daemon run in the file system's root | `cache_root` makes it absolute (with the GPT finding's `resolve_runtime` and path variables) | the same test |
+| 3 (possible) The kit's close on Windows reached nothing once the shim's shell had exited and a descendant held its output | The kit notes the shell's tree while it runs (`mostra-win processes`) and, after 5 s, ends the shell's tree and reaps every noted process by PID and creation time; the no-op SIGTERM wait is gone on Windows | `tree.test.ts` (descendants, a reused parent PID, cycles); `close.test.ts` through a shim whose grandchild holds its output, on every system; a Windows seed |
+| 4 (possible) A bundle copied by Explorer, `Copy-Item` or `robocopy` (junctions followed) was refused, though D153 said copies are set up again | A real directory where a link belongs is replaced only when it holds exactly the files and bytes of the link's target; anything else is still refused and kept (the earlier "removes nothing" test stands) | `windows-bundle.test.ts`: a copy made with `cpSync({ dereference: true })` set up; a Windows seed |
+| 5 Two setups of one moved bundle raced into a raw `EEXIST` | Every step tolerates the other setup's; a link counts as made once it names its target | `windows-bundle.test.ts`: ten rounds of two setups at once; a Windows seed |
+| 6 `LA` and `LG` matched any account whose SID ends in -500 or -501, a domain's Administrator included | The kit resolves both to this machine's SIDs in the same PowerShell call and compares exactly; an alias it can't resolve is no one's | `privacy.test.ts`; a seed |
+| 7 Object and callback deny entries, and `CREATOR OWNER`, read as grants | Every deny type stands; `CREATOR OWNER` is the creator, which in an owner-only directory is the user or `SYSTEM`; an inheritable entry for anyone else still fails | `privacy.test.ts`; a seed |
+| 8 A real path computed per link, thousands of times per walk | Once per walk, in the SDK and the crate | the suites (behavior unchanged) |
+| 9 `files.json` read and hashed twice per Windows setup | Read once and passed to both steps (`checkFiles`' `manifest`, additive) | the suites; the API report |
+| 10 The assembler's `verbatim` flag was dead, and `RUSTFLAGS` split a path with a space | The flag removed; the remap flags pass as `CARGO_ENCODED_RUSTFLAGS`, keeping flags the environment sets | the Windows bundle jobs' machine-path gate, which scans the programs for the checkout's path |
+
+  Its note on `service.test.ts` naming `MOSTRA_DEV_WINDOWS` is answered: the fixture passes the old switch on purpose, to prove the login service no longer forwards it.
 
 ## Untested boundaries
 

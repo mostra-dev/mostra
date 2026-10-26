@@ -92,39 +92,49 @@ async function makeJunction(
   if (!(await realParents(root, at))) {
     throw new LinkRefused(`${link.path} sits below a link or a file.`);
   }
-  if (await names(root, link, at, realRoot)) return true;
   const kind = await stat(target).catch(() => undefined);
-  if (kind === undefined || !kind.isDirectory()) return false;
-  const current = await lstat(at).catch(() => undefined);
-  if (current !== undefined && !current.isSymbolicLink()) {
-    if (!current.isDirectory() || !(await sameTree(at, target))) {
-      throw new LinkRefused(
-        `${link.path} is a file or directory where the bundle has a link, and it isn't a copy of ${link.target}.`,
-      );
-    }
+  if (kind === undefined || !kind.isDirectory()) {
+    return names(root, link, at, realRoot);
   }
-  try {
-    if (current?.isSymbolicLink()) {
-      // A junction is a directory to Windows: `rmdir` removes the link, never what it names.
-      await rmdir(at).catch((error: NodeJS.ErrnoException) =>
-        error.code === "ENOENT" ? undefined : unlink(at),
-      );
-    } else if (current !== undefined) {
-      // A copy of the target: no link inside it (`sameTree` refuses one), so nothing outside it.
-      await rm(at, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
-    await symlink(target, at, "junction");
-  } catch (error) {
-    // Another setup of this bundle made it meanwhile.
+  // Another setup of this bundle may be making the same links (finding 5). Each attempt reads the
+  // state afresh and accepts a link that names its target, whoever made it; a setup removes only
+  // what doesn't, and always makes the link right after, while nothing ever makes a stale one, so
+  // the link names its target once both stop.
+  let last: unknown;
+  for (let attempt = 0; attempt < 20; attempt++) {
     if (await names(root, link, at, realRoot)) return true;
-    throw new LinkRefused(
-      `${link.path} couldn't be made as a junction to ${link.target}: ${(error as Error).message}`,
-    );
+    const current = await lstat(at).catch(() => undefined);
+    try {
+      if (current?.isSymbolicLink()) {
+        // A junction is a directory to Windows: `rmdir` removes the link, never what it names.
+        await rmdir(at).catch(async (error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") await unlink(at);
+        });
+      } else if (current !== undefined) {
+        if (!current.isDirectory() || !(await sameTree(at, target))) {
+          // Read again: another setup may have replaced the copy while it was compared.
+          if (await names(root, link, at, realRoot)) return true;
+          const now = await lstat(at).catch(() => undefined);
+          if (now !== undefined && !now.isSymbolicLink()) {
+            throw new LinkRefused(
+              `${link.path} is a file or directory where the bundle has a link, and it isn't a copy of ${link.target}.`,
+            );
+          }
+          continue;
+        }
+        // A copy of the target: no link inside it (`sameTree` refuses one), so nothing outside it.
+        await rm(at, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      }
+      await symlink(target, at, "junction");
+    } catch (error) {
+      if (error instanceof LinkRefused) throw error;
+      last = error; // another setup's step came between: the next attempt reads the state again
+    }
   }
-  if (!(await names(root, link, at, realRoot))) {
-    throw new LinkRefused(`${link.path} couldn't be made as a junction to ${link.target}.`);
-  }
-  return true;
+  if (await names(root, link, at, realRoot)) return true;
+  throw new LinkRefused(
+    `${link.path} couldn't be made as a junction to ${link.target}${last ? `: ${(last as Error).message}` : ""}.`,
+  );
 }
 
 /** Whether the link at `at` exists and names the manifest's target. */
