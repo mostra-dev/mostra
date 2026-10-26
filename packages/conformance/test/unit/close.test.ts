@@ -15,6 +15,27 @@ function alive(pid: number): boolean {
   }
 }
 
+/**
+ * The kit finds the Windows helper beside the runtime it resolves; these unit tests run without a
+ * built runtime, so they name the helper Cargo built for the Windows legs, as the other suites do,
+ * and fail rather than pass for another reason when it is missing.
+ */
+function useCheckoutHelper(): void {
+  if (process.platform !== "win32" || process.env["MOSTRA_WIN_HELPER"]) return;
+  const built = join(
+    import.meta.dirname,
+    "..",
+    "..",
+    "..",
+    "..",
+    "target",
+    "release",
+    "mostra-win.exe",
+  );
+  expect(existsSync(built), `the Windows helper Cargo builds (${built})`).toBe(true);
+  process.env["MOSTRA_WIN_HELPER"] = built;
+}
+
 let dir: string | undefined;
 afterEach(() => {
   if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
@@ -22,6 +43,7 @@ afterEach(() => {
 
 describe("ending a host shim (Opus review of WP-W3, finding 3)", () => {
   it("ends a descendant that holds the shim's output after the shim exits", async () => {
+    useCheckoutHelper();
     dir = mkdtempSync(join(tmpdir(), "kit-close-"));
     const file = join(dir, "grandchild.pid");
     const host = await HostUnderTest.start(`node --conditions=@mostra/source "${SHIM}"`, {
