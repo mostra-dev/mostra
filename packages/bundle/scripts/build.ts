@@ -66,12 +66,12 @@ function git(args: readonly string[]): string | undefined {
  * through its `.cmd` shim, which Node.js starts only through `cmd.exe` (CVE-2024-27980) and whose
  * `%~dp0` names the wrong directory when `cmd.exe` gets it quoted (VERIFIED_FACTS, WP-W3).
  */
-function commandFor(command: string, args: readonly string[]): [string, string[], boolean] {
-  if (command !== "pnpm") return [command, [...args], false];
+function commandFor(command: string, args: readonly string[]): [string, string[]] {
+  if (command !== "pnpm") return [command, [...args]];
   const own = process.env["npm_execpath"];
   if (own && /pnpm/i.test(own)) {
-    if (/\.[cm]?js$/.test(own)) return [process.execPath, [own, ...args], false];
-    return [own, [...args], false];
+    if (/\.[cm]?js$/.test(own)) return [process.execPath, [own, ...args]];
+    return [own, [...args]];
   }
   if (WINDOWS) {
     fail(
@@ -81,7 +81,7 @@ function commandFor(command: string, args: readonly string[]): [string, string[]
       "bundle",
     );
   }
-  return ["pnpm", [...args], false];
+  return ["pnpm", [...args]];
 }
 
 /** Runs a command with its output passed through, resolving with its exit code. */
@@ -91,12 +91,11 @@ function runStreaming(
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<number> {
   return new Promise((done) => {
-    const [program, argv, verbatim] = commandFor(command, args);
+    const [program, argv] = commandFor(command, args);
     const child = spawn(program, argv, {
       cwd: options.cwd ?? ROOT,
       env: options.env ?? process.env,
       stdio: ["ignore", "inherit", "inherit"],
-      windowsVerbatimArguments: verbatim,
     });
     child.on("error", (error) => {
       console.error(`${command}: ${error.message}`);
@@ -237,7 +236,14 @@ function digest(bytes: Buffer): string {
 async function windowsBinaries(): Promise<string> {
   const cargoHome = process.env["CARGO_HOME"] ?? join(process.env["USERPROFILE"] ?? "", ".cargo");
   const remap = [`--remap-path-prefix=${ROOT}=.`, `--remap-path-prefix=${cargoHome}=cargo`];
-  const flags = [process.env["RUSTFLAGS"], ...remap].filter(Boolean).join(" ");
+  // Cargo's encoded form, one flag per \x1f-separated item: RUSTFLAGS is split on spaces, so a
+  // checkout or Cargo home whose path holds one would break the flag (Opus review of WP-W3,
+  // finding 10). Flags the environment already sets are kept, as Cargo itself reads them.
+  const encoded = process.env["CARGO_ENCODED_RUSTFLAGS"];
+  const given = encoded
+    ? encoded.split("\x1f")
+    : (process.env["RUSTFLAGS"] ?? "").split(/\s+/).filter(Boolean);
+  const flags = [...given, ...remap].join("\x1f");
   const bins = ["mostra-win", "mostra-win-service", "mostra-launch"].flatMap((bin) => [
     "--bin",
     bin,
@@ -246,7 +252,7 @@ async function windowsBinaries(): Promise<string> {
     "cargo",
     ["build", "--release", "--locked", "-p", "mostra-win", ...bins],
     {
-      env: { ...process.env, RUSTFLAGS: flags },
+      env: { ...process.env, RUSTFLAGS: undefined, CARGO_ENCODED_RUSTFLAGS: flags },
     },
   );
   if (code !== 0) fail([`cargo build exited ${code}.`], "bundle");
@@ -466,14 +472,13 @@ async function checkLinks(root: string): Promise<void> {
  */
 function checkMachinePaths(root: string): void {
   const pnpmValue = (key: string): string => {
-    const [program, argv, verbatim] = commandFor(
+    const [program, argv] = commandFor(
       "pnpm",
       key === "store" ? ["store", "path"] : ["config", "get", key],
     );
     return spawnSync(program, argv, {
       cwd: ROOT,
       encoding: "utf8",
-      windowsVerbatimArguments: verbatim,
     }).stdout.trim();
   };
   const candidates = [ROOT, out, pnpmValue("store"), pnpmValue("cache-dir")];

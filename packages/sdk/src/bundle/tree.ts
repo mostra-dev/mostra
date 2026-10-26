@@ -20,9 +20,15 @@ const WINDOWS = process.platform === "win32";
 /**
  * A link's target as the manifest spells it: relative to the link's directory, `/`-separated.
  * POSIX targets are kept exactly as written; a Windows junction's absolute target, and a Windows
- * symbolic link's `\\`-separated one, are rewritten into that form.
+ * symbolic link's `\\`-separated one, are rewritten into that form. `realRoot` is `root`'s real
+ * path, which a caller reading many links computes once (Opus review of WP-W3, finding 8).
  */
-export function linkTarget(root: string, path: string, written: string): string {
+export function linkTarget(
+  root: string,
+  path: string,
+  written: string,
+  realRoot: string | undefined = realOrNone(root),
+): string {
   if (!WINDOWS) return written;
   // A junction's target may carry the `\\?\` prefix of Windows' own namespace.
   const plain = written.startsWith("\\\\?\\") ? written.slice(4) : written;
@@ -35,18 +41,24 @@ export function linkTarget(root: string, path: string, written: string): string 
   const given = resolve(root);
   const dir = dirname(join(given, path));
   const spellings: [string, string][] = [[given, dir]];
-  try {
-    const realRoot = realpathSync.native(given);
-    spellings.push([realRoot, join(realRoot, relative(given, dir))]);
-  } catch {
-    // A root that doesn't exist holds no junction; the lexical form reports the mismatch.
-  }
+  // A root that doesn't exist holds no junction; the lexical form then reports the mismatch.
+  if (realRoot !== undefined) spellings.push([realRoot, join(realRoot, relative(given, dir))]);
   const lower = plain.toLowerCase();
   for (const [base, from] of spellings) {
     if (lower === base.toLowerCase() || lower.startsWith(`${base.toLowerCase()}${sep}`))
       return relative(from, plain).split(sep).join("/");
   }
   return relative(dir, plain).split(sep).join("/");
+}
+
+/** `root`'s real path on Windows (where junction targets need it), or `undefined`. */
+export function realOrNone(root: string): string | undefined {
+  if (!WINDOWS) return undefined;
+  try {
+    return realpathSync.native(resolve(root));
+  } catch {
+    return undefined;
+  }
 }
 
 /** The SHA-256 and size of one file, read as a stream. */
@@ -69,6 +81,7 @@ type Walked =
 /** Every file and link under `root`, sorted by path, skipping `exclude`d paths (and below). */
 async function walk(root: string, exclude: (path: string) => boolean): Promise<Walked[]> {
   const out: Walked[] = [];
+  const realRoot = realOrNone(root);
   const visit = async (dir: string): Promise<void> => {
     const entries = await readdir(join(root, dir), { withFileTypes: true });
     for (const entry of entries) {
@@ -77,7 +90,7 @@ async function walk(root: string, exclude: (path: string) => boolean): Promise<W
       if (entry.isDirectory()) await visit(path);
       else if (entry.isSymbolicLink()) {
         const written = await readlink(join(root, path));
-        out.push({ kind: "link", path, target: linkTarget(root, path, written) });
+        out.push({ kind: "link", path, target: linkTarget(root, path, written, realRoot) });
       } else if (entry.isFile()) {
         // Windows keeps no execute bit: Node.js reports one there for every file it can read.
         const executable = WINDOWS ? false : ((await lstat(join(root, path))).mode & 0o100) !== 0;

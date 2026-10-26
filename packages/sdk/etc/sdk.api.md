@@ -79,6 +79,7 @@ export function checkBrowser(bundle: Bundle): Promise<readonly string[]>;
 // @public
 export function checkFiles(bundle: Bundle, options?: {
     readonly links?: boolean;
+    readonly manifest?: BundleFiles;
 }): Promise<void>;
 
 // @public

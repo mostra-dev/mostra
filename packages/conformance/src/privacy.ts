@@ -12,18 +12,25 @@ import { statSync } from "node:fs";
 /** `SYSTEM`, as SDDL names it by alias and by SID. */
 const SYSTEM = new Set(["SY", "S-1-5-18"]);
 
+/** `CREATOR OWNER`: an inheritable entry for whoever creates a child, which in an owner-only
+ * directory only the user or `SYSTEM` can do (Opus review of WP-W3, finding 7). */
+const CREATOR_OWNER = new Set(["CO", "S-1-3-0"]);
+
+/** The entry types that deny: they grant no one anything (finding 7). */
+const DENY = new Set(["D", "OD", "XD"]);
+
 /**
- * The aliases SDDL writes for a machine's own accounts by their relative ID: the built-in
- * Administrator account (500, `LA`) and Guest (501, `LG`). GitHub's runners run as the former, so
- * an access list for that user names it `LA`, not by its SID.
+ * The SIDs this machine's own account aliases stand for: SDDL writes the built-in Administrator
+ * (`LA`) and Guest (`LG`) of the local machine by alias (GitHub's runners run as the former). An
+ * alias is the user only when it resolves to exactly the user's SID, never by its relative ID
+ * alone: a domain's Administrator ends in -500 too (finding 6). An alias that couldn't be resolved
+ * is no one's, so its entry fails the check.
  */
-const ACCOUNT_ALIASES: Readonly<Record<string, string>> = { LA: "-500", LG: "-501" };
+export type AccountAliases = Readonly<Record<string, string>>;
 
 /** Whether an SDDL trustee (a SID or an alias) is the user `user` (a SID). */
-function isUser(trustee: string, user: string): boolean {
-  if (trustee === user) return true;
-  const rid = ACCOUNT_ALIASES[trustee];
-  return rid !== undefined && /^S-1-5-21-\d+-\d+-\d+-\d+$/.test(user) && user.endsWith(rid);
+function isUser(trustee: string, user: string, aliases: AccountAliases): boolean {
+  return trustee === user || (Object.hasOwn(aliases, trustee) && aliases[trustee] === user);
 }
 
 /** What is wrong with `path`'s privacy, or `undefined` when it is owner-only. */
@@ -37,11 +44,17 @@ export function notOwnerOnly(
     const mode = stats.mode & 0o777;
     return mode === want ? undefined : `mode ${mode.toString(8)}, not ${want.toString(8)}`;
   }
-  return judgeSddl(windowsSddl(path), windowsUser(), statSync(path).isDirectory());
+  const { sddl, aliases } = windowsSddl(path);
+  return judgeSddl(sddl, windowsUser(), statSync(path).isDirectory(), aliases);
 }
 
 /** What is wrong with a Windows access list (`sddl`) for the user `user` (a SID). */
-export function judgeSddl(sddl: string, user: string, directory: boolean): string | undefined {
+export function judgeSddl(
+  sddl: string,
+  user: string,
+  directory: boolean,
+  aliases: AccountAliases = {},
+): string | undefined {
   const start = sddl.indexOf("D:");
   if (start < 0) return `no access list (${sddl})`;
   const rest = sddl.slice(start + 2);
@@ -56,8 +69,11 @@ export function judgeSddl(sddl: string, user: string, directory: boolean): strin
   for (const ace of dacl.matchAll(/\(([^)]*)\)/g)) {
     const fields = (ace[1] ?? "").split(";");
     const [type, , , , , sid] = fields;
-    if (type === "D") continue;
-    if (sid === undefined || !(isUser(sid, user) || SYSTEM.has(sid))) {
+    if (type !== undefined && DENY.has(type)) continue;
+    if (
+      sid === undefined ||
+      !(isUser(sid, user, aliases) || SYSTEM.has(sid) || CREATOR_OWNER.has(sid))
+    ) {
       return `it grants ${sid ?? "someone"} access (${dacl})`;
     }
   }
@@ -76,7 +92,8 @@ function windowsUser(): string {
   return sid;
 }
 
-function windowsSddl(path: string): string {
+/** The path's SDDL, and the SIDs of this machine's `LA` and `LG` (absent when unresolvable). */
+function windowsSddl(path: string): { sddl: string; aliases: AccountAliases } {
   const system = process.env["SystemRoot"] ?? "C:\\Windows";
   const answer = spawnSync(
     `${system}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
@@ -84,13 +101,22 @@ function windowsSddl(path: string): string {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      "(Get-Acl -LiteralPath $env:MOSTRA_KIT_PATH).Sddl",
+      [
+        "(Get-Acl -LiteralPath $env:MOSTRA_KIT_PATH).Sddl",
+        // Single quotes only: Windows PowerShell 5 takes double quotes in `-Command` apart.
+        "foreach ($a in 'LA','LG') { try { $a + '=' + ([Security.Principal.SecurityIdentifier]$a).Value } catch { $a + '=' } }",
+      ].join("; "),
     ],
     { encoding: "utf8", windowsHide: true, env: { ...process.env, MOSTRA_KIT_PATH: path } },
   );
-  const sddl = (answer.stdout ?? "").trim();
-  if (answer.status !== 0 || sddl === "") {
+  const [sddl = "", ...rest] = (answer.stdout ?? "").trim().split(/\r?\n/);
+  if (answer.status !== 0 || sddl.trim() === "") {
     throw new Error(`Get-Acl couldn't read ${path}: ${answer.stderr}`);
   }
-  return sddl;
+  const aliases: Record<string, string> = {};
+  for (const line of rest) {
+    const match = /^(LA|LG)=(S-1-[0-9-]+)\s*$/.exec(line.trim());
+    if (match) aliases[match[1] as string] = match[2] as string;
+  }
+  return { sddl: sddl.trim(), aliases };
 }

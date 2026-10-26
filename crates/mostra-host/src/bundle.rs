@@ -159,26 +159,38 @@ pub fn offline(env: &Environment) -> bool {
 /// `${XDG_CACHE_HOME:-~/.cache}/mostra`.
 #[must_use]
 pub fn cache_root(env: &Environment) -> PathBuf {
+    // Absolute, as the SDK's `cacheRoot` resolves it: the runtime found there runs a daemon in its
+    // home's file system root, where a relative path would name nothing (Opus review of WP-W3).
     if let Some(dir) = env.get("MOSTRA_CACHE_DIR").filter(|dir| !dir.is_empty()) {
-        return PathBuf::from(dir);
+        let dir = PathBuf::from(dir);
+        return std::path::absolute(&dir).unwrap_or(dir);
     }
     if cfg!(windows) {
-        let local = env
-            .get("LOCALAPPDATA")
-            .filter(|dir| !dir.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| {
-                env.get("USERPROFILE")
-                    .filter(|dir| !dir.is_empty())
-                    .map(|profile| PathBuf::from(profile).join("AppData").join("Local"))
-            })
-            .unwrap_or_else(|| PathBuf::from(r"C:\"));
+        // The host's environment first, then this process's own profile, as the SDK falls back
+        // to `homedir()`: never a directory every user may create in, such as `C:\` (Opus review
+        // of WP-W3).
+        let named = |name: &str| {
+            env.get(name)
+                .filter(|dir| !dir.is_empty())
+                .map(PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os(name)
+                        .filter(|dir| !dir.is_empty())
+                        .map(PathBuf::from)
+                })
+        };
+        let local = named("LOCALAPPDATA")
+            .or_else(|| named("USERPROFILE").map(|profile| profile.join("AppData").join("Local")))
+            .or_else(|| std::env::home_dir().map(|home| home.join("AppData").join("Local")))
+            .unwrap_or_else(|| std::env::temp_dir().join("mostra-cache-no-profile"));
         return local.join("mostra-cache");
     }
     let home = env
         .get("HOME")
         .filter(|home| !home.is_empty())
-        .map_or_else(|| PathBuf::from("/"), PathBuf::from);
+        .map(PathBuf::from)
+        .or_else(std::env::home_dir)
+        .unwrap_or_else(|| PathBuf::from("/"));
     if cfg!(target_os = "macos") {
         return home.join("Library/Caches/mostra");
     }
@@ -316,7 +328,9 @@ enum Walked {
 
 /// A link's target as the manifest spells it: relative to the link's directory, `/`-separated.
 /// POSIX targets are kept as written; a Windows junction's absolute target is made relative.
-fn link_target(root: &Path, path: &str, written: &Path) -> String {
+/// `real_root` is `root`'s real path on Windows, computed once per walk (Opus review of WP-W3,
+/// finding 8); `None` elsewhere, or for a root that doesn't exist.
+fn link_target(root: &Path, real_root: Option<&Path>, path: &str, written: &Path) -> String {
     if cfg!(windows) {
         let written = plain_path(written.to_path_buf());
         if written.is_absolute() {
@@ -326,10 +340,10 @@ fn link_target(root: &Path, path: &str, written: &Path) -> String {
             // the same spelling of the root, so neither reads as a detour out of the bundle.
             let dir = root.join(path).parent().unwrap_or(root).to_path_buf();
             let mut spellings = vec![(root.to_path_buf(), dir.clone())];
-            if let Ok(real) = root.canonicalize().map(plain_path)
+            if let Some(real) = real_root
                 && let Ok(inside) = dir.strip_prefix(root)
             {
-                spellings.push((real.clone(), real.join(inside)));
+                spellings.push((real.to_path_buf(), real.join(inside)));
             }
             for (base, from) in &spellings {
                 if starts_with_folded(&written, base) {
@@ -384,6 +398,11 @@ fn relative_path(from: &Path, to: &Path) -> String {
 /// Every file and link under `root` by `/`-separated path, skipping `skip`ped paths (and below).
 fn walk(root: &Path, skip: &dyn Fn(&str) -> bool) -> std::io::Result<BTreeMap<String, Walked>> {
     let mut out = BTreeMap::new();
+    let real_root = if cfg!(windows) {
+        root.canonicalize().map(plain_path).ok()
+    } else {
+        None
+    };
     let mut stack = vec![String::new()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(root.join(&dir))? {
@@ -401,7 +420,12 @@ fn walk(root: &Path, skip: &dyn Fn(&str) -> bool) -> std::io::Result<BTreeMap<St
             if kind.is_dir() {
                 stack.push(path);
             } else if kind.is_symlink() {
-                let target = link_target(root, &path, &std::fs::read_link(entry.path())?);
+                let target = link_target(
+                    root,
+                    real_root.as_deref(),
+                    &path,
+                    &std::fs::read_link(entry.path())?,
+                );
                 out.insert(path, Walked::Link { target });
             } else if kind.is_file() {
                 out.insert(
@@ -1232,6 +1256,32 @@ impl Drop for Lock {
             let _ = std::fs::hard_link(&aside, &self.path);
         }
         let _ = std::fs::remove_file(&aside);
+    }
+}
+
+#[cfg(test)]
+mod cache_root_tests {
+    use super::*;
+
+    /// Absolute whatever the host names, and on Windows never a directory every user can create
+    /// in when the host's environment names no profile (Opus review of WP-W3, findings 1 and 2).
+    #[test]
+    fn the_cache_root_is_absolute_and_the_users_own() {
+        let mut env = Environment::new();
+        env.insert("MOSTRA_CACHE_DIR".into(), "relative/cache".into());
+        let named = cache_root(&env);
+        assert!(named.is_absolute(), "{}", named.display());
+        assert!(named.ends_with("relative/cache"));
+
+        let bare = cache_root(&Environment::new());
+        assert!(bare.is_absolute(), "{}", bare.display());
+        let home = std::env::home_dir().expect("a profile");
+        assert!(
+            bare.starts_with(&home),
+            "{} isn't under {}",
+            bare.display(),
+            home.display()
+        );
     }
 }
 

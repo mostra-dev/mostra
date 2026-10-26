@@ -25,19 +25,32 @@ describe("a Windows access list (H-16)", () => {
     }
   });
 
-  it("reads the built-in Administrator's alias as that user, and as no one else", () => {
-    const admin = "S-1-5-21-1-2-3-500";
+  it("reads an account alias as the user only when it resolves to exactly the user's SID (Opus review of WP-W3, finding 6)", () => {
+    const localAdmin = "S-1-5-21-1-2-3-500";
+    const domainAdmin = "S-1-5-21-7-8-9-500";
     const list = "O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;LA)";
-    expect(judgeSddl(list, admin, true)).toBeUndefined();
-    expect(judgeSddl(list, USER, true)).toMatch(/LA/);
+    const aliases = { LA: localAdmin, LG: "S-1-5-21-1-2-3-501" };
+    expect(judgeSddl(list, localAdmin, true, aliases)).toBeUndefined();
+    // A domain's Administrator ends in -500 too, and is another account than this machine's.
+    expect(judgeSddl(list, domainAdmin, true, aliases)).toMatch(/LA/);
+    expect(judgeSddl(list, USER, true, aliases)).toMatch(/LA/);
+    // An alias the kit couldn't resolve is no one's.
+    expect(judgeSddl(list, localAdmin, true, {})).toMatch(/LA/);
+  });
+
+  it("lets every deny type and CREATOR OWNER stand, and nothing else inheritable (finding 7)", () => {
+    const base = `O:${USER}G:${USER}D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;${USER})`;
+    expect(judgeSddl(`${base}(A;OICIIO;FA;;;CO)`, USER, true)).toBeUndefined();
+    expect(judgeSddl(`${base}(OD;;FA;;;WD)(XD;;FA;;;WD)(D;;FA;;;WD)`, USER, true)).toBeUndefined();
+    // Inherit-only, yet every child would grant it: not owner-only.
+    expect(judgeSddl(`${base}(A;OICIIO;FA;;;WD)`, USER, true)).toMatch(/WD/);
+    expect(judgeSddl(`${base}(OA;;FA;;;WD)`, USER, true)).toMatch(/WD/);
   });
 
   it("refuses a NULL access list, for a file as for a directory (GPT review of WP-W3)", () => {
     for (const directory of [false, true]) {
       expect(judgeSddl(`O:${USER}G:${USER}D:NO_ACCESS_CONTROL`, USER, directory)).toMatch(/NULL/);
-      expect(judgeSddl(`O:${USER}G:${USER}D:PNO_ACCESS_CONTROL`, USER, directory)).toMatch(
-        /NULL|inherits/,
-      );
+      expect(judgeSddl(`O:${USER}G:${USER}D:PNO_ACCESS_CONTROL`, USER, directory)).toMatch(/NULL/);
     }
   });
 

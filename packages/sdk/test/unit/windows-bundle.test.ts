@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -104,6 +105,40 @@ describe.runIf(WINDOWS)("a Windows bundle's junctions (D153)", () => {
     );
     expect(existsSync(join(moved, LINK_PATH, "cli.js"))).toBe(true);
     expect((await readSetup(await readBundle(moved)))?.root).toBe(realRoot(moved));
+  });
+
+  it("sets up a copy a tool made by following the junctions, whose links are real directories (Opus review of WP-W3, finding 4)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    await setupBundle(synthetic.root, { env: { PATH: process.env["PATH"] ?? "" } });
+    // As Explorer, Copy-Item and robocopy copy: each junction's contents, as a real directory.
+    const copy = join(dir.path, "copied", "mostra");
+    cpSync(synthetic.root, copy, { recursive: true, dereference: true });
+    expect(lstatSync(join(copy, LINK_PATH)).isSymbolicLink()).toBe(false);
+    await setupBundle(copy, { env: { PATH: process.env["PATH"] ?? "" } });
+    expect(lstatSync(join(copy, LINK_PATH)).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(join(copy, LINK_PATH))).toBe(
+      join(realRoot(copy), "lib/node_modules/fake-playwright"),
+    );
+    expect((await readSetup(await readBundle(copy)))?.root).toBe(realRoot(copy));
+  });
+
+  it("two setups of one moved bundle at once both succeed (Opus review of WP-W3, finding 5)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    await setupBundle(synthetic.root, { env: { PATH: process.env["PATH"] ?? "" } });
+    const moved = join(dir.path, "moved-twice", "mostra");
+    mkdirSync(join(dir.path, "moved-twice"));
+    renameSync(synthetic.root, moved);
+    const manifest = JSON.parse(readFileSync(join(moved, "files.json"), "utf8")) as BundleFiles;
+    const root = realRoot(moved);
+    for (let round = 0; round < 10; round++) {
+      // Each round leaves the links naming the old root again, so both calls replace them.
+      await Promise.all([makeJunctions(root, manifest), makeJunctions(root, manifest)]);
+      expect(readlinkSync(join(moved, LINK_PATH))).toBe(
+        join(root, "lib/node_modules/fake-playwright"),
+      );
+      removeLink(join(moved, LINK_PATH));
+      symlinkSync(join(dir.path, "elsewhere"), join(moved, LINK_PATH), "junction");
+    }
   });
 
   it("refuses a directory where a link belongs, and removes nothing", async () => {

@@ -156,9 +156,9 @@ async function readManifest(bundle: Bundle): Promise<BundleFiles> {
  * any other bundle, whose archive carries its links. Throws `MOSTRA_ENV_BUNDLE_INVALID` for a link
  * the bundle can't have.
  */
-export async function makeLinks(bundle: Bundle): Promise<void> {
+export async function makeLinks(bundle: Bundle, read?: BundleFiles): Promise<void> {
   if (!isWindowsBundle(bundle.info.platform)) return;
-  const manifest = await readManifest(bundle);
+  const manifest = read ?? (await readManifest(bundle));
   try {
     await makeJunctions(realRoot(bundle.root), manifest);
   } catch (error) {
@@ -173,10 +173,10 @@ export async function makeLinks(bundle: Bundle): Promise<void> {
  */
 export async function checkFiles(
   bundle: Bundle,
-  options: { readonly links?: boolean } = {},
+  options: { readonly links?: boolean; readonly manifest?: BundleFiles } = {},
 ): Promise<void> {
   const { root, info } = bundle;
-  const manifest = await readManifest(bundle);
+  const manifest = options.manifest ?? (await readManifest(bundle));
   const problems = await checkTree(root, manifest, {
     allowExtra: setupExtras,
     links: options.links ?? true,
@@ -292,10 +292,14 @@ export async function setupBundle(root: string, options: SetupOptions = {}): Pro
   const bundle = await readBundle(root);
   // A Windows bundle's junctions are made where it sits now, each read back as it is made; a
   // tree checked a moment ago (`filesChecked`, before the cache's rename) needs nothing more.
-  await makeLinks(bundle);
+  // `files.json` is read and checked against its pin once, for both steps (Opus review of
+  // WP-W3, finding 9): it lists every file of the bundle and is large.
+  const windows = isWindowsBundle(bundle.info.platform);
+  const manifest = windows || !options.filesChecked ? await readManifest(bundle) : undefined;
+  await makeLinks(bundle, manifest);
   if (!options.filesChecked) {
     options.onStep?.("files");
-    await checkFiles(bundle);
+    await checkFiles(bundle, manifest ? { manifest } : {});
   }
   options.onStep?.("browser");
   if ((await checkBrowser(bundle)).length > 0) {

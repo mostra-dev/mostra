@@ -13,6 +13,7 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
+import { resolveRuntime, windowsHelper } from "@mostra/sdk";
 import { kitVersion } from "../version.ts";
 import {
   type CallError,
@@ -32,6 +33,7 @@ import {
   type StoreResult,
   StoreResult as StoreResultSchema,
 } from "./protocol.ts";
+import { endTree, snapshotTree } from "./tree.ts";
 
 /** How long one harness request may take before the kit gives up on the host. */
 const HARNESS_TIMEOUT_MS = 120_000;
@@ -197,40 +199,45 @@ export class HostUnderTest {
 
   /**
    * Ends the shim: stdin closes, then SIGTERM to its process group, then SIGKILL. Windows has no
-   * process groups or signals (D150 item 6): there the shell and every process under it are ended
-   * with `taskkill /T /F`.
+   * process groups or signals (D150 item 6): there the kit notes the shell's process tree while it
+   * runs, and after 5 s ends the shell's tree (`taskkill /T`, while the shell lives) and every
+   * process it noted (`mostra-win reap`, which ends one only while its creation time matches), so
+   * a descendant of a shell that already exited is ended too (Opus review of WP-W3, finding 3).
    */
   async close(): Promise<void> {
-    this.#child.stdin?.end();
     const pid = this.#child.pid;
-    const signal = (name: NodeJS.Signals): void => {
-      if (pid === undefined) return;
-      if (WINDOWS) {
-        if (name !== "SIGKILL") return;
+    const helper = WINDOWS && pid !== undefined ? await windowsHelperOrNone() : undefined;
+    const tree = helper !== undefined && pid !== undefined ? snapshotTree(helper, pid) : [];
+    this.#child.stdin?.end();
+    const wait = (ms: number): Promise<"exited" | "waiting"> =>
+      Promise.race([
+        this.#exited.then(() => "exited" as const),
+        new Promise<"waiting">((done) => setTimeout(() => done("waiting"), ms)),
+      ]);
+    if (WINDOWS) {
+      if ((await wait(5000)) === "waiting" && pid !== undefined) {
         const system = process.env["SystemRoot"] ?? "C:\\Windows";
         spawnSync(`${system}\\System32\\taskkill.exe`, ["/pid", String(pid), "/T", "/F"], {
           stdio: "ignore",
           windowsHide: true,
         });
-        return;
+        if (helper !== undefined) endTree(helper, tree);
+        await wait(5000);
       }
+      this.#peer.close();
+      return;
+    }
+    const signal = (name: NodeJS.Signals): void => {
+      if (pid === undefined) return;
       try {
         process.kill(-pid, name);
       } catch {
         // gone already
       }
     };
-    const outcome = await Promise.race([
-      this.#exited.then(() => "exited" as const),
-      new Promise<"waiting">((done) => setTimeout(() => done("waiting"), 5000)),
-    ]);
-    if (outcome === "waiting") {
+    if ((await wait(5000)) === "waiting") {
       signal("SIGTERM");
-      const later = await Promise.race([
-        this.#exited.then(() => "exited" as const),
-        new Promise<"waiting">((done) => setTimeout(() => done("waiting"), 5000)),
-      ]);
-      if (later === "waiting") signal("SIGKILL");
+      if ((await wait(5000)) === "waiting") signal("SIGKILL");
     }
     this.#peer.close();
   }
@@ -241,4 +248,13 @@ export function codeOf(error: unknown): string | undefined {
   if (error instanceof InstanceError) return error.code;
   if (error instanceof RpcError) return (error.diagnostic as Diagnostic).code;
   return undefined;
+}
+
+/** The Windows helper beside the runtime the kit resolves, or none (the tree then isn't noted). */
+async function windowsHelperOrNone(): Promise<string | undefined> {
+  try {
+    return windowsHelper(await resolveRuntime().catch(() => undefined), process.env);
+  } catch {
+    return undefined;
+  }
 }
