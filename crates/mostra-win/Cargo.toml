@@ -3,6 +3,8 @@ name = "mostra-win"
 version = "0.0.0"
 description = "Mostra's Windows platform helper: owner-only access control, the home's control pipe, every child in a Job Object behind a gate, and process identity by creation time (WP-W1)."
 publish = false
+# The programs' Windows manifest (build.rs).
+include = ["src/**/*.rs", "build.rs", "windows.manifest"]
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -623,6 +623,26 @@ async function main(): Promise<void> {
       await copyFile(join(built, "mostra-launch.exe"), join(stage, "bin", `${name}.exe`));
     for (const name of ["mostra-win", "mostra-win-service"])
       await copyFile(join(built, `${name}.exe`), join(stage, "bin", `${name}.exe`));
+    // Each runs as whoever starts it: without its embedded manifest's `asInvoker`, UAC's
+    // installer detection refuses `mostra-setup.exe` to an ordinary user (D153).
+    const unmanifested: string[] = [];
+    for (const name of [
+      "mostra",
+      "mostra-runtime",
+      "mostra-setup",
+      "mostra-win",
+      "mostra-win-service",
+    ]) {
+      const bytes = await readFile(join(stage, "bin", `${name}.exe`));
+      if (!bytes.includes('requestedExecutionLevel level="asInvoker"')) unmanifested.push(name);
+    }
+    if (unmanifested.length > 0)
+      fail(
+        unmanifested.map(
+          (name) => `bin/${name}.exe has no asInvoker manifest (crates/mostra-win/build.rs).`,
+        ),
+        "bundle",
+      );
     await writeFile(join(stage, "bin", "THIRD-PARTY-LICENSES.txt"), rustLicenses());
   } else {
     for (const [name, entry] of [

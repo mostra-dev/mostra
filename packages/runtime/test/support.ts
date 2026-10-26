@@ -581,17 +581,31 @@ function procAddress6(hex: string): string {
  */
 export function commandLineOf(pid: number): string {
   if (WINDOWS) {
-    // From the whole table (one CIM query that the gateway suite proves), so a process that
-    // isn't there is an error naming it, never an empty command line.
+    // One process's row, by a filtered CIM query, so a process that isn't there is an error
+    // naming it, never an empty command line. The whole table took 5 s on Windows x64 and 37 s on
+    // arm64, once 55 s on a loaded x64 runner, past the suite's limit; one row takes 0.4 s and
+    // 23 s (VERIFIED_FACTS, WP-W3).
     const started = Date.now();
-    const table = processTable();
-    const row = table.find((entry) => entry.pid === pid);
-    if (!row) {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Get-CimInstance Win32_Process -Filter 'ProcessId = ${Number(pid)}' | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress`,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    ).trim();
+    const row =
+      out === ""
+        ? undefined
+        : (JSON.parse(out) as { ProcessId: number; Name: string; CommandLine: string | null });
+    if (!row || row.ProcessId !== pid) {
       throw new Error(
-        `No process ${pid} is in the process table (${table.length} processes, read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
+        `No process ${pid} is in the process table (read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
       );
     }
-    return row.command;
+    return row.CommandLine ?? row.Name;
   }
   return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
 }
