@@ -1,6 +1,6 @@
 # WP-W3 progress: Windows III, distribution, SDK, host crate and conformance
 
-**Status:** In progress. The report grows during the session and is finalized after acceptance
+**Status:** Accepted by Mirza on 2026-10-26 ("absolutely incredible work! i accept", M41), with D153 and the package's agent-facing prose, after its GPT and Claude Opus reviews and their fixes. Being merged and released; this report is finalized after the release (work-packages/README.md §4).
 (work-packages/README.md §4).
 
 ## Baseline

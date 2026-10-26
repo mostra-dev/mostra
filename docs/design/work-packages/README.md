@@ -45,6 +45,7 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
   3. run small paced batches, starting with a single-call pilot;
   4. record provider, model, date and tokens.
 - **Real side effects** in tests and demos use local fakes, never real email or paid APIs (STANDARDS).
+- **Open issues are a package's scope** (M41). The issues on your package's GitHub milestone (`WP-NN`) are part of it: fix each at its root with a test as strict as before, or close it with evidence that it can't recur. A flake you meet in code another package owns is filed at once with its run, job and saved logs or trace, and given to the next package that touches that code.
 - **Compaction.** Your session keeps every message, and Mirza can compact named slices of past work into summaries. At natural boundaries (a finished subsystem, a long read you no longer need verbatim, an evaluation batch) tell him a compaction is appropriate and name the completed slices it can summarize. Name, too, what must stay verbatim: the files and specs you are still implementing against.
 
 ## 3. Evidence
@@ -78,7 +79,8 @@ Every session starts from the assignment prompt in [PROMPT.md](PROMPT.md), the s
    - deviations;
    - publication references;
    - remaining dirty paths;
-   - the next package.
+   - the next package;
+   - the open issues: each one still open is on the milestone of the next package that touches its code and in that package's specification (`tools/design/wp_specs.py`), so none waits for the launch.
 4. **If the package can't finish safely in one session:**
    1. commit the valid slices;
    2. write `docs/progress/RECOVERY-WP-NN-SESSION-N.md` with the exact Git state, the requirements completed and missing, the evidence, failed attempts and the next action.
