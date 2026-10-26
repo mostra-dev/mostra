@@ -526,25 +526,29 @@ Secrets never enter any export (STANDARDS security).
 
 ## 16. Distribution: the runtime bundle and the SDK
 
-What WP-11 fixed (D142). The schemas are in `@mostra/protocol` (`bundle.ts`), published with the other wire schemas, so the Rust crate (WP-12) reads the same files.
+What WP-11 fixed (D142), with Windows from WP-W3 (D153). The schemas are in `@mostra/protocol` (`bundle.ts`), published with the other wire schemas, so the Rust crate (WP-12) reads the same files.
 
-**A bundle** is `mostra-<version>-<platform>.tar.gz` (`bundleAssetName`; platforms `BUNDLE_PLATFORMS`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, glibc only) with one top directory, `mostra-<version>-<platform>/`:
+**A bundle** is `mostra-<version>-<platform>.tar.gz` (`bundleAssetName`; platforms `BUNDLE_PLATFORMS`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64` (glibc only), `win32-x64`, `win32-arm64`) with one top directory, `mostra-<version>-<platform>/`:
 
 ```text
 bundle.json            BundleInfo: name "mostra-runtime-bundle", version, platform, node { version, path },
                        entries { runtime, cli, setup }, files { path, sha256 }, browser (BundleBrowser), source?
 files.json             BundleFiles: every regular file { path, size, sha256, executable } and link { path, target }
-node/                  the official Node.js distribution
+node/                  the official Node.js distribution (node/node.exe on Windows)
 lib/node_modules/      Mostra's packages and their dependencies; @mostra/warm/node_modules, the warm set
 bin/mostra, bin/mostra-runtime, bin/mostra-setup   POSIX launchers on the bundle's own Node.js
+                       (Windows: mostra.exe, mostra-runtime.exe, mostra-setup.exe, mostra-win.exe,
+                       mostra-win-service.exe and THIRD-PARTY-LICENSES.txt)
 LICENSE, NOTICE
 ```
 
-Setup adds `browsers/` (the verify browser, fetched and checked against `BundleBrowser.files`) and `.mostra-setup.json` (`BundleSetup`: version, platform, `files` (the `files.json` digest it checked), the browser's revision, when). A bundle is usable only with a marker whose files digest, version, platform and browser revision match its own `bundle.json`. `bin/mostra-setup` (the entry `setup`) runs it by hand and prints one JSON line (`{ status: "ok", bundle: { root, …marker } }` or `{ status: "failed", diagnostic }`, exit 3).
+A Windows archive holds files and directories only (an installer refuses a link in one); its `files.json` lists the links, each to a directory, and setup makes them junctions at the bundle's real path. Windows keeps no execute bit, so a Windows `files.json` lists none (D153).
 
-**Pins.** `@mostra/sdk` ships `dist/bundles.json` (`BundlePins`: version, `release` (the base URL, `https://github.com/mostra-dev/mostra/releases/download/v<version>`), `assets` per platform: `{ file, sha256, size, unpackedSize }`). The GitHub release carries the four archives, each archive's asset record (`mostra-<version>-<platform>.json`, a `BundleAsset`, so a host that downloads one directly knows its unpacked size), `SHA256SUMS` in `sha256sum`'s format and an artifact attestation per archive. It is published before any npm package of its version, so a pin always names an archive that exists. An asset's `file` is exactly `mostra-<version>-<platform>.tar.gz` of its pins' version and platform, or the pins are refused.
+Setup adds `browsers/` (the verify browser, fetched and checked against `BundleBrowser.files`) and `.mostra-setup.json` (`BundleSetup`: version, platform, `files` (the `files.json` digest it checked), the browser's revision, when, and for a Windows bundle `root`, the real path its junctions point into, so a moved Windows bundle is set up again). A bundle is usable only with a marker whose files digest, version, platform and browser revision match its own `bundle.json`. `bin/mostra-setup` (the entry `setup`) runs it by hand and prints one JSON line (`{ status: "ok", bundle: { root, …marker } }` or `{ status: "failed", diagnostic }`, exit 3).
 
-**The cache.** `<cache>/bundles/<archive SHA-256>/<top directory>`, with `<cache>` = `MOSTRA_CACHE_DIR`, else `~/Library/Caches/mostra` (macOS), else `${XDG_CACHE_HOME:-~/.cache}/mostra` (Linux); `<sha256>.lock` and `.tmp-*` scratch directories beside them while an install runs. An entry exists only once its files are checked; it is ready once its setup marker is written.
+**Pins.** `@mostra/sdk` ships `dist/bundles.json` (`BundlePins`: version, `release` (the base URL, `https://github.com/mostra-dev/mostra/releases/download/v<version>`), `assets` per platform: `{ file, sha256, size, unpackedSize }`). The GitHub release carries the six archives, each archive's asset record (`mostra-<version>-<platform>.json`, a `BundleAsset`, so a host that downloads one directly knows its unpacked size), `SHA256SUMS` in `sha256sum`'s format and an artifact attestation per archive. It is published before any npm package of its version, so a pin always names an archive that exists. An asset's `file` is exactly `mostra-<version>-<platform>.tar.gz` of its pins' version and platform, or the pins are refused.
+
+**The cache.** `<cache>/bundles/<archive SHA-256>/`, the bundle's root (the archive's top directory is stripped), with `<cache>` = `MOSTRA_CACHE_DIR`, else `~/Library/Caches/mostra` (macOS), `%LOCALAPPDATA%\mostra-cache` (Windows, D153), else `${XDG_CACHE_HOME:-~/.cache}/mostra` (Linux); `<sha256>.lock` and `.tmp-*` scratch directories beside them while an install runs. An entry exists only once its files are checked; it is ready once its setup marker is written.
 
 **Finding the runtime** (`resolveRuntime`, the CLI's bootstrap, every SDK host), first match:
 1. `MOSTRA_BUNDLE` (or the SDK's `bundle` option): an extracted bundle, set up first when it isn't;
@@ -610,6 +614,7 @@ mostra.close().await?;                               // &self: a shared handle c
 ```
 
 - **The runtime.** `runtime::resolve_runtime` finds it as the SDK does (§16): `Options::bundle`, `MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, the crate's own release pins (installed into the shared digest-keyed cache by `bundle::install_pinned`: size and SHA-256 before extraction, strict extraction, every file against `files.json`, the browser through the bundle's own `bin/mostra-setup`), then a development checkout. Proxies, the mirror and offline mode come from the environment the host gives (`Options::env`), never silently from the process.
+- **Windows** (D153): `Mostra::attach` opens the pipe `instance.json` names with `SECURITY_IDENTIFICATION` and refuses it (`MOSTRA_HOST_CONNECTION_CLOSED`) before a byte is sent unless its owner is the user; a daemon it starts runs detached in its file system's root; a spawned instance has no console window and is ended without signals. A child's environment keeps Windows' own system variables (`SystemRoot` and the rest) the host's `Options::env` lacks.
 - **Ports** are async traits. A handler that fails or panics answers the instance with an error (a delivery is retried), and `Delivered` covers every answer of §7. A `Delivery` carries the typed envelope and its exact JSON, for a host that stores it opaquely (H-01).
 - **Events.** `EventStream` keeps the SDK's guarantees: pages in cursor order, a page acknowledged when the next one is asked for, a pause past its high-water mark that resumes after the last cursor with no gap or repeat.
 - **Errors** are the instance's diagnostics (`Error::code`, `hint`, `diagnostic`), or local ones with the same codes (`MOSTRA_HOST_CONNECTION_CLOSED`, `MOSTRA_HOST_TIMEOUT`, `MOSTRA_ENV_BUNDLE_*`).
