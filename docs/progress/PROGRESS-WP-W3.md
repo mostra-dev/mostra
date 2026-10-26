@@ -1,6 +1,6 @@
 # WP-W3 progress: Windows III, distribution, SDK, host crate and conformance
 
-**Status:** Accepted by Mirza on 2026-10-26 ("absolutely incredible work! i accept", M41), with D153 and the package's agent-facing prose, after its GPT and Claude Opus reviews and their fixes. Being merged and released; this report is finalized after the release (work-packages/README.md §4).
+**Status:** Done. Accepted by Mirza on 2026-10-26 ("absolutely incredible work! i accept", M41) with D153 and the package's agent-facing prose, after its GPT and Claude Opus reviews and their fixes; merged to `main` through the merge queue as `f5ea03f` (#79) and released as Mostra 0.6.0, the first release that supports Windows; finalized after the release (work-packages/README.md §4).
 (work-packages/README.md §4).
 
 ## Baseline
@@ -76,12 +76,41 @@ The checks go through the real interfaces: the six bundles built, audited and sm
 
 ## Agent-facing prose (D149)
 
-For Mirza's acceptance, in one batch: `MOSTRA_PLATFORM_UNSUPPORTED`'s hint, explanation and fix (and its generated page); `packages/runtime/AGENTS.md`, `packages/cli/AGENTS.md`, `packages/bundle/AGENTS.md` and `crates/mostra-win/AGENTS.md` (Windows supported, the switch gone, the launcher, `pnpm exec node` for the assembler); `docs/agents/run-on-windows.md`.
+Accepted by Mirza with the package (M41), in one batch: `MOSTRA_PLATFORM_UNSUPPORTED`'s hint, explanation and fix (and its generated page); `packages/runtime/AGENTS.md`, `packages/cli/AGENTS.md`, `packages/bundle/AGENTS.md` and `crates/mostra-win/AGENTS.md` (Windows supported, the switch gone, the launcher, `pnpm exec node` for the assembler); `docs/agents/run-on-windows.md`.
+
+## Found in other packages' code
 
 - **Races Windows' runners exposed in other packages' suites**, each fixed with the test as strict as before, red on the old timing: `@mostra/react`'s open-tab journal test (the tab's own debounced save), the kit's `delivery.retry` (the event read before the host's first answer; also this package's macOS baseline failure), `create-mostra`'s cleanup (a daemon still holding its ledger), the lifecycle suite's whole-table CIM read (37 s on arm64; it reads one process now), the unit legs' temporary files moved to the workspace's disk (#66). The gateway's RT-05 test reads the daemon's tree from the helper's snapshot now, not the whole CIM table, which is cheaper; its time didn't change (33.7 s on x64, 38.4 s on arm64 in run 40310030362, against 21 to 34 s before), so the table wasn't what once took it past its 60 s, and `6e7abf3`'s message says otherwise: the cause is open on #66. Occurrences outside this package's code are recorded on their issues: #66 (Chromium's `ERR_NO_BUFFER_SPACE`), #35 (`mostra dev` losing its instance, on macOS).
 
-## Deviations so far
+## Decisions taken in the package
+
+**D153** (approved at M41), items 1 to 10, amended by the fixes of both reviews: tar bundles for win32 x64 and arm64 built on their own runners from the pinned official Node.js zips; no links in a Windows archive, directory links in `files.json` made as junctions at setup and the setup marker's real `root`, so a moved or copied bundle is set up again; a native launcher (`mostra-launch`, copied as `mostra.exe`, `mostra-runtime.exe` and `mostra-setup.exe`, `asInvoker`) instead of `.cmd` files; the helpers and their licenses in `bin/`; `%LOCALAPPDATA%\mostra-cache` and renames retried briefly; the crate's pipe-owner check with `SECURITY_IDENTIFICATION`; the Windows system variables a host's explicit environment omits; six-platform releases with an ordinary user's install in the smoke test; the switch removed; the Windows legs of the rust, conformance and clients jobs; #66's disks measured. *Amended at M41* (open issues are a package's scope, work-packages/README.md §2 and §4) and followed at M42 by **D154**: the maintenance unit MT-02 takes the open issues, CI's cache gap and Renovate's updates before WP-13.
+
+## Deviations
 
 - **One commit carries two subjects' work.** A commit refused by the subject-length hook left its files staged, and the next commit (`1f5de33`, "ci(release): an ordinary user installs each Windows bundle with Developer Mode off") took them too: besides the workflow, it holds the crate's pipe close, the junction reading in either spelling and the kit's privacy check, described in the refused message and here. History isn't rewritten.
 - **Temporary probe workflows** on branches `probe/w3-*` (never merged) established the Windows facts this package builds on; each was deleted once measured, and its runs are cited in VERIFIED_FACTS.
 - **INTERFACES §16's cache path** said `<archive SHA-256>/<top directory>`; both installers have always put the bundle's root at `<archive SHA-256>/`, which the text now says (found by the npm smoke test).
+- **#79's first two merge-queue runs failed on code outside this package**: two IN-02 tab-close tests (Firefox on Windows, WebKit on Linux; #39, run 40323009583), then a WebKit job cancelled at its limit while apt downloaded for 24 minutes with no cache (#86, run 40327335419: Blacksmith's month was used up, and `main`'s caches live on Blacksmith). Both went to MT-02 (D154); the third run passed.
+
+## Commits and publication
+
+- **Range:** `9675dab..9de82b6` on `main`: the 38 signed-off commits of `wp/w3-windows-distribution` and the merge commit of [#79](https://github.com/mostra-dev/mostra/pull/79) (`f5ea03f`, merge-queue run 40334928382, 68 jobs green), then the version pull request [#87](https://github.com/mostra-dev/mostra/pull/87) (`9de82b6`). The branch's last head was `508625a`; its last full run on every leg was 40310030362 (69 of 69, the evidence above), and 40319315060 on `508625a` passed.
+- **Released, Mostra 0.6.0** (D36, `docs/agents/release.md`): [release run 40350109056](https://github.com/mostra-dev/mostra/actions/runs/40350109056) built, audited and smoke-tested the six bundles with no Node.js (the ordinary user's install on both Windows architectures included), smoke-tested the npm path on Node.js 22 on Linux, macOS and both Windows architectures and its refusal on Node.js 20, and published the immutable GitHub release [`v0.6.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.6.0) with its 13 assets, the npm packages at 0.6.0 with provenance and `mostra-host` 0.6.0 on crates.io.
+- **External checks, 2026-10-26:** `gh attestation verify` passes for `mostra-0.6.0-win32-x64.tar.gz` and `…-win32-arm64.tar.gz` (SLSA provenance v1, `release.yml` on `main`), and both match `SHA256SUMS`; `npm view` shows 0.6.0 with an SLSA provenance attestation for `@mostra/cli`, `runtime`, `sdk`, `protocol`, `conformance` and `create-mostra`; the published `@mostra/sdk`'s `bundles.json` pins all six archives at exactly `SHA256SUMS`' digests; crates.io's latest `mostra-host` is 0.6.0. **From the real registry**, with empty home, cache, config and npm cache directories: `npm create mostra@0.6.0 my-artifact` installed the pinned bundle and scaffolded the artifact, `npx @mostra/cli@0.6.0 verify` passed, `publish` made version 1 and `doctor` reported the bundle ok: on this Mac (116 s for the first install, `ver_26XBSB5CB67VFQH02K2RKHSFTS`), and on fresh Windows x64 and arm64 runners with Node.js 22.23.4 (temporary probe run 40355065564, jobs 121685182368 and 121685183374; 182 s and 561 s for the first install, filed as #88 for MT-02). The probe's branch was deleted once measured.
+- **Code scanning:** CodeQL's one alert on the branch (`js/file-access-to-http` on the assembler's Node.js download, alert 66) was dismissed as a false positive with the reason, as alert 32 was in WP-11.
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, probe workflows, CI logs, traces and review texts in `~/.jcode/scratch/w3`, the external smoke in `/tmp/w3rel-jeQg`, smoke and test homes under the system's temporary directories (a few sealed versions there resisted removal), and `cargo-xwin`'s install.
+
+## Issues
+
+| Issue | Disposition |
+|---|---|
+| #66 (Windows disks) | Measured first: no stall from `C:`'s flushes alone (VERIFIED_FACTS, WP-W3); the unit legs keep their temporary files on the workspace's disk. Its other flakes stay open |
+| #35, #39, #46, #55, #66, #85 | On the MT-02 milestone (D154), with the occurrences seen here added to each |
+| #86 (new) | CI's fallback to GitHub's runners starts with no caches, since `main`'s nightly saves them on Blacksmith; MT-02 |
+| #88 (new) | A first `npm create mostra` takes 9 minutes on Windows arm64; MT-02 |
+| #80 to #84 | Renovate's open updates, on MT-02 (M42) |
+
+## Next
+
+MT-02, the maintenance unit for the open issues, CI's cache gap and Renovate's updates (D154, the `MT-02` milestone), so that WP-13, sharing and remote viewing (`docs/design/work-packages/WP-13.md`), starts from a green baseline. From here on every package keeps its Windows legs green.
