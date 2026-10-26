@@ -320,23 +320,58 @@ fn link_target(root: &Path, path: &str, written: &Path) -> String {
     if cfg!(windows) {
         let written = plain_path(written.to_path_buf());
         if written.is_absolute() {
-            // Relative to the link's directory as Windows spells it for real: setup makes the
-            // junctions at the bundle's real path, while `root` may be another spelling of it (an
-            // 8.3 short name, another case).
+            // A junction stores an absolute path, spelled as whoever made it spelled the bundle's
+            // root: setup uses the real path, while `root` may be another spelling of it (an 8.3
+            // short name, another case). Each spelling of the link's directory is tried against
+            // the same spelling of the root, so neither reads as a detour out of the bundle.
             let dir = root.join(path).parent().unwrap_or(root).to_path_buf();
-            let base = plain_path(dir.canonicalize().unwrap_or(dir));
-            return relative_path(&base, &written).replace('\\', "/");
+            let mut spellings = vec![(root.to_path_buf(), dir.clone())];
+            if let Ok(real) = root.canonicalize().map(plain_path)
+                && let Ok(inside) = dir.strip_prefix(root)
+            {
+                spellings.push((real.clone(), real.join(inside)));
+            }
+            for (base, from) in &spellings {
+                if starts_with_folded(&written, base) {
+                    return relative_path(from, &written);
+                }
+            }
+            return relative_path(&dir, &written);
         }
         return written.to_string_lossy().replace('\\', "/");
     }
     written.to_string_lossy().into_owned()
 }
 
-/// `to` relative to `from` (both absolute, lexically).
+/// Whether two path components are the same: without case on Windows, as it compares names.
+fn same_component(a: &std::path::Component<'_>, b: &std::path::Component<'_>) -> bool {
+    if cfg!(windows) {
+        a.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&b.as_os_str().to_string_lossy())
+    } else {
+        a == b
+    }
+}
+
+/// Whether `path` is `base` or lies below it, by components.
+fn starts_with_folded(path: &Path, base: &Path) -> bool {
+    let mut path = path.components();
+    base.components().all(|part| {
+        path.next()
+            .is_some_and(|other| same_component(&part, &other))
+    })
+}
+
+/// `to` relative to `from` (both absolute, lexically), `/`-separated.
 fn relative_path(from: &Path, to: &Path) -> String {
     let from: Vec<_> = from.components().collect();
     let to: Vec<_> = to.components().collect();
-    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let common = from
+        .iter()
+        .zip(&to)
+        .take_while(|(a, b)| same_component(a, b))
+        .count();
     let mut parts: Vec<String> = vec!["..".to_owned(); from.len() - common];
     parts.extend(
         to[common..]

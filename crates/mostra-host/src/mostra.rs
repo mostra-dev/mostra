@@ -441,6 +441,10 @@ impl Mostra {
             runtime = Some(resolved);
         }
         let (reader, writer) = stream.expect("connected above");
+        // A Windows pipe has no half-close: closing the session drops both halves (D153).
+        #[cfg(windows)]
+        let peer = Peer::start_whole(reader, writer, Arc::new(options.ports.clone()));
+        #[cfg(not(windows))]
         let peer = Peer::start(reader, writer, Arc::new(options.ports.clone()));
         let session = Self::open(&peer, &options).await;
         match session {

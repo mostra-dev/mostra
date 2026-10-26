@@ -27,17 +27,26 @@ export function linkTarget(root: string, path: string, written: string): string 
   // A junction's target may carry the `\\?\` prefix of Windows' own namespace.
   const plain = written.startsWith("\\\\?\\") ? written.slice(4) : written;
   if (!isAbsolute(plain)) return plain.split(sep).join("/");
-  // Relative to the link's directory as Windows spells it for real: setup makes junctions at the
-  // bundle's real path, while `root` may be another spelling of it (an 8.3 short name such as
-  // `RUNNER~1`, another case), which would put a detour through their common ancestor here.
-  const dir = dirname(join(root, path));
-  let base = dir;
+  // A junction stores an absolute path, spelled as whoever made it spelled the bundle's root:
+  // setup uses the real path, while `root` may be another spelling of it (an 8.3 short name such
+  // as `RUNNER~1`, another case). Each spelling of the link's directory is tried against the
+  // same spelling of the root, so neither reads as a detour out of the bundle; Windows compares
+  // without case.
+  const given = resolve(root);
+  const dir = dirname(join(given, path));
+  const spellings: [string, string][] = [[given, dir]];
   try {
-    base = realpathSync.native(dir);
+    const realRoot = realpathSync.native(given);
+    spellings.push([realRoot, join(realRoot, relative(given, dir))]);
   } catch {
-    // A directory that doesn't exist holds no junction; the lexical form reports the mismatch.
+    // A root that doesn't exist holds no junction; the lexical form reports the mismatch.
   }
-  return relative(base, plain).split(sep).join("/");
+  const lower = plain.toLowerCase();
+  for (const [base, from] of spellings) {
+    if (lower === base.toLowerCase() || lower.startsWith(`${base.toLowerCase()}${sep}`))
+      return relative(from, plain).split(sep).join("/");
+  }
+  return relative(dir, plain).split(sep).join("/");
 }
 
 /** The SHA-256 and size of one file, read as a stream. */

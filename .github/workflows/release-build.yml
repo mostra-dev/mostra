@@ -162,6 +162,45 @@ jobs:
           record="$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.json"
           sha=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$record")
           sh packages/bundle/scripts/smoke.sh "$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.tar.gz" "$sha"
+      # An ordinary user, with Developer Mode off as Windows ships, can't create symbolic links,
+      # which GitHub's images allow everyone (Developer Mode on): such a user extracts the archive
+      # and sets the bundle up, whose links setup makes as junctions (D153).
+      - name: An ordinary user installs it, Developer Mode off
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          $unlock = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          New-Item -Force $unlock | Out-Null
+          Set-ItemProperty $unlock -Name AllowDevelopmentWithoutDevLicense -Value 0 -Type DWord
+          $dir = "C:\mostra-ordinary"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\assets\mostra-$env:VERSION-$env:PLATFORM.tar.gz" "$dir\bundle.tar.gz"
+          icacls $dir /grant "Users:(OI)(CI)M" | Out-Null
+          $password = "Mw3-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          "::add-mask::$password"
+          New-LocalUser -Name mostraplain -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          $credential = New-Object System.Management.Automation.PSCredential("mostraplain", (ConvertTo-SecureString $password -AsPlainText -Force))
+          $run = {
+            param($file, $arguments, $log)
+            $options = @{ FilePath = $file; Credential = $credential; LoadUserProfile = $true; WorkingDirectory = $dir; Wait = $true; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = "$dir\$log.out"; RedirectStandardError = "$dir\$log.err" }
+            if ($arguments.Count -gt 0) { $options.ArgumentList = $arguments }
+            $p = Start-Process @options
+            Get-Content "$dir\$log.out", "$dir\$log.err" -ErrorAction SilentlyContinue
+            return $p.ExitCode
+          }
+          $code = & $run "$env:SystemRoot\System32\whoami.exe" @("/groups") "whoami"
+          if ((Get-Content "$dir\whoami.out" -Raw) -match "S-1-5-32-544") { throw "the user is an administrator" }
+          $code = & $run "$env:SystemRoot\System32\tar.exe" @("-xzf", "bundle.tar.gz", "-C", $dir) "extract"
+          if ($code -ne 0) { throw "extracting as an ordinary user exited $code" }
+          $root = "$dir\mostra-$env:VERSION-$env:PLATFORM"
+          $code = & $run "$root\bin\mostra-setup.exe" @() "setup"
+          if ($code -ne 0 -or -not ((Get-Content "$dir\setup.out" -Raw) -match '"status":"ok"')) { throw "setup as an ordinary user failed ($code)" }
+          $junction = Get-Item "$root\lib\node_modules\@mostra\warm\node_modules\react"
+          "react in the warm set: $($junction.LinkType) -> $($junction.Target)"
+          if ($junction.LinkType -ne "Junction") { throw "the warm set's link isn't a junction" }
 
   packages:
     name: packages (pins, pack, npm publish --dry-run)

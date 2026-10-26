@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { HOST_PROTOCOL_REVISIONS } from "@mostra/protocol";
 import { FORM } from "../fixtures.ts";
 import { codeOf } from "../harness/client.ts";
+import { notOwnerOnly } from "../privacy.ts";
 import { check, connectSocket, rpcCode, type Scenario, same } from "../scenario.ts";
 import { send } from "../viewer.ts";
 
@@ -104,7 +105,9 @@ export const authoringRemoved: Scenario = {
   covers: ["HO-05", "HO-08", "H-11"],
   async run(context) {
     const started = await context.start();
-    same(started.instance.home, realpathSync(context.home), "the home the instance owns");
+    // The instance spells its home as the system does (D151 item 5): links followed, Windows'
+    // 8.3 short names written out.
+    same(started.instance.home, realpathSync.native(context.home), "the home the instance owns");
     const receipt = await context.published(FORM);
     const viewer = await context.viewer(receipt.artifactId);
     const channel = viewer.ticket.submitChannels.includes("artifact") ? "artifact" : "shell";
@@ -151,13 +154,13 @@ export const privacy: Scenario = {
       hostConfigured?: { client: string };
     };
     check(config.hostConfigured, "config.json has no hostConfigured mark (D140 item 4)");
-    same(statSync(context.home).mode & 0o777, 0o700, "the home's mode");
+    // Owner-only: modes 0700 and 0600 on POSIX, an access list for the user and SYSTEM alone on
+    // Windows (D150 item 3).
+    const home = notOwnerOnly(context.home);
+    check(home === undefined, `the home isn't owner-only: ${home}`);
     await context.host.call("secret/set", { name: "CONFORMANCE_TOKEN", value: "kept-private-123" });
-    same(
-      statSync(join(context.home, "secrets", "home", "CONFORMANCE_TOKEN")).mode & 0o777,
-      0o600,
-      "a secret's mode",
-    );
+    const secret = notOwnerOnly(join(context.home, "secrets", "home", "CONFORMANCE_TOKEN"));
+    check(secret === undefined, `a secret isn't owner-only: ${secret}`);
     const status = await context.host.call<{ gateway?: { bind: string; shell: string } }>(
       "instance/status",
       {},

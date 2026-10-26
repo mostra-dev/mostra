@@ -7,7 +7,8 @@
  * system's own folders and nothing of the user's secrets. Elsewhere the environment is the host's,
  * as it is.
  */
-import type { Environment } from "./bundle/setup.ts";
+/** An environment as a host gives it. */
+type Environment = Readonly<Record<string, string | undefined>>;
 
 /** What Windows gives every program, which a child of the SDK keeps (D150 item 9). */
 const WINDOWS_SYSTEM_VARIABLES: readonly string[] = [
