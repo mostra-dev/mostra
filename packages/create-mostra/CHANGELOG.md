@@ -1,5 +1,16 @@
 # create-mostra
 
+## 0.6.0
+
+### Minor Changes
+
+- [#79](https://github.com/mostra-dev/mostra/pull/79) [`ee5a888`](https://github.com/mostra-dev/mostra/commit/ee5a8883ec3cfd8c0f3d849f2b5a78b761e39c4a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `npm create mostra` installs and runs on Windows (x64 and arm64), from the Windows runtime bundles each release now carries with the others. The conformance kit's TypeScript reference host starts on Windows, and `MOSTRA_PLATFORM_UNSUPPORTED`'s hint and page name Windows among the supported platforms. The Rust crate `mostra-host`, released with them, spawns and attaches on Windows too, over the home's named pipe, which it refuses unless your user owns it.
+
+### Patch Changes
+
+- Updated dependencies [[`e903d95`](https://github.com/mostra-dev/mostra/commit/e903d952bc51fd108c736ae7d4bb4ff610f133dc)]:
+  - @mostra/cli@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes

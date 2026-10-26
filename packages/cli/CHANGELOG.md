@@ -1,5 +1,17 @@
 # @mostra/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- [#79](https://github.com/mostra-dev/mostra/pull/79) [`e903d95`](https://github.com/mostra-dev/mostra/commit/e903d952bc51fd108c736ae7d4bb4ff610f133dc) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Windows (x64 and arm64) is supported like macOS and Linux: the development switch `MOSTRA_DEV_WINDOWS` is gone, and every other platform still fails closed with `MOSTRA_PLATFORM_UNSUPPORTED`.
+
+### Patch Changes
+
+- Updated dependencies [[`dace950`](https://github.com/mostra-dev/mostra/commit/dace950c6ca7004ea7e11f1b07c23e9abea8de18), [`cf0343a`](https://github.com/mostra-dev/mostra/commit/cf0343a1bb8e66b074a567587395c69a4501aa52), [`9d96c60`](https://github.com/mostra-dev/mostra/commit/9d96c60ebbc7994ea95a408a112580990852ba88), [`7012f26`](https://github.com/mostra-dev/mostra/commit/7012f2605f7ab77c2e0de45218fca0f5b7de61ba), [`ee5a888`](https://github.com/mostra-dev/mostra/commit/ee5a8883ec3cfd8c0f3d849f2b5a78b761e39c4a)]:
+  - @mostra/protocol@0.6.0
+  - @mostra/sdk@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes
