@@ -3,6 +3,7 @@
 pub mod acl;
 pub mod connect;
 pub mod gate;
+pub mod launch;
 pub mod pipe;
 pub mod process;
 pub mod service;

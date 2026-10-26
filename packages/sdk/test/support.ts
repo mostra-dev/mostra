@@ -6,11 +6,15 @@
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -19,6 +23,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   BUNDLE_NAME,
@@ -31,10 +36,41 @@ import {
 import { bundlePlatform, describeTree } from "@mostra/sdk";
 import { c } from "tar";
 
-/** A temporary directory under /tmp (short, for sockets), removed by `cleanup`. */
+/** Whether the tests run on Windows, whose bundles are shaped their own way (D153). */
+export const WINDOWS = process.platform === "win32";
+
+/**
+ * Removes a link and never what it names: on Windows a junction is a directory to `rm`, which
+ * refuses it without `recursive` (and with it would empty the target), so it takes `rmdir`.
+ */
+export function removeLink(path: string): void {
+  if (WINDOWS) rmdirSync(path);
+  else unlinkSync(path);
+}
+
+/**
+ * A synthetic bundle's one link: on POSIX a link to a file, as `.bin` entries are; on Windows a
+ * link to a directory, the only kind a Windows bundle has, made a junction by setup (D153).
+ */
+export const LINK_PATH = WINDOWS
+  ? "lib/node_modules/.links/fake-playwright"
+  : "lib/node_modules/.bin/fake-playwright";
+
+/** The synthetic bundle's Node.js: a launcher script on POSIX, Node.js itself on Windows. */
+export const NODE_PATH = WINDOWS ? "node/node.exe" : "node/bin/node";
+
+/**
+ * A temporary directory under /tmp (short, for sockets), or the system's temporary directory on
+ * Windows, removed by `cleanup`.
+ */
 export function tempDir(prefix: string): { path: string; cleanup(): void } {
-  const path = mkdtempSync(`/tmp/${prefix}-`);
-  return { path, cleanup: () => rmSync(path, { recursive: true, force: true }) };
+  const path = mkdtempSync(WINDOWS ? join(tmpdir(), `${prefix}-`) : `/tmp/${prefix}-`);
+  // Windows holds a tree written a moment ago (Defender scans it) and refuses its removal with
+  // EPERM or EBUSY for a while; Node.js retries those.
+  return {
+    path,
+    cleanup: () => rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }),
+  };
 }
 
 const sha256 = (text: string | Buffer): string => createHash("sha256").update(text).digest("hex");
@@ -100,13 +136,25 @@ export async function syntheticBundle(
     writeFileSync(join(root, path), text);
     chmodSync(join(root, path), mode);
   };
-  write("node/bin/node", `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, 0o755);
+  if (WINDOWS) {
+    // Windows runs no script as a program: the bundle's Node.js is this one, linked (or copied).
+    mkdirSync(join(root, "node"), { recursive: true });
+    try {
+      linkSync(process.execPath, join(root, NODE_PATH));
+    } catch {
+      copyFileSync(process.execPath, join(root, NODE_PATH));
+    }
+  } else {
+    write(NODE_PATH, `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, 0o755);
+  }
   write("lib/node_modules/fake-playwright/cli.js", FAKE_INSTALLER);
   write("lib/node_modules/@mostra/runtime/dist/bin.js", "// not run by unit tests\n");
   write("lib/node_modules/@mostra/cli/dist/bin.js", "// not run by unit tests\n");
   write("lib/node_modules/@mostra/sdk/dist/setup-main.js", "// not run by unit tests\n");
-  mkdirSync(join(root, "lib/node_modules/.bin"), { recursive: true });
-  symlinkSync("../fake-playwright/cli.js", join(root, "lib/node_modules/.bin/fake-playwright"));
+  mkdirSync(dirname(join(root, LINK_PATH)), { recursive: true });
+  if (WINDOWS)
+    symlinkSync(join(root, "lib/node_modules/fake-playwright"), join(root, LINK_PATH), "junction");
+  else symlinkSync("../fake-playwright/cli.js", join(root, LINK_PATH));
   options.beforeListing?.(root);
   const files = await describeTree(root, (path) => path === "bundle.json" || path === "files.json");
   writeFileSync(join(root, "files.json"), JSON.stringify(files));
@@ -115,7 +163,7 @@ export async function syntheticBundle(
     name: BUNDLE_NAME,
     version,
     platform,
-    node: { version: process.versions.node, path: "node/bin/node" },
+    node: { version: process.versions.node, path: NODE_PATH },
     entries: {
       runtime: "lib/node_modules/@mostra/runtime/dist/bin.js",
       cli: "lib/node_modules/@mostra/cli/dist/bin.js",
@@ -132,7 +180,8 @@ export async function syntheticBundle(
           path: BROWSER_FILE,
           size: Buffer.byteLength(BROWSER_CONTENT),
           sha256: sha256(BROWSER_CONTENT),
-          executable: true,
+          // Windows keeps no execute bit (D150 item 8): a bundle built there pins none.
+          executable: !WINDOWS,
         },
       ],
     },
@@ -140,10 +189,23 @@ export async function syntheticBundle(
   writeFileSync(join(root, "bundle.json"), JSON.stringify(info, null, 2));
   options.afterListing?.(root);
   const archive = join(dir, bundleAssetName(version, platform));
-  await c({ gzip: true, file: archive, cwd: dir, portable: true }, [
-    top,
-    ...(options.extraEntries ?? []),
-  ]);
+  // A Windows archive carries no links (D153): its file list names them, and setup makes them.
+  // Its Node.js is large, so it is packed fast.
+  const entries = [top, ...(options.extraEntries ?? [])];
+  if (WINDOWS) {
+    await c(
+      {
+        gzip: { level: 1 },
+        file: archive,
+        cwd: dir,
+        portable: true,
+        filter: (_path, stat) => !("isSymbolicLink" in stat && stat.isSymbolicLink()),
+      },
+      entries,
+    );
+  } else {
+    await c({ gzip: true, file: archive, cwd: dir, portable: true }, entries);
+  }
   const bytes = readFileSync(archive);
   const digest = sha256(bytes);
   return {
@@ -359,6 +421,11 @@ export async function eventually(
 /** Where Playwright keeps its browsers by default (playwright-core's registry). */
 function playwrightBrowsers(): string {
   const home = process.env["HOME"] ?? "";
+  if (process.platform === "win32")
+    return join(
+      process.env["LOCALAPPDATA"] || join(process.env["USERPROFILE"] ?? "", "AppData", "Local"),
+      "ms-playwright",
+    );
   return process.platform === "darwin"
     ? join(home, "Library", "Caches", "ms-playwright")
     : join(process.env["XDG_CACHE_HOME"] || join(home, ".cache"), "ms-playwright");

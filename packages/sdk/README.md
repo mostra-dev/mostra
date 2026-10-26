@@ -33,6 +33,6 @@ and caches it all by digest. Later calls start at once, offline too. `MOSTRA_CAC
 cache, `MOSTRA_BUNDLE_MIRROR` fetches from a mirror, and `MOSTRA_BUNDLE` uses a bundle you
 extracted yourself.
 
-Embedded use never sends telemetry. Node.js 22.19 or later; macOS and Linux on x64 and arm64.
+Embedded use never sends telemetry. Node.js 22.19 or later; macOS, glibc-based Linux and Windows, on x64 and arm64.
 
 Part of [Mostra](https://github.com/mostra-dev/mostra), the agent artifact runtime. Apache-2.0.

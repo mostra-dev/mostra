@@ -3,6 +3,7 @@
  * have, checked through the host's own client and ports (the harness) and a viewer playing the
  * browser. Each runs against a fresh home in its own directory, with a fresh host shim.
  */
+import { spawn } from "node:child_process";
 import {
   chmodSync,
   lstatSync,
@@ -23,7 +24,7 @@ import {
   RpcError,
   RpcPeer,
 } from "@mostra/protocol";
-import { connectControl, resolveRuntime } from "@mostra/sdk";
+import { connectControl, resolveRuntime, windowsHelper } from "@mostra/sdk";
 import type { Fixture } from "./fixtures.ts";
 import { HostUnderTest } from "./harness/client.ts";
 import type { StartParams, StartResult, StoreResult } from "./harness/protocol.ts";
@@ -302,28 +303,40 @@ export class ScenarioContext {
         .catch(() => undefined);
       session?.close();
     }
-    removeTree(this.dir);
+    await removeTree(this.dir);
   }
 }
 
 /**
- * Removes a scenario's directory. A home's versions are sealed read-only (files 0444,
- * directories 0555, DATA_MODEL §1), so directories are made writable first.
+ * Removes a scenario's directory. A home's versions are sealed read-only (DATA_MODEL §1): on POSIX
+ * by mode (files 0444, directories 0555), so directories are made writable first; on Windows by
+ * a protected access list (D150 item 3), which only the runtime's helper resets (`mostra-win
+ * unseal`, found beside the runtime as every client finds it). Windows also holds a file a process
+ * just closed (Defender, the indexer), so removal is retried for a while.
  */
-export function removeTree(dir: string): void {
-  const open = (path: string): void => {
-    let stats: ReturnType<typeof lstatSync>;
-    try {
-      stats = lstatSync(path);
-    } catch {
-      return;
-    }
-    if (!stats.isDirectory()) return;
-    chmodSync(path, 0o700);
-    for (const name of readdirSync(path)) open(join(path, name));
-  };
-  open(dir);
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+export async function removeTree(dir: string): Promise<void> {
+  if (process.platform === "win32") {
+    const helper = windowsHelper(await resolveRuntime().catch(() => undefined), process.env);
+    await new Promise<void>((done) => {
+      const child = spawn(helper, ["unseal", dir], { stdio: "ignore", windowsHide: true });
+      child.on("exit", () => done());
+      child.on("error", () => done());
+    });
+  } else {
+    const open = (path: string): void => {
+      let stats: ReturnType<typeof lstatSync>;
+      try {
+        stats = lstatSync(path);
+      } catch {
+        return;
+      }
+      if (!stats.isDirectory()) return;
+      chmodSync(path, 0o700);
+      for (const name of readdirSync(path)) open(join(path, name));
+    };
+    open(dir);
+  }
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 }
 
 /** A raw protocol session over the home's socket, opened by the kit itself. */

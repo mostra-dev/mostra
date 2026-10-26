@@ -16,8 +16,15 @@ describe("the Windows login service's task (D151)", () => {
     platform: "win32",
     user: "S-1-5-21-1-2-3-1001",
     launcher: "C:\\Program Files\\Mostra\\bin\\mostra-win-service.exe",
-    // The development switch passes on (until WP-W3); nothing else of the caller's does.
-    env: { MOSTRA_DEV_WINDOWS: "1", SOME_SECRET: "hunter2", PATH: "C:\\x" },
+    // The helper a checkout names and the time zone pass on; nothing else of the caller's does
+    // (WP-W3 removed the development switch, which passed on before).
+    env: {
+      MOSTRA_DEV_WINDOWS: "1",
+      MOSTRA_WIN_HELPER: "C:\\mostra\\target\\release\\mostra-win.exe",
+      TZ: "Europe/Istanbul",
+      SOME_SECRET: "hunter2",
+      PATH: "C:\\x",
+    },
   };
 
   it("quotes words as the Microsoft C runtime parses them", () => {
@@ -42,7 +49,9 @@ describe("the Windows login service's task (D151)", () => {
       "--log",
       `${spec.home}\\logs\\service.log`,
       "--env",
-      "MOSTRA_DEV_WINDOWS=1",
+      "MOSTRA_WIN_HELPER=C:\\mostra\\target\\release\\mostra-win.exe",
+      "--env",
+      "TZ=Europe/Istanbul",
       "--",
       spec.node,
       spec.entry,

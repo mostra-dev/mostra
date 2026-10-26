@@ -1,6 +1,7 @@
 /**
- * Which runtime bundle this machine takes (RT-01, D35): one per operating system and architecture
- * of v1, glibc only on Linux. Anything else fails closed before a download starts.
+ * Which runtime bundle this machine takes (RT-01, RT-12, D35, D146): one per operating system and
+ * architecture of v1 (macOS, glibc Linux and Windows, each on x64 and arm64). Anything else fails
+ * closed before a download starts.
  */
 import {
   BUNDLE_PLATFORMS,
@@ -56,21 +57,21 @@ export function currentPlatform(): PlatformFacts {
 }
 
 /**
- * The bundle platform for these facts. Throws `MOSTRA_PLATFORM_UNSUPPORTED` for Windows, other
- * architectures and Linux without glibc, whose libraries the bundle's Node.js and browser need.
+ * The bundle platform for these facts. Throws `MOSTRA_PLATFORM_UNSUPPORTED` for other systems and
+ * architectures and for Linux without glibc, whose libraries the bundle's Node.js and browser need.
  */
 export function bundlePlatform(facts: PlatformFacts = currentPlatform()): BundlePlatform {
   const name = `${facts.platform}-${facts.arch}`;
   const known = (BUNDLE_PLATFORMS as readonly string[]).includes(name);
   if (known && facts.platform === "linux" && facts.glibc === undefined) {
     throw unsupported(
-      `Mostra's Linux bundle needs glibc, and this system has none (musl, as on Alpine Linux); it supports macOS and glibc-based Linux on x64 and arm64.`,
+      `Mostra's Linux bundle needs glibc, and this system has none (musl, as on Alpine Linux); it supports macOS, glibc-based Linux and Windows on x64 and arm64.`,
     );
   }
   if (!known) {
     const label = facts.platform === "win32" ? `Windows (${name})` : name;
     throw unsupported(
-      `Mostra doesn't run on ${label}; it supports macOS and Linux on x64 and arm64.`,
+      `Mostra doesn't run on ${label}; it supports macOS, Linux and Windows on x64 and arm64.`,
     );
   }
   return name as BundlePlatform;

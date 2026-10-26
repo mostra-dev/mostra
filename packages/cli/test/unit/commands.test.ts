@@ -206,21 +206,15 @@ async function inProcess(
   argv: string[],
   platform?: string,
   extraEnv: Record<string, string> = {},
+  arch?: string,
 ): Promise<{ code: number; out: string[]; err: string }> {
   const out: string[] = [];
   let err = "";
-  // The Windows legs run behind the development switch (D150 item 7); a test of another platform
-  // gets only what it names.
-  const own =
-    platform === undefined && process.env["MOSTRA_DEV_WINDOWS"]
-      ? { MOSTRA_DEV_WINDOWS: process.env["MOSTRA_DEV_WINDOWS"] }
-      : {};
   const code = await run({
     argv,
     env: {
       MOSTRA_CONFIG_DIR: "/nonexistent-config-for-tests",
       MOSTRA_HOME: "/nonexistent-home-for-tests",
-      ...own,
       ...extraEnv,
     },
     cwd: "/",
@@ -231,6 +225,7 @@ async function inProcess(
     stdin: new PassThrough(),
     tty: { stdin: false, stdout: false, stderr: false },
     ...(platform !== undefined ? { platform } : {}),
+    ...(arch !== undefined ? { arch } : {}),
   });
   return { code, out, err };
 }
@@ -254,22 +249,22 @@ describe("--json (D140 item 16)", () => {
   });
 
   it("fails closed on an unsupported platform before touching anything", async () => {
-    for (const platform of ["win32", "freebsd", "aix"]) {
-      const { code, out } = await inProcess(["--json", "list"], platform);
-      expect(code, platform).toBe(EXIT.environment);
+    for (const [platform, arch] of [
+      ["freebsd", "x64"],
+      ["aix", "ppc64"],
+      ["win32", "ia32"],
+      ["linux", "ia32"],
+    ] as const) {
+      const { code, out } = await inProcess(["--json", "list"], platform, {}, arch);
+      expect(code, `${platform}-${arch}`).toBe(EXIT.environment);
       expect(JSON.parse(out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
     }
   });
 
-  it("admits Windows only behind the development switch, as the runtime does (D150 item 7)", async () => {
-    const admitted = await inProcess(["--json", "--version"], "win32", { MOSTRA_DEV_WINDOWS: "1" });
-    expect(admitted.code).toBe(EXIT.ok);
-    for (const value of ["0", "true", "yes", ""]) {
-      const refused = await inProcess(["--json", "--version"], "win32", {
-        MOSTRA_DEV_WINDOWS: value,
-      });
-      expect(refused.code, value).toBe(EXIT.environment);
-      expect(JSON.parse(refused.out[0] as string).error.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
+  it("admits Windows on x64 and arm64 like macOS and Linux, with no switch (D146)", async () => {
+    for (const arch of ["x64", "arm64"]) {
+      const admitted = await inProcess(["--json", "--version"], "win32", {}, arch);
+      expect(admitted.code, arch).toBe(EXIT.ok);
     }
   });
 

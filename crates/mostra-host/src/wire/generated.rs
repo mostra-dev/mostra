@@ -1522,13 +1522,13 @@ impl ::std::str::FromStr for BundleAssetFile {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$",
+                    "^(?:mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$|mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-win32-(arm64|x64)\\.tar\\.gz$)",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$\""
+                "doesn't match pattern \"^(?:mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$|mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-win32-(arm64|x64)\\.tar\\.gz$)\""
                     .into(),
             );
         }
@@ -2463,6 +2463,10 @@ pub enum BundlePlatform {
     LinuxX64,
     #[serde(rename = "linux-arm64")]
     LinuxArm64,
+    #[serde(rename = "win32-x64")]
+    Win32X64,
+    #[serde(rename = "win32-arm64")]
+    Win32Arm64,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -2491,6 +2495,8 @@ pub struct BundleSetup {
     pub browser: BundleSetupBrowser,
     pub files: Sha256,
     pub platform: BundlePlatform,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub root: ::std::option::Option<BundleSetupRoot>,
     #[serde(rename = "schemaVersion")]
     pub schema_version: f64,
     pub version: BundleSetupVersion,
@@ -2543,6 +2549,60 @@ impl ::std::convert::TryFrom<::std::string::String> for BundleSetupBrowserRevisi
     }
 }
 impl<'de> ::serde::Deserialize<'de> for BundleSetupBrowserRevision {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BundleSetupRoot`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BundleSetupRoot(::std::string::String);
+impl ::std::ops::Deref for BundleSetupRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BundleSetupRoot> for ::std::string::String {
+    fn from(value: BundleSetupRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for BundleSetupRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BundleSetupRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BundleSetupRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BundleSetupRoot {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -11114,6 +11174,8 @@ impl BundlePlatform {
             Self::DarwinX64 => "darwin-x64",
             Self::LinuxX64 => "linux-x64",
             Self::LinuxArm64 => "linux-arm64",
+            Self::Win32X64 => "win32-x64",
+            Self::Win32Arm64 => "win32-arm64",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -11134,6 +11196,8 @@ impl ::std::str::FromStr for BundlePlatform {
                 "darwin-x64" => Self::DarwinX64,
                 "linux-x64" => Self::LinuxX64,
                 "linux-arm64" => Self::LinuxArm64,
+                "win32-x64" => Self::Win32X64,
+                "win32-arm64" => Self::Win32Arm64,
                 other => Self::Unknown(other.to_string()),
             },
         )

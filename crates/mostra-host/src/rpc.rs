@@ -113,6 +113,33 @@ impl Peer {
         R: AsyncRead + Unpin + Send + 'static,
         W: AsyncWrite + Unpin + Send + 'static,
     {
+        Self::start_with(reader, writer, incoming, false)
+    }
+
+    /// [`Peer::start`] over the two halves of one connection that has no half-close, a Windows
+    /// named pipe: its end is the connection's end, which the instance sees only once both halves
+    /// are gone, so the reader is dropped as soon as the writer has sent what was queued before
+    /// the close (D153). Without it an attached host's closed session stayed open on the
+    /// instance's side, which kept calling the host's ports.
+    #[cfg(windows)]
+    pub(crate) fn start_whole<R, W>(reader: R, writer: W, incoming: Arc<dyn Incoming>) -> Self
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
+        Self::start_with(reader, writer, incoming, true)
+    }
+
+    fn start_with<R, W>(
+        reader: R,
+        writer: W,
+        incoming: Arc<dyn Incoming>,
+        reader_ends_with_close: bool,
+    ) -> Self
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
         let (out, mut lines) = mpsc::unbounded_channel::<String>();
         let (closed, _) = watch::channel(None);
         let inner = Arc::new(Inner {
@@ -124,6 +151,7 @@ impl Peer {
         });
         let writing = Arc::clone(&inner);
         let mut closing = inner.closed.subscribe();
+        let (written, writer_done) = oneshot::channel::<()>();
         tokio::spawn(async move {
             let mut writer = writer;
             // The writer ends when the peer closes, not only when every sender is gone: `Inner`
@@ -153,14 +181,30 @@ impl Peer {
             }
             let _ = writer.flush().await;
             let _ = writer.shutdown().await;
+            let _ = written.send(());
         });
         let reading = Arc::clone(&inner);
+        let mut reader_closing = inner.closed.subscribe();
         tokio::spawn(async move {
             let mut reader = BufReader::new(reader);
             let mut buffer = Vec::new();
+            // Resolves once the peer closed and its writer sent its last line, for a connection
+            // whose reader must go too; never, otherwise.
+            let ended = async {
+                if !reader_ends_with_close {
+                    return std::future::pending::<()>().await;
+                }
+                let _ = reader_closing.wait_for(Option::is_some).await;
+                let _ = writer_done.await;
+            };
+            tokio::pin!(ended);
             loop {
                 buffer.clear();
-                match read_line(&mut reader, &mut buffer).await {
+                let line = tokio::select! {
+                    line = read_line(&mut reader, &mut buffer) => line,
+                    () = &mut ended => break,
+                };
+                match line {
                     Ok(true) => dispatch(&reading, &buffer, &incoming),
                     Ok(false) => {
                         reading.close("The Mostra instance closed the connection.");

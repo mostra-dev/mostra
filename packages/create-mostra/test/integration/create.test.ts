@@ -13,13 +13,17 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 const BIN = fileURLToPath(new URL("../../dist/bin.js", import.meta.url));
-// Real path: on macOS /tmp is a link to /private/tmp, and the CLI reports real paths.
-const root = realpathSync(mkdtempSync("/tmp/mcm-"));
+// Real path: on macOS /tmp is a link to /private/tmp, and the CLI reports real paths. /tmp keeps
+// the control socket's path short on POSIX (D82); Windows has a pipe and no /tmp.
+const root = realpathSync.native(
+  mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "mcm-")),
+);
 const env: Record<string, string> = {};
 for (const [name, value] of Object.entries(process.env)) {
   if (value === undefined || name.startsWith("npm_") || name.startsWith("MOSTRA_")) continue;
@@ -59,7 +63,35 @@ afterAll(async () => {
       done,
     ),
   );
-  rmSync(root, { recursive: true, force: true });
+  // The stop answers before the daemon exits, and Windows refuses to remove a ledger an
+  // instance still holds open (D150 item 8): its record goes only with a clean exit.
+  const record = join(env["MOSTRA_HOME"] as string, "instance.json");
+  const deadline = Date.now() + 30_000;
+  while (existsSync(record) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  // A home's versions are sealed: on Windows by an access list only the runtime's helper resets
+  // (D150 item 3), the one Cargo built for these suites; and Windows holds a file a process just
+  // closed for a moment, so the removal is retried (as the CLI's suites do).
+  for (;;) {
+    if (process.platform === "win32") {
+      const helper =
+        process.env["MOSTRA_WIN_HELPER"] ||
+        fileURLToPath(new URL("../../../../target/release/mostra-win.exe", import.meta.url));
+      await new Promise((done) =>
+        spawn(helper, ["unseal", root], { stdio: "ignore", windowsHide: true })
+          .on("exit", done)
+          .on("error", done),
+      );
+    }
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
 });
 
 describe("npm create mostra", () => {

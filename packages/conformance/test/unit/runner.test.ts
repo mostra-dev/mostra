@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 /** A shim that answers initialize and nothing else needed by these scenarios. */
 const SHIM = join(import.meta.dirname, "..", "fixtures", "echo-shim.ts");
-const HOST = `node --conditions=@mostra/source ${SHIM}`;
+const HOST = `node --conditions=@mostra/source "${SHIM}"`;
 
 function scenario(id: string, run: Scenario["run"], needs?: string[]): Scenario {
   return { id, title: id, covers: ["HO-05"], ...(needs ? { needs } : {}), run };

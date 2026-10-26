@@ -1,9 +1,12 @@
 # The release's build and proof (EN-05, D142 item 9, D152), called by CI to rehearse a release and
 # by release.yml to build one it then publishes:
 #
-#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01)
+#   bundle      a runtime bundle per platform, built on that platform, its license audit (RT-01,
+#               RT-12; on Windows with its launcher and helpers, built by Cargo)
 #   smoke       each bundle on a fresh runner with no Node.js on PATH: checked, tampering refused,
-#               set up, new, verify, publish, moved, published again
+#               set up, new, verify, publish, a submission through the shell, wait, results,
+#               moved, published again (on Windows in Git's sh, with long paths off, as Windows
+#               ships them)
 #   packages    the bundle pins in @mostra/sdk, every npm package packed and checked, and
 #               `npm publish --dry-run` of each: the release dry run
 #   npm-smoke   the packed packages through npm on an older Node.js: create-mostra, verify, publish
@@ -70,7 +73,11 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.platforms) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 40
+    # Windows runs the same steps in Git's bash.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +95,9 @@ jobs:
         run: node tools/release/versions.ts rehearse --version "$VERSION"
       - name: Build the bundle
         if: inputs.mode != 'finish'
-        run: node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
+        # Through pnpm, which names itself to the assembler (npm_execpath): on Windows pnpm is a
+        # .cmd shim Node.js can't start without cmd.exe.
+        run: pnpm exec node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
       # Finishing a published release: its own archive, checked against its record and the
       # release's digest, never a new build (the published @mostra/sdk pins these bytes).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -126,7 +135,10 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.platforms) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,6 +148,12 @@ jobs:
         with:
           name: bundle-${{ matrix.platform }}
           path: ${{ runner.temp }}/assets
+      # Windows ships with paths past 260 characters off; GitHub's images turn them on. A bundle
+      # in a user's cache nests deeper than that, so the smoke test runs as Windows ships.
+      - name: Long paths off, as Windows ships
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
       - name: new, verify and publish with no Node.js
         env:
           VERSION: ${{ inputs.version }}
@@ -144,6 +162,51 @@ jobs:
           record="$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.json"
           sha=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$record")
           sh packages/bundle/scripts/smoke.sh "$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.tar.gz" "$sha"
+      # An ordinary user, with Developer Mode off as Windows ships, can't create symbolic links,
+      # which GitHub's images allow everyone (Developer Mode on): such a user extracts the archive
+      # and sets the bundle up, whose links setup makes as junctions (D153).
+      - name: An ordinary user installs it, Developer Mode off
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          $unlock = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          New-Item -Force $unlock | Out-Null
+          Set-ItemProperty $unlock -Name AllowDevelopmentWithoutDevLicense -Value 0 -Type DWord
+          $dir = "C:\mostra-ordinary"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\assets\mostra-$env:VERSION-$env:PLATFORM.tar.gz" "$dir\bundle.tar.gz"
+          icacls $dir /grant "Users:(OI)(CI)M" | Out-Null
+          $password = "Mw3-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          "::add-mask::$password"
+          New-LocalUser -Name mostraplain -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          $credential = New-Object System.Management.Automation.PSCredential("mostraplain", (ConvertTo-SecureString $password -AsPlainText -Force))
+          # Start-Process -Credential passes this process's environment on, whose %TEMP% and
+          # profile folders are the administrator's, which the user can't write: the user's own.
+          foreach ($name in "tmp", "local", "roaming") { New-Item -ItemType Directory -Force "$dir\$name" | Out-Null }
+          $env:TEMP = "$dir\tmp"; $env:TMP = "$dir\tmp"
+          $env:LOCALAPPDATA = "$dir\local"; $env:APPDATA = "$dir\roaming"; $env:USERPROFILE = $dir
+          $run = {
+            param($file, $arguments, $log)
+            $options = @{ FilePath = $file; Credential = $credential; LoadUserProfile = $true; WorkingDirectory = $dir; Wait = $true; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = "$dir\$log.out"; RedirectStandardError = "$dir\$log.err" }
+            if ($arguments.Count -gt 0) { $options.ArgumentList = $arguments }
+            $p = Start-Process @options
+            # Shown, never returned: a script block returns all its output, and only the code counts.
+            Get-Content "$dir\$log.out", "$dir\$log.err" -ErrorAction SilentlyContinue | Out-Host
+            return $p.ExitCode
+          }
+          $code = & $run "$env:SystemRoot\System32\whoami.exe" @("/groups") "whoami"
+          if ((Get-Content "$dir\whoami.out" -Raw) -match "S-1-5-32-544") { throw "the user is an administrator" }
+          $code = & $run "$env:SystemRoot\System32\tar.exe" @("-xzf", "bundle.tar.gz", "-C", $dir) "extract"
+          if ($code -ne 0) { throw "extracting as an ordinary user exited $code" }
+          $root = "$dir\mostra-$env:VERSION-$env:PLATFORM"
+          $code = & $run "$root\bin\mostra-setup.exe" @() "setup"
+          if ($code -ne 0 -or -not ((Get-Content "$dir\setup.out" -Raw) -match '"status":"ok"')) { throw "setup as an ordinary user failed ($code)" }
+          $junction = Get-Item "$root\lib\node_modules\@mostra\warm\node_modules\react"
+          "react in the warm set: $($junction.LinkType) -> $($junction.Target)"
+          if ($junction.LinkType -ne "Junction") { throw "the warm set's link isn't a junction" }
 
   packages:
     name: packages (pins, pack, npm publish --dry-run)
@@ -215,12 +278,19 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.npm-smoke) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: packages/bundle/scripts
+      - name: Long paths off, as Windows ships
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
       # An older Node.js line than the bundle's, as many machines have: Mostra runs on its own.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

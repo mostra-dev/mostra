@@ -96,7 +96,7 @@ export function summary(matrix: CiMatrix, runners: Runners): string {
   ].join("\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const name = process.env["GITHUB_EVENT_NAME"] ?? "workflow_dispatch";
   const path = process.env["GITHUB_EVENT_PATH"];
   const original = path ? (JSON.parse(readFileSync(path, "utf8")) as Payload) : {};

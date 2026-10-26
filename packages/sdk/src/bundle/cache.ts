@@ -20,7 +20,7 @@ import {
   utimes,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import {
   type BundleAsset,
   BundleAsset as BundleAssetSchema,
@@ -28,6 +28,7 @@ import {
   type BundlePlatform,
   bundleAssetName,
   createDiagnostic,
+  isWindowsBundle,
   RpcError,
 } from "@mostra/protocol";
 import { type DownloadProgress, download } from "./download.ts";
@@ -43,14 +44,25 @@ import {
   setupBundle,
 } from "./setup.ts";
 
-/** Where the cache is: `MOSTRA_CACHE_DIR`, else the platform's per-user cache directory. */
+/**
+ * Where the cache is: `MOSTRA_CACHE_DIR`, else the platform's per-user cache directory:
+ * `~/Library/Caches/mostra` on macOS, `%LOCALAPPDATA%\mostra-cache` on Windows (beside the home,
+ * `%LOCALAPPDATA%\mostra`, as npm keeps `npm-cache`), `${XDG_CACHE_HOME:-~/.cache}/mostra` on
+ * Linux.
+ */
 export function cacheRoot(env: Environment, platform: string = process.platform): string {
   const override = env["MOSTRA_CACHE_DIR"];
   if (override) return resolve(override);
+  if (platform === "win32") {
+    const local =
+      env["LOCALAPPDATA"] || win32.join(env["USERPROFILE"] || homedir(), "AppData", "Local");
+    return win32.join(local, "mostra-cache");
+  }
+  // POSIX paths, whatever system computes them (`platform` is the one the cache is for).
   const home = env["HOME"] || homedir();
-  if (platform === "darwin") return join(home, "Library", "Caches", "mostra");
+  if (platform === "darwin") return posix.join(home, "Library", "Caches", "mostra");
   const xdg = env["XDG_CACHE_HOME"];
-  return join(xdg?.startsWith("/") ? xdg : join(home, ".cache"), "mostra");
+  return posix.join(xdg?.startsWith("/") ? xdg : posix.join(home, ".cache"), "mostra");
 }
 
 /** The directory a bundle with this archive digest lives in. */
@@ -147,7 +159,9 @@ export async function installPinned(pins: BundlePins, options: InstallOptions): 
  */
 async function filesIntact(dir: string): Promise<boolean> {
   try {
-    await checkFiles(await readBundle(dir));
+    const bundle = await readBundle(dir);
+    // A Windows bundle's junctions are made by setup, after this (D153).
+    await checkFiles(bundle, { links: !isWindowsBundle(bundle.info.platform) });
     return true;
   } catch (error) {
     if (error instanceof RpcError && error.diagnostic.code === "MOSTRA_ENV_BUNDLE_INVALID")
@@ -207,7 +221,9 @@ async function fetchInto(
         }),
       );
     }
-    await extractBundle(archive, root, top);
+    // A Windows archive holds no links (D153): its junctions are made once it is in place.
+    const windows = isWindowsBundle(options.platform);
+    await extractBundle(archive, root, top, { links: windows ? "refuse" : "keep" });
     await rm(archive, { force: true });
     const bundle = await readBundle(root);
     if (bundle.info.version !== pins.version || bundle.info.platform !== options.platform) {
@@ -218,17 +234,45 @@ async function fetchInto(
       );
     }
     options.onProgress?.({ step: "files" });
-    await checkFiles(bundle);
+    await checkFiles(bundle, { links: !windows });
     try {
-      await rename(root, dir);
+      await renameIntoPlace(root, dir);
     } catch (error) {
       // Another installer finished first (the lock is an optimization, never what correctness
       // rests on): its directory is used, whose files it checked before renaming them into place.
+      // Windows refuses a rename over an existing directory with EPERM.
       const code = (error as NodeJS.ErrnoException).code;
-      if (!(code === "ENOTEMPTY" || code === "EEXIST") || !(await exists(dir))) throw error;
+      const taken = code === "ENOTEMPTY" || code === "EEXIST" || code === "EPERM";
+      if (!taken || !(await exists(dir))) throw error;
     }
   } finally {
-    await rm(scratch, { recursive: true, force: true });
+    // Windows may hold the files a moment (an antivirus scan); a scratch directory left anyway
+    // is removed by the next install's sweep.
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+      () => undefined,
+    );
+  }
+}
+
+/**
+ * Renames `from` to `to`. On Windows a file that an antivirus scan or the indexer holds for a
+ * moment refuses the rename (EPERM, EACCES, EBUSY) though nothing is wrong, so the rename is
+ * tried again with backoff for up to 3 s, as the runtime's renames are (D150 item 8), and never
+ * turned into a copy; a refusal that lasts is thrown, and EPERM over an existing directory with it.
+ */
+async function renameIntoPlace(from: string, to: string): Promise<void> {
+  const deadline = Date.now() + 3000;
+  for (let wait = 25; ; wait = Math.min(wait * 2, 400)) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const held = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (process.platform !== "win32" || !held || Date.now() > deadline || (await exists(to)))
+        throw error;
+      await new Promise((done) => setTimeout(done, wait));
+    }
   }
 }
 

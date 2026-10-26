@@ -460,7 +460,7 @@ export const doctorCommand: CommandDef = defineCommand({
   async run(context) {
     const checks: DoctorCheck[] = [];
     const node = Number(process.versions.node.split(".")[0]);
-    const unsupported = checkPlatform(process.platform, process.arch, context.env);
+    const unsupported = checkPlatform(process.platform, process.arch);
     checks.push(
       unsupported === undefined
         ? {

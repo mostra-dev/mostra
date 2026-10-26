@@ -25,6 +25,8 @@ mod mostra;
 pub mod ports;
 mod rpc;
 pub mod runtime;
+#[cfg(windows)]
+mod windows;
 pub mod wire;
 
 pub use error::{Error, Result};

@@ -33,8 +33,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   Windows sharing violations, syncing, directory links (junctions on Windows) and sealing. A
   test (`platform-layer.test.ts`) fails on any other module that reads `process.platform`.
   Windows work goes through `mostra-win.exe` (`crates/mostra-win`), found by `helperPath()`.
-- **Windows runs only behind `MOSTRA_DEV_WINDOWS=1` until WP-W3 (D146).** Only Mostra's CI legs
-  set it; without it Windows fails closed like every unsupported platform.
+- **Windows is supported like macOS and Linux (D146).** WP-W3 removed the development switch
+  that admitted it while it was built; Windows on any architecture but x64 and arm64 fails closed.
 - **The platform gate runs first (D35, RT-07).** No entry point touches the home before
   `checkPlatform` passes, and nothing platform-specific loads before it: native modules
   (`better-sqlite3`, `oxc-parser`) load on first use through `createRequire`, which a boundary rule
@@ -296,8 +296,8 @@ first module outside `protocol-server` needs it.
   platform layer; tests use `WINDOWS` from `test/support.ts` and give a Windows variant, or say
   why a POSIX check doesn't apply. The Windows legs run the Windows groups
   (`MOSTRA_TEST_GROUP`, `vitest.config.ts`), which partition every integration suite: a new suite
-  joins exactly one of them (`windows-groups.test.ts` fails otherwise), with `MOSTRA_DEV_WINDOWS=1`
-  and the helper Cargo builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
+  joins exactly one of them (`windows-groups.test.ts` fails otherwise), with the helper Cargo
+  builds; only GitHub's Windows runners run them ([playbook](../../docs/agents/run-on-windows.md)).
 - Keep test sockets under `/tmp` (`tempDir(prefix, true)` in `test/support.ts`): macOS limits
   socket paths to 103 bytes, and its `os.tmpdir()` is long.
 - `net.Server.close()` removes the socket file. Close an old listener before binding its

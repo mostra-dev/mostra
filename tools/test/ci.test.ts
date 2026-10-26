@@ -132,11 +132,19 @@ describe("what runs when (D152)", () => {
     expect(ordinary.integration.filter((leg) => leg["os"] === "macos")).toHaveLength(4);
     expect(ordinary.e2e.filter((leg) => leg["os"] === "macos")).toHaveLength(1);
     expect(ordinary.deferred).toEqual(["rust (macos)", "conformance (macos)"]);
-    // Linux keeps every leg, and the queue runs them all on macOS too.
-    expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux"]);
-    expect(ordinary.conformance.map((leg) => leg["os"])).toEqual(["linux"]);
+    // Linux and Windows x64 keep every leg (WP-W3), and the queue runs them all on macOS and
+    // Windows arm64 too.
+    expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux", "windows-x64"]);
+    expect(ordinary.conformance.map((leg) => leg["os"])).toEqual(["linux", "windows-x64"]);
     const queued = ciMatrix(queue, runtime, github);
     expect(onMacos(queued).length).toBeGreaterThan(MACOS_PULL_REQUEST_LEGS);
+    for (const legs of [queued.rust, queued.conformance])
+      expect(legs.map((leg) => leg["os"])).toEqual([
+        "linux",
+        "macos",
+        "windows-x64",
+        "windows-arm64",
+      ]);
     expect(queued.deferred).toEqual([]);
     // A crate-only change fits: its macOS legs all stay.
     const crate = ciMatrix(pr, change(["crates/mostra-host/src/lib.rs"], []), github);
@@ -189,7 +197,7 @@ describe("what runs when (D152)", () => {
       expect(parts("windows-x64", "firefox")).toEqual(["1/2", "2/2"]);
       expect(parts("windows-x64", "chromium")).toEqual([undefined]);
       expect(parts("linux", "firefox")).toEqual([undefined]);
-      expect(matrix.release?.platforms.length).toBe(4);
+      expect(matrix.release?.platforms.length).toBe(6);
     }
     expect(queue.scope).toBe("affected");
     expect(ciScope({ name: "schedule" }).scope).toBe("all");
@@ -227,6 +235,8 @@ describe("what runs when (D152)", () => {
       "macos-15-intel",
       "ubuntu-24.04",
       "ubuntu-24.04-arm",
+      "windows-2025",
+      "windows-11-arm",
     ]);
     expect(matrix.release?.npmSmoke.every((leg) => !leg.runner.startsWith("blacksmith"))).toBe(
       true,
@@ -245,7 +255,7 @@ describe("what runs when (D152)", () => {
       "tools/release/versions.ts",
     ]) {
       const matrix = ciMatrix(pr, change([file], []), github);
-      expect(matrix.release?.platforms.length, file).toBe(4);
+      expect(matrix.release?.platforms.length, file).toBe(6);
     }
     expect(ciMatrix(pr, change(["packages/cli/README.md"], []), github).release).toBeNull();
     // The crate is packaged in the rehearsal: a change to it alone, or to Cargo's inputs, runs
@@ -352,8 +362,25 @@ describe("the CI workflow's shape (D152)", () => {
     const platforms = JSON.parse(String(releaseCall?.with?.["platforms"])) as {
       platform: string;
     }[];
-    expect(platforms.map((leg) => leg.platform).sort()).toEqual(
-      ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].sort(),
+    // Every platform a bundle exists for (`BUNDLE_PLATFORMS`), Windows' since WP-W3 (D146): the
+    // release needs each one's bundle, and CI's full rehearsal builds the same list.
+    const every = [
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm64",
+      "linux-x64",
+      "win32-arm64",
+      "win32-x64",
+    ];
+    expect(platforms.map((leg) => leg.platform).sort()).toEqual(every);
+    const full = ciMatrix(queue, everything, github).release;
+    expect(full?.platforms.map((leg) => leg["platform"]).sort()).toEqual(every);
+    const npm = JSON.parse(String(releaseCall?.with?.["npm-smoke"])) as { platform: string }[];
+    expect(npm.map((leg) => leg.platform).sort()).toEqual(
+      [...(full?.npmSmoke ?? [])].map((leg) => leg["platform"]).sort(),
+    );
+    expect(npm.map((leg) => leg.platform)).toEqual(
+      expect.arrayContaining(["win32-x64", "win32-arm64"]),
     );
   });
 

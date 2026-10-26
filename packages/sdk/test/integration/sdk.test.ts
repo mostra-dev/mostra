@@ -52,7 +52,7 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
 
     const source = writeArtifact(dir.path, "plan");
     const verdict = await mostra.verify(source);
-    expect(verdict.status).toBe("pass");
+    expect(verdict.status, JSON.stringify(verdict.diagnostics)).toBe("pass");
     const receipt = await mostra.publish(source);
     expect(receipt.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_/);
 
@@ -306,7 +306,10 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
       );
       const outcomes = await Promise.all(calls);
       expect(new Set(outcomes)).toEqual(new Set(["MOSTRA_HOST_CONNECTION_CLOSED"]));
-      expect((await mostra.closed).signal).toBe("SIGKILL");
+      // Windows sends no signal: Node.js ends the process with TerminateProcess, exit code 1.
+      expect(await mostra.closed).toMatchObject(
+        process.platform === "win32" ? { code: 1, signal: null } : { signal: "SIGKILL" },
+      );
       await new Promise((done) => setTimeout(done, 200));
       expect(uncaught).toEqual([]);
     } finally {

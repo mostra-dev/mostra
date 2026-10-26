@@ -140,7 +140,7 @@ function numberFrom(value: string | undefined, fallback: number): number {
   return value === undefined || value.trim() === "" ? fallback : Number(value);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const { values } = parseArgs({
     options: { usage: { type: "string" }, status: { type: "string" } },
     strict: true,

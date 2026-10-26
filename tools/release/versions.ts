@@ -196,7 +196,7 @@ export function crateProblems(root: string = ROOT): string[] {
     });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const command = process.argv[2];
   if (command === "next") console.log(next());
   else if (command === "plan") {

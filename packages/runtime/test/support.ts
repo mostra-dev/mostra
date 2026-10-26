@@ -581,17 +581,31 @@ function procAddress6(hex: string): string {
  */
 export function commandLineOf(pid: number): string {
   if (WINDOWS) {
-    // From the whole table (one CIM query that the gateway suite proves), so a process that
-    // isn't there is an error naming it, never an empty command line.
+    // One process's row, by a filtered CIM query, so a process that isn't there is an error
+    // naming it, never an empty command line. The whole table took 5 s on Windows x64 and 37 s on
+    // arm64, once 55 s on a loaded x64 runner, past the suite's limit; one row takes 0.4 s and
+    // 23 s (VERIFIED_FACTS, WP-W3).
     const started = Date.now();
-    const table = processTable();
-    const row = table.find((entry) => entry.pid === pid);
-    if (!row) {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Get-CimInstance Win32_Process -Filter 'ProcessId = ${Number(pid)}' | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress`,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    ).trim();
+    const row =
+      out === ""
+        ? undefined
+        : (JSON.parse(out) as { ProcessId: number; Name: string; CommandLine: string | null });
+    if (!row || row.ProcessId !== pid) {
       throw new Error(
-        `No process ${pid} is in the process table (${table.length} processes, read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
+        `No process ${pid} is in the process table (read in ${Date.now() - started} ms; ${alive(pid) ? "it still runs" : "it no longer runs"}).`,
       );
     }
-    return row.command;
+    return row.CommandLine ?? row.Name;
   }
   return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
 }
@@ -643,8 +657,74 @@ export function currentUserSid(): string {
   return (JSON.parse(out) as { result: { user: string } }).result.user;
 }
 
+/**
+ * Every process below `pid`, with its command line. On Windows the tree comes from the helper's
+ * `processes` (a process snapshot: milliseconds), a child counted only when created after its
+ * parent, since a parent PID can name a later process; only those processes' command lines are
+ * then read, in one filtered CIM query, instead of the whole table (5 s on Windows x64 and 37 s
+ * on arm64 in WP-W3's probe). A process that exits meanwhile is left out, as the table would.
+ */
+export function descendantsOf(pid: number): { pid: number; command: string }[] {
+  if (!WINDOWS) {
+    const rows = processTable();
+    const found: { pid: number; command: string }[] = [];
+    const queue = [pid];
+    while (queue.length > 0) {
+      const parent = queue.shift();
+      for (const row of rows) {
+        if (row.ppid === parent) {
+          found.push({ pid: row.pid, command: row.command });
+          queue.push(row.pid);
+        }
+      }
+    }
+    return found;
+  }
+  const listed = JSON.parse(
+    execFileSync(helperPath(), ["processes"], { encoding: "utf8", windowsHide: true }),
+  ) as { result: { pid: number; ppid?: number; startTime?: string }[] };
+  const born = (time: string | undefined): bigint | undefined =>
+    time?.startsWith("win/") ? BigInt(time.slice(4)) : undefined;
+  const rows = listed.result;
+  const top = born(rows.find((row) => row.pid === pid)?.startTime);
+  if (top === undefined) return [];
+  const below: number[] = [];
+  const queue: [number, bigint][] = [[pid, top]];
+  while (queue.length > 0) {
+    const [parent, parentBorn] = queue.shift() as [number, bigint];
+    for (const row of rows) {
+      const at = born(row.startTime);
+      if (row.ppid !== parent || at === undefined || at < parentBorn || below.includes(row.pid))
+        continue;
+      below.push(row.pid);
+      queue.push([row.pid, at]);
+    }
+  }
+  if (below.length === 0) return [];
+  const filter = below.map((id) => `ProcessId = ${Number(id)}`).join(" OR ");
+  const out = execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `@(Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId,Name,CommandLine) | ConvertTo-Json -Compress`,
+    ],
+    { encoding: "utf8", windowsHide: true },
+  ).trim();
+  const found = (out === "" ? [] : [JSON.parse(out)].flat()) as {
+    ProcessId: number;
+    Name: string;
+    CommandLine: string | null;
+  }[];
+  return below.flatMap((id) => {
+    const row = found.find((entry) => entry.ProcessId === id);
+    return row ? [{ pid: id, command: row.CommandLine ?? row.Name }] : [];
+  });
+}
+
 /** Every process's ID, parent and command line: `ps` on POSIX, CIM's `Win32_Process` on Windows. */
-export function processTable(): { pid: number; ppid: number; command: string }[] {
+function processTable(): { pid: number; ppid: number; command: string }[] {
   if (WINDOWS) {
     const out = execFileSync(
       "powershell.exe",

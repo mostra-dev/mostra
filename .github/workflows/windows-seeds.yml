@@ -32,7 +32,6 @@ jobs:
     runs-on: ${{ inputs.os }}
     timeout-minutes: 90
     env:
-      MOSTRA_DEV_WINDOWS: "1"
       LEFTHOOK: "0"
     defaults:
       run:

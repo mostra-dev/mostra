@@ -143,7 +143,7 @@ export async function run(io: RunnerIo): Promise<number> {
 
   // Every entry point fails closed on an unsupported platform before touching the home (D35).
   const platform = io.platform ?? process.platform;
-  const unsupported = checkPlatform(platform, io.arch ?? process.arch, io.env);
+  const unsupported = checkPlatform(platform, io.arch ?? process.arch);
   if (unsupported) return fail(unsupported);
 
   let parsed: ReturnType<typeof parseCommandLine>;

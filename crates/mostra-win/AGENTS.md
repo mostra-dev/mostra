@@ -1,8 +1,8 @@
 # mostra-win
 
 Mostra's Windows platform helper (WP-W1, RT-10): what the runtime can't do on Windows through
-Node.js. Audience: the runtime bundle (the runtime's `platform` module runs it; WP-W3 ships it in
-the Windows bundles). Unpublished. Depends on `windows-sys` and `serde_json` only.
+Node.js. Audience: the runtime bundle (the runtime's `platform` module runs it; the Windows bundles
+ship it in `bin/`, WP-W3). Unpublished. Depends on `windows-sys` and `serde_json` only.
 
 ## Invariants it owns
 

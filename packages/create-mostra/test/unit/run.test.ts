@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { constants, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { create } from "../../src/index.ts";
 
@@ -23,6 +24,7 @@ const FAKE_CLI = `
 const { writeFileSync } = require("node:fs");
 const mode = process.env.FAKE_MODE;
 if (mode === "sigterm") process.kill(process.pid, "SIGTERM");
+if (mode === "exit") process.exit(7);
 let interrupts = 0;
 process.on("SIGINT", () => { interrupts += 1; });
 writeFileSync(process.env.FAKE_READY, "ready");
@@ -37,7 +39,8 @@ function drive(env: Record<string, string>, onReady?: (pid: number) => void): Pr
   const index = resolve(import.meta.dirname, "..", "..", "src", "index.ts");
   writeFileSync(
     driver,
-    `import { create } from ${JSON.stringify(index)};
+    // A file URL: Windows' absolute paths aren't import specifiers.
+    `import { create } from ${JSON.stringify(pathToFileURL(index).href)};
 const code = await create({
   args: ["art"],
   cwd: ${JSON.stringify(dir)},
@@ -69,18 +72,33 @@ process.exit(code);
   });
 }
 
+/** Windows sends no signal between processes (D150 item 6): a CLI ends there with an exit code. */
+const POSIX = process.platform !== "win32";
+
 describe("create-mostra runs the CLI as its bootstrap does", () => {
-  it("exits as a shell reports a signal that ended the CLI: 128 plus its number", async () => {
-    expect(await drive({ FAKE_MODE: "sigterm" })).toBe(128 + (constants.signals.SIGTERM as number));
+  it("exits with the CLI's own exit code", async () => {
+    expect(await drive({ FAKE_MODE: "exit" })).toBe(7);
   });
 
-  it("passes SIGINT on when no terminal is attached, and not when one is (the CLI got its own)", async () => {
-    const send = (pid: number): void => {
-      process.kill(pid, "SIGINT");
-    };
-    expect(await drive({ TERMINAL: "0" }, send)).toBe(1);
-    expect(await drive({ TERMINAL: "1" }, send)).toBe(0);
-  });
+  it.runIf(POSIX)(
+    "exits as a shell reports a signal that ended the CLI: 128 plus its number",
+    async () => {
+      expect(await drive({ FAKE_MODE: "sigterm" })).toBe(
+        128 + (constants.signals.SIGTERM as number),
+      );
+    },
+  );
+
+  it.runIf(POSIX)(
+    "passes SIGINT on when no terminal is attached, and not when one is (the CLI got its own)",
+    async () => {
+      const send = (pid: number): void => {
+        process.kill(pid, "SIGINT");
+      };
+      expect(await drive({ TERMINAL: "0" }, send)).toBe(1);
+      expect(await drive({ TERMINAL: "1" }, send)).toBe(0);
+    },
+  );
 
   it("answers a CLI it can't find with one --json envelope and exit 3, never a stack trace", async () => {
     const out: string[] = [];

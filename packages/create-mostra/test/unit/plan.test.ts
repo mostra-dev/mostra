@@ -1,4 +1,5 @@
 /** `npm create mostra`'s arguments become exactly one `mostra new` (RT-01). */
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DIR, nextSteps, plan } from "../../src/index.ts";
 
@@ -6,7 +7,7 @@ describe("create-mostra's plan", () => {
   it("creates the default directory when none is named", () => {
     expect(plan([], "/w")).toEqual({
       argv: ["new", DEFAULT_DIR],
-      dir: `/w/${DEFAULT_DIR}`,
+      dir: resolve("/w", DEFAULT_DIR),
       json: false,
       help: false,
     });
@@ -15,11 +16,11 @@ describe("create-mostra's plan", () => {
   it("takes the first word as the directory and passes every flag on, values included", () => {
     const run = plan(["--", "review", "--title", "Q3 review", "--json"], "/w");
     expect(run.argv).toEqual(["new", "review", "--title", "Q3 review", "--json"]);
-    expect(run.dir).toBe("/w/review");
+    expect(run.dir).toBe(resolve("/w", "review"));
     expect(run.json).toBe(true);
     // A flag's value is never taken for the directory.
-    expect(plan(["--title", "x", "dir"], "/w").dir).toBe("/w/dir");
-    expect(plan(["--title=x", "dir"], "/w").dir).toBe("/w/dir");
+    expect(plan(["--title", "x", "dir"], "/w").dir).toBe(resolve("/w", "dir"));
+    expect(plan(["--title=x", "dir"], "/w").dir).toBe(resolve("/w", "dir"));
   });
 
   it("answers --help itself, and quotes a directory with a space in its next steps", () => {

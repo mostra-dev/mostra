@@ -77,12 +77,16 @@ export interface CallOptions {
 export function checkBrowser(bundle: Bundle): Promise<readonly string[]>;
 
 // @public
-export function checkFiles(bundle: Bundle): Promise<void>;
+export function checkFiles(bundle: Bundle, options?: {
+    readonly links?: boolean;
+    readonly manifest?: BundleFiles;
+}): Promise<void>;
 
 // @public
 export function checkTree(root: string, manifest: BundleFiles, options?: {
     readonly allowExtra?: (path: string) => boolean;
     readonly limit?: number;
+    readonly links?: boolean;
 }): Promise<TreeProblems>;
 
 // @public
@@ -326,6 +330,9 @@ export type SetupStep = "files" | "browser";
 
 // @public
 export type TreeProblems = readonly string[];
+
+// @public
+export function windowsHelper(runtime: Runtime | undefined, env: Environment): string;
 
 // (No @packageDocumentation comment for this package)
 

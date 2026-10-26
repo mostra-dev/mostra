@@ -11,7 +11,7 @@
  * Anything a bundle supplies is checked first: its setup marker must match it, or setup runs.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { BundlePins, createDiagnostic, RpcError } from "@mostra/protocol";
 import { type InstallProgress, installPinned } from "./bundle/cache.ts";
 import {
@@ -61,7 +61,8 @@ export interface RuntimeOptions {
  */
 export function pinsFile(env: Environment, root: string): string {
   const override = env["MOSTRA_TEST_BUNDLE_PINS"];
-  const installed = root.split(sep).includes("node_modules");
+  // Either separator: a path spelled with `/` on Windows is still inside `node_modules`.
+  const installed = root.split(/[\\/]/).includes("node_modules");
   return override && !installed ? override : join(root, "dist", "bundles.json");
 }
 

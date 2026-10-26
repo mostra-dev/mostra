@@ -240,7 +240,11 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.rust) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 15
+    # Windows compiles the workspace from cold in about as long as the rest takes (WP-W3).
+    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 15 }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +260,20 @@ jobs:
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-nextest@0.9.146,cargo-deny@0.20.2
+      # The runtime the crate's suites spawn needs its Windows helper (D150), and the pipe-owner
+      # check a second local user (D150 item 4, WP-W3).
+      - name: Build the Windows helper
+        if: runner.os == 'Windows'
+        run: cargo build -p mostra-win --release --locked
+      - name: A second local user, for the pipe-owner check
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $password = "Mw3-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "!"
+          New-LocalUser -Name mostraother -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          "::add-mask::$password"
+          "MOSTRA_TEST_OTHER_USER=mostraother" >> $env:GITHUB_ENV
+          "MOSTRA_TEST_OTHER_PASSWORD=$password" >> $env:GITHUB_ENV
       - name: pnpm check --job rust
         env:
           # The crate's instance suites fail, never skip, when the runtime didn't build.
@@ -269,7 +287,7 @@ jobs:
           path: .turbo/cache
           key: ${{ steps.setup.outputs.turbo-key }}
 
-  # The host conformance kit against the Rust reference host on both POSIX platforms (HO-05):
+  # The host conformance kit against the Rust reference host on macOS, Linux and Windows (HO-05):
   # every port, standalone, and broken with its baseline. The TypeScript reference host runs in
   # the integration job's `clients` group. The kit's shell scenario renders in Chromium.
   conformance:
@@ -281,7 +299,10 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.conformance) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 20 }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,6 +315,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build the Windows helper
+        if: runner.os == 'Windows'
+        run: cargo build -p mostra-win --release --locked
       - uses: ./.github/actions/browsers
         with:
           browser: chromium-headless-shell
@@ -362,10 +386,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The Windows legs (WP-W1, WP-W2, D146): the unit, hygiene and integration jobs for the packages
-  # ported so far (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the merge queue,
-  # nightly and with ci:full). The runtime runs on Windows only behind the development switch
-  # `MOSTRA_DEV_WINDOWS`, which only these legs set; it finds the Windows helper Cargo builds here
+  # The Windows legs (WP-W1 to WP-W3, D146): the unit, hygiene and integration jobs for the
+  # packages Windows runs (`WINDOWS_PACKAGES` in tools/check/jobs.ts), on x64 (and arm64 in the
+  # merge queue, nightly and with ci:full). The runtime finds the Windows helper Cargo builds here
   # (`crates/mostra-win`). The integration suites run in groups, one machine each
   # (packages/runtime/vitest.config.ts), with a second local user for the access checks (RT-10,
   # RT-11).
@@ -380,7 +403,6 @@ jobs:
     runs-on: ${{ matrix.leg.runner }}
     timeout-minutes: 25
     env:
-      MOSTRA_DEV_WINDOWS: "1"
       MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
     defaults:
       run:
@@ -434,7 +456,13 @@ jobs:
           JOB: ${{ matrix.leg.job }}
           SCOPE: ${{ needs.plan.outputs.scope }}
           MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
-        run: node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
+        run: |
+          # The unit job's ledgers and bundles in the workspace's own disk (D: on x64; arm64 has
+          # only C:): beside the SDK's and the kit's suites, a runtime suite's 250 synchronous
+          # commits on C: ran past their 30 s, where they took 16 s alone (#66, D153 item 10).
+          # The other jobs keep %TEMP%, whose access list their access checks rely on.
+          if [ "$JOB" = unit ]; then export TEMP="$RUNNER_TEMP" TMP="$RUNNER_TEMP"; fi
+          node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
       - name: Save the Turborepo cache (main only)
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -470,8 +498,6 @@ jobs:
     env:
       MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
       MOSTRA_E2E_SHARD: ${{ matrix.leg.shard || '' }}
-      # Windows runs only behind the development switch until WP-W3 (D146, D150).
-      MOSTRA_DEV_WINDOWS: ${{ startsWith(matrix.leg.os, 'windows') && '1' || '' }}
     defaults:
       run:
         shell: bash

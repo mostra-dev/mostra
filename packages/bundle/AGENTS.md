@@ -42,7 +42,7 @@ What a runtime bundle carries (RT-01, D142), and the scripts that build, check a
 
 ## Tests to run
 
-`node packages/bundle/scripts/build.ts --out <dir>`, then
+`pnpm exec node packages/bundle/scripts/build.ts --out <dir>` (through pnpm, which Windows needs), then
 `sh packages/bundle/scripts/smoke.sh <archive> <sha256>`; `node tools/license-audit/cli.ts --bundle
 <extracted bundle>`; `pnpm --filter @mostra/bundle typecheck`. The release itself is
 `docs/agents/release.md`.

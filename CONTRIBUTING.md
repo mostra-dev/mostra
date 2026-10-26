@@ -40,7 +40,7 @@ pnpm gen <name>  # start a package, diagnostic code or protocol method in the ri
 ```
 
 `pnpm check` runs the same jobs as CI, so a green local run means a green CI run, apart from the
-macOS and Linux legs and GitHub's hosted scanners.
+other systems' legs (macOS, Linux and Windows) and GitHub's hosted scanners.
 
 ## Pull requests
 

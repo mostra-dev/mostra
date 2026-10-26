@@ -6,9 +6,9 @@ Create a [Mostra](https://github.com/mostra-dev/mostra) artifact:
 npm create mostra@latest my-artifact
 ```
 
-The first run downloads Mostra's runtime for your platform (about 200 MB, macOS and Linux),
-checks it against the SHA-256 its release pins, and caches it; later runs reuse it. Mostra runs on
-its own Node.js, so the version you have doesn't matter. Then:
+The first run downloads Mostra's runtime for your platform (about 200 MB; macOS, glibc-based Linux
+and Windows, on x64 and arm64), checks it against the SHA-256 its release pins, and caches it;
+later runs reuse it. Mostra runs on its own Node.js, so the version you have doesn't matter. Then:
 
 ```sh
 npx @mostra/cli verify my-artifact

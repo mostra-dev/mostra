@@ -72,7 +72,7 @@ export function plan(
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: { version: { type: "string" } },

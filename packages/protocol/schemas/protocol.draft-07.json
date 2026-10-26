@@ -1011,7 +1011,7 @@
       "properties": {
         "file": {
           "type": "string",
-          "pattern": "^mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$"
+          "pattern": "^(?:mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-(darwin|linux)-(arm64|x64)\\.tar\\.gz$|mostra-[0-9A-Za-z][0-9A-Za-z.+-]*-win32-(arm64|x64)\\.tar\\.gz$)"
         },
         "sha256": {
           "$ref": "#/definitions/Sha256"
@@ -1286,7 +1286,9 @@
         "darwin-arm64",
         "darwin-x64",
         "linux-x64",
-        "linux-arm64"
+        "linux-arm64",
+        "win32-x64",
+        "win32-arm64"
       ]
     },
     "BundleSetup": {
@@ -1320,6 +1322,10 @@
         },
         "at": {
           "type": "string"
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [

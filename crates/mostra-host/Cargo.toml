@@ -14,7 +14,6 @@ include = ["src/**/*.rs", "build.rs", "bundles.json", "README.md", "LICENSE", "N
 
 [dependencies]
 flate2 = "1.1.4"
-nix = { version = "0.31.3", features = ["fs", "signal"] }
 percent-encoding = "2.3.2"
 regress = "0.12.0"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "stream"] }
@@ -27,6 +26,21 @@ tar = "0.4.44"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
 url = "2.5.8"
 
+# POSIX: signals and process liveness, the disk's free space.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", features = ["fs", "signal"] }
+
+# Windows (WP-W3, D153): the control pipe's owner, process liveness and free space, in one module
+# (`src/windows.rs`), the crate's only `unsafe`.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Threading",
+] }
+
 [build-dependencies]
 serde_json = "1.0.150"
 
@@ -34,5 +48,12 @@ serde_json = "1.0.150"
 tempfile = "3.23.0"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "test-util", "time"] }
 
-[lints]
-workspace = true
+# The workspace forbids `unsafe`; this crate's Windows module (`src/windows.rs`) calls Win32 for what
+# the standard library can't, so it is denied here and allowed in that module alone.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

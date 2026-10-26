@@ -44,8 +44,8 @@ protocol over the home's socket.
   SDK's `connectControl`, which on Windows runs `mostra-win connect` and refuses a pipe another
   user created under the name `instance.json` names; a plain `net.connect` would hand that user the
   CLI's requests.
-- **The platform gate is the runtime's** (`platform.ts`): macOS and Linux on x64 and arm64, Windows
-  only with `MOSTRA_DEV_WINDOWS=1` until WP-W3, everything else `MOSTRA_PLATFORM_UNSUPPORTED`.
+- **The platform gate is the runtime's** (`platform.ts`): macOS, Linux and Windows on x64 and
+  arm64, everything else `MOSTRA_PLATFORM_UNSUPPORTED`.
 
 ## Public interface
 

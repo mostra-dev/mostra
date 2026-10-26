@@ -20,9 +20,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, parseLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
 import {
+  descendantsOf,
   eventually,
   listening,
-  processTable,
   runBin,
   tempDir,
   testHome,
@@ -30,23 +30,6 @@ import {
 } from "../support.ts";
 
 const DAY = 86_400_000;
-
-/** Every process below `pid`, from the operating system's process table. */
-function descendants(pid: number): { pid: number; command: string }[] {
-  const rows = processTable();
-  const found: { pid: number; command: string }[] = [];
-  const queue = [pid];
-  while (queue.length > 0) {
-    const parent = queue.shift();
-    for (const row of rows) {
-      if (row.ppid === parent) {
-        found.push({ pid: row.pid, command: row.command });
-        queue.push(row.pid);
-      }
-    }
-  }
-  return found;
-}
 
 /** The supervisor's log lines, parsed. */
 function logLines(gateway: GatewayHome): Record<string, unknown>[] {
@@ -89,7 +72,7 @@ describe("serving versions (RT-05, VR-03)", () => {
     expect((status.processes as { kind: string }[]).map((child) => child.kind)).toEqual(
       WINDOWS ? ["control-pipe"] : [],
     );
-    const below = descendants(gateway.daemon.child.pid as number);
+    const below = descendantsOf(gateway.daemon.child.pid as number);
     if (WINDOWS) {
       expect(below.length).toBeGreaterThan(0);
       for (const child of below) {

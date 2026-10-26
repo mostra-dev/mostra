@@ -24,6 +24,66 @@ pub type Environment = BTreeMap<String, String>;
 /// The setup marker's file name (`BUNDLE_SETUP_MARKER`).
 pub const SETUP_MARKER: &str = ".mostra-setup.json";
 
+/// `CREATE_NO_WINDOW`: a child with no console window of its own.
+#[cfg(windows)]
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// What Windows gives every program, which a child of the crate keeps (D150 item 9, D153):
+/// Node.js aborts without `SystemRoot`, which its random-number source needs.
+#[cfg(windows)]
+const WINDOWS_SYSTEM_VARIABLES: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "OS",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+];
+
+/// The environment of a process the crate starts: the host's, and on Windows each of the
+/// system's own variables this process has that the host's lacks (matched without case, as
+/// Windows matches names). They name the system's folders, nothing of the user's secrets.
+#[must_use]
+pub(crate) fn child_environment(env: &Environment) -> Environment {
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut out = env.clone();
+    #[cfg(windows)]
+    for name in WINDOWS_SYSTEM_VARIABLES {
+        if out.keys().any(|key| key.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        if let Some((key, value)) = std::env::vars_os().find_map(|(key, value)| {
+            let key = key.into_string().ok()?;
+            key.eq_ignore_ascii_case(name)
+                .then(|| value.into_string().ok().map(|value| (key, value)))
+                .flatten()
+        }) {
+            out.insert(key, value);
+        }
+    }
+    out
+}
+
 /// The space an install needs beyond the archive and its files: the browser and some margin.
 const BROWSER_ALLOWANCE: u64 = 500 * 1024 * 1024;
 
@@ -94,17 +154,43 @@ pub fn offline(env: &Environment) -> bool {
     })
 }
 
-/// Where the cache is: `MOSTRA_CACHE_DIR`, else `~/Library/Caches/mostra` (macOS), else
+/// Where the cache is: `MOSTRA_CACHE_DIR`, else `~/Library/Caches/mostra` (macOS),
+/// `%LOCALAPPDATA%\mostra-cache` (Windows, beside the home), else
 /// `${XDG_CACHE_HOME:-~/.cache}/mostra`.
 #[must_use]
 pub fn cache_root(env: &Environment) -> PathBuf {
+    // Absolute, as the SDK's `cacheRoot` resolves it: the runtime found there runs a daemon in its
+    // home's file system root, where a relative path would name nothing (Opus review of WP-W3).
     if let Some(dir) = env.get("MOSTRA_CACHE_DIR").filter(|dir| !dir.is_empty()) {
-        return PathBuf::from(dir);
+        let dir = PathBuf::from(dir);
+        return std::path::absolute(&dir).unwrap_or(dir);
+    }
+    if cfg!(windows) {
+        // The host's environment first, then this process's own profile, as the SDK falls back
+        // to `homedir()`: never a directory every user may create in, such as `C:\` (Opus review
+        // of WP-W3).
+        let named = |name: &str| {
+            env.get(name)
+                .filter(|dir| !dir.is_empty())
+                .map(PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os(name)
+                        .filter(|dir| !dir.is_empty())
+                        .map(PathBuf::from)
+                })
+        };
+        let local = named("LOCALAPPDATA")
+            .or_else(|| named("USERPROFILE").map(|profile| profile.join("AppData").join("Local")))
+            .or_else(|| std::env::home_dir().map(|home| home.join("AppData").join("Local")))
+            .unwrap_or_else(|| std::env::temp_dir().join("mostra-cache-no-profile"));
+        return local.join("mostra-cache");
     }
     let home = env
         .get("HOME")
         .filter(|home| !home.is_empty())
-        .map_or_else(|| PathBuf::from("/"), PathBuf::from);
+        .map(PathBuf::from)
+        .or_else(std::env::home_dir)
+        .unwrap_or_else(|| PathBuf::from("/"));
     if cfg!(target_os = "macos") {
         return home.join("Library/Caches/mostra");
     }
@@ -163,13 +249,44 @@ pub fn read_bundle(root: &Path) -> Result<Bundle> {
     })
 }
 
-/// The setup marker, when it describes exactly this bundle.
+/// Whether a bundle platform is Windows', whose links setup makes as junctions (D153).
+#[must_use]
+pub fn is_windows_bundle(platform: &str) -> bool {
+    platform.starts_with("win32-")
+}
+
+/// A path as Windows' own APIs spell it, without the `\\?\` prefix `canonicalize` adds, so it
+/// compares with the root the bundle's setup (Node.js's `realpath.native`) records.
+pub(crate) fn plain_path(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path,
+    }
+}
+
+/// The bundle's real path, as its setup marker names it.
+fn real_root(root: &Path) -> Option<PathBuf> {
+    root.canonicalize().ok().map(plain_path)
+}
+
+/// The setup marker, when it describes exactly this bundle. A Windows bundle's marker must also
+/// name the root it sits at now: its junctions point into the root setup ran at, so a bundle
+/// moved or copied since is set up again (D153).
 #[must_use]
 pub fn read_setup(bundle: &Bundle) -> Option<BundleSetup> {
     let text = std::fs::read_to_string(bundle.root.join(SETUP_MARKER)).ok()?;
     let marker: BundleSetup = serde_json::from_str(&text).ok()?;
     let info = &bundle.info;
-    (marker.files.as_str() == info.files.sha256.as_str()
+    let here = !is_windows_bundle(&info.platform.to_string())
+        || marker.root.as_ref().is_some_and(|root| {
+            real_root(&bundle.root).is_some_and(|real| Path::new(root.as_str()) == real)
+        });
+    (here
+        && marker.files.as_str() == info.files.sha256.as_str()
         && marker.version.as_str() == info.version.as_str()
         && marker.platform == info.platform
         && marker.browser.revision.as_str() == info.browser.revision.as_str())
@@ -209,10 +326,83 @@ enum Walked {
     Other,
 }
 
+/// A link's target as the manifest spells it: relative to the link's directory, `/`-separated.
+/// POSIX targets are kept as written; a Windows junction's absolute target is made relative.
+/// `real_root` is `root`'s real path on Windows, computed once per walk (Opus review of WP-W3,
+/// finding 8); `None` elsewhere, or for a root that doesn't exist.
+fn link_target(root: &Path, real_root: Option<&Path>, path: &str, written: &Path) -> String {
+    if cfg!(windows) {
+        let written = plain_path(written.to_path_buf());
+        if written.is_absolute() {
+            // A junction stores an absolute path, spelled as whoever made it spelled the bundle's
+            // root: setup uses the real path, while `root` may be another spelling of it (an 8.3
+            // short name, another case). Each spelling of the link's directory is tried against
+            // the same spelling of the root, so neither reads as a detour out of the bundle.
+            let dir = root.join(path).parent().unwrap_or(root).to_path_buf();
+            let mut spellings = vec![(root.to_path_buf(), dir.clone())];
+            if let Some(real) = real_root
+                && let Ok(inside) = dir.strip_prefix(root)
+            {
+                spellings.push((real.to_path_buf(), real.join(inside)));
+            }
+            for (base, from) in &spellings {
+                if starts_with_folded(&written, base) {
+                    return relative_path(from, &written);
+                }
+            }
+            return relative_path(&dir, &written);
+        }
+        return written.to_string_lossy().replace('\\', "/");
+    }
+    written.to_string_lossy().into_owned()
+}
+
+/// Whether two path components are the same: without case on Windows, as it compares names.
+fn same_component(a: &std::path::Component<'_>, b: &std::path::Component<'_>) -> bool {
+    if cfg!(windows) {
+        a.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&b.as_os_str().to_string_lossy())
+    } else {
+        a == b
+    }
+}
+
+/// Whether `path` is `base` or lies below it, by components.
+fn starts_with_folded(path: &Path, base: &Path) -> bool {
+    let mut path = path.components();
+    base.components().all(|part| {
+        path.next()
+            .is_some_and(|other| same_component(&part, &other))
+    })
+}
+
+/// `to` relative to `from` (both absolute, lexically), `/`-separated.
+fn relative_path(from: &Path, to: &Path) -> String {
+    let from: Vec<_> = from.components().collect();
+    let to: Vec<_> = to.components().collect();
+    let common = from
+        .iter()
+        .zip(&to)
+        .take_while(|(a, b)| same_component(a, b))
+        .count();
+    let mut parts: Vec<String> = vec!["..".to_owned(); from.len() - common];
+    parts.extend(
+        to[common..]
+            .iter()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned()),
+    );
+    parts.join("/")
+}
+
 /// Every file and link under `root` by `/`-separated path, skipping `skip`ped paths (and below).
 fn walk(root: &Path, skip: &dyn Fn(&str) -> bool) -> std::io::Result<BTreeMap<String, Walked>> {
-    use std::os::unix::fs::PermissionsExt;
     let mut out = BTreeMap::new();
+    let real_root = if cfg!(windows) {
+        root.canonicalize().map(plain_path).ok()
+    } else {
+        None
+    };
     let mut stack = vec![String::new()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(root.join(&dir))? {
@@ -230,16 +420,18 @@ fn walk(root: &Path, skip: &dyn Fn(&str) -> bool) -> std::io::Result<BTreeMap<St
             if kind.is_dir() {
                 stack.push(path);
             } else if kind.is_symlink() {
-                let target = std::fs::read_link(entry.path())?
-                    .to_string_lossy()
-                    .into_owned();
+                let target = link_target(
+                    root,
+                    real_root.as_deref(),
+                    &path,
+                    &std::fs::read_link(entry.path())?,
+                );
                 out.insert(path, Walked::Link { target });
             } else if kind.is_file() {
-                let mode = entry.metadata()?.permissions().mode();
                 out.insert(
                     path,
                     Walked::File {
-                        executable: mode & 0o100 != 0,
+                        executable: executable(&entry.metadata()?),
                     },
                 );
             } else {
@@ -250,9 +442,21 @@ fn walk(root: &Path, skip: &dyn Fn(&str) -> bool) -> std::io::Result<BTreeMap<St
     Ok(out)
 }
 
+/// Whether a file's owner may execute it; Windows keeps no execute bit (D150 item 8).
+#[cfg(unix)]
+fn executable(meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    meta.permissions().mode() & 0o100 != 0
+}
+
+#[cfg(not(unix))]
+fn executable(_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
 /// Whether a link's target is relative and resolves inside the tree.
 fn link_stays_inside(path: &str, target: &str) -> bool {
-    if target.starts_with('/') {
+    if target.starts_with('/') || target.contains('\\') || target.contains(':') {
         return false;
     }
     let mut depth: i64 = 0;
@@ -287,9 +491,14 @@ fn setup_extra(path: &str) -> bool {
 }
 
 /// Checks the tree under `root` against `manifest`: each listed file present and regular, with
-/// its size, SHA-256 and execute bit; each link with its target, staying inside; nothing else
-/// besides the setup extras. Reports at most 20 problems.
-fn check_tree(root: &Path, manifest: &BundleFiles) -> std::io::Result<Vec<String>> {
+/// its size, SHA-256 and execute bit; each link with its target, staying inside (unless `links`
+/// is false: a Windows bundle's junctions, which its setup makes, D153); nothing else besides the
+/// setup extras. Reports at most 20 problems.
+fn check_tree(
+    root: &Path,
+    manifest: &BundleFiles,
+    links_too: bool,
+) -> std::io::Result<Vec<String>> {
     let mut problems = Vec::new();
     let files: BTreeMap<&str, _> = manifest
         .files
@@ -328,7 +537,7 @@ fn check_tree(root: &Path, manifest: &BundleFiles) -> std::io::Result<Vec<String
             problems.push(format!("{path}: not in the bundle's file list"));
         }
     }
-    for (path, link) in &links {
+    for (path, link) in links.iter().filter(|_| links_too) {
         match found.get(*path) {
             Some(Walked::Link { target }) if target == link.target.as_str() => {
                 if !link_stays_inside(path, target) {
@@ -375,12 +584,25 @@ fn check_tree(root: &Path, manifest: &BundleFiles) -> std::io::Result<Vec<String
     Ok(problems)
 }
 
-/// Checks the bundle's files against `files.json`, which `bundle.json` pins by SHA-256.
+/// Checks the bundle's files against `files.json`, which `bundle.json` pins by SHA-256, and its
+/// links; a Windows bundle's only once its setup made them (D153).
 ///
 /// # Errors
 ///
 /// `MOSTRA_ENV_BUNDLE_INVALID` naming what differs.
 pub fn check_files(bundle: &Bundle) -> Result<()> {
+    check(bundle, true)
+}
+
+/// The files, and the links when the bundle's archive carries them (every bundle but Windows').
+pub(crate) fn check_as_extracted(bundle: &Bundle) -> Result<()> {
+    check(
+        bundle,
+        !is_windows_bundle(&bundle.info.platform.to_string()),
+    )
+}
+
+fn check(bundle: &Bundle, links: bool) -> Result<()> {
     let info = &bundle.info;
     let listing = bundle.root.join(info.files.path.as_str());
     let (sha256, _) = hash_file(&listing).unwrap_or_default();
@@ -399,7 +621,7 @@ pub fn check_files(bundle: &Bundle) -> Result<()> {
                 info.files.path.as_str()
             ))
         })?;
-    let problems = check_tree(&bundle.root, &manifest).map_err(|e| {
+    let problems = check_tree(&bundle.root, &manifest, links).map_err(|e| {
         invalid(format!(
             "The runtime bundle at {} can't be read: {e}",
             bundle.root.display()
@@ -417,31 +639,36 @@ pub fn check_files(bundle: &Bundle) -> Result<()> {
     }
 }
 
-/// Makes a checked bundle ready: runs its own `bin/mostra-setup --root <bundle>`, which fetches
-/// and checks the verify browser and writes the setup marker (D142 item 2).
+/// Makes a checked bundle ready: runs its own setup entry (`bundle.json`'s `entries.setup`) on the
+/// bundle's own Node.js, `--root <bundle>`, which makes a Windows bundle's junctions, fetches and
+/// checks the verify browser and writes the setup marker (D142 item 2, D153). Node.js is the
+/// bundle's: the entry's `#!/usr/bin/env node` would ask the machine for one it may not have.
 ///
 /// # Errors
 ///
 /// The setup's own diagnostic (`MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED`, `MOSTRA_ENV_BUNDLE_INVALID`,
 /// `MOSTRA_ENV_BUNDLE_UNAVAILABLE` offline), or `MOSTRA_ENV_RUNTIME_MISSING` when it can't run.
 pub async fn setup(bundle: &Bundle, env: &Environment) -> Result<BundleSetup> {
-    let program = bundle.root.join(bundle.info.entries.setup.as_str());
-    let output = tokio::process::Command::new(&program)
+    let program = bundle.node();
+    let entry = bundle.root.join(bundle.info.entries.setup.as_str());
+    let mut command = tokio::process::Command::new(&program);
+    command
+        .arg(&entry)
         .arg("--root")
         .arg(&bundle.root)
         .env_clear()
-        .envs(env)
+        .envs(child_environment(env))
         .stdin(std::process::Stdio::null())
         // A host that gives up the install stops its setup too.
-        .kill_on_drop(true)
-        .output()
-        .await
-        .map_err(|e| {
-            Error::new(
-                "MOSTRA_ENV_RUNTIME_MISSING",
-                format!("Couldn't run {}: {e}", program.display()),
-            )
-        })?;
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().await.map_err(|e| {
+        Error::new(
+            "MOSTRA_ENV_RUNTIME_MISSING",
+            format!("Couldn't run {}: {e}", program.display()),
+        )
+    })?;
     let line = String::from_utf8_lossy(&output.stdout);
     let answer: serde_json::Value = line
         .lines()
@@ -528,7 +755,9 @@ pub async fn install_pinned(
         sweep(&bundles);
         if dir.exists() {
             // A bundle whose setup didn't finish: only its own files decide a new download.
-            match read_bundle(&dir).and_then(|bundle| check_files(&bundle).map(|()| bundle)) {
+            // A Windows bundle's junctions are its setup's to make (D153).
+            match read_bundle(&dir).and_then(|bundle| check_as_extracted(&bundle).map(|()| bundle))
+            {
                 Ok(bundle) => {
                     progress(InstallStep::Browser);
                     setup(&bundle, env).await?;
@@ -559,12 +788,53 @@ fn ready_at(dir: &Path) -> Option<Bundle> {
 }
 
 fn create_private_dir(dir: &Path) -> Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    // On Windows the cache sits in the user's profile, whose access list admits only the user,
+    // the system and administrators.
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
         .create(dir)
         .map_err(|e| download_failed(format!("Couldn't create {}: {e}", dir.display())))
+}
+
+/// Renames `from` to `to`. On Windows a file an antivirus scan or the indexer holds for a moment
+/// refuses the rename though nothing is wrong, so it is tried again with backoff for up to 3 s,
+/// as the runtime's and the SDK's renames are (D150 item 8); a refusal that lasts is returned.
+async fn rename_into_place(from: &Path, to: &Path) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let mut wait = Duration::from_millis(25);
+    loop {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if cfg!(windows)
+                    && error.kind() == std::io::ErrorKind::PermissionDenied
+                    && !to.exists()
+                    && std::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(Duration::from_millis(400));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+/// The bytes free on `dir`'s file system, when the system says.
+#[cfg(unix)]
+fn free_space(dir: &Path) -> Option<u64> {
+    let stats = nix::sys::statvfs::statvfs(dir).ok()?;
+    // `blocks_available` is a u32 on macOS and a u64 on Linux.
+    #[allow(clippy::useless_conversion, reason = "u32 on macOS, u64 on Linux")]
+    let free = u64::from(stats.blocks_available()).saturating_mul(stats.fragment_size());
+    Some(free)
+}
+
+#[cfg(windows)]
+fn free_space(dir: &Path) -> Option<u64> {
+    crate::windows::free_space(dir)
 }
 
 /// Downloads, extracts and checks the archive, then renames it into `dir`.
@@ -578,20 +848,17 @@ async fn fetch_into(
     progress: &(dyn Fn(InstallStep) + Send + Sync),
 ) -> Result<()> {
     let needed = asset.size.get() + asset.unpacked_size.get() + BROWSER_ALLOWANCE;
-    if let Ok(stats) = nix::sys::statvfs::statvfs(bundles) {
-        // `blocks_available` is a u32 on macOS and a u64 on Linux.
-        #[allow(clippy::useless_conversion, reason = "u32 on macOS, u64 on Linux")]
-        let free = u64::from(stats.blocks_available()).saturating_mul(stats.fragment_size());
-        if free < needed {
-            #[allow(clippy::cast_precision_loss, reason = "a readable size")]
-            let gib = |bytes: u64| format!("{:.1} GiB", bytes as f64 / 1024_f64.powi(3));
-            return Err(download_failed(format!(
-                "The runtime bundle needs about {} free in {}, and {} is free (the disk is full).",
-                gib(needed),
-                bundles.display(),
-                gib(free)
-            )));
-        }
+    if let Some(free) = free_space(bundles)
+        && free < needed
+    {
+        #[allow(clippy::cast_precision_loss, reason = "a readable size")]
+        let gib = |bytes: u64| format!("{:.1} GiB", bytes as f64 / 1024_f64.powi(3));
+        return Err(download_failed(format!(
+            "The runtime bundle needs about {} free in {}, and {} is free (the disk is full).",
+            gib(needed),
+            bundles.display(),
+            gib(free)
+        )));
     }
     let scratch = Scratch(bundles.join(format!(".tmp-{}-{}", std::process::id(), random_hex())));
     create_private_dir(&scratch.0)?;
@@ -623,7 +890,9 @@ async fn fetch_into(
         let root = scratch.join("root");
         let top = asset.file.trim_end_matches(".tar.gz").to_owned();
         let (archive_path, root_path) = (archive.clone(), root.clone());
-        tokio::task::spawn_blocking(move || extract(&archive_path, &root_path, &top))
+        // A Windows archive holds no links (D153): one that does is refused.
+        let links = !is_windows_bundle(platform);
+        tokio::task::spawn_blocking(move || extract(&archive_path, &root_path, &top, links))
             .await
             .map_err(|e| download_failed(format!("Extracting the bundle failed: {e}")))??;
         let _ = std::fs::remove_file(&archive);
@@ -640,10 +909,10 @@ async fn fetch_into(
         }
         progress(InstallStep::Files);
         let checking = bundle.clone();
-        tokio::task::spawn_blocking(move || check_files(&checking))
+        tokio::task::spawn_blocking(move || check_as_extracted(&checking))
             .await
             .map_err(|e| invalid(format!("Checking the bundle failed: {e}")))??;
-        match std::fs::rename(&root, dir) {
+        match rename_into_place(&root, dir).await {
             Ok(()) => Ok(()),
             // Another installer finished first: its directory, checked before its rename, is used.
             Err(_) if dir.exists() => Ok(()),
@@ -680,10 +949,9 @@ fn random_hex() -> String {
 }
 
 /// Extracts `archive` (a `.tar.gz` with one top directory `top`) into `into`, which must not
-/// exist: only regular files, directories and symbolic links, all under `top`, nothing written
-/// through a link. The tree is checked against `files.json` afterwards.
-fn extract(archive: &Path, into: &Path, top: &str) -> Result<()> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+/// exist: only regular files, directories and (when `links`) symbolic links, all under `top`,
+/// nothing written through a link. The tree is checked against `files.json` afterwards.
+fn extract(archive: &Path, into: &Path, top: &str, links: bool) -> Result<()> {
     let file = std::fs::File::open(archive)
         .map_err(|e| download_failed(format!("Couldn't read the archive: {e}")))?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
@@ -745,22 +1013,16 @@ fn extract(archive: &Path, into: &Path, top: &str) -> Result<()> {
             let mut out = std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .mode(if mode & 0o100 == 0 { 0o644 } else { 0o755 })
                 .open(&dest)
                 .map_err(written)?;
             std::io::copy(&mut entry, &mut out).map_err(written)?;
-            out.set_permissions(std::fs::Permissions::from_mode(if mode & 0o100 == 0 {
-                0o644
-            } else {
-                0o755
-            }))
-            .map_err(written)?;
-        } else if kind.is_symlink() {
+            set_mode(&out, mode).map_err(written)?;
+        } else if kind.is_symlink() && links {
             let target = entry
                 .link_name()
                 .map_err(unreadable)?
                 .ok_or_else(|| invalid(format!("{display} is a link without a target.")))?;
-            std::os::unix::fs::symlink(&target, &dest).map_err(written)?;
+            make_link(&target, &dest).map_err(written)?;
         } else {
             return Err(invalid(format!(
                 "The runtime bundle's archive holds an entry a bundle never has: {display} ({kind:?})."
@@ -768,6 +1030,35 @@ fn extract(archive: &Path, into: &Path, top: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A file's mode as the archive says, 0755 or 0644 (POSIX); Windows keeps no execute bit.
+#[cfg(unix)]
+fn set_mode(file: &std::fs::File, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(std::fs::Permissions::from_mode(if mode & 0o100 == 0 {
+        0o644
+    } else {
+        0o755
+    }))
+}
+
+#[cfg(not(unix))]
+fn set_mode(_file: &std::fs::File, _mode: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// A symbolic link from an archive (POSIX bundles only: a Windows archive holds none, D153).
+#[cfg(unix)]
+fn make_link(target: &Path, at: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, at)
+}
+
+#[cfg(not(unix))]
+fn make_link(_target: &Path, _at: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::other(
+        "a Windows bundle's links are made by its setup",
+    ))
 }
 
 /// Removes scratch directories an interrupted install left, when their process is gone.
@@ -790,11 +1081,33 @@ fn sweep(bundles: &Path) {
     }
 }
 
+#[cfg(unix)]
 fn alive(pid: i32) -> bool {
     match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None) {
         Ok(()) | Err(nix::errno::Errno::EPERM) => true,
         Err(_) => false,
     }
+}
+
+#[cfg(windows)]
+fn alive(pid: i32) -> bool {
+    u32::try_from(pid).is_ok_and(crate::windows::process_alive)
+}
+
+/// Which file an open file is: its device and inode on POSIX; on Windows its volume's serial
+/// number and its file index (`GetFileInformationByHandle`), which the standard library keeps
+/// unstable. Creation times can't stand in: NTFS gives a file made under a name just deleted the
+/// old file's creation time (tunneling), which a lock file another installer made a moment later
+/// would then share.
+#[cfg(unix)]
+fn file_id(file: &std::fs::File) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    file.metadata().ok().map(|meta| (meta.dev(), meta.ino()))
+}
+
+#[cfg(windows)]
+fn file_id(file: &std::fs::File) -> Option<(u64, u64)> {
+    crate::windows::file_id(file)
 }
 
 /// The install lock, shared with `@mostra/sdk`'s installer (D142 item 4): an exclusive create
@@ -868,8 +1181,8 @@ impl Lock {
         match Self::judge(path) {
             Judged::Gone => true,
             Judged::Live => false,
-            Judged::Stale(meta) => {
-                Self::remove_judged(path, &meta);
+            Judged::Stale(id) => {
+                Self::remove_judged(path, &id);
                 true
             }
         }
@@ -880,7 +1193,7 @@ impl Lock {
         let Ok(mut file) = std::fs::File::open(path) else {
             return Judged::Gone;
         };
-        let Ok(meta) = file.metadata() else {
+        let (Ok(meta), Some(id)) = (file.metadata(), file_id(&file)) else {
             return Judged::Live;
         };
         let mut text = String::new();
@@ -896,7 +1209,7 @@ impl Lock {
             .next()
             .and_then(|pid| pid.parse::<i32>().ok());
         if old || owner.is_some_and(|pid| pid > 0 && !alive(pid)) {
-            Judged::Stale(meta)
+            Judged::Stale(id)
         } else {
             Judged::Live
         }
@@ -904,14 +1217,15 @@ impl Lock {
 
     /// Moves the lock aside and removes it only if it is the file `judged` describes: a fresh lock
     /// another installer took since is put back, unless a newer one exists.
-    fn remove_judged(path: &Path, judged: &std::fs::Metadata) {
-        use std::os::unix::fs::MetadataExt as _;
+    fn remove_judged(path: &Path, judged: &(u64, u64)) {
         let aside = path.with_extension(format!("lock.stale-{}", random_hex()));
         if std::fs::rename(path, &aside).is_err() {
             return; // someone else moved or removed it
         }
-        let moved = std::fs::metadata(&aside).ok();
-        if moved.is_some_and(|moved| moved.ino() != judged.ino() || moved.dev() != judged.dev()) {
+        let moved = std::fs::File::open(&aside)
+            .ok()
+            .and_then(|file| file_id(&file));
+        if moved.is_some_and(|moved| moved != *judged) {
             let _ = std::fs::hard_link(&aside, path);
         }
         let _ = std::fs::remove_file(&aside);
@@ -922,7 +1236,8 @@ impl Lock {
 enum Judged {
     Gone,
     Live,
-    Stale(std::fs::Metadata),
+    /// Stale, and which file was judged (`file_id`).
+    Stale((u64, u64)),
 }
 
 impl Drop for Lock {
@@ -941,6 +1256,32 @@ impl Drop for Lock {
             let _ = std::fs::hard_link(&aside, &self.path);
         }
         let _ = std::fs::remove_file(&aside);
+    }
+}
+
+#[cfg(test)]
+mod cache_root_tests {
+    use super::*;
+
+    /// Absolute whatever the host names, and on Windows never a directory every user can create
+    /// in when the host's environment names no profile (Opus review of WP-W3, findings 1 and 2).
+    #[test]
+    fn the_cache_root_is_absolute_and_the_users_own() {
+        let mut env = Environment::new();
+        env.insert("MOSTRA_CACHE_DIR".into(), "relative/cache".into());
+        let named = cache_root(&env);
+        assert!(named.is_absolute(), "{}", named.display());
+        assert!(named.ends_with("relative/cache"));
+
+        let bare = cache_root(&Environment::new());
+        assert!(bare.is_absolute(), "{}", bare.display());
+        let home = std::env::home_dir().expect("a profile");
+        assert!(
+            bare.starts_with(&home),
+            "{} isn't under {}",
+            bare.display(),
+            home.display()
+        );
     }
 }
 

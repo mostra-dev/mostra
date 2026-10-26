@@ -9,7 +9,8 @@ import { readBaseline, runConformance, SCENARIOS, type ScenarioOutcome } from "@
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..", "..");
-const REFERENCE = `node --conditions=@mostra/source ${join(ROOT, "src", "reference-host.ts")}`;
+// Quoted: the command line runs through the system's shell, `cmd.exe` on Windows.
+const REFERENCE = `node --conditions=@mostra/source "${join(ROOT, "src", "reference-host.ts")}"`;
 /** The kit runs its shell scenario only where a browser is installed; CI's clients job has one. */
 const statuses = (outcomes: readonly ScenarioOutcome[]): Record<string, string> =>
   Object.fromEntries(outcomes.map((outcome) => [outcome.id, outcome.status]));

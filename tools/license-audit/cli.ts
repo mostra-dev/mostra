@@ -363,6 +363,22 @@ export function auditBundle(dir: string): { problems: string[]; checked: number 
   }
   for (const file of ["LICENSE", "NOTICE"])
     if (!existsSync(join(dir, file))) problems.push(`The bundle has no ${file} (D14).`);
+  // A Windows bundle's programs are Rust, with third-party crates compiled in: their license texts
+  // travel beside them (D153).
+  const info = existsSync(join(dir, "bundle.json"))
+    ? (JSON.parse(readFileSync(join(dir, "bundle.json"), "utf8")) as { platform?: string })
+    : {};
+  if (info.platform?.startsWith("win32-")) {
+    const notices = join(dir, "bin", "THIRD-PARTY-LICENSES.txt");
+    if (!existsSync(notices))
+      problems.push(
+        "The Windows bundle has no bin/THIRD-PARTY-LICENSES.txt for its programs' crates.",
+      );
+    else if (!/windows-sys/.test(readFileSync(notices, "utf8")))
+      problems.push(
+        "bin/THIRD-PARTY-LICENSES.txt doesn't name the crates the programs compile in.",
+      );
+  }
   return { problems: [...new Set(problems)], checked: packages.length };
 }
 

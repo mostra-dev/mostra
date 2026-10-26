@@ -82,6 +82,7 @@ import {
 } from "@mostra/protocol";
 import type { InstallProgress } from "./bundle/cache.ts";
 import type { Environment } from "./bundle/setup.ts";
+import { childEnvironment } from "./environment.ts";
 import { type EventPage, type EventStreamOptions, openEventStream } from "./events.ts";
 import { type Runtime, resolveRuntime } from "./runtime.ts";
 import { sdkVersion } from "./version.ts";
@@ -338,7 +339,11 @@ function portNames(ports: Ports): PortName[] {
   return names;
 }
 
-/** Ends the child: stdin closed, then SIGTERM after `graceMs`, then SIGKILL after 5 s more. */
+/**
+ * Ends the child: stdin closed (which stops it, D87), then SIGTERM after `graceMs`, then SIGKILL
+ * after 5 s more. Windows has no signals between processes (D150 item 6): there the first of
+ * them ends the process at once.
+ */
 function stopChild(
   child: ChildProcess,
   exited: Promise<InstanceExit>,
@@ -396,7 +401,10 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
   if (options.urlHost !== undefined) args.push("--url-host", options.urlHost);
   const child = spawn(runtime.node, args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: env as NodeJS.ProcessEnv,
+    // The host's environment, which on Windows keeps the system's own variables (D153).
+    env: childEnvironment(env),
+    // A Windows host with no console of its own (a desktop app) opens no window for its instance.
+    windowsHide: true,
   });
   const logTail: string[] = [];
   const exited = new Promise<InstanceExit>((done) => {

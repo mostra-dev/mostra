@@ -44,9 +44,15 @@ struct Fixture {
 /// A home, a runtime directory short enough for a socket, and a one-file artifact.
 fn fixture() -> Option<Fixture> {
     let entry = runtime()?;
+    // A short directory on POSIX, for the socket's path; Windows has a pipe instead (D150).
+    let base = if cfg!(windows) {
+        std::env::temp_dir()
+    } else {
+        PathBuf::from("/tmp")
+    };
     let dir = tempfile::Builder::new()
         .prefix("mh")
-        .tempdir_in("/tmp")
+        .tempdir_in(base)
         .unwrap();
     let home = dir.path().join("home");
     let run = dir.path().join("run");
@@ -59,7 +65,11 @@ fn fixture() -> Option<Fixture> {
     )
     .unwrap();
     let mut env: BTreeMap<String, String> = std::env::vars()
-        .filter(|(name, _)| !name.starts_with("MOSTRA_") && !name.starts_with("npm_config_"))
+        // Mostra's own variables stay out, but for the Windows helper a checkout names (D150).
+        .filter(|(name, _)| {
+            (!name.starts_with("MOSTRA_") || name == "MOSTRA_WIN_HELPER")
+                && !name.starts_with("npm_config_")
+        })
         .collect();
     env.insert(
         "MOSTRA_RUNTIME_BIN".into(),
@@ -83,6 +93,15 @@ fn fixture() -> Option<Fixture> {
     })
 }
 
+/// A path's real path, as the instance reports it (without Windows' `\\?\` prefix).
+fn real(path: &Path) -> PathBuf {
+    let real = path.canonicalize().unwrap();
+    match real.to_string_lossy().strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => real,
+    }
+}
+
 fn options(fixture: &Fixture) -> Options {
     Options::new(&fixture.home)
         .client("mostra-host-tests", "0")
@@ -99,10 +118,7 @@ async fn a_spawned_instance_answers_typed_calls_and_resumes_a_named_event_stream
     let mostra = Mostra::spawn(options(&fixture)).await.unwrap();
     assert_eq!(mostra.revision(), "2026-10-10");
     assert_eq!(mostra.instance().mode.as_str(), "host");
-    assert_eq!(
-        Path::new(&mostra.instance().home),
-        fixture.home.canonicalize().unwrap()
-    );
+    assert_eq!(Path::new(&mostra.instance().home), real(&fixture.home));
     assert!(
         mostra
             .capabilities()
@@ -305,6 +321,49 @@ async fn attach_starts_the_daemon_once_and_a_spawn_then_meets_its_lock() {
         .await
         .unwrap();
     assert!(!reason.is_empty());
+}
+
+/// A runtime named by a path relative to the host's directory still starts the daemon, which runs
+/// in its home's file system root, not there (D151 item 3; GPT review of WP-W3).
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_starts_the_daemon_from_a_runtime_named_relative_to_the_host() {
+    let Some(mut fixture) = fixture() else { return };
+    let here = std::env::current_dir().unwrap();
+    let entry = PathBuf::from(&fixture.env["MOSTRA_RUNTIME_BIN"]);
+    let Some(relative) = relative_to(&here, &entry) else {
+        return; // another drive (Windows): no relative spelling exists
+    };
+    assert!(relative.is_relative());
+    fixture.env.insert(
+        "MOSTRA_RUNTIME_BIN".into(),
+        relative.to_string_lossy().into_owned(),
+    );
+    let mostra = Mostra::attach(options(&fixture))
+        .await
+        .expect("the daemon starts from a relative runtime path");
+    assert_eq!(mostra.instance().mode.as_str(), "daemon");
+    mostra
+        .call_raw("mostra/shutdown", json!({}), Some(Duration::from_secs(10)))
+        .await
+        .unwrap();
+}
+
+/// `to` relative to `from`, both absolute; `None` across prefixes (Windows drives).
+fn relative_to(from: &std::path::Path, to: &std::path::Path) -> Option<PathBuf> {
+    let from: Vec<_> = from.components().collect();
+    let to: Vec<_> = to.components().collect();
+    if from.first() != to.first() {
+        return None;
+    }
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut out = PathBuf::new();
+    for _ in common..from.len() {
+        out.push("..");
+    }
+    for part in &to[common..] {
+        out.push(part.as_os_str());
+    }
+    Some(out)
 }
 
 /// An attach that starts the daemon passes on its bind and URL host (D99), and a handle dropped

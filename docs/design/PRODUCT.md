@@ -125,7 +125,7 @@ Release scope is decided in D16, amended by D116, D121 and D122, and refined int
 - **v1.x:** sandboxed remote execution, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
 - **Later:** the marketplace web interface and embedding Mostra views in host applications (D126).
 
-**Platforms.** macOS, Linux and Windows (x64 and arm64) are required for v1 (D146); Windows is built by WP-W1 to WP-W3, and until they finish it fails closed like every unsupported platform (D35). Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder.
+**Platforms.** macOS, Linux and Windows (x64 and arm64) are required for v1 (D146); Windows was built by WP-W1 to WP-W3 (D150, D151, D153), and every other platform fails closed (D35). Recent Chrome, Firefox and Safari are supported viewers (all through port-per-artifact origins, D38). Mobile Safari and Chrome are supported viewers over the remote ladder.
 
 ## Non-goals
 

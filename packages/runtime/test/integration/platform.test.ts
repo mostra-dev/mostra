@@ -5,32 +5,21 @@
  */
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  initializeParams,
-  shutdownDaemon,
-  startDaemon,
-  startHost,
-  testHome,
-  WINDOWS,
-} from "../support.ts";
-
-/** The test home's environment without the development switch that admits Windows (D146). */
-const withoutSwitch = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
-  const { MOSTRA_DEV_WINDOWS: _switch, ...rest } = env;
-  return rest;
-};
+import { initializeParams, shutdownDaemon, startDaemon, startHost, testHome } from "../support.ts";
 
 // A file URL: Node.js on Windows takes no drive path for --import.
 const preload = ["--import", new URL("../fixtures/platform.mjs", import.meta.url).href];
 
+// Windows on x64 and arm64 is supported since WP-W3 (D146); Windows on other architectures, and
+// every other system, still fails closed.
 describe.each([
-  { platform: "win32", arch: "x64" },
-  { platform: "win32", arch: "arm64" },
+  { platform: "win32", arch: "ia32" },
   { platform: "freebsd", arch: "x64" },
   { platform: "linux", arch: "ia32" },
+  { platform: "darwin", arch: "ppc64" },
 ])("on $platform-$arch", ({ platform, arch }) => {
   const simulated = (home: ReturnType<typeof testHome>) => ({
-    env: { ...withoutSwitch(home.env), MOSTRA_TEST_PLATFORM: platform, MOSTRA_TEST_ARCH: arch },
+    env: { ...home.env, MOSTRA_TEST_PLATFORM: platform, MOSTRA_TEST_ARCH: arch },
     nodeArgs: preload,
   });
 
@@ -59,25 +48,6 @@ describe.each([
     expect(host.stderr()).toContain("MOSTRA_PLATFORM_UNSUPPORTED");
     expect(existsSync(home.home)).toBe(false);
     expect(existsSync(home.runtimeDir)).toBe(false);
-  });
-});
-
-// Windows itself, without the switch, fails closed like any unsupported platform (D146).
-describe.runIf(WINDOWS)("on Windows without MOSTRA_DEV_WINDOWS", () => {
-  it("every entry point fails closed before touching the home", async () => {
-    const home = testHome();
-    const daemon = await startDaemon(home, { env: withoutSwitch(home.env) });
-    expect(daemon.status).toMatchObject({
-      status: "failed",
-      diagnostic: { code: "MOSTRA_PLATFORM_UNSUPPORTED" },
-    });
-    expect((await daemon.exited).code).toBe(3);
-    expect(existsSync(home.home)).toBe(false);
-    const host = startHost(home, { env: withoutSwitch(home.env) });
-    const response = await host.client.call("mostra/initialize", initializeParams());
-    expect(response.error?.data.code).toBe("MOSTRA_PLATFORM_UNSUPPORTED");
-    expect((await host.exited).code).toBe(3);
-    expect(existsSync(home.home)).toBe(false);
   });
 });
 
