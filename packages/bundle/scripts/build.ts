@@ -190,9 +190,7 @@ async function nodeArchive(platform: string): Promise<{ file: string; version: s
   if (cached !== undefined && digest(cached) === expected) return { file, version: pins.version };
   if (values["node-archive"]) fail([`${file} isn't the pinned ${name} (${expected}).`], "bundle");
   step(`downloading ${name}`);
-  const response = await fetch(`https://nodejs.org/dist/v${pins.version}/${name}`);
-  if (!response.ok) fail([`nodejs.org answered ${response.status} for ${name}.`], "bundle");
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const bytes = await download(`https://nodejs.org/dist/v${pins.version}/${name}`, name);
   // Checked before anything is written: only the pinned bytes ever reach the disk.
   const actual = digest(bytes);
   if (actual !== expected)
@@ -202,6 +200,28 @@ async function nodeArchive(platform: string): Promise<{ file: string; version: s
   await writeFile(partial, bytes);
   await rename(partial, file);
   return { file, version: pins.version };
+}
+
+/**
+ * The bytes at `url`, in at most three attempts, as the SDK's installer makes them (D142 item 4):
+ * a failed connection, a server error, 408 or 429 is tried again after 2 s, then 8 s; any other
+ * answer fails at once. A release runner that couldn't reach nodejs.org once failed its bundle.
+ */
+async function download(url: string, name: string): Promise<Buffer> {
+  const problems: string[] = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) await new Promise((done) => setTimeout(done, attempt === 2 ? 2000 : 8000));
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+      if (response.ok) return Buffer.from(await response.arrayBuffer());
+      problems.push(`attempt ${attempt}: nodejs.org answered ${response.status} for ${name}`);
+      if (response.status < 500 && response.status !== 408 && response.status !== 429) break;
+    } catch (error) {
+      const cause = (error as { cause?: { message?: string } }).cause?.message;
+      problems.push(`attempt ${attempt}: ${(error as Error).message}${cause ? ` (${cause})` : ""}`);
+    }
+  }
+  fail(problems, `bundle: ${name} couldn't be downloaded`);
 }
 
 /** The SHA-256 of `bytes`, lowercase hex. */
