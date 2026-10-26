@@ -271,15 +271,15 @@ describe("offline and the journal (IN-02, IN-04)", () => {
     const live = open(gateway, { journal, tab: "live" });
     await live.whenReady();
     live.set("viewer", "mine", "unsent");
-    await settle();
-    // Its own save stops here, so what reaches the gateway can only be another tab's replay: the
-    // tab stays open (`gone: []`), and its 400 ms debounce once sent the edit itself on a loaded
-    // Windows runner (WP-W3).
+    // Its own save stops at once (the journal holds the edit already), so what reaches the
+    // gateway can only be another tab's replay; the tab stays open (`gone: []`). Its 400 ms
+    // debounce sent the edit itself on Windows' runners, whose timers make `settle` slower.
     live.stop();
+    await settle();
     const other = open(gateway, { journal, tab: "other", gone: [] });
     await other.whenReady();
     await other.flush();
-    expect(gateway.received).toHaveLength(0);
+    expect(gateway.received, JSON.stringify(gateway.received)).toHaveLength(0);
     expect(other.value(v("mine"), undefined)).toBeUndefined();
   });
 
