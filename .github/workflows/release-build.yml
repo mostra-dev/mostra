@@ -183,6 +183,11 @@ jobs:
           "::add-mask::$password"
           New-LocalUser -Name mostraplain -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
           $credential = New-Object System.Management.Automation.PSCredential("mostraplain", (ConvertTo-SecureString $password -AsPlainText -Force))
+          # Start-Process -Credential passes this process's environment on, whose %TEMP% and
+          # profile folders are the administrator's, which the user can't write: the user's own.
+          foreach ($name in "tmp", "local", "roaming") { New-Item -ItemType Directory -Force "$dir\$name" | Out-Null }
+          $env:TEMP = "$dir\tmp"; $env:TMP = "$dir\tmp"
+          $env:LOCALAPPDATA = "$dir\local"; $env:APPDATA = "$dir\roaming"; $env:USERPROFILE = $dir
           $run = {
             param($file, $arguments, $log)
             $options = @{ FilePath = $file; Credential = $credential; LoadUserProfile = $true; WorkingDirectory = $dir; Wait = $true; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = "$dir\$log.out"; RedirectStandardError = "$dir\$log.err" }

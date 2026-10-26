@@ -12,6 +12,20 @@ import { statSync } from "node:fs";
 /** `SYSTEM`, as SDDL names it by alias and by SID. */
 const SYSTEM = new Set(["SY", "S-1-5-18"]);
 
+/**
+ * The aliases SDDL writes for a machine's own accounts by their relative ID: the built-in
+ * Administrator account (500, `LA`) and Guest (501, `LG`). GitHub's runners run as the former, so
+ * an access list for that user names it `LA`, not by its SID.
+ */
+const ACCOUNT_ALIASES: Readonly<Record<string, string>> = { LA: "-500", LG: "-501" };
+
+/** Whether an SDDL trustee (a SID or an alias) is the user `user` (a SID). */
+function isUser(trustee: string, user: string): boolean {
+  if (trustee === user) return true;
+  const rid = ACCOUNT_ALIASES[trustee];
+  return rid !== undefined && /^S-1-5-21-\d+-\d+-\d+-\d+$/.test(user) && user.endsWith(rid);
+}
+
 /** What is wrong with `path`'s privacy, or `undefined` when it is owner-only. */
 export function notOwnerOnly(
   path: string,
@@ -39,7 +53,7 @@ export function judgeSddl(sddl: string, user: string, directory: boolean): strin
     const fields = (ace[1] ?? "").split(";");
     const [type, , , , , sid] = fields;
     if (type === "D") continue;
-    if (sid === undefined || !(sid === user || SYSTEM.has(sid))) {
+    if (sid === undefined || !(isUser(sid, user) || SYSTEM.has(sid))) {
       return `it grants ${sid ?? "someone"} access (${dacl})`;
     }
   }

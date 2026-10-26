@@ -25,6 +25,13 @@ describe("a Windows access list (H-16)", () => {
     }
   });
 
+  it("reads the built-in Administrator's alias as that user, and as no one else", () => {
+    const admin = "S-1-5-21-1-2-3-500";
+    const list = "O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;LA)";
+    expect(judgeSddl(list, admin, true)).toBeUndefined();
+    expect(judgeSddl(list, USER, true)).toMatch(/LA/);
+  });
+
   it("lets a deny entry stand", () => {
     expect(judgeSddl(`${OWNER_ONLY}(D;OICI;FA;;;WD)`, USER, true)).toBeUndefined();
   });
