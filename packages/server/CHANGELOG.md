@@ -1,5 +1,12 @@
 # @mostra/server
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`dace950`](https://github.com/mostra-dev/mostra/commit/dace950c6ca7004ea7e11f1b07c23e9abea8de18), [`ee5a888`](https://github.com/mostra-dev/mostra/commit/ee5a8883ec3cfd8c0f3d849f2b5a78b761e39c4a)]:
+  - @mostra/protocol@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes

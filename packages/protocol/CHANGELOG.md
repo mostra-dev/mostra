@@ -1,5 +1,15 @@
 # @mostra/protocol
 
+## 0.6.0
+
+### Minor Changes
+
+- [#79](https://github.com/mostra-dev/mostra/pull/79) [`dace950`](https://github.com/mostra-dev/mostra/commit/dace950c6ca7004ea7e11f1b07c23e9abea8de18) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The runtime bundle's contract names Windows: `BUNDLE_PLATFORMS` gains `win32-x64` and `win32-arm64` (and `isWindowsBundle`), a bundle asset may be a Windows archive, and the setup marker records the root it was set up at (`root`, optional), since a Windows bundle's junctions point into it.
+
+### Patch Changes
+
+- [#79](https://github.com/mostra-dev/mostra/pull/79) [`ee5a888`](https://github.com/mostra-dev/mostra/commit/ee5a8883ec3cfd8c0f3d849f2b5a78b761e39c4a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `npm create mostra` installs and runs on Windows (x64 and arm64), from the Windows runtime bundles each release now carries with the others. The conformance kit's TypeScript reference host starts on Windows, and `MOSTRA_PLATFORM_UNSUPPORTED`'s hint and page name Windows among the supported platforms. The Rust crate `mostra-host`, released with them, spawns and attaches on Windows too, over the home's named pipe, which it refuses unless your user owns it.
+
 ## 0.5.0
 
 ### Minor Changes
