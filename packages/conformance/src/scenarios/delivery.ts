@@ -116,13 +116,22 @@ export const retry: Scenario = {
       const read = await context.results(artifactId);
       return read.submission.delivery === "pending" ? read : undefined;
     });
-    const retrying = await context.events({
-      artifacts: [artifactId],
-      types: ["submission.retrying"],
-    });
+    // A delivery reads pending from the moment it is enqueued, before its first attempt; the
+    // event follows the host's first retry answer, so it is waited for, while the host still
+    // answers retry and the delivery still waits (it once ran before the first answer, under load).
+    await context.eventually(
+      "a submission.retrying event while the delivery waits (IN-13)",
+      async () => {
+        const retrying = await context.events({
+          artifacts: [artifactId],
+          types: ["submission.retrying"],
+        });
+        return retrying.events.length > 0 ? retrying : undefined;
+      },
+    );
     check(
-      retrying.events.length > 0,
-      "no submission.retrying event while the delivery waits (IN-13)",
+      (await context.results(artifactId)).submission.delivery === "pending",
+      "the delivery stopped waiting while the host still answered retry",
     );
     await context.host.script({ port: "submissions", answer: "accept" });
     await context.eventually(
