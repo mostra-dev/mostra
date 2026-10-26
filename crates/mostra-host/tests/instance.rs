@@ -323,6 +323,49 @@ async fn attach_starts_the_daemon_once_and_a_spawn_then_meets_its_lock() {
     assert!(!reason.is_empty());
 }
 
+/// A runtime named by a path relative to the host's directory still starts the daemon, which runs
+/// in its home's file system root, not there (D151 item 3; GPT review of WP-W3).
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_starts_the_daemon_from_a_runtime_named_relative_to_the_host() {
+    let Some(mut fixture) = fixture() else { return };
+    let here = std::env::current_dir().unwrap();
+    let entry = PathBuf::from(&fixture.env["MOSTRA_RUNTIME_BIN"]);
+    let Some(relative) = relative_to(&here, &entry) else {
+        return; // another drive (Windows): no relative spelling exists
+    };
+    assert!(relative.is_relative());
+    fixture.env.insert(
+        "MOSTRA_RUNTIME_BIN".into(),
+        relative.to_string_lossy().into_owned(),
+    );
+    let mostra = Mostra::attach(options(&fixture))
+        .await
+        .expect("the daemon starts from a relative runtime path");
+    assert_eq!(mostra.instance().mode.as_str(), "daemon");
+    mostra
+        .call_raw("mostra/shutdown", json!({}), Some(Duration::from_secs(10)))
+        .await
+        .unwrap();
+}
+
+/// `to` relative to `from`, both absolute; `None` across prefixes (Windows drives).
+fn relative_to(from: &std::path::Path, to: &std::path::Path) -> Option<PathBuf> {
+    let from: Vec<_> = from.components().collect();
+    let to: Vec<_> = to.components().collect();
+    if from.first() != to.first() {
+        return None;
+    }
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut out = PathBuf::new();
+    for _ in common..from.len() {
+        out.push("..");
+    }
+    for part in &to[common..] {
+        out.push(part.as_os_str());
+    }
+    Some(out)
+}
+
 /// An attach that starts the daemon passes on its bind and URL host (D99), and a handle dropped
 /// without `close()` still ends its session, so the daemon stops counting (and calling) a host
 /// that is gone (GPT review of WP-12, findings 4 and 5).

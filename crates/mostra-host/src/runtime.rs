@@ -189,8 +189,11 @@ pub async fn resolve_runtime(options: &RuntimeOptions) -> Result<Runtime> {
             .filter(|path| !path.is_empty())
             .map(PathBuf::from)
     });
+    // Absolute from here on: a daemon this runtime starts runs in its home's file system root
+    // (D151 item 3), where a path relative to this process's directory would name nothing (GPT
+    // review of WP-W3).
     if let Some(root) = named {
-        return from_bundle(&root, options).await;
+        return from_bundle(&std::path::absolute(&root).unwrap_or(root), options).await;
     }
     if let Some(entry) = options
         .env
@@ -198,6 +201,7 @@ pub async fn resolve_runtime(options: &RuntimeOptions) -> Result<Runtime> {
         .filter(|path| !path.is_empty())
     {
         let entry = PathBuf::from(entry);
+        let entry = std::path::absolute(&entry).unwrap_or(entry);
         if !entry.exists() {
             return Err(Error::new(
                 "MOSTRA_ENV_RUNTIME_MISSING",

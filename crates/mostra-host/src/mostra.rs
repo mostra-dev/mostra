@@ -895,6 +895,40 @@ async fn connect(pipe: &Path) -> Result<Halves> {
     Ok((Box::new(reader), Box::new(writer)))
 }
 
+/// The variables whose values are paths, as the runtime, the SDK and the CLI read them; the
+/// CLI's list (`packages/cli/src/detached.ts`, which a test there keeps complete).
+const PATH_VARIABLES: &[&str] = &[
+    "MOSTRA_HOME",
+    "MOSTRA_RUNTIME_DIR",
+    "MOSTRA_CONFIG_DIR",
+    "MOSTRA_CACHE_DIR",
+    "MOSTRA_BUNDLE",
+    "MOSTRA_RUNTIME_BIN",
+    "MOSTRA_SHELL_DIR",
+    "MOSTRA_WARM_DIR",
+    "MOSTRA_WORKER_ENTRY",
+    "MOSTRA_VERIFY_ENTRY",
+    "MOSTRA_WIN_HELPER",
+    "MOSTRA_TEST_WORKER_HOST",
+    "MOSTRA_TEST_BUNDLE_PINS",
+];
+
+/// `env` with every relative path variable made absolute against this process's directory, for
+/// a daemon that runs in its file system's root (D151 item 3; GPT review of WP-W3).
+fn detached_environment(env: &Environment) -> Environment {
+    let mut out = env.clone();
+    for name in PATH_VARIABLES {
+        if let Some(value) = out.get_mut(*name)
+            && !value.is_empty()
+            && !Path::new(value.as_str()).is_absolute()
+            && let Ok(absolute) = std::path::absolute(value.as_str())
+        {
+            *value = absolute.to_string_lossy().into_owned();
+        }
+    }
+    out
+}
+
 /// Starts the home's daemon, detached, and reads the one line it prints: where it listens, or
 /// why it couldn't start. A daemon another starter won prints `attached` and exits.
 /// Starts the home's daemon with this handle's bind and URL host (D99: neither is remembered, so
@@ -914,7 +948,9 @@ async fn start_daemon(runtime: &Runtime, home: &Path, options: &Options) -> Resu
     let mut command: Command = runtime.command(args);
     command
         .env_clear()
-        .envs(crate::bundle::child_environment(&options.runtime.env))
+        .envs(crate::bundle::child_environment(&detached_environment(
+            &options.runtime.env,
+        )))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -1031,5 +1067,39 @@ mod windows_tests {
         assert!(refused.message().contains("another user"), "{refused}");
         drop(squatter.stdin.take());
         squatter.wait().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod path_variable_tests {
+    use super::*;
+
+    /// The daemon's path variables are the CLI's, which a test there keeps complete.
+    #[test]
+    fn the_path_variables_are_the_clis() {
+        let cli = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/cli/src/detached.ts");
+        let Ok(text) = std::fs::read_to_string(&cli) else {
+            return; // not a checkout (the packaged crate)
+        };
+        let start = text.find("PATH_VARIABLES").expect("the CLI's list");
+        let end = start + text[start..].find("];").expect("its end");
+        let theirs: Vec<&str> = text[start..end]
+            .split('"')
+            .filter(|part| part.starts_with("MOSTRA_"))
+            .collect();
+        assert_eq!(PATH_VARIABLES, theirs.as_slice());
+    }
+
+    #[test]
+    fn a_relative_path_variable_is_made_absolute_and_nothing_else_changes() {
+        let mut env = Environment::new();
+        env.insert("MOSTRA_RUNTIME_BIN".into(), "rel/bin.js".into());
+        env.insert("MOSTRA_HOME".into(), String::new());
+        env.insert("OTHER".into(), "rel/kept".into());
+        let out = detached_environment(&env);
+        assert!(Path::new(&out["MOSTRA_RUNTIME_BIN"]).is_absolute());
+        assert!(out["MOSTRA_RUNTIME_BIN"].ends_with("bin.js"));
+        assert_eq!(out["MOSTRA_HOME"], "");
+        assert_eq!(out["OTHER"], "rel/kept");
     }
 }

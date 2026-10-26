@@ -32,6 +32,19 @@ describe("a Windows access list (H-16)", () => {
     expect(judgeSddl(list, USER, true)).toMatch(/LA/);
   });
 
+  it("refuses a NULL access list, for a file as for a directory (GPT review of WP-W3)", () => {
+    for (const directory of [false, true]) {
+      expect(judgeSddl(`O:${USER}G:${USER}D:NO_ACCESS_CONTROL`, USER, directory)).toMatch(/NULL/);
+      expect(judgeSddl(`O:${USER}G:${USER}D:PNO_ACCESS_CONTROL`, USER, directory)).toMatch(
+        /NULL|inherits/,
+      );
+    }
+  });
+
+  it("refuses a file with no access list at all", () => {
+    expect(judgeSddl(`O:${USER}G:${USER}`, USER, false)).toMatch(/no access list/);
+  });
+
   it("lets a deny entry stand", () => {
     expect(judgeSddl(`${OWNER_ONLY}(D;OICI;FA;;;WD)`, USER, true)).toBeUndefined();
   });

@@ -115,6 +115,15 @@ const SEEDS: readonly Seed[] = [
     check: unit("privacy.test.ts", "inherits from above"),
     cwd: "../conformance",
   },
+  {
+    requirement: "RT-12",
+    name: "the kit takes a secret with a NULL access list, which grants everyone access, for owner-only (GPT review of WP-W3)",
+    file: "../conformance/src/privacy.ts",
+    from: '  if (flags.includes("NO_ACCESS_CONTROL"))',
+    to: "  if (false)",
+    check: unit("privacy.test.ts", "refuses a NULL access list"),
+    cwd: "../conformance",
+  },
   // WP-W2: Windows II (RT-11): the gateway, workers, verify, the CLI and the login service.
   {
     requirement: "RT-11",

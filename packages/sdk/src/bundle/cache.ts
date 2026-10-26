@@ -246,7 +246,11 @@ async function fetchInto(
       if (!taken || !(await exists(dir))) throw error;
     }
   } finally {
-    await rm(scratch, { recursive: true, force: true });
+    // Windows may hold the files a moment (an antivirus scan); a scratch directory left anyway
+    // is removed by the next install's sweep.
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+      () => undefined,
+    );
   }
 }
 

@@ -65,7 +65,12 @@ export const NODE_PATH = WINDOWS ? "node/node.exe" : "node/bin/node";
  */
 export function tempDir(prefix: string): { path: string; cleanup(): void } {
   const path = mkdtempSync(WINDOWS ? join(tmpdir(), `${prefix}-`) : `/tmp/${prefix}-`);
-  return { path, cleanup: () => rmSync(path, { recursive: true, force: true }) };
+  // Windows holds a tree written a moment ago (Defender scans it) and refuses its removal with
+  // EPERM or EBUSY for a while; Node.js retries those.
+  return {
+    path,
+    cleanup: () => rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }),
+  };
 }
 
 const sha256 = (text: string | Buffer): string => createHash("sha256").update(text).digest("hex");

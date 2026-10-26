@@ -48,6 +48,10 @@ export function judgeSddl(sddl: string, user: string, directory: boolean): strin
   const end = rest.search(/S:/);
   const dacl = end < 0 ? rest : rest.slice(0, end);
   const flags = dacl.slice(0, dacl.indexOf("(") < 0 ? dacl.length : dacl.indexOf("("));
+  // A NULL access list (the flag `NO_ACCESS_CONTROL`, beside any others) holds no entry and
+  // grants everyone everything (GPT review of WP-W3).
+  if (flags.includes("NO_ACCESS_CONTROL"))
+    return `its access list is NULL, which grants everyone access (${dacl})`;
   if (directory && !flags.includes("P")) return `its access list inherits from above (${dacl})`;
   for (const ace of dacl.matchAll(/\(([^)]*)\)/g)) {
     const fields = (ace[1] ?? "").split(";");
