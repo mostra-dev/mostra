@@ -12,7 +12,6 @@ import {
   readFileSync,
   readlinkSync,
   renameSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -27,7 +26,7 @@ import { LinkRefused, makeJunctions } from "../../src/bundle/links.ts";
 import { readBundle, readSetup, realRoot, setupBundle } from "../../src/bundle/setup.ts";
 import { bundlePlatform } from "../../src/platform.ts";
 import { resolveRuntime } from "../../src/runtime.ts";
-import { LINK_PATH, pinsEnv, syntheticBundle, tempDir, WINDOWS } from "../support.ts";
+import { LINK_PATH, pinsEnv, removeLink, syntheticBundle, tempDir, WINDOWS } from "../support.ts";
 
 let dir: ReturnType<typeof tempDir>;
 beforeEach(() => {
@@ -109,7 +108,7 @@ describe.runIf(WINDOWS)("a Windows bundle's junctions (D153)", () => {
 
   it("refuses a directory where a link belongs, and removes nothing", async () => {
     const synthetic = await syntheticBundle(dir.path);
-    rmSync(join(synthetic.root, LINK_PATH));
+    removeLink(join(synthetic.root, LINK_PATH));
     mkdirSync(join(synthetic.root, LINK_PATH));
     writeFileSync(join(synthetic.root, LINK_PATH, "keep.txt"), "mine");
     const error = await setupBundle(synthetic.root, {

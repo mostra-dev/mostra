@@ -9,7 +9,7 @@
  * on every system; and no file is executable, since Windows keeps no execute bit (D150 item 8).
  */
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, realpathSync } from "node:fs";
 import { lstat, readdir, readlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BundleFileEntry, BundleFiles, BundleLinkEntry } from "@mostra/protocol";
@@ -26,8 +26,18 @@ export function linkTarget(root: string, path: string, written: string): string 
   if (!WINDOWS) return written;
   // A junction's target may carry the `\\?\` prefix of Windows' own namespace.
   const plain = written.startsWith("\\\\?\\") ? written.slice(4) : written;
-  const target = isAbsolute(plain) ? relative(dirname(join(root, path)), plain) : plain;
-  return target.split(sep).join("/");
+  if (!isAbsolute(plain)) return plain.split(sep).join("/");
+  // Relative to the link's directory as Windows spells it for real: setup makes junctions at the
+  // bundle's real path, while `root` may be another spelling of it (an 8.3 short name such as
+  // `RUNNER~1`, another case), which would put a detour through their common ancestor here.
+  const dir = dirname(join(root, path));
+  let base = dir;
+  try {
+    base = realpathSync.native(dir);
+  } catch {
+    // A directory that doesn't exist holds no junction; the lexical form reports the mismatch.
+  }
+  return relative(base, plain).split(sep).join("/");
 }
 
 /** The SHA-256 and size of one file, read as a stream. */

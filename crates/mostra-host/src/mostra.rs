@@ -357,7 +357,7 @@ impl Mostra {
         let mut command = runtime.command(args);
         command
             .env_clear()
-            .envs(&options.runtime.env)
+            .envs(crate::bundle::child_environment(&options.runtime.env))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -910,7 +910,7 @@ async fn start_daemon(runtime: &Runtime, home: &Path, options: &Options) -> Resu
     let mut command: Command = runtime.command(args);
     command
         .env_clear()
-        .envs(&options.runtime.env)
+        .envs(crate::bundle::child_environment(&options.runtime.env))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

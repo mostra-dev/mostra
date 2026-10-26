@@ -11,8 +11,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -36,6 +38,15 @@ import { c } from "tar";
 
 /** Whether the tests run on Windows, whose bundles are shaped their own way (D153). */
 export const WINDOWS = process.platform === "win32";
+
+/**
+ * Removes a link and never what it names: on Windows a junction is a directory to `rm`, which
+ * refuses it without `recursive` (and with it would empty the target), so it takes `rmdir`.
+ */
+export function removeLink(path: string): void {
+  if (WINDOWS) rmdirSync(path);
+  else unlinkSync(path);
+}
 
 /**
  * A synthetic bundle's one link: on POSIX a link to a file, as `.bin` entries are; on Windows a
@@ -164,7 +175,8 @@ export async function syntheticBundle(
           path: BROWSER_FILE,
           size: Buffer.byteLength(BROWSER_CONTENT),
           sha256: sha256(BROWSER_CONTENT),
-          executable: true,
+          // Windows keeps no execute bit (D150 item 8): a bundle built there pins none.
+          executable: !WINDOWS,
         },
       ],
     },

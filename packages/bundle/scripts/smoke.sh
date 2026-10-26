@@ -25,9 +25,11 @@ die() { printf 'smoke: FAILED: %s\n' "$*" >&2; exit 1; }
 
 windows=false
 case "$(uname -s)" in
-  Darwin) sum() { shasum -a 256 "$1" | cut -d' ' -f1; } ;;
-  MINGW* | MSYS* | CYGWIN*) windows=true; sum() { sha256sum "$1" | cut -d' ' -f1; } ;;
-  *) sum() { sha256sum "$1" | cut -d' ' -f1; } ;;
+  # Read from stdin: GNU sha256sum escapes a file name holding a backslash (a Windows path) by
+  # putting a backslash before the digest.
+  Darwin) sum() { shasum -a 256 < "$1" | cut -d' ' -f1; } ;;
+  MINGW* | MSYS* | CYGWIN*) windows=true; sum() { sha256sum < "$1" | cut -d' ' -f1; } ;;
+  *) sum() { sha256sum < "$1" | cut -d' ' -f1; } ;;
 esac
 # A path as the bundle's programs take it: a Windows path on Windows, else as it is.
 native() { if $windows; then cygpath -w "$1"; else printf '%s' "$1"; fi; }

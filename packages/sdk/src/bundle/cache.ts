@@ -20,7 +20,7 @@ import {
   utimes,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve, win32 } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import {
   type BundleAsset,
   BundleAsset as BundleAssetSchema,
@@ -58,10 +58,11 @@ export function cacheRoot(env: Environment, platform: string = process.platform)
       env["LOCALAPPDATA"] || win32.join(env["USERPROFILE"] || homedir(), "AppData", "Local");
     return win32.join(local, "mostra-cache");
   }
+  // POSIX paths, whatever system computes them (`platform` is the one the cache is for).
   const home = env["HOME"] || homedir();
-  if (platform === "darwin") return join(home, "Library", "Caches", "mostra");
+  if (platform === "darwin") return posix.join(home, "Library", "Caches", "mostra");
   const xdg = env["XDG_CACHE_HOME"];
-  return join(xdg?.startsWith("/") ? xdg : join(home, ".cache"), "mostra");
+  return posix.join(xdg?.startsWith("/") ? xdg : posix.join(home, ".cache"), "mostra");
 }
 
 /** The directory a bundle with this archive digest lives in. */

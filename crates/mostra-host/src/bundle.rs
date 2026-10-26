@@ -28,6 +28,62 @@ pub const SETUP_MARKER: &str = ".mostra-setup.json";
 #[cfg(windows)]
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// What Windows gives every program, which a child of the crate keeps (D150 item 9, D153):
+/// Node.js aborts without `SystemRoot`, which its random-number source needs.
+#[cfg(windows)]
+const WINDOWS_SYSTEM_VARIABLES: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "OS",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+];
+
+/// The environment of a process the crate starts: the host's, and on Windows each of the
+/// system's own variables this process has that the host's lacks (matched without case, as
+/// Windows matches names). They name the system's folders, nothing of the user's secrets.
+#[must_use]
+pub(crate) fn child_environment(env: &Environment) -> Environment {
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut out = env.clone();
+    #[cfg(windows)]
+    for name in WINDOWS_SYSTEM_VARIABLES {
+        if out.keys().any(|key| key.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        if let Some((key, value)) = std::env::vars_os().find_map(|(key, value)| {
+            let key = key.into_string().ok()?;
+            key.eq_ignore_ascii_case(name)
+                .then(|| value.into_string().ok().map(|value| (key, value)))
+                .flatten()
+        }) {
+            out.insert(key, value);
+        }
+    }
+    out
+}
+
 /// The space an install needs beyond the archive and its files: the browser and some margin.
 const BROWSER_ALLOWANCE: u64 = 500 * 1024 * 1024;
 
@@ -264,7 +320,11 @@ fn link_target(root: &Path, path: &str, written: &Path) -> String {
     if cfg!(windows) {
         let written = plain_path(written.to_path_buf());
         if written.is_absolute() {
-            let base = plain_path(root.join(path).parent().unwrap_or(root).to_path_buf());
+            // Relative to the link's directory as Windows spells it for real: setup makes the
+            // junctions at the bundle's real path, while `root` may be another spelling of it (an
+            // 8.3 short name, another case).
+            let dir = root.join(path).parent().unwrap_or(root).to_path_buf();
+            let base = plain_path(dir.canonicalize().unwrap_or(dir));
             return relative_path(&base, &written).replace('\\', "/");
         }
         return written.to_string_lossy().replace('\\', "/");
@@ -538,7 +598,7 @@ pub async fn setup(bundle: &Bundle, env: &Environment) -> Result<BundleSetup> {
         .arg("--root")
         .arg(&bundle.root)
         .env_clear()
-        .envs(env)
+        .envs(child_environment(env))
         .stdin(std::process::Stdio::null())
         // A host that gives up the install stops its setup too.
         .kill_on_drop(true);

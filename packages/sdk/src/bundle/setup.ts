@@ -18,6 +18,7 @@ import {
   isWindowsBundle,
   RpcError,
 } from "@mostra/protocol";
+import { childEnvironment } from "../environment.ts";
 import { scrubUrls } from "./download.ts";
 import { LinkRefused, makeJunctions } from "./links.ts";
 import { checkTree, hashFile, safeRelative } from "./tree.ts";
@@ -200,13 +201,13 @@ export async function checkBrowser(bundle: Bundle): Promise<readonly string[]> {
 
 /** The environment the browser install runs in: proxies and Playwright's mirror pass through. */
 function installEnvironment(bundle: Bundle, env: Environment): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
+  const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(env)) {
     if (value !== undefined && !name.startsWith("MOSTRA_") && name !== "PLAYWRIGHT_BROWSERS_PATH")
       out[name] = value;
   }
   out["PLAYWRIGHT_BROWSERS_PATH"] = browsersDir(bundle.root);
-  return out;
+  return childEnvironment(out);
 }
 
 /** The variables whose URLs may carry credentials the browser's fetch uses. */

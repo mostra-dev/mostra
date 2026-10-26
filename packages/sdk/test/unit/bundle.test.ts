@@ -29,6 +29,7 @@ import {
   LINK_PATH,
   NODE_PATH,
   pinsEnv,
+  removeLink,
   syntheticBundle,
   tempDir,
   WINDOWS,
@@ -376,8 +377,8 @@ describe("checking a bundle that is already installed", () => {
       synthetic.root,
       (path) => path === "bundle.json" || path === "files.json",
     );
-    const { rmSync, symlinkSync } = await import("node:fs");
-    rmSync(join(synthetic.root, LINK_PATH));
+    const { symlinkSync } = await import("node:fs");
+    removeLink(join(synthetic.root, LINK_PATH));
     if (WINDOWS)
       symlinkSync(
         process.env["SystemRoot"] ?? "C:\\Windows",

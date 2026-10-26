@@ -85,8 +85,10 @@ say "mostra publish"
 grep -q '"version":1' "$work/logs/publish.json" || die "publish said: $(cat "$work/logs/publish.json")"
 
 # The bundle the bootstrap installed, whose own Node.js and browser play the viewer.
-root=$(find "$work/cache/bundles" -mindepth 2 -maxdepth 2 -type d -name 'mostra-*' | head -1)
-[ -n "$root" ] || die "no bundle in the cache"
+# The cache keeps a bundle's root at bundles/<archive SHA-256>/ (INTERFACES §16).
+marker=$(find "$work/cache/bundles" -mindepth 2 -maxdepth 2 -type f -name bundle.json | head -1)
+[ -n "$marker" ] || die "no bundle in the cache"
+root=$(dirname "$marker")
 if $windows; then bnode=$root/node/node.exe; else bnode=$root/node/bin/node; fi
 field() { "$bnode" -e 'let s="";process.stdin.on("data",(c)=>s+=c).on("end",()=>{let v=JSON.parse(s);for(const k of process.argv[1].split("."))v=v?.[k];process.stdout.write(String(v))})' "$1"; }
 artifact=$(field result.artifactId < "$work/logs/publish.json")
