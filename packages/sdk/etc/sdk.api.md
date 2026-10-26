@@ -330,6 +330,9 @@ export type SetupStep = "files" | "browser";
 // @public
 export type TreeProblems = readonly string[];
 
+// @public
+export function windowsHelper(runtime: Runtime | undefined, env: Environment): string;
+
 // (No @packageDocumentation comment for this package)
 
 ```

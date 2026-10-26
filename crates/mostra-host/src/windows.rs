@@ -18,7 +18,9 @@ use windows_sys::Win32::Security::{
     EqualSid, GetTokenInformation, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
     TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
-use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+use windows_sys::Win32::Storage::FileSystem::{
+    BY_HANDLE_FILE_INFORMATION, GetDiskFreeSpaceExW, GetFileInformationByHandle,
+};
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken,
     PROCESS_QUERY_LIMITED_INFORMATION,
@@ -113,6 +115,22 @@ pub(crate) fn process_alive(pid: u32) -> bool {
     // SAFETY: a valid process handle with query rights.
     let read = unsafe { GetExitCodeProcess(handle.0, &raw mut code) };
     read == 0 || code == STILL_ACTIVE.cast_unsigned()
+}
+
+/// Which file `file` is: its volume's serial number and its 64-bit file index, as
+/// `GetFileInformationByHandle` reports them (POSIX's device and inode).
+pub(crate) fn file_id(file: &std::fs::File) -> Option<(u64, u64)> {
+    use std::os::windows::io::AsRawHandle;
+    // SAFETY: plain data, filled by the call below.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: an open file's handle, borrowed for the call; `info` is a valid output.
+    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &raw mut info) };
+    (ok != 0).then(|| {
+        (
+            u64::from(info.dwVolumeSerialNumber),
+            (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+        )
+    })
 }
 
 /// The bytes free to this user on `path`'s disk.

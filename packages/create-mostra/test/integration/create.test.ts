@@ -63,7 +63,20 @@ afterAll(async () => {
       done,
     ),
   );
-  rmSync(root, { recursive: true, force: true });
+  // A home's versions are sealed: on Windows by an access list only the runtime's helper resets
+  // (D150 item 3), the one Cargo built for these suites; and Windows holds a file a process just
+  // closed for a moment, so the removal is retried (as the CLI's suites do).
+  if (process.platform === "win32") {
+    const helper =
+      process.env["MOSTRA_WIN_HELPER"] ||
+      fileURLToPath(new URL("../../../../target/release/mostra-win.exe", import.meta.url));
+    await new Promise((done) =>
+      spawn(helper, ["unseal", root], { stdio: "ignore", windowsHide: true })
+        .on("exit", done)
+        .on("error", done),
+    );
+  }
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 });
 
 describe("npm create mostra", () => {

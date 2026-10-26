@@ -42,7 +42,7 @@ export {
   safeRelative,
   type TreeProblems,
 } from "./bundle/tree.ts";
-export { type ControlOptions, connectControl } from "./control.ts";
+export { type ControlOptions, connectControl, windowsHelper } from "./control.ts";
 export type { EventPage, EventStreamOptions } from "./events.ts";
 export {
   type ArtifactInput,

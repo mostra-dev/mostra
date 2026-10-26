@@ -360,8 +360,12 @@ async fn an_install_given_up_part_way_holds_nothing_up() {
         Vec::<String>::new(),
         "a lock or scratch outlived the install"
     );
+    // What this bounds is the wait for a lock the given-up install kept, which lasts an hour (a
+    // live owner's lock is stale only then): two minutes tells the two apart even where one
+    // install takes a quarter of a minute, as on Windows arm64, whose synthetic bundle carries a
+    // real 80 MB `node.exe`.
     let again = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
+        std::time::Duration::from_mins(2),
         bundle::install_pinned(
             &pins(&digest, size),
             platform(),

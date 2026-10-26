@@ -1070,19 +1070,20 @@ fn alive(pid: i32) -> bool {
     u32::try_from(pid).is_ok_and(crate::windows::process_alive)
 }
 
-/// Whether two metadata name the same file: device and inode on POSIX; on Windows, whose file
-/// IDs the standard library keeps unstable, its creation time and length, which a lock file
-/// another installer made a moment later doesn't share.
+/// Which file an open file is: its device and inode on POSIX; on Windows its volume's serial
+/// number and its file index (`GetFileInformationByHandle`), which the standard library keeps
+/// unstable. Creation times can't stand in: NTFS gives a file made under a name just deleted the
+/// old file's creation time (tunneling), which a lock file another installer made a moment later
+/// would then share.
 #[cfg(unix)]
-fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+fn file_id(file: &std::fs::File) -> Option<(u64, u64)> {
     use std::os::unix::fs::MetadataExt as _;
-    a.ino() == b.ino() && a.dev() == b.dev()
+    file.metadata().ok().map(|meta| (meta.dev(), meta.ino()))
 }
 
 #[cfg(windows)]
-fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt as _;
-    a.creation_time() == b.creation_time() && a.len() == b.len()
+fn file_id(file: &std::fs::File) -> Option<(u64, u64)> {
+    crate::windows::file_id(file)
 }
 
 /// The install lock, shared with `@mostra/sdk`'s installer (D142 item 4): an exclusive create
@@ -1156,8 +1157,8 @@ impl Lock {
         match Self::judge(path) {
             Judged::Gone => true,
             Judged::Live => false,
-            Judged::Stale(meta) => {
-                Self::remove_judged(path, &meta);
+            Judged::Stale(id) => {
+                Self::remove_judged(path, &id);
                 true
             }
         }
@@ -1168,7 +1169,7 @@ impl Lock {
         let Ok(mut file) = std::fs::File::open(path) else {
             return Judged::Gone;
         };
-        let Ok(meta) = file.metadata() else {
+        let (Ok(meta), Some(id)) = (file.metadata(), file_id(&file)) else {
             return Judged::Live;
         };
         let mut text = String::new();
@@ -1184,7 +1185,7 @@ impl Lock {
             .next()
             .and_then(|pid| pid.parse::<i32>().ok());
         if old || owner.is_some_and(|pid| pid > 0 && !alive(pid)) {
-            Judged::Stale(meta)
+            Judged::Stale(id)
         } else {
             Judged::Live
         }
@@ -1192,13 +1193,15 @@ impl Lock {
 
     /// Moves the lock aside and removes it only if it is the file `judged` describes: a fresh lock
     /// another installer took since is put back, unless a newer one exists.
-    fn remove_judged(path: &Path, judged: &std::fs::Metadata) {
+    fn remove_judged(path: &Path, judged: &(u64, u64)) {
         let aside = path.with_extension(format!("lock.stale-{}", random_hex()));
         if std::fs::rename(path, &aside).is_err() {
             return; // someone else moved or removed it
         }
-        let moved = std::fs::metadata(&aside).ok();
-        if moved.is_some_and(|moved| !same_file(&moved, judged)) {
+        let moved = std::fs::File::open(&aside)
+            .ok()
+            .and_then(|file| file_id(&file));
+        if moved.is_some_and(|moved| moved != *judged) {
             let _ = std::fs::hard_link(&aside, path);
         }
         let _ = std::fs::remove_file(&aside);
@@ -1209,7 +1212,8 @@ impl Lock {
 enum Judged {
     Gone,
     Live,
-    Stale(std::fs::Metadata),
+    /// Stale, and which file was judged (`file_id`).
+    Stale((u64, u64)),
 }
 
 impl Drop for Lock {
