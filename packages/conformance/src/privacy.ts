@@ -47,7 +47,9 @@ export function judgeSddl(sddl: string, user: string, directory: boolean): strin
 }
 
 function windowsUser(): string {
-  const answer = spawnSync("whoami", ["/user", "/fo", "csv", "/nh"], {
+  // Windows' own, by path: a `whoami` earlier on `PATH` (Git's coreutils) takes no `/user`.
+  const system = process.env["SystemRoot"] ?? "C:\\Windows";
+  const answer = spawnSync(`${system}\\System32\\whoami.exe`, ["/user", "/fo", "csv", "/nh"], {
     encoding: "utf8",
     windowsHide: true,
   });

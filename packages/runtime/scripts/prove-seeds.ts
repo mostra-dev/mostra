@@ -59,6 +59,62 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-W3: Windows III (RT-12): the Windows bundles, the SDK, the crate and the kit on Windows.
+  {
+    requirement: "RT-12",
+    name: "a Windows archive with a link is extracted, a link an ordinary user can't create",
+    file: "../sdk/src/bundle/extract.ts",
+    from: '    options.links === "refuse"',
+    to: '    options.links === "never"',
+    check: unit("windows-bundle.test.ts", "refuses an archive with a link"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-12",
+    name: "a moved Windows bundle counts as set up, its junctions naming where it was",
+    file: "../sdk/src/bundle/setup.ts",
+    from: "    const here = isWindowsBundle(info.platform) ? marker.root === realRoot(bundle.root) : true;",
+    to: "    const here = true;",
+    check: unit("windows-bundle.test.ts", "sets a moved bundle up again"),
+    cwd: "../sdk",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-12",
+    name: "a host's own environment reaches its instance without SystemRoot, and Node.js aborts",
+    file: "../sdk/src/environment.ts",
+    from: '  if ((options.platform ?? process.platform) !== "win32") return out;',
+    to: "  return out;",
+    check: unit("environment.test.ts", "adds on Windows"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-12",
+    name: "the SDK takes Windows for an unsupported platform",
+    file: "../sdk/src/platform.ts",
+    from: "  const known = (BUNDLE_PLATFORMS as readonly string[]).includes(name);",
+    to: '  const known = (BUNDLE_PLATFORMS as readonly string[]).includes(name) && facts.platform !== "win32";',
+    check: unit("platform.test.ts", "takes Windows on x64 and arm64"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-12",
+    name: "the kit takes a Windows home that grants others access for owner-only",
+    file: "../conformance/src/privacy.ts",
+    from: '    if (type === "D") continue;',
+    to: "    continue;",
+    check: unit("privacy.test.ts", "refuses a grant to anyone else"),
+    cwd: "../conformance",
+  },
+  {
+    requirement: "RT-12",
+    name: "the kit takes a Windows home whose access list inherits from above for owner-only",
+    file: "../conformance/src/privacy.ts",
+    from: '  if (directory && !flags.includes("P")) return',
+    to: "  if (false) return",
+    check: unit("privacy.test.ts", "inherits from above"),
+    cwd: "../conformance",
+  },
   // WP-W2: Windows II (RT-11): the gateway, workers, verify, the CLI and the login service.
   {
     requirement: "RT-11",

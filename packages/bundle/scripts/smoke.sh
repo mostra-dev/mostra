@@ -54,7 +54,8 @@ actual=$(sum "$archive")
 
 say "extracting"
 mkdir -p "$work/a"
-tar -xzf "$archive" -C "$work/a"
+# From stdin: GNU tar reads `D:\…` as a remote host's file.
+tar -xzf - -C "$work/a" < "$archive"
 root=$(find "$work/a" -mindepth 1 -maxdepth 1 -type d)
 [ -f "$root/bundle.json" ] || die "no bundle.json at the archive's top directory"
 if $windows; then
@@ -65,7 +66,7 @@ fi
 
 say "a tampered file is refused"
 mkdir -p "$work/t"
-tar -xzf "$archive" -C "$work/t"
+tar -xzf - -C "$work/t" < "$archive"
 troot=$(find "$work/t" -mindepth 1 -maxdepth 1 -type d)
 printf '\n// tampered\n' >> "$troot/lib/node_modules/@mostra/runtime/dist/bin.js"
 if PATH=$clean_path "$troot/bin/mostra-setup" > "$work/logs/tampered.json" 2> "$work/logs/tampered.err"; then
