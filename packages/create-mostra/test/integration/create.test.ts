@@ -63,20 +63,35 @@ afterAll(async () => {
       done,
     ),
   );
+  // The stop answers before the daemon exits, and Windows refuses to remove a ledger an
+  // instance still holds open (D150 item 8): its record goes only with a clean exit.
+  const record = join(env["MOSTRA_HOME"] as string, "instance.json");
+  const deadline = Date.now() + 30_000;
+  while (existsSync(record) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   // A home's versions are sealed: on Windows by an access list only the runtime's helper resets
   // (D150 item 3), the one Cargo built for these suites; and Windows holds a file a process just
   // closed for a moment, so the removal is retried (as the CLI's suites do).
-  if (process.platform === "win32") {
-    const helper =
-      process.env["MOSTRA_WIN_HELPER"] ||
-      fileURLToPath(new URL("../../../../target/release/mostra-win.exe", import.meta.url));
-    await new Promise((done) =>
-      spawn(helper, ["unseal", root], { stdio: "ignore", windowsHide: true })
-        .on("exit", done)
-        .on("error", done),
-    );
+  for (;;) {
+    if (process.platform === "win32") {
+      const helper =
+        process.env["MOSTRA_WIN_HELPER"] ||
+        fileURLToPath(new URL("../../../../target/release/mostra-win.exe", import.meta.url));
+      await new Promise((done) =>
+        spawn(helper, ["unseal", root], { stdio: "ignore", windowsHide: true })
+          .on("exit", done)
+          .on("error", done),
+      );
+    }
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }
-  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 });
 
 describe("npm create mostra", () => {
