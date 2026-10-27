@@ -1,6 +1,7 @@
 /**
  * Unit tests for the pure rules behind the gates: schema compatibility (HO-07), commit messages
- * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05) and Markdown links.
+ * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05), Node.js lines (#92) and
+ * Markdown links.
  */
 import { describe, expect, it } from "vitest";
 import { eeLeaks } from "../api/pack.ts";
@@ -13,6 +14,7 @@ import {
   releaseGroupProblems,
   workflowProblems,
 } from "../repo-lint/cli.ts";
+import { engineProblems } from "../repo-lint/engines.ts";
 import { type Bundle, compareBundles, compareSnapshots, type Schema } from "../schemas/compat.ts";
 
 const bundle = (defs: Record<string, Schema>, revision = "2026-10-10"): Bundle => ({
@@ -472,5 +474,43 @@ describe("the plan's owners of a changed file", () => {
       "@mostra/runtime",
     ]);
     expect(directOwners(packages, "crates/mostra-winning/x.rs")).toEqual([]);
+  });
+});
+
+describe("Node.js lines (#92)", () => {
+  const cli = { name: "@mostra/cli", dir: "packages/cli", node: ">=22.19" };
+  const dep = (node?: string) => ({
+    name: "dep",
+    version: "1.0.0",
+    via: "@mostra/cli>dep",
+    ...(node === undefined ? {} : { node }),
+  });
+
+  it("refuses a package that brings one admitting fewer Node.js versions than it does", () => {
+    const [problem, ...rest] = engineProblems(cli, [dep(">=24")]);
+    expect(rest).toEqual([]);
+    expect(problem).toContain('@mostra/cli declares node ">=22.19" but brings dep@1.0.0');
+    expect(problem).toContain("npm on Node.js 22.19.0 warns EBADENGINE");
+    // A range with gaps the package's range covers (Vitest's) is refused too.
+    expect(engineProblems(cli, [dep("^22.12.0 || ^24.0.0 || >=26.0.0")])).toHaveLength(1);
+    expect(engineProblems(cli, [dep(">=22.20")])).toHaveLength(1);
+  });
+
+  it("accepts packages admitting as much or more, and packages that name no line", () => {
+    expect(
+      engineProblems(cli, [
+        dep(">=22.19.0"),
+        dep(">=18"),
+        dep(">=16 || 14 >=14.17"),
+        dep(),
+        dep("*"),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("refuses a published package that names no line, or a range that isn't one", () => {
+    expect(engineProblems({ ...cli, node: undefined }, [])[0]).toContain('declares no "engines"');
+    expect(engineProblems({ ...cli, node: "twenty-two" }, [])[0]).toContain("isn't a semver range");
+    expect(engineProblems(cli, [dep("twenty-four")])).toHaveLength(1);
   });
 });

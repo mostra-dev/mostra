@@ -36,7 +36,7 @@
     "!src/**/*.test.ts"
   ],
   "engines": {
-    "node": ">=24"
+    "node": ">=22.19"
   },
   "publishConfig": {
     "access": "public",

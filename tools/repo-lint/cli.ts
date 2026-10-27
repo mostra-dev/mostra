@@ -10,7 +10,9 @@
  *   sets top-level permissions;
  * - Changesets releases every published package but the extension contracts (versioned on their
  *   own, D30) as one fixed group, so one Mostra version names one runtime bundle (RT-01), and
- *   never versions or tags a private package.
+ *   never versions or tags a private package;
+ * - every published package declares its Node.js line, and everything it brings along admits that
+ *   line (#92, `engines.ts`).
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -20,6 +22,7 @@ import { fail, ROOT } from "../lib/repo.ts";
 import { listPackages, type WorkspacePackage } from "../lib/workspace.ts";
 import { PACKAGE_MAP } from "../package-map.ts";
 import { crateProblems } from "../release/versions.ts";
+import { workspaceEngineProblems } from "./engines.ts";
 
 const REPOSITORY = "git+https://github.com/mostra-dev/mostra.git";
 /** SHA-256 of the canonical Apache License 2.0 text (apache.org/licenses/LICENSE-2.0.txt). */
@@ -274,9 +277,10 @@ function main(): void {
   problems.push(...publishJobProblems(root));
   // The host crate follows the release group's version (D143).
   problems.push(...crateProblems(root));
+  problems.push(...workspaceEngineProblems(listPackages(root), root));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
-    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group with its crate, a publish job on built-ins`,
+    `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group with its crate, a publish job on built-ins, Node.js lines that hold`,
   );
 }
 
