@@ -1166,6 +1166,17 @@ The session verifies each rule against the directories' own pages on the day and
 
 *Why:* two of these flakes and the cache gap failed WP-W3's merge-queue runs, so they already slow every merge; WP-13 (tunnels, worker mode, external evidence) is broad enough without six investigations across engines and systems. *Rejected:* giving them to WP-13 (its first assignment, M41), which widened a package that should start green.
 
+### D155. MT-02's choices: warm caches in both stores, reports from hung runs, a faster first install
+*Status:* proposed, for Mirza's approval with MT-02. The maintenance unit's choices under D154; each was measured on GitHub's runners (VERIFIED_FACTS, MT-02), and each *amends* or *extends* the decision it names.
+1. **Both cache stores stay warm** (*extends* D152 item 7; *amends* D152 item 1). Blacksmith's cache actions write to Blacksmith's own store, so `main`'s nightly on Blacksmith left GitHub's store cold for the fallback (#86). A run on `main` that saves caches on Blacksmith also runs each Linux leg on GitHub's runners (`linux-github`), and the nightly runs again within 6 days even on an unchanged commit, inside both stores' 7-day eviction.
+2. **A hung test run reports and fails before its job's limit** (#55): `pnpm check --deadline MINUTES` lists every process, keeps the supervisor logs the test homes still hold and stops the run, 10 minutes into the POSIX integration legs and 14 into the Windows legs, each inside a step limit inside the job's, since a job GitHub cancels runs no failure step. A failed e2e leg keeps each daemon's supervisor log and ledger, never its keys or secrets (#39).
+3. **The SDK writes a bundle's files itself** (#88; D142 item 3's refusals unchanged): node-tar's parser reads the archive and each file is written synchronously into the new, empty directory, links last; node-tar's `x` wrote one entry at a time on Windows. A first install took 88 to 94 s on Windows arm64 instead of 398 to 495.
+4. **Renovate pins only what Mostra itself installs** (*extends* REPO_STANDARDS §10): `engines` ranges are product compatibility and change by hand (#80); peer ranges widen; published crates keep their ranges and update `Cargo.lock` (#81); a version pnpm refuses as a trust downgrade (lefthook 2.2.2, published without the provenance its predecessors had) is skipped, never exempted.
+5. **Node.js pins come from the signed checksum list** (*extends* D142 item 1): `tools/release/node-pins.ts` verifies `SHASUMS256.txt` against the Node.js release keys at a pinned commit and writes `packages/bundle/node.json`; development and the bundle both move to 24.22.1 (`docs/agents/update-node.md`).
+6. **Dependencies' agent skills are denied** (pnpm 12.11 and later): agents in this repository read only its own instructions, so `pnpm-workspace.yaml` records each dependency's skills as denied.
+
+*Rejected:* the system's `tar` for item 3 (as fast, but its behavior differs between GNU tar, bsdtar and Windows' `tar.exe`, and the refusals couldn't run during extraction); a weekly warm-up job for item 1 (it warms only what it runs, and is a second schedule to keep in step).
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.
