@@ -27,7 +27,7 @@
     "!src/**/*.test.ts"
   ],
   "engines": {
-    "node": ">=22.19"
+    "node": "v26.12.1"
   },
   "publishConfig": {
     "access": "public",
