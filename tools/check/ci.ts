@@ -9,8 +9,8 @@
  * Inputs from the environment: `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` (GitHub's), the
  * chosen runners as JSON in `MOSTRA_CI_RUNNERS` (GitHub's own when unset), `MOSTRA_CI_PULL`, a
  * file holding the pull request as GitHub's API returns it now (its draft state and labels at a
- * re-run, which the event's payload keeps as they were), `GITHUB_REF`, and, for the nightly run,
- * `MOSTRA_CI_NIGHTLY_PASSED_AT`, when the last nightly run that passed on this commit started.
+ * re-run, which the event's payload keeps as they were), `GITHUB_REF`, `GITHUB_SHA`, and, for the
+ * nightly run, `MOSTRA_CI_NIGHTLIES`, a file of the recent nightly runs ({@link Nightly}).
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { type CiEvent, type CiMatrix, ciMatrix, ciScope } from "./matrix.ts";
@@ -43,6 +43,42 @@ export const NIGHTLY_COVERS_MS = 6 * 24 * 60 * 60 * 1000;
 export function nightlyCovers(passedAt: string | undefined, now: number): boolean {
   const at = passedAt ? Date.parse(passedAt) : Number.NaN;
   return Number.isFinite(at) && now - at < NIGHTLY_COVERS_MS;
+}
+
+/** One recent nightly run, as the plan job's step gathers them (newest first). */
+export interface Nightly {
+  readonly headSha: string;
+  readonly createdAt: string;
+  readonly conclusion: string;
+  /** How many of its jobs besides the plan and `ci-ok` passed: 0 for a run that skipped. */
+  readonly gates: number;
+}
+
+/**
+ * When the newest nightly run on `sha` that ran its gates started, if it passed: a run that only
+ * skipped (it found this commit covered) proves nothing and renews nothing, so a commit that
+ * doesn't move still runs everything within {@link NIGHTLY_COVERS_MS} of the run that did; and a
+ * newer nightly on `sha` that failed or was cancelled means nothing covers it (GPT review of
+ * MT-02).
+ */
+export function coveringNightly(runs: readonly Nightly[], sha: string): string | undefined {
+  for (const run of runs) {
+    if (run.headSha !== sha) continue;
+    if (run.conclusion !== "success") return undefined;
+    if (run.gates > 0) return run.createdAt;
+  }
+  return undefined;
+}
+
+/** The nightly runs the plan job's step wrote to `file`, newest first; none when unreadable. */
+function readNightlies(file: string | undefined): Nightly[] {
+  if (!file || !existsSync(file)) return [];
+  try {
+    const runs = JSON.parse(readFileSync(file, "utf8")) as Nightly[];
+    return Array.isArray(runs) ? runs : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The event, from GitHub's event name and payload; `ref` is the run's (`GITHUB_REF`). */
@@ -133,7 +169,13 @@ if (import.meta.main) {
   const event = ciEvent(
     name,
     payload,
-    nightlyCovers(process.env["MOSTRA_CI_NIGHTLY_PASSED_AT"], Date.now()),
+    nightlyCovers(
+      coveringNightly(
+        readNightlies(process.env["MOSTRA_CI_NIGHTLIES"]),
+        process.env["GITHUB_SHA"] ?? "",
+      ),
+      Date.now(),
+    ),
     process.env["GITHUB_REF"],
   );
   const runnersJson = process.env["MOSTRA_CI_RUNNERS"];

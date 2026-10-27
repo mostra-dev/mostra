@@ -6,7 +6,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ciEvent, NIGHTLY_COVERS_MS, nightlyCovers, outputLines } from "../check/ci.ts";
+import {
+  ciEvent,
+  coveringNightly,
+  NIGHTLY_COVERS_MS,
+  type Nightly,
+  nightlyCovers,
+  outputLines,
+} from "../check/ci.ts";
 import { JOBS } from "../check/jobs.ts";
 import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
 import type { Plan } from "../check/plan.ts";
@@ -287,6 +294,34 @@ describe("what runs when (D152)", () => {
     expect(nightlyCovers(undefined, now)).toBe(false);
     expect(nightlyCovers("-", now)).toBe(false);
     expect(NIGHTLY_COVERS_MS).toBeLessThan(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it("counts only a nightly that ran its gates as covering its commit (GPT review of MT-02)", () => {
+    const run = (sha: string, day: number, conclusion: string, gates: number): Nightly => ({
+      headSha: sha,
+      createdAt: `2026-10-${String(day).padStart(2, "0")}T03:23:00Z`,
+      conclusion,
+      gates,
+    });
+    // Newest first. The skips since the 20th renew nothing: the 20th's run is what covers.
+    const skipping = [
+      run("a", 25, "success", 0),
+      run("a", 24, "success", 0),
+      run("a", 20, "success", 70),
+    ];
+    expect(coveringNightly(skipping, "a")).toBe("2026-10-20T03:23:00Z");
+    expect(nightlyCovers(coveringNightly(skipping, "a"), Date.parse("2026-10-27T03:23:00Z"))).toBe(
+      false,
+    );
+    // A newer nightly on the commit that failed, or was cancelled, means nothing covers it.
+    expect(coveringNightly([run("a", 25, "failure", 40), ...skipping], "a")).toBeUndefined();
+    expect(coveringNightly([run("a", 25, "cancelled", 0), ...skipping], "a")).toBeUndefined();
+    // Another commit's runs don't count, nor does a commit with none.
+    expect(coveringNightly([run("b", 26, "success", 70), ...skipping], "a")).toBe(
+      "2026-10-20T03:23:00Z",
+    );
+    expect(coveringNightly(skipping, "c")).toBeUndefined();
+    expect(coveringNightly([], "a")).toBeUndefined();
   });
 
   it("checks no commit messages in the merge queue, whose merges are GitHub's", () => {

@@ -1296,6 +1296,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "a nightly that only skipped renews its commit's cover (#86, GPT review)",
+    file: "../../tools/check/ci.ts",
+    from: "    if (run.gates > 0) return run.createdAt;",
+    to: "    return run.createdAt;",
+    check: ["test/ci.test.ts", "-t", "counts only a nightly that ran its gates"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
     from: "    if (seen.has(pid)) continue;",

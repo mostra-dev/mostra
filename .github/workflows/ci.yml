@@ -89,17 +89,24 @@ jobs:
           policy: ${{ vars.CI_RUNNERS }}
           budget: ${{ vars.BLACKSMITH_BUDGET }}
           threshold: ${{ vars.BLACKSMITH_THRESHOLD }}
-      # When the last nightly run that passed on this commit started: ci.ts skips the run while
-      # that is under 6 days old, so both cache stores are read inside their 7-day eviction (#86).
-      - name: The last nightly run (nightly only)
+      # The recent nightly runs, each with how many of its gates passed: ci.ts skips this run while
+      # the newest one on this commit that ran its gates passed under 6 days ago, so both cache
+      # stores are read inside their 7-day eviction (#86); a run that only skipped renews nothing.
+      - name: The recent nightly runs (nightly only)
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event schedule --branch main --status success --limit 1 --json headSha,createdAt --jq '.[0] // {} | "\(.headSha // "-") \(.createdAt // "-")"')
-          read -r sha at <<< "$last"
-          if [ "$sha" = "$SHA" ]; then echo "MOSTRA_CI_NIGHTLY_PASSED_AT=$at" >> "$GITHUB_ENV"; fi
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event schedule --branch main --status completed --limit 10 --json databaseId,headSha,createdAt,conclusion > "$RUNNER_TEMP/runs.json"
+          jq -c '.[]' "$RUNNER_TEMP/runs.json" | while read -r run; do
+            gates=0
+            if [ "$(jq -r .headSha <<< "$run")" = "$SHA" ]; then
+              gates=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$(jq -r .databaseId <<< "$run")/jobs?per_page=100" --jq '[.jobs[] | select(.name != "plan" and .name != "ci-ok" and .conclusion == "success")] | length')
+            fi
+            jq -c --argjson gates "$gates" '{headSha, createdAt, conclusion, gates: $gates}' <<< "$run"
+          done | jq -s . > "$RUNNER_TEMP/nightlies.json"
+          echo "MOSTRA_CI_NIGHTLIES=$RUNNER_TEMP/nightlies.json" >> "$GITHUB_ENV"
       # As they are now, not as the event saw them: a re-run after adding ci:full honors it.
       - name: The pull request as it is now (pull requests only)
         if: github.event_name == 'pull_request'
