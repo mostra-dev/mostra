@@ -71,8 +71,38 @@ export async function linkFor(
 /** Opens a link in the shell and waits until the page rendered; returns the frame. */
 export async function openInShell(page: Page, url: string): Promise<FrameLocator> {
   await page.goto(url);
-  await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
+  try {
+    await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
+  } catch (error) {
+    // The page says it is ready from an animation frame, which a browser runs only for a document
+    // it renders: say what each document's visibility was and whether a frame ran (#39).
+    throw new Error(`${(error as Error).message}\n${await rendering(page)}`, { cause: error });
+  }
   return page.frameLocator("iframe.mostra-frame");
+}
+
+/** Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s. */
+async function rendering(page: Page): Promise<string> {
+  const lines: string[] = [];
+  for (const frame of page.frames()) {
+    const seen = await frame
+      .evaluate(() =>
+        new Promise<string>((done) => {
+          const timer = setTimeout(() => done("no animation frame within 2 s"), 2000);
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            done("an animation frame ran");
+          });
+        }).then(
+          (frameRan) =>
+            `visibility ${document.visibilityState}, focus ${document.hasFocus()}, ${frameRan}`,
+        ),
+      )
+      .catch((error: unknown) => `unreadable: ${(error as Error).message.split("\n")[0]}`);
+    const kind = frame === page.mainFrame() ? "shell" : "frame";
+    lines.push(`  ${kind} ${frame.url().split("#")[0]}: ${seen}`);
+  }
+  return `What the browser renders (#39):\n${lines.join("\n")}`;
 }
 
 /** Waits until the shell says every answer is saved. */

@@ -166,10 +166,19 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
     let daemon = await startDaemon();
     let client = await Client.connect(daemon.socket);
     const profile = mkdtempSync(join(tmpdir(), "mostra-e2e-profile-"));
+    // Everything the test opens is closed in its cleanup whatever failed: a context left open
+    // holds its profile, which Windows then refuses to remove, and that refusal replaced the
+    // test's own failure (CI run 40524581425, MT-02).
+    const opened: { close(): Promise<void> }[] = [];
+    // Stops the daemon once: a daemon already stopped (the test failed while Mostra was down)
+    // never says `exit` again, and the cleanup would wait for it forever.
     const stop = async (): Promise<void> => {
       client.close();
-      daemon.child.kill("SIGTERM");
-      await new Promise((resolve) => daemon.child.once("exit", resolve));
+      const child = daemon.child;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill("SIGTERM");
+      await exited;
     };
     try {
       const own = await publishOwn(client, daemon.home, info);
@@ -177,7 +186,9 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       const engine = { chromium, firefox, webkit }[browserName];
       // Another device, to see what Mostra itself holds.
       const browser = await engine.launch();
+      opened.push(browser);
       const first = await engine.launchPersistentContext(profile);
+      opened.push(first);
       const page = first.pages()[0] ?? (await first.newPage());
       const frame = await openInShell(page, url);
       await stop();
@@ -191,6 +202,7 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       expect(await valueElsewhere(browser, url, "notes")).toBe("");
       // The browser opens the artifact again: the page replays the journal it left.
       const second = await engine.launchPersistentContext(profile);
+      opened.push(second);
       const next = second.pages()[0] ?? (await second.newPage());
       const again = await openInShell(next, url);
       await expect(again.getByTestId("notes")).toHaveValue("kept in the journal");
@@ -199,9 +211,11 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       await second.close();
       await browser.close();
     } finally {
+      for (const each of opened.reverse()) await each.close().catch(() => undefined);
       await stop();
       removeTree(daemon.root);
-      rmSync(profile, { recursive: true, force: true });
+      // A browser's last process may hold a file for a moment after it closed (Windows).
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });
@@ -386,16 +400,26 @@ test.describe("offline edits (IN-04)", () => {
     let daemon = await startDaemon();
     let client = await Client.connect(daemon.socket);
     const profile = mkdtempSync(join(tmpdir(), "mostra-e2e-profile-"));
+    // Everything the test opens is closed in its cleanup whatever failed: a context left open
+    // holds its profile, which Windows then refuses to remove, and that refusal replaced the
+    // test's own failure (CI run 40524581425, MT-02).
+    const opened: { close(): Promise<void> }[] = [];
+    // Stops the daemon once: a daemon already stopped (the test failed while Mostra was down)
+    // never says `exit` again, and the cleanup would wait for it forever.
     const stop = async (): Promise<void> => {
       client.close();
-      daemon.child.kill("SIGTERM");
-      await new Promise((resolve) => daemon.child.once("exit", resolve));
+      const child = daemon.child;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill("SIGTERM");
+      await exited;
     };
     try {
       const own = await publishOwn(client, daemon.home, info);
       const url = await linkFor(client, own.artifactId, viewerName(info));
       const engine = { chromium, firefox, webkit }[browserName];
       const first = await engine.launchPersistentContext(profile);
+      opened.push(first);
       const page = first.pages()[0] ?? (await first.newPage());
       const frame = await openInShell(page, url);
       await expect(frame.getByTestId("version")).toHaveText("1");
@@ -413,6 +437,7 @@ test.describe("offline edits (IN-04)", () => {
         ),
       );
       const second = await engine.launchPersistentContext(profile);
+      opened.push(second);
       const next = second.pages()[0] ?? (await second.newPage());
       const again = await openInShell(next, url);
       await expect(again.getByTestId("version")).toHaveText("2");
@@ -432,9 +457,11 @@ test.describe("offline edits (IN-04)", () => {
       ]);
       await second.close();
     } finally {
+      for (const each of opened.reverse()) await each.close().catch(() => undefined);
       await stop();
       removeTree(daemon.root);
-      rmSync(profile, { recursive: true, force: true });
+      // A browser's last process may hold a file for a moment after it closed (Windows).
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });
