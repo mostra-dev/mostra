@@ -81,6 +81,7 @@ MT-02 owns no requirement (D154). Its checks extend their owners' rows, which st
 - **The last push's CI** (run 40500856396, on GitHub's runners with Blacksmith's month used up) found two races older than MT-02, each fixed red on its cause and green on the fix:
   - the install lock's takeover compared files by number alone, and ext4 gives a new file the number of one just removed, so a stale judgement removed the fresh lock (`a9519df`; the crate and the SDK);
   - the conformance close test read its grandchild's PID file before it was written, as PID 0, which is always alive (`41a5264`).
+- **The full run on `8f534db`** (`ci:full`, CI run 40520031718): 69 of 69 jobs green, every leg. Its CodeQL check found five alerts in the change: `js/file-system-race` in the SDK lock's takeover (a stat, then a read by path, of the lock it moved aside), fixed by reading both through one descriptor (`3ccc195`); and four `js/http-to-file-access` in `tools/release/node-pins.ts`, dismissed as false positives with the reason: a maintainer's release tool that writes the downloads into its own temporary directory for `gpgv`, and `node.json` only from digests whose list's signature verified.
 
 ## Untested boundaries
 
