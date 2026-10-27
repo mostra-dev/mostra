@@ -62,7 +62,25 @@ MT-02 owns no requirement (D154). Its checks extend their owners' rows, which st
   3. (P2) The deadline looked for test homes only in `tmpdir()`, not in `/tmp`, where the POSIX suites make them (`df31f7c`).
   4. (P2) The deadline's Windows cleanup could end its own PowerShell first (`df31f7c`; a probe on `windows-latest` exercises it).
 - **Copilot:** no review (its quota).
-- **Claude Opus 5.5** (D144): the prompt is ready for Mirza to run.
+- **Claude Opus 5.5** (D144), run by Mirza through Claude Code (`/code-review`) against `3534881` from the prompt the session wrote, posted on #90 on 2026-10-27. It built hostile archives byte by byte (traversal, case, Unicode normalization and Kelvin-sign collisions, links through links, hard links, devices, FIFOs, truncated gzip) and found every one refused with nothing written outside; and that no bad, missing, expired or revoked signature passes `node-pins.ts`. It ran nothing on Windows or GitHub's runners. Token usage isn't reported by that surface. Ten findings, each fixed with a test red on the old code and a seed red planted and green restored, except where the disposition says otherwise:
+
+| Finding | Disposition |
+|---|---|
+| 1 The Windows hang report printed the second local user's password from a command line, into an uploaded artifact | Fixed: the report redacts the value of every variable named like a password, token, secret or key (`d99cff1`); through the real run, a carried password never reached `hang.txt` |
+| 2 The 6-day nightly cover depended on GitHub's schedule delay, so day 6 often skipped and the rerun came on day 7 | Fixed: 5½ days, with a test of a late day 0 and a punctual day 6 (`8fcde98`) |
+| 3 A cold twin that failed saved no Turbo cache, so the next stayed cold | Fixed: `main` saves Turbo's cache unless the job was cancelled; Turbo caches only the tasks that passed (observed, VERIFIED_FACTS) (`8fcde98`) |
+| 4 Colliding entries (a file then an entry beneath it, `σ` and `ς`) were reported as the disk's failure | Fixed: in the extractor's new, empty directory, `EEXIST`, `ENOTDIR` and `EISDIR` are the archive's (`a8bc711`) |
+| 5 The deadline missed a test's detached daemon whose parent had exited | Fixed: in CI it also stops every process naming a test home, never itself nor its ancestors (`d99cff1`); the first try stopped the very shell that ran it, hence the guard and its test; through the real run, the stray stopped and the shell survived |
+| 6 The cleanup hook stopped at the first directory it couldn't remove, leaving the rest unkept and unremoved | Fixed: `removeEvery` keeps and tries all, then fails once naming each (`41944ba`) |
+| 7 The handshake test's handler refused before it removed itself, against its comment, and a read in between would be refused a third time | Fixed: it refuses two and hands any later read back (`201de92`); 18 of 18 in three engines |
+| 8 `keepEvidence` copies passing runs too, and displaced `removeTree`'s doc comment | Comment restored; copying stays, since a teardown can't know whether its tests failed, measured at about 2 MB a suite (`65ba45c`) |
+| 9 An abandoned dev session resolved its packages before noticing | Fixed: it checks after mirroring and describing the source (`55d337e`) |
+| 10 Nothing kept `.node-version` and the bundle's Node.js in step | Fixed: a test in the tools' suite fails when they differ and names the command (`c49f379`) |
+
+  Its note that `versions.spec.ts`'s page-error listeners now attach after the page opens is answered: errors during the open itself are no longer collected for that test's message, and no check changed.
+- **The last push's CI** (run 40500856396, on GitHub's runners with Blacksmith's month used up) found two races older than MT-02, each fixed red on its cause and green on the fix:
+  - the install lock's takeover compared files by number alone, and ext4 gives a new file the number of one just removed, so a stale judgement removed the fresh lock (`a9519df`; the crate and the SDK);
+  - the conformance close test read its grandchild's PID file before it was written, as PID 0, which is always alive (`41a5264`).
 
 ## Untested boundaries
 
