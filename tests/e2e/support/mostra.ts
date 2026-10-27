@@ -169,6 +169,27 @@ export class Client {
 }
 
 /**
+ * Copies what a daemon's home says about a run (its supervisor log and its ledger, never its keys
+ * or secrets) into `MOSTRA_E2E_LOG_DIR`, when it is set: CI keeps them for a failed run, since a
+ * trace shows only what the browser saw, not whether a request reached Mostra (#39, MT-02). Every
+ * run copies them, since a teardown can't know whether its tests failed: about 2 MB for a whole
+ * suite's daemons.
+ */
+function keepEvidence(root: string): void {
+  const into = process.env["MOSTRA_E2E_LOG_DIR"];
+  if (!into) return;
+  for (const part of ["logs", "store"]) {
+    const from = join(root, "home", part);
+    if (!existsSync(from)) continue;
+    try {
+      cpSync(from, join(into, basename(root), part), { recursive: true });
+    } catch {
+      // A file still being written is kept as far as it could be read.
+    }
+  }
+}
+
+/**
  * Removes a run's directory. Published versions are sealed read-only (DATA_MODEL §1), so each
  * directory is made writable before its entries go.
  */
@@ -177,6 +198,7 @@ export function removeTree(root: string): void {
   if (dirname(root) !== SCRATCH || !basename(root).startsWith("mostra-e2e-")) {
     throw new Error(`refusing to remove ${root}`);
   }
+  keepEvidence(root);
   if (WINDOWS) {
     // Sealed versions keep a read-only access list, which the helper resets (D150 item 3).
     spawnSync(WIN_HELPER, ["unseal", root], { windowsHide: true });

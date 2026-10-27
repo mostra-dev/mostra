@@ -30,7 +30,7 @@ import {
   requestKey,
 } from "../../src/ledger/index.ts";
 import { silentLog } from "../../src/log.ts";
-import { tempDir } from "../support.ts";
+import { closeBeforeRemoval, tempDir } from "../support.ts";
 
 const ARTIFACT = "art_01JB8Z3QF6S7W3N8D5K2C4V9XG";
 const OTHER = "art_01JB8Z3QF6S7W3N8D5K2C4V9XH";
@@ -45,6 +45,8 @@ function ledger(): Ledger {
     log: silentLog,
   });
   if (!opening.ok) throw new Error("locked");
+  const opened = opening.ledger;
+  closeBeforeRemoval(() => opened.close());
   opening.ledger.write((db) => {
     for (const id of [ARTIFACT, OTHER]) {
       db.run(

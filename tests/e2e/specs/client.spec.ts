@@ -17,6 +17,7 @@ import {
   results,
   saved,
   viewerName,
+  watchTyping,
 } from "../support/client.ts";
 import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
@@ -83,18 +84,24 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info);
-      // The frame's first two session reads fail, as during a daemon restart.
+      // The frame's first two session reads fail, as during a daemon restart. After refusing the
+      // second, the handler removes itself, so the reads after it reach the gateway untouched: a
+      // request this interception let through instead (`route.continue`) hung in Firefox on
+      // Windows until the page gave it up after 10 s, read after read, and the shell never got
+      // ready (the trace of CI run 40257246209; the same timeout at this test's `ready` in runs
+      // 40119528647 and 40112700618; MT-02). It refuses before it removes itself (removing it
+      // first hands back the request it holds, which then can't be refused), so a read that comes
+      // in between is handed back, never refused a third time (the Opus review of MT-02). The
+      // predicate matches the frame's read only, not the shell's `/a/…/_mostra/session`.
       let failures = 0;
-      await page.route(
-        (url) => url.pathname === "/_mostra/session",
-        (route) => {
-          if (failures < 2) {
-            failures += 1;
-            return route.abort("connectionrefused");
-          }
-          return route.continue();
-        },
-      );
+      const sessionRead = (url: URL): boolean => url.pathname === "/_mostra/session";
+      const failTwice = async (route: import("@playwright/test").Route): Promise<void> => {
+        if (failures >= 2) return route.fallback();
+        failures += 1;
+        await route.abort("connectionrefused");
+        if (failures === 2) await page.unroute(sessionRead, failTwice);
+      };
+      await page.route(sessionRead, failTwice);
       await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("[data-mostra-save]")).toHaveAttribute(
         "data-mostra-save",
@@ -108,8 +115,13 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
       await page.unrouteAll({ behavior: "wait" });
       const frame = page.frameLocator("iframe.mostra-frame");
       await expect(frame.getByTestId("mode")).toHaveText("live");
+      // WebKit once left the name empty after its fill, and the shell rightly refused the Submit
+      // (#85): this fails at the field, with what each document saw of the typing.
+      const typing = await watchTyping(page, frame);
       await frame.getByTestId("notes").fill("after a failed start");
       await frame.getByTestId("name").fill("Ana");
+      await typing.typed("notes", "after a failed start");
+      await typing.typed("name", "Ana");
       await saved(page);
       await page.locator("#mostra-submit").click();
       await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
@@ -154,10 +166,19 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
     let daemon = await startDaemon();
     let client = await Client.connect(daemon.socket);
     const profile = mkdtempSync(join(tmpdir(), "mostra-e2e-profile-"));
+    // Everything the test opens is closed in its cleanup whatever failed: a context left open
+    // holds its profile, which Windows then refuses to remove, and that refusal replaced the
+    // test's own failure (CI run 40524581425, MT-02).
+    const opened: { close(): Promise<void> }[] = [];
+    // Stops the daemon once: a daemon already stopped (the test failed while Mostra was down)
+    // never says `exit` again, and the cleanup would wait for it forever.
     const stop = async (): Promise<void> => {
       client.close();
-      daemon.child.kill("SIGTERM");
-      await new Promise((resolve) => daemon.child.once("exit", resolve));
+      const child = daemon.child;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill("SIGTERM");
+      await exited;
     };
     try {
       const own = await publishOwn(client, daemon.home, info);
@@ -165,7 +186,9 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       const engine = { chromium, firefox, webkit }[browserName];
       // Another device, to see what Mostra itself holds.
       const browser = await engine.launch();
+      opened.push(browser);
       const first = await engine.launchPersistentContext(profile);
+      opened.push(first);
       const page = first.pages()[0] ?? (await first.newPage());
       const frame = await openInShell(page, url);
       await stop();
@@ -179,6 +202,7 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       expect(await valueElsewhere(browser, url, "notes")).toBe("");
       // The browser opens the artifact again: the page replays the journal it left.
       const second = await engine.launchPersistentContext(profile);
+      opened.push(second);
       const next = second.pages()[0] ?? (await second.newPage());
       const again = await openInShell(next, url);
       await expect(again.getByTestId("notes")).toHaveValue("kept in the journal");
@@ -187,9 +211,11 @@ test.describe("a closed tab loses nothing (IN-02)", () => {
       await second.close();
       await browser.close();
     } finally {
+      for (const each of opened.reverse()) await each.close().catch(() => undefined);
       await stop();
       removeTree(daemon.root);
-      rmSync(profile, { recursive: true, force: true });
+      // A browser's last process may hold a file for a moment after it closed (Windows).
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });
@@ -374,16 +400,26 @@ test.describe("offline edits (IN-04)", () => {
     let daemon = await startDaemon();
     let client = await Client.connect(daemon.socket);
     const profile = mkdtempSync(join(tmpdir(), "mostra-e2e-profile-"));
+    // Everything the test opens is closed in its cleanup whatever failed: a context left open
+    // holds its profile, which Windows then refuses to remove, and that refusal replaced the
+    // test's own failure (CI run 40524581425, MT-02).
+    const opened: { close(): Promise<void> }[] = [];
+    // Stops the daemon once: a daemon already stopped (the test failed while Mostra was down)
+    // never says `exit` again, and the cleanup would wait for it forever.
     const stop = async (): Promise<void> => {
       client.close();
-      daemon.child.kill("SIGTERM");
-      await new Promise((resolve) => daemon.child.once("exit", resolve));
+      const child = daemon.child;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill("SIGTERM");
+      await exited;
     };
     try {
       const own = await publishOwn(client, daemon.home, info);
       const url = await linkFor(client, own.artifactId, viewerName(info));
       const engine = { chromium, firefox, webkit }[browserName];
       const first = await engine.launchPersistentContext(profile);
+      opened.push(first);
       const page = first.pages()[0] ?? (await first.newPage());
       const frame = await openInShell(page, url);
       await expect(frame.getByTestId("version")).toHaveText("1");
@@ -401,6 +437,7 @@ test.describe("offline edits (IN-04)", () => {
         ),
       );
       const second = await engine.launchPersistentContext(profile);
+      opened.push(second);
       const next = second.pages()[0] ?? (await second.newPage());
       const again = await openInShell(next, url);
       await expect(again.getByTestId("version")).toHaveText("2");
@@ -420,9 +457,11 @@ test.describe("offline edits (IN-04)", () => {
       ]);
       await second.close();
     } finally {
+      for (const each of opened.reverse()) await each.close().catch(() => undefined);
       await stop();
       removeTree(daemon.root);
-      rmSync(profile, { recursive: true, force: true });
+      // A browser's last process may hold a file for a moment after it closed (Windows).
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });

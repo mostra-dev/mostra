@@ -21,7 +21,7 @@ import { localViewerId } from "../../src/interaction/viewers.ts";
 import { type Ledger, MIGRATIONS, openLedger } from "../../src/ledger/index.ts";
 import { silentLog } from "../../src/log.ts";
 import { addArtifact, FakeHosts, freshLedger, set, until } from "../interaction-support.ts";
-import { tempDir } from "../support.ts";
+import { closeBeforeRemoval, tempDir } from "../support.ts";
 
 const SHELL_ONLY: ControlsPolicy = { submitChannels: ["shell"] };
 const ARTIFACT_ONLY: ControlsPolicy = { submitChannels: ["artifact"] };
@@ -314,7 +314,9 @@ describe("migration 6 (D108, D109, D63)", () => {
         migrations,
       });
       if (!opening.ok) throw new Error("locked");
-      return opening.ledger;
+      const ledger = opening.ledger;
+      closeBeforeRemoval(() => ledger.close());
+      return ledger;
     };
     // A ledger as WP-06 left it.
     const before = at(MIGRATIONS.filter((migration) => migration.version <= 5));

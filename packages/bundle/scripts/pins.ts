@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The release's bundle pins (RT-01): from the four platforms' asset records, writes
+ * The release's bundle pins (RT-01): from the six platforms' asset records, writes
  *
  * - `packages/sdk/dist/bundles.json`, the `BundlePins` the published `@mostra/sdk` ships, which
  *   the SDK, the CLI's bootstrap and `create-mostra` install from (hash-pinned: an archive whose

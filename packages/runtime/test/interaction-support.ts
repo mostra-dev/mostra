@@ -8,7 +8,7 @@ import { appendEvent } from "../src/interaction/events.ts";
 import { localViewerId, openView } from "../src/interaction/viewers.ts";
 import { type Ledger, type LedgerDb, openLedger } from "../src/ledger/index.ts";
 import { silentLog } from "../src/log.ts";
-import { tempDir } from "./support.ts";
+import { closeBeforeRemoval, tempDir } from "./support.ts";
 
 /** A fresh ledger in a temporary home. */
 export function freshLedger(): { ledger: Ledger; storeDir: string } {
@@ -25,7 +25,9 @@ export function open(storeDir: string): Ledger {
     log: silentLog,
   });
   if (!opening.ok) throw new Error("locked");
-  return opening.ledger;
+  const ledger = opening.ledger;
+  closeBeforeRemoval(() => ledger.close());
+  return ledger;
 }
 
 let counter = 0;

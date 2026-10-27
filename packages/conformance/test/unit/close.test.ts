@@ -49,11 +49,15 @@ describe("ending a host shim (Opus review of WP-W3, finding 3)", () => {
     const host = await HostUnderTest.start(`node --conditions=@mostra/source "${SHIM}"`, {
       MOSTRA_KIT_TEST_PID_FILE: file,
     });
+    // The grandchild's PID, once it is there: a file read too early once gave 0, and `kill(0)`
+    // signals this test's own process group, which is always alive (CI run 40500856396).
+    const read = (): number => (existsSync(file) ? Number(readFileSync(file, "utf8")) : 0);
     const deadline = Date.now() + 10_000;
-    while (!existsSync(file) && Date.now() < deadline) {
+    while (!(read() > 0) && Date.now() < deadline) {
       await new Promise((done) => setTimeout(done, 50));
     }
-    const pid = Number(readFileSync(file, "utf8"));
+    const pid = read();
+    expect(Number.isInteger(pid) && pid > 0, `the grandchild's PID file held ${pid}`).toBe(true);
     expect(alive(pid)).toBe(true);
     await host.close();
     const gone = Date.now() + 5_000;

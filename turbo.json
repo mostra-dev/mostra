@@ -9,7 +9,8 @@
     "MOSTRA_WIN_HELPER",
     "MOSTRA_TEST_OTHER_USER",
     "MOSTRA_TEST_OTHER_PASSWORD",
-    "MOSTRA_TEST_LOG_DIR"
+    "MOSTRA_TEST_LOG_DIR",
+    "MOSTRA_E2E_LOG_DIR"
   ],
   "tasks": {
     "build": {

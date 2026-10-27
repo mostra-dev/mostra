@@ -11,11 +11,15 @@
  *   pnpm check --verbose           print the output of passing jobs too
  *   pnpm check --stream            print Turbo's output as it arrives, so a job a CI runner cancels
  *                                  for its time limit still shows where it was (the integration jobs)
+ *   pnpm check --deadline <min>    still running after <min> minutes: print every process, keep the
+ *                                  test homes' supervisor logs in MOSTRA_TEST_LOG_DIR, stop the run
+ *                                  and fail, so CI's failure steps run (#55, deadline.ts)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { fromRoot, runStreaming } from "../lib/repo.ts";
+import { armDeadline } from "./deadline.ts";
 import { JOB_NAMES, JOBS, type Job, type JobName, WINDOWS_PACKAGES } from "./jobs.ts";
 import { makePlan, type Plan } from "./plan.ts";
 
@@ -29,6 +33,7 @@ const { values } = parseArgs({
     json: { type: "boolean", default: false },
     verbose: { type: "boolean", default: false },
     stream: { type: "boolean", default: false },
+    deadline: { type: "string" },
   },
   strict: true,
 });
@@ -38,6 +43,12 @@ for (const name of values.job ?? []) {
     console.error(`Unknown job "${name}". Jobs: ${JOB_NAMES.join(", ")}.`);
     process.exit(2);
   }
+}
+
+const deadline = values.deadline === undefined ? undefined : Number(values.deadline);
+if (deadline !== undefined && !(deadline > 0)) {
+  console.error(`--deadline takes a number of minutes, not "${values.deadline}".`);
+  process.exit(2);
 }
 
 if (values.base) process.env["MOSTRA_BASE"] = values.base;
@@ -207,6 +218,7 @@ console.log(
   `pnpm check: ${applicable.map((job) => job.name).join(", ") || "nothing to run"}` +
     (plan.packages === "all" ? "" : ` (packages: ${plan.packages.join(", ") || "none"})`),
 );
+if (deadline !== undefined) armDeadline(deadline, process.env["MOSTRA_TEST_LOG_DIR"]);
 // Jobs that must run alone (the browsers) start once the other task jobs are done.
 const together = taskJobs.filter((job) => !job.alone);
 const alone = taskJobs.filter((job) => job.alone);

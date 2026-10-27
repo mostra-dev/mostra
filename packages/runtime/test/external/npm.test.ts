@@ -30,6 +30,7 @@ import {
   type TestHome,
   tempDir,
   testHome,
+  warmVersion,
 } from "../support.ts";
 
 let home: TestHome;
@@ -138,7 +139,8 @@ describe("the real npm registry (external)", () => {
       if (address === null || typeof address === "string") throw new Error("no port");
       await page.goto(`http://127.0.0.1:${address.port}/`);
       await page.waitForSelector("main canvas", { timeout: 20_000 });
-      expect(await page.getAttribute("main", "data-react")).toBe("19.3.0");
+      // One React: the page runs the warm set's, not a copy the package brought (D95).
+      expect(await page.getAttribute("main", "data-react")).toBe(warmVersion("react"));
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

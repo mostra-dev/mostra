@@ -8,6 +8,11 @@ Renovate opens routine updates; this playbook covers the deliberate ones.
    depends on in `docs/design/VERIFIED_FACTS.md` with source and date.
 2. **Respect the cooldown.** Pick a version published at least 7 days ago. pnpm enforces it
    (`minimumReleaseAge` in `pnpm-workspace.yaml`), and so does Renovate.
+   **A trust downgrade** ("High-risk trust downgrade", pnpm's trust policy) means the release lacks
+   the provenance its predecessors had, as lefthook 2.2.2 did (#84). Never allow it: take the last
+   release that keeps it, skip the other in `renovate.json` (`allowedVersions: "!/^x\\.y\\.z$/"`), and
+   record the registry's `_npmUser` and `dist.attestations` in VERIFIED_FACTS.
+   **Node.js itself** moves through `docs/agents/update-node.md`: the bundles' pins are its own.
 3. **Pin it in a catalog.** Add or change the exact version in `pnpm-workspace.yaml` (`catalog:`,
    or a named catalog such as `ts6`), then reference it as `"name": "catalog:"` in the package.
    Repository lint rejects any other specifier.

@@ -1181,8 +1181,8 @@ impl Lock {
         match Self::judge(path) {
             Judged::Gone => true,
             Judged::Live => false,
-            Judged::Stale(id) => {
-                Self::remove_judged(path, &id);
+            Judged::Stale(id, text) => {
+                Self::remove_judged(path, &id, &text);
                 true
             }
         }
@@ -1209,23 +1209,26 @@ impl Lock {
             .next()
             .and_then(|pid| pid.parse::<i32>().ok());
         if old || owner.is_some_and(|pid| pid > 0 && !alive(pid)) {
-            Judged::Stale(id)
+            Judged::Stale(id, text)
         } else {
             Judged::Live
         }
     }
 
-    /// Moves the lock aside and removes it only if it is the file `judged` describes: a fresh lock
-    /// another installer took since is put back, unless a newer one exists.
-    fn remove_judged(path: &Path, judged: &(u64, u64)) {
+    /// Moves the lock aside and removes it only if it is the file `judged` describes, by identity
+    /// and by contents: a fresh lock another installer took since is put back, unless a newer one
+    /// exists. The contents matter because a file system may give a new file the number of one
+    /// just removed (ext4 does at once), and each lock holds its owner's PID and its own token.
+    fn remove_judged(path: &Path, judged: &(u64, u64), text: &str) {
         let aside = path.with_extension(format!("lock.stale-{}", random_hex()));
         if std::fs::rename(path, &aside).is_err() {
             return; // someone else moved or removed it
         }
-        let moved = std::fs::File::open(&aside)
-            .ok()
-            .and_then(|file| file_id(&file));
-        if moved.is_some_and(|moved| moved != *judged) {
+        let same = std::fs::File::open(&aside).ok().is_some_and(|mut file| {
+            let mut now = String::new();
+            file_id(&file) == Some(*judged) && file.read_to_string(&mut now).is_ok() && now == text
+        });
+        if !same {
             let _ = std::fs::hard_link(&aside, path);
         }
         let _ = std::fs::remove_file(&aside);
@@ -1236,8 +1239,8 @@ impl Lock {
 enum Judged {
     Gone,
     Live,
-    /// Stale, and which file was judged (`file_id`).
-    Stale((u64, u64)),
+    /// Stale, and which file was judged (`file_id`) with what it held.
+    Stale((u64, u64), String),
 }
 
 impl Drop for Lock {
@@ -1288,6 +1291,7 @@ mod cache_root_tests {
 #[cfg(test)]
 mod lock_tests {
     use super::{Judged, Lock};
+    use std::io::Write as _;
     use std::time::{Duration, SystemTime};
 
     /// A dead process's ID, for a lock whose owner is gone.
@@ -1305,17 +1309,17 @@ mod lock_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("digest.lock");
         std::fs::write(&path, format!("{} dead\n", dead_pid())).unwrap();
-        let Judged::Stale(judged_by_second) = Lock::judge(&path) else {
+        let Judged::Stale(judged_by_second, text_by_second) = Lock::judge(&path) else {
             panic!("a lock of a dead owner is stale");
         };
         // The first installer takes it over and creates its own (a new file).
-        let Judged::Stale(judged_by_first) = Lock::judge(&path) else {
+        let Judged::Stale(judged_by_first, text_by_first) = Lock::judge(&path) else {
             panic!("stale");
         };
-        Lock::remove_judged(&path, &judged_by_first);
+        Lock::remove_judged(&path, &judged_by_first, &text_by_first);
         std::fs::write(&path, format!("{} fresh\n", std::process::id())).unwrap();
         // The second installer acts on its old judgement.
-        Lock::remove_judged(&path, &judged_by_second);
+        Lock::remove_judged(&path, &judged_by_second, &text_by_second);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             format!("{} fresh\n", std::process::id()),
@@ -1323,6 +1327,33 @@ mod lock_tests {
         );
         let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
         assert_eq!(left.len(), 1, "an aside file was left");
+    }
+
+    /// The fresh lock may get the very file number of the stale one just removed (ext4 reuses it
+    /// at once, which failed the test above on GitHub's ubuntu-latest, MT-02): its contents, its
+    /// owner's PID and token, tell it from the lock judged stale.
+    #[test]
+    fn a_takeover_never_removes_a_fresh_lock_with_a_reused_file_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("digest.lock");
+        std::fs::write(&path, format!("{} dead\n", dead_pid())).unwrap();
+        let Judged::Stale(judged, text) = Lock::judge(&path) else {
+            panic!("a lock of a dead owner is stale");
+        };
+        // The fresh lock in the judged file's own number: the same (dev, ino), other contents.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap()
+            .write_all(format!("{} fresh\n", std::process::id()).as_bytes())
+            .unwrap();
+        Lock::remove_judged(&path, &judged, &text);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            format!("{} fresh\n", std::process::id()),
+            "the fresh lock was removed"
+        );
     }
 
     /// A held lock is touched while its install runs, so it never looks an hour old; a release
@@ -1339,7 +1370,7 @@ mod lock_tests {
             .unwrap()
             .set_modified(old)
             .unwrap();
-        assert!(matches!(Lock::judge(&path), Judged::Stale(_)));
+        assert!(matches!(Lock::judge(&path), Judged::Stale(..)));
         tokio::time::sleep(super::LOCK_TOUCH + Duration::from_secs(1)).await;
         for _ in 0..50 {
             tokio::task::yield_now().await;

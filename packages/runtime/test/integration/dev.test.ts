@@ -133,9 +133,13 @@ describe("mostra dev (VR-08)", () => {
       // A "backup, then write" save (Vim's default, some Windows editors) of the server code the
       // entry imports: the file is gone for a moment, longer than the mirror takes to sync.
       renameSync(join(dir, "actions.ts"), join(dir, "actions.ts~"));
-      // A file written with the rename shows when the mirror has synced during the gap.
+      // A file written with the rename shows when the mirror has synced during the gap. That sync
+      // is the first to miss the old file, and a file is removed only once it has been missing for
+      // 1.5 s (`MISSING_GRACE_MS`), so the file must still be there whenever the sync comes: the
+      // wait bounds a loaded machine's sync, not the grace (it was 900 ms, and a busy machine's
+      // first sync took longer, MT-02).
       writeFileSync(join(dir, "synced.txt"), "x");
-      await eventually(() => existsSync(join(source, "synced.txt")), 900, "a sync in the gap");
+      await eventually(() => existsSync(join(source, "synced.txt")), 15_000, "a sync in the gap");
       // It kept the file, so nothing that imports it broke.
       expect(existsSync(join(source, "actions.ts"))).toBe(true);
       writeDevFixture(dir, "HEADING-SAVED", "SERVER-SAVED");

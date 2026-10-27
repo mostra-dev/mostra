@@ -405,15 +405,34 @@ export function createDev(options: DevOptions): Dev {
       );
 
     // The session ends with its connection (D140 item 12), from the first moment: a connection
-    // that closes while packages resolve or the dev server starts leaves nothing running.
-    connection.signal.addEventListener("abort", () => void stop(), { once: true });
+    // that closes while packages resolve or the dev server starts leaves nothing running. While
+    // the session starts, its start owns the cleanup: a close marks it, and the start stops what
+    // it started at its next step, then removes the session's directory. A close that removed
+    // the directory at once did so under a dev server still writing into it (its staging files,
+    // its `node_modules` link, Vite's cache), the removal failed on the files it wrote, and the
+    // failure took the whole instance down (#35). Once started, a close stops the session, and
+    // a stop that fails is logged: it never ends the instance.
+    let starting = true;
+    connection.signal.addEventListener(
+      "abort",
+      () => {
+        if (starting) closed = true;
+        else stop().catch((error: unknown) => log.warn("dev.stop_failed", { sessionId, error }));
+      },
+      { once: true },
+    );
     try {
       if (connection.signal.aborted) throw abandoned();
+      // A close stops the start at its next step, before resolving packages least of all, which
+      // may install under the shared gate (the Opus review of MT-02).
       await sync();
+      if (closed) throw abandoned();
       const described = await describe();
+      if (closed) throw abandoned();
       manifestKey = JSON.stringify(described.manifest);
       nodeModules = await resolve(described.manifest.id);
       artifactId = described.artifactId;
+      if (closed) throw abandoned();
       child = await startChild(described);
       if (closed) throw abandoned();
       const upstream = (): { port: number; secret: string } | undefined =>
@@ -438,13 +457,16 @@ export function createDev(options: DevOptions): Dev {
         ...(params.port !== undefined ? { shellPort: params.port } : {}),
       });
       if (closed) throw abandoned();
+      // Nothing below awaits, so no close can fall between this and the session's registration.
+      starting = false;
       sandbox.onSubmission((results) => notify("submission", { results }));
     } catch (error) {
       closed = true;
       sessions.delete(sessionId);
-      // Again, after whatever a stop that ran meanwhile couldn't see yet (a child or sandbox
-      // that finished starting after it).
+      // Every step that started something has returned, so nothing writes into the session's
+      // directory once its dev server and sandbox stopped.
       await release();
+      if (connection.signal.aborted) log.info("dev.stopped", { sessionId });
       throw error;
     }
 

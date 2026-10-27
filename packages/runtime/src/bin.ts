@@ -103,7 +103,18 @@ function handleSignals(instance: Instance): void {
   process.on("exit", () => instance.processes.killAll());
   process.on("uncaughtException", (error) => {
     mirror(`${JSON.stringify({ level: "error", event: "uncaught", message: error.message })}\n`);
-    void instance.stop("uncaught exception", EXIT.failure);
+    // The home's log keeps what failed and where, so a failure nobody watched stderr for still
+    // names its cause (#35: an instance that ended with only "uncaught exception" in its log).
+    void instance.stop(
+      "uncaught exception",
+      EXIT.failure,
+      createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+        message: (error instanceof Error
+          ? (error.stack ?? `${error.name}: ${error.message}`)
+          : String(error)
+        ).slice(0, 8192),
+      }),
+    );
     setTimeout(() => process.exit(EXIT.failure), 15_000).unref();
   });
 }

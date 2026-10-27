@@ -27,6 +27,17 @@ import { afterAll } from "vitest";
 import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
+const closers: (() => void)[] = [];
+
+/**
+ * Closes `close`'s resource (a ledger, a database) before this file's temporary directories are
+ * removed. Windows refuses to remove a file a process holds open, and Node.js's `rmSync` tries
+ * such a file again with backoff before it gives up, so a ledger left open for the life of a file
+ * once made its directories' removal pass its hook's limit (MT-02).
+ */
+export function closeBeforeRemoval(close: () => void): void {
+  closers.push(close);
+}
 /**
  * Keeps the supervisor logs of the test homes in `MOSTRA_TEST_LOG_DIR`, when it is set, before
  * their homes are removed: CI keeps them for failed runs, since an instance's own errors (the cause
@@ -59,19 +70,45 @@ function keepLogs(dir: string): void {
 }
 
 afterAll(() => {
-  for (const dir of created.splice(0)) {
-    keepLogs(dir);
+  for (const close of closers.splice(0).reverse()) {
     try {
-      removeAll(dir);
-    } catch (error) {
-      // Windows refuses to remove a file this process still has open, such as a ledger a unit
-      // test left open for the life of its file; the directory stays in the temporary folder.
-      if (!WINDOWS || !["EPERM", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-        throw error;
-      }
+      close();
+    } catch {
+      // Closed already, or never opened: nothing holds its files.
     }
   }
+  removeEvery(created.splice(0), keepLogs, removeAll);
 });
+
+/**
+ * Keeps each directory's logs and removes it, every one of them before any failure is reported, so
+ * one that can't be removed never leaves the others behind with their logs (the Opus review of
+ * MT-02); then fails, naming each directory it couldn't remove.
+ */
+export function removeEvery(
+  dirs: readonly string[],
+  keep: (dir: string) => void,
+  remove: (dir: string) => void,
+): void {
+  const failed: Error[] = [];
+  for (const dir of dirs) {
+    keep(dir);
+    try {
+      remove(dir);
+    } catch (error) {
+      // Windows refuses to remove a file this process still holds open: a resource a test opened
+      // and didn't register with closeBeforeRemoval, which would otherwise make every later
+      // removal wait out rmSync's retries (MT-02).
+      failed.push(
+        new Error(`Couldn't remove ${dir}: something still holds it open`, { cause: error }),
+      );
+    }
+  }
+  if (failed.length === 1) throw failed[0];
+  if (failed.length > 1) {
+    throw new AggregateError(failed, failed.map((error) => error.message).join("; "));
+  }
+}
 
 /** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
 export const WINDOWS: boolean = OS === "win32";
@@ -179,6 +216,20 @@ export function tempDir(prefix: string, short = false): string {
 
 /** The built runtime binary (`pnpm --filter @mostra/runtime build`). */
 export const BIN: string = join(dirname(fileURLToPath(import.meta.url)), "../dist/bin.js");
+
+/**
+ * The version of `name` in the warm set (`packages/warm`, D91) these suites run against, so a
+ * check of what a build or a lockfile records follows the warm set when its packages move.
+ */
+export function warmVersion(name: string): string {
+  const manifest = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../warm/node_modules",
+    name,
+    "package.json",
+  );
+  return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
+}
 
 /** A home and a runtime directory for one test. */
 export interface TestHome {

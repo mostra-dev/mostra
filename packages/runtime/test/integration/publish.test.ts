@@ -38,6 +38,7 @@ import {
   testHome,
   unsealTree,
   WINDOWS,
+  warmVersion,
 } from "../support.ts";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts/", import.meta.url));
@@ -129,7 +130,9 @@ describe("artifacts build with no configuration (AU-01, AU-02, AU-03)", () => {
     expect(existsSync(join(version, "server"))).toBe(false);
     const registry = JSON.parse(readFileSync(join(version, "registry.json"), "utf8"));
     expect(registry).toMatchObject({ entry: "page.tsx", actions: [], pages: [], liveSources: [] });
-    expect(readFileSync(join(version, "lock.yaml"), "utf8")).toContain('"react": "19.3.0"');
+    expect(readFileSync(join(version, "lock.yaml"), "utf8")).toContain(
+      `"react": "${warmVersion("react")}"`,
+    );
   });
 
   it("publishes a single MDX page with frontmatter as its manifest", async () => {

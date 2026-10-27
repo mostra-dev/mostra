@@ -253,7 +253,7 @@ describe("verify's failures", () => {
           ),
         );
         const path = single();
-        VerifyVerdict.parse(
+        const verdict = VerifyVerdict.parse(
           result(
             await listener.call(
               "artifact/verify",
@@ -262,6 +262,12 @@ describe("verify's failures", () => {
             ),
           ),
         );
+        // A verify that stopped early reports no later stage: that is the verdict's failure, not
+        // the progress notifications' (Windows arm64 once never got the page ready, #66).
+        expect(
+          verdict.status,
+          verdict.diagnostics.map((diagnostic) => diagnostic.code).join(", "),
+        ).toBe("pass");
         const stages: string[] = [];
         for (;;) {
           const note = await listener

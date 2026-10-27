@@ -12,8 +12,8 @@ lists the jobs.
 | The `ci:full` label on a pull request | Everything, on every leg, as the merge queue runs it (takes effect on the next push or re-run) |
 | A bot's draft pull request (Renovate) | Nothing, until it is ready for review |
 | The merge queue | The affected jobs on every leg: Windows arm64 and the four-platform rehearsal join; this run gates the merge |
-| Nightly on `main` (03:23 UTC) | Everything, unless the last nightly run passed on the same commit |
-| By hand (`gh workflow run ci.yml`) | Everything (`-f full=false` for the jobs the branch affects) |
+| Nightly on `main` (03:23 UTC) | Everything, unless the last nightly run passed on the same commit less than 5½ days before. When its Linux legs run on Blacksmith, each runs on GitHub's runners too (`linux-github`), so both cache stores stay warm for the fallback (#86) |
+| By hand (`gh workflow run ci.yml`) | Everything (`-f full=false` for the jobs the branch affects); on `main` it saves caches as the nightly run does |
 | A push to `main` | No `CI`: what merged already passed the queue. `Release` decides whether a version is due, CodeQL and Scorecard run |
 
 The plan job's summary shows the scope, the runners chosen and every leg.
@@ -50,7 +50,12 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    GitHub's free plan runs 20 jobs at once and at most 5 macOS jobs; Blacksmith's jobs don't count
    against either.
 7. **A failed integration leg.** Download its `logs-integration-*` artifact: each test home's
-   supervisor log. A failure that a re-run cures is a finding: file it with the run and job IDs,
+   supervisor log. A leg still running at its deadline (`pnpm check --deadline`: 10 minutes on
+   macOS and Linux, 14 on Windows) prints every process with its elapsed time and what it waits
+   on, keeps that as `hang.txt` with the logs of the homes a hung file never removed
+   (`leftover/`), and fails, so the artifact holds them (#55). A failed e2e leg keeps, besides its
+   traces, each daemon's supervisor log and ledger (`e2e-homes-*`, never its keys or secrets): the
+   ledger's `draft.changed` events say when, or whether, a page's save reached Mostra (#39). A failure that a re-run cures is a finding: file it with the run and job IDs,
    or add the occurrence to its issue.
 8. **Add a job or a leg.** The job goes in `tools/check/jobs.ts` (so `pnpm check` runs it), its legs
    in `tools/check/matrix.ts`, its CI job in `.github/workflows/ci.yml` (and in `ci-ok`'s `needs`),

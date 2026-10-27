@@ -3,10 +3,19 @@
  * shape. Each rule here has a seed in its comment's terms: the test goes red when the rule is
  * broken (MT-01's evidence).
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ciEvent, outputLines } from "../check/ci.ts";
+import {
+  ciEvent,
+  coveringNightly,
+  NIGHTLY_COVERS_MS,
+  type Nightly,
+  nightlyCovers,
+  outputLines,
+} from "../check/ci.ts";
+import { JOBS } from "../check/jobs.ts";
 import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
 import type { Plan } from "../check/plan.ts";
 import {
@@ -208,6 +217,117 @@ describe("what runs when (D152)", () => {
     expect(ciScope({ name: "schedule", alreadyPassed: true }).run).toBe(false);
   });
 
+  it("keeps both cache stores warm: a nightly run on Blacksmith runs its Linux legs on GitHub's runners too (#86)", () => {
+    const nightly = ciScope({ name: "schedule" });
+    const lists = (matrix: ReturnType<typeof ciMatrix>) => ({
+      static: matrix.static,
+      unit: matrix.unit,
+      hygiene: matrix.hygiene,
+      integration: matrix.integration,
+      e2e: matrix.e2e,
+      rust: matrix.rust,
+      conformance: matrix.conformance,
+    });
+    const both = ciMatrix(nightly, everything, blacksmith);
+    const alone = ciMatrix(nightly, everything, github);
+    for (const [list, legs] of Object.entries(lists(both))) {
+      const onBlacksmith = legs.filter((leg) => leg.runner.startsWith("blacksmith"));
+      const twins = legs.filter(
+        (leg) => leg["os"] === "linux-github" || /GitHub's/.test(leg["names"] ?? ""),
+      );
+      expect(onBlacksmith.length, list).toBeGreaterThan(0);
+      // Every Blacksmith leg has its twin on GitHub's runners, under the same Turborepo cache
+      // name: the same key, in the other store.
+      expect(twins.map((leg) => leg["cache"]).sort(), list).toEqual(
+        onBlacksmith.map((leg) => leg["cache"]).sort(),
+      );
+      for (const twin of twins) expect(twin.runner, list).toMatch(/^ubuntu-latest$/);
+      // macOS and Windows legs are GitHub's already: they get no twin.
+      expect(legs.filter((leg) => leg["os"] === "macos").length, list).toBe(
+        lists(alone)[list as keyof ReturnType<typeof lists>].filter((leg) => leg["os"] === "macos")
+          .length,
+      );
+    }
+    expect(both.windows).toEqual(alone.windows);
+    // Leg names, and so the logs and traces their jobs upload, stay unique.
+    const names = both.integration.map((leg) => `${leg["os"]} ${leg["group"]}`);
+    expect(new Set(names).size).toBe(names.length);
+    // A nightly run already on GitHub's runners saves GitHub's store itself.
+    expect(
+      Object.values(lists(alone))
+        .flat()
+        .some((leg) => leg["os"] === "linux-github"),
+    ).toBe(false);
+    // Only runs on main save caches: a pull request or the queue on Blacksmith gets no twin.
+    for (const scope of [
+      pr,
+      queue,
+      ciScope({ name: "pull_request", labels: [FULL_LABEL] }),
+      ciScope({ name: "workflow_dispatch" }),
+    ])
+      expect(
+        Object.values(lists(ciMatrix(scope, everything, blacksmith)))
+          .flat()
+          .some((leg) => leg["os"] === "linux-github"),
+        scope.reason,
+      ).toBe(false);
+    expect(
+      ciMatrix(
+        ciScope({ name: "workflow_dispatch", onMain: true }),
+        everything,
+        blacksmith,
+      ).unit.map((leg) => leg["os"]),
+    ).toEqual(["linux", "linux-github"]);
+    expect(ciEvent("workflow_dispatch", {}, false, "refs/heads/main")).toMatchObject({
+      onMain: true,
+    });
+    expect(ciEvent("workflow_dispatch", {}, false, "refs/heads/wp/13-share")).not.toHaveProperty(
+      "onMain",
+    );
+  });
+
+  it("repeats a passed nightly run once it is 5½ days old, inside both stores' 7-day eviction even when GitHub starts it late (#86)", () => {
+    const now = Date.parse("2026-10-27T03:23:00Z");
+    expect(nightlyCovers("2026-10-26T03:23:00Z", now)).toBe(true);
+    expect(nightlyCovers(new Date(now - NIGHTLY_COVERS_MS + 60_000).toISOString(), now)).toBe(true);
+    expect(nightlyCovers(new Date(now - NIGHTLY_COVERS_MS).toISOString(), now)).toBe(false);
+    expect(nightlyCovers("2026-10-19T03:23:00Z", now)).toBe(false);
+    expect(nightlyCovers(undefined, now)).toBe(false);
+    expect(nightlyCovers("-", now)).toBe(false);
+    expect(NIGHTLY_COVERS_MS).toBeLessThan(7 * 24 * 60 * 60 * 1000);
+    // Day 0's run started 32 minutes late, day 6's on time: day 6 still runs everything, so the
+    // caches are read again before day 7 (the Opus review of MT-02).
+    expect(nightlyCovers("2026-10-20T03:55:00Z", Date.parse("2026-10-26T03:33:00Z"))).toBe(false);
+  });
+
+  it("counts only a nightly that ran its gates as covering its commit (GPT review of MT-02)", () => {
+    const run = (sha: string, day: number, conclusion: string, gates: number): Nightly => ({
+      headSha: sha,
+      createdAt: `2026-10-${String(day).padStart(2, "0")}T03:23:00Z`,
+      conclusion,
+      gates,
+    });
+    // Newest first. The skips since the 20th renew nothing: the 20th's run is what covers.
+    const skipping = [
+      run("a", 25, "success", 0),
+      run("a", 24, "success", 0),
+      run("a", 20, "success", 70),
+    ];
+    expect(coveringNightly(skipping, "a")).toBe("2026-10-20T03:23:00Z");
+    expect(nightlyCovers(coveringNightly(skipping, "a"), Date.parse("2026-10-27T03:23:00Z"))).toBe(
+      false,
+    );
+    // A newer nightly on the commit that failed, or was cancelled, means nothing covers it.
+    expect(coveringNightly([run("a", 25, "failure", 40), ...skipping], "a")).toBeUndefined();
+    expect(coveringNightly([run("a", 25, "cancelled", 0), ...skipping], "a")).toBeUndefined();
+    // Another commit's runs don't count, nor does a commit with none.
+    expect(coveringNightly([run("b", 26, "success", 70), ...skipping], "a")).toBe(
+      "2026-10-20T03:23:00Z",
+    );
+    expect(coveringNightly(skipping, "c")).toBeUndefined();
+    expect(coveringNightly([], "a")).toBeUndefined();
+  });
+
   it("checks no commit messages in the merge queue, whose merges are GitHub's", () => {
     expect(ciMatrix(queue, everything, github).static[0]?.["jobs"]).not.toContain("commits");
     expect(ciMatrix(pr, everything, github).static[0]?.["jobs"]).toContain("--job commits");
@@ -314,6 +434,8 @@ interface Job {
   if?: string;
   "runs-on"?: string;
   uses?: string;
+  "timeout-minutes"?: number | string;
+  steps?: { name?: string; if?: string; run?: string; "timeout-minutes"?: number }[];
 }
 
 describe("the CI workflow's shape (D152)", () => {
@@ -330,6 +452,109 @@ describe("the CI workflow's shape (D152)", () => {
         .filter((name) => name !== "ci-ok")
         .sort(),
     );
+  });
+
+  it("ends a hung test run before its job's limit, so the failure steps keep its logs (#55)", () => {
+    // A job GitHub cancels for its own limit runs no `if: failure()` step; a step's limit kills
+    // every process of the step before anything looks at them. So `--deadline` reports first,
+    // then the step's limit, then the job's, each with room for the one before it to finish.
+    for (const [name, room] of [
+      ["integration", 3],
+      ["windows", 9],
+    ] as const) {
+      const job = jobs[name] as Job;
+      const steps = job.steps ?? [];
+      const at = steps.findIndex((step) => step.run?.includes("tools/check/cli.ts") ?? false);
+      const step = steps[at];
+      const deadline = Number(/--deadline (\d+)/.exec(step?.run ?? "")?.[1]);
+      const stepLimit = step?.["timeout-minutes"] ?? Number.POSITIVE_INFINITY;
+      const jobLimit = Number(job["timeout-minutes"]);
+      expect(deadline, name).toBeGreaterThan(0);
+      expect(stepLimit - deadline, name).toBeGreaterThanOrEqual(2);
+      expect(jobLimit - stepLimit, name).toBeGreaterThanOrEqual(room);
+      // The logs the deadline keeps are uploaded after it.
+      expect(
+        steps
+          .slice(at + 1)
+          .some((later) => later.if === "failure()" && later.name?.includes("logs")),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it("hands every Mostra variable a job sets to the tasks Turbo runs", () => {
+    // Turbo passes a task only the variables turbo.json names; MOSTRA_E2E_LOG_DIR once never
+    // reached the e2e suites, so a failed leg kept nothing (MT-02).
+    const turbo = JSON.parse(readFileSync(fromRoot("turbo.json"), "utf8")) as {
+      globalPassThroughEnv?: string[];
+      globalEnv?: string[];
+      tasks: Record<string, { env?: string[]; passThroughEnv?: string[] }>;
+    };
+    const known = new Set([
+      ...(turbo.globalPassThroughEnv ?? []),
+      ...(turbo.globalEnv ?? []),
+      ...Object.values(turbo.tasks).flatMap((task) => [
+        ...(task.env ?? []),
+        ...(task.passThroughEnv ?? []),
+      ]),
+    ]);
+    // A check job of plain steps (rust) runs with the whole environment; Turbo's tasks don't.
+    const viaTurbo = (run: string): boolean => {
+      const named = /--job "?\$?([A-Za-z0-9-]+)"?/.exec(run)?.[1];
+      if (named === "JOB") return true; // the Windows legs' unit, hygiene and integration
+      return JOBS.some((check) => check.name === named && check.tasks !== undefined);
+    };
+    const handed: string[] = [];
+    for (const [name, job] of Object.entries(jobs)) {
+      const steps = job.steps ?? [];
+      const jobEnv = (job as { env?: Record<string, string> }).env ?? {};
+      for (const step of steps) {
+        if (!step.run?.includes("tools/check/cli.ts") || !viaTurbo(step.run)) continue;
+        const env = { ...jobEnv, ...((step as { env?: Record<string, string> }).env ?? {}) };
+        for (const key of Object.keys(env))
+          if (key.startsWith("MOSTRA_")) handed.push(`${name}: ${key}`);
+      }
+    }
+    // The e2e legs and the integration legs both hand their log directories over.
+    expect(handed).toContain("e2e: MOSTRA_E2E_LOG_DIR");
+    expect(handed).toContain("integration: MOSTRA_TEST_LOG_DIR");
+    expect(handed.filter((entry) => !known.has(entry.split(": ")[1] as string))).toEqual([]);
+  });
+
+  it("keeps the e2e daemons' logs and ledgers from a failed run (#39)", () => {
+    const steps = (jobs["e2e"] as Job).steps ?? [];
+    const run = steps.find((step) => step.run?.includes("--job e2e"));
+    expect((run as { env?: Record<string, string> } | undefined)?.env?.["MOSTRA_E2E_LOG_DIR"]).toBe(
+      `\${{ runner.temp }}/mostra-e2e-logs`,
+    );
+    const kept = steps.find((step) => step.name?.includes("logs and ledgers"));
+    expect(kept?.if).toBe("failure()");
+    expect((kept as { with?: Record<string, string> } | undefined)?.with?.["path"]).toBe(
+      `\${{ runner.temp }}/mostra-e2e-logs`,
+    );
+  });
+
+  it("passes ci-ok only on results known to be good", () => {
+    const script = jobs["ci-ok"]?.steps?.find((step) => step.name === "All gates passed")?.run;
+    expect(script).toBeDefined();
+    const passes = (results: readonly string[]): boolean =>
+      spawnSync("bash", ["-e", "-c", script as string], {
+        env: { ...process.env, RESULTS: JSON.stringify(results) },
+        stdio: "ignore",
+      }).status === 0;
+    expect(passes(["success", "skipped", "success"])).toBe(true);
+    // A leg that never got a runner is `abandoned` (#90's run 40529498029, a macOS leg).
+    for (const bad of [
+      "failure",
+      "cancelled",
+      "abandoned",
+      "timed_out",
+      "",
+      "a-result-github-adds",
+    ]) {
+      expect(passes(["success", bad, "success"]), bad).toBe(false);
+    }
+    expect(passes([])).toBe(false);
   });
 
   it("never lets ci-ok skip when the plan failed", () => {
@@ -420,14 +645,15 @@ describe("the CI workflow's shape (D152)", () => {
       expect(setup.id, name).toBe("setup");
       // The leg's own cache name, from the plan (Opus review 9).
       expect(setup.with?.["job"], name).toBe(`\${{ matrix.leg.cache }}`);
-      expect(
-        steps.some(
-          (step) =>
-            step.uses?.startsWith("actions/cache/save@") &&
-            step.with?.["key"] === `\${{ steps.setup.outputs.turbo-key }}`,
-        ),
-        `${name} restores Turbo's cache and never saves it`,
-      ).toBe(true);
+      const saves = steps.filter(
+        (step) =>
+          step.uses?.startsWith("actions/cache/save@") &&
+          step.with?.["key"] === `\${{ steps.setup.outputs.turbo-key }}`,
+      );
+      expect(saves.length, `${name} restores Turbo's cache and never saves it`).toBeGreaterThan(0);
+      // Also after a failed run, never a cancelled one: Turbo caches only the tasks that passed,
+      // so a cold run that fails still leaves them for the next (the Opus review of MT-02).
+      for (const save of saves) expect(save.if, name).toMatch(/^\$\{\{ !cancelled\(\) && /);
     }
   });
 
