@@ -87,6 +87,8 @@ MT-02 owns no requirement (D154). Its checks extend their owners' rows, which st
 
 ## Untested boundaries
 
+- **`gc.test.ts`'s VR-06 reference test** timed out at 30 s twice inside a local `pnpm check --fast`, each time on this laptop at a load average near 25 from other work; alone it takes 2.3 s (3 of 3), and no CI leg has failed on it. Recorded, not filed: nothing points at the code.
+
 - **#86 live:** the twins first run at the nightly after the merge; the plan is tested, not yet a cold fallback after a Blacksmith nightly.
 - **The Rust crate's extraction time** on Windows wasn't measured; it already writes each entry itself.
 - **#55, #39, #46, #85, #66's remaining parts** didn't recur in this unit's runs; each now keeps what its next occurrence needs.
