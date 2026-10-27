@@ -82,6 +82,65 @@ export function searchRoots(platform: NodeJS.Platform, temporary: string): strin
   return [...real.keys()];
 }
 
+/**
+ * `text` with the value of every variable in `env` whose name says it is a secret (a password,
+ * token, secret or key) replaced, so a command line that carries one (the Windows suites' second
+ * user's password, `mostra-win-probe … squat <user> <password>`) never reaches an uploaded report
+ * (the Opus review of MT-02).
+ */
+export function redactSecrets(text: string, env: NodeJS.ProcessEnv): string {
+  let out = text;
+  const values = Object.entries(env)
+    .filter(([name, value]) => /PASSWORD|TOKEN|SECRET|KEY/i.test(name) && (value?.length ?? 0) >= 4)
+    .map(([, value]) => value as string)
+    .sort((a, b) => b.length - a.length);
+  for (const value of values) out = out.split(value).join("[redacted]");
+  return out;
+}
+
+/**
+ * The processes in a `pid ppid command` listing whose command line names a test home under one of
+ * `roots` (`mrt-…` for the runtime's suites, `mostra-e2e-…` for the browser suites'): a daemon a
+ * test started detached, whose parent is gone, escapes the walk from this process (the Opus review
+ * of MT-02). Never `self` nor any of its ancestors: the shell that started the run may name a test
+ * home too (the first try of this rule stopped the very shell that ran it).
+ */
+export function testHomeProcesses(
+  listing: string,
+  roots: readonly string[],
+  windows: boolean,
+  self: number,
+): number[] {
+  const fold = (text: string): string => (windows ? text.toLowerCase() : text);
+  const separator = windows ? "\\" : "/";
+  const marks = roots.flatMap((root) =>
+    ["mrt-", "mostra-e2e-"].map((prefix) => fold(`${root}${separator}${prefix}`)),
+  );
+  const rows: { pid: number; parent: number; command: string }[] = [];
+  for (const line of listing.split("\n")) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (match) {
+      rows.push({
+        pid: Number(match[1]),
+        parent: Number(match[2]),
+        command: fold(match[3] as string),
+      });
+    }
+  }
+  const parents = new Map(rows.map((row) => [row.pid, row.parent]));
+  const spared = new Set<number>([self]);
+  for (
+    let at = parents.get(self);
+    at !== undefined && at > 0 && !spared.has(at);
+    at = parents.get(at)
+  ) {
+    spared.add(at);
+  }
+  return rows
+    .filter((row) => !spared.has(row.pid) && marks.some((mark) => row.command.includes(mark)))
+    .map((row) => row.pid);
+}
+
 /** Writes the hang report; returns its text. */
 export function reportHang(minutes: number, into: string | undefined): string {
   const { command, args } = processListing(process.platform);
@@ -91,10 +150,14 @@ export function reportHang(minutes: number, into: string | undefined): string {
     windowsHide: true,
     maxBuffer: 64 * 1024 * 1024,
   });
-  const text = [
-    `pnpm check: still running at its ${minutes}-minute deadline. The processes running now:`,
-    listed.stdout?.trim() || `(${command} gave nothing: ${listed.error?.message ?? listed.stderr})`,
-  ].join("\n");
+  const text = redactSecrets(
+    [
+      `pnpm check: still running at its ${minutes}-minute deadline. The processes running now:`,
+      listed.stdout?.trim() ||
+        `(${command} gave nothing: ${listed.error?.message ?? listed.stderr})`,
+    ].join("\n"),
+    process.env,
+  );
   if (into) {
     mkdirSync(into, { recursive: true });
     writeFileSync(join(into, "hang.txt"), `${text}\n`);
@@ -135,8 +198,12 @@ export function descendants(
   return found;
 }
 
-/** Stops every process this one started, so nothing of the run holds the step's output open. */
+/**
+ * Stops every process this one started, so nothing of the run holds the step's output open, and
+ * in CI, where every test home on the machine is the run's, every process that names a test home.
+ */
 function stopDescendants(): void {
+  if (process.env["CI"]) stopTestHomeProcesses();
   if (process.platform === "win32") {
     spawnSync(
       "powershell.exe",
@@ -157,6 +224,43 @@ function stopDescendants(): void {
     .map((line) => line.trim().split(/\s+/).map(Number))
     .filter((pair): pair is [number, number] => pair.length === 2 && pair.every(Number.isInteger));
   for (const pid of descendants(pairs, process.pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Gone already.
+    }
+  }
+}
+
+/** Stops the processes {@link testHomeProcesses} finds, and everything below them. */
+function stopTestHomeProcesses(): void {
+  const windows = process.platform === "win32";
+  const listed = windows
+    ? spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          'Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID } | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }',
+        ],
+        { encoding: "utf8", timeout: 120_000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+      )
+    : spawnSync("ps", ["-axo", "pid=,ppid=,command="], { encoding: "utf8", timeout: 30_000 });
+  // Each root as it is spelled and as it really is: a command line names `/tmp`, which is
+  // `/private/tmp` on macOS.
+  const spelled = windows ? [tmpdir()] : [tmpdir(), "/tmp"];
+  const roots = [...new Set([...spelled, ...searchRoots(process.platform, tmpdir())])];
+  const pids = testHomeProcesses(listed.stdout ?? "", roots, windows, process.pid);
+  for (const pid of pids) {
+    if (windows) {
+      spawnSync("taskkill.exe", ["/F", "/T", "/PID", String(pid)], {
+        stdio: "ignore",
+        timeout: 30_000,
+        windowsHide: true,
+      });
+      continue;
+    }
     try {
       process.kill(pid, "SIGKILL");
     } catch {
