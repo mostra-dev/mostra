@@ -180,6 +180,20 @@ export function tempDir(prefix: string, short = false): string {
 /** The built runtime binary (`pnpm --filter @mostra/runtime build`). */
 export const BIN: string = join(dirname(fileURLToPath(import.meta.url)), "../dist/bin.js");
 
+/**
+ * The version of `name` in the warm set (`packages/warm`, D91) these suites run against, so a
+ * check of what a build or a lockfile records follows the warm set when its packages move.
+ */
+export function warmVersion(name: string): string {
+  const manifest = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../warm/node_modules",
+    name,
+    "package.json",
+  );
+  return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
+}
+
 /** A home and a runtime directory for one test. */
 export interface TestHome {
   readonly home: string;

@@ -39,6 +39,7 @@ import {
   testHome,
   unsealTree,
   WINDOWS,
+  warmVersion,
 } from "../support.ts";
 
 interface Running {
@@ -337,7 +338,7 @@ describe("on-demand packages (DP-02)", () => {
     );
     expect((await add(["react@18"])).error?.data.code).toBe("MOSTRA_DEP_WARM_CONFLICT");
     expect(ok<{ packages: unknown[] }>(await add(["react@^19"])).packages).toEqual([
-      { name: "react", version: "19.3.0", warm: true },
+      { name: "react", version: warmVersion("react"), warm: true },
     ]);
     expect((await add(["mostra-no-such-package"])).error?.data.code).toBe("MOSTRA_DEP_NOT_FOUND");
     const failed = await add(["mostra-fixture-failing"]);
