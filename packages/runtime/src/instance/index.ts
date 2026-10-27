@@ -844,7 +844,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     stopped,
     stop(reason, exitCode = 0, diagnostic) {
       stopping ??= (async () => {
-        log.info("instance.stopping", { reason, exitCode });
+        log.info("instance.stopping", { reason, exitCode, ...(diagnostic ? { diagnostic } : {}) });
         idle?.stop();
         stopWatchingPublishes();
         live.stop();

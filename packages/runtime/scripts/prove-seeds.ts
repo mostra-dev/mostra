@@ -59,6 +59,23 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-02 (D154): #35, a dev session whose connection closed while it started.
+  {
+    requirement: "VR-08",
+    name: "a close removes a starting session's directory under its dev server (#35)",
+    file: "src/dev/index.ts",
+    from: "        if (starting) closed = true;\n        else\n          stop()",
+    to: "          stop()",
+    check: unit("dev-session.test.ts", "only after the dev server it was starting stopped"),
+  },
+  {
+    requirement: "VR-08",
+    name: "a stop that fails while the session starts is an unhandled rejection (#35)",
+    file: "src/dev/index.ts",
+    from: '        if (starting) closed = true;\n        else\n          stop().catch((error: unknown) => log.warn("dev.stop_failed", { sessionId, error }));',
+    to: "        void stop();",
+    check: unit("dev-session.test.ts", "never as an unhandled rejection"),
+  },
   // WP-W3: Windows III (RT-12): the Windows bundles, the SDK, the crate and the kit on Windows.
   {
     requirement: "RT-12",
@@ -3554,8 +3571,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "VR-08",
     name: "a session outlives its connection",
     file: "src/dev/index.ts",
-    from: '    connection.signal.addEventListener("abort", () => void stop(), { once: true });',
-    to: "",
+    from: '        if (starting) closed = true;\n        else\n          stop().catch((error: unknown) => log.warn("dev.stop_failed", { sessionId, error }));',
+    to: "        void starting;",
     check: integration("dev.test.ts", "ends with its connection"),
   },
   {
