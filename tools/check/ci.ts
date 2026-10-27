@@ -32,9 +32,11 @@ interface Payload {
 /**
  * How long a nightly run that passed covers its commit: the next nightly runs everything again
  * past it, so the caches it saves are read within both stores' 7-day eviction (#86) even when
- * `main` doesn't move for a week.
+ * `main` doesn't move for a week. 5½ days, not 6: two scheduled runs start at about the same time
+ * of day, give or take GitHub's delay, so a 6-day cover would often skip day 6 and run on day 7
+ * (the Opus review of MT-02).
  */
-export const NIGHTLY_COVERS_MS = 6 * 24 * 60 * 60 * 1000;
+export const NIGHTLY_COVERS_MS = (6 * 24 - 12) * 60 * 60 * 1000;
 
 /**
  * Whether the last nightly run that passed on this commit still covers it: `passedAt` is when it

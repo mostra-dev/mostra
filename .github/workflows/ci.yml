@@ -8,7 +8,7 @@
 #   a bot's draft         nothing, until it is ready for review (gh pr ready)
 #   merge queue           affected jobs on every leg, Windows arm64 and every release platform too
 #   nightly (main)        everything, unless the last nightly run passed on the same commit
-#                         within 6 days; Linux legs on Blacksmith run on GitHub's runners too, so
+#                         within 5½ days; Linux legs on Blacksmith run on GitHub's runners too, so
 #                         both cache stores stay warm (#86)
 #   by hand               everything (`full: false` for the affected jobs)
 #
@@ -90,7 +90,7 @@ jobs:
           budget: ${{ vars.BLACKSMITH_BUDGET }}
           threshold: ${{ vars.BLACKSMITH_THRESHOLD }}
       # The recent nightly runs, each with how many of its gates passed: ci.ts skips this run while
-      # the newest one on this commit that ran its gates passed under 6 days ago, so both cache
+      # the newest one on this commit that ran its gates passed under 5½ days ago, so both cache
       # stores are read inside their 7-day eviction (#86); a run that only skipped renews nothing.
       - name: The recent nightly runs (nightly only)
         if: github.event_name == 'schedule'
@@ -163,8 +163,10 @@ jobs:
           JOBS: ${{ matrix.leg.jobs }}
           SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts $JOBS $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -207,8 +209,10 @@ jobs:
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job unit $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -236,8 +240,10 @@ jobs:
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job hygiene $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -292,8 +298,10 @@ jobs:
           MOSTRA_HOST_REQUIRE_RUNTIME: "1"
           SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job rust $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -339,8 +347,10 @@ jobs:
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
         run: node tools/check/cli.ts --job conformance $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -386,8 +396,10 @@ jobs:
           SCOPE: ${{ needs.plan.outputs.scope }}
           MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
         run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream --deadline 10
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -483,8 +495,10 @@ jobs:
           # The other jobs keep %TEMP%, whose access list their access checks rely on.
           if [ "$JOB" = unit ]; then export TEMP="$RUNNER_TEMP" TMP="$RUNNER_TEMP"; fi
           node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream --deadline 14
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache
@@ -549,8 +563,10 @@ jobs:
           SCOPE: ${{ needs.plan.outputs.scope }}
           MOSTRA_E2E_LOG_DIR: ${{ runner.temp }}/mostra-e2e-logs
         run: node tools/check/cli.ts --job e2e $SCOPE --verbose
+      # Also after a failed run (Turbo caches only the tasks that passed), so a cold run that fails
+      # still leaves what it built for the next (the Opus review of MT-02).
       - name: Save the Turborepo cache (main only)
-        if: github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo/cache

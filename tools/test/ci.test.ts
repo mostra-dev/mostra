@@ -285,7 +285,7 @@ describe("what runs when (D152)", () => {
     );
   });
 
-  it("repeats a passed nightly run once it is 6 days old, inside both stores' 7-day eviction (#86)", () => {
+  it("repeats a passed nightly run once it is 5½ days old, inside both stores' 7-day eviction even when GitHub starts it late (#86)", () => {
     const now = Date.parse("2026-10-27T03:23:00Z");
     expect(nightlyCovers("2026-10-26T03:23:00Z", now)).toBe(true);
     expect(nightlyCovers(new Date(now - NIGHTLY_COVERS_MS + 60_000).toISOString(), now)).toBe(true);
@@ -294,6 +294,9 @@ describe("what runs when (D152)", () => {
     expect(nightlyCovers(undefined, now)).toBe(false);
     expect(nightlyCovers("-", now)).toBe(false);
     expect(NIGHTLY_COVERS_MS).toBeLessThan(7 * 24 * 60 * 60 * 1000);
+    // Day 0's run started 32 minutes late, day 6's on time: day 6 still runs everything, so the
+    // caches are read again before day 7 (the Opus review of MT-02).
+    expect(nightlyCovers("2026-10-20T03:55:00Z", Date.parse("2026-10-26T03:33:00Z"))).toBe(false);
   });
 
   it("counts only a nightly that ran its gates as covering its commit (GPT review of MT-02)", () => {
@@ -618,14 +621,15 @@ describe("the CI workflow's shape (D152)", () => {
       expect(setup.id, name).toBe("setup");
       // The leg's own cache name, from the plan (Opus review 9).
       expect(setup.with?.["job"], name).toBe(`\${{ matrix.leg.cache }}`);
-      expect(
-        steps.some(
-          (step) =>
-            step.uses?.startsWith("actions/cache/save@") &&
-            step.with?.["key"] === `\${{ steps.setup.outputs.turbo-key }}`,
-        ),
-        `${name} restores Turbo's cache and never saves it`,
-      ).toBe(true);
+      const saves = steps.filter(
+        (step) =>
+          step.uses?.startsWith("actions/cache/save@") &&
+          step.with?.["key"] === `\${{ steps.setup.outputs.turbo-key }}`,
+      );
+      expect(saves.length, `${name} restores Turbo's cache and never saves it`).toBeGreaterThan(0);
+      // Also after a failed run, never a cancelled one: Turbo caches only the tasks that passed,
+      // so a cold run that fails still leaves them for the next (the Opus review of MT-02).
+      for (const save of saves) expect(save.if, name).toMatch(/^\$\{\{ !cancelled\(\) && /);
     }
   });
 
