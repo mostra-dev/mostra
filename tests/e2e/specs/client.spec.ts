@@ -83,18 +83,22 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info);
-      // The frame's first two session reads fail, as during a daemon restart.
+      // The frame's first two session reads fail, as during a daemon restart. The handler then
+      // removes itself before it refuses the second, so the third read and everything after it
+      // reach the gateway untouched: a request this interception let through instead
+      // (`route.continue`) hung in Firefox on Windows until the page gave it up after 10 s, read
+      // after read, and the shell never got ready (the trace of CI run 40257246209; the same
+      // timeout at this test's `ready` in runs 40119528647 and 40112700618; MT-02). The predicate
+      // matches the frame's read only, not the shell's `/a/…/_mostra/session`.
       let failures = 0;
-      await page.route(
-        (url) => url.pathname === "/_mostra/session",
-        (route) => {
-          if (failures < 2) {
-            failures += 1;
-            return route.abort("connectionrefused");
-          }
-          return route.continue();
-        },
-      );
+      const sessionRead = (url: URL): boolean => url.pathname === "/_mostra/session";
+      const failTwice = async (route: import("@playwright/test").Route): Promise<void> => {
+        failures += 1;
+        // Refused first: removing the handler hands a request it still holds back to Playwright.
+        await route.abort("connectionrefused");
+        if (failures >= 2) await page.unroute(sessionRead, failTwice);
+      };
+      await page.route(sessionRead, failTwice);
       await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("[data-mostra-save]")).toHaveAttribute(
         "data-mostra-save",
