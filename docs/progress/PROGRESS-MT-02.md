@@ -1,6 +1,6 @@
 # MT-02 progress: the open issues, CI's cache gap and Renovate's updates
 
-**Status:** Candidate, for Mirza's review. A maintenance unit between WP-W3 and WP-13, approved by Mirza on 2026-10-26 (M42, D154). It owns no requirement of its own; the checks it adds extend their owners' rows. Its scope is the GitHub milestone `MT-02`: the flake issues #35, #39, #46, #55, #66 and #85, CI's cache gap #86, the first install's time on Windows arm64 #88, and Renovate's open updates #80 to #84. Done when the milestone is empty and a full CI run (`ci:full`, every leg) and the merge queue are green.
+**Status:** Accepted by Mirza on 2026-10-27 ("Absolutely incredible work! … For the rest, I accept!", M43), with D155 and its agent-facing prose. A maintenance unit between WP-W3 and WP-13, approved by Mirza on 2026-10-26 (M42, D154). It owns no requirement of its own; the checks it adds extend their owners' rows. Its scope is the GitHub milestone `MT-02`: the flake issues #35, #39, #46, #55, #66 and #85, CI's cache gap #86, the first install's time on Windows arm64 #88, and Renovate's open updates #80 to #84. Done when the milestone is empty and a full CI run (`ci:full`, every leg) and the merge queue are green.
 
 ## Baseline
 
@@ -71,6 +71,12 @@ MT-02 owns no requirement (D154). Its checks extend their owners' rows, which st
 - **#55, #39, #46, #85, #66's remaining parts** didn't recur in this unit's runs; each now keeps what its next occurrence needs.
 - **A desktop Windows machine** for #88: the runners only.
 
-## Agent-facing prose (D149), for Mirza's review
+## Agent-facing prose (D149)
+
+Accepted by Mirza with the unit (M43):
 
 `docs/agents/update-node.md` (new), `docs/agents/run-ci.md` (the deadline, the e2e homes, the caches), `docs/agents/update-dependency.md` (trust downgrades), `docs/agents/reproduce-on-linux.md`, `packages/bundle/AGENTS.md`.
+
+## The flakes left open (D155 item 7)
+
+#39, #46, #55, #66 and #85 stay open on no milestone (M43): a package that meets one, or works in its code, may diagnose and fix it without turning from its own work. Each keeps what its next occurrence needs: a hung run's `hang.txt` and leftover logs (#55), a failed e2e leg's `e2e-homes-*` (#39), the typing record (#46, #85), the progress test's verdict and the measured ephemeral ports (#66).
