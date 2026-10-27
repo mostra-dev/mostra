@@ -48,6 +48,7 @@
 | M41 | 2026-10-26T11:56:43Z | Accepted WP-W3 after its GPT and Claude Opus reviews and their fixes: "absolutely incredible work! i accept", with D153 and the package's agent-facing prose (D149). Asked that the open issues be assigned to their closest work packages "so we don't let the issues just live until launch and make our development slower". Recorded under D153 and in the work-package protocol (§2, §4). |
 | M42 | 2026-10-26T13:00:54Z / 13:08:06Z | Proposed that the open issues get a unit of their own before WP-13 "rather than filling WP13's workload with more breadth of work", then approved the maintenance unit MT-02 as recommended: "excellent! yes let's do it. let's also include the open renovate PRs for it." Recorded as D154. |
 | M43 | 2026-10-27T12:01:41Z | Accepted MT-02 ("Absolutely incredible work! … For the rest, I accept!") with D155 and its agent-facing prose, and decided the flakes it made diagnosable but didn't fix: not necessarily WP-13's, but "leave it open for relevant WPs to pick up, diagnose, fix, work on; without diverting their focus from their main WP work". Recorded under D155. |
+| M44 | 2026-10-27T22:39:35Z / 22:42:36Z | After MT-02's closeout, judged #92 "and seemingly #66" unrelated to WP-13: "they do sound like they should be a part of MT-02; or well, MT-02b", a unit before WP-13, here or in a fresh session at the session's call; then approved MT-02b as recommended ("alright, excellent"), open to #39 "either the windows occurrences or, if it's fit here, the entirety of it" and to any other remaining issue that fits. Recorded as D156. |
 | M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
@@ -1179,6 +1180,22 @@ The session verifies each rule against the directories' own pages on the day and
 7. **The flakes MT-02 made diagnosable stay open, unassigned** (*amends* D154 item 2 and, for these issues, M41's rule that an open issue goes to the next package that touches its code): #39, #46, #55, #66 and #85 didn't recur in MT-02's runs and now keep what their next occurrence needs (item 2, the shell's and frame's typing record, the progress test's verdict). They carry no milestone; a package that meets one, or works in its code, may diagnose and fix it without turning from its own work, and records what it found on the issue (M43).
 
 *Rejected:* the system's `tar` for item 3 (as fast, but its behavior differs between GNU tar, bsdtar and Windows' `tar.exe`, and the refusals couldn't run during extraction); a weekly warm-up job for item 1 (it warms only what it runs, and is a second schedule to keep in step).
+
+## Maintenance unit MT-02b
+
+### D156. The Windows connection failures and the protocol's Node.js line before WP-13 (M44)
+*Status:* approved at M44. A second maintenance unit between WP-W3 and WP-13, continuing MT-02 in the same session (its evidence and probes are at hand), with its own report (`docs/progress/PROGRESS-MT-02b.md`). Like MT-02 (D154) it owns no requirement; the checks it adds extend their owners' rows.
+1. **Scope:** the GitHub milestone `MT-02b`:
+   - #92, `@mostra/protocol` declaring a newer Node.js than the CLI and SDK that depend on it;
+   - #66 whole, whose Windows browser failures failed merge-queue and pull-request runs in code those pull requests didn't touch;
+   - #39 whole, whose occurrences share #66's shape: a page or request that never got an answer while Mostra was otherwise healthy.
+
+   *Amends* D155 item 7 for #39 and #66, and MT-02's closeout, which gave #92 to WP-13. #46, #85 and #55 stay unassigned under D155 item 7: none recurred, and nothing new is known to act on.
+2. **#66 starts by finding where a request is lost.** A probe on both Windows runners connects to freshly bound Node.js listeners many times over, from Chromium and from plain Node.js, and the gateway's listeners record each request's arrival and answer, so a stalled request is told from one that never arrived. Each cause found is fixed at its root; a cause outside Mostra (Windows, a browser) comes back to Mirza with the evidence before any mitigation, since a mitigation in the shell or the gateway changes what users get. Causes that differ become issues of their own.
+3. **A bound:** if the first probes don't locate #66's cause, the session brings Mirza what they showed before going deeper, so WP-13 doesn't wait on an open-ended investigation.
+4. **Done when** #92 is fixed, with a repository-lint check that no published package declares a newer Node.js than one that depends on it; #66 and #39 are fixed at their roots or brought to Mirza with the evidence as item 2 says; a full CI run (`ci:full`, every leg) and the merge queue are green; and the fixes are released (0.6.2).
+
+*Why:* neither issue is part of sharing and remote viewing (WP-13), and #66 already costs merges. *Rejected:* WP-13 taking them (M44); a fresh session (it would first spend its time orienting on the same dossier and evidence).
 
 ## Research consensus adopted
 
