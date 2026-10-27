@@ -12,11 +12,12 @@ What a runtime bundle carries (RT-01, D142), and the scripts that build, check a
   `lib/node_modules/@mostra/<name>` beside the others (how the runtime finds its worker, verify
   runner, shell and warm set, and how the SDK finds the bundle it sits in). It deploys the warm set
   (`@mostra/warm`) apart, isolated, so artifacts resolve nothing but warm packages, and it unpacks
-  the official Node.js checked against `node.json`.
+  the official Node.js checked against `node.json`, which `tools/release/node-pins.ts` writes from
+  the release's signed SHA-256 list (`docs/agents/update-node.md`).
 - `scripts/smoke.sh` checks an archive, refuses a tampered copy, and runs `new`, `verify` and
   `publish` with no Node.js on `PATH`, then again from a moved bundle; `npm-smoke.sh` and
   `npm-old-node.sh` do the npm path (Node.js 22, and the refusal on 20).
-- `scripts/pins.ts` writes `@mostra/sdk`'s `dist/bundles.json` and `SHA256SUMS` from the four
+- `scripts/pins.ts` writes `@mostra/sdk`'s `dist/bundles.json` and `SHA256SUMS` from the six
   asset records; `publish-npm.ts` packs and publishes the fixed release group; `notes.ts` writes
   the release notes; `github-release.ts` decides what a release run does and makes and checks the
   GitHub release.

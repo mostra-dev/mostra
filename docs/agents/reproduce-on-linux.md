@@ -9,9 +9,11 @@ and Ubuntu).
    The Docker VM can't see `~/src`, which is why the tree goes in on stdin rather than as a mount.
 2. **Run the suite in a container** that matches `.node-version`:
    ```sh
-   git archive HEAD | docker run --rm -i node:24.12.0-bookworm bash -c '
+   node=$(cat .node-version)
+   pnpm=$(node -p 'require("./package.json").packageManager.split("@")[1]')
+   git archive HEAD | docker run --rm -i -e PNPM="$pnpm" "node:$node-bookworm" bash -c '
      mkdir /w && cd /w && tar -xf - && git init -q
-     npm i -g pnpm@12.9.0 >/dev/null 2>&1
+     npm i -g "pnpm@$PNPM" >/dev/null 2>&1
      CI=1 LEFTHOOK=0 pnpm install --frozen-lockfile >/tmp/install.log 2>&1 || { tail -20 /tmp/install.log; exit 1; }
      pnpm --filter @mostra/protocol build && pnpm --filter @mostra/runtime build
      cd packages/runtime && npx vitest run --project integration test/integration/processes.test.ts
