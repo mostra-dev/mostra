@@ -8,7 +8,7 @@
  * it; the removal then failed on the files it wrote (`ENOTEMPTY`), and that failure, unhandled,
  * took the whole instance down ("uncaught exception" in the suite's supervisor log).
  */
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DevChild, DevRequest, RenderMode } from "../../src/builder/index.ts";
@@ -33,6 +33,12 @@ interface Fixture {
     /** Whether the session's directory was still there when the dev server finished starting. */
     rootWhenStarted?: boolean;
     stoppedAt?: number;
+    /** How often the session resolved its packages. */
+    resolved: number;
+    /** Whether the dev server was asked to start at all. */
+    asked: boolean;
+    /** Called while the start describes the source (it asks the registry for the artifact). */
+    describing?: () => void;
   };
 }
 
@@ -50,9 +56,12 @@ function fixture(): Fixture {
       requested = resolve;
     }),
     finish: () => finish(),
+    resolved: 0,
+    asked: false,
   };
   const renderMode = {
     async dev(request: DevRequest): Promise<DevChild> {
+      server.asked = true;
       requested(request);
       // A dev server writes into the session's root while it starts (its staging files, its
       // node_modules link, Vite's cache), as the real one does.
@@ -74,11 +83,20 @@ function fixture(): Fixture {
   const dev = createDev({
     home,
     log: silentLog,
-    registry: { artifactAt: () => undefined, sourceOf: () => undefined } as unknown as Registry,
+    registry: {
+      artifactAt: () => {
+        server.describing?.();
+        return undefined;
+      },
+      sourceOf: () => undefined,
+    } as unknown as Registry,
     renderMode: () => renderMode,
     dependencies: () =>
       ({
-        resolve: async () => ({ lock: "lockfileVersion: '9.0'\n", nodeModules: join(home, "nm") }),
+        resolve: async () => {
+          server.resolved += 1;
+          return { lock: "lockfileVersion: '9.0'\n", nodeModules: join(home, "nm") };
+        },
       }) as unknown as Dependencies,
     gate: new Gate(),
     sandbox: () => {
@@ -135,6 +153,21 @@ describe("a dev session whose connection closes while it starts (VR-08, #35)", (
     expect(existsSync(sessionDir)).toBe(false);
     expect(made.dev.count()).toBe(0);
     expect(made.dev.locks()).toEqual([]);
+  });
+
+  it("stops at its next step: a close while the source is described resolves no packages (the Opus review of MT-02)", async () => {
+    const made = fixture();
+    const owner = connection();
+    // Closed while the start describes the source, after it mirrored it.
+    made.server.describing = () => owner.close();
+    const started = start(made, owner.session);
+    await expect(started).rejects.toMatchObject({
+      diagnostic: { code: "MOSTRA_HOST_CONNECTION_CLOSED" },
+    });
+    expect(made.server.resolved).toBe(0);
+    expect(made.server.asked).toBe(false);
+    expect(made.dev.count()).toBe(0);
+    expect(existsSync(devRoot(made.home)) ? readdirSync(devRoot(made.home)) : []).toEqual([]);
   });
 
   it.skipIf(WINDOWS || process.getuid?.() === 0)(

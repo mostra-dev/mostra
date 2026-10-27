@@ -1382,6 +1382,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/support.test.ts"],
   },
   {
+    requirement: "VR-08",
+    name: "an abandoned dev session still resolves its packages (#35, Opus review)",
+    file: "src/dev/index.ts",
+    from: "      await sync();\n      if (closed) throw abandoned();\n      const described = await describe();\n      if (closed) throw abandoned();\n",
+    to: "      await sync();\n      const described = await describe();\n",
+    check: ["--project", "unit", "test/unit/dev-session.test.ts", "-t", "stops at its next step"],
+  },
+  {
     requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",

@@ -423,8 +423,12 @@ export function createDev(options: DevOptions): Dev {
     );
     try {
       if (connection.signal.aborted) throw abandoned();
+      // A close stops the start at its next step, before resolving packages least of all, which
+      // may install under the shared gate (the Opus review of MT-02).
       await sync();
+      if (closed) throw abandoned();
       const described = await describe();
+      if (closed) throw abandoned();
       manifestKey = JSON.stringify(described.manifest);
       nodeModules = await resolve(described.manifest.id);
       artifactId = described.artifactId;
