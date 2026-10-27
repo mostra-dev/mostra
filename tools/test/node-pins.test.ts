@@ -2,7 +2,9 @@
  * The bundle's Node.js pins (tools/release/node-pins.ts, D142 item 1): pins come only from a list
  * `gpgv` judged good, and a list missing a platform's archive pins nothing.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { fromRoot } from "../lib/repo.ts";
 import { ARCHIVES, pinsFrom, signerOf } from "../release/node-pins.ts";
 
 const sha = (n: number): string => n.toString(16).padStart(64, "0");
@@ -17,6 +19,21 @@ const list = (version: string, skip?: string): string =>
   ].join("\n");
 
 describe("the bundle's Node.js pins (D142 item 1)", () => {
+  it("pins the Node.js development runs on (.node-version), so the bundle ships what CI tested (D155 item 5)", () => {
+    // Renovate updates .node-version alone; this fails its pull request until the pins follow
+    // (docs/agents/update-node.md; the Opus review of MT-02).
+    const developed = readFileSync(fromRoot(".node-version"), "utf8").trim();
+    const shipped = (
+      JSON.parse(readFileSync(fromRoot("packages/bundle/node.json"), "utf8")) as {
+        version: string;
+      }
+    ).version;
+    expect(
+      shipped,
+      `.node-version is ${developed}, the bundle pins ${shipped}: run node tools/release/node-pins.ts ${developed}`,
+    ).toBe(developed);
+  });
+
   it("pins every bundle platform's archive from the signed list, and nothing else", () => {
     const pins = pinsFrom(list("24.22.1"), "24.22.1");
     expect(pins).toEqual({

@@ -1390,6 +1390,15 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/dev-session.test.ts", "-t", "stops at its next step"],
   },
   {
+    requirement: "RT-01",
+    name: "development moves to another Node.js than the bundle ships (D155 item 5, Opus review)",
+    file: "../../.node-version",
+    from: "24.22.1",
+    to: "24.23.0",
+    check: ["test/node-pins.test.ts", "-t", "pins the Node.js development runs on"],
+    cwd: "../../tools",
+  },
+  {
     requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
