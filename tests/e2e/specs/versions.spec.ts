@@ -18,6 +18,7 @@ import {
   results,
   saved,
   viewerName,
+  watchTyping,
 } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
@@ -140,32 +141,13 @@ test.describe("answers that don't carry over (VR-05)", () => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info);
-      // Errors the page throws (an input's handler included), reported with a field that lost
-      // what was typed.
-      const thrown: string[] = [];
-      page.on("pageerror", (error) => thrown.push(error.message));
-      page.on("console", (message) => {
-        if (message.type() === "error") thrown.push(message.text());
-      });
       const frame = await open(client, page, own, viewerName(info));
-      // What the page saw of the typing (issue #46): every input event on a field with its value,
-      // and every write of the notes field's value with the code that wrote it.
+      // What the page saw of the typing (issue #46), and every write of the notes field's value
+      // with the code that wrote it.
+      const typing = await watchTyping(page, frame);
       await frame.locator("body").evaluate(() => {
-        const seen: string[] = [];
-        (globalThis as unknown as { __typing: string[] }).__typing = seen;
-        const at = (): string => performance.now().toFixed(1);
-        for (const type of ["focusin", "focusout", "beforeinput", "input", "change"]) {
-          document.addEventListener(
-            type,
-            (event) => {
-              const target = event.target as HTMLInputElement;
-              seen.push(
-                `${at()} ${type} ${target.dataset?.["testid"] ?? target.tagName} "${target.value ?? ""}"`,
-              );
-            },
-            true,
-          );
-        }
+        const seen = (globalThis as unknown as { __typing: string[] }).__typing;
+        const at = (): string => (performance.timeOrigin + performance.now()).toFixed(1);
         const notes = document.querySelector('[data-testid="notes"]') as HTMLTextAreaElement;
         const native = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
         Object.defineProperty(notes, "value", {
@@ -175,30 +157,18 @@ test.describe("answers that don't carry over (VR-05)", () => {
           },
           set(value: string) {
             const stack = (new Error().stack ?? "").split("\n").slice(1, 6).join(" < ");
-            seen.push(`${at()} set notes.value "${value}" by ${stack}`);
+            seen.push(`${at()} frame set notes.value "${value}" by ${stack}`);
             native?.set?.call(this, value);
           },
         });
       });
-      const typing = (): Promise<string> =>
-        frame
-          .locator("body")
-          .evaluate(() => (globalThis as unknown as { __typing: string[] }).__typing.join("\n"));
       await frame.getByTestId("name").fill("Ana");
       await frame.getByTestId("notes").fill("a note for version 1");
       // The page shows both answers before the save is judged: a CI run once saw the notes field
       // empty right after its fill, with the page rightly "Saved" and no orphan (issue #46).
       // This fails at the input, with what the page threw and saw, should it happen again.
-      await expect(frame.getByTestId("name"), `page errors: ${thrown.join(" | ")}`).toHaveValue(
-        "Ana",
-      );
-      try {
-        await expect(frame.getByTestId("notes")).toHaveValue("a note for version 1");
-      } catch (error) {
-        throw new Error(
-          `${(error as Error).message}\npage errors: ${thrown.join(" | ")}\ntyping:\n${await typing()}`,
-        );
-      }
+      await typing.typed("name", "Ana");
+      await typing.typed("notes", "a note for version 1");
       await saved(page);
       await expect(frame.getByTestId("notes-save")).toHaveText("saved");
       await republish(client, own, withoutNotes);

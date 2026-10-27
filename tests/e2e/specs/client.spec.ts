@@ -17,6 +17,7 @@ import {
   results,
   saved,
   viewerName,
+  watchTyping,
 } from "../support/client.ts";
 import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
@@ -112,8 +113,13 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
       await page.unrouteAll({ behavior: "wait" });
       const frame = page.frameLocator("iframe.mostra-frame");
       await expect(frame.getByTestId("mode")).toHaveText("live");
+      // WebKit once left the name empty after its fill, and the shell rightly refused the Submit
+      // (#85): this fails at the field, with what each document saw of the typing.
+      const typing = await watchTyping(page, frame);
       await frame.getByTestId("notes").fill("after a failed start");
       await frame.getByTestId("name").fill("Ana");
+      await typing.typed("notes", "after a failed start");
+      await typing.typed("name", "Ana");
       await saved(page);
       await page.locator("#mostra-submit").click();
       await expect(page.locator("#mostra-submit")).toHaveText("Submitted");

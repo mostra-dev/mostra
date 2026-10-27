@@ -94,3 +94,68 @@ export function viewerName(info: TestInfo, suffix = ""): string {
     "-",
   );
 }
+
+/**
+ * What the page and its frame saw while a test typed (#46, #85): every focus change, input event
+ * and value with the time, whether each document had the focus, and what either page threw. In
+ * WebKit a `fill` has twice left a field empty while the page reported "Saved", the second time
+ * with the next field's text where it belonged; `typed` fails at the field with this record, so an
+ * occurrence says whether the frame lost the focus or the input never came.
+ */
+export async function watchTyping(
+  page: Page,
+  frame: FrameLocator,
+): Promise<{ typed(testId: string, value: string): Promise<void> }> {
+  const thrown: string[] = [];
+  page.on("pageerror", (error) => thrown.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") thrown.push(message.text());
+  });
+  const watch = (where: string): void => {
+    const seen: string[] = [];
+    (globalThis as unknown as { __typing: string[] }).__typing = seen;
+    // Absolute times: the shell's and the frame's documents count from different origins.
+    const at = (): string => (performance.timeOrigin + performance.now()).toFixed(1);
+    const note = (what: string): void => {
+      seen.push(`${at()} ${where} ${what} (focus: ${document.hasFocus()})`);
+    };
+    for (const type of ["focusin", "focusout", "beforeinput", "input", "change"]) {
+      document.addEventListener(
+        type,
+        (event) => {
+          const target = event.target as HTMLInputElement;
+          note(`${type} ${target.dataset?.["testid"] ?? target.tagName} "${target.value ?? ""}"`);
+        },
+        true,
+      );
+    }
+    for (const type of ["focus", "blur"]) {
+      window.addEventListener(type, (event) => {
+        if (event.target === window) note(`window ${type}`);
+      });
+    }
+  };
+  const inFrame = await (await frame.locator("body").elementHandle())?.ownerFrame();
+  if (!inFrame) throw new Error("The artifact's frame has no document to watch.");
+  await page.evaluate(watch, "shell");
+  await inFrame.evaluate(watch, "frame");
+  const record = async (): Promise<string> => {
+    const read = (): string[] => (globalThis as unknown as { __typing?: string[] }).__typing ?? [];
+    const lines = [
+      ...(await page.evaluate(read).catch(() => [])),
+      ...(await inFrame.evaluate(read).catch(() => [])),
+    ];
+    return lines.sort((a, b) => Number.parseFloat(a) - Number.parseFloat(b)).join("\n");
+  };
+  return {
+    async typed(testId, value) {
+      try {
+        await expect(frame.getByTestId(testId)).toHaveValue(value);
+      } catch (error) {
+        throw new Error(
+          `${(error as Error).message}\npage errors: ${thrown.join(" | ")}\ntyping:\n${await record()}`,
+        );
+      }
+    },
+  };
+}
