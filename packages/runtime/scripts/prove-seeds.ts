@@ -1368,6 +1368,21 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "the test support stops at the first directory it can't remove (MT-02, Opus review)",
+    file: "test/support.ts",
+    from: "      failed.push(",
+    to: "      throw [",
+    also: [
+      {
+        file: "test/support.ts",
+        from: "something still holds it open`, { cause: error }),\n      );",
+        to: "something still holds it open`, { cause: error }),\n      ];",
+      },
+    ],
+    check: ["--project", "unit", "test/unit/support.test.ts"],
+  },
+  {
+    requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
     from: "    if (seen.has(pid)) continue;",

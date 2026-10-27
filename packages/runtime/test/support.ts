@@ -77,18 +77,38 @@ afterAll(() => {
       // Closed already, or never opened: nothing holds its files.
     }
   }
-  for (const dir of created.splice(0)) {
-    keepLogs(dir);
+  removeEvery(created.splice(0), keepLogs, removeAll);
+});
+
+/**
+ * Keeps each directory's logs and removes it, every one of them before any failure is reported, so
+ * one that can't be removed never leaves the others behind with their logs (the Opus review of
+ * MT-02); then fails, naming each directory it couldn't remove.
+ */
+export function removeEvery(
+  dirs: readonly string[],
+  keep: (dir: string) => void,
+  remove: (dir: string) => void,
+): void {
+  const failed: Error[] = [];
+  for (const dir of dirs) {
+    keep(dir);
     try {
-      removeAll(dir);
+      remove(dir);
     } catch (error) {
       // Windows refuses to remove a file this process still holds open: a resource a test opened
       // and didn't register with closeBeforeRemoval, which would otherwise make every later
       // removal wait out rmSync's retries (MT-02).
-      throw new Error(`Couldn't remove ${dir}: something still holds it open`, { cause: error });
+      failed.push(
+        new Error(`Couldn't remove ${dir}: something still holds it open`, { cause: error }),
+      );
     }
   }
-});
+  if (failed.length === 1) throw failed[0];
+  if (failed.length > 1) {
+    throw new AggregateError(failed, failed.map((error) => error.message).join("; "));
+  }
+}
 
 /** Whether the tests run on Windows (asked of the platform layer, as the runtime asks it). */
 export const WINDOWS: boolean = OS === "win32";
