@@ -333,44 +333,73 @@ function withoutTrailingSlashes(url: string): string {
   return url.slice(0, end);
 }
 
+/** A lock judged stale: the file judged, by its identity and what it held. */
+export interface JudgedLock {
+  readonly ino: number;
+  readonly dev: number;
+  readonly text: string;
+}
+
 /**
- * Removes the lock at `path` when it is stale (its owner gone, or older than an hour) and says
- * whether it did. The lock is read and judged through one descriptor, then moved aside, and only
- * the file judged is removed: a fresh lock another installer took in between is put back (or,
- * if a third took one meanwhile, left to the next round). The lock only saves a second download;
- * the scratch directory and its rename keep the cache correct whatever happens here.
+ * Judges the lock at `path` through one descriptor: `gone`, `live`, or stale (its owner gone, or
+ * older than an hour) with what identifies the file judged.
  */
-async function takeOverIfStale(path: string): Promise<boolean> {
+export async function judgeLock(path: string): Promise<"gone" | "live" | JudgedLock> {
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(path, "r");
   } catch {
-    return true; // gone already: try to take it
+    return "gone";
   }
-  let judged: { ino: number; dev: number };
   try {
     const info = await handle.stat();
-    const owner = Number.parseInt(await handle.readFile("utf8"), 10);
+    const text = await handle.readFile("utf8");
+    const owner = Number.parseInt(text, 10);
     const stale =
       Date.now() - info.mtimeMs > STALE_LOCK_MS ||
       (Number.isInteger(owner) && owner > 0 && !alive(owner));
-    if (!stale) return false;
-    judged = { ino: info.ino, dev: info.dev };
+    return stale ? { ino: info.ino, dev: info.dev, text } : "live";
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * Moves the lock at `path` aside and removes it only if it is the file `judged` describes, by
+ * identity and by contents: a fresh lock another installer took in between is put back (or, if a
+ * third took one meanwhile, left to the next round). The contents matter because a file system may
+ * give a new file the number of one just removed (ext4 does at once), and each lock holds its
+ * owner's PID and its own token (MT-02).
+ */
+export async function removeJudged(path: string, judged: JudgedLock): Promise<void> {
   const aside = `${path}.stale-${randomBytes(6).toString("hex")}`;
   try {
     await rename(path, aside);
   } catch {
-    return true; // someone else moved or removed it
+    return; // someone else moved or removed it
   }
   const moved = await stat(aside).catch(() => undefined);
-  if (moved && (moved.ino !== judged.ino || moved.dev !== judged.dev)) {
-    // Not the file judged stale: a fresh lock. Put it back unless a newer one exists.
-    await link(aside, path).catch(() => undefined);
-  }
+  const text = await readFile(aside, "utf8").catch(() => undefined);
+  const same =
+    moved !== undefined &&
+    moved.ino === judged.ino &&
+    moved.dev === judged.dev &&
+    text === judged.text;
+  // Not the file judged stale: a fresh lock. Put it back unless a newer one exists.
+  if (!same) await link(aside, path).catch(() => undefined);
   await rm(aside, { force: true });
+}
+
+/**
+ * Removes the lock at `path` when it is stale and says whether it may be taken now. The lock only
+ * saves a second download; the scratch directory and its rename keep the cache correct whatever
+ * happens here.
+ */
+async function takeOverIfStale(path: string): Promise<boolean> {
+  const judged = await judgeLock(path);
+  if (judged === "gone") return true; // gone already: try to take it
+  if (judged === "live") return false;
+  await removeJudged(path, judged);
   return true;
 }
 

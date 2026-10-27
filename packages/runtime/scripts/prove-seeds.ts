@@ -88,6 +88,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-01",
+    name: "the SDK's lock takeover removes a fresh lock that got the stale one's file number (MT-02)",
+    file: "../sdk/src/bundle/cache.ts",
+    from: "moved.dev === judged.dev &&\n    text === judged.text;",
+    to: "moved.dev === judged.dev;",
+    check: unit("lock.test.ts", "got the stale one's file number"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
     name: "the bundle's extractor writes an entry that climbs out with `..` (#88)",
     file: "../sdk/src/bundle/extract.ts",
     from: 'if (part === "" || part === "." || part === "..")',
