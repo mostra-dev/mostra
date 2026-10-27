@@ -157,6 +157,22 @@ describe("the bundle extractor (RT-01, #88)", () => {
     expect(readFileSync(join(into, "a.txt"), "utf8")).toBe("first");
   });
 
+  it.skipIf(process.platform !== "darwin" && !WINDOWS)(
+    "refuses two names the file system keeps as one (case, Unicode normalization)",
+    async () => {
+      for (const [first, second] of [
+        ["Readme.md", "README.md"],
+        ["caf\u00e9.txt", "cafe\u0301.txt"],
+      ]) {
+        const { error } = await extract([
+          { name: `${TOP}/${first}`, body: "first" },
+          { name: `${TOP}/${second}`, body: "second" },
+        ]);
+        expect(error?.diagnostic.message).toContain("appears twice");
+      }
+    },
+  );
+
   it.skipIf(WINDOWS)(
     "never writes through a link, made last, nor makes one over a directory",
     async () => {
@@ -171,6 +187,28 @@ describe("the bundle extractor (RT-01, #88)", () => {
       expect(existsSync(join(target, "planted.txt"))).toBe(false);
     },
   );
+
+  it.skipIf(WINDOWS)("never makes a link through another link (GPT review of MT-02)", async () => {
+    const outside = join(dir.path, "outside-links");
+    mkdirSync(outside, { recursive: true });
+    const lib = { name: `${TOP}/lib`, type: "2", link: outside };
+    const planted = { name: `${TOP}/lib/planted`, type: "2", link: "target" };
+    // Either order in the archive.
+    for (const entries of [
+      [lib, planted],
+      [planted, lib],
+    ]) {
+      const { error } = await extract(entries);
+      expect(error?.diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+      let made = true;
+      try {
+        lstatSync(join(outside, "planted"));
+      } catch {
+        made = false;
+      }
+      expect(made).toBe(false);
+    }
+  });
 
   it("refuses a link that names nothing, and any link where setup makes them (Windows, D153)", async () => {
     const empty = await extract([{ name: `${TOP}/lib`, type: "2", link: "" }]);

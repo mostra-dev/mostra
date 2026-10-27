@@ -106,6 +106,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-01",
+    name: "the bundle's extractor makes a link through another link (#88, GPT review)",
+    file: "../sdk/src/bundle/extract.ts",
+    from: "  for (const link of links) ensureDir(dirname(link.path));\n",
+    to: "",
+    check: unit("extract.test.ts", "never makes a link through another link"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
     name: "the bundle's extractor makes a link before the entries inside it, and writes through it (#88)",
     file: "../sdk/src/bundle/extract.ts",
     from: "else links.push({ path, target: entry.linkpath });",

@@ -4,7 +4,8 @@
  * stripped; an entry's path must be relative, with no `..`, `.` or empty part and no backslash
  * (nor, on Windows, a colon; node-tar reads a backslash there as a separator, so its parts are
  * judged as separate ones), and no path may appear twice. Links are made only after every file
- * and directory is written, so no write ever goes through one. Setup then checks the whole tree
+ * and directory is written, and after every link's own directory, so no write and no link ever
+ * goes through one. Setup then checks the whole tree
  * against the bundle's file list (`checkTree`), which refuses any file or link it doesn't list and
  * any link that leaves the bundle. A pinned archive's SHA-256 is checked before any of this. A
  * Windows archive holds no links at all (D153): one that does is refused, since its junctions are
@@ -109,7 +110,10 @@ async function unpack(archive: string, root: string, top: string, refuseLinks: b
       return entry.resume();
     }
     const path = parts.length === 0 ? root : join(root, ...parts);
-    const key = windows || process.platform === "darwin" ? path.toLowerCase() : path;
+    // Windows and macOS keep one file for names that differ only in case or (macOS) in Unicode
+    // normalization, so those are the same path there.
+    const key =
+      windows || process.platform === "darwin" ? path.normalize("NFC").toLowerCase() : path;
     if (parts.length > 0 && seen.has(key)) {
       refuse(entry.path, type, "its path appears twice");
       return entry.resume();
@@ -177,8 +181,11 @@ async function unpack(archive: string, root: string, top: string, refuseLinks: b
     if (open !== undefined) closeSync(open);
   }
   if (failure !== undefined) throw failure;
+  // Every link's directory first, while no link exists: a link whose path another entry lies
+  // beneath (another link included) then meets a real directory and is refused, and no directory is
+  // ever made or reached through a link (the GPT review of MT-02).
+  for (const link of links) ensureDir(dirname(link.path));
   for (const link of links) {
-    ensureDir(dirname(link.path));
     try {
       symlinkSync(link.target, link.path);
     } catch (error) {
