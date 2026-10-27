@@ -540,6 +540,7 @@ jobs:
       - name: pnpm check --job e2e
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
+          MOSTRA_E2E_LOG_DIR: ${{ runner.temp }}/mostra-e2e-logs
         run: node tools/check/cli.ts --job e2e $SCOPE --verbose
       - name: Save the Turborepo cache (main only)
         if: github.ref == 'refs/heads/main'
@@ -554,6 +555,16 @@ jobs:
           name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}
           path: tests/e2e/test-results
           retention-days: 7
+      # A trace shows what the browser saw; the daemons' logs and ledgers show what reached Mostra
+      # (#39). Never their keys or secrets (tests/e2e/support/mostra.ts).
+      - name: Keep the daemons' logs and ledgers
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-homes-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/mostra-e2e-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # The release rehearsal (EN-05, D142 item 9): bundles built, audited and smoke-tested with no
   # Node.js, every package packed and dry-run published, the npm path smoke-tested. Pull requests

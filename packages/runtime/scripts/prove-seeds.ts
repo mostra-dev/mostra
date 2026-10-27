@@ -1269,6 +1269,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "a failed e2e leg keeps only its traces, not what reached Mostra (#39)",
+    file: "../../.github/workflows/ci.yml",
+    from: "      - name: Keep the daemons' logs and ledgers\n        if: failure()",
+    to: "      - name: Keep the daemons' logs and ledgers\n        if: false",
+    check: ["test/ci.test.ts", "-t", "keeps the e2e daemons"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
     from: "    if (seen.has(pid)) continue;",

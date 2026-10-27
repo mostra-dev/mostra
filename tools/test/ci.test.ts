@@ -442,6 +442,19 @@ describe("the CI workflow's shape (D152)", () => {
     }
   });
 
+  it("keeps the e2e daemons' logs and ledgers from a failed run (#39)", () => {
+    const steps = (jobs["e2e"] as Job).steps ?? [];
+    const run = steps.find((step) => step.run?.includes("--job e2e"));
+    expect((run as { env?: Record<string, string> } | undefined)?.env?.["MOSTRA_E2E_LOG_DIR"]).toBe(
+      `\${{ runner.temp }}/mostra-e2e-logs`,
+    );
+    const kept = steps.find((step) => step.name?.includes("logs and ledgers"));
+    expect(kept?.if).toBe("failure()");
+    expect((kept as { with?: Record<string, string> } | undefined)?.with?.["path"]).toBe(
+      `\${{ runner.temp }}/mostra-e2e-logs`,
+    );
+  });
+
   it("never lets ci-ok skip when the plan failed", () => {
     expect(jobs["ci-ok"]?.if).toBe(
       "always() && (needs.plan.result != 'success' || needs.plan.outputs.run == 'true')",
