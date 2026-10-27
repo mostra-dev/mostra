@@ -27,6 +27,17 @@ import { afterAll } from "vitest";
 import { helperPath, OS } from "../src/platform/index.ts";
 
 const created: string[] = [];
+const closers: (() => void)[] = [];
+
+/**
+ * Closes `close`'s resource (a ledger, a database) before this file's temporary directories are
+ * removed. Windows refuses to remove a file a process holds open, and Node.js's `rmSync` tries
+ * such a file again with backoff before it gives up, so a ledger left open for the life of a file
+ * once made its directories' removal pass its hook's limit (MT-02).
+ */
+export function closeBeforeRemoval(close: () => void): void {
+  closers.push(close);
+}
 /**
  * Keeps the supervisor logs of the test homes in `MOSTRA_TEST_LOG_DIR`, when it is set, before
  * their homes are removed: CI keeps them for failed runs, since an instance's own errors (the cause
@@ -59,16 +70,22 @@ function keepLogs(dir: string): void {
 }
 
 afterAll(() => {
+  for (const close of closers.splice(0).reverse()) {
+    try {
+      close();
+    } catch {
+      // Closed already, or never opened: nothing holds its files.
+    }
+  }
   for (const dir of created.splice(0)) {
     keepLogs(dir);
     try {
       removeAll(dir);
     } catch (error) {
-      // Windows refuses to remove a file this process still has open, such as a ledger a unit
-      // test left open for the life of its file; the directory stays in the temporary folder.
-      if (!WINDOWS || !["EPERM", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-        throw error;
-      }
+      // Windows refuses to remove a file this process still holds open: a resource a test opened
+      // and didn't register with closeBeforeRemoval, which would otherwise make every later
+      // removal wait out rmSync's retries (MT-02).
+      throw new Error(`Couldn't remove ${dir}: something still holds it open`, { cause: error });
     }
   }
 });
