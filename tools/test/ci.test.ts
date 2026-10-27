@@ -394,6 +394,8 @@ interface Job {
   if?: string;
   "runs-on"?: string;
   uses?: string;
+  "timeout-minutes"?: number | string;
+  steps?: { name?: string; if?: string; run?: string; "timeout-minutes"?: number }[];
 }
 
 describe("the CI workflow's shape (D152)", () => {
@@ -410,6 +412,34 @@ describe("the CI workflow's shape (D152)", () => {
         .filter((name) => name !== "ci-ok")
         .sort(),
     );
+  });
+
+  it("ends a hung test run before its job's limit, so the failure steps keep its logs (#55)", () => {
+    // A job GitHub cancels for its own limit runs no `if: failure()` step; a step's limit kills
+    // every process of the step before anything looks at them. So `--deadline` reports first,
+    // then the step's limit, then the job's, each with room for the one before it to finish.
+    for (const [name, room] of [
+      ["integration", 3],
+      ["windows", 9],
+    ] as const) {
+      const job = jobs[name] as Job;
+      const steps = job.steps ?? [];
+      const at = steps.findIndex((step) => step.run?.includes("tools/check/cli.ts") ?? false);
+      const step = steps[at];
+      const deadline = Number(/--deadline (\d+)/.exec(step?.run ?? "")?.[1]);
+      const stepLimit = step?.["timeout-minutes"] ?? Number.POSITIVE_INFINITY;
+      const jobLimit = Number(job["timeout-minutes"]);
+      expect(deadline, name).toBeGreaterThan(0);
+      expect(stepLimit - deadline, name).toBeGreaterThanOrEqual(2);
+      expect(jobLimit - stepLimit, name).toBeGreaterThanOrEqual(room);
+      // The logs the deadline keeps are uploaded after it.
+      expect(
+        steps
+          .slice(at + 1)
+          .some((later) => later.if === "failure()" && later.name?.includes("logs")),
+        name,
+      ).toBe(true);
+    }
   });
 
   it("never lets ci-ok skip when the plan failed", () => {

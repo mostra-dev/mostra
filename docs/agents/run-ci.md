@@ -50,7 +50,10 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    GitHub's free plan runs 20 jobs at once and at most 5 macOS jobs; Blacksmith's jobs don't count
    against either.
 7. **A failed integration leg.** Download its `logs-integration-*` artifact: each test home's
-   supervisor log. A failure that a re-run cures is a finding: file it with the run and job IDs,
+   supervisor log. A leg still running at its deadline (`pnpm check --deadline`: 10 minutes on
+   macOS and Linux, 14 on Windows) prints every process with its elapsed time and what it waits
+   on, keeps that as `hang.txt` with the logs of the homes a hung file never removed
+   (`leftover/`), and fails, so the artifact holds them (#55). A failure that a re-run cures is a finding: file it with the run and job IDs,
    or add the occurrence to its issue.
 8. **Add a job or a leg.** The job goes in `tools/check/jobs.ts` (so `pnpm check` runs it), its legs
    in `tools/check/matrix.ts`, its CI job in `.github/workflows/ci.yml` (and in `ci-ok`'s `needs`),

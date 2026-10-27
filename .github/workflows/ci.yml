@@ -370,11 +370,15 @@ jobs:
           browser: chromium-headless-shell
           package: "@mostra/runtime"
           image: ${{ steps.setup.outputs.image }}
+      # A run still going at 10 minutes (the slowest leg takes about 6) lists every process, keeps
+      # the supervisor logs its test homes still hold and fails, so the step below keeps them: a job
+      # cancelled for its own limit keeps nothing (#55). The step's limit is the backstop.
       - name: pnpm check --job integration
+        timeout-minutes: 12
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}
           MOSTRA_TEST_LOG_DIR: ${{ runner.temp }}/mostra-test-logs
-        run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream
+        run: node tools/check/cli.ts --job integration $SCOPE --verbose --stream --deadline 10
       - name: Save the Turborepo cache (main only)
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -456,7 +460,11 @@ jobs:
           browser: chromium-headless-shell
           package: "@mostra/runtime"
           image: ${{ steps.setup.outputs.image }}
+      # A run still going at 14 minutes (arm64's slowest group takes about 11) reports and fails
+      # before the job's limit, as the POSIX integration job does (#55); the step's limit is the
+      # backstop.
       - name: pnpm check --job ${{ matrix.leg.job }}
+        timeout-minutes: 16
         env:
           JOB: ${{ matrix.leg.job }}
           SCOPE: ${{ needs.plan.outputs.scope }}
@@ -467,7 +475,7 @@ jobs:
           # commits on C: ran past their 30 s, where they took 16 s alone (#66, D153 item 10).
           # The other jobs keep %TEMP%, whose access list their access checks rely on.
           if [ "$JOB" = unit ]; then export TEMP="$RUNNER_TEMP" TMP="$RUNNER_TEMP"; fi
-          node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream
+          node tools/check/cli.ts --job "$JOB" $SCOPE --verbose --stream --deadline 14
       - name: Save the Turborepo cache (main only)
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
