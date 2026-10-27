@@ -100,7 +100,7 @@ jobs:
         run: pnpm exec node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
       # Finishing a published release: its own archive, checked against its record and the
       # release's digest, never a new build (the published @mostra/sdk pins these bytes).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: inputs.mode == 'finish'
         with:
           node-version-file: .node-version
@@ -117,7 +117,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           PLATFORM: ${{ matrix.platform }}
         run: node tools/license-audit/cli.ts --bundle "$RUNNER_TEMP/bundle/stage/mostra-$VERSION-$PLATFORM"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundle-${{ matrix.platform }}
           path: |
@@ -261,7 +261,7 @@ jobs:
           cp packages/sdk/dist/bundles.json crates/mostra-host/bundles.json
           cp packages/sdk/dist/bundles.json "$RUNNER_TEMP/npm/crate-pins.json"
           cargo package --locked --allow-dirty -p mostra-host
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-packages
           path: |
@@ -292,9 +292,9 @@ jobs:
         shell: pwsh
         run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
       # An older Node.js line than the bundle's, as many machines have: Mostra runs on its own.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "22.23.4"
           package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -320,9 +320,9 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: packages/bundle/scripts
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20"
+          node-version: "20.20.2"
           package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
