@@ -1,7 +1,7 @@
 # Release Mostra
 
 Use after Mirza accepts a work package, whose acceptance authorizes publishing it (D36). One
-release publishes every package of the fixed release group at one version, the four runtime
+release publishes every package of the fixed release group at one version, the six runtime
 bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) the crates
 (EN-05, D67, `.github/workflows/release.yml`).
 
@@ -35,7 +35,7 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    (`packages/bundle/scripts/github-release.ts state`) sees a version with no changeset pending
    and no published release, and the `publish` job runs in the `release` environment (only `main`
    may deploy there, one run at a time). In this order: it attests the bundles; publishes the
-   GitHub release `v<version>` with the four archives, their asset records and `SHA256SUMS`
+   GitHub release `v<version>` with the six archives, their asset records and `SHA256SUMS`
    (immutable from then on); checks from outside that the release holds exactly those bytes and
    that each pinned URL downloads; then publishes the npm packages with provenance; and last the
    crates, from the release's tag with the same pins as `@mostra/sdk`
@@ -71,7 +71,7 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
 7. **Check it from outside** (external evidence for the progress report):
    - `npm view @mostra/cli@<version> dist.attestations` names a provenance attestation, and
      `npm audit signatures` in a project that installed it verifies;
-   - `gh release view v<version>` lists four `mostra-<version>-<platform>.tar.gz`, their `.json`
+   - `gh release view v<version>` lists six `mostra-<version>-<platform>.tar.gz`, their `.json`
      asset records and `SHA256SUMS`;
      `gh attestation verify <archive> --repo mostra-dev/mostra` passes for one of them;
    - on a clean machine, `npm create mostra@latest my-artifact`, then
@@ -79,6 +79,6 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    - a fresh Rust program depending on `mostra-host = "<version>"` spawns an instance on a fresh
      `MOSTRA_CACHE_DIR`: it downloads, checks and caches the pinned bundle.
 
-**Done when** the `publish` job is green, the release is published with its nine assets, every
+**Done when** the `publish` job is green, the release is published with its 13 assets, every
 package of the group shows `<version>` on npm with provenance, `mostra-host` shows `<version>` on
 crates.io, and the clean-machine checks passed.
