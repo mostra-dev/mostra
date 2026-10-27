@@ -169,13 +169,11 @@ export class Client {
 }
 
 /**
- * Removes a run's directory. Published versions are sealed read-only (DATA_MODEL §1), so each
- * directory is made writable before its entries go.
- */
-/**
  * Copies what a daemon's home says about a run (its supervisor log and its ledger, never its keys
  * or secrets) into `MOSTRA_E2E_LOG_DIR`, when it is set: CI keeps them for a failed run, since a
- * trace shows only what the browser saw, not whether a request reached Mostra (#39, MT-02).
+ * trace shows only what the browser saw, not whether a request reached Mostra (#39, MT-02). Every
+ * run copies them, since a teardown can't know whether its tests failed: about 2 MB for a whole
+ * suite's daemons.
  */
 function keepEvidence(root: string): void {
   const into = process.env["MOSTRA_E2E_LOG_DIR"];
@@ -191,6 +189,10 @@ function keepEvidence(root: string): void {
   }
 }
 
+/**
+ * Removes a run's directory. Published versions are sealed read-only (DATA_MODEL §1), so each
+ * directory is made writable before its entries go.
+ */
 export function removeTree(root: string): void {
   // Only a run directory this harness made: `mostra-e2e-*` directly in the scratch directory.
   if (dirname(root) !== SCRATCH || !basename(root).startsWith("mostra-e2e-")) {
