@@ -1,5 +1,17 @@
 # @mostra/runtime
 
+## 0.6.1
+
+### Patch Changes
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`753f3de`](https://github.com/mostra-dev/mostra/commit/753f3deed9bef96c96b671c4973fd799bedb2b81) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Dependency updates, each past its 7-day release age: React 19.3.1, React Router 8.5.0, Vite 8.3.4, Zod 4.6.7, `@hono/node-server` 2.1.5, undici 8.12.3, Playwright 1.64.1 (the same browsers as 1.64.0), and in the warm set Base UI 1.9.0, Radix 1.8.1, Motion 14.4.0, TanStack Table 9.3.1 and the other minor and patch releases of its libraries; the installer's pnpm 10.34.7.
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`b267c4b`](https://github.com/mostra-dev/mostra/commit/b267c4b263a2e864ed7e9891917760e7e2041d6e) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A `mostra dev` session whose connection closes while it starts no longer takes the instance down: the start stops the dev server it was starting before it removes the session's directory, and a cleanup that fails is reported, never an uncaught error ([#35](https://github.com/mostra-dev/mostra/issues/35)). An instance that does stop on an uncaught error now records the error and where it was thrown in the home's log.
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`0c9d1f2`](https://github.com/mostra-dev/mostra/commit/0c9d1f2c5f6335fa5dc993364c362c01ea487f93) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The runtime bundles ship Node.js 24.22.1, a security release of the 24 LTS line (fixes in http, dns, tls, the permission model, crypto and brotli; OpenSSL 3.5.9), pinned by the SHA-256s of its signed `SHASUMS256.txt`.
+- Updated dependencies [[`753f3de`](https://github.com/mostra-dev/mostra/commit/753f3deed9bef96c96b671c4973fd799bedb2b81)]:
+  - @mostra/protocol@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes

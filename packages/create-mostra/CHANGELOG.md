@@ -1,5 +1,12 @@
 # create-mostra
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/cli@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes

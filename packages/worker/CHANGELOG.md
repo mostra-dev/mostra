@@ -1,5 +1,13 @@
 # @mostra/worker
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`753f3de`](https://github.com/mostra-dev/mostra/commit/753f3deed9bef96c96b671c4973fd799bedb2b81)]:
+  - @mostra/protocol@0.6.1
+  - @mostra/server@0.6.1
+
 ## 0.6.0
 
 ### Patch Changes

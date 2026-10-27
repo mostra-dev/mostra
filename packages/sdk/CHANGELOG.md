@@ -1,5 +1,17 @@
 # @mostra/sdk
 
+## 0.6.1
+
+### Patch Changes
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`f210c60`](https://github.com/mostra-dev/mostra/commit/f210c600415c9ab61263f13bd7b22ec3e76d8e58) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A first install of the runtime bundle is 3 to 5 times faster: about 1.5 minutes instead of 7 on Windows arm64, 45 s instead of 3 minutes on Windows x64, 20 s instead of 70 on Linux. The archive's files are written straight into the new directory as they are read, with the same refusals as before (only files, directories and links, nothing outside the bundle's directory, no path twice, links made last so nothing is written through one), and every file is still checked against the bundle's file list.
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`753f3de`](https://github.com/mostra-dev/mostra/commit/753f3deed9bef96c96b671c4973fd799bedb2b81) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Dependency updates, each past its 7-day release age: React 19.3.1, React Router 8.5.0, Vite 8.3.4, Zod 4.6.7, `@hono/node-server` 2.1.5, undici 8.12.3, Playwright 1.64.1 (the same browsers as 1.64.0), and in the warm set Base UI 1.9.0, Radix 1.8.1, Motion 14.4.0, TanStack Table 9.3.1 and the other minor and patch releases of its libraries; the installer's pnpm 10.34.7.
+
+- [#90](https://github.com/mostra-dev/mostra/pull/90) [`a9519df`](https://github.com/mostra-dev/mostra/commit/a9519df6a55bc5887b6a3008b36ab5e6d249fcf1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Two installers of one bundle no longer remove each other's fresh lock when the file system gives the new lock the number of the stale one it replaced (ext4 does at once): a stale lock is removed only when the file moved aside holds exactly what was judged stale, its owner's PID and token, as well as being the same file. The Rust crate's installer, which shares the lock, does the same.
+- Updated dependencies [[`753f3de`](https://github.com/mostra-dev/mostra/commit/753f3deed9bef96c96b671c4973fd799bedb2b81)]:
+  - @mostra/protocol@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes
