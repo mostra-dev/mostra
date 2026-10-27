@@ -24,6 +24,12 @@ blockExoticSubdeps: true
 strictDepBuilds: true
 allowBuilds:
   lefthook: true
+# pnpm 12.11 and later link the agent skills a dependency ships into the project's agent skill
+# directories once approved (pnpm/rfcs#35, #36). Agents working here read only the repository's
+# own AGENTS.md files and Skill; a dependency's instructions are denied, recorded so no install asks.
+permissions:
+  '@tanstack/react-table':
+    skills: false
 
 # dependency-cruiser loads TypeScript's compiler API but doesn't declare it, so pnpm would hand it
 # the hoisted TypeScript 7, which has no such API. Declaring the peer makes it resolve tools/ts6's.
