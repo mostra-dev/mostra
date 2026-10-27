@@ -378,13 +378,20 @@ export async function removeJudged(path: string, judged: JudgedLock): Promise<vo
   } catch {
     return; // someone else moved or removed it
   }
-  const moved = await stat(aside).catch(() => undefined);
-  const text = await readFile(aside, "utf8").catch(() => undefined);
-  const same =
-    moved !== undefined &&
-    moved.ino === judged.ino &&
-    moved.dev === judged.dev &&
-    text === judged.text;
+  // Its identity and contents through one descriptor, so both describe the same file.
+  let same = false;
+  const handle = await open(aside, "r").catch(() => undefined);
+  if (handle) {
+    try {
+      const moved = await handle.stat();
+      const text = await handle.readFile("utf8");
+      same = moved.ino === judged.ino && moved.dev === judged.dev && text === judged.text;
+    } catch {
+      // Unreadable: not provably the file judged, so it is put back.
+    } finally {
+      await handle.close();
+    }
+  }
   // Not the file judged stale: a fresh lock. Put it back unless a newer one exists.
   if (!same) await link(aside, path).catch(() => undefined);
   await rm(aside, { force: true });
