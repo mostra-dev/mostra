@@ -53,6 +53,17 @@ MT-02 owns no requirement (D154). Its checks extend their owners' rows, which st
 | The updates (#80 to #84) | verified | the license audit, size budgets, frozen install, every CI leg | see the full run below |
 | A full run (`ci:full`, every leg) | in progress | CI on #90 | run 40484048564: 66 of 69 green; its three failures are fixed in `8f7b5c4` and `f277a2e`; the rerun on `f277a2e` is run 40488322735 |
 
+## Reviews (D80)
+
+- **My review of the diff**, during the work and against the final state: it found the `pnpm check --deadline` tests' blind spot for the e2e job (a job-name pattern without digits) and the `MOSTRA_E2E_LOG_DIR` that Turbo never passed, each fixed with a test red on the old code and a seed.
+- **GPT-6.1-Sol** through `codex review --base origin/main` (OpenAI, ChatGPT sign-in, codex-cli 0.162.1), effort high, on 2026-10-27 against `3f83cf7`: 2,942,924 input tokens (2,803,200 cached) and 10,258 output (4,914 reasoning). A GPT-only run, announced first (D34). Four findings, all valid, all fixed with a test red on the old code and a seed red planted and green restored:
+  1. (P1) The extractor made a link through another link (`top/lib` linking outside, then `top/lib/planted`), outside the directory; node-tar's `x` had refused it. Every link's directory is now made before any link, so such a link meets a real directory and is refused in either order (`518b3d8`). The same pass also counts names macOS and Windows keep as one file (case, Unicode normalization) as one path.
+  2. (P2) A nightly that skipped renewed its commit's cover, so an unchanged commit never ran again; a newer failed nightly didn't stop a skip either. `coveringNightly()` counts only a nightly that ran its gates (`e4f26ad`).
+  3. (P2) The deadline looked for test homes only in `tmpdir()`, not in `/tmp`, where the POSIX suites make them (`df31f7c`).
+  4. (P2) The deadline's Windows cleanup could end its own PowerShell first (`df31f7c`; a probe on `windows-latest` exercises it).
+- **Copilot:** no review (its quota).
+- **Claude Opus 5.5** (D144): the prompt is ready for Mirza to run.
+
 ## Untested boundaries
 
 - **#86 live:** the twins first run at the nightly after the merge; the plan is tested, not yet a cold fallback after a Blacksmith nightly.
