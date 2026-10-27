@@ -12,7 +12,8 @@ spawn(
   process.execPath,
   [
     "-e",
-    `require("node:fs").writeFileSync(${JSON.stringify(file)}, String(process.pid)); setInterval(() => {}, 1000);`,
+    // Written aside and renamed, so the test never reads the file before its PID is in it.
+    `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(`${file}.part`)}, String(process.pid)); fs.renameSync(${JSON.stringify(`${file}.part`)}, ${JSON.stringify(file)}); setInterval(() => {}, 1000);`,
   ],
   {
     stdio: ["ignore", "inherit", "ignore"],
