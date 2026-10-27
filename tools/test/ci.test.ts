@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ciEvent, NIGHTLY_COVERS_MS, nightlyCovers, outputLines } from "../check/ci.ts";
+import { JOBS } from "../check/jobs.ts";
 import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
 import type { Plan } from "../check/plan.ts";
 import {
@@ -440,6 +441,45 @@ describe("the CI workflow's shape (D152)", () => {
         name,
       ).toBe(true);
     }
+  });
+
+  it("hands every Mostra variable a job sets to the tasks Turbo runs", () => {
+    // Turbo passes a task only the variables turbo.json names; MOSTRA_E2E_LOG_DIR once never
+    // reached the e2e suites, so a failed leg kept nothing (MT-02).
+    const turbo = JSON.parse(readFileSync(fromRoot("turbo.json"), "utf8")) as {
+      globalPassThroughEnv?: string[];
+      globalEnv?: string[];
+      tasks: Record<string, { env?: string[]; passThroughEnv?: string[] }>;
+    };
+    const known = new Set([
+      ...(turbo.globalPassThroughEnv ?? []),
+      ...(turbo.globalEnv ?? []),
+      ...Object.values(turbo.tasks).flatMap((task) => [
+        ...(task.env ?? []),
+        ...(task.passThroughEnv ?? []),
+      ]),
+    ]);
+    // A check job of plain steps (rust) runs with the whole environment; Turbo's tasks don't.
+    const viaTurbo = (run: string): boolean => {
+      const named = /--job "?\$?([A-Za-z0-9-]+)"?/.exec(run)?.[1];
+      if (named === "JOB") return true; // the Windows legs' unit, hygiene and integration
+      return JOBS.some((check) => check.name === named && check.tasks !== undefined);
+    };
+    const handed: string[] = [];
+    for (const [name, job] of Object.entries(jobs)) {
+      const steps = job.steps ?? [];
+      const jobEnv = (job as { env?: Record<string, string> }).env ?? {};
+      for (const step of steps) {
+        if (!step.run?.includes("tools/check/cli.ts") || !viaTurbo(step.run)) continue;
+        const env = { ...jobEnv, ...((step as { env?: Record<string, string> }).env ?? {}) };
+        for (const key of Object.keys(env))
+          if (key.startsWith("MOSTRA_")) handed.push(`${name}: ${key}`);
+      }
+    }
+    // The e2e legs and the integration legs both hand their log directories over.
+    expect(handed).toContain("e2e: MOSTRA_E2E_LOG_DIR");
+    expect(handed).toContain("integration: MOSTRA_TEST_LOG_DIR");
+    expect(handed.filter((entry) => !known.has(entry.split(": ")[1] as string))).toEqual([]);
   });
 
   it("keeps the e2e daemons' logs and ledgers from a failed run (#39)", () => {

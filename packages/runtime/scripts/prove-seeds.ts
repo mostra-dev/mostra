@@ -1278,6 +1278,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "a variable a CI job sets never reaches Turbo's tasks (MOSTRA_E2E_LOG_DIR, MT-02)",
+    file: "../../turbo.json",
+    from: '    "MOSTRA_TEST_LOG_DIR",\n    "MOSTRA_E2E_LOG_DIR"\n',
+    to: '    "MOSTRA_TEST_LOG_DIR"\n',
+    check: ["test/ci.test.ts", "-t", "hands every Mostra variable"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
     from: "    if (seen.has(pid)) continue;",
