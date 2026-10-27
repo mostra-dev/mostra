@@ -1269,6 +1269,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "ci-ok lets through a result it doesn't list as bad (#90's abandoned leg)",
+    file: "../../.github/workflows/ci.yml",
+    from: 'jq -e \'length > 0 and all(.[]; . == "success" or . == "skipped")\' > /dev/null',
+    to: 'if echo "$RESULTS" | grep -Eq \'"(failure|cancelled)"\'; then exit 1; fi',
+    check: ["test/ci.test.ts", "-t", "passes ci-ok only on results known to be good"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "ci-ok skips when the plan failed",
     file: "../../.github/workflows/ci.yml",
     from: "    if: always() && (needs.plan.result != 'success' || needs.plan.outputs.run == 'true')",

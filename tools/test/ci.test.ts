@@ -3,6 +3,7 @@
  * shape. Each rule here has a seed in its comment's terms: the test goes red when the rule is
  * broken (MT-01's evidence).
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -531,6 +532,29 @@ describe("the CI workflow's shape (D152)", () => {
     expect((kept as { with?: Record<string, string> } | undefined)?.with?.["path"]).toBe(
       `\${{ runner.temp }}/mostra-e2e-logs`,
     );
+  });
+
+  it("passes ci-ok only on results known to be good", () => {
+    const script = jobs["ci-ok"]?.steps?.find((step) => step.name === "All gates passed")?.run;
+    expect(script).toBeDefined();
+    const passes = (results: readonly string[]): boolean =>
+      spawnSync("bash", ["-e", "-c", script as string], {
+        env: { ...process.env, RESULTS: JSON.stringify(results) },
+        stdio: "ignore",
+      }).status === 0;
+    expect(passes(["success", "skipped", "success"])).toBe(true);
+    // A leg that never got a runner is `abandoned` (#90's run 40529498029, a macOS leg).
+    for (const bad of [
+      "failure",
+      "cancelled",
+      "abandoned",
+      "timed_out",
+      "",
+      "a-result-github-adds",
+    ]) {
+      expect(passes(["success", bad, "success"]), bad).toBe(false);
+    }
+    expect(passes([])).toBe(false);
   });
 
   it("never lets ci-ok skip when the plan failed", () => {

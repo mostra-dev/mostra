@@ -638,6 +638,9 @@ jobs:
       - name: All gates passed
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
+        # Passes only on results known to be good: a job that ran and passed, or one the plan left
+        # out. Anything else fails, `abandoned` included (a leg that never got a runner, which a
+        # list of bad results let through on #90) and any result GitHub adds (D152 item 9).
         run: |
           echo "$RESULTS"
-          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then exit 1; fi
+          echo "$RESULTS" | jq -e 'length > 0 and all(.[]; . == "success" or . == "skipped")' > /dev/null
