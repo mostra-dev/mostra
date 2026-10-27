@@ -157,6 +157,42 @@ describe("the bundle extractor (RT-01, #88)", () => {
     expect(readFileSync(join(into, "a.txt"), "utf8")).toBe("first");
   });
 
+  it("refuses an entry beneath a file as the archive's, not the disk's (the Opus review of MT-02)", async () => {
+    const cases = [
+      [
+        { name: `${TOP}/a`, body: "a file" },
+        { name: `${TOP}/a/b`, body: "beneath it" },
+      ],
+      ...(WINDOWS
+        ? []
+        : [
+            [
+              { name: `${TOP}/a`, body: "a file" },
+              { name: `${TOP}/a/b`, type: "2", link: "x" },
+            ],
+          ]),
+    ];
+    for (const entries of cases) {
+      const { error } = await extract(entries);
+      expect(error?.diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+    }
+  });
+
+  it.skipIf(process.platform !== "darwin" && !WINDOWS)(
+    "refuses names the file system folds alike beyond case and normalization, as the archive's",
+    async () => {
+      // APFS and NTFS keep one file for these, which neither lower case nor NFC tells apart.
+      const { error } = await extract([
+        { name: `${TOP}/\u03c3.txt`, body: "sigma" },
+        { name: `${TOP}/\u03c2.txt`, body: "final sigma" },
+      ]);
+      // APFS folds them (observed); on NTFS a refusal, should it fold them, is the archive's too.
+      if (process.platform === "darwin")
+        expect(error?.diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+      else if (error) expect(error.diagnostic.code).toBe("MOSTRA_ENV_BUNDLE_INVALID");
+    },
+  );
+
   it.skipIf(process.platform !== "darwin" && !WINDOWS)(
     "refuses two names the file system keeps as one (case, Unicode normalization)",
     async () => {

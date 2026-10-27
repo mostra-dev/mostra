@@ -97,6 +97,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-01",
+    name: "the bundle's extractor blames the disk for an archive's colliding entries (#88, Opus review)",
+    file: "../sdk/src/bundle/extract.ts",
+    from: 'return code === "EEXIST" || code === "ENOTDIR" || code === "EISDIR";',
+    to: "return code === undefined;",
+    check: unit("extract.test.ts", "beneath a file as the archive's"),
+    cwd: "../sdk",
+  },
+  {
+    requirement: "RT-01",
     name: "the bundle's extractor writes an entry that climbs out with `..` (#88)",
     file: "../sdk/src/bundle/extract.ts",
     from: 'if (part === "" || part === "." || part === "..")',

@@ -32,6 +32,17 @@ export interface ExtractOptions {
 /** An entry a bundle's archive never has, or an archive that doesn't read as a tar at all. */
 class ArchiveRefused extends Error {}
 
+/**
+ * Whether `error` is two of the archive's entries meeting where the file system names them as one
+ * path: a file where a directory must go, a directory or file already there, names the file system
+ * folds alike (`σ` and `ς`, `ß` and `ss`). The directory is new and only this extractor writes in
+ * it, so these are never the disk's failure (the Opus review of MT-02).
+ */
+function collides(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "EEXIST" || code === "ENOTDIR" || code === "EISDIR";
+}
+
 /** Extracts `archive` (a `.tar.gz` with one top directory `top`) into the empty directory `into`. */
 export async function extractBundle(
   archive: string,
@@ -155,7 +166,9 @@ async function unpack(archive: string, root: string, top: string, refuseLinks: b
         entry.resume();
       }
     } catch (error) {
-      fail(error);
+      if (collides(error))
+        refuse(entry.path, type, "its path meets another entry's, as this file system names them");
+      else fail(error);
       entry.resume();
     }
   });
@@ -184,16 +197,27 @@ async function unpack(archive: string, root: string, top: string, refuseLinks: b
   // Every link's directory first, while no link exists: a link whose path another entry lies
   // beneath (another link included) then meets a real directory and is refused, and no directory is
   // ever made or reached through a link (the GPT review of MT-02).
-  for (const link of links) ensureDir(dirname(link.path));
+  const refused = (path: string, why: string): ArchiveRefused =>
+    new ArchiveRefused(
+      `The runtime bundle's archive holds an entry a bundle never has: ${path} (SymbolicLink): ${why}.`,
+    );
+  for (const link of links) {
+    try {
+      ensureDir(dirname(link.path));
+    } catch (error) {
+      if (collides(error)) throw refused(link.path, "it lies beneath a file");
+      throw error;
+    }
+  }
   for (const link of links) {
     try {
       symlinkSync(link.target, link.path);
     } catch (error) {
-      // Its path is a directory other entries filled: the link would have been written through.
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      throw new ArchiveRefused(
-        `The runtime bundle's archive holds an entry a bundle never has: ${link.path} (SymbolicLink): other entries are inside it.`,
-      );
+      // Its path is a directory other entries filled (the link would have been written through), or
+      // a name the file system folds with another entry's.
+      if (collides(error))
+        throw refused(link.path, "other entries are inside it, or meet its path");
+      throw error;
     }
   }
 }
