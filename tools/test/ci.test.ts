@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ciEvent, outputLines } from "../check/ci.ts";
+import { ciEvent, NIGHTLY_COVERS_MS, nightlyCovers, outputLines } from "../check/ci.ts";
 import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
 import type { Plan } from "../check/plan.ts";
 import {
@@ -206,6 +206,86 @@ describe("what runs when (D152)", () => {
 
   it("skips a nightly run on a commit whose nightly run passed", () => {
     expect(ciScope({ name: "schedule", alreadyPassed: true }).run).toBe(false);
+  });
+
+  it("keeps both cache stores warm: a nightly run on Blacksmith runs its Linux legs on GitHub's runners too (#86)", () => {
+    const nightly = ciScope({ name: "schedule" });
+    const lists = (matrix: ReturnType<typeof ciMatrix>) => ({
+      static: matrix.static,
+      unit: matrix.unit,
+      hygiene: matrix.hygiene,
+      integration: matrix.integration,
+      e2e: matrix.e2e,
+      rust: matrix.rust,
+      conformance: matrix.conformance,
+    });
+    const both = ciMatrix(nightly, everything, blacksmith);
+    const alone = ciMatrix(nightly, everything, github);
+    for (const [list, legs] of Object.entries(lists(both))) {
+      const onBlacksmith = legs.filter((leg) => leg.runner.startsWith("blacksmith"));
+      const twins = legs.filter(
+        (leg) => leg["os"] === "linux-github" || /GitHub's/.test(leg["names"] ?? ""),
+      );
+      expect(onBlacksmith.length, list).toBeGreaterThan(0);
+      // Every Blacksmith leg has its twin on GitHub's runners, under the same Turborepo cache
+      // name: the same key, in the other store.
+      expect(twins.map((leg) => leg["cache"]).sort(), list).toEqual(
+        onBlacksmith.map((leg) => leg["cache"]).sort(),
+      );
+      for (const twin of twins) expect(twin.runner, list).toMatch(/^ubuntu-latest$/);
+      // macOS and Windows legs are GitHub's already: they get no twin.
+      expect(legs.filter((leg) => leg["os"] === "macos").length, list).toBe(
+        lists(alone)[list as keyof ReturnType<typeof lists>].filter((leg) => leg["os"] === "macos")
+          .length,
+      );
+    }
+    expect(both.windows).toEqual(alone.windows);
+    // Leg names, and so the logs and traces their jobs upload, stay unique.
+    const names = both.integration.map((leg) => `${leg["os"]} ${leg["group"]}`);
+    expect(new Set(names).size).toBe(names.length);
+    // A nightly run already on GitHub's runners saves GitHub's store itself.
+    expect(
+      Object.values(lists(alone))
+        .flat()
+        .some((leg) => leg["os"] === "linux-github"),
+    ).toBe(false);
+    // Only runs on main save caches: a pull request or the queue on Blacksmith gets no twin.
+    for (const scope of [
+      pr,
+      queue,
+      ciScope({ name: "pull_request", labels: [FULL_LABEL] }),
+      ciScope({ name: "workflow_dispatch" }),
+    ])
+      expect(
+        Object.values(lists(ciMatrix(scope, everything, blacksmith)))
+          .flat()
+          .some((leg) => leg["os"] === "linux-github"),
+        scope.reason,
+      ).toBe(false);
+    expect(
+      ciMatrix(
+        ciScope({ name: "workflow_dispatch", onMain: true }),
+        everything,
+        blacksmith,
+      ).unit.map((leg) => leg["os"]),
+    ).toEqual(["linux", "linux-github"]);
+    expect(ciEvent("workflow_dispatch", {}, false, "refs/heads/main")).toMatchObject({
+      onMain: true,
+    });
+    expect(ciEvent("workflow_dispatch", {}, false, "refs/heads/wp/13-share")).not.toHaveProperty(
+      "onMain",
+    );
+  });
+
+  it("repeats a passed nightly run once it is 6 days old, inside both stores' 7-day eviction (#86)", () => {
+    const now = Date.parse("2026-10-27T03:23:00Z");
+    expect(nightlyCovers("2026-10-26T03:23:00Z", now)).toBe(true);
+    expect(nightlyCovers(new Date(now - NIGHTLY_COVERS_MS + 60_000).toISOString(), now)).toBe(true);
+    expect(nightlyCovers(new Date(now - NIGHTLY_COVERS_MS).toISOString(), now)).toBe(false);
+    expect(nightlyCovers("2026-10-19T03:23:00Z", now)).toBe(false);
+    expect(nightlyCovers(undefined, now)).toBe(false);
+    expect(nightlyCovers("-", now)).toBe(false);
+    expect(NIGHTLY_COVERS_MS).toBeLessThan(7 * 24 * 60 * 60 * 1000);
   });
 
   it("checks no commit messages in the merge queue, whose merges are GitHub's", () => {

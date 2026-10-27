@@ -18,10 +18,14 @@
  * | `merge_group` | affected | all |
  * | `schedule` (main, nightly) | all | all, unless the last nightly run passed on this commit |
  * | `workflow_dispatch` | all, or affected with `full: false` | all |
+ *
+ * A run on `main` (the nightly, or one by hand there) is the only one that saves caches, and when
+ * its Linux legs run on Blacksmith each also runs on GitHub's runners, so both stores stay warm
+ * (#86, {@link bothStores}).
  */
 import { JOBS, type JobName } from "./jobs.ts";
 import { type Plan, touches } from "./plan.ts";
-import type { Runners } from "./runners.ts";
+import { GITHUB_RUNNERS, type Runners } from "./runners.ts";
 
 /** The label that asks a pull request for the merge queue's full run on every push. */
 export const FULL_LABEL = "ci:full";
@@ -39,6 +43,8 @@ export interface CiEvent {
   readonly full?: boolean;
   /** For `schedule`: the last nightly run on this commit passed. */
   readonly alreadyPassed?: boolean;
+  /** For `workflow_dispatch`: the run is on `main`, whose runs save the caches. */
+  readonly onMain?: boolean;
 }
 
 /** What the run checks, before the plan is made. */
@@ -50,16 +56,20 @@ export interface CiScope {
   readonly reason: string;
   readonly scope: "affected" | "all";
   readonly legs: "pull-request" | "all";
+  /** A run on `main`, the only kind that saves caches (the nightly, or one by hand there). */
+  readonly saves: boolean;
 }
 
 /** Decides the scope from the event alone, so the plan is made with the right base. */
 export function ciScope(event: CiEvent): CiScope {
+  const saves =
+    event.name === "schedule" || (event.name === "workflow_dispatch" && event.onMain === true);
   const of = (
     run: boolean,
     reason: string,
     scope: CiScope["scope"],
     legs: CiScope["legs"],
-  ): CiScope => ({ event: event.name, run, reason, scope, legs });
+  ): CiScope => ({ event: event.name, run, reason, scope, legs, saves });
   const none = (reason: string): CiScope => of(false, reason, "affected", "all");
   switch (event.name) {
     case "pull_request":
@@ -223,6 +233,27 @@ function cached(job: string, legs: readonly Leg[]): Leg[] {
   }));
 }
 
+/**
+ * The Linux legs of a run that saves caches, on both pools when it runs on Blacksmith (#86).
+ * Blacksmith's cache actions read and write its own colocated store, never GitHub's, and both
+ * stores evict what nobody read for 7 days (VERIFIED_FACTS, MT-02). A nightly run on Blacksmith
+ * alone therefore left GitHub's store without Linux caches, and the fallback to GitHub's runners,
+ * which comes exactly when Blacksmith's month is used up, started every Linux job cold: an e2e job
+ * spent its 25 minutes fetching WebKit's packages from apt, and the integration and unit jobs ran
+ * within a minute or two of their limits. So each Linux leg also runs on GitHub's runners (free
+ * for a public repository), saving GitHub's store and proving every night that the fallback
+ * passes. Its name says `linux-github`; its Turborepo cache keeps the leg's name, the same key in
+ * the other store.
+ */
+function bothStores(scope: CiScope, runners: Runners, legs: readonly Leg[]): Leg[] {
+  if (!scope.saves || runners.pool !== "blacksmith") return [...legs];
+  const twin = (leg: Leg): Leg =>
+    leg["os"] === undefined
+      ? { ...leg, runner: GITHUB_RUNNERS.linux.small, names: `${leg["names"]}; GitHub's runners` }
+      : { ...leg, os: "linux-github", runner: GITHUB_RUNNERS.linux.large };
+  return [...legs, ...legs.filter((leg) => (leg["os"] ?? "linux") === "linux").map(twin)];
+}
+
 /** Lays a plan out for a scope and the run's runners. */
 export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix {
   const applies = new Set(
@@ -296,32 +327,35 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
       const detail = leg["group"] ?? leg["browser"];
       return `${list} (macos${detail ? `, ${detail}` : ""})`;
     });
+  const twins = (legs: readonly Leg[]): Leg[] => bothStores(scope, runners, legs);
   return {
     ...scope,
     jobs: [...applies],
     scopeFlag: scope.scope === "affected" ? "--affected" : "",
     static: cached(
       "static",
-      staticJobs.length > 0
-        ? [
-            {
-              runner: runners.linux.small,
-              jobs: staticJobs.map((name) => `--job ${name}`).join(" "),
-              names: staticJobs.join(", "),
-            },
-          ]
-        : [],
+      twins(
+        staticJobs.length > 0
+          ? [
+              {
+                runner: runners.linux.small,
+                jobs: staticJobs.map((name) => `--job ${name}`).join(" "),
+                names: staticJobs.join(", "),
+              },
+            ]
+          : [],
+      ),
     ),
-    unit: cached("unit", has("unit") ? [{ os: "linux", runner: runners.linux.large }] : []),
+    unit: cached("unit", twins(has("unit") ? [{ os: "linux", runner: runners.linux.large }] : [])),
     hygiene: cached(
       "hygiene",
-      has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : [],
+      twins(has("hygiene") ? [{ os: "linux", runner: runners.linux.large }] : []),
     ),
-    integration: cached("integration", keep(integration)),
+    integration: cached("integration", twins(keep(integration))),
     windows: cached("windows", windows),
-    e2e: cached("e2e", keep(e2e)),
-    rust: cached("rust", keep(rust)),
-    conformance: cached("conformance", keep(conformance)),
+    e2e: cached("e2e", twins(keep(e2e))),
+    rust: cached("rust", twins(keep(rust))),
+    conformance: cached("conformance", twins(keep(conformance))),
     release: scope.run ? rehearsal(plan, all, runners) : null,
     deferred,
   };

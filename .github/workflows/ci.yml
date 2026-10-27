@@ -8,6 +8,8 @@
 #   a bot's draft         nothing, until it is ready for review (gh pr ready)
 #   merge queue           affected jobs on every leg, Windows arm64 and every release platform too
 #   nightly (main)        everything, unless the last nightly run passed on the same commit
+#                         within 6 days; Linux legs on Blacksmith run on GitHub's runners too, so
+#                         both cache stores stay warm (#86)
 #   by hand               everything (`full: false` for the affected jobs)
 #
 # Linux jobs run on Blacksmith while its monthly budget lasts and on GitHub's runners otherwise
@@ -87,14 +89,17 @@ jobs:
           policy: ${{ vars.CI_RUNNERS }}
           budget: ${{ vars.BLACKSMITH_BUDGET }}
           threshold: ${{ vars.BLACKSMITH_THRESHOLD }}
+      # When the last nightly run that passed on this commit started: ci.ts skips the run while
+      # that is under 6 days old, so both cache stores are read inside their 7-day eviction (#86).
       - name: The last nightly run (nightly only)
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event schedule --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
-          if [ "$last" = "$SHA" ]; then echo "MOSTRA_CI_NIGHTLY_PASSED=1" >> "$GITHUB_ENV"; fi
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event schedule --branch main --status success --limit 1 --json headSha,createdAt --jq '.[0] // {} | "\(.headSha // "-") \(.createdAt // "-")"')
+          read -r sha at <<< "$last"
+          if [ "$sha" = "$SHA" ]; then echo "MOSTRA_CI_NIGHTLY_PASSED_AT=$at" >> "$GITHUB_ENV"; fi
       # As they are now, not as the event saw them: a re-run after adding ci:full honors it.
       - name: The pull request as it is now (pull requests only)
         if: github.event_name == 'pull_request'

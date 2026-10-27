@@ -9,8 +9,8 @@
  * Inputs from the environment: `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` (GitHub's), the
  * chosen runners as JSON in `MOSTRA_CI_RUNNERS` (GitHub's own when unset), `MOSTRA_CI_PULL`, a
  * file holding the pull request as GitHub's API returns it now (its draft state and labels at a
- * re-run, which the event's payload keeps as they were), and, for the nightly run,
- * `MOSTRA_CI_NIGHTLY_PASSED=1` when the last nightly run passed on this commit.
+ * re-run, which the event's payload keeps as they were), `GITHUB_REF`, and, for the nightly run,
+ * `MOSTRA_CI_NIGHTLY_PASSED_AT`, when the last nightly run that passed on this commit started.
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { type CiEvent, type CiMatrix, ciMatrix, ciScope } from "./matrix.ts";
@@ -29,8 +29,29 @@ interface Payload {
   readonly inputs?: { readonly full?: boolean | string };
 }
 
-/** The event, from GitHub's event name and payload. */
-export function ciEvent(name: string, payload: Payload, nightlyPassed: boolean): CiEvent {
+/**
+ * How long a nightly run that passed covers its commit: the next nightly runs everything again
+ * past it, so the caches it saves are read within both stores' 7-day eviction (#86) even when
+ * `main` doesn't move for a week.
+ */
+export const NIGHTLY_COVERS_MS = 6 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the last nightly run that passed on this commit still covers it: `passedAt` is when it
+ * ran (empty when none passed on this commit).
+ */
+export function nightlyCovers(passedAt: string | undefined, now: number): boolean {
+  const at = passedAt ? Date.parse(passedAt) : Number.NaN;
+  return Number.isFinite(at) && now - at < NIGHTLY_COVERS_MS;
+}
+
+/** The event, from GitHub's event name and payload; `ref` is the run's (`GITHUB_REF`). */
+export function ciEvent(
+  name: string,
+  payload: Payload,
+  nightlyPassed: boolean,
+  ref?: string,
+): CiEvent {
   switch (name) {
     case "pull_request": {
       const pr = payload.pull_request ?? {};
@@ -47,7 +68,11 @@ export function ciEvent(name: string, payload: Payload, nightlyPassed: boolean):
       return { name, alreadyPassed: nightlyPassed };
     case "workflow_dispatch": {
       const full = payload.inputs?.full;
-      return { name, full: !(full === false || full === "false") };
+      return {
+        name,
+        full: !(full === false || full === "false"),
+        ...(ref === "refs/heads/main" ? { onMain: true } : {}),
+      };
     }
     default:
       throw new Error(`ci.ts doesn't know the event "${name}"`);
@@ -105,7 +130,12 @@ if (import.meta.main) {
     name === "pull_request" && pullFile && existsSync(pullFile)
       ? { ...original, pull_request: JSON.parse(readFileSync(pullFile, "utf8")) as Pull }
       : original;
-  const event = ciEvent(name, payload, process.env["MOSTRA_CI_NIGHTLY_PASSED"] === "1");
+  const event = ciEvent(
+    name,
+    payload,
+    nightlyCovers(process.env["MOSTRA_CI_NIGHTLY_PASSED_AT"], Date.now()),
+    process.env["GITHUB_REF"],
+  );
   const runnersJson = process.env["MOSTRA_CI_RUNNERS"];
   const runners: Runners = runnersJson
     ? (JSON.parse(runnersJson) as Runners)

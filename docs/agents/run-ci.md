@@ -12,8 +12,8 @@ lists the jobs.
 | The `ci:full` label on a pull request | Everything, on every leg, as the merge queue runs it (takes effect on the next push or re-run) |
 | A bot's draft pull request (Renovate) | Nothing, until it is ready for review |
 | The merge queue | The affected jobs on every leg: Windows arm64 and the four-platform rehearsal join; this run gates the merge |
-| Nightly on `main` (03:23 UTC) | Everything, unless the last nightly run passed on the same commit |
-| By hand (`gh workflow run ci.yml`) | Everything (`-f full=false` for the jobs the branch affects) |
+| Nightly on `main` (03:23 UTC) | Everything, unless the last nightly run passed on the same commit less than 6 days before. When its Linux legs run on Blacksmith, each runs on GitHub's runners too (`linux-github`), so both cache stores stay warm for the fallback (#86) |
+| By hand (`gh workflow run ci.yml`) | Everything (`-f full=false` for the jobs the branch affects); on `main` it saves caches as the nightly run does |
 | A push to `main` | No `CI`: what merged already passed the queue. `Release` decides whether a version is due, CodeQL and Scorecard run |
 
 The plan job's summary shows the scope, the runners chosen and every leg.

@@ -1382,6 +1382,25 @@ const SEEDS: readonly Seed[] = [
     check: ["test/ci.test.ts", "-t", "names each leg's Turbo cache"],
     cwd: "../../tools",
   },
+  // MT-02, #86: both cache stores stay warm, so the fallback to GitHub's runners starts warm.
+  {
+    requirement: "EN-07",
+    name: "a nightly run on Blacksmith saves no cache to GitHub's store (#86)",
+    file: "../../tools/check/matrix.ts",
+    from: '  if (!scope.saves || runners.pool !== "blacksmith") return [...legs];',
+    to: "  return [...legs];",
+    check: ["test/ci.test.ts", "-t", "keeps both cache stores warm"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
+    name: "a passed nightly run covers its commit past the stores' 7-day eviction (#86)",
+    file: "../../tools/check/ci.ts",
+    from: "  return Number.isFinite(at) && now - at < NIGHTLY_COVERS_MS;",
+    to: "  return Number.isFinite(at);",
+    check: ["test/ci.test.ts", "-t", "repeats a passed nightly run"],
+    cwd: "../../tools",
+  },
   // MT-01, #45: receivers read what a newer peer adds within a revision.
   {
     requirement: "HO-07",
