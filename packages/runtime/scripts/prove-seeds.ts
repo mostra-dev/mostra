@@ -1305,6 +1305,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "the deadline looks for test homes only where macOS doesn't keep them (#55, GPT review)",
+    file: "../../tools/check/deadline.ts",
+    from: 'const roots = platform === "win32" ? [temporary] : [temporary, "/tmp"];',
+    to: "const roots = [temporary];",
+    check: ["test/deadline.test.ts"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "the deadline stops processes outside its own run (#55)",
     file: "../../tools/check/deadline.ts",
     from: "    if (seen.has(pid)) continue;",

@@ -10,7 +10,7 @@
  * file that hung never reached the `afterAll` that keeps its homes' logs.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, type Dirent, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, type Dirent, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -64,6 +64,24 @@ export function supervisorLogDirs(root: string, depth = 4): string[] {
   return found;
 }
 
+/**
+ * Where test homes live: the system's temporary directory, and on POSIX `/tmp`, where the runtime's
+ * suites make their short-pathed homes (`tempDir(…, true)`, for macOS's 104-byte socket paths),
+ * which on macOS isn't `tmpdir()` (GPT review of MT-02). Each real directory once.
+ */
+export function searchRoots(platform: NodeJS.Platform, temporary: string): string[] {
+  const roots = platform === "win32" ? [temporary] : [temporary, "/tmp"];
+  const real = new Map<string, string>();
+  for (const root of roots) {
+    try {
+      real.set(realpathSync.native(root), root);
+    } catch {
+      // Missing: nothing lives there.
+    }
+  }
+  return [...real.keys()];
+}
+
 /** Writes the hang report; returns its text. */
 export function reportHang(minutes: number, into: string | undefined): string {
   const { command, args } = processListing(process.platform);
@@ -80,13 +98,14 @@ export function reportHang(minutes: number, into: string | undefined): string {
   if (into) {
     mkdirSync(into, { recursive: true });
     writeFileSync(join(into, "hang.txt"), `${text}\n`);
-    const root = tmpdir();
-    for (const dir of supervisorLogDirs(root)) {
-      const name = relative(root, dir).replaceAll(/[\\/]/g, "-");
-      try {
-        cpSync(dir, join(into, "leftover", name), { recursive: true });
-      } catch {
-        // A log still being written is kept as far as it could be read.
+    for (const root of searchRoots(process.platform, tmpdir())) {
+      for (const dir of supervisorLogDirs(root)) {
+        const name = relative(root, dir).replaceAll(/[\\/]/g, "-");
+        try {
+          cpSync(dir, join(into, "leftover", name), { recursive: true });
+        } catch {
+          // A log still being written is kept as far as it could be read.
+        }
       }
     }
   }
@@ -125,7 +144,8 @@ function stopDescendants(): void {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid}" | ForEach-Object { taskkill.exe /F /T /PID $_.ProcessId }`,
+        // Not PowerShell itself, a child of this process too, which would end the cleanup first.
+        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid}" | Where-Object { $_.ProcessId -ne $PID } | ForEach-Object { taskkill.exe /F /T /PID $_.ProcessId }`,
       ],
       { stdio: "ignore", timeout: 120_000, windowsHide: true },
     );

@@ -2,11 +2,11 @@
  * `pnpm check --deadline` (tools/check/deadline.ts, #55): a run still going at its deadline lists
  * every process, keeps the supervisor logs its test homes still hold, and stops what it started.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { descendants, processListing, supervisorLogDirs } from "../check/deadline.ts";
+import { descendants, processListing, searchRoots, supervisorLogDirs } from "../check/deadline.ts";
 
 const root = mkdtempSync(join(tmpdir(), "mostra-deadline-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -53,6 +53,15 @@ describe("pnpm check --deadline (#55)", () => {
     mkdirSync(join(root, "pkg", "node_modules", "x", "logs"), { recursive: true });
     writeFileSync(join(root, "pkg", "node_modules", "x", "logs", "supervisor.log"), "{}\n");
     expect(supervisorLogDirs(root).sort()).toEqual([home, nested].sort());
+  });
+
+  it("looks where the test homes are: /tmp on POSIX as well as the temporary directory (GPT review of MT-02)", () => {
+    const roots = searchRoots("darwin", root);
+    expect(roots).toContain(realpathSync.native(root));
+    expect(roots).toContain(realpathSync.native("/tmp"));
+    // Each real directory once, however it is named.
+    expect(searchRoots("linux", "/tmp")).toEqual([realpathSync.native("/tmp")]);
+    expect(searchRoots("win32", root)).toEqual([realpathSync.native(root)]);
   });
 
   it("lists processes with what a hang shows on every system", () => {
