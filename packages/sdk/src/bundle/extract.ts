@@ -2,7 +2,8 @@
  * Unpacking a downloaded archive (RT-01) into a new, empty directory. Only regular files,
  * directories and symbolic links are accepted, all under the archive's one top directory, which is
  * stripped; an entry's path must be relative, with no `..`, `.` or empty part and no backslash
- * (nor, on Windows, a colon), and no path may appear twice. Links are made only after every file
+ * (nor, on Windows, a colon; node-tar reads a backslash there as a separator, so its parts are
+ * judged as separate ones), and no path may appear twice. Links are made only after every file
  * and directory is written, so no write ever goes through one. Setup then checks the whole tree
  * against the bundle's file list (`checkTree`), which refuses any file or link it doesn't list and
  * any link that leaves the bundle. A pinned archive's SHA-256 is checked before any of this. A

@@ -118,7 +118,12 @@ describe("the bundle extractor (RT-01, #88)", () => {
     ["an absolute path", "/tmp/escaped.txt", "outside the bundle's directory"],
     ["a dot", `${TOP}/./x.txt`, "isn't a plain relative one"],
     ["an empty part", `${TOP}/a//x.txt`, "isn't a plain relative one"],
-    ["a backslash", `${TOP}/a\\..\\..\\x.txt`, "a character"],
+    // node-tar reads a backslash as a separator on Windows, where the `..` then refuses it.
+    [
+      "a backslash",
+      `${TOP}/a\\..\\..\\x.txt`,
+      WINDOWS ? "isn't a plain relative one" : "a character",
+    ],
   ])("refuses %s, writing nothing outside", async (_what, name, why) => {
     const { error, outside } = await extract([
       { name: `${TOP}/`, type: "5" },
