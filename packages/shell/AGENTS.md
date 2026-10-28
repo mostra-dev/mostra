@@ -43,7 +43,9 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   (`ui/initialize`) within `GREETING_MS`, or greeted nothing within `LOAD_MS`, is entered again
   with a new ticket, `RELOAD_LIMIT` times with a doubling pause, then `FRAME_WORDS.unreachable`
   shows; `data-frame-reloads` counts the attempts (`gave-up` past the limit). Only a frame that
-  never greeted is replaced: its page ran nothing the viewer could lose.
+  never greeted is replaced: its page ran nothing the viewer could lose. So a ticket that arrives
+  after the frame greeted or loaded is dropped (the request is aborted and its answer ignored), and
+  each ticket request has `RELOAD_TICKET_MS` before it counts as a failed attempt.
 - **The frame never navigates the viewer's tab (D98 item 7).** It is sandboxed with every token
   but `allow-top-navigation*`, filtered by `sandbox.supports`; it sends the viewer elsewhere with
   `ui/open-link`, which `src/links.ts` opens in a new tab for the `OPEN_LINK_SCHEMES` only. Don't

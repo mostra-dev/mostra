@@ -132,12 +132,21 @@ export function readSession(apiBase: string): Promise<ShellSession> {
   return call(`${apiBase}/session`, { method: "GET" });
 }
 
-/** Gets a single-use ticket for the artifact's frame, for a pinned version or the latest. */
-export function frameTicket(apiBase: string, csrf: string, version?: number): Promise<FrameTicket> {
+/**
+ * Gets a single-use ticket for the artifact's frame, for a pinned version or the latest; `signal`
+ * ends the request, which then fails as a network error.
+ */
+export function frameTicket(
+  apiBase: string,
+  csrf: string,
+  version?: number,
+  signal?: AbortSignal,
+): Promise<FrameTicket> {
   return call(`${apiBase}/ticket`, {
     method: "POST",
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
     body: JSON.stringify(version === undefined ? {} : { version }),
+    ...(signal ? { signal } : {}),
   });
 }
 

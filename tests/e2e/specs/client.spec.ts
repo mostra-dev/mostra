@@ -179,6 +179,88 @@ test.describe("a frame whose load fails (D157, #66)", () => {
     }
   });
 
+  test("isn't replaced when it greets while its new ticket is on its way (the GPT review of MT-02b)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The frame's handshake fails for 10 s, so it greets late (its page retries after 0.5, 1, 2,
+      // 4 and 8 s), and the shell asks for a ticket to load it again meanwhile; that request is
+      // held until the frame has greeted, then answered.
+      const started = Date.now();
+      const sessionRead = (url: URL): boolean => url.pathname === "/_mostra/session";
+      const failForAWhile = async (route: import("@playwright/test").Route): Promise<void> => {
+        if (Date.now() - started > 10_000) return route.fallback();
+        await route.abort("connectionrefused");
+      };
+      await page.route(sessionRead, failForAWhile);
+      let tickets = 0;
+      const ticketRequest = (url: URL): boolean => url.pathname.endsWith("/ticket");
+      await page.route(ticketRequest, async (route) => {
+        tickets += 1;
+        if (tickets === 1) return route.fallback();
+        await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+          timeout: 40_000,
+        });
+        await route.fallback().catch(() => undefined);
+      });
+      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      const view = await page.locator("iframe.mostra-frame").getAttribute("data-mostra-view");
+      await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "1", {
+        timeout: 30_000,
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 40_000,
+      });
+      await page.unroute(sessionRead, failForAWhile);
+      // The ticket that came after the greeting was dropped: the same frame stays, and works.
+      await page.waitForTimeout(3_000);
+      expect(await page.locator("iframe.mostra-frame").getAttribute("data-mostra-view")).toBe(view);
+      expect(tickets).toBe(2);
+      const frame = page.frameLocator("iframe.mostra-frame");
+      await frame.getByTestId("notes").fill("kept in the frame that greeted");
+      await saved(page);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    } finally {
+      client.close();
+    }
+  });
+
+  test("gives up within its bound when its new tickets never answer (the GPT review of MT-02b)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(150_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const enter = (url: URL): boolean => url.pathname === "/_mostra/enter";
+      await page.route(enter, (route) => route.abort("connectionrefused"));
+      // Every ticket after the first is held and never answered.
+      let tickets = 0;
+      await page.route(
+        (url) => url.pathname.endsWith("/ticket"),
+        async (route) => {
+          tickets += 1;
+          if (tickets === 1) return route.fallback();
+          await new Promise(() => undefined);
+        },
+      );
+      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "gave-up", {
+        timeout: 120_000,
+      });
+      await expect(
+        page.getByText("This page didn't load. Reload this page to try again."),
+      ).toBeVisible();
+      expect(tickets).toBe(4);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    } finally {
+      client.close();
+    }
+  });
+
   test("is loaded again a few times, then the viewer is told", async ({ page }, info) => {
     test.setTimeout(150_000);
     const client = await Client.connect(run.socket);

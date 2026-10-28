@@ -117,6 +117,8 @@ const LOAD_MS = 12_000;
 const RELOAD_LIMIT = 3;
 /** The pause before the first reload, doubled for each after it. */
 const RELOAD_BACKOFF_MS = 1_000;
+/** How long one reload waits for its ticket: one that never answers counts as a failed attempt. */
+const RELOAD_TICKET_MS = 10_000;
 
 const FRAME_ALLOW = [
   "accelerometer",
@@ -480,14 +482,19 @@ export function ViewerPage(props: {
   // A frame that loaded and never greeted the shell, or never loaded, is entered again with a new
   // ticket for this view's version, a few times with a growing pause, then the viewer is told
   // (D157 item 1). A frame that never greeted never ran its client runtime, so nothing the viewer
-  // typed is in it. A frame that greets resets the count. An attempt that couldn't get a ticket
-  // keeps the frame there is, whose page keeps trying on its own, and counts as an attempt.
+  // typed is in it. A frame that greets resets the count. An attempt that couldn't get a ticket in
+  // time keeps the frame there is, whose page keeps trying on its own, and counts as an attempt.
+  // A ticket is used only while this wait still stands: a frame that greeted, or loaded, while the
+  // ticket was asked for ended it (the GPT review of MT-02b), so a page that works is never
+  // replaced.
   useEffect(() => {
     if (frameKind !== "loading") {
       reloads.current = 0;
       return;
     }
     let pause: ReturnType<typeof setTimeout> | undefined;
+    const asking = new AbortController();
+    let standing = true;
     const wait = setTimeout(
       () => {
         if (reloads.current >= RELOAD_LIMIT) {
@@ -500,13 +507,17 @@ export function ViewerPage(props: {
         mark("", { frameReloads: String(reloads.current) });
         pause = setTimeout(
           () => {
-            void frameTicket(target.apiBase, session.csrf, ticket.version.number)
+            const deadline = setTimeout(() => asking.abort(), RELOAD_TICKET_MS);
+            void frameTicket(target.apiBase, session.csrf, ticket.version.number, asking.signal)
               .then((next) => {
+                if (!standing) return;
                 setFocusFrame(frameHasFocus());
                 setTicket(next);
               })
-              .catch(() => undefined)
-              .finally(() => setReloadAttempts((count) => count + 1));
+              .catch(() => {
+                if (standing) setReloadAttempts((count) => count + 1);
+              })
+              .finally(() => clearTimeout(deadline));
           },
           RELOAD_BACKOFF_MS * 2 ** attempt,
         );
@@ -514,8 +525,10 @@ export function ViewerPage(props: {
       frameLoaded ? GREETING_MS : LOAD_MS,
     );
     return () => {
+      standing = false;
       clearTimeout(wait);
       if (pause !== undefined) clearTimeout(pause);
+      asking.abort();
     };
   }, [ticket, frameLoaded, frameKind, reloadAttempts, target.apiBase, session.csrf]);
 
