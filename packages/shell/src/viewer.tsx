@@ -72,6 +72,7 @@ import {
   BLOCKER_WORDS,
   CONTROL_WORDS,
   DEV_WORDS,
+  FRAME_WORDS,
   ORPHAN_WORDS,
   RECEIPT_WORDS,
   SAVE_WORDS,
@@ -97,6 +98,25 @@ const CATCH_UP_MS = 5_000;
 /** How many times within {@link REENTRY_WINDOW_MS} the frame is loaded again at its version. */
 const REENTRY_LIMIT = 3;
 const REENTRY_WINDOW_MS = 10_000;
+
+/**
+ * How long a frame that loaded has to greet the shell (`ui/initialize`) before it is loaded again
+ * (D157 item 1): a frame whose load failed (Chromium's `ERR_NO_BUFFER_SPACE` on Windows, #66)
+ * shows the browser's error page, which loads and never greets. A page greets within moments of
+ * loading; one still retrying its own handshake has nothing yet to lose by loading again.
+ */
+const GREETING_MS = 6_000;
+/**
+ * How long a frame that hasn't loaded has to greet the shell: a page greets before it finishes
+ * loading (its scripts run before its images and other subresources), while a load that failed
+ * may never fire `load` (Firefox's and WebKit's error pages) and a request that never answered
+ * never does.
+ */
+const LOAD_MS = 12_000;
+/** How many times a frame that never greeted is loaded again before the viewer is told. */
+const RELOAD_LIMIT = 3;
+/** The pause before the first reload, doubled for each after it. */
+const RELOAD_BACKOFF_MS = 1_000;
 
 const FRAME_ALLOW = [
   "accelerometer",
@@ -204,6 +224,8 @@ function Frame(props: {
   readonly onBridge: (bridge: Bridge | undefined) => void;
   /** Whether the frame this one replaces had the focus: the viewer keeps working in it. */
   readonly focus: boolean;
+  /** The frame's document loaded: the page, or the browser's own error page. */
+  readonly onLoaded: () => void;
 }): ReactElement {
   const frameElement = useRef<HTMLIFrameElement>(null);
   const handlersRef = useLatest(props.handlers);
@@ -277,7 +299,10 @@ function Frame(props: {
       data-mostra-view={ticket.viewId}
       src={ticket.src}
       title={props.title}
-      onLoad={props.focus ? (event) => event.currentTarget.focus() : undefined}
+      onLoad={(event) => {
+        if (props.focus) event.currentTarget.focus();
+        props.onLoaded();
+      }}
       allow={FRAME_ALLOW}
       sandbox={frameSandbox()}
     />
@@ -419,6 +444,13 @@ export function ViewerPage(props: {
   const frameKindRef = useLatest(frameKind);
   const bridge = useRef<Bridge | undefined>(undefined);
   const reentries = useRef<number[]>([]);
+  // Whether the current frame's document loaded, and how many times in a row a frame was loaded
+  // again because it never greeted the shell (D157 item 1).
+  const [frameLoaded, setFrameLoaded] = useState(false);
+  const reloads = useRef(0);
+  // Bumped after each attempt to load the frame again, so the wait for its greeting starts over,
+  // also when the attempt couldn't get a ticket (the daemon restarting).
+  const [reloadAttempts, setReloadAttempts] = useState(0);
   // The trusted controls take clicks only once armed (Claude review finding 6): ARM_MS after
   // they appear or change, and after this page is shown (a popup of the shell opened under a
   // second click, a tab brought forward).
@@ -431,6 +463,7 @@ export function ViewerPage(props: {
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
   }, []);
+  const onFrameLoaded = useCallback(() => setFrameLoaded(true), []);
 
   // A new view (the first, or after a switch) starts from its own state: reset while rendering,
   // as React advises for state that follows a prop, so no render shows the old view's state.
@@ -441,7 +474,50 @@ export function ViewerPage(props: {
     setBlocked([]);
     setProblem(undefined);
     setFrameKind("loading");
+    setFrameLoaded(false);
   }
+
+  // A frame that loaded and never greeted the shell, or never loaded, is entered again with a new
+  // ticket for this view's version, a few times with a growing pause, then the viewer is told
+  // (D157 item 1). A frame that never greeted never ran its client runtime, so nothing the viewer
+  // typed is in it. A frame that greets resets the count. An attempt that couldn't get a ticket
+  // keeps the frame there is, whose page keeps trying on its own, and counts as an attempt.
+  useEffect(() => {
+    if (frameKind !== "loading") {
+      reloads.current = 0;
+      return;
+    }
+    let pause: ReturnType<typeof setTimeout> | undefined;
+    const wait = setTimeout(
+      () => {
+        if (reloads.current >= RELOAD_LIMIT) {
+          mark("", { frameReloads: "gave-up" });
+          setProblem(FRAME_WORDS.unreachable);
+          return;
+        }
+        const attempt = reloads.current;
+        reloads.current += 1;
+        mark("", { frameReloads: String(reloads.current) });
+        pause = setTimeout(
+          () => {
+            void frameTicket(target.apiBase, session.csrf, ticket.version.number)
+              .then((next) => {
+                setFocusFrame(frameHasFocus());
+                setTicket(next);
+              })
+              .catch(() => undefined)
+              .finally(() => setReloadAttempts((count) => count + 1));
+          },
+          RELOAD_BACKOFF_MS * 2 ** attempt,
+        );
+      },
+      frameLoaded ? GREETING_MS : LOAD_MS,
+    );
+    return () => {
+      clearTimeout(wait);
+      if (pause !== undefined) clearTimeout(pause);
+    };
+  }, [ticket, frameLoaded, frameKind, reloadAttempts, target.apiBase, session.csrf]);
 
   // Its stream and orphans.
   useEffect(() => {
@@ -660,7 +736,11 @@ export function ViewerPage(props: {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
     },
-    onInitialized: (kind) => setFrameKind(kind),
+    onInitialized: (kind) => {
+      setFrameKind(kind);
+      // A page that greets after the shell gave up on it (it kept trying on its own) is here.
+      setProblem((current) => (current === FRAME_WORDS.unreachable ? undefined : current));
+    },
     onWrongVersion: () => {
       // The frame session serves the version it last entered, which another tab may have moved
       // on (D98 item 5): this view's version is entered again. Several in a row mean two tabs
@@ -783,6 +863,7 @@ export function ViewerPage(props: {
           ticket={ticket}
           handlers={handlers}
           onBridge={onBridge}
+          onLoaded={onFrameLoaded}
         />
       </div>
     );
@@ -948,6 +1029,7 @@ export function ViewerPage(props: {
           ticket={ticket}
           handlers={handlers}
           onBridge={onBridge}
+          onLoaded={onFrameLoaded}
         />
         {(problem !== undefined || blocked.length > 0) && (
           <aside
