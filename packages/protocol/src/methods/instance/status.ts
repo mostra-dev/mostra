@@ -2,6 +2,7 @@ import * as z from "zod";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 import { InstanceInfo } from "../mostra/initialize.ts";
+import { Share } from "../share/start.ts";
 
 /** The params of `instance/status` (INTERFACES §6): none. */
 export type InstanceStatusParams = Record<string, never>;
@@ -26,6 +27,25 @@ export interface GatewayStatus {
   readonly shell: string;
   /** The artifact origins it is serving now, one per opened artifact. */
   readonly artifacts: readonly { readonly artifactId: string; readonly origin: string }[];
+  /**
+   * The gateway's external addresses (D158 item 1): a share's tunnel addresses and a host's
+   * external bases, each a listener of its own on loopback (WP-13).
+   */
+  readonly faces?: readonly FaceStatus[];
+}
+
+/** One external address of the gateway (D158 item 1). */
+export interface FaceStatus {
+  /** The origin browsers use. */
+  readonly origin: string;
+  /** The loopback origin the tunnel or the host forwards it to. */
+  readonly local: string;
+  /** Which listener it fronts: the shell, or one artifact's frame. */
+  readonly listener: "shell" | "artifact";
+  /** The artifact, for an artifact's face. */
+  readonly artifactId?: string;
+  /** Who keeps it: a share's tunnel (`tailnet`, `funnel`, `cloudflare`) or a host (`host`). */
+  readonly by: "tailnet" | "funnel" | "cloudflare" | "host" | (string & {});
 }
 
 /**
@@ -51,6 +71,8 @@ export interface InstanceStatusResult {
   readonly workers?: readonly WorkerStatus[];
   /** When the daemon exits for lack of work, if it will (WP-08, RT-08); absent: it won't. */
   readonly idleExitAt?: string;
+  /** The active shares (WP-13, D158), which keep a daemon from its idle exit. */
+  readonly shares?: readonly Share[];
 }
 
 /** One artifact version's worker (RT-03, D62). */
@@ -127,6 +149,18 @@ export const GatewayStatus: z.ZodType<GatewayStatus> = z
     bind: z.string(),
     shell: z.string(),
     artifacts: z.array(z.object({ artifactId: z.string(), origin: z.string() })).readonly(),
+    faces: z
+      .array(
+        z.object({
+          origin: z.string(),
+          local: z.string(),
+          listener: z.enum(["shell", "artifact"]),
+          artifactId: z.string().exactOptional(),
+          by: z.string(),
+        }),
+      )
+      .readonly()
+      .exactOptional(),
   })
   .register(wireRegistry, { id: "GatewayStatus", description: "Where the gateway listens." });
 
@@ -158,6 +192,7 @@ const result: z.ZodType<InstanceStatusResult> = z
     deliveries: z.array(DeliveryCounts).readonly().exactOptional(),
     workers: z.array(WorkerStatus).readonly().exactOptional(),
     idleExitAt: z.string().exactOptional(),
+    shares: z.array(Share).readonly().exactOptional(),
   })
   .register(wireRegistry, { id: "InstanceStatusResult" });
 

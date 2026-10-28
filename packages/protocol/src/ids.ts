@@ -28,7 +28,8 @@ export type IdPrefix =
   | "thr"
   | "cmt"
   | "tok"
-  | "mut";
+  | "mut"
+  | "shr";
 
 /**
  * A branded ID string. The brand exists only at the type level, so an `Id<"art">` is a plain
@@ -240,6 +241,13 @@ export type MutationId = Id<"mut">;
 /** Mutation IDs. */
 export const MutationId: GeneratedIdKind<"mut"> = generated(
   defineKind("mut", "mutation", "ulid", "MutationId"),
+);
+
+/** A share ID (`shr_` + ULID): one share of an artifact through a tunnel (D158). */
+export type ShareId = Id<"shr">;
+/** Share IDs. */
+export const ShareId: GeneratedIdKind<"shr"> = generated(
+  defineKind("shr", "share", "ulid", "ShareId"),
 );
 
 /**

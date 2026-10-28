@@ -428,6 +428,37 @@ export const mostraFieldFocus: BridgeMessage<{ readonly id: string }, undefined>
   result: z.undefined(),
 };
 
+/** The params of `mostra/frameSession.failed`. */
+export interface FrameSessionFailedParams {
+  /** `MOSTRA_HYGIENE_FRAME_SESSION`. */
+  readonly code: string;
+  /** What went wrong, for the shell to show. */
+  readonly message: string;
+  /**
+   * Why: `unsupported` (this browser offers the frame no service worker, as in a private window),
+   * `blocked` (the browser refused to install it), `conflict` (another service worker holds `/`
+   * on the artifact's origin), or `refused` (the gateway refused the frame's entry).
+   */
+  readonly reason: "unsupported" | "blocked" | "conflict" | "refused" | (string & {});
+}
+
+/**
+ * `mostra/frameSession.failed`: the worker-mode bootstrap page (D70, D158 item 5) couldn't start
+ * the frame's session. It is sent before any client runtime runs, so the shell shows why instead
+ * of a frame that never greets.
+ */
+export const mostraFrameSessionFailed: BridgeMessage<FrameSessionFailedParams, undefined> = {
+  method: "mostra/frameSession.failed",
+  from: "artifact",
+  kind: "notification",
+  params: z.looseObject({
+    code: z.string().min(1).max(128),
+    message: z.string().max(BRIDGE_TEXT_MAX),
+    reason: z.string().min(1).max(64),
+  }),
+  result: z.undefined(),
+};
+
 /**
  * Every message of the bridge in this release. WP-20 adds review messages; a message never
  * changes meaning once released (D32).
@@ -444,6 +475,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraFlush,
   mostraVersionAvailable,
   mostraFieldFocus,
+  mostraFrameSessionFailed,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

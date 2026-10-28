@@ -196,7 +196,12 @@ function generateMethod(method: string): string[] {
   const [group, name] = method.includes("/") ? method.split("/") : ["root", method];
   const base = pascal(`${group} ${name}`);
   const constName = `${camel(`${group} ${name}`)}Method`;
-  const file = `packages/protocol/src/methods/${group}/${(name ?? "").replace(/\./g, "-")}.ts`;
+  // Kebab case, as every method module is named: `trustedControls.policy` → `trusted-controls-policy`.
+  const kebab = (name ?? "")
+    .replace(/\./g, "-")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+  const file = `packages/protocol/src/methods/${group}/${kebab}.ts`;
   const requestId = values.mutating
     ? [
         "  /** Makes retries idempotent: a repeated `requestId` returns the recorded result (H-03). */",
