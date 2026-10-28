@@ -1,6 +1,6 @@
 # MT-02b progress: the Windows connection failures and the protocol's Node.js line
 
-**Status:** In progress. A second maintenance unit between WP-W3 and WP-13, approved by Mirza on 2026-10-27 (M44, D156), continuing MT-02 in the same session. It owns no requirement of its own; the checks it adds extend their owners' rows. Its scope is the GitHub milestone `MT-02b`: #92 (`@mostra/protocol` declares a newer Node.js than the CLI and SDK that depend on it), #66 whole (Windows browser failures: Chromium's `ERR_NO_BUFFER_SPACE`, requests left unanswered, the emulated Firefox closing a page, Vitest's worker crashes) and #39 whole (the tab-close and reopen path, whose occurrences share #66's shape). #46, #85 and #55 stay unassigned (D155 item 7). Done when D156 item 4 holds.
+**Status:** Done. Accepted by Mirza on 2026-10-28 (M46: "absolutely incredible! … I 100% accept and approve, we can merge, release, close out and finalize MT-02b") with D157 and its agent-facing prose, after two GPT-6.1-Sol reviews and their fixes; merged to `main` through the merge queue as `1a49630` (#94) and released as Mostra 0.6.2. A second maintenance unit between WP-W3 and WP-13, approved on 2026-10-27 (M44, D156), continuing MT-02 in the same session. It owns no requirement of its own; the checks it adds extend their owners' rows. Its scope was the milestone `MT-02b`: #92, #66 and #39.
 
 ## Baseline
 
@@ -64,3 +64,48 @@ MT-02b owns no requirement (D156). Its checks extend their owners' rows, named i
   5. (P2) A version switch inherited a used-up recovery budget; a switch the viewer chooses gets the whole budget again (e2e "gets its whole budget again when the viewer switches", three engines).
 - **Claude Opus 5.5**: not run; Mirza chose the second GPT review in its place (M46).
 - **Copilot**: no review (its quota).
+
+## Agent-facing prose (D149)
+
+Accepted by Mirza with the unit (M46), in one batch:
+- the viewer-facing line "This page didn't load. Reload this page to try again." (`packages/shell/src/words.ts`);
+- `packages/shell/AGENTS.md` (the frame's recovery and `src/entries.ts`);
+- `packages/runtime/AGENTS.md` (the test-only `MOSTRA_TEST_REQUEST_LOG`);
+- `docs/agents/update-dependency.md` (a dependency's Node.js line).
+
+## Untested boundaries
+
+- **A Windows desktop with Chrome or Edge.** The cause and the fixes were observed only on GitHub's Windows Server 2025 x64 and Windows 11 arm64 runners. The shell's recovery is proven by refusing the frame's load on purpose, in Chromium, Firefox and WebKit, not by Chromium's own collision.
+- **Whether the gateway's 305 s keep-alive ends the collisions** rather than only making them rarer: no CI run after it met `ERR_NO_BUFFER_SPACE`, which proves nothing at its rate (about 1 in 15,000 to 30,000 connections). The shell's recovery covers what's left.
+- **#95's three parts:** Firefox's unanswered requests, Vitest's lost browser and Node.js's `connect ENOBUFS` were each seen once and never reproduced.
+
+## Deviations
+
+- **The second review was GPT-6.1-Sol, not Claude Opus 5.5** (D144), by Mirza's choice at M46. It ran as `codex exec` with the prompt written for Opus, since `codex review --base` takes no instructions.
+- **#66 closed by hand:** #94's description put both issues in one "Closes" phrase, which GitHub reads for the first issue only, so #66 was closed with a comment after the merge.
+- **The version pull request's local check:** format-lint, types, boundaries, api, licenses and docs ran locally. The whole `pnpm check --affected` didn't, since on this machine's load it takes about 45 minutes and times out, as at 0.6.1 (#91). The merge queue rehearsed all six platforms.
+- **Temporary probe branch** `probe/mt02b-connect` (never merged) established #66's cause; its runs are cited in VERIFIED_FACTS, and it was deleted once measured.
+
+## Issues
+
+| Issue | Disposition |
+|---|---|
+| #92 | Fixed; closed by the merge |
+| #66 | Fixed (D157); closed with the merge, by hand |
+| #95 (new) | #66's unexplained parts, on no milestone (D155 item 7, M46) |
+| #39 | Open, on no milestone again (M46) |
+| #46, #55, #85 | Unchanged, on no milestone (D155 item 7) |
+
+## Commits and publication
+
+- **Range:** `0f81e48..5917cf1` on `main`: the signed-off commits of `mt/02b-windows-connections` and the merge commit of [#94](https://github.com/mostra-dev/mostra/pull/94) (`1a49630`), then the version pull request [#96](https://github.com/mostra-dev/mostra/pull/96) (`5917cf1`).
+- **Released, Mostra 0.6.2** (D36, `docs/agents/release.md`): [release run 40745231452](https://github.com/mostra-dev/mostra/actions/runs/40745231452), 20 jobs green. It published the immutable GitHub release [`v0.6.2`](https://github.com/mostra-dev/mostra/releases/tag/v0.6.2) with its 13 assets, the npm packages at 0.6.2 with provenance, and `mostra-host` 0.6.2 on crates.io.
+- **External checks, 2026-10-28:**
+  - `gh attestation verify mostra-0.6.2-win32-x64.tar.gz` passes (SLSA provenance v1), and the darwin-arm64 and win32-x64 archives match `SHA256SUMS`.
+  - `npm view` shows 0.6.2 with SLSA provenance for `@mostra/cli`, `runtime`, `sdk`, `protocol`, `conformance`, `react`, `shell`, `verify`, `worker`, `server` and `create-mostra`. `@mostra/protocol@0.6.2` declares `>=22.19`. crates.io's latest `mostra-host` is 0.6.2.
+  - On this Mac on **Node.js 22.19.0**, with empty home, cache, config and npm cache directories, `npm create mostra@0.6.2 my-artifact` installed the pinned bundle and scaffolded the artifact in 118 s with no `EBADENGINE` warning (#92). `verify` returned `pass`, `publish` made `ver_HS8DTDRARSJBFKTKP3P4A9NMCY`, and `doctor` reported every check `ok`.
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, probe workflows, CI logs, traces, review texts and the external smoke in `~/.jcode/scratch/mt02`, and test homes under the system's temporary directory.
+
+## Next
+
+WP-13, sharing and remote viewing (`docs/design/work-packages/WP-13.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-13`. Its milestone is empty, and #46, #55, #85, #39 and #95 are on no milestone (D155 item 7).
