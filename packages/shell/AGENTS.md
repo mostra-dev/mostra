@@ -45,7 +45,11 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   shows; `data-frame-reloads` counts the attempts (`gave-up` past the limit). Only a frame that
   never greeted is replaced: its page ran nothing the viewer could lose. So a ticket that arrives
   after the frame greeted or loaded is dropped (the request is aborted and its answer ignored), and
-  each ticket request has `RELOAD_TICKET_MS` before it counts as a failed attempt.
+  each ticket request has `RELOAD_TICKET_MS` before it counts as a failed attempt. Every entry of
+  the frame (the recovery, D115's re-entry, a version switch) and every greeting go through
+  `src/entries.ts`, which drops a ticket asked for before something happened to the frame: never
+  call `frameTicket` and `setTicket` around it. `verify` loads a failed frame again once
+  (`VERIFY_RELOAD_LIMIT`), and a switch the viewer chooses gets the whole budget again.
 - **The frame never navigates the viewer's tab (D98 item 7).** It is sandboxed with every token
   but `allow-top-navigation*`, filtered by `sandbox.supports`; it sends the viewer elsewhere with
   `ui/open-link`, which `src/links.ts` opens in a new tab for the `OPEN_LINK_SCHEMES` only. Don't

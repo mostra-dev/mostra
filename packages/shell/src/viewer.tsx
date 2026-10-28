@@ -47,6 +47,7 @@ import {
   setFollow,
   submit,
 } from "./api.ts";
+import { frameEntries } from "./entries.ts";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
@@ -113,8 +114,14 @@ const GREETING_MS = 6_000;
  * never does.
  */
 const LOAD_MS = 12_000;
-/** How many times a frame that never greeted is loaded again before the viewer is told. */
+/**
+ * How many times a frame that never greeted is loaded again before the viewer is told; `verify`
+ * (D138) loads it again once, which covers a connection that failed (two in a row are
+ * vanishingly rare), so a page that never greets (an artifact that throws as it loads) is
+ * reported soon, as it was before (the second GPT review of MT-02b).
+ */
 const RELOAD_LIMIT = 3;
+const VERIFY_RELOAD_LIMIT = 1;
 /** The pause before the first reload, doubled for each after it. */
 const RELOAD_BACKOFF_MS = 1_000;
 /** How long one reload waits for its ticket: one that never answers counts as a failed attempt. */
@@ -199,6 +206,8 @@ interface FrameHandlers {
   onPage(path: string): void;
   /** The frame loaded another version than its view's (D98 item 5). */
   onWrongVersion(): void;
+  /** A frame greeted the shell (`ui/initialize`), whatever its version: called at once. */
+  onGreeted(): void;
   /**
    * The page introduced itself: `runtime` when its client runtime speaks WP-07's messages (it
    * names its version), `legacy` for a version built before them.
@@ -246,6 +255,9 @@ function Frame(props: {
           // A frame that loaded another version than this view's (another tab moved the frame
           // session on) is answered as usual, and loaded again at this view's version.
           const loaded = (params as { mostra?: { versionId?: string } }).mostra?.versionId;
+          // At once, not in a microtask or a render: a ticket asked for before this greeting
+          // must never replace the frame (the second GPT review of MT-02b, finding 2).
+          handlersRef.current.onGreeted();
           if (loaded !== undefined && loaded !== ticket.version.id) {
             queueMicrotask(() => handlersRef.current.onWrongVersion());
           } else {
@@ -453,6 +465,11 @@ export function ViewerPage(props: {
   // Bumped after each attempt to load the frame again, so the wait for its greeting starts over,
   // also when the attempt couldn't get a ticket (the daemon restarting).
   const [reloadAttempts, setReloadAttempts] = useState(0);
+  // Every entry of the frame (the recovery, D115's re-entry, a switch) and every greeting goes
+  // through one owner, so a ticket asked for before something happened to the frame is dropped.
+  const [entries] = useState(frameEntries);
+  useEffect(() => () => entries.cancel(), [entries]);
+  const reloadLimit = ticket.target === "verify" ? VERIFY_RELOAD_LIMIT : RELOAD_LIMIT;
   // The trusted controls take clicks only once armed (Claude review finding 6): ARM_MS after
   // they appear or change, and after this page is shown (a popup of the shell opened under a
   // second click, a tab brought forward).
@@ -484,9 +501,9 @@ export function ViewerPage(props: {
   // (D157 item 1). A frame that never greeted never ran its client runtime, so nothing the viewer
   // typed is in it. A frame that greets resets the count. An attempt that couldn't get a ticket in
   // time keeps the frame there is, whose page keeps trying on its own, and counts as an attempt.
-  // A ticket is used only while this wait still stands: a frame that greeted, or loaded, while the
-  // ticket was asked for ended it (the GPT review of MT-02b), so a page that works is never
-  // replaced.
+  // A ticket is used only while this wait still stands and nothing happened to the frame since it
+  // was asked for (`entries`): a frame that greeted, or loaded, or another entry, ends it (the GPT
+  // reviews of MT-02b), so a page that works is never replaced.
   useEffect(() => {
     if (frameKind !== "loading") {
       reloads.current = 0;
@@ -497,7 +514,7 @@ export function ViewerPage(props: {
     let standing = true;
     const wait = setTimeout(
       () => {
-        if (reloads.current >= RELOAD_LIMIT) {
+        if (reloads.current >= reloadLimit) {
           mark("", { frameReloads: "gave-up" });
           setProblem(FRAME_WORDS.unreachable);
           return;
@@ -508,9 +525,18 @@ export function ViewerPage(props: {
         pause = setTimeout(
           () => {
             const deadline = setTimeout(() => asking.abort(), RELOAD_TICKET_MS);
-            void frameTicket(target.apiBase, session.csrf, ticket.version.number, asking.signal)
+            void entries
+              .enter((dropped) => {
+                dropped.addEventListener("abort", () => asking.abort(), { once: true });
+                return frameTicket(
+                  target.apiBase,
+                  session.csrf,
+                  ticket.version.number,
+                  asking.signal,
+                );
+              })
               .then((next) => {
-                if (!standing) return;
+                if (!standing || next === undefined) return;
                 setFocusFrame(frameHasFocus());
                 setTicket(next);
               })
@@ -530,7 +556,16 @@ export function ViewerPage(props: {
       if (pause !== undefined) clearTimeout(pause);
       asking.abort();
     };
-  }, [ticket, frameLoaded, frameKind, reloadAttempts, target.apiBase, session.csrf]);
+  }, [
+    ticket,
+    frameLoaded,
+    frameKind,
+    reloadAttempts,
+    reloadLimit,
+    entries,
+    target.apiBase,
+    session.csrf,
+  ]);
 
   // Its stream and orphans.
   useEffect(() => {
@@ -653,8 +688,15 @@ export function ViewerPage(props: {
             return;
           }
         }
-        const next = await frameTicket(target.apiBase, session.csrf, latest);
+        const next = await entries.enter((signal) =>
+          frameTicket(target.apiBase, session.csrf, latest, signal),
+        );
+        // A frame that greeted meanwhile, or an entry asked for after this one, wins.
+        if (next === undefined) return;
         mark("", { shellSwitch: `to-${String(next.version.number)}` });
+        // A switch the viewer chose gets the whole recovery budget again (the second GPT review of
+        // MT-02b, finding 5); the recovery's own entries keep counting.
+        reloads.current = 0;
         setFocusFrame(frameHasFocus());
         setTicket(next);
         setLater(undefined);
@@ -666,7 +708,7 @@ export function ViewerPage(props: {
         setBusy(undefined);
       }
     },
-    [target.apiBase, session.csrf, countNewOrphans, latestStateRef],
+    [target.apiBase, session.csrf, countNewOrphans, latestStateRef, entries],
   );
 
   // A newer version: its orphan count for the banner, the frame's notice, and following (D63).
@@ -749,6 +791,7 @@ export function ViewerPage(props: {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
     },
+    onGreeted: () => entries.greeted(),
     onInitialized: (kind) => {
       setFrameKind(kind);
       // A page that greets after the shell gave up on it (it kept trying on its own) is here.
@@ -766,8 +809,10 @@ export function ViewerPage(props: {
         setProblem(BANNER_WORDS.movedByOtherTab);
         return;
       }
-      void frameTicket(target.apiBase, session.csrf, ticket.version.number)
+      void entries
+        .enter((signal) => frameTicket(target.apiBase, session.csrf, ticket.version.number, signal))
         .then((next) => {
+          if (next === undefined) return;
           setFocusFrame(frameHasFocus());
           setTicket(next);
         })

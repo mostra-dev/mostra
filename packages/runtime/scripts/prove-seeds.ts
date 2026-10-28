@@ -1426,6 +1426,46 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "SH-03",
+    name: "a ticket asked for before the frame greeted, or before a later entry, still replaces the frame (second GPT review of MT-02b, 1 and 2)",
+    file: "../shell/src/entries.ts",
+    from: "        return generation === mine ? value : undefined;",
+    to: "        return value;",
+    check: ["test/entries.test.ts"],
+    cwd: "../shell",
+  },
+  {
+    requirement: "SH-03",
+    name: "the shell's request reads an answer cut off mid-body as nothing (second GPT review of MT-02b, 3)",
+    file: "../shell/src/api.ts",
+    from: '    text = await response.text();\n  } catch (error) {\n    throw new ShellError(0, "NETWORK", (error as Error).message);\n  }',
+    to: '    text = await response.text();\n  } catch {\n    text = "";\n  }',
+    check: ["test/api.test.ts"],
+    cwd: "../shell",
+  },
+  {
+    requirement: "SH-03",
+    name: "a switch to a newer version inherits a used-up recovery budget (second GPT review of MT-02b, 5)",
+    file: "../shell/src/viewer.tsx",
+    from: "        reloads.current = 0;\n        setFocusFrame(frameHasFocus());",
+    to: "        setFocusFrame(frameHasFocus());",
+    check: [
+      ...e2e("gets its whole budget again when the viewer switches"),
+      "--project",
+      "chromium",
+    ],
+    e2e: true,
+  },
+  {
+    requirement: "AX-02",
+    name: "verify gives the whole wait one window, which ends before the shell's recovery can (second GPT review of MT-02b, 4)",
+    file: "../verify/src/runner.ts",
+    from: '    seen = marks.frameReloads ?? "";',
+    to: '    return "never";',
+    check: ["test/ready.test.ts"],
+    cwd: "../verify",
+  },
+  {
     requirement: "AX-02",
     name: "verify counts what a frame the shell replaced failed to load (D157, #66)",
     file: "../verify/src/network.ts",
@@ -3526,8 +3566,8 @@ const SEEDS: readonly Seed[] = [
     also: [
       {
         file: "../verify/src/runner.ts",
-        from: "      timedOut = left() <= 0;",
-        to: "      timedOut = false;",
+        from: '    if (readiness === "never") timedOut = left() <= 0;',
+        to: '    if (readiness === "never") timedOut = false;',
       },
       {
         file: "../verify/src/runner.ts",

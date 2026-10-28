@@ -261,6 +261,47 @@ test.describe("a frame whose load fails (D157, #66)", () => {
     }
   });
 
+  test("gets its whole budget again when the viewer switches to a newer version (the second GPT review of MT-02b)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(180_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // Every entry of version 1 is refused until the shell gives up; then version 2 is published,
+      // the viewer switches, and its first entry is refused too: it must be loaded again.
+      let refusing = true;
+      let afterSwitch = 0;
+      await page.route(
+        (url) => url.pathname === "/_mostra/enter",
+        async (route) => {
+          if (refusing) return route.abort("connectionrefused");
+          afterSwitch += 1;
+          if (afterSwitch === 1) return route.abort("connectionrefused");
+          return route.fallback();
+        },
+      );
+      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "gave-up", {
+        timeout: 120_000,
+      });
+      await republish(client, own, (text) =>
+        text.replace(/title: "Client runtime fixture[^"]*"/, 'title: "Client runtime fixture 2"'),
+      );
+      await expect(page.locator('[data-mostra-banner="2"]')).toBeVisible({ timeout: 15_000 });
+      refusing = false;
+      await page.locator("[data-mostra-switch]").click();
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 45_000,
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-shell-version", "2");
+      expect(afterSwitch).toBe(2);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    } finally {
+      client.close();
+    }
+  });
+
   test("is loaded again a few times, then the viewer is told", async ({ page }, info) => {
     test.setTimeout(150_000);
     const client = await Client.connect(run.socket);
