@@ -88,16 +88,40 @@ const STREAM_FAILURES_BEFORE_POLL = 2;
 export class HttpTransport implements Transport {
   readonly #viewId: string;
   readonly #base: string;
+  readonly #tickets: boolean;
+  readonly #streams: boolean;
   #csrf: Promise<string> | undefined;
 
   /**
    * `csrf` is the session's token when the caller already read it (the bridge does): a save made
    * as the page closes must not wait for a request the closing page would cancel (IN-02).
    */
-  constructor(viewId: string, options: { readonly csrf?: string; readonly base?: string } = {}) {
+  constructor(
+    viewId: string,
+    options: {
+      readonly csrf?: string;
+      readonly base?: string;
+      /**
+       * Worker mode (D70): every stream and poll opens with a single-use ticket, so it bypasses
+       * the service worker, which can't carry an endless response in Firefox.
+       */
+      readonly tickets?: boolean;
+      /** `false` where event streams don't pass: the page long-polls from the start (D47). */
+      readonly streams?: boolean;
+    } = {},
+  ) {
     this.#viewId = viewId;
     this.#base = options.base ?? `/_mostra/v/${BROWSER_PROTOCOL_REVISION}`;
+    this.#tickets = options.tickets === true;
+    this.#streams = options.streams !== false;
     if (options.csrf) this.#csrf = Promise.resolve(options.csrf);
+  }
+
+  /** `&ticket=…` for a stream or poll in worker mode, else nothing. */
+  async #ticketQuery(): Promise<string> {
+    if (!this.#tickets) return "";
+    const { ticket } = (await this.#post("/ticket", { purpose: "stream" })) as { ticket: string };
+    return `&ticket=${encodeURIComponent(ticket)}`;
   }
 
   #token(): Promise<string> {
@@ -264,9 +288,11 @@ export class HttpTransport implements Transport {
       let backoff = 1_000;
       while (!closed) {
         try {
-          const result = (await this.#request(`${this.#base}/events/poll?${query()}&wait=25`, {
-            method: "GET",
-          })) as PollResult;
+          const ticket = await this.#ticketQuery();
+          const result = (await this.#request(
+            `${this.#base}/events/poll?${query()}&wait=25${ticket}`,
+            { method: "GET" },
+          )) as PollResult;
           backoff = 1_000;
           handlers.onStatus("live");
           if (result.snapshot) handlers.onSnapshot(result.snapshot);
@@ -287,13 +313,22 @@ export class HttpTransport implements Transport {
       }
     };
 
-    const open = (): void => {
+    const open = async (): Promise<void> => {
       if (closed) return;
-      if (typeof EventSource === "undefined") {
+      if (typeof EventSource === "undefined" || !this.#streams) {
         void poll();
         return;
       }
-      source = new EventSource(`${this.#base}/events?${query()}`);
+      let ticket = "";
+      try {
+        ticket = await this.#ticketQuery();
+      } catch {
+        // No ticket, no stream: the page long-polls, which asks for its own tickets.
+        void poll();
+        return;
+      }
+      if (closed) return;
+      source = new EventSource(`${this.#base}/events?${query()}${ticket}`);
       source.addEventListener("open", () => {
         failures = 0;
         handlers.onStatus("live");
@@ -329,10 +364,16 @@ export class HttpTransport implements Transport {
           source?.close();
           source = undefined;
           if (!polling) void poll();
+        } else if (this.#tickets) {
+          // A ticket opens one connection: EventSource's own reconnect would present it again,
+          // so a ticketed stream reconnects itself, with a new ticket.
+          source?.close();
+          source = undefined;
+          retry = setTimeout(() => void open(), 1_000);
         }
       });
     };
-    open();
+    void open();
     return () => {
       closed = true;
       source?.close();

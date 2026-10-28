@@ -51,3 +51,4 @@ export {
 } from "./helper.ts";
 export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
 export { adoptable, launch, reapRecorded } from "./launch.ts";
+export { findTool, installHint, TOOL_VARIABLES, type TunnelTool } from "./tools.ts";

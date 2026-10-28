@@ -54,7 +54,9 @@ function viewerOf(row: ViewerRow): Viewer {
     id: row.id,
     kind: row.kind,
     ...(row.name !== null ? { name: row.name } : {}),
-    ...(row.kind === "token" || row.kind === "host" ? { ref: row.external_ref } : {}),
+    ...(row.kind === "token" || row.kind === "host" || row.kind === "tailnet"
+      ? { ref: row.external_ref }
+      : {}),
   };
 }
 
@@ -91,7 +93,24 @@ export function viewerForHost(db: LedgerDb, spec: ViewerSpec): string {
   return viewerByRef(db, "host", spec);
 }
 
-function viewerByRef(db: LedgerDb, kind: "token" | "host", spec: ViewerSpec): string {
+/**
+ * A tailnet person (D158 item 2): one viewer of kind `tailnet` per Tailscale login, named by the
+ * display name Tailscale Serve sends.
+ */
+export function viewerForTailnet(db: LedgerDb, spec: ViewerSpec): string {
+  return viewerByRef(db, "tailnet", spec);
+}
+
+/**
+ * A link's own viewer (D158 item 2): whoever opens a link over a tunnel without being named (a
+ * public share, a tagged tailnet device) acts as one viewer per link, never as the home's local
+ * user, so a visitor's answers never mix into the owner's draft.
+ */
+export function viewerForLink(db: LedgerDb, tokenId: string, name: string): string {
+  return viewerByRef(db, "token", { ref: `link:${tokenId}`, name });
+}
+
+function viewerByRef(db: LedgerDb, kind: "token" | "host" | "tailnet", spec: ViewerSpec): string {
   const found = db.get<ViewerRow>(
     "SELECT * FROM viewer WHERE kind = ? AND external_ref = ?",
     kind,

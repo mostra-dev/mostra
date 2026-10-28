@@ -593,4 +593,66 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 11,
+    name: "shares and faces",
+    up(db) {
+      // D158. A face (an external address of the gateway: a tailnet or Funnel address, a quick
+      // tunnel's, a host's external base) is a listener of its own on loopback; a face that must
+      // keep its port across restarts (a tailnet address is `https://<device>:<port>`, a host's
+      // tunnel forwards to a port it was told) leases it like the shell and the artifacts do, under
+      // the purpose `face`. SQLite can't change a CHECK, so `port_lease` is rebuilt with its rows.
+      // `share` records each share (DATA_MODEL §3) with its plan, the addresses it set up, so a
+      // restart sets tailnet and Funnel shares up again; its row only ever ends (a trigger).
+      // `external_base` keeps the faces a host's addressing port gave, so their links work after
+      // a restart before the host answers again.
+      db.exec(`
+        CREATE TABLE port_lease_new (
+          port INTEGER PRIMARY KEY CHECK (port BETWEEN 1 AND 65535),
+          purpose TEXT NOT NULL CHECK (purpose IN ('shell', 'artifact', 'demo', 'face')),
+          owner_ref TEXT NOT NULL,
+          leased_at TEXT NOT NULL,
+          UNIQUE (purpose, owner_ref)
+        );
+        INSERT INTO port_lease_new (port, purpose, owner_ref, leased_at)
+          SELECT port, purpose, owner_ref, leased_at FROM port_lease;
+        DROP TABLE port_lease;
+        ALTER TABLE port_lease_new RENAME TO port_lease;
+        CREATE TABLE share (
+          id TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          via TEXT NOT NULL CHECK (via IN ('tailnet', 'funnel', 'cloudflare')),
+          hostname TEXT NOT NULL,
+          token_id TEXT NOT NULL REFERENCES token(id),
+          mode TEXT NOT NULL CHECK (mode IN ('cookie', 'worker')),
+          plan_json TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          expires_at TEXT,
+          stopped_at TEXT,
+          stop_reason TEXT,
+          CHECK ((stopped_at IS NULL) = (stop_reason IS NULL))
+        );
+        CREATE INDEX share_artifact ON share (artifact_id);
+        CREATE INDEX share_active ON share (stopped_at) WHERE stopped_at IS NULL;
+        CREATE TRIGGER share_ends_once BEFORE UPDATE ON share
+        WHEN OLD.stopped_at IS NOT NULL OR NEW.id IS NOT OLD.id
+          OR NEW.artifact_id IS NOT OLD.artifact_id OR NEW.via IS NOT OLD.via
+          OR NEW.token_id IS NOT OLD.token_id OR NEW.started_at IS NOT OLD.started_at
+          OR NEW.expires_at IS NOT OLD.expires_at
+        BEGIN
+          SELECT RAISE(ABORT, 'a share only ever ends, once');
+        END;
+        CREATE TABLE external_base (
+          key TEXT PRIMARY KEY,
+          listener TEXT NOT NULL CHECK (listener IN ('shell', 'artifact')),
+          artifact_id TEXT REFERENCES artifact(id),
+          origin TEXT NOT NULL,
+          mode TEXT CHECK (mode IN ('cookie', 'worker')),
+          client TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          CHECK ((listener = 'artifact') = (artifact_id IS NOT NULL))
+        );
+      `);
+    },
+  },
 ];

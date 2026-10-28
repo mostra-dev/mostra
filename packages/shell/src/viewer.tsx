@@ -18,6 +18,7 @@ import {
   mostraFieldFocus,
   mostraFields,
   mostraFlush,
+  mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
   mostraVersionAvailable,
@@ -213,6 +214,8 @@ interface FrameHandlers {
    * names its version), `legacy` for a version built before them.
    */
   onInitialized(kind: "runtime" | "legacy"): void;
+  /** Worker mode's bootstrap page couldn't start the frame's session (D70). */
+  onFrameSessionFailed(failure: { readonly reason: string; readonly message: string }): void;
 }
 
 /**
@@ -294,6 +297,9 @@ function Frame(props: {
         if (message === mostraReady) mark("ready");
         if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
         if (message === mostraPage) handlersRef.current.onPage((params as { path: string }).path);
+        if (message === mostraFrameSessionFailed) {
+          handlersRef.current.onFrameSessionFailed(params as { reason: string; message: string });
+        }
       },
       onRejected: () => {
         rejections += 1;
@@ -455,6 +461,8 @@ export function ViewerPage(props: {
   // What the frame's page is: still loading, a client runtime that saves and answers `mostra/flush`,
   // or a version built before WP-07, which saves on its own and answers nothing.
   const [frameKind, setFrameKind] = useState<FrameKind>("loading");
+  /** The frame's worker-mode session couldn't start in this browser (D70): no reload helps. */
+  const [sessionFailed, setSessionFailed] = useState(false);
   const frameKindRef = useLatest(frameKind);
   const bridge = useRef<Bridge | undefined>(undefined);
   const reentries = useRef<number[]>([]);
@@ -488,6 +496,7 @@ export function ViewerPage(props: {
   // as React advises for state that follows a prop, so no render shows the old view's state.
   const [stateView, setStateView] = useState(ticket.viewId);
   if (stateView !== ticket.viewId) {
+    setSessionFailed(false);
     setStateView(ticket.viewId);
     setState(initialState(ticket));
     setBlocked([]);
@@ -509,6 +518,8 @@ export function ViewerPage(props: {
       reloads.current = 0;
       return;
     }
+    // A browser that can't run the frame's service worker fails the same way again (D70).
+    if (sessionFailed) return;
     let pause: ReturnType<typeof setTimeout> | undefined;
     const asking = new AbortController();
     let standing = true;
@@ -560,6 +571,7 @@ export function ViewerPage(props: {
     ticket,
     frameLoaded,
     frameKind,
+    sessionFailed,
     reloadAttempts,
     reloadLimit,
     entries,
@@ -792,6 +804,14 @@ export function ViewerPage(props: {
       mark("", { shellPage: path });
     },
     onGreeted: () => entries.greeted(),
+    onFrameSessionFailed: (failure) => {
+      mark("", { frameSession: failure.reason });
+      // A refused entry (a spent ticket after the frame reloaded by itself) is entered again with
+      // a new ticket (D157); a browser without service workers in frames is told what to do.
+      if (failure.reason === "refused") return;
+      setSessionFailed(true);
+      setProblem(FRAME_WORDS.frameSession);
+    },
     onInitialized: (kind) => {
       setFrameKind(kind);
       // A page that greets after the shell gave up on it (it kept trying on its own) is here.

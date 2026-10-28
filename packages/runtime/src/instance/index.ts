@@ -24,6 +24,7 @@ import {
   type JsonRpcParams,
   type MostraInitializeResult,
   type PortTrustedControlsActivatedParams,
+  portAddressingExternalBaseMethod,
   portIdentityResolveMethod,
   portSecretsGetMethod,
   portTrustedControlsActivatedMethod,
@@ -100,6 +101,7 @@ import {
 import { openRegistry } from "../registry/index.ts";
 import { openSecrets, secretMethods } from "../secrets/index.ts";
 import { hasLoginService, type IdleWatch, watchIdle } from "../service/index.ts";
+import { createShares, type Shares, shareCacheDir } from "../share/index.ts";
 import {
   collectVerifyCaches,
   createRunnerClient,
@@ -216,7 +218,11 @@ export const SUPPORTED_PORTS: readonly string[] = [
   "drafts",
   "trustedControls",
   "secrets",
+  "addressing",
 ];
+
+/** How long a host's `addressing` port has to answer: a page or a minted link waits (D158). */
+const ADDRESSING_TIMEOUT_MS = 5_000;
 
 /**
  * Starts an instance for a home (RT-06): the platform gate, then the home's lock, migrations,
@@ -423,6 +429,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // Tests move the gateway's clock to check link lifetimes (LL-05, HY-03).
     now: () => Date.now() + clockOffset,
     shellOrigin: () => gateway.shellOrigin(),
+    // Launch tickets only for links whose shell address the gateway serves now (D158).
+    servesShell: (origin) => gateway.servesShell(origin),
   });
   // The interaction core (WP-06): drafts, state, submissions, the outbox, events and waits. Its
   // host connections are the protocol server's, built below.
@@ -668,6 +676,38 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
             IDENTITY_TIMEOUT_MS,
           ),
       }),
+    // A host's external addresses for an artifact's links and frame (HO-10, D158 item 6).
+    externalBase: {
+      registered: () => server.registrants("addressing").length > 0,
+      ask: async (input) => {
+        const registrant = server.registrants("addressing").at(-1);
+        if (!registrant) return { kind: "away" };
+        try {
+          const answer = await server.callSession(
+            registrant.session,
+            portAddressingExternalBaseMethod.method,
+            input as unknown as JsonRpcParams,
+            ADDRESSING_TIMEOUT_MS,
+          );
+          const parsed = portAddressingExternalBaseMethod.result.safeParse(answer);
+          if (!parsed.success) {
+            log.warn("gateway.addressing_invalid", {
+              owner: registrant.owner,
+              artifactId: input.artifactId,
+            });
+            return { kind: "failed" };
+          }
+          return parsed.data === null ? { kind: "none" } : { kind: "base", base: parsed.data };
+        } catch (error) {
+          log.warn("gateway.addressing_failed", {
+            owner: registrant.owner,
+            artifactId: input.artifactId,
+            error: (error as Error).message,
+          });
+          return { kind: "failed" };
+        }
+      },
+    },
     activated: (event) => {
       // Best effort and never retried, like draft mirrors (D105, D108): the change is durable.
       for (const registrant of server.registrants("trustedControls")) {
@@ -693,6 +733,23 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           );
       }
     },
+  });
+  // Shares (WP-13, D158): tunnels to the gateway's faces, each with a link of its own.
+  const shares: Shares = createShares({
+    ledger: home.ledger,
+    log,
+    gateway,
+    capabilities,
+    interaction,
+    artifacts: { get: (ref) => registry.get(canonicalRef(ref)) },
+    processes: manager,
+    environment,
+    toolEnvironment: artifactEnvironment(environment),
+    cacheDir: shareCacheDir(home.path),
+    now: () => Date.now() + clockOffset,
+    ...(environment["MOSTRA_TEST_SHARE_PROBE_MS"] !== undefined
+      ? { probeMs: Number(environment["MOSTRA_TEST_SHARE_PROBE_MS"]) }
+      : {}),
   });
   let gatewayStarted = false;
   let idle: IdleWatch | undefined;
@@ -785,6 +842,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       }),
       ...dev.methods(),
       ...gateway.methods(),
+      ...shares.methods(),
       ...interaction.methods(),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
       ...gcMethods(
@@ -819,8 +877,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
                   artifactId,
                   origin,
                 })),
+                faces: [...gateway.faces()],
               }
             : undefined,
+        shares: () => shares.active(),
         deliveries: () => interaction.deliveries(),
         workers: () => pool.status(),
         idleExitAt: () => idle?.exitAt(),
@@ -856,6 +916,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         // the answers already sent (the `mostra/shutdown` reply among them) before it exits.
         await server.close();
         await dev.stopAll();
+        await shares.close();
         await gateway.close();
         await pool.stopAll();
         await runner?.close();
@@ -905,6 +966,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     interaction.start();
     // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
     live.start();
+    // Tailnet and Funnel shares come back; what can't continue ends, with its reason (D158).
+    void shares.recover().catch((error: unknown) => log.error("share.recover_failed", { error }));
     home.publish(options.mode, server.socketPath ?? home.socketPath);
     // A host-spawned instance marks its home as a host's (D140 item 4).
     if (options.mode === "host" && markHostConfigured(home.path, "mostra-runtime host"))
@@ -935,6 +998,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         producers: live.activity(),
         subscriptions: interaction.subscriptionCount(),
         devSessions: dev.count(),
+        // An active share keeps a daemon from its idle exit (D133, WP-13).
+        shares: shares.count(),
         // A home with a login service is always-on, whoever started its daemon (D133).
         loginService: hasLoginService(home.path, environment) ? 1 : 0,
       }),

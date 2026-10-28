@@ -91,7 +91,9 @@ import {
   viewControls,
   viewer,
   viewerForHost,
+  viewerForLink,
   viewerForSpec,
+  viewerForTailnet,
   viewFor,
 } from "./viewers.ts";
 import { waitFor } from "./wait.ts";
@@ -157,6 +159,10 @@ export interface Interaction {
   viewerForSpec(db: LedgerDb, spec: ViewerSpec): string;
   /** The viewer a host's identity port named (D143 item 2), in a transaction of its own. */
   viewerForHost(spec: ViewerSpec): string;
+  /** A tailnet person by login (D158 item 2), in a transaction of its own. */
+  viewerForTailnet(spec: ViewerSpec): string;
+  /** A link's own viewer, for a tunnel visitor nobody named (D158 item 2). */
+  viewerForLink(tokenId: string, name: string): string;
   /** Records a frame load of a version (D104), with the controls in force (D108); returns its ID. */
   openView(input: {
     readonly artifactId: string;
@@ -504,6 +510,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
     viewer: (viewerId) => ledger.read((db) => viewer(db, viewerId)),
     viewerForSpec,
     viewerForHost: (spec) => ledger.write((db) => viewerForHost(db, spec)),
+    viewerForTailnet: (spec) => ledger.write((db) => viewerForTailnet(db, spec)),
+    viewerForLink: (tokenId, name) => ledger.write((db) => viewerForLink(db, tokenId, name)),
     openView(input) {
       return ledger.write((db) => openView(db, input));
     },
