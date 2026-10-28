@@ -30,6 +30,15 @@ import { refuse } from "./routes.ts";
  */
 export const MAX_HEADER_SIZE: number = 1024 * 1024;
 
+/**
+ * How long a listener keeps an idle connection open: longer than browsers keep theirs (Chromium
+ * 300 s, Firefox 115 s), so the browser reuses its connections and closes them itself (D157 item
+ * 2). Node's default, 5 s, made the gateway close first, and each connection it closed stayed in
+ * TIME_WAIT on its side, where Chromium's random local ports on Windows collided with it and
+ * failed the connect at once with `ERR_NO_BUFFER_SPACE` (#66).
+ */
+export const KEEP_ALIVE_MS: number = 305_000;
+
 /** A listener: its server and its Hono app. */
 export interface Listener {
   readonly server: Server;
@@ -290,6 +299,9 @@ export function createListener(options: {
   });
   server.headersTimeout = 30_000;
   server.requestTimeout = 120_000;
+  // An idle connection waits for its next request without these two limits, which count from a
+  // request's first byte.
+  server.keepAliveTimeout = KEEP_ALIVE_MS;
 
   return {
     server,

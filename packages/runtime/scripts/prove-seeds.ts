@@ -1399,6 +1399,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/dev-session.test.ts", "-t", "stops at its next step"],
   },
   {
+    requirement: "HY-01",
+    name: "the gateway closes idle connections first again, which Chromium's random ports collide with (D157, #66)",
+    file: "src/gateway/listener.ts",
+    from: "  server.keepAliveTimeout = KEEP_ALIVE_MS;\n",
+    to: "",
+    check: ["--project", "unit", "test/unit/listener-keepalive.test.ts", "-t", "stay open"],
+  },
+  {
     requirement: "EN-07",
     name: "the gateway's request record logs a request's query, where a frame ticket travels (#66)",
     file: "src/gateway/listener.ts",
