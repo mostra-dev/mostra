@@ -1,5 +1,13 @@
 # @mostra/conformance
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [[`e33361f`](https://github.com/mostra-dev/mostra/commit/e33361ff9c886b81daf1dada40ff481444f92cb0)]:
+  - @mostra/protocol@0.6.2
+  - @mostra/sdk@0.6.2
+
 ## 0.6.1
 
 ### Patch Changes

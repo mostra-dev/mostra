@@ -1,5 +1,11 @@
 # @mostra/protocol
 
+## 0.6.2
+
+### Patch Changes
+
+- [#94](https://github.com/mostra-dev/mostra/pull/94) [`e33361f`](https://github.com/mostra-dev/mostra/commit/e33361ff9c886b81daf1dada40ff481444f92cb0) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `@mostra/protocol` declares Node.js 22.19 or later, as the CLI, the SDK, `create-mostra` and the conformance kit that depend on it do, so npm on Node.js 22 no longer warns `EBADENGINE` when it installs them ([#92](https://github.com/mostra-dev/mostra/issues/92)). Nothing else changes: the protocol package already ran there.
+
 ## 0.6.1
 
 ### Patch Changes

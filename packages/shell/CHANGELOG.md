@@ -1,5 +1,13 @@
 # @mostra/shell
 
+## 0.6.2
+
+### Patch Changes
+
+- [#94](https://github.com/mostra-dev/mostra/pull/94) [`4e81b4c`](https://github.com/mostra-dev/mostra/commit/4e81b4c1ceeb47808d3ef4296ec6a2172a2a847c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The shell loads the artifact's frame again when its load failed: a frame that loaded without greeting the shell within 6 s, or that greeted nothing within 12 s, is entered again with a new ticket, up to three times with a growing pause, after which the shell says the page didn't load. Before, such a frame stayed on "Connecting…" until the viewer reloaded. On Windows 11, Chromium's random local ports occasionally fail a connection with `ERR_NO_BUFFER_SPACE` ([#66](https://github.com/mostra-dev/mostra/issues/66), D157). `verify` drives the same shell, loads a failed frame again once, gives each frame entry its own wait for readiness, and counts failed requests of the frame the page ends in only, never of a frame the shell replaced.
+- Updated dependencies [[`e33361f`](https://github.com/mostra-dev/mostra/commit/e33361ff9c886b81daf1dada40ff481444f92cb0)]:
+  - @mostra/protocol@0.6.2
+
 ## 0.6.1
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @mostra/runtime
 
+## 0.6.2
+
+### Patch Changes
+
+- [#94](https://github.com/mostra-dev/mostra/pull/94) [`c6f49b9`](https://github.com/mostra-dev/mostra/commit/c6f49b9bbc55cf318e55fad7ce530276e1b8960f) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The gateway keeps an idle connection open for 305 s instead of Node's 5 s, longer than Chromium (300 s) and Firefox (115 s) keep theirs, so browsers reuse their connections and close them themselves. On Windows 11, Chromium's random local ports collided with the connections the gateway had closed, and a frame occasionally failed to load with `ERR_NO_BUFFER_SPACE` ([#66](https://github.com/mostra-dev/mostra/issues/66), D157).
+- Updated dependencies [[`e33361f`](https://github.com/mostra-dev/mostra/commit/e33361ff9c886b81daf1dada40ff481444f92cb0)]:
+  - @mostra/protocol@0.6.2
+
 ## 0.6.1
 
 ### Patch Changes

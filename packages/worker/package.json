@@ -1,6 +1,6 @@
 {
   "name": "@mostra/worker",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "The process that runs one artifact version's server code: server functions, action runs and live producers.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
