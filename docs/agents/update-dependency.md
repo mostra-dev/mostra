@@ -19,10 +19,15 @@ Renovate opens routine updates; this playbook covers the deliberate ones.
 4. **Check the license.** Everything a published package ships must be OSI-licensed, and nothing
    may come from pnpm's PolyForm-licensed `pnpr/` (D20, D26). Engines with non-OSI licenses are
    never bundled; they become user-installed plugins (D31).
-5. **Allow install scripts only when needed**, in `allowBuilds`, with a reason in the pull request.
-6. **Check the package map.** A new import must be allowed for the importing package in
+5. **Keep the Node.js lines.** A published package's dependencies, all the way down, must run on
+   every Node.js its `engines.node` admits: the CLI, the SDK, `create-mostra` and the conformance
+   kit start on Node.js 22.19 (D142 item 6). Repository lint refuses a dependency that declares a
+   newer line (#92). Take a release that keeps the line, or raise the dependent's `engines.node`
+   only as a decision of its own.
+6. **Allow install scripts only when needed**, in `allowBuilds`, with a reason in the pull request.
+7. **Check the package map.** A new import must be allowed for the importing package in
    `tools/package-map.ts`; dependency-cruiser enforces it.
-7. **Write churn guidance for recent majors** (D48). When the version is a recent major or rename
+8. **Write churn guidance for recent majors** (D48). When the version is a recent major or rename
    that models are likely to get wrong, add "write this, not that" guidance (and a lint rule where
    possible) in the same pull request.
 

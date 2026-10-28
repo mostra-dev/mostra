@@ -39,8 +39,73 @@ const require = createRequire(import.meta.url);
 /** How long the runner keeps its browser without work (ROUND-3 §9): 10 minutes. */
 export const RUNNER_IDLE_MS: number = 10 * 60 * 1000;
 
-/** The longest a page may take to report `mostra/ready` before it is judged never ready. */
-const READY_WAIT_MS = 15_000;
+/**
+ * The longest one frame entry may take to report `mostra/ready` before the page is judged never
+ * ready. The shell may enter the frame again when its load failed (D157 item 1), and each entry gets
+ * this long again: one window for the whole wait ended before a recovery could finish (the second
+ * GPT review of MT-02b).
+ */
+export const READY_WAIT_MS: number = 15_000;
+
+/** What the shell's `<html>` says of the page: `data-shell` and `data-frame-reloads`. */
+export interface ShellMarks {
+  readonly shell?: string | undefined;
+  readonly frameReloads?: string | undefined;
+}
+
+/** How a page's wait for readiness ended. */
+export type Readiness = "ready" | "error" | "gave-up" | "never";
+
+/**
+ * Waits until the shell says the page is ready, or failed (`error`), or gave up loading its frame
+ * again (`gave-up`), giving each frame entry `windowMs`. `next(seen, timeoutMs)` resolves the
+ * shell's marks once they show an end or a count of entries other than `seen`, or `undefined` past
+ * `timeoutMs`; `left()` is what remains of the render's time.
+ */
+export async function awaitReady(
+  next: (seen: string, timeoutMs: number) => Promise<ShellMarks | undefined>,
+  left: () => number,
+  windowMs: number = READY_WAIT_MS,
+): Promise<Readiness> {
+  let seen = "";
+  for (;;) {
+    const marks = await next(seen, Math.max(1, Math.min(windowMs, left())));
+    if (marks === undefined) return "never";
+    if (marks.shell === "ready") return "ready";
+    if (marks.shell === "error") return "error";
+    if (marks.frameReloads === "gave-up") return "gave-up";
+    // The shell entered the frame again: the new entry gets its own window.
+    seen = marks.frameReloads ?? "";
+    if (left() <= 0) return "never";
+  }
+}
+
+/** {@link awaitReady}'s `next` over a page's shell. */
+const shellMarks =
+  (page: Page) =>
+  async (seen: string, timeoutMs: number): Promise<ShellMarks | undefined> => {
+    try {
+      await page.waitForFunction(
+        (before: string) => {
+          const data = document.documentElement.dataset;
+          return (
+            data["shell"] === "ready" ||
+            data["shell"] === "error" ||
+            data["frameReloads"] === "gave-up" ||
+            (data["frameReloads"] ?? "") !== before
+          );
+        },
+        seen,
+        { timeout: timeoutMs },
+      );
+    } catch {
+      return undefined;
+    }
+    return page.evaluate(() => ({
+      shell: document.documentElement.dataset["shell"],
+      frameReloads: document.documentElement.dataset["frameReloads"],
+    }));
+  };
 /**
  * How long after its deadline a render is abandoned: its browser context is closed, which ends a
  * page that blocks its own main thread without touching other runs' pages (Opus review finding 5).
@@ -269,21 +334,9 @@ async function renderPage(
     const network = watchNetwork(page, () => artifactFrame(page), viewport);
 
     await page.goto(request.url, { waitUntil: "commit", timeout: Math.max(1000, left()) });
-    let ready = false;
-    try {
-      await page.waitForFunction(
-        () => {
-          const state = document.documentElement.dataset["shell"];
-          return state === "ready" || state === "error";
-        },
-        undefined,
-        { timeout: Math.max(1, Math.min(READY_WAIT_MS, left())) },
-      );
-      ready = (await page.evaluate(() => document.documentElement.dataset["shell"])) === "ready";
-    } catch {
-      ready = false;
-      timedOut = left() <= 0;
-    }
+    const readiness = await awaitReady(shellMarks(page), left).catch(() => "never" as const);
+    const ready = readiness === "ready";
+    if (readiness === "never") timedOut = left() <= 0;
     timings["ready"] = Date.now() - started;
     const frame = artifactFrame(page);
     if (!ready || !frame) {

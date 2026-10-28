@@ -61,7 +61,27 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
   } catch (error) {
     throw new ShellError(0, "NETWORK", (error as Error).message);
   }
-  const body: unknown = await response.json().catch(() => undefined);
+  // An answer whose body can't be read (the request aborted mid-body, the connection lost) fails
+  // like the request; only an empty or unparseable body of a refusal reads as nothing. Before, a
+  // body cut off resolved `undefined` as if it were the answer (the second GPT review of MT-02b).
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new ShellError(0, "NETWORK", (error as Error).message);
+  }
+  let body: unknown;
+  try {
+    body = text === "" ? undefined : JSON.parse(text);
+  } catch {
+    if (response.ok)
+      throw new ShellError(
+        response.status,
+        "MOSTRA_HOST_INTERNAL_ERROR",
+        "The gateway's answer wasn't JSON.",
+      );
+    body = undefined;
+  }
   if (!response.ok) {
     const diagnostic = (body ?? {}) as { code?: string; message?: string };
     throw new ShellError(
@@ -132,12 +152,21 @@ export function readSession(apiBase: string): Promise<ShellSession> {
   return call(`${apiBase}/session`, { method: "GET" });
 }
 
-/** Gets a single-use ticket for the artifact's frame, for a pinned version or the latest. */
-export function frameTicket(apiBase: string, csrf: string, version?: number): Promise<FrameTicket> {
+/**
+ * Gets a single-use ticket for the artifact's frame, for a pinned version or the latest; `signal`
+ * ends the request, which then fails as a network error.
+ */
+export function frameTicket(
+  apiBase: string,
+  csrf: string,
+  version?: number,
+  signal?: AbortSignal,
+): Promise<FrameTicket> {
   return call(`${apiBase}/ticket`, {
     method: "POST",
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
     body: JSON.stringify(version === undefined ? {} : { version }),
+    ...(signal ? { signal } : {}),
   });
 }
 

@@ -242,6 +242,9 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
       MOSTRA_RUNTIME_DIR: join(root, "run"),
       // The browser suites test other features; verify and its gate have their own (D138).
       MOSTRA_TEST_UNVERIFIED_PUBLISH: "1",
+      // Each connection and request the gateway saw, so a request a browser saw go unanswered
+      // shows whether it ever arrived (#66); the log is kept when a test fails.
+      MOSTRA_TEST_REQUEST_LOG: "1",
     },
     stdio: ["ignore", "pipe", "inherit"],
     detached: false,

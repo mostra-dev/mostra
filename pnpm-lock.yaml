@@ -1123,6 +1123,9 @@ importers:
       publint:
         specifier: 'catalog:'
         version: 0.3.25
+      semver:
+        specifier: 'catalog:'
+        version: 7.8.5
       spdx-expression-parse:
         specifier: 'catalog:'
         version: 5.0.0
@@ -1133,6 +1136,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
       '@types/spdx-expression-parse':
         specifier: 'catalog:'
         version: 4.0.0

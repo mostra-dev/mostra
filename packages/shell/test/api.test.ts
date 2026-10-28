@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { browserKey, exchange } from "../src/api.ts";
+import { browserKey, exchange, frameTicket } from "../src/api.ts";
 
 /** A minimal Storage the shell's origin would have. */
 function storage(): Storage {
@@ -61,5 +61,35 @@ describe("the browser's key (D98 item 8, Opus review of WP-12, finding 2)", () =
     });
     await exchange("/a/x/_mostra", { token: "t" }, true);
     expect(sent[0]).toEqual({ token: "t", browser: browserKey(), replace: true });
+  });
+});
+
+describe("the shell's requests (the second GPT review of MT-02b, finding 3)", () => {
+  it("fail when an answer's body is cut off, never resolving as if nothing came", async () => {
+    // Headers arrive and the body stalls; the request's deadline then aborts it.
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          stream.enqueue(new TextEncoder().encode('{"viewId":'));
+          init.signal?.addEventListener("abort", () =>
+            stream.error(new DOMException("The operation was aborted.", "AbortError")),
+          );
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const asked = frameTicket("http://127.0.0.1:1/a/x", "csrf", 1, controller.signal);
+    controller.abort();
+    await expect(asked).rejects.toMatchObject({ code: "NETWORK" });
+  });
+
+  it("read an empty answer as nothing, and refuse one that isn't JSON", async () => {
+    vi.stubGlobal("fetch", async () => new Response("", { status: 200 }));
+    expect(await frameTicket("http://127.0.0.1:1/a/x", "csrf")).toBeUndefined();
+    vi.stubGlobal("fetch", async () => new Response("<html>", { status: 200 }));
+    await expect(frameTicket("http://127.0.0.1:1/a/x", "csrf")).rejects.toMatchObject({
+      code: "MOSTRA_HOST_INTERNAL_ERROR",
+    });
   });
 });

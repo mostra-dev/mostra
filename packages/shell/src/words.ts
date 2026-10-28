@@ -119,6 +119,11 @@ export const BANNER_WORDS = {
     "Another tab of this artifact keeps opening a different version. Close one of them, then reload this page.",
 } as const;
 
+/** The artifact's frame (D157). */
+export const FRAME_WORDS = {
+  unreachable: "This page didn't load. Reload this page to try again.",
+} as const;
+
 /** The "Not carried over" panel (D42). */
 export const ORPHAN_WORDS = {
   title: "Not carried over",

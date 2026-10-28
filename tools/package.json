@@ -16,11 +16,13 @@
     "@arethetypeswrong/cli": "catalog:",
     "@mostra/tools-ts6": "workspace:*",
     "publint": "catalog:",
+    "semver": "catalog:",
     "spdx-expression-parse": "catalog:",
     "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/semver": "catalog:",
     "@types/spdx-expression-parse": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

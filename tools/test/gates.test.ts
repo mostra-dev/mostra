@@ -390,6 +390,18 @@ describe("repository lint", () => {
     expect(result.output).toContain("actions/checkout@v4 must be pinned to a full commit SHA");
   });
 
+  it("rejects a published package bringing one that runs on fewer Node.js versions (#92)", () => {
+    repo.edit("packages/protocol/package.json", (t) =>
+      t.replace(/"node": "[^"]*"/, '"node": ">=24"'),
+    );
+    const result = lint();
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain(
+      '@mostra/sdk declares node ">=22.19" but brings @mostra/protocol@',
+    );
+    expect(result.output).toContain("create-mostra declares node");
+  });
+
   it("rejects a LICENSE that isn't the canonical Apache-2.0 text, and a missing NOTICE", () => {
     repo.edit("LICENSE", (t) => t.replace("Apache License", "Apache Licence"));
     repo.run("rm", ["NOTICE"]);

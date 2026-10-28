@@ -3,8 +3,8 @@
  * quiescence wait), failed requests for resources the artifact's frame loaded, the sandbox's
  * refusals of actions that didn't opt into `dryRun()`, and the field writes the page made.
  *
- * A failed request counts when the artifact's frame loaded it: its document, scripts, styles,
- * images, fonts and fetches. Requests the browser makes on its own (`/favicon.ico`) and Mostra's
+ * A failed request counts when the artifact's frame loaded it, the frame the page ends in: its
+ * document, scripts, styles, images, fonts and fetches. Requests the browser makes on its own (`/favicon.ico`) and Mostra's
  * protocol (`/_mostra/…`, whose answers the client runtime handles) don't. Chrome's own
  * "Failed to load resource" console line is never counted: the request's finding stands for it.
  */
@@ -47,7 +47,10 @@ export function watchNetwork(
     | { kind: "protocol" }
     | { kind: "request" }
   )[] = [];
-  const failures = new Map<string, Diagnostic>();
+  // Failed requests by the frame that made them: only the artifact's frame of the end counts. The
+  // shell loads a frame again when its load failed and it never greeted (D157 item 1); what the
+  // frame it replaced failed to load isn't the artifact's.
+  const failures = new Map<Frame, Map<string, Diagnostic>>();
   /** Protocol answers still being read: they count as in flight until their body is in. */
   let reading = 0;
 
@@ -68,6 +71,12 @@ export function watchNetwork(
 
   const fail = (request: Request, why: string): void => {
     if (!fromArtifact(request)) return;
+    const of = request.frame();
+    let seen = failures.get(of);
+    if (!seen) {
+      seen = new Map();
+      failures.set(of, seen);
+    }
     const url = new URL(request.url());
     let artifactOrigin: string | undefined;
     try {
@@ -79,12 +88,12 @@ export function watchNetwork(
     const own = url.origin === artifactOrigin;
     const shown = own ? url.pathname : `${url.origin}${url.pathname}`;
     const key = `${request.method()} ${shown} ${why}`;
-    const known = failures.get(key);
+    const known = seen.get(key);
     if (known) {
-      failures.set(key, { ...known, count: (known.count ?? 1) + 1 });
+      seen.set(key, { ...known, count: (known.count ?? 1) + 1 });
       return;
     }
-    failures.set(
+    seen.set(
       key,
       createDiagnostic(own ? "MOSTRA_NETWORK_REQUEST_FAILED" : "MOSTRA_NETWORK_EXTERNAL_FAILED", {
         message: `${request.resourceType()} ${request.method()} ${shown} ${why}.`,
@@ -156,6 +165,9 @@ export function watchNetwork(
     writesSince: (from) =>
       log.slice(from).reduce((sum, entry) => sum + (entry.kind === "write" ? entry.ops : 0), 0),
     requestsSince: (from) => log.slice(from).filter((entry) => entry.kind !== "write").length,
-    findings: () => [...failures.values()],
+    findings: () => {
+      const own = frame();
+      return own === undefined ? [] : [...(failures.get(own)?.values() ?? [])];
+    },
   };
 }
