@@ -10,7 +10,7 @@
 | Starting `HEAD` | `0f81e48` (`origin/main`, 2026-10-27: "docs: MT-02's closeout, Mostra 0.6.1, #92 to WP-13 (#93)") |
 | `git status` | clean |
 | CI on the starting commit | #93's merge-queue run passed every job it ran; #90's (40550711821) passed all 69 jobs on every leg, Windows arm64 and the six-platform rehearsal included |
-| `pnpm check` | running on a clean worktree of `0f81e48` |
+| `pnpm check` | 67 min on a clean worktree of `0f81e48`, macOS arm64, with load averages of 20 to 40 from other sessions on the machine. Green: format-lint, types, hygiene, build, boundaries, api, licenses, rust, conformance, docs and commits. Failed under the load: unit, integration and e2e, each by timeouts in tests that pass alone (log in the session's scratch). The same commit's CI passed every job on every leg (#93's merge-queue run), which is this unit's real baseline |
 | Predecessors | MT-02 done ([PROGRESS-MT-02](PROGRESS-MT-02.md) on `origin/main`), released as Mostra 0.6.1 |
 | Local toolchain | Node 24.22.1 for the repository (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64. Windows behavior is observed only on GitHub's runners |
 
@@ -21,10 +21,15 @@
 - **#39 on WebKit, Linux:** a navigation after the daemon's restart that never committed (a shell `GET` recorded as `-1`, run 40323009583).
 - **#92:** `@mostra/protocol` declares `node >=24`; `@mostra/cli` and `@mostra/sdk` declare `>=22.19` and depend on it. npm on Node.js 22 warns `EBADENGINE` (probe run 40579579678, every runner). 0.6.0 has it too.
 
+## Decisions
+
+- **D156** (M44): MT-02b's scope and bound.
+- **D157** (M45): the shell loads a failed frame again, the gateway keeps idle connections for browsers to close, Chromium keeps its randomization in tests and `verify`.
+
 ## Issues
 
 | Issue | State | What was found and done |
 |---|---|---|
-| #92 | Open | |
-| #66 | Open | |
-| #39 | Open | |
+| #92 | Fixed (`e33361f`), closes on merge | `@mostra/protocol` declares Node.js `>=22.19`, like the CLI, the SDK, `create-mostra` and the conformance kit that depend on it; its 244 tests pass on Node.js 22.19.0, and the built SDK and protocol import there (undici 8.12, which the SDK needs, declares `>=22.19.0`, so 22.19 is the floor). Repository lint (`tools/repo-lint/engines.ts`) walks each published package's installed runtime closure (dependencies, installed optional and peer dependencies, never dev ones) and requires every Node.js range in it to admit every version the package's own range admits (`semver.subset`); before the fix it named exactly the four dependents. Two RT-01 seeds red, then green. `docs/agents/update-dependency.md` says to check a dependency's Node.js line |
+| #66 | `ERR_NO_BUFFER_SPACE` found and fixed (D157); the unanswered Firefox requests open | **Cause** (probe runs 40604043572, 40604922262, 40605653405, 40606620661; VERIFIED_FACTS, MT-02b): from Windows 11 22H2 on, Chromium picks each connection's local port at random (`SO_RANDOMIZE_PORT`, its default-on `TcpPortRandomizationWin`), and a port that collides with a connection the listener closed and keeps in TIME_WAIT fails at once. 32 in 500,000 connections from Chromium as it ships; 0 in 500,000 with the randomization off, 0 from Node.js and Firefox, 0 on Linux and macOS. A failed connection never reaches the gateway. A listener's freshness wasn't the cause: failures land on new connections, and new connections mostly come with new listeners. **Fixes** (M45, D157): the gateway keeps idle connections 305 s, longer than Chromium (300 s) and Firefox (115 s), so browsers close them and the gateway keeps none in TIME_WAIT (`c6f49b9`); the shell enters a frame again when it never greets (`4e81b4c`); `verify` counts only the failed requests of the frame the page ends in; Chromium keeps its randomization everywhere. **Still open:** Firefox's requests left unanswered on established connections (run 40581349433, the reopened profile of run 40524581425). The e2e daemons now record every request's arrival and how it ended (`MOSTRA_TEST_REQUEST_LOG`, `f35ee38`), so the next occurrence shows whether the request reached the gateway |
+| #39 | Open | Its Windows Firefox occurrences are #66's unanswered requests, now recorded as above; the shell's recovery also replaces a reopened frame that never greets |
