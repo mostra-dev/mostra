@@ -1,6 +1,6 @@
 {
   "name": "@mostra/protocol",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Mostra's shared protocol vocabulary: IDs, dated revisions and diagnostics, with Zod schemas and generated JSON Schema.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

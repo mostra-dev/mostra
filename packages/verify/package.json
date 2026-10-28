@@ -1,6 +1,6 @@
 {
   "name": "@mostra/verify",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "The verify runner: the child process that renders artifact pages in a warm headless Chromium for `mostra verify`.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
