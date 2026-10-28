@@ -1399,6 +1399,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/dev-session.test.ts", "-t", "stops at its next step"],
   },
   {
+    requirement: "EN-07",
+    name: "the gateway's request record logs a request's query, where a frame ticket travels (#66)",
+    file: "src/gateway/listener.ts",
+    from: '      path: (incoming.url ?? "").replace(/[?#].*$/s, ""),',
+    to: '      path: incoming.url ?? "",',
+    check: ["--project", "unit", "test/unit/listener-trace.test.ts", "-t", "never its query"],
+  },
+  {
     requirement: "RT-01",
     name: "a published package brings one that runs on fewer Node.js versions (#92)",
     file: "../../tools/repo-lint/engines.ts",

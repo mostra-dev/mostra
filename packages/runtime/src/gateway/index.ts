@@ -125,6 +125,11 @@ export interface GatewayOptions {
     readonly via: IdentityVia;
     readonly headers: Headers;
   }) => Promise<IdentityOutcome>;
+  /**
+   * Logs every connection and request of every listener (`MOSTRA_TEST_REQUEST_LOG`, #66): tests
+   * only, so a request a browser saw go unanswered shows whether it reached the gateway.
+   */
+  readonly traceRequests?: boolean;
   /** The browser-protocol revisions served; `BROWSER_PROTOCOL_REVISIONS` unless a test adds one. */
   readonly revisions?: readonly string[];
   /**
@@ -1042,6 +1047,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             artifactRoutes(artifactId, () => port),
           ),
         ...(options.dev ? { upgrade: devSocket(artifactId, () => port) } : {}),
+        ...(options.traceRequests ? { traceRequests: true } : {}),
       });
       port = await addressing.listen(listener.server, { purpose: "artifact", owner: artifactId });
       artifactListeners.set(artifactId, { listener, port });
@@ -1102,6 +1108,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         log,
         frameAncestors: () => "'none'",
         configure: (app) => mount(app, shellChecks, shellRoutes),
+        ...(options.traceRequests ? { traceRequests: true } : {}),
       });
       shellPort = await addressing.listen(shellListener.server, {
         purpose: "shell",

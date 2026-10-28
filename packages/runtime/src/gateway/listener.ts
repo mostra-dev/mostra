@@ -6,6 +6,7 @@
  * theirs, WP-22), and every response leaves with the base headers.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { getRequestListener } from "@hono/node-server";
 import {
@@ -114,6 +115,53 @@ function headersTooLarge(socket: Duplex): void {
   });
 }
 
+/**
+ * Records every connection and request of a listener in the supervisor's log: its arrival and its
+ * end, whether it was answered, with the time between them and the client's port, so a request a
+ * browser saw go unanswered shows whether it ever reached the gateway (#66). Only a request's
+ * method and path are kept, never its query (a frame ticket travels there) or its headers; a test
+ * switch (`MOSTRA_TEST_REQUEST_LOG`), since a long-lived daemon would log every asset it serves.
+ */
+function traceRequests(server: Server, log: Log, origin: () => string): void {
+  server.on("connection", (socket: Socket) => {
+    const opened = Date.now();
+    const client = socket.remotePort;
+    log.info("gateway.connection", { origin: origin(), client });
+    socket.once("close", (hadError: boolean) =>
+      log.info("gateway.connection_closed", {
+        origin: origin(),
+        client,
+        ms: Date.now() - opened,
+        read: socket.bytesRead,
+        written: socket.bytesWritten,
+        ...(hadError ? { hadError } : {}),
+      }),
+    );
+  });
+  server.prependListener("request", (incoming: IncomingMessage, outgoing) => {
+    const started = Date.now();
+    const fields = {
+      origin: origin(),
+      client: incoming.socket.remotePort,
+      method: incoming.method,
+      path: (incoming.url ?? "").replace(/[?#].*$/s, ""),
+    };
+    log.info("gateway.request", fields);
+    // `finished`: the whole answer was handed to the connection. A stream (events, a long poll)
+    // the browser leaves ends unfinished with its headers sent; a request that got nothing ends
+    // with neither.
+    outgoing.once("close", () =>
+      log.info("gateway.request_closed", {
+        ...fields,
+        status: outgoing.statusCode,
+        headersSent: outgoing.headersSent,
+        finished: outgoing.writableFinished,
+        ms: Date.now() - started,
+      }),
+    );
+  });
+}
+
 /** Creates a listener whose routes `configure` mounts; the server isn't bound yet. */
 export function createListener(options: {
   readonly policy: () => RequestPolicy;
@@ -129,6 +177,8 @@ export function createListener(options: {
     socket: Duplex,
     head: Buffer,
   ) => Refusal | undefined;
+  /** Logs every connection and request ({@link traceRequests}): tests only. */
+  readonly traceRequests?: boolean;
 }): Listener {
   const app = new Hono<HttpEnv>();
   options.configure(app);
@@ -194,6 +244,7 @@ export function createListener(options: {
     }
     void listener(incoming, outgoing);
   });
+  if (options.traceRequests) traceRequests(server, options.log, () => options.policy().origin);
   // A client that sends something Node can't parse gets a 400 and its connection closed.
   server.on("clientError", (error: NodeJS.ErrnoException, socket) => {
     if (refusedSockets.has(socket)) return;

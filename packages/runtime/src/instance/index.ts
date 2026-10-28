@@ -611,9 +611,12 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   const shellDir = locateShell(environment);
   if (shellDir === undefined)
     log.warn("gateway.shell_missing", { code: "MOSTRA_ENV_SHELL_MISSING" });
+  const traceRequests = Boolean(environment["MOSTRA_TEST_REQUEST_LOG"]);
+  if (traceRequests) log.warn("instance.test_request_log", {});
   const gateway: Gateway = createGateway({
     ledger: home.ledger,
     log,
+    ...(traceRequests ? { traceRequests } : {}),
     addressing,
     capabilities,
     artifacts: {
