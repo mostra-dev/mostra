@@ -78,8 +78,11 @@ export function forward(
   });
 }
 
-/** Waits until the process is told to stop, as a foreground tunnel command does. */
-export function untilStopped() {
+/**
+ * Waits until the process is told to stop, as a foreground tunnel command does. `tag` names this
+ * tunnel for a test: `die-<tag>` ends this one only (Tailscale's tunnels are tagged with their port).
+ */
+export function untilStopped(tag) {
   return new Promise((resolve) => {
     // Mostra's process manager ends its children by signal, or by their job on Windows.
     for (const signal of ["SIGTERM", "SIGINT", "SIGBREAK"]) process.once(signal, resolve);
@@ -88,13 +91,16 @@ export function untilStopped() {
     // process ended by itself: the fake that notices it first takes it and exits 1.
     const control = process.env.MOSTRA_FAKE_CONTROL;
     if (control) {
+      const names = tag === undefined ? ["die"] : ["die", "die-" + tag];
       setInterval(() => {
-        try {
-          unlinkSync(join(control, "die"));
-        } catch {
-          return;
+        for (const name of names) {
+          try {
+            unlinkSync(join(control, name));
+          } catch {
+            continue;
+          }
+          process.exit(1);
         }
-        process.exit(1);
       }, 100);
     }
   });

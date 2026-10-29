@@ -104,7 +104,7 @@ export interface Shares {
   methods(): MethodHandler[];
   /** How many shares are active: each keeps a daemon from its idle exit (D133). */
   count(): number;
-  /** The active shares, for `instance/status`. */
+  /** The active shares, for `instance/status`: without their links, which carry secrets. */
   active(): Share[];
   /** Sets tailnet and Funnel shares up again after a restart, and ends what can't continue. */
   recover(): Promise<void>;
@@ -218,6 +218,17 @@ export function createShares(options: SharesOptions): Shares {
     start: () => Promise<Tunnel>,
   ): Promise<Tunnel> => {
     const running = exposures.get(key);
+    if (running?.restarting) {
+      // Its process ended and is being started again (Opus review of WP-13): a new share never
+      // gets a link through a tunnel that isn't there. This runs inside the lifecycle's turn,
+      // which the restart waits for, so it can't wait for the restart in turn.
+      throw new RpcError(
+        createDiagnostic("MOSTRA_SHARE_TUNNEL_FAILED", {
+          message:
+            "This share's tunnel stopped a moment ago and is being started again; try again in a few seconds.",
+        }),
+      );
+    }
     if (running) {
       running.refs.add(shareId);
       return running.tunnel;
@@ -653,10 +664,16 @@ export function createShares(options: SharesOptions): Shares {
     for (const delay of RECOVERY_DELAYS_MS) {
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
       if (closed) return;
-      const current = row(found.id);
-      if (!current || current.stopped_at !== null) return;
       try {
-        await serial(() => setUp(found.id, found.artifact_id, found.via, plan));
+        // The share is judged inside the lifecycle's turn (Opus review of WP-13): a `share/stop`
+        // queued meanwhile ran first, and nothing is set up for a share that ended.
+        const restored = await serial(async () => {
+          const current = row(found.id);
+          if (closed || !current || current.stopped_at !== null) return false;
+          await setUp(found.id, found.artifact_id, found.via, plan);
+          return true;
+        });
+        if (!restored) return;
         schedule(found.id, found.expires_at ?? undefined);
         log.info("share.restored", { shareId: found.id, via: found.via });
         return;
@@ -736,7 +753,14 @@ export function createShares(options: SharesOptions): Shares {
           db.get<{ count: number }>("SELECT COUNT(*) AS count FROM share WHERE stopped_at IS NULL")
             ?.count ?? 0,
       ),
-    active: () => activeRows().map(toShare),
+    // Status is read by tools that print it (`mostra inspect`, bug reports): a share's link and
+    // its secret appear only where asked for, `share/start` and `share/list` (Opus review of
+    // WP-13; capability tokens stay out of every other output).
+    active: () =>
+      activeRows().map((found) => {
+        const { url: _url, ...rest } = toShare(found);
+        return rest;
+      }),
     async recover() {
       const pending: Promise<void>[] = [];
       for (const found of activeRows()) {

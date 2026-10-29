@@ -761,10 +761,40 @@ export function createGateway(options: GatewayOptions): Gateway {
    * (kept, so its links work after a restart), or none. `null`, or another origin, withdraws the
    * face given before, whose links stop working; a host that fails or is away keeps what it gave.
    */
-  const hostFace = async (
+  const hostFaceTurns = new Map<string, Promise<unknown>>();
+  /**
+   * One question to the host per face at a time (Opus review of WP-13): a question that fails
+   * never closes a face another question just set up, and every question reads what the one
+   * before it left.
+   */
+  const hostFace = (
     artifactId: string,
     listener: "shell" | "artifact",
   ): Promise<FaceEntry | undefined> => {
+    const key = faceKey(`host:${artifactId}`, listener, artifactId);
+    const before = hostFaceTurns.get(key) ?? Promise.resolve();
+    const turn = before.then(
+      () => askHostFace(artifactId, listener),
+      () => askHostFace(artifactId, listener),
+    );
+    const settled = turn.catch(() => undefined);
+    hostFaceTurns.set(key, settled);
+    void settled.then(() => {
+      if (hostFaceTurns.get(key) === settled) hostFaceTurns.delete(key);
+    });
+    return turn;
+  };
+
+  const askHostFace = async (
+    artifactId: string,
+    listener: "shell" | "artifact",
+  ): Promise<FaceEntry | undefined> => {
+    // Only an artifact of this home has a host's address: nothing is opened or asked for others.
+    try {
+      artifacts.get({ artifactId });
+    } catch {
+      return undefined;
+    }
     const port = options.externalBase;
     const group = `host:${artifactId}`;
     const key = faceKey(group, listener, artifactId);
@@ -874,8 +904,15 @@ export function createGateway(options: GatewayOptions): Gateway {
     frameAncestors: () => "'none'",
     artifactOf: (params) => {
       const id = params["artifactId"];
-      return id !== undefined && ArtifactId.is(id) ? id : undefined;
+      // A face kept for one artifact (a host's external base) serves that artifact only: any
+      // other path is refused before anything is opened or asked (Opus review of WP-13).
+      const own = way().artifactId;
+      return id !== undefined && ArtifactId.is(id) && (own === undefined || own === id)
+        ? id
+        : undefined;
     },
+    // The shell's own stream is refused where streams don't pass, as the frame's is (D158 item 5).
+    streams: () => way().streams(),
   });
 
   const shellMissing = (): Response =>
@@ -978,9 +1015,18 @@ export function createGateway(options: GatewayOptions): Gateway {
     const exchange = async (context: RouteContext): Promise<Response> => {
       const way = wayOf();
       const origin = way.origin() ?? "";
-      const artifactId = context.artifactId as string;
       const startedAt = exchangeOrder;
       const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
+      // No artifact this address serves (another's, at a host's address): nothing is read,
+      // opened or asked (Opus review of WP-13).
+      if (context.artifactId === undefined) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_NOT_SERVED", "No artifact is served at this path."),
+          meta,
+        );
+      }
+      const artifactId = context.artifactId;
       const body = await readJsonObject(context.request);
       if (isRefusal(body)) return refuse(checks, body, meta);
       // A host's address is asked again at every exchange: one it withdrew stops working (D158).

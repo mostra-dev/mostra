@@ -5,13 +5,13 @@
  * responses as quick tunnels do). The real tools are exercised by the external checks
  * (`test/external`, PROGRESS-WP-13).
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Answer, Browser, type Opened, openLink, parseLink } from "../browser-client.ts";
+import { type Answer, Browser, type Opened, openLink, parseLink, raw } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
 import { connectTo, initializeParams } from "../support.ts";
 
@@ -203,6 +203,19 @@ describe("shares (D158)", () => {
       });
       expect(stream.status).toBe(503);
       expect(stream.json<{ code: string }>().code).toBe("MOSTRA_HYGIENE_NOT_SERVED");
+      // The shell's own stream too, on the shell's face (Opus review of WP-13): asked of the face
+      // itself, since the tunnel would hold a stream's answer back.
+      const shellFace = ((await status(gateway)).gateway?.faces ?? []).find(
+        (face) => face.origin === opened.link.shell,
+      );
+      expect(shellFace).toBeDefined();
+      const shellHost = new URL(opened.link.shell).host;
+      const path = `/a/${receipt.artifactId}/_mostra/v/2026-10-15/events?view=${opened.viewId}`;
+      const shellStream = await raw(
+        Number(new URL(shellFace?.local as string).port),
+        `GET ${path} HTTP/1.1\r\nHost: ${shellHost}\r\nOrigin: ${opened.link.shell}\r\nSec-Fetch-Site: same-origin\r\nCookie: ${browser.cookiesFor(`${opened.link.shell}${path}`)}\r\nConnection: close\r\n\r\n`,
+      );
+      expect(shellStream.status).toBe(503);
     });
 
     it("answers as a viewer of the link's own, never the home's local user", async () => {
@@ -223,6 +236,11 @@ describe("shares (D158)", () => {
         await gateway.client.call("share/list", { artifact: { artifactId: receipt.artifactId } }),
       );
       expect(listed.shares.map((one) => one.shareId)).toContain(shared.shareId);
+      expect(listed.shares.find((one) => one.shareId === shared.shareId)?.url).toBe(shared.url);
+      // Status names the share but never its link's secret: tools print it (Opus review).
+      const inStatus = JSON.stringify(await status(gateway));
+      expect(inStatus).toContain(shared.shareId);
+      expect(inStatus).not.toContain(parseLink(shared.url).secret);
       const stopped = ok<{ stopped: ShareResult[] }>(
         await gateway.client.call("share/stop", { shareId: shared.shareId }),
       );
@@ -429,33 +447,33 @@ describe("shares (D158)", () => {
   });
 });
 
-describe("share lifecycles the GPT review of WP-13 found", () => {
-  /** A fresh daemon on the stand-ins, with a control directory and fixed Funnel ports. */
-  async function started(extra: Record<string, string> = {}): Promise<{
-    gateway: GatewayHome;
-    env: Record<string, string>;
-    control: string;
-  }> {
-    const control = mkdtempSync(join(tmpdir(), "mostra-fake-"));
-    const env = {
-      MOSTRA_TEST_TUNNELS: TUNNELS,
-      MOSTRA_FAKE_CONTROL: control,
-      // Above the lease range and below every ephemeral range in use: Funnel's three ports.
-      MOSTRA_FAKE_FUNNEL_PORT_BASE: String(40000 + Math.floor(Math.random() * 5000) * 3),
-      MOSTRA_TEST_SHARE_SWEEP_MS: "300",
-      ...extra,
-    };
-    const gateway = new GatewayHome();
-    await gateway.start({ env });
-    return { gateway, env, control };
-  }
-  const tunnels = async (gateway: GatewayHome): Promise<string[]> =>
-    ok<{ processes: { kind: string }[] }>(await gateway.client.call("instance/status", {}))
-      .processes.map((child) => child.kind)
-      .filter((kind) => kind.startsWith("tunnel-"));
-  const funnelPort = (env: Record<string, string>, origin: string | undefined): number =>
-    Number(new URL(origin as string).port) - Number(env["MOSTRA_FAKE_FUNNEL_PORT_BASE"]);
+/** A fresh daemon on the stand-ins, with a control directory and fixed Funnel ports. */
+async function started(extra: Record<string, string> = {}): Promise<{
+  gateway: GatewayHome;
+  env: Record<string, string>;
+  control: string;
+}> {
+  const control = mkdtempSync(join(tmpdir(), "mostra-fake-"));
+  const env = {
+    MOSTRA_TEST_TUNNELS: TUNNELS,
+    MOSTRA_FAKE_CONTROL: control,
+    // Above the lease range and below every ephemeral range in use: Funnel's three ports.
+    MOSTRA_FAKE_FUNNEL_PORT_BASE: String(40000 + Math.floor(Math.random() * 5000) * 3),
+    MOSTRA_TEST_SHARE_SWEEP_MS: "300",
+    ...extra,
+  };
+  const gateway = new GatewayHome();
+  await gateway.start({ env });
+  return { gateway, env, control };
+}
+const tunnels = async (gateway: GatewayHome): Promise<string[]> =>
+  ok<{ processes: { kind: string }[] }>(await gateway.client.call("instance/status", {}))
+    .processes.map((child) => child.kind)
+    .filter((kind) => kind.startsWith("tunnel-"));
+const funnelPort = (env: Record<string, string>, origin: string | undefined): number =>
+  Number(new URL(origin as string).port) - Number(env["MOSTRA_FAKE_FUNNEL_PORT_BASE"]);
 
+describe("share lifecycles the GPT review of WP-13 found", () => {
   it("keeps a Funnel share's sessions across a restart: its faces' ports are leased", async () => {
     const { gateway, env } = await started();
     try {
@@ -692,4 +710,98 @@ describe("a share and the daemon's idle exit (D133)", () => {
       await gateway.stop();
     }
   }, 120_000);
+});
+
+describe("share lifecycles the Opus review of WP-13 found", () => {
+  /** The external port of a tailnet face (its leased port, D158 item 4). */
+  const tailnetPort = async (gateway: GatewayHome, listener: string, artifactId: string) => {
+    const face = ((await status(gateway)).gateway?.faces ?? []).find(
+      (one) =>
+        one.by === "tailnet" &&
+        one.listener === listener &&
+        (listener === "shell" || one.artifactId === artifactId),
+    );
+    return Number(new URL(face?.origin as string).port);
+  };
+
+  it("refuses a new share whose tunnel is being started again, rather than give it a dead one (Opus review)", async () => {
+    const { gateway, control } = await started();
+    try {
+      const a = await gateway.publish("single-tsx", "page.tsx");
+      const b = await gateway.publish("directory");
+      await share(gateway, a.artifactId, { via: "tailnet" });
+      const shell = await tailnetPort(gateway, "shell", a.artifactId);
+      // The shell's tunnel ends and can't start again for now.
+      writeFileSync(join(control, `refuse-${shell}`), "");
+      writeFileSync(join(control, `die-${shell}`), "");
+      await eventually(async () => (await tunnels(gateway)).length === 1, 10_000);
+      const answer = await gateway.client.call(
+        "share/start",
+        { artifact: { artifactId: b.artifactId }, via: "tailnet" },
+        60_000,
+      );
+      expect(refused(answer)).toBe("MOSTRA_SHARE_TUNNEL_FAILED");
+      // Once Tailscale serves again, the tunnel is back and a new share goes through.
+      unlinkSync(join(control, `refuse-${shell}`));
+      await eventually(async () => (await tunnels(gateway)).length === 2, 30_000);
+      await share(gateway, b.artifactId, { via: "tailnet" });
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
+
+  it("never sets a share up again after it was stopped while its restart waited (Opus review)", async () => {
+    const { gateway, env, control } = await started();
+    try {
+      const a = await gateway.publish("single-tsx", "page.tsx");
+      const b = await gateway.publish("directory");
+      const c = await gateway.publish("single-mdx", "page.mdx");
+      const one = await share(gateway, a.artifactId, { via: "tailnet" });
+      await share(gateway, b.artifactId, { via: "tailnet" });
+      const portA = await tailnetPort(gateway, "artifact", a.artifactId);
+      // After the restart, A's tunnel can't start yet: its share waits 5 s to try again.
+      await gateway.stop();
+      writeFileSync(join(control, `refuse-${portA}`), "");
+      await gateway.start({ env });
+      const log = (): string => {
+        try {
+          return readFileSync(join(gateway.home.home, "logs", "supervisor.log"), "utf8");
+        } catch {
+          return "";
+        }
+      };
+      const said = (event: string): boolean =>
+        log()
+          .split("\n")
+          .some((line) => line.includes(`"${event}"`) && line.includes(one.shareId));
+      // A's first attempt failed; its next comes in 5 s.
+      await eventually(async () => said("share.restore_failed"), 30_000);
+      // Another share's start holds the lifecycle's turn, and A's stop waits behind it.
+      writeFileSync(join(control, "hold"), "");
+      const third = gateway.client.call(
+        "share/start",
+        { artifact: { artifactId: c.artifactId }, via: "tailnet" },
+        120_000,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const stopping = gateway.client.call("share/stop", { shareId: one.shareId }, 120_000);
+      // A's retry comes due while its stop is still waiting.
+      await new Promise((resolve) => setTimeout(resolve, 6_000));
+      unlinkSync(join(control, `refuse-${portA}`));
+      unlinkSync(join(control, "hold"));
+      ok(await third);
+      ok(await stopping);
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      // Nothing was set up again for the stopped share: shell, B and C.
+      expect(said("share.restored")).toBe(false);
+      expect(await tunnels(gateway)).toHaveLength(3);
+      expect(
+        ((await status(gateway)).gateway?.faces ?? []).some(
+          (face) => face.by === "tailnet" && face.artifactId === a.artifactId,
+        ),
+      ).toBe(false);
+    } finally {
+      await gateway.stop();
+    }
+  }, 180_000);
 });

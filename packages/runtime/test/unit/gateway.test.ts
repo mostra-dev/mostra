@@ -21,6 +21,7 @@ import {
   randomSecret,
   SECRET_LENGTH,
   TICKET_TTL_MS,
+  TICKETS_PER_SESSION,
 } from "../../src/gateway/capabilities.ts";
 import {
   type Ledger,
@@ -226,6 +227,27 @@ describe("capability tokens (HY-03, D97)", () => {
     const moved = capabilities.rotate(local.tokenId);
     if (moved === undefined || moved === "dead") throw new Error("not rotated");
     expect(moved.shellOrigin).toBe("http://127.0.0.1:20999");
+  });
+
+  it("rotate a share's link at its address even while the share's faces are down (Opus review)", () => {
+    const db = ledger();
+    SHELL_ORIGIN.value = "http://127.0.0.1:20000";
+    const capabilities = new Capabilities({
+      ledger: db,
+      log: silentLog,
+      key: capabilityKey(tempDir("mostra-key"), silentLog),
+      now: () => Date.parse("2026-10-14T00:00:00Z"),
+      shellOrigin: () => SHELL_ORIGIN.value,
+      // Nothing but the loopback shell is served: the share is being set up again.
+      servesShell: (origin) => origin === SHELL_ORIGIN.value,
+    });
+    const shared = capabilities.mint({
+      artifactId: ARTIFACT,
+      shellOrigin: "https://host.tail0000.ts.net:21669",
+    });
+    const rotated = capabilities.rotate(shared.tokenId);
+    if (rotated === undefined || rotated === "dead") throw new Error("not rotated");
+    expect(rotated.shellOrigin).toBe("https://host.tail0000.ts.net:21669");
   });
 
   it("keep one stable default link per artifact, and rotation moves it (D97 item 3)", () => {
@@ -563,5 +585,91 @@ describe("requestId replays (H-03, Claude review finding 8)", () => {
       refused = (error as { diagnostic: { code: string } }).diagnostic.code;
     }
     expect(refused).toBe("MOSTRA_HOST_REQUEST_ID_REUSED");
+  });
+});
+
+describe("stream tickets and session modes (D70, D158 item 5)", () => {
+  const ORIGIN = "http://127.0.0.1:20001";
+  function opened() {
+    const { capabilities } = authority();
+    const token = capabilities.mint({ artifactId: ARTIFACT });
+    const cookie = capabilities.createSession({ tokenId: token.tokenId, origin: ORIGIN });
+    const worker = capabilities.createSession({
+      tokenId: token.tokenId,
+      origin: ORIGIN,
+      mode: "worker",
+    });
+    return { capabilities, cookie, worker };
+  }
+  const mint = (
+    capabilities: Capabilities,
+    sessionId: string,
+    purpose: "stream" | "socket" = "stream",
+  ): string =>
+    capabilities.mintStreamTicket({ sessionId, origin: ORIGIN, artifactId: ARTIFACT, purpose })
+      .ticket;
+
+  it("open only their purpose, their origin and their artifact (Opus review)", () => {
+    const { capabilities, worker } = opened();
+    expect(
+      code(
+        capabilities.redeemStreamTicket(
+          mint(capabilities, worker.id, "socket"),
+          ORIGIN,
+          ARTIFACT,
+          "stream",
+        ),
+      ),
+    ).toBe("MOSTRA_HYGIENE_TOKEN_INVALID");
+    expect(
+      code(
+        capabilities.redeemStreamTicket(
+          mint(capabilities, worker.id),
+          "http://127.0.0.1:20002",
+          ARTIFACT,
+          "stream",
+        ),
+      ),
+    ).toBe("MOSTRA_HYGIENE_TOKEN_INVALID");
+    expect(
+      code(
+        capabilities.redeemStreamTicket(
+          mint(capabilities, worker.id),
+          ORIGIN,
+          "art_01JB8Z3QF6S7W3N8D5K2C4V9XH",
+          "stream",
+        ),
+      ),
+    ).toBe("MOSTRA_HYGIENE_TOKEN_INVALID");
+    expect(
+      code(
+        capabilities.redeemStreamTicket(mint(capabilities, worker.id), ORIGIN, ARTIFACT, "stream"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("are held a few per session: asking in a loop drops the oldest (Opus review)", () => {
+    const { capabilities, worker } = opened();
+    const tickets = Array.from({ length: TICKETS_PER_SESSION + 1 }, () =>
+      mint(capabilities, worker.id),
+    );
+    expect(code(capabilities.redeemStreamTicket(tickets[0], ORIGIN, ARTIFACT, "stream"))).toBe(
+      "MOSTRA_HYGIENE_TOKEN_INVALID",
+    );
+    expect(
+      code(capabilities.redeemStreamTicket(tickets.at(-1), ORIGIN, ARTIFACT, "stream")),
+    ).toBeUndefined();
+  });
+
+  it("never take a session made one way for the other: a cookie isn't a frame header (Opus review)", () => {
+    const { capabilities, cookie, worker } = opened();
+    expect(code(capabilities.session([cookie.cookie], ORIGIN, ARTIFACT, "worker"))).toBe(
+      "MOSTRA_HYGIENE_SESSION_MISSING",
+    );
+    expect(code(capabilities.session([worker.cookie], ORIGIN, ARTIFACT, "cookie"))).toBe(
+      "MOSTRA_HYGIENE_SESSION_MISSING",
+    );
+    expect(code(capabilities.session([cookie.cookie], ORIGIN, ARTIFACT, "cookie"))).toBeUndefined();
+    expect(code(capabilities.session([worker.cookie], ORIGIN, ARTIFACT, "worker"))).toBeUndefined();
   });
 });

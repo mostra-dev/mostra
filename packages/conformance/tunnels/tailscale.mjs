@@ -34,7 +34,8 @@ function qEncode(value) {
 }
 
 if (args[0] === "status") {
-  if (play === "stopped") {
+  // `stopped` in `MOSTRA_FAKE_CONTROL` signs Tailscale out for as long as it is there.
+  if (play === "stopped" || marked("stopped")) {
     process.stdout.write(`${JSON.stringify({ BackendState: "NeedsLogin" })}\n`);
   } else {
     process.stdout.write(
@@ -62,9 +63,13 @@ if ((feature !== "serve" && feature !== "funnel") || !https || !local?.startsWit
   process.stderr.write(`fake tailscale: unsupported command ${args.join(" ")}\n`);
   process.exit(2);
 }
+const asked = Number(https.slice("--https=".length));
+// `refuse` (or `refuse-<port>`) in `MOSTRA_FAKE_CONTROL`: Serve and Funnel refuse to start (at
+// that port) while it is there.
+const refusing = marked("refuse") || marked("refuse-" + asked);
 if (
-  (feature === "serve" && play === "no-serve") ||
-  (feature === "funnel" && play === "no-funnel")
+  (feature === "serve" && (play === "no-serve" || refusing)) ||
+  (feature === "funnel" && (play === "no-funnel" || refusing))
 ) {
   const name = feature === "serve" ? "Serve" : "Funnel";
   process.stdout.write(
@@ -80,7 +85,6 @@ const [login, name] = (
 // Tailscale Serve answers on the device's name at the port asked for, so its links stay the
 // same across restarts: the fake does the same on IPv6 loopback, beside the face on IPv4. Funnel's
 // ports (443 and the others) need privileges a test lacks, so Funnel takes a port the system picks.
-const asked = Number(https.slice("--https=".length));
 // `MOSTRA_FAKE_FUNNEL_PORT_BASE`: Funnel's public ports as fixed ones, as a device's are (443 at
 // the base, 8443 one above, 10000 two above), so a test sees which port a share took and that its
 // address outlives a restart.
@@ -92,6 +96,8 @@ const funnelPort =
 const stable = (feature === "serve" && asked >= 1024) || funnelPort !== undefined;
 // `slow` in `MOSTRA_FAKE_CONTROL`: a start takes 3 s, as Tailscale's own can after a restart.
 if (marked("slow")) await new Promise((resolve) => setTimeout(resolve, 3000));
+// `hold`: a start waits for as long as it is there, so a test decides when it ends.
+while (marked("hold")) await new Promise((resolve) => setTimeout(resolve, 100));
 const port = await forward(local, {
   ...(stable ? { host: "::1", port: funnelPort ?? asked } : {}),
   rewrite(headers) {
@@ -115,5 +121,5 @@ const port = await forward(local, {
 const where = feature === "serve" ? "Available within your tailnet:" : "Available on the internet:";
 const address = stable ? `http://[::1]:${port}` : `http://127.0.0.1:${port}`;
 process.stdout.write(`${where}\n\n${address}/\n|-- / proxy ${local}\n\nPress Ctrl+C to exit.\n`);
-await untilStopped();
+await untilStopped(String(asked));
 process.exit(0);

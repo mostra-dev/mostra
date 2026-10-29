@@ -71,7 +71,10 @@ export interface InstanceStatusResult {
   readonly workers?: readonly WorkerStatus[];
   /** When the daemon exits for lack of work, if it will (WP-08, RT-08); absent: it won't. */
   readonly idleExitAt?: string;
-  /** The active shares (WP-13, D158), which keep a daemon from its idle exit. */
+  /**
+   * The active shares (WP-13, D158), which keep a daemon from its idle exit. Their `url` is left
+   * out here, since status is printed where a link's secret mustn't appear: `share/list` gives it.
+   */
   readonly shares?: readonly Share[];
 }
 

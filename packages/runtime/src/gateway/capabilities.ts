@@ -40,6 +40,12 @@ export const SECRET_LENGTH = 26;
 /** How long a frame ticket works (D98). */
 export const TICKET_TTL_MS = 60_000;
 
+/** How many frame tickets, and how many stream tickets, a session holds at once (D158 item 5). */
+export const TICKETS_PER_SESSION = 8;
+
+/** How often expired tickets are swept at most. */
+const SWEEP_INTERVAL_MS = 1_000;
+
 /**
  * Failed capability tokens tolerated per artifact and minute (D97 item 8). Tickets don't count:
  * they are single-use 130-bit secrets that live for a minute, and any page on the host could spend
@@ -53,6 +59,17 @@ export const SESSION_MAX_AGE_S: number = 400 * 24 * 60 * 60;
 
 /** How often a session's `last_seen_at` is written at most. */
 const TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Whether two origins are on the same scheme and host, whatever their ports. */
+function sameHost(a: string, b: string): boolean {
+  try {
+    const one = new URL(a);
+    const two = new URL(b);
+    return one.protocol === two.protocol && one.hostname === two.hostname;
+  } catch {
+    return false;
+  }
+}
 
 /** Encodes the first 130 bits of `bytes` as 26 Crockford base32 characters. */
 function crockford(bytes: Uint8Array): string {
@@ -265,6 +282,11 @@ export class Capabilities {
   readonly #tickets = new Map<string, TicketGrant & { readonly expires: number }>();
   /** One-time launch tickets (D140 item 15), by the SHA-256 of their secret. */
   readonly #launches = new Map<string, { readonly tokenId: string; readonly expires: number }>();
+  /** The frame tickets and the stream tickets each session holds, oldest first. */
+  readonly #ticketsBySession = new Map<string, string[]>();
+  readonly #streamTicketsBySession = new Map<string, string[]>();
+  /** When the tickets were last swept. */
+  #swept = Number.NEGATIVE_INFINITY;
   /** Failure times per artifact (`""` for tokens of no artifact in this home). */
   readonly #failures = new Map<string, number[]>();
   readonly #touched = new Map<string, number>();
@@ -491,10 +513,14 @@ export class Capabilities {
         pinnedVersion: grant.pinnedVersion,
         isDefault: grant.isDefault,
         viewerId: grant.viewerId,
-        // A link stays at the address its holder uses (a share's, a host's external base) while
-        // the gateway serves it; one at an address no longer served (the loopback shell moved to
-        // another port) moves to the shell's address now (D97 item 10, GPT review of WP-13).
-        shellOrigin: this.#servesShell(grant.shellOrigin) ? grant.shellOrigin : undefined,
+        // A link stays at the address its holder uses: a share's, a host's external base, served
+        // now or not (a share's faces are down while it is set up again after a restart, Opus
+        // review of WP-13). Only a loopback link whose shell moved to another port moves to the
+        // shell's address now (D97 item 10, GPT review of WP-13).
+        shellOrigin:
+          sameHost(grant.shellOrigin, this.#shellOrigin()) && !this.#servesShell(grant.shellOrigin)
+            ? undefined
+            : grant.shellOrigin,
       });
       appendEvent(db, {
         artifactId: grant.artifactId,
@@ -695,12 +721,31 @@ export class Capabilities {
     );
   }
 
-  /** Mints a single-use frame ticket (D98 item 3). */
+  /** Mints a single-use frame ticket (D98 item 3); a shell session holds at most a few at once. */
   mintTicket(grant: Omit<TicketGrant, never>): string {
     const ticket = randomSecret();
     this.#sweepTickets();
-    this.#tickets.set(hashSecret(ticket), { ...grant, expires: this.#now() + TICKET_TTL_MS });
+    const key = hashSecret(ticket);
+    this.#tickets.set(key, { ...grant, expires: this.#now() + TICKET_TTL_MS });
+    this.#hold(this.#ticketsBySession, this.#tickets, grant.shellSessionId, key);
     return ticket;
+  }
+
+  /**
+   * Records a session's new ticket and drops its oldest beyond {@link TICKETS_PER_SESSION}, so no
+   * link holder can make the maps grow without bound by asking for tickets in a loop (Opus review
+   * of WP-13). A page uses one or two at a time.
+   */
+  #hold(
+    bySession: Map<string, string[]>,
+    tickets: Map<string, unknown>,
+    sessionId: string,
+    key: string,
+  ): void {
+    const held = (bySession.get(sessionId) ?? []).filter((one) => tickets.has(one));
+    held.push(key);
+    while (held.length > TICKETS_PER_SESSION) tickets.delete(held.shift() as string);
+    bySession.set(sessionId, held);
   }
 
   /**
@@ -712,7 +757,7 @@ export class Capabilities {
     const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
     const entry = key === undefined ? undefined : this.#tickets.get(key);
     if (key !== undefined) this.#tickets.delete(key);
-    if (!entry || entry.origin !== origin) {
+    if (!entry || entry.expires <= this.#now() || entry.origin !== origin) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_INVALID",
         "The frame ticket is unknown, used or expired.",
@@ -755,7 +800,9 @@ export class Capabilities {
     this.#sweepTickets();
     const ticket = randomSecret();
     const expires = this.#now() + TICKET_TTL_MS;
-    this.#streamTickets.set(hashSecret(ticket), { ...input, expires });
+    const key = hashSecret(ticket);
+    this.#streamTickets.set(key, { ...input, expires });
+    this.#hold(this.#streamTicketsBySession, this.#streamTickets, input.sessionId, key);
     return { ticket, expiresAt: this.#iso(expires) };
   }
 
@@ -776,6 +823,7 @@ export class Capabilities {
     if (key !== undefined) this.#streamTickets.delete(key);
     if (
       !entry ||
+      entry.expires <= this.#now() ||
       entry.origin !== origin ||
       entry.artifactId !== artifactId ||
       entry.purpose !== purpose
@@ -812,8 +860,23 @@ export class Capabilities {
     };
   }
 
+  /**
+   * Drops expired tickets, at most once a second: every use checks a ticket's expiry itself, so a
+   * sweep only frees memory, and a burst of requests never makes each one walk every ticket (Opus
+   * review of WP-13).
+   */
   #sweepTickets(): void {
     const now = this.#now();
+    if (now - this.#swept < SWEEP_INTERVAL_MS && now >= this.#swept) return;
+    this.#swept = now;
+    for (const [sessionId, held] of this.#ticketsBySession) {
+      if (!held.some((key) => this.#tickets.has(key))) this.#ticketsBySession.delete(sessionId);
+    }
+    for (const [sessionId, held] of this.#streamTicketsBySession) {
+      if (!held.some((key) => this.#streamTickets.has(key))) {
+        this.#streamTicketsBySession.delete(sessionId);
+      }
+    }
     for (const [key, entry] of this.#tickets) if (entry.expires <= now) this.#tickets.delete(key);
     for (const [key, entry] of this.#streamTickets) {
       if (entry.expires <= now) this.#streamTickets.delete(key);
@@ -860,7 +923,8 @@ export class Capabilities {
     if (limited) return limited;
     this.#sweepTickets();
     const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
-    const entry = key === undefined ? undefined : this.#launches.get(key);
+    const found = key === undefined ? undefined : this.#launches.get(key);
+    const entry = found && found.expires > this.#now() ? found : undefined;
     const grant = entry ? this.grant(entry.tokenId) : undefined;
     if (!entry || !grant || grant.artifactId !== artifactId) {
       this.#fail(artifactId);
@@ -886,9 +950,13 @@ export class Capabilities {
    * session between them (GPT review of WP-12, finding 1).
    */
   spendLaunch(ticket: unknown): boolean {
-    // An expired ticket is swept first, so it can't be spent (Opus review of WP-12, finding 3).
+    // An expired ticket can't be spent (Opus review of WP-12, finding 3).
     this.#sweepTickets();
-    return looksLikeSecret(ticket) && this.#launches.delete(hashSecret(ticket));
+    if (!looksLikeSecret(ticket)) return false;
+    const key = hashSecret(ticket);
+    const entry = this.#launches.get(key);
+    if (!entry || entry.expires <= this.#now()) return false;
+    return this.#launches.delete(key);
   }
 
   /** Removes sessions unseen for longer than their cookie lives; no browser holds them any more. */
