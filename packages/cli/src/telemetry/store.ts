@@ -322,6 +322,7 @@ export class TelemetryStore {
       }
     }
     try {
+      pause(holdPauseMs());
       return fn();
     } catch {
       return undefined;
@@ -340,43 +341,64 @@ export class TelemetryStore {
   }
 
   /**
-   * Takes a crashed owner's lock away. The lock is moved aside under a name of this process's own
-   * (a rename is atomic, so of two processes breaking it one gets it), and a lock that turns out
-   * to be another, live owner's goes back. Answers `broken` when the caller should try again at
-   * once, `absent` when no lock file exists, and `held` when the caller should wait: a live
-   * owner's lock, or one that can't be read (on Windows, a lock being deleted).
+   * Takes a crashed owner's lock away (#98). Only one process breaks locks at a time: it holds the
+   * break lock (`telemetry.lock.break`, its token inside) while it judges the lock again and
+   * removes it. An owner removes only its own lock and every other remover holds the break lock,
+   * so the lock judged is the lock removed: no breaker ever moves a live owner's lock aside or
+   * brings back one its owner released. A break lock a crashed breaker left goes by the lock's own
+   * rules (older than 10 s with its owner gone, or older than 60 s). Answers `broken` when the
+   * caller should try again at once, `absent` when no lock file exists, and `held` when the
+   * caller should wait: a live owner's lock, another breaker at work, or a lock that can't be read
+   * (on Windows, a lock being deleted).
    */
   #breakStale(): "broken" | "absent" | "held" {
-    // One descriptor for the age and the contents, so both describe the same file.
-    let seen: string;
-    let age: number;
-    let handle: number | undefined;
+    const judged = judge(this.#lockFile);
+    if (judged !== "stale") return judged;
+    const breakFile = `${this.#lockFile}.break`;
+    const token = `${process.pid} ${randomUUID()}`;
     try {
-      handle = openSync(this.#lockFile, "r");
-      age = Date.now() - fstatSync(handle).mtimeMs;
-      if (age <= STALE_LOCK_MS) return "held";
-      seen = readFileSync(handle, "utf8");
+      writeFileSync(breakFile, token, { flag: "wx", mode: 0o600 });
     } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "held";
-    } finally {
-      if (handle !== undefined) closeSync(handle);
-    }
-    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return "held";
-    const aside = `${this.#lockFile}.${process.pid}.${randomUUID()}.stale`;
-    try {
-      renameSync(this.#lockFile, aside);
-    } catch (error) {
-      // Another breaker moved it first: try for it at once; anything else, wait.
-      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "broken" : "held";
+      if (!held((error as NodeJS.ErrnoException).code, this.#platform)) return "held";
+      // Another breaker is at work, or one crashed at it.
+      if (judge(breakFile) === "stale") rmSync(breakFile, { force: true });
+      return "held";
     }
     try {
-      if (readFileSync(aside, "utf8") !== seen) linkSync(aside, this.#lockFile);
-    } catch {
-      // Another process holds a new lock already; ours goes, and the caller waits for theirs.
+      // Judged again under the break lock: the lock may have gone, or been replaced, meanwhile.
+      const now = judge(this.#lockFile);
+      if (now !== "stale") return now;
+      pause(breakPauseMs());
+      rmSync(this.#lockFile, { force: true });
+      return "broken";
     } finally {
-      rmSync(aside, { force: true });
+      try {
+        if (readFileSync(breakFile, "utf8") === token) rmSync(breakFile, { force: true });
+      } catch {
+        // Gone already: a later breaker judged this one crashed.
+      }
     }
-    return "broken";
+  }
+}
+
+/**
+ * Whether a lock file may be taken away: `stale` when it is older than 10 s and its owner no
+ * longer runs, or older than 60 s whoever it names; `held` while it is younger, its owner runs,
+ * or it can't be read; `absent` when there is none. One descriptor reads the age and the
+ * contents, so both describe the same file.
+ */
+function judge(file: string): "stale" | "absent" | "held" {
+  let handle: number | undefined;
+  try {
+    handle = openSync(file, "r");
+    const age = Date.now() - fstatSync(handle).mtimeMs;
+    if (age <= STALE_LOCK_MS) return "held";
+    const seen = readFileSync(handle, "utf8");
+    return age <= DEAD_LOCK_MS && ownerAlive(seen) ? "held" : "stale";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "held";
+  } finally {
+    if (handle !== undefined) closeSync(handle);
   }
 }
 
@@ -476,4 +498,24 @@ function bounded(lines: readonly string[], now: number): string[] {
     }
   });
   return fresh.slice(-QUEUE_MAX_EVENTS);
+}
+
+/**
+ * A pause inside a breaker's step, for tests only (`MOSTRA_TEST_LOCK_BREAK_MS`): it widens the
+ * window a slow machine opens between judging a lock and acting on it (#98).
+ */
+const BREAK_PAUSE_VARIABLE = "MOSTRA_TEST_LOCK_BREAK_MS";
+function breakPauseMs(): number {
+  const value = Number(process.env[BREAK_PAUSE_VARIABLE] ?? "0");
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 5_000) : 0;
+}
+function pause(ms: number): void {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** How long a lock's owner holds it before its work, for tests only (`MOSTRA_TEST_LOCK_HOLD_MS`). */
+const HOLD_PAUSE_VARIABLE = "MOSTRA_TEST_LOCK_HOLD_MS";
+function holdPauseMs(): number {
+  const value = Number(process.env[HOLD_PAUSE_VARIABLE] ?? "0");
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 5_000) : 0;
 }
