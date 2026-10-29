@@ -4291,8 +4291,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-04",
     name: "rotating a share's link while its faces are down moves it to loopback",
     file: "src/gateway/capabilities.ts",
-    from: "          sameHost(grant.shellOrigin, this.#shellOrigin()) &&\n",
-    to: "",
+    from: "          sameHost(grant.shellOrigin, this.#shellOrigin()) && !this.#servesShell(grant.shellOrigin)",
+    to: "          !this.#servesShell(grant.shellOrigin)",
     check: unit("gateway.test.ts", "rotate a share's link at its address"),
   },
   {

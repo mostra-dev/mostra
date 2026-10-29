@@ -46,3 +46,38 @@
   5. A share stopped while its Tailscale tunnel was being set up again left the new tunnel running. The restart runs one at a time with starts and stops, and stops what it started when the share is gone ("…while its tunnel is being set up again").
 
   The tunnel stand-ins gained what these tests need: fixed Funnel ports (`MOSTRA_FAKE_FUNNEL_PORT_BASE`), one of two quick tunnels failing (`MOSTRA_FAKE_CLOUDFLARED=fail-one`), and a tunnel ended on demand and a slow restart (`MOSTRA_FAKE_CONTROL`); the sweep's period is a test variable (`MOSTRA_TEST_SHARE_SWEEP_MS`).
+- **Claude Opus 5.5** (D144), run by Mirza on 2026-10-29 from the prompt written for it, against `558fe34`, posted on #100 (Anthropic, run and approved by Mirza, D34): ten findings (2 P1, 5 P2, 3 P3), all valid, all fixed with a test red on the old code and a seed red planted and green restored:
+  1. (P1) A host's shell address opened a leased face and asked the host's `addressing` port for any artifact ID in a path, before any capability check, leaking listeners and leases. A face kept for one artifact now serves that artifact only (`artifactOf`), the exchange refuses an artifact the address doesn't serve, and `hostFace` asks only for artifacts of this home (`test/integration/addressing.test.ts`).
+  2. (P1) `instance/status` carried every active share's link with its secret, which `mostra inspect` prints. Status now names shares without their links; `share/start` and `share/list` alone give them.
+  3. (P2) A share stopped while its restore waited to try again could be set up again after its stop. The share is now judged inside the lifecycle's turn.
+  4. (P2) A new share could join a tunnel that was being started again and get a link through nothing. It is refused with `MOSTRA_SHARE_TUNNEL_FAILED` until the tunnel is back.
+  5. (P2) Rotating a share's link while its faces were down (after a restart) moved it to loopback. A link at another host's address keeps it; only a loopback link whose port moved moves.
+  6. (P2) Of two concurrent questions to a host about one face, the one that failed closed the face the other set up. Questions about one face now go one at a time.
+  7. (P2) Stream tickets had no cap, and every use swept every ticket. A session holds at most eight frame tickets and eight stream tickets (the oldest goes), every use checks expiry itself, and sweeps run at most once a second.
+  8. (P3) The shell's own event stream was served on a Cloudflare face, where it stalls for 6 s before the shell polls. It is refused there like the frame's.
+  9. (P3) Removing a crashed breaker's break lock was check-then-remove, #98's race one level up. Break locks are now numbered: a crashed one is superseded by creating the next number exclusively, never removed by another, and a breaker that finds a higher number than its own holds nothing.
+  10. (P3) No test covered a stream ticket's origin, artifact and purpose, or a session's mode. Unit tests and four seeds now do.
+
+  The stand-ins gained `die-<port>`, `refuse-<port>` and `hold` in `MOSTRA_FAKE_CONTROL`, so a test ends, refuses or holds one Tailscale tunnel. Fixed in `4796e6b`; the seeds that a later format changed were anchored again and proved again.
+- **Copilot**: no review (its quota).
+
+## Agent-facing prose (D149)
+
+Delegated (M47: "If you're confident with the agent prose, you don't need to present them"): the `share`, `share stop` and `share list` help (`docs/reference/cli.md`); the hints of `MOSTRA_SHARE_*` and `MOSTRA_HYGIENE_FRAME_SESSION` and their pages in `docs/reference/errors/`; the tailnet share's line on the ports and the browser's traffic; the shell's words for a frame session that can't be set up (`FRAME_WORDS.frameSession`); the AGENTS.md of the runtime, React, the shell, the conformance kit, the CLI, the SDK and the crate.
+
+## Untested boundaries
+
+- **Real tunnel tools beyond this Mac.** Tailscale was exercised as Homebrew's formula (1.102.3) on macOS 26.2, and `cloudflared` 2026.10.3 on the same Mac; neither on Linux or Windows, nor the Mac App Store variant of Tailscale. Every CI leg, Windows included, runs the shares on the stand-ins.
+- **Viewers' devices.** One Android phone (Galaxy S24+, Chrome) on mobile data and in the tailnet; no iPhone. Real Safari ran on macOS (11 facts in each mode).
+- **A real Funnel or tailnet share across a daemon restart**, and a quick tunnel's limits (200 requests in flight, hours of use): the stand-ins only.
+- **A browser that blocks service workers in a cross-site frame** (Firefox's private windows, strict third-party storage): proven with Playwright's `serviceWorkers: "block"` in three engines (the shell says so and stops reloading), not in a real private window.
+- **WebSockets with tickets**: the gateway's socket route checks a socket ticket (purpose, single use) and then answers 501, since terminals arrive with WP-22 and WP-23; no real socket runs through it yet.
+- **A host's real tunnel before an external base**: the conformance kit plays the host's tunnel by naming (`localhost` and `127.0.0.1`).
+- **Firefox under heavy load.** The worker-mode reload test failed locally in Firefox at load averages above 20, as the cookie-mode reload test of `client.spec.ts` did; it passed on every CI leg.
+- **One poll on the real quick tunnel was refused** (401, a stream ticket already spent: most likely the edge retrying a request); the page polled again with a new ticket and lost nothing.
+
+## Deviations
+
+- **The static export's AU-09 check moved to WP-24** (M47), which builds that exporter.
+- **Interfaces past INTERFACES' sketch, additively** (D158): `addressing.externalBase` takes `{ artifactId, listener, local }` instead of `{ artifactId, purpose }`, since a host must know which loopback address to forward; `share/start` takes `scopes`, `viewer` and `requestId` and answers the whole `Share`; `share/list` and `Share.artifactOrigin` are new.
+- **A commit's subject**: `558fe34` ("docs: the GPT review of WP-13 …") also carries the review's code fixes, which were staged when it was made; history isn't rewritten (STANDARDS).
