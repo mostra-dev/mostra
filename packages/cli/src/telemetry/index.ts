@@ -84,9 +84,9 @@ export const QUESTION_TIMEOUT_MS = 60_000;
 export interface TelemetrySession {
   /** Before the command's work: the notice, or the question. Resolves `false` when Ctrl-C ended it. */
   begin(): Promise<boolean>;
-  /** Records an event of the command (`verify.result`, `publish.done`). */
+  /** Records an event of the command (`verify.result`, `publish.done`, `share.done`). */
   record(event: {
-    readonly event: "verify.result" | "publish.done";
+    readonly event: "verify.result" | "publish.done" | "share.done";
     readonly fields: Readonly<Record<string, unknown>>;
   }): void;
   /** After the command: queues its events and starts the flusher, when telemetry allows. */
@@ -121,7 +121,7 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
   const now = options.now ?? Date.now;
   const store = new TelemetryStore(options.configDir);
   const pending: {
-    event: "verify.result" | "publish.done";
+    event: "verify.result" | "publish.done" | "share.done";
     fields: Readonly<Record<string, unknown>>;
   }[] = [];
   const decision = (embedded: boolean): TelemetryDecision =>
