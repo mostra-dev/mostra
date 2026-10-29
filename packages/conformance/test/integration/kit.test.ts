@@ -31,6 +31,7 @@ describe("the conformance kit (HO-05)", () => {
       "submissions",
       "drafts",
       "identity",
+      "addressing",
       "trustedControls",
       "secrets",
     ]);
