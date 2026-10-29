@@ -6,6 +6,7 @@
  * (`test/external`, PROGRESS-WP-13).
  */
 import { mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -447,6 +448,31 @@ describe("shares (D158)", () => {
   });
 });
 
+/** Whether a port can be bound on the address the Funnel stand-in uses (IPv6 loopback). */
+function bindable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(false));
+    server.listen({ port, host: "::1", exclusive: true }, () => server.close(() => resolve(true)));
+  });
+}
+
+/**
+ * Three consecutive ports the Funnel stand-in can take for 443, 8443 and 10000, below the lease
+ * range (20000 and up) and every system's ephemeral range. Each is bound once first: on Windows,
+ * Hyper-V and WinNAT reserve ranges a program can't bind (`EACCES`), wherever they fall, which a
+ * fixed or merely random choice met in the merge queue of 0.7.0's version pull request.
+ */
+async function funnelPortBase(): Promise<number> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const base = 11000 + Math.floor(Math.random() * 2900) * 3;
+    if ((await bindable(base)) && (await bindable(base + 1)) && (await bindable(base + 2))) {
+      return base;
+    }
+  }
+  throw new Error("No three consecutive ports below 20000 are free on ::1.");
+}
+
 /** A fresh daemon on the stand-ins, with a control directory and fixed Funnel ports. */
 async function started(extra: Record<string, string> = {}): Promise<{
   gateway: GatewayHome;
@@ -457,8 +483,7 @@ async function started(extra: Record<string, string> = {}): Promise<{
   const env = {
     MOSTRA_TEST_TUNNELS: TUNNELS,
     MOSTRA_FAKE_CONTROL: control,
-    // Above the lease range and below every ephemeral range in use: Funnel's three ports.
-    MOSTRA_FAKE_FUNNEL_PORT_BASE: String(40000 + Math.floor(Math.random() * 5000) * 3),
+    MOSTRA_FAKE_FUNNEL_PORT_BASE: String(await funnelPortBase()),
     MOSTRA_TEST_SHARE_SWEEP_MS: "300",
     ...extra,
   };
