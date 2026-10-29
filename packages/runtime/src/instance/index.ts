@@ -621,6 +621,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log.warn("gateway.shell_missing", { code: "MOSTRA_ENV_SHELL_MISSING" });
   const traceRequests = Boolean(environment["MOSTRA_TEST_REQUEST_LOG"]);
   if (traceRequests) log.warn("instance.test_request_log", {});
+  // Shares run the local fakes instead of Tailscale and cloudflared (tests and the kit only).
+  if (environment["MOSTRA_TEST_TUNNELS"]) log.warn("instance.test_tunnels", {});
   const gateway: Gateway = createGateway({
     ledger: home.ledger,
     log,

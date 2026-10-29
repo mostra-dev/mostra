@@ -7,7 +7,7 @@
  */
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { Log } from "../log.ts";
-import { findTool, installHint } from "../platform/index.ts";
+import { installHint, type ToolCommand, toolCommand } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { type LineVerdict, runToCompletion, runTunnel, type Tunnel } from "./tunnel.ts";
 
@@ -28,8 +28,8 @@ export interface TailscaleContext {
 
 /** This device on its tailnet. */
 export interface TailnetDevice {
-  /** The tool's executable. */
-  readonly tool: string;
+  /** How the tool runs. */
+  readonly tool: ToolCommand;
   /** The device's MagicDNS name, such as `laptop.tail1234.ts.net`. */
   readonly hostname: string;
   /** The ports this device serves already (any configuration, its own or Mostra's). */
@@ -45,14 +45,14 @@ const missing = (): RpcError =>
 
 /** Finds Tailscale and this device, or explains what is missing. */
 export async function tailnetDevice(context: TailscaleContext): Promise<TailnetDevice> {
-  const tool = findTool("tailscale", context.env);
+  const tool = toolCommand("tailscale", context.env);
   if (!tool) throw missing();
   const status = await runToCompletion({
     processes: context.processes,
     kind: "tunnel-query",
     ownerRef: "tailscale",
-    command: tool,
-    args: ["status", "--json"],
+    command: tool.command,
+    args: [...tool.args, "status", "--json"],
     env: context.env,
     timeoutMs: 15_000,
     label: "Tailscale",
@@ -91,13 +91,13 @@ export async function tailnetDevice(context: TailscaleContext): Promise<TailnetD
 }
 
 /** The ports this device's Serve and Funnel configuration uses now. */
-async function servedPorts(context: TailscaleContext, tool: string): Promise<Set<number>> {
+async function servedPorts(context: TailscaleContext, tool: ToolCommand): Promise<Set<number>> {
   const status = await runToCompletion({
     processes: context.processes,
     kind: "tunnel-query",
     ownerRef: "tailscale",
-    command: tool,
-    args: ["serve", "status", "--json"],
+    command: tool.command,
+    args: [...tool.args, "serve", "status", "--json"],
     env: context.env,
     timeoutMs: 15_000,
     label: "Tailscale",
@@ -122,10 +122,25 @@ async function servedPorts(context: TailscaleContext, tool: string): Promise<Set
  * Reads `tailscale serve` and `funnel` output: they serve once they print where; a tailnet
  * without the feature prints the address where an admin turns it on, which the share reports.
  */
-function serveReader(feature: "Serve" | "Funnel"): (line: string) => LineVerdict {
+function serveReader(
+  feature: "Serve" | "Funnel",
+  device: TailnetDevice,
+  port: number,
+): (line: string) => LineVerdict {
   let notEnabled = false;
+  const expected = tailnetOrigin(device.hostname, port);
   return (line) => {
     const text = line.trim();
+    // The address it prints is the one it serves: the device's name at the port asked for, or,
+    // from the test fakes only, plain HTTP on loopback.
+    const printed = /^(https?:\/\/\S+?)\/?$/.exec(text)?.[1]?.toLowerCase();
+    if (
+      printed !== undefined &&
+      (printed === expected ||
+        (device.tool.fake && /^http:\/\/(\[::1\]|127\.0\.0\.1|localhost):\d+$/.test(printed)))
+    ) {
+      return { kind: "origin", origin: printed };
+    }
     if (/not enabled on your tailnet|isn't enabled|is not enabled/i.test(text)) {
       notEnabled = true;
       return undefined;
@@ -185,11 +200,12 @@ export function expose(
     log: context.log,
     kind: `tunnel-${input.feature}`,
     ownerRef: input.ownerRef,
-    command: device.tool,
-    args: [input.feature, `--https=${input.port}`, input.local],
+    command: device.tool.command,
+    args: [...device.tool.args, input.feature, `--https=${input.port}`, input.local],
     env: context.env,
-    read: serveReader(input.feature === "serve" ? "Serve" : "Funnel"),
-    origin: tailnetOrigin(device.hostname, input.port),
+    read: serveReader(input.feature === "serve" ? "Serve" : "Funnel", device, input.port),
+    // A release that doesn't print its address still serves the device's name at that port.
+    ...(device.tool.fake ? {} : { origin: tailnetOrigin(device.hostname, input.port) }),
     timeoutMs: SERVE_TIMEOUT_MS,
     label,
   });

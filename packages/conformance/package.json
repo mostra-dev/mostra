@@ -25,6 +25,7 @@
     "dist",
     "src",
     "baselines",
+    "tunnels",
     "!src/**/*.test.ts"
   ],
   "engines": {

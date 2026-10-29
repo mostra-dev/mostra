@@ -10,7 +10,7 @@ import { wireRegistry } from "../../wire-registry.ts";
 export const OriginString: z.ZodType<string> = z
   .string()
   .max(2048)
-  .refine(isOrigin, {
+  .regex(originPattern(), {
     message: "An origin: http: or https:, a lower case host and a port only when not the default.",
   })
   .register(wireRegistry, {
@@ -18,21 +18,17 @@ export const OriginString: z.ZodType<string> = z
     description: "A web origin: scheme, host and a port only when it isn't the default.",
   });
 
-/** Whether a string is an origin exactly as browsers serialize one. */
-function isOrigin(value: string): boolean {
-  const match =
-    /^(https?):\/\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|\[[0-9a-f:.]+\])(?::([1-9][0-9]{0,4}))?$/.exec(
-      value,
-    );
-  if (!match) return false;
-  const port = match[3];
-  if (port === undefined) return true;
-  const number = Number(port);
-  return (
-    number <= 65535 &&
-    !(match[1] === "http" && number === 80) &&
-    !(match[1] === "https" && number === 443)
-  );
+/**
+ * An origin exactly as browsers serialize one, as one regular expression, so JSON Schema and the
+ * Rust crate check what Zod checks: a lower case DNS name or bracketed IPv6 literal, a port of 1
+ * to 65535, and never the scheme's default port written out.
+ */
+function originPattern(): RegExp {
+  const label = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+  const host = `(?:${label}(?:\\.${label})*|\\[[0-9a-f:.]+\\])`;
+  const port =
+    "(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
+  return new RegExp(`^(?!http://[^/]*:80$)(?!https://[^/]*:443$)https?://${host}(?::${port})?$`);
 }
 
 /** The params of `port/addressing.externalBase` (INTERFACES §7, D158 item 6). */
@@ -56,10 +52,7 @@ export interface PortAddressingExternalBaseParams {
  * frame authenticates there (`worker` by default whenever the shell's and the artifact's hosts
  * differ, D70); `null` when the host offers no external address, so links stay on loopback.
  */
-export type PortAddressingExternalBaseResult = {
-  readonly origin: string;
-  readonly mode?: "cookie" | "worker";
-} | null;
+export type PortAddressingExternalBaseResult = ExternalBase | null;
 
 const params: z.ZodType<PortAddressingExternalBaseParams> = z
   .object({
@@ -73,13 +66,27 @@ const params: z.ZodType<PortAddressingExternalBaseParams> = z
       "Which listener of which artifact needs an external address, and where it listens.",
   });
 
-const result: z.ZodType<PortAddressingExternalBaseResult> = z
+/** One external address a host gives a listener (D158 item 6). */
+export interface ExternalBase {
+  readonly origin: string;
+  readonly mode?: "cookie" | "worker";
+}
+
+/** The schema of {@link ExternalBase}. */
+export const ExternalBase: z.ZodType<ExternalBase> = z
   .object({ origin: OriginString, mode: z.enum(["cookie", "worker"]).exactOptional() })
-  .nullable()
   .register(wireRegistry, {
+    id: "ExternalBase",
+    description: "The origin browsers use for a listener, and how its frame authenticates there.",
+  });
+
+const result: z.ZodType<PortAddressingExternalBaseResult> = ExternalBase.nullable().register(
+  wireRegistry,
+  {
     id: "PortAddressingExternalBaseResult",
     description: "The external origin a host gives a listener, or null for loopback.",
-  });
+  },
+);
 
 /**
  * `port/addressing.externalBase`: Mostra asks the host that registered the `addressing` port for

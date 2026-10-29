@@ -1,0 +1,86 @@
+/**
+ * The forwarding half of the test tunnels (`MOSTRA_TEST_TUNNELS`): an HTTP listener on loopback
+ * that passes every request on to a local origin, keeping its `Host` as the real tools do, and
+ * WebSocket upgrades through. The fakes add what each real tool adds on its way: Tailscale's
+ * identity headers, Cloudflare's held-back responses. Plain Node.js with no dependencies, so it
+ * runs from the kit's installed package as from this repository.
+ */
+import { createServer, request } from "node:http";
+import { connect } from "node:net";
+
+/**
+ * Starts forwarding to `local` (`http://127.0.0.1:<port>`); resolves with the port it listens on.
+ *
+ * - `rewrite(headers)` changes the request's headers before they go on.
+ * - `hold`: answer only once the whole response arrived, as Cloudflare's quick tunnels do.
+ * - `host` and `port`: where it listens (loopback, a port the system picks, by default).
+ */
+export function forward(
+  local,
+  { rewrite = (headers) => headers, hold = false, host = "127.0.0.1", port = 0 } = {},
+) {
+  const target = new URL(local);
+  const server = createServer((incoming, outgoing) => {
+    const headers = rewrite({ ...incoming.headers });
+    const upstream = request(
+      {
+        host: target.hostname,
+        port: target.port,
+        method: incoming.method,
+        path: incoming.url,
+        headers,
+        agent: false,
+      },
+      (answer) => {
+        if (!hold) {
+          outgoing.writeHead(answer.statusCode ?? 502, answer.headers);
+          answer.pipe(outgoing);
+          return;
+        }
+        const chunks = [];
+        answer.on("data", (chunk) => chunks.push(chunk));
+        answer.on("end", () => {
+          const body = Buffer.concat(chunks);
+          const { "transfer-encoding": _chunked, ...rest } = answer.headers;
+          outgoing.writeHead(answer.statusCode ?? 502, { ...rest, "content-length": body.length });
+          outgoing.end(body);
+        });
+      },
+    );
+    upstream.on("error", () => {
+      if (!outgoing.headersSent) outgoing.writeHead(502);
+      outgoing.end();
+    });
+    incoming.pipe(upstream);
+    outgoing.on("close", () => upstream.destroy());
+  });
+  server.on("upgrade", (incoming, socket, head) => {
+    const headers = rewrite({ ...incoming.headers });
+    const upstream = connect(Number(target.port), target.hostname, () => {
+      const lines = [`${incoming.method} ${incoming.url} HTTP/1.1`];
+      for (const [name, value] of Object.entries(headers)) {
+        for (const one of Array.isArray(value) ? value : [value]) lines.push(`${name}: ${one}`);
+      }
+      upstream.write(`${lines.join("\r\n")}\r\n\r\n`);
+      if (head.length > 0) upstream.write(head);
+      upstream.pipe(socket);
+      socket.pipe(upstream);
+    });
+    upstream.on("error", () => socket.destroy());
+    socket.on("error", () => upstream.destroy());
+  });
+  server.keepAliveTimeout = 305_000;
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen({ host, port }, () => resolve(server.address().port));
+  });
+}
+
+/** Waits until the process is told to stop, as a foreground tunnel command does. */
+export function untilStopped() {
+  return new Promise((resolve) => {
+    // Mostra's process manager ends its children by signal, or by their job on Windows.
+    for (const signal of ["SIGTERM", "SIGINT", "SIGBREAK"]) process.once(signal, resolve);
+    setInterval(() => {}, 1 << 30);
+  });
+}

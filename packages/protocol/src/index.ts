@@ -408,6 +408,7 @@ export {
   mostraShutdownMethod,
 } from "./methods/mostra/shutdown.ts";
 export {
+  ExternalBase,
   OriginString,
   type PortAddressingExternalBaseParams,
   type PortAddressingExternalBaseResult,

@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { Log } from "../log.ts";
-import { findTool, installHint } from "../platform/index.ts";
+import { installHint, type ToolCommand, toolCommand } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { type LineVerdict, runTunnel, type Tunnel } from "./tunnel.ts";
 
@@ -27,9 +27,9 @@ export interface CloudflareContext {
   readonly cacheDir: string;
 }
 
-/** The `cloudflared` executable, or `MOSTRA_SHARE_TOOL_MISSING`. */
-export function cloudflared(context: CloudflareContext): string {
-  const tool = findTool("cloudflared", context.env);
+/** How `cloudflared` runs, or `MOSTRA_SHARE_TOOL_MISSING`. */
+export function cloudflared(context: CloudflareContext): ToolCommand {
+  const tool = toolCommand("cloudflared", context.env);
   if (!tool) {
     throw new RpcError(
       createDiagnostic("MOSTRA_SHARE_TOOL_MISSING", {
@@ -44,8 +44,11 @@ export function cloudflared(context: CloudflareContext): string {
  * Reads `cloudflared`'s log: it names the quick tunnel's address in a banner, and serves once a
  * connection to Cloudflare's edge is registered.
  */
-function quickTunnelReader(): (line: string) => LineVerdict {
+function quickTunnelReader(fake: boolean): (line: string) => LineVerdict {
   return (line) => {
+    // The test fake's tunnels are sites of their own on loopback, as quick tunnels are.
+    const local = fake ? /\b(http:\/\/[a-z0-9-]+\.localhost:\d+)\b/.exec(line) : null;
+    if (local) return { kind: "origin", origin: (local[1] as string).toLowerCase() };
     const address = /https:\/\/([a-z0-9-]+\.trycloudflare\.com)\b/i.exec(line);
     if (address)
       return { kind: "origin", origin: `https://${(address[1] as string).toLowerCase()}` };
@@ -87,8 +90,9 @@ export function quickTunnel(
     log: context.log,
     kind: "tunnel-cloudflare",
     ownerRef: input.ownerRef,
-    command: tool,
+    command: tool.command,
     args: [
+      ...tool.args,
       "tunnel",
       "--config",
       config,
@@ -100,7 +104,7 @@ export function quickTunnel(
       input.local,
     ],
     env: context.env,
-    read: quickTunnelReader(),
+    read: quickTunnelReader(tool.fake),
     timeoutMs: QUICK_TUNNEL_TIMEOUT_MS,
     label: "A Cloudflare quick tunnel",
   });

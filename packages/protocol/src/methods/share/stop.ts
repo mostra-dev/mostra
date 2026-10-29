@@ -5,7 +5,10 @@ import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 import { Share } from "./start.ts";
 
-/** The params of `share/stop` (INTERFACES §6, D158): one share, or every active share of an artifact. */
+/**
+ * The params of `share/stop` (INTERFACES §6, D158): one share, or every active share of an
+ * artifact. Exactly one of the two is named; naming both or neither is `MOSTRA_HOST_INVALID_PARAMS`.
+ */
 export interface ShareStopParams {
   /** The share to stop. */
   readonly shareId?: string;
@@ -25,9 +28,6 @@ const params: z.ZodType<ShareStopParams> = z
     shareId: ShareId.schema.exactOptional(),
     artifact: ArtifactRef.exactOptional(),
     requestId: z.string().min(1).exactOptional(),
-  })
-  .refine((value) => (value.shareId === undefined) !== (value.artifact === undefined), {
-    message: "Name either `shareId` or `artifact`.",
   })
   .register(wireRegistry, { id: "ShareStopParams" });
 

@@ -466,6 +466,8 @@ export function createShares(options: SharesOptions): Shares {
     const budget = options.probeMs ?? PROBE_MS;
     if (origin === undefined || budget <= 0) return;
     const hostname = new URL(origin).hostname;
+    // Only a real quick tunnel's name is new to the world's resolvers.
+    if (!hostname.endsWith(".trycloudflare.com")) return;
     if (!(await hostnameResolves(hostname, budget))) {
       log.warn("share.name_unresolved", { hostname, budgetMs: budget });
     }
@@ -641,6 +643,14 @@ export function createShares(options: SharesOptions): Shares {
       }),
       handler(shareStopMethod, (params: ShareStopParams) =>
         serial(async () => {
+          if ((params.shareId === undefined) === (params.artifact === undefined)) {
+            throw new RpcError(
+              createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+                message: "share/stop names either `shareId` or `artifact`, not both or neither.",
+              }),
+              -32602,
+            );
+          }
           let ids: string[];
           if (params.shareId !== undefined) {
             if (!row(params.shareId)) {
@@ -720,6 +730,17 @@ export function createShares(options: SharesOptions): Shares {
 /** The variables that name the tools outright, passed to the lookup from the instance's own. */
 function pick(env: Environment): Environment {
   const out: Record<string, string> = {};
+  // The test fakes (`MOSTRA_TEST_TUNNELS`) and what they are told to play.
+  if (env["MOSTRA_TEST_TUNNELS"]) {
+    for (const [name, value] of Object.entries(env)) {
+      if (
+        (name === "MOSTRA_TEST_TUNNELS" || name.startsWith("MOSTRA_FAKE_")) &&
+        value !== undefined
+      ) {
+        out[name] = value;
+      }
+    }
+  }
   for (const name of [
     "MOSTRA_TAILSCALE",
     "MOSTRA_CLOUDFLARED",

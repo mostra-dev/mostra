@@ -79,6 +79,46 @@ export function findTool(
   return usualLocations(tool, env).find(executable);
 }
 
+/** How a tool runs: its executable and the arguments before the tool's own. */
+export interface ToolCommand {
+  readonly command: string;
+  readonly args: readonly string[];
+  /** Run by `MOSTRA_TEST_TUNNELS`: a local fake that forwards plain HTTP on loopback. */
+  readonly fake: boolean;
+}
+
+/**
+ * The variable that replaces both tools with local fakes for tests (`<dir>/tailscale.mjs` and
+ * `<dir>/cloudflared.mjs`, run on this Node.js): the conformance kit's and the suites' own, which
+ * forward on loopback as the real tools forward from their networks (STANDARDS: real side effects
+ * in tests go to local fakes).
+ */
+export const TEST_TUNNELS_VARIABLE = "MOSTRA_TEST_TUNNELS";
+
+/** How to run a tool: {@link findTool}'s executable, or the test fake; `undefined` when missing. */
+export function toolCommand(
+  tool: TunnelTool,
+  env: Readonly<Record<string, string | undefined>>,
+): ToolCommand | undefined {
+  const fakes = env[TEST_TUNNELS_VARIABLE];
+  if (fakes !== undefined && fakes !== "") {
+    const script = join(fakes, `${tool}.mjs`);
+    return regularFile(script)
+      ? { command: process.execPath, args: [script], fake: true }
+      : undefined;
+  }
+  const found = findTool(tool, env);
+  return found === undefined ? undefined : { command: found, args: [], fake: false };
+}
+
+function regularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** How to install a tool on this system, as one sentence. */
 export function installHint(tool: TunnelTool): string {
   if (tool === "tailscale") {
