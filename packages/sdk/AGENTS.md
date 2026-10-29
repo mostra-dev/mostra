@@ -29,6 +29,10 @@ the protocol over its stdio.
 - **Ports are checked both ways.** Each port call's params are parsed with its method's schema
   before the host's handler sees them, and the answer is parsed before it goes back. Anything else
   is an error the instance treats as a failed attempt and retries; it never passes silently.
+- **`ports.addressing` is the host's tunnel (HO-10).** `externalBase` answers the external
+  origin the host forwards to the loopback `local` Mostra opened for a listener, or `null`; the
+  same answer keeps a base, `null` or another origin withdraws it. `share()` and `stopShare()` are
+  `share/start` and `share/stop` (D158).
 - **No telemetry.** This package contains no code that can send an event (D119, D140 item 1), and
   `telemetry-cli-only` keeps it from importing the CLI's.
 - **The event stream never buffers without bound.** Past `highWaterMark` pages it unsubscribes,

@@ -58,6 +58,17 @@ The client runtime artifact authors import (INTERFACES §2.3): `defineArtifact`;
   producer's error keeps the last good value.
 - **A server reference without a transport fails loudly.** It rejects with
   `MOSTRA_TARGET_UNAVAILABLE`; it never resolves with a made-up result.
+- **A worker-mode frame's session is its service worker's (D70, D158).** Where the shell and the
+  frame are two sites (a Cloudflare share, a host's external base), `/_mostra/session` says
+  `mode: "worker"`: every request goes through Mostra's service worker, which adds the session's
+  header, and each event stream and long poll opens with a fresh single-use ticket
+  (`HttpTransport`'s `tickets`); `streams: false` long-polls from the start. Artifact code's own
+  service workers are refused there with `MOSTRA_HYGIENE_FRAME_SESSION`
+  (`src/runtime/service-worker.ts`, installed before the page's module runs): theirs would take
+  pages from Mostra's. Cookie mode is unchanged.
+- **A stream that says nothing is a stream that doesn't pass.** Every stream opens with
+  `event: ready`; one silent for `STREAM_FIRST_MESSAGE_MS` after opening long-polls instead, on
+  the same cursor (a proxy before a host's address may hold streams back).
 
 ## Public interface
 

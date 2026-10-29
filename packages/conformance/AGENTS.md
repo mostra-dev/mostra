@@ -49,5 +49,15 @@ The harness protocol is `src/harness/protocol.ts`; its revision is `HARNESS_REVI
 - **Fault points are the runtime's** (`MOSTRA_TEST_FAULTS`, `packages/runtime/src/faults.ts`): a
   scenario passes them through `harness/start`'s `env`, and a host must hand that environment to
   its instance.
+- **Shares run on stand-ins** (`tunnels/`, shipped in the package): `tailscale.mjs` and
+  `cloudflared.mjs` forward on loopback as the real tools forward from their networks, add what
+  each adds (Serve's identity headers, Funnel's mark, Cloudflare's headers, held-back responses),
+  and the runtime runs them when `MOSTRA_TEST_TUNNELS` names the directory. `MOSTRA_FAKE_*` and
+  `MOSTRA_FAKE_CONTROL` steer them (a person, a signed-out Tailscale, Serve off, a failing tunnel,
+  fixed Funnel ports, a tunnel ended on demand). `ports.identity` uses them for its tailnet and
+  public shares; the real tools are external evidence (PROGRESS-WP-13).
+- **`ports.addressing` plays the host's tunnel by naming.** Its host answers `localhost` for the
+  shell and `127.0.0.1` for the frame, at the port Mostra opened: two sites without any DNS, so
+  the frame is in worker mode, which the kit's viewer speaks (bootstrap, frame header, tickets).
 - **Publish skips verify by default** (`MOSTRA_TEST_UNVERIFIED_PUBLISH`, loud in the instance's
   log); `--verify` keeps the gate, which needs the verify browser.

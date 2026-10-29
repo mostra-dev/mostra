@@ -24,7 +24,8 @@ protocol over the home's socket.
 - **A hint never names a command that doesn't exist.** A unit test parses every `mostra …` a
   catalog entry's hint, explanation or fix names. A later package's command (`share`, `review
   export`, `export`, `mcp`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a
-  placeholder (D140 item 12).
+  placeholder (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
+  (`src/commands/sharing.ts`).
 - **No prompt outside a terminal.** Only telemetry asks anything, and only when stdin and stderr
   are terminals, without `--json`, CI, an agent's marker or a command that reads stdin.
 - **Telemetry is this package's alone (D119, D140).** `src/telemetry/` is the only code in Mostra
@@ -70,6 +71,10 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
 - Tests always set `MOSTRA_CONFIG_DIR` to a temporary directory, so no run writes a developer's
   real telemetry settings, and `MOSTRA_TEST_LOCALTIME` stands for `/etc/localtime` (empty for
   none), because CI machines' zone is UTC, an ask-first zone.
+- **`share` runs the stand-in tunnels in tests** (`MOSTRA_TEST_TUNNELS` names
+  `packages/conformance/tunnels/`); a share lives in the daemon, so the command returns once its
+  link exists, and `share.done` records only the driver's name (D140 item 8). A tailnet share's
+  human output names the device's two ports its viewers' tailnet must allow.
 - `wait --timeout` is the wait's own length (exit 5, `still_waiting`), not the global request
   limit (exit 4).
 - The runtime is found as the SDK finds it (`resolveRuntime`): `MOSTRA_BUNDLE`, then

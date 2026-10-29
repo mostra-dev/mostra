@@ -38,6 +38,9 @@ REPO_STANDARDS §3).
 
 ## Gotchas
 
+- `ports::Addressing` (HO-10) answers `port/addressing.externalBase`: the external origin a host
+  forwards to the loopback `local` it is told, or `None`. A host that answers the same origin
+  keeps its links working; `None` or another origin withdraws the one before.
 - The protocol's ID types are validated newtypes; build params with `serde_json::from_value` or
   the helpers on `Mostra`, which take `&str` IDs and paths.
 - `Options::new` copies this process's environment; `Options::env` replaces it. Proxies, the
