@@ -133,22 +133,36 @@ test.describe("worker-mode frames across sites (HY-07)", () => {
 
   test("stops working at a base the host withdraws, and mints loopback links after", async ({
     page,
+    browser,
   }) => {
     const external = await link();
+    // A viewer has the page open at the host's address.
+    await openInShell(page, external);
     withdrawn = true;
+    const other = await browser.newContext();
     try {
-      const local = await link();
-      expect(new URL(local).hostname).toBe("127.0.0.1");
-      // The withdrawn address answers nothing that opens the artifact.
-      const opened = await page.goto(external).then(
+      // The host withdraws its address without a new link being minted: the next exchange there
+      // asks it again and is refused, and the address's listeners close.
+      const fresh = await other.newPage();
+      const exchanges: number[] = [];
+      fresh.on("response", (response) => {
+        if (/\/a\/[^/]+\/_mostra\/session$/.test(new URL(response.url()).pathname)) {
+          if (response.request().method() === "POST") exchanges.push(response.status());
+        }
+      });
+      await fresh.goto(external).catch(() => undefined);
+      await expect.poll(() => exchanges, { timeout: 15_000 }).toEqual([410]);
+      await expect(fresh.locator("html")).not.toHaveAttribute("data-shell", "ready");
+      // The page that was open stops working too: its address is refused (421) while its listener
+      // closes, then answers nothing at all.
+      const reloaded = await page.reload().then(
         (response) => response?.status() ?? 0,
         () => 0,
       );
-      if (opened === 200) {
-        await expect(page.locator("html")).not.toHaveAttribute("data-shell", "ready", {
-          timeout: 5_000,
-        });
-      }
+      expect([0, 421]).toContain(reloaded);
+      // Links are minted on loopback again.
+      const local = await link();
+      expect(new URL(local).hostname).toBe("127.0.0.1");
       // The loopback link opens in cookie mode, where the page registers its own workers.
       const frame = await openInShell(await page.context().newPage(), local);
       await frame.getByTestId("narrow").click();
@@ -157,6 +171,7 @@ test.describe("worker-mode frames across sites (HY-07)", () => {
       await expect(frame.getByTestId("root-outcome")).toHaveText("registered");
     } finally {
       withdrawn = false;
+      await other.close();
     }
   });
 });

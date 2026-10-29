@@ -298,6 +298,12 @@ const RECENT_VIEW_MS = 7 * 24 * 60 * 60 * 1000;
 /** How long a host's answer for an artifact's frame address is reused (D158 item 6). */
 const EXTERNAL_BASE_REUSE_MS = 30_000;
 
+/**
+ * How long a withdrawn face's listener stays open, refusing everything, so the request that
+ * learned of the withdrawal still gets its answer (D158 item 6).
+ */
+const FACE_LINGER_MS = 2_000;
+
 /** The key of a face: `<group>:shell`, or `<group>:<artifactId>` for an artifact's. */
 export function faceKey(
   group: string,
@@ -631,6 +637,8 @@ export function createGateway(options: GatewayOptions): Gateway {
           : {}),
         ...(options.traceRequests ? { traceRequests: true } : {}),
       });
+      // A withdrawn face of this key may still hold its leased port for a moment.
+      await endLingering(key);
       const port = await addressing.listenFace(listener.server, { key, lease: spec.lease });
       entry = { key, spec, listener, port, origin };
       faces.set(key, entry);
@@ -672,6 +680,46 @@ export function createGateway(options: GatewayOptions): Gateway {
       log.info("gateway.face_closed", { key });
     }
     if (release) addressing.releaseFace(key);
+  };
+
+  /**
+   * Withdrawn faces' listeners, by face key, closing after {@link FACE_LINGER_MS}; a face of the
+   * same key opened meanwhile, or the gateway's close, closes one at once.
+   */
+  const lingering = new Map<string, Listener>();
+
+  /** Closes a withdrawn face's listener now, if one still lingers, freeing its port. */
+  const endLingering = async (key: string): Promise<void> => {
+    const listener = lingering.get(key);
+    if (!listener) return;
+    lingering.delete(key);
+    await listener.close();
+  };
+
+  /**
+   * Withdraws a face at once and closes its listener a moment later: from now on its `Host` is
+   * served nowhere (every request is refused, 421), while the request that learned of the
+   * withdrawal (an exchange that asked the host) still gets its own answer, 410, rather than a
+   * connection closed under it.
+   */
+  const withdrawFace = (key: string): void => {
+    const entry = faces.get(key);
+    if (!entry) {
+      addressing.releaseFace(key);
+      return;
+    }
+    faces.delete(key);
+    entry.origin = undefined;
+    lingering.set(key, entry.listener);
+    log.info("gateway.face_withdrawn", { key });
+    const timer = setTimeout(() => {
+      if (lingering.get(key) !== entry.listener) return;
+      void endLingering(key).then(() => {
+        // Its lease goes once its port is free, unless a new face of the key holds it.
+        if (!faces.has(key)) addressing.releaseFace(key);
+      });
+    }, FACE_LINGER_MS);
+    timer.unref?.();
   };
 
   // ── A host's external bases (HO-10, D158 item 6) ────────────────────────────────────────
@@ -744,16 +792,17 @@ export function createGateway(options: GatewayOptions): Gateway {
     }
     if (answer.kind === "none") {
       options.ledger.write((db) => db.run("DELETE FROM external_base WHERE key = ?", key));
-      await closeFace(key, true);
+      if (kept?.origin !== undefined) withdrawFace(key);
+      else await closeFace(key, true);
       return undefined;
     }
     const origin = answer.base.origin;
     const mode = answer.base.mode;
     if (entry.origin !== origin || (entry.spec.mode ?? null) !== (mode ?? null)) {
-      // Another origin withdraws the one before: its Host is no longer served.
-      if (entry.origin !== undefined || (entry.spec.mode ?? null) !== (mode ?? null)) {
-        await closeFace(key);
-      }
+      // Another origin withdraws the one before: its Host is no longer served. The same mode
+      // keeps the listener, whose Host and origin follow the entry at once; another mode needs a
+      // listener of its own, on the same leased port.
+      if ((entry.spec.mode ?? null) !== (mode ?? null)) await closeFace(key);
       const fresh =
         faces.get(key) ?? (await openFace(hostSpec(artifactId, listener, mode), origin));
       fresh.origin = origin;
@@ -1980,6 +2029,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         shellListener?.close(),
         ...[...artifactListeners.values()].map((entry) => entry.listener.close()),
         ...[...faces.values()].map((entry) => entry.listener.close()),
+        ...[...lingering.keys()].map((key) => endLingering(key)),
       ]);
       faces.clear();
     },
