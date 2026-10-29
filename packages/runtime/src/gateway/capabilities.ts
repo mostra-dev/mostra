@@ -414,6 +414,24 @@ export class Capabilities {
     return row ? { ...grantOf(row), live: this.#live(row) } : undefined;
   }
 
+  /**
+   * The token that stands for `tokenId` now: itself, or the token its rotations led to (D97 item
+   * 6), so what holds a token ID (a share) follows its link through `view/rotate`.
+   */
+  current(tokenId: string): string {
+    let id = tokenId;
+    for (let hop = 0; hop < 1000; hop++) {
+      const next = this.#ledger.read(
+        (db) =>
+          db.get<{ replaced_by: string | null }>("SELECT replaced_by FROM token WHERE id = ?", id)
+            ?.replaced_by ?? null,
+      );
+      if (next === null) return id;
+      id = next;
+    }
+    return id;
+  }
+
   /** The token's link again, from its derived secret, when the current key still derives it. */
   reveal(tokenId: string): MintedToken | undefined {
     const row = this.#ledger.read((db) =>
@@ -473,6 +491,10 @@ export class Capabilities {
         pinnedVersion: grant.pinnedVersion,
         isDefault: grant.isDefault,
         viewerId: grant.viewerId,
+        // A link stays at the address its holder uses (a share's, a host's external base) while
+        // the gateway serves it; one at an address no longer served (the loopback shell moved to
+        // another port) moves to the shell's address now (D97 item 10, GPT review of WP-13).
+        shellOrigin: this.#servesShell(grant.shellOrigin) ? grant.shellOrigin : undefined,
       });
       appendEvent(db, {
         artifactId: grant.artifactId,

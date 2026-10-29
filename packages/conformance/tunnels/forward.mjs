@@ -5,8 +5,10 @@
  * identity headers, Cloudflare's held-back responses. Plain Node.js with no dependencies, so it
  * runs from the kit's installed package as from this repository.
  */
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
+import { join } from "node:path";
 
 /**
  * Starts forwarding to `local` (`http://127.0.0.1:<port>`); resolves with the port it listens on.
@@ -82,5 +84,39 @@ export function untilStopped() {
     // Mostra's process manager ends its children by signal, or by their job on Windows.
     for (const signal of ["SIGTERM", "SIGINT", "SIGBREAK"]) process.once(signal, resolve);
     setInterval(() => {}, 1 << 30);
+    // A test ends a running tunnel by creating `die` in `MOSTRA_FAKE_CONTROL`, as a tunnel whose
+    // process ended by itself: the fake that notices it first takes it and exits 1.
+    const control = process.env.MOSTRA_FAKE_CONTROL;
+    if (control) {
+      setInterval(() => {
+        try {
+          unlinkSync(join(control, "die"));
+        } catch {
+          return;
+        }
+        process.exit(1);
+      }, 100);
+    }
   });
+}
+
+/**
+ * Takes a one-time mark in `MOSTRA_FAKE_CONTROL`: `true` for the one process that creates
+ * `<name>` first, so tests can make one of two tunnels behave otherwise.
+ */
+export function takeMark(name) {
+  const control = process.env.MOSTRA_FAKE_CONTROL;
+  if (!control) return false;
+  try {
+    writeFileSync(join(control, name), String(process.pid), { flag: "wx" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `MOSTRA_FAKE_CONTROL` holds `<name>`: a switch a test turns on and off. */
+export function marked(name) {
+  const control = process.env.MOSTRA_FAKE_CONTROL;
+  return control !== undefined && existsSync(join(control, name));
 }

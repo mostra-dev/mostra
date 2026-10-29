@@ -5,6 +5,9 @@
  * responses as quick tunnels do). The real tools are exercised by the external checks
  * (`test/external`, PROGRESS-WP-13).
  */
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -424,6 +427,150 @@ describe("shares (D158)", () => {
       ok(await gateway.client.call("share/stop", { shareId: three.shareId }));
     }, 180_000);
   });
+});
+
+describe("share lifecycles the GPT review of WP-13 found", () => {
+  /** A fresh daemon on the stand-ins, with a control directory and fixed Funnel ports. */
+  async function started(extra: Record<string, string> = {}): Promise<{
+    gateway: GatewayHome;
+    env: Record<string, string>;
+    control: string;
+  }> {
+    const control = mkdtempSync(join(tmpdir(), "mostra-fake-"));
+    const env = {
+      MOSTRA_TEST_TUNNELS: TUNNELS,
+      MOSTRA_FAKE_CONTROL: control,
+      // Above the lease range and below every ephemeral range in use: Funnel's three ports.
+      MOSTRA_FAKE_FUNNEL_PORT_BASE: String(40000 + Math.floor(Math.random() * 5000) * 3),
+      MOSTRA_TEST_SHARE_SWEEP_MS: "300",
+      ...extra,
+    };
+    const gateway = new GatewayHome();
+    await gateway.start({ env });
+    return { gateway, env, control };
+  }
+  const tunnels = async (gateway: GatewayHome): Promise<string[]> =>
+    ok<{ processes: { kind: string }[] }>(await gateway.client.call("instance/status", {}))
+      .processes.map((child) => child.kind)
+      .filter((kind) => kind.startsWith("tunnel-"));
+  const funnelPort = (env: Record<string, string>, origin: string | undefined): number =>
+    Number(new URL(origin as string).port) - Number(env["MOSTRA_FAKE_FUNNEL_PORT_BASE"]);
+
+  it("keeps a Funnel share's sessions across a restart: its faces' ports are leased", async () => {
+    const { gateway, env } = await started();
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const shared = await share(gateway, receipt.artifactId, { via: "funnel" });
+      const browser = new Browser();
+      const opened = await openLink(browser, shared.url);
+      await gateway.stop();
+      await gateway.start({ env });
+      await eventually(async () => {
+        const faces = (await status(gateway)).gateway?.faces ?? [];
+        return (
+          faces.filter((face) => face.by === "funnel" && face.origin !== undefined).length === 2
+        );
+      }, 60_000);
+      // The same browser, with the cookies it had: its shell session and its frame's still work.
+      const shell = await browser.fetchJson(
+        opened.link.shell,
+        `/a/${receipt.artifactId}/_mostra/session`,
+      );
+      expect(shell.status).toBe(200);
+      expect((await write(browser, opened, "after the restart")).status).toBe(200);
+    } finally {
+      await gateway.stop();
+    }
+  }, 240_000);
+
+  it("gives a stopped artifact's Funnel port to the next one, and never the same port twice", async () => {
+    const { gateway, env } = await started();
+    try {
+      const a = await gateway.publish("single-tsx", "page.tsx");
+      const b = await gateway.publish("directory");
+      const first = await share(gateway, a.artifactId, { via: "funnel" });
+      expect(funnelPort(env, first.artifactOrigin)).toBe(1);
+      ok(await gateway.client.call("share/stop", { shareId: first.shareId }));
+      const second = await share(gateway, b.artifactId, { via: "funnel" });
+      expect(funnelPort(env, second.artifactOrigin)).toBe(1);
+      // A again: 8443 is B's now, so A takes 10000.
+      const again = await share(gateway, a.artifactId, { via: "funnel" });
+      expect(funnelPort(env, again.artifactOrigin)).toBe(2);
+      await openLink(new Browser(), again.url);
+      await openLink(new Browser(), second.url);
+    } finally {
+      await gateway.stop();
+    }
+  }, 240_000);
+
+  it("leaves no tunnel running when one of a quick tunnel share's two fails", async () => {
+    const { gateway } = await started({ MOSTRA_FAKE_CLOUDFLARED: "fail-one" });
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const answer = await gateway.client.call(
+        "share/start",
+        { artifact: { artifactId: receipt.artifactId }, via: "cloudflare" },
+        120_000,
+      );
+      expect(refused(answer)).toBe("MOSTRA_SHARE_TUNNEL_FAILED");
+      // The other tunnel came up after the failure: it must not be left running.
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(await tunnels(gateway)).toEqual([]);
+      expect((await status(gateway)).gateway?.faces ?? []).toEqual([]);
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
+
+  it("leaves no tunnel running when a share stops while its tunnel is being set up again", async () => {
+    const { gateway, control } = await started();
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const shared = await share(gateway, receipt.artifactId, { via: "funnel" });
+      // The next start of a Tailscale tunnel takes 3 s; one of the share's tunnels ends now.
+      writeFileSync(join(control, "slow"), "");
+      writeFileSync(join(control, "die"), "");
+      // Mostra starts it again after 1 s; the share stops while that start is under way.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      ok(await gateway.client.call("share/stop", { shareId: shared.shareId }));
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      expect(await tunnels(gateway)).toEqual([]);
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
+
+  it("follows its link when the link is rotated, and ends when it is revoked", async () => {
+    const { gateway } = await started();
+    try {
+      const receipt = await gateway.publish("single-tsx", "page.tsx");
+      const shared = await share(gateway, receipt.artifactId, { via: "cloudflare" });
+      const rotated = ok<{ url: string; tokenId: string }>(
+        await gateway.client.call("view/rotate", { tokenId: shared.tokenId }),
+      );
+      // The new link is at the share's own address, and the share follows it past a sweep.
+      expect(parseLink(rotated.url).shell).toBe(parseLink(shared.url).shell);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const listed = ok<{ shares: ShareResult[] }>(
+        await gateway.client.call("share/list", {}),
+      ).shares;
+      expect(listed.map((one) => [one.shareId, one.state, one.tokenId])).toEqual([
+        [shared.shareId, "active", rotated.tokenId],
+      ]);
+      await openLink(new Browser(), rotated.url);
+      ok(await gateway.client.call("view/revoke", { tokenId: rotated.tokenId }));
+      await eventually(async () => {
+        const all = ok<{ shares: ShareResult[] }>(
+          await gateway.client.call("share/list", { all: true }),
+        ).shares;
+        return all[0]?.stopReason === "revoked";
+      });
+      // The share's end is recorded first; its tunnels stop right after.
+      await eventually(async () => (await tunnels(gateway)).length === 0);
+    } finally {
+      await gateway.stop();
+    }
+  }, 120_000);
 });
 
 describe("shares that can't start", () => {

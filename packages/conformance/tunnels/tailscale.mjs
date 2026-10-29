@@ -15,7 +15,7 @@
  * `MOSTRA_FAKE_TAILNET_USER` (`login|Display Name`), sent in RFC 2047 Q encoding when it isn't
  * ASCII, as Tailscale sends it.
  */
-import { forward, untilStopped } from "./forward.mjs";
+import { forward, marked, untilStopped } from "./forward.mjs";
 
 const args = process.argv.slice(2);
 const play = process.env.MOSTRA_FAKE_TAILSCALE ?? "";
@@ -81,9 +81,19 @@ const [login, name] = (
 // same across restarts: the fake does the same on IPv6 loopback, beside the face on IPv4. Funnel's
 // ports (443 and the others) need privileges a test lacks, so Funnel takes a port the system picks.
 const asked = Number(https.slice("--https=".length));
-const stable = feature === "serve" && asked >= 1024;
+// `MOSTRA_FAKE_FUNNEL_PORT_BASE`: Funnel's public ports as fixed ones, as a device's are (443 at
+// the base, 8443 one above, 10000 two above), so a test sees which port a share took and that its
+// address outlives a restart.
+const funnelBase = Number(process.env.MOSTRA_FAKE_FUNNEL_PORT_BASE ?? "");
+const funnelPort =
+  feature === "funnel" && Number.isInteger(funnelBase) && funnelBase > 0
+    ? funnelBase + ({ 443: 0, 8443: 1, 10000: 2 }[asked] ?? 3)
+    : undefined;
+const stable = (feature === "serve" && asked >= 1024) || funnelPort !== undefined;
+// `slow` in `MOSTRA_FAKE_CONTROL`: a start takes 3 s, as Tailscale's own can after a restart.
+if (marked("slow")) await new Promise((resolve) => setTimeout(resolve, 3000));
 const port = await forward(local, {
-  ...(stable ? { host: "::1", port: asked } : {}),
+  ...(stable ? { host: "::1", port: funnelPort ?? asked } : {}),
   rewrite(headers) {
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase().startsWith("tailscale-")) delete headers[key];

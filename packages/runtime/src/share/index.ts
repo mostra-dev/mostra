@@ -94,6 +94,8 @@ export interface SharesOptions {
   readonly now: () => number;
   /** How long a public address is probed before its link goes out; 0 turns probing off (tests). */
   readonly probeMs?: number;
+  /** How often active shares are checked for an expired or revoked link (tests shorten it). */
+  readonly sweepMs?: number;
 }
 
 /** The shares of one instance. */
@@ -170,7 +172,9 @@ export function createShares(options: SharesOptions): Shares {
     ledger.read((db) => db.get<ShareRow>("SELECT * FROM share WHERE id = ?", shareId));
 
   const toShare = (found: ShareRow): Share => {
-    const url = found.stopped_at === null ? gateway.reveal(found.token_id) : undefined;
+    // A share follows its link through rotations (`view/rotate`): its token now.
+    const tokenId = capabilities.current(found.token_id);
+    const url = found.stopped_at === null ? gateway.reveal(tokenId) : undefined;
     const artifactKey = (JSON.parse(found.plan_json) as Plan).faces.find(
       (face) => face.listener === "artifact",
     )?.key;
@@ -186,7 +190,7 @@ export function createShares(options: SharesOptions): Shares {
       hostname: found.hostname,
       ...(artifactOrigin !== undefined ? { artifactOrigin } : {}),
       mode: found.mode,
-      tokenId: found.token_id,
+      tokenId,
       startedAt: found.started_at,
       ...(found.expires_at !== null ? { expiresAt: found.expires_at } : {}),
       state: found.stopped_at === null ? "active" : "stopped",
@@ -236,7 +240,19 @@ export function createShares(options: SharesOptions): Shares {
           await new Promise((resolve) => setTimeout(resolve, delay));
           if (closed || exposures.get(key) !== exposure) return;
           try {
-            exposure.tunnel = await exposure.start();
+            // One at a time with starts and stops (GPT review of WP-13): a share stopped while
+            // this start was under way must not be left with the tunnel it started.
+            const restored = await serial(async () => {
+              if (closed || exposures.get(key) !== exposure) return false;
+              const tunnel = await exposure.start();
+              if (closed || exposures.get(key) !== exposure) {
+                await tunnel.stop();
+                return false;
+              }
+              exposure.tunnel = tunnel;
+              return true;
+            });
+            if (!restored) return;
             exposure.restarting = false;
             log.info("share.tunnel_restored", { key });
             watch(key, exposure);
@@ -264,6 +280,8 @@ export function createShares(options: SharesOptions): Shares {
       exposures.delete(key);
       await exposure.tunnel.stop();
     }
+    // Its external port (Funnel's 8443 or 10000) is free for the next share (GPT review of WP-13).
+    externalPorts.delete(key);
     // A tailnet face keeps its lease, so the next tailnet share has the same address.
     await gateway.closeFace(key, !key.startsWith("tailnet:"));
   };
@@ -319,7 +337,10 @@ export function createShares(options: SharesOptions): Shares {
           lease: false,
           streams: false,
         });
-        const [shell, artifact] = await Promise.all([
+        // Both tunnels start at once; both outcomes are awaited before either is judged, so a
+        // failure never releases a sibling still starting, whose tunnel would outlive it (GPT
+        // review of WP-13).
+        const settled = await Promise.allSettled([
           faceFor(
             spec("shell"),
             shareId,
@@ -333,6 +354,11 @@ export function createShares(options: SharesOptions): Shares {
             held,
           ),
         ]);
+        const failed = settled.find((outcome) => outcome.status === "rejected");
+        if (failed) throw failed.reason;
+        const [shell, artifact] = settled.map(
+          (outcome) => (outcome as PromiseFulfilledResult<FaceHandle>).value,
+        ) as [FaceHandle, FaceHandle];
         await Promise.all([probe(shell.origin()), probe(artifact.origin())]);
         return {
           shell,
@@ -386,7 +412,9 @@ export function createShares(options: SharesOptions): Shares {
         listener,
         ...(listener === "artifact" ? { artifactId } : {}),
         via: "token",
-        lease: false,
+        // Leased, so a restart reopens its faces on the same local ports and the session cookies
+        // their names carry keep working at the same public addresses (GPT review of WP-13).
+        lease: true,
       });
       const shellKey = faceKey("funnel", "shell");
       if (!exposures.has(shellKey) && !free(FUNNEL_SHELL_PORT))
@@ -401,13 +429,13 @@ export function createShares(options: SharesOptions): Shares {
       const plannedPort = planned?.faces.find((face) => face.key === artifactKey)?.external;
       const port =
         planPort(artifactKey) ??
-        plannedPort ??
-        FUNNEL_ARTIFACT_PORTS.find(
-          (candidate) =>
+        // The port its recorded plan names (after a restart) when no other face took it, else
+        // the first free one.
+        [plannedPort, ...FUNNEL_ARTIFACT_PORTS].find(
+          (candidate): candidate is number =>
+            candidate !== undefined &&
             free(candidate) &&
-            ![...exposures.keys()].some(
-              (key) => key !== artifactKey && planPort(key) === candidate,
-            ),
+            ![...externalPorts].some(([key, taken]) => key !== artifactKey && taken === candidate),
         );
       if (port === undefined) {
         throw new RpcError(
@@ -585,7 +613,9 @@ export function createShares(options: SharesOptions): Shares {
         reason,
         shareId,
       );
-      if (reason !== "expired" && reason !== "revoked") capabilities.revoke(found.token_id, db);
+      if (reason !== "expired" && reason !== "revoked") {
+        capabilities.revoke(capabilities.current(found.token_id), db);
+      }
       appendEvent(db, {
         artifactId: found.artifact_id,
         type: "share.stopped",
@@ -604,7 +634,7 @@ export function createShares(options: SharesOptions): Shares {
   /** Ends shares whose link expired or was revoked since (`view/revoke` of a share's link). */
   const sweep = async (): Promise<void> => {
     for (const found of activeRows()) {
-      const grant = capabilities.grant(found.token_id);
+      const grant = capabilities.grant(capabilities.current(found.token_id));
       if (grant?.live) continue;
       const expired = found.expires_at !== null && Date.parse(found.expires_at) <= options.now();
       await serial(() => stop(found.id, expired ? "expired" : "revoked"));
@@ -612,7 +642,7 @@ export function createShares(options: SharesOptions): Shares {
   };
   const sweeper = setInterval(() => {
     void sweep().catch((error: unknown) => log.error("share.sweep_failed", { error }));
-  }, SWEEP_MS);
+  }, options.sweepMs ?? SWEEP_MS);
   sweeper.unref?.();
 
   // ── After a restart ──────────────────────────────────────────────────────────────────────
@@ -710,7 +740,7 @@ export function createShares(options: SharesOptions): Shares {
     async recover() {
       const pending: Promise<void>[] = [];
       for (const found of activeRows()) {
-        const grant = capabilities.grant(found.token_id);
+        const grant = capabilities.grant(capabilities.current(found.token_id));
         const expired = found.expires_at !== null && Date.parse(found.expires_at) <= options.now();
         if (expired || !grant?.live) {
           await serial(() => stop(found.id, expired ? "expired" : "revoked"));

@@ -8,7 +8,7 @@
  * banner, then a registered connection. `MOSTRA_FAKE_CLOUDFLARED=fail` plays a refused tunnel.
  */
 import { randomBytes } from "node:crypto";
-import { forward, untilStopped } from "./forward.mjs";
+import { forward, takeMark, untilStopped } from "./forward.mjs";
 
 const args = process.argv.slice(2);
 const urlAt = args.indexOf("--url");
@@ -19,7 +19,12 @@ if (args[0] !== "tunnel" || !local) {
 }
 const log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`);
 log("INF Requesting new quick Tunnel on trycloudflare.com...");
-if (process.env.MOSTRA_FAKE_CLOUDFLARED === "fail") {
+// `fail-one`: of a share's two tunnels, the first to start fails at once and the other comes up
+// a moment later, as when Cloudflare refuses one of two requests.
+const failOne = process.env.MOSTRA_FAKE_CLOUDFLARED === "fail-one";
+const failing = failOne && takeMark("cloudflared-failed");
+if (failOne && !failing) await new Promise((resolve) => setTimeout(resolve, 1500));
+if (process.env.MOSTRA_FAKE_CLOUDFLARED === "fail" || failing) {
   log(
     'ERR failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel": 429 Too Many Requests',
   );

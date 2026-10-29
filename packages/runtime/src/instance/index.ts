@@ -754,6 +754,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     ...(environment["MOSTRA_TEST_SHARE_PROBE_MS"] !== undefined
       ? { probeMs: Number(environment["MOSTRA_TEST_SHARE_PROBE_MS"]) }
       : {}),
+    ...(environment["MOSTRA_TEST_SHARE_SWEEP_MS"] !== undefined
+      ? { sweepMs: Number(environment["MOSTRA_TEST_SHARE_SWEEP_MS"]) }
+      : {}),
   });
   let gatewayStarted = false;
   let idle: IdleWatch | undefined;

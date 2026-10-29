@@ -202,6 +202,32 @@ describe("capability tokens (HY-03, D97)", () => {
     expect(capabilities.rotate("tok_01JB8Z3QF6S7W3N8D5K2C4V9XG")).toBeUndefined();
   });
 
+  it("rotate a link at an address the gateway serves there, and a stale loopback one to the current shell", () => {
+    const db = ledger();
+    SHELL_ORIGIN.value = "http://127.0.0.1:20000";
+    const external = "https://public.example";
+    const capabilities = new Capabilities({
+      ledger: db,
+      log: silentLog,
+      key: capabilityKey(tempDir("mostra-key"), silentLog),
+      now: () => Date.parse("2026-10-14T00:00:00Z"),
+      shellOrigin: () => SHELL_ORIGIN.value,
+      servesShell: (origin) => origin === SHELL_ORIGIN.value || origin === external,
+    });
+    // A link at a host's external base (or a share's shell) stays there: its holder is remote.
+    const remote = capabilities.mint({ artifactId: ARTIFACT, shellOrigin: external });
+    const rotated = capabilities.rotate(remote.tokenId);
+    if (rotated === undefined || rotated === "dead") throw new Error("not rotated");
+    expect(rotated.shellOrigin).toBe(external);
+    expect(code(capabilities.presentToken(rotated.secret, ARTIFACT, external))).toBeUndefined();
+    // A loopback link whose shell moved to another port is rotated to the shell's address now.
+    const local = capabilities.mint({ artifactId: ARTIFACT });
+    SHELL_ORIGIN.value = "http://127.0.0.1:20999";
+    const moved = capabilities.rotate(local.tokenId);
+    if (moved === undefined || moved === "dead") throw new Error("not rotated");
+    expect(moved.shellOrigin).toBe("http://127.0.0.1:20999");
+  });
+
   it("keep one stable default link per artifact, and rotation moves it (D97 item 3)", () => {
     const { capabilities } = authority();
     const first = capabilities.defaultLink(ARTIFACT);
