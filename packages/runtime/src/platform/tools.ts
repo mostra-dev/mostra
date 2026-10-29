@@ -12,7 +12,7 @@ import { OS, WINDOWS } from "./directories.ts";
 export type TunnelTool = "tailscale" | "cloudflared";
 
 /** The variable that names a tool's executable outright. */
-export const TOOL_VARIABLES: Readonly<Record<TunnelTool, string>> = {
+const TOOL_VARIABLES: Readonly<Record<TunnelTool, string>> = {
   tailscale: "MOSTRA_TAILSCALE",
   cloudflared: "MOSTRA_CLOUDFLARED",
 };
@@ -61,7 +61,7 @@ function executable(path: string): boolean {
  * The tool's executable: the variable's (which must exist), else the first on `PATH`, else the
  * first usual location that exists; `undefined` when there is none.
  */
-export function findTool(
+function findTool(
   tool: TunnelTool,
   env: Readonly<Record<string, string | undefined>>,
 ): string | undefined {
@@ -93,7 +93,7 @@ export interface ToolCommand {
  * forward on loopback as the real tools forward from their networks (STANDARDS: real side effects
  * in tests go to local fakes).
  */
-export const TEST_TUNNELS_VARIABLE = "MOSTRA_TEST_TUNNELS";
+const TEST_TUNNELS_VARIABLE = "MOSTRA_TEST_TUNNELS";
 
 /** How to run a tool: {@link findTool}'s executable, or the test fake; `undefined` when missing. */
 export function toolCommand(
