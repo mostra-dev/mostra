@@ -131,6 +131,29 @@ test.describe("worker-mode frames across sites (HY-07)", () => {
     await saved(page);
   });
 
+  test("tells the viewer when the browser won't let the frame start its service worker", async ({
+    browser,
+  }) => {
+    // Service workers blocked, as private windows and some settings block them (FAILURE_MODEL §8).
+    const blocked = await browser.newContext({ serviceWorkers: "block" });
+    try {
+      const page = await blocked.newPage();
+      await page.goto(await link());
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-frame-session",
+        /^(blocked|unsupported)$/,
+        { timeout: 30_000 },
+      );
+      await expect(page.getByText(/needs service workers/)).toBeVisible();
+      // It doesn't keep reloading a frame that would only fail again.
+      await page.waitForTimeout(8_000);
+      await expect(page.locator("html")).not.toHaveAttribute("data-frame-reloads", /[1-9]|gave-up/);
+      await expect(page.locator("html")).not.toHaveAttribute("data-shell", "ready");
+    } finally {
+      await blocked.close();
+    }
+  });
+
   test("stops working at a base the host withdraws, and mints loopback links after", async ({
     page,
     browser,

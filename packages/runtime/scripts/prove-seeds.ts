@@ -4174,6 +4174,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "HY-07",
+    name: "a frame whose service worker is blocked is reloaded without a word",
+    file: "../shell/src/viewer.tsx",
+    from: '      if (failure.reason === "refused") return;\n      setSessionFailed(true);',
+    to: "      return;\n      setSessionFailed(true);",
+    check: e2e("when the browser won't let the frame start its service worker"),
+    e2e: true,
+  },
+  {
+    requirement: "HY-07",
     name: "a stream ticket opens a stream twice",
     file: "src/gateway/capabilities.ts",
     from: "    if (key !== undefined) this.#streamTickets.delete(key);",
