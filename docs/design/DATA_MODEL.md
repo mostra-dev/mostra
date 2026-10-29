@@ -74,7 +74,9 @@ version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest,
                                                     -- version was published on (migration 8, D138 item 4); NULL
                                                     -- before verify; only 'pass' makes a regression baseline
 viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
-                                                    -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104)
+                                                    -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104),
+                                                    -- and a link's own viewer over a tunnel as 'link:<tokenId>';
+                                                    -- 'tailnet' viewers keyed by the Tailscale login (D158 item 2)
 view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json,
      controls_json NULL)                                  -- the submit channels and controls in force for this view (D108);
                                                           -- NULL (views before WP-07): both channels
@@ -133,7 +135,9 @@ live_value(artifact_id, key, revision INTEGER, value_json, producer_version_id N
 live_ring(artifact_id, key, revision, value_json, at, PRIMARY KEY(artifact_id, key, revision))
 
 -- Addressing and processes
-port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo')), owner_ref, leased_at, UNIQUE(purpose, owner_ref))
+port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo','face')), owner_ref, leased_at, UNIQUE(purpose, owner_ref))
+                                                    -- 'face': a tailnet face or a host's external base, keyed
+                                                    -- by its face key, so its address survives restarts (D158)
 token(id PK, secret_hash UNIQUE, artifact_id FK, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at,
       is_default, pinned_version NULL, shell_origin, replaced_by NULL)  -- one default per artifact; a revoked row never changes;
                                                                        -- a link works only at shell_origin (D97 items 9, 10)
@@ -141,7 +145,14 @@ session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csr
         viewer_id NULL FK)                                       -- id: SHA-256 of the cookie; csrf: SHA-256 of the CSRF token (D98);
                                                                  -- viewer_id: the person a host's identity port named for a link
                                                                  -- without a viewer (migration 10, D143 item 2)
-share(id PK, artifact_id, via, hostname, token_id, started_at, stopped_at NULL)
+share(id PK (shr_), artifact_id FK, via CHECK(via IN ('tailnet','funnel','cloudflare')), hostname, token_id FK, mode,
+      plan_json, started_at, expires_at NULL, stopped_at NULL, stop_reason NULL)
+                                                    -- plan_json: the faces it uses and their external ports, so a
+                                                    -- restart sets tailnet and Funnel shares up again; a share only
+                                                    -- ever ends, once (a trigger) (migration 11, D158)
+external_base(key PK, listener, artifact_id FK, origin, mode NULL, client, updated_at)
+                                                    -- a host's addressing answer, kept so its links work after a
+                                                    -- restart before the host is back (HO-10, D158 item 6)
 child(pid, start_time, kind, owner_ref, pgid, started_at, parent_pid NULL, PRIMARY KEY(pid, start_time))  -- parent_pid: the child that adopted it;
                                                                  -- start_time `<boot>/<start>`; on Windows `win/<creation time>`
                                                                  -- (100 ns since 1601) and pgid its own PID: its Job Object is
@@ -199,7 +210,7 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
 | `host.<name>` | `data`, the payload server code emitted (AC-05), and the `viewerId` whose call emitted it; for hosts, never shown to pages (D136) |
 | `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133); pages get it without `cause`, which quotes the server code's output (D136) |
-| `share.started` / `share.stopped` | via, hostname |
+| `share.started` / `share.stopped` | shareId, via, hostname; `share.started` the artifact's external origin, `share.stopped` its reason (`stopped`, `expired`, `revoked`, `tunnel`, `restart`) (D158) |
 | `token.revoked` | tokenId |
 
 These are ephemeral and never stored (D47, D63): presence, live updates, action progress and log lines (the log is stored on the run, not as events), terminal output and save acknowledgments.
