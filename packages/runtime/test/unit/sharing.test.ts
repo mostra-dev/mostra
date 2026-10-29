@@ -125,7 +125,7 @@ describe("the tunnel tools", () => {
   );
 
   it("says how to install each tool on this system", () => {
-    expect(installHint("tailscale")).toMatch(/tailscale\.com\/download/);
+    expect(installHint("tailscale")).toContain("https://tailscale.com/download/");
     expect(installHint("cloudflared")).toMatch(/cloudflared/);
   });
 
