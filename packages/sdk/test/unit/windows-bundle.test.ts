@@ -12,7 +12,6 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
-  renameSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -21,7 +20,7 @@ import { pathToFileURL } from "node:url";
 import { type BundleFiles, RpcError } from "@mostra/protocol";
 import { c } from "tar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installPinned } from "../../src/bundle/cache.ts";
+import { installPinned, renameIntoPlace } from "../../src/bundle/cache.ts";
 import { extractBundle } from "../../src/bundle/extract.ts";
 import { LinkRefused, makeJunctions } from "../../src/bundle/links.ts";
 import { readBundle, readSetup, realRoot, setupBundle } from "../../src/bundle/setup.ts";
@@ -92,7 +91,7 @@ describe.runIf(WINDOWS)("a Windows bundle's junctions (D153)", () => {
     await setupBundle(synthetic.root, { env: { PATH: process.env["PATH"] ?? "" } });
     const moved = join(dir.path, "moved", "mostra");
     mkdirSync(join(dir.path, "moved"));
-    renameSync(synthetic.root, moved);
+    await renameIntoPlace(synthetic.root, moved);
     // The marker names the old root: the bundle isn't ready where it is now …
     expect(await readSetup(await readBundle(moved))).toBeUndefined();
     // … and finding the runtime sets it up again, which makes the junctions afresh.
@@ -127,7 +126,9 @@ describe.runIf(WINDOWS)("a Windows bundle's junctions (D153)", () => {
     await setupBundle(synthetic.root, { env: { PATH: process.env["PATH"] ?? "" } });
     const moved = join(dir.path, "moved-twice", "mostra");
     mkdirSync(join(dir.path, "moved-twice"));
-    renameSync(synthetic.root, moved);
+    // Moved as the SDK moves a bundle: on Windows a file an antivirus scan or the indexer holds
+    // for a moment refuses the rename, which is tried again (#99).
+    await renameIntoPlace(synthetic.root, moved);
     const manifest = JSON.parse(readFileSync(join(moved, "files.json"), "utf8")) as BundleFiles;
     const root = realRoot(moved);
     for (let round = 0; round < 10; round++) {
