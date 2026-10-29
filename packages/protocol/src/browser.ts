@@ -231,6 +231,12 @@ export interface FrameTicket extends ViewContext {
    * shell says so, and it is never a published version.
    */
   readonly devPreview?: true;
+  /**
+   * `worker` when the shell and the artifact are two sites (a Cloudflare quick tunnel, a host's
+   * addresses on two hosts): the frame enters through the bootstrap page and a service worker
+   * (D70, D158 item 5). Absent: cookie mode.
+   */
+  readonly mode?: "worker";
 }
 
 /** The Zod schema of the `FrameTicket` type. */
@@ -250,10 +256,122 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
     pinned: z.boolean(),
     serverParked: z.literal(true).exactOptional(),
     devPreview: z.literal(true).exactOptional(),
+    mode: z.literal("worker").exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",
     description: "A frame ticket: the view it opens, where to load it, and the view's controls.",
+  });
+
+// ── Frame sessions in worker mode (WP-13, D70, D158 item 5) ───────────────────────────────
+
+/**
+ * The header Mostra's service worker adds to every same-origin request of a worker-mode frame:
+ * its frame session's secret, which no cookie can carry across sites.
+ */
+export const FRAME_SESSION_HEADER = "x-mostra-frame";
+
+/**
+ * `POST /_mostra/enter` on the artifact's origin: the bootstrap page exchanges the shell's
+ * single-use frame ticket, from `/_mostra/enter#t=…`, for a worker-mode frame session.
+ */
+export interface EnterRequest {
+  /** The frame ticket. */
+  readonly ticket: string;
+}
+
+/** The Zod schema of the `EnterRequest` type. */
+export const EnterRequest: z.ZodType<EnterRequest> = z
+  .object({ ticket: z.string().min(1).max(64) })
+  .register(wireRegistry, { id: "EnterRequest", description: "A frame ticket to exchange." });
+
+/** The answer to `EnterRequest`. */
+export interface EnterResult {
+  /** The frame session's secret, which the service worker sends as `X-Mostra-Frame`. */
+  readonly session: string;
+  /** The shell's origin: the only page the bootstrap reports to. */
+  readonly shellOrigin: string;
+}
+
+/** The Zod schema of the `EnterResult` type. */
+export const EnterResult: z.ZodType<EnterResult> = z
+  .object({ session: z.string().min(1), shellOrigin: z.string().min(1) })
+  .register(wireRegistry, {
+    id: "EnterResult",
+    description: "A worker-mode frame session's secret and the shell's origin.",
+  });
+
+/**
+ * `POST /_mostra/v/{rev}/ticket`: a single-use ticket that opens one event stream, long poll or
+ * WebSocket of this session without it (`?ticket=`), so the request can bypass the service
+ * worker (VERIFIED_FACTS: Firefox stalls on endless responses a worker passes on).
+ */
+export interface StreamTicketRequest {
+  /** What it opens: `stream` (events and polls, the default) or `socket` (a WebSocket). */
+  readonly purpose?: "stream" | "socket";
+}
+
+/** The Zod schema of the `StreamTicketRequest` type. */
+export const StreamTicketRequest: z.ZodType<StreamTicketRequest> = z
+  .object({ purpose: z.enum(["stream", "socket"]).exactOptional() })
+  .register(wireRegistry, { id: "StreamTicketRequest" });
+
+/** The answer to a `StreamTicketRequest`. */
+export interface StreamTicket {
+  /** The ticket: 130 bits, single-use. */
+  readonly ticket: string;
+  /** When it stops working, 60 s after it was minted. */
+  readonly expiresAt: string;
+}
+
+/** The Zod schema of the `StreamTicket` type. */
+export const StreamTicket: z.ZodType<StreamTicket> = z
+  .object({ ticket: z.string().min(1), expiresAt: z.iso.datetime() })
+  .register(wireRegistry, {
+    id: "StreamTicket",
+    description: "A single-use ticket for one stream, poll or WebSocket.",
+  });
+
+/**
+ * `GET /_mostra/session` on the artifact's origin: the frame session's facts for same-origin code.
+ */
+export interface FrameSessionFacts {
+  /** The CSRF token every mutation sends as `X-Mostra-CSRF`. */
+  readonly csrf: string;
+  /** The artifact the frame shows. */
+  readonly artifactId: string;
+  /** The shell's exact origin: the bridge's only peer. */
+  readonly shellOrigin: string;
+  /** The link's scopes. */
+  readonly scopes: readonly string[];
+  /** The viewer the page acts as (WP-07). */
+  readonly viewer?: Viewer;
+  /** The version the frame session entered. */
+  readonly version?: VersionRef;
+  /** How the frame authenticates (D70): absent means `cookie`. */
+  readonly mode?: "cookie" | "worker";
+  /**
+   * `false` where event streams don't pass (a Cloudflare quick tunnel holds responses back until
+   * they end): the page long-polls from the start (D47). Absent means streams pass.
+   */
+  readonly streams?: boolean;
+}
+
+/** The Zod schema of the `FrameSessionFacts` type. */
+export const FrameSessionFacts: z.ZodType<FrameSessionFacts> = z
+  .object({
+    csrf: z.string().min(1),
+    artifactId: ArtifactId.schema,
+    shellOrigin: z.string().min(1),
+    scopes: z.array(z.string()).readonly(),
+    viewer: Viewer.exactOptional(),
+    version: VersionRef.exactOptional(),
+    mode: z.enum(["cookie", "worker"]).exactOptional(),
+    streams: z.boolean().exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "FrameSessionFacts",
+    description: "A frame session's CSRF token, shell origin, scopes, viewer, version and mode.",
   });
 
 // ── The shell's own routes (WP-07, on the shell origin) ──────────────────────────────────

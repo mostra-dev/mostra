@@ -54,7 +54,11 @@ export function artifactMethods(options: {
    * The artifact's default capability link (D90, D97 item 3), added to every receipt, replays
    * included. Recorded receipts never hold it: the ledger keeps no link's secret.
    */
-  readonly link?: (artifactId: string) => { readonly url: string; readonly tokenId: string };
+  readonly link?: (
+    artifactId: string,
+  ) =>
+    | { readonly url: string; readonly tokenId: string }
+    | Promise<{ readonly url: string; readonly tokenId: string }>;
   /**
    * Hears every publish that succeeded, a reused version too: a publish clears the artifact's
    * parked workers (FAILURE_MODEL §2).
@@ -71,7 +75,7 @@ export function artifactMethods(options: {
     handler(artifactPublishMethod, async (params) => {
       const receipt = await options.publisher().publish(params);
       options.published?.(receipt.artifactId);
-      return options.link ? { ...receipt, ...options.link(receipt.artifactId) } : receipt;
+      return options.link ? { ...receipt, ...(await options.link(receipt.artifactId)) } : receipt;
     }),
     handler(depsAddMethod, async (params) => {
       const added = await options.publisher().addDependencies(params);

@@ -90,7 +90,11 @@ async function run(
 }
 
 beforeAll(() => {
-  home = testHome({ MOSTRA_OFFLINE: "1" });
+  home = testHome({
+    MOSTRA_OFFLINE: "1",
+    // `share` runs the conformance kit's stand-ins for tailscale and cloudflared (D158).
+    MOSTRA_TEST_TUNNELS: fileURLToPath(new URL("../../../conformance/tunnels/", import.meta.url)),
+  });
   artifactDir = join(home.root, "review");
 });
 
@@ -206,6 +210,58 @@ describe("every command, with --json and no terminal", () => {
     const replacement = CapabilityLink.parse(rotated.result);
     await run(["open", artifactId, "--revoke", replacement.tokenId], { code: 0, ok: true });
   });
+
+  it("share opens a public and a tailnet share, lists them and stops them (D158)", async () => {
+    const publicly = await run(["share", artifactId, "--public", "--ttl", "30m"], {
+      code: 0,
+      ok: true,
+    });
+    const shared = publicly.result as {
+      shareId: string;
+      url: string;
+      via: string;
+      mode: string;
+      expiresAt: string;
+    };
+    expect(shared).toMatchObject({ via: "cloudflare", mode: "worker" });
+    expect(Date.parse(shared.expiresAt) - Date.now()).toBeLessThanOrEqual(30 * 60_000);
+    const tailnet = await run(["share", artifactId, "--tailnet"], { code: 0, ok: true });
+    expect(tailnet.result).toMatchObject({ via: "tailnet", mode: "cookie" });
+    // A person reads which of the device's ports the tailnet must let viewers reach.
+    const ports = tailnet.result as { url: string; artifactOrigin: string; shareId: string };
+    const told = await cli(["share", "stop", ports.shareId], { env: home.env });
+    expect(told.code).toBe(0);
+    const again = await cli(["share", artifactId, "--tailnet"], { env: home.env });
+    expect(again.code).toBe(0);
+    const [shellPort, framePort] = [ports.url, ports.artifactOrigin].map(
+      (origin) => new URL(origin).port,
+    );
+    expect(again.stdout).toContain(`ports ${shellPort} and ${framePort} allowed`);
+    // Exactly one of --tailnet and --public; --via only with --public; a public link lives 7 days at most.
+    await run(["share", artifactId], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
+    await run(["share", artifactId, "--tailnet", "--via", "funnel"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    await run(["share", artifactId, "--public", "--ttl", "8d"], {
+      code: 3,
+      ok: false,
+      error: "MOSTRA_SHARE_TTL_INVALID",
+    });
+    const listed = await run(["share", "list", artifactId], { code: 0, ok: true });
+    expect((listed.result as { shares: unknown[] }).shares).toHaveLength(2);
+    const one = await run(["share", "stop", shared.shareId], { code: 0, ok: true });
+    expect((one.result as { stopped: unknown[] }).stopped).toHaveLength(1);
+    const rest = await run(["share", "stop", artifactId], { code: 0, ok: true });
+    expect((rest.result as { stopped: unknown[] }).stopped).toHaveLength(1);
+    const all = await run(["share", "list", "--all"], { code: 0, ok: true });
+    expect(
+      (all.result as { shares: { state: string }[] }).shares.every(
+        (one) => one.state === "stopped",
+      ),
+    ).toBe(true);
+  }, 120_000);
 
   it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
     // A stand-in browser: Node.js running a script that records the arguments it was started with

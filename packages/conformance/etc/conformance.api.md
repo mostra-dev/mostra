@@ -38,12 +38,14 @@ export interface Baseline {
 export class Browser {
     ask(ask: Ask): Promise<Answer>;
     cookiesFor(url: string): string;
+    enterFrame(origin: string, secret: string): void;
     fetchJson(origin: string, path: string, init?: {
         method?: string;
         body?: unknown;
         csrf?: string;
         headers?: Record<string, string>;
     }): Promise<Answer>;
+    workerFrame(origin: string): boolean;
 }
 
 // @public
@@ -394,6 +396,13 @@ export type ScriptParams = {
 } | {
     readonly port: "secrets";
     readonly answer: Readonly<Record<string, string>>;
+} | {
+    readonly port: "addressing";
+    readonly answer: null | "fail" | {
+        readonly shellHost: string;
+        readonly artifactHost: string;
+        readonly mode?: "cookie" | "worker";
+    };
 };
 
 // @public
@@ -457,6 +466,15 @@ export interface StoreResult {
         readonly artifactId: string;
         readonly control: string;
         readonly viewId: string;
+    }[];
+    readonly addressing?: readonly {
+        readonly artifactId: string;
+        readonly listener: string;
+        readonly local: string;
+        readonly answer?: {
+            readonly origin: string;
+            readonly mode?: string;
+        } | null;
     }[];
     readonly deliveries: readonly StoredDelivery[];
     readonly drafts: readonly {

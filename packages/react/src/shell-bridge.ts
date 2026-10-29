@@ -54,6 +54,10 @@ export interface ShellConnection {
     readonly csrf: string;
     readonly scopes: readonly string[];
     readonly viewer?: Viewer;
+    /** `worker` when the frame authenticates through Mostra's service worker (D70, WP-13). */
+    readonly mode: "cookie" | "worker";
+    /** `false` where event streams don't pass (a Cloudflare quick tunnel): the page long-polls. */
+    readonly streams: boolean;
   };
 }
 
@@ -62,6 +66,8 @@ interface FrameSession {
   readonly csrf?: unknown;
   readonly scopes?: unknown;
   readonly viewer?: unknown;
+  readonly mode?: unknown;
+  readonly streams?: unknown;
 }
 
 /** Hears what the shell sends: requests answered by the first handler that returns a value. */
@@ -147,6 +153,8 @@ export function connectShell(): Promise<ShellConnection | undefined> {
           ? session.scopes.filter((scope): scope is string => typeof scope === "string")
           : [],
         ...(isViewer(session.viewer) ? { viewer: session.viewer } : {}),
+        mode: session.mode === "worker" ? ("worker" as const) : ("cookie" as const),
+        streams: session.streams !== false,
       },
     };
   })().then(

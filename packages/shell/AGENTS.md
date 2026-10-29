@@ -50,6 +50,13 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   `src/entries.ts`, which drops a ticket asked for before something happened to the frame: never
   call `frameTicket` and `setTicket` around it. `verify` loads a failed frame again once
   (`VERIFY_RELOAD_LIMIT`), and a switch the viewer chooses gets the whole budget again.
+- **A worker-mode frame enters through its bootstrap (D70, D158).** The ticket's `src` is
+  `/_mostra/enter#t=…` and `mode: "worker"`: the bootstrap page registers Mostra's service worker,
+  says `mostra/frameSession.entered`, then loads the version, so the page's greeting wait starts
+  there and the bootstrap has `BOOTSTRAP_MS`. A bootstrap that can't set the session up says
+  `mostra/frameSession.failed`: a refused ticket is entered again like any failed load; any other
+  reason (service workers blocked, a private window) stops the reloads and shows
+  `FRAME_WORDS.frameSession`, never a page that would only fail again.
 - **The frame never navigates the viewer's tab (D98 item 7).** It is sandboxed with every token
   but `allow-top-navigation*`, filtered by `sandbox.supports`; it sends the viewer elsewhere with
   `ui/open-link`, which `src/links.ts` opens in a new tab for the `OPEN_LINK_SCHEMES` only. Don't

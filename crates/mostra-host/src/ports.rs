@@ -16,8 +16,8 @@
 //! }
 //! ```
 //!
-//! This release calls `identity`, `submissions`, `drafts`, `trustedControls` and `secrets`;
-//! `addressing` arrives with sharing, `reviews` and `capture` with the review layer, `pty` with
+//! This release calls `identity`, `submissions`, `drafts`, `trustedControls`, `secrets` and
+//! `addressing` (sharing, HO-10); `reviews` and `capture` arrive with the review layer, `pty` with
 //! terminals, each as a new trait (D143 item 1).
 
 use std::future::Future;
@@ -29,8 +29,9 @@ use serde_json::value::RawValue;
 
 use crate::rpc::{BoxFuture, Failure, Incoming};
 use crate::wire::{
-    ArtifactSummary, ControlsPolicy, DraftMirror, PortIdentityResolveParams, PortSecretsGetParams,
-    PortTrustedControlsActivatedParams, PortTrustedControlsPolicyParams, SubmissionEnvelope,
+    ArtifactSummary, ControlsPolicy, DraftMirror, ExternalBase, PortAddressingExternalBaseParams,
+    PortIdentityResolveParams, PortSecretsGetParams, PortTrustedControlsActivatedParams,
+    PortTrustedControlsPolicyParams, SubmissionEnvelope,
 };
 
 /// A host's failure to answer a port call. Mostra treats it as a failed attempt: a delivery is
@@ -103,6 +104,18 @@ pub trait Identity: Send + Sync + 'static {
         &self,
         request: PortIdentityResolveParams,
     ) -> impl Future<Output = Result<Option<Person>, PortError>> + Send;
+}
+
+/// `addressing`: gives one of an artifact's listeners an external address, the origin of the
+/// host's own tunnel that forwards to `request.local` (HO-10, D158 item 6). The address joins the
+/// links Mostra mints and the listener's Host allowlist; `None` keeps the loopback address and
+/// withdraws one given before. Answer within 5 s; a failure leaves links on loopback.
+pub trait Addressing: Send + Sync + 'static {
+    /// The external origin for `request.listener` of `request.artifact_id`, or `None`.
+    fn external_base(
+        &self,
+        request: PortAddressingExternalBaseParams,
+    ) -> impl Future<Output = Result<Option<ExternalBase>, PortError>> + Send;
 }
 
 /// One submission delivered to the host (D105): the typed envelope, and its exact JSON for a host
@@ -263,6 +276,22 @@ impl PortSet {
                     let request: PortIdentityResolveParams = parse(params)?;
                     let person = port.resolve(request).await?;
                     Ok(serde_json::to_value(person).unwrap_or(Value::Null))
+                })
+            }),
+        );
+    }
+
+    pub(crate) fn addressing<T: Addressing>(&mut self, port: T) {
+        let port = Arc::new(port);
+        self.add(
+            "addressing",
+            "port/addressing.externalBase",
+            Arc::new(move |params| {
+                let port = Arc::clone(&port);
+                Box::pin(async move {
+                    let request: PortAddressingExternalBaseParams = parse(params)?;
+                    let base = port.external_base(request).await?;
+                    Ok(serde_json::to_value(base).unwrap_or(Value::Null))
                 })
             }),
         );

@@ -25,8 +25,11 @@ export const LEASE_LAST_PORT = 32767;
 /** How many free ports to try before giving up on a lease. */
 const LEASE_ATTEMPTS = 64;
 
-/** What a lease is for (DATA_MODEL §3 `port_lease.purpose`). */
-export type LeasePurpose = "shell" | "artifact" | "demo";
+/** What a lease is for (DATA_MODEL §3 `port_lease.purpose`); `face` from WP-13 (D158). */
+export type LeasePurpose = "shell" | "artifact" | "demo" | "face";
+
+/** The address every face listens on: loopback, whatever `--bind` says (D158 item 1). */
+export const FACE_BIND_ADDRESS = "127.0.0.1";
 
 /** Who holds a lease: the shell, an artifact ID, or a demo. */
 export interface LeaseOwner {
@@ -70,6 +73,28 @@ export interface Addressing {
    * host (same site, D38), worker mode otherwise (cross-site, D70).
    */
   frameMode(shellOrigin: string, artifactOrigin: string): FrameMode;
+  /**
+   * Binds a face's listener on loopback (D158 item 1): on the port leased to `key` when `lease`
+   * is set, so the face keeps its address across restarts, else on a port the operating system
+   * picks. Resolves with the port.
+   */
+  listenFace(
+    server: Server,
+    face: { readonly key: string; readonly lease: boolean },
+  ): Promise<number>;
+  /** Releases a face's leased port, once the face is gone for good. */
+  releaseFace(key: string): void;
+  /** The loopback origin of a face listener on `port`: `http://127.0.0.1:<port>`. */
+  faceLocal(port: number): string;
+}
+
+/**
+ * The exact `Host` a browser sends for an origin: its host, with the port only when it isn't the
+ * scheme's default (`https://a.ts.net` is `a.ts.net`, `https://a.ts.net:8443` is
+ * `a.ts.net:8443`), lowercase. Registered tunnel addresses join the allowlist this way.
+ */
+export function hostOf(origin: string): string {
+  return new URL(origin).host.toLowerCase();
 }
 
 /** The unspecified addresses, as {@link authorityHost} writes them: each listens everywhere. */
@@ -214,6 +239,46 @@ export function createAddressing(options: {
         .map((row) => row.port),
     );
 
+  /**
+   * Binds `server` to the owner's leased port on `address`, or to a newly leased one when it has
+   * none or another program holds it (`MOSTRA_ENV_PORT_TAKEN`).
+   */
+  const leaseAndListen = async (
+    server: Server,
+    owner: LeaseOwner,
+    address: string,
+  ): Promise<number> => {
+    const previous = leased(owner);
+    if (previous !== undefined) {
+      if (await tryListen(server, previous, address)) return previous;
+      log.warn("addressing.port_taken", {
+        code: "MOSTRA_ENV_PORT_TAKEN",
+        purpose: owner.purpose,
+        owner: owner.owner,
+        port: previous,
+      });
+    }
+    const others = taken();
+    for (let attempt = 0; attempt < LEASE_ATTEMPTS; attempt++) {
+      const port = randomInt(LEASE_FIRST_PORT, LEASE_LAST_PORT + 1);
+      if (others.has(port)) continue;
+      if (!(await tryListen(server, port, address))) continue;
+      record(owner, port);
+      if (previous !== undefined) {
+        log.warn("addressing.port_released", {
+          purpose: owner.purpose,
+          owner: owner.owner,
+          from: previous,
+          to: port,
+        });
+      }
+      return port;
+    }
+    throw bindFailed(
+      `No free port between ${LEASE_FIRST_PORT} and ${LEASE_LAST_PORT} on ${address} after ${LEASE_ATTEMPTS} attempts.`,
+    );
+  };
+
   return {
     bindAddress,
     urlHost,
@@ -242,40 +307,29 @@ export function createAddressing(options: {
         if (address === null || typeof address === "string") throw new Error("not a TCP listener");
         return address.port;
       }
-      const previous = leased(owner);
-      if (previous !== undefined) {
-        if (await tryListen(server, previous, bindAddress)) return previous;
-        log.warn("addressing.port_taken", {
-          code: "MOSTRA_ENV_PORT_TAKEN",
-          purpose: owner.purpose,
-          owner: owner.owner,
-          port: previous,
-        });
-      }
-      const others = taken();
-      for (let attempt = 0; attempt < LEASE_ATTEMPTS; attempt++) {
-        const port = randomInt(LEASE_FIRST_PORT, LEASE_LAST_PORT + 1);
-        if (others.has(port)) continue;
-        if (!(await tryListen(server, port, bindAddress))) continue;
-        record(owner, port);
-        if (previous !== undefined) {
-          log.warn("addressing.port_released", {
-            purpose: owner.purpose,
-            owner: owner.owner,
-            from: previous,
-            to: port,
-          });
-        }
-        return port;
-      }
-      throw bindFailed(
-        `No free port between ${LEASE_FIRST_PORT} and ${LEASE_LAST_PORT} on ${bindAddress} after ${LEASE_ATTEMPTS} attempts.`,
-      );
+      return leaseAndListen(server, owner, bindAddress);
     },
     frameMode(shellOrigin, artifactOrigin) {
       return new URL(shellOrigin).hostname === new URL(artifactOrigin).hostname
         ? "cookie"
         : "worker";
     },
+    async listenFace(server, face) {
+      if (!face.lease) {
+        if (!(await tryListen(server, 0, FACE_BIND_ADDRESS))) {
+          throw bindFailed(`No port is free on ${FACE_BIND_ADDRESS}.`);
+        }
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("not a TCP listener");
+        return address.port;
+      }
+      return leaseAndListen(server, { purpose: "face", owner: face.key }, FACE_BIND_ADDRESS);
+    },
+    releaseFace(key) {
+      ledger.write((db) =>
+        db.run("DELETE FROM port_lease WHERE purpose = 'face' AND owner_ref = ?", key),
+      );
+    },
+    faceLocal: (port) => `http://${FACE_BIND_ADDRESS}:${port}`,
   };
 }

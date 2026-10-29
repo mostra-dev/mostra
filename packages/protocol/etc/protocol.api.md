@@ -983,6 +983,23 @@ export function durationMs(duration: Duration): number;
 export function encodeLine(message: JsonRpcMessage): string;
 
 // @public
+export interface EnterRequest {
+    readonly ticket: string;
+}
+
+// @public
+export const EnterRequest: z.ZodType<EnterRequest>;
+
+// @public
+export interface EnterResult {
+    readonly session: string;
+    readonly shellOrigin: string;
+}
+
+// @public
+export const EnterResult: z.ZodType<EnterResult>;
+
+// @public
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
@@ -1106,6 +1123,24 @@ export type EventTypePattern = string;
 export const EventTypePattern: z.ZodType<EventTypePattern>;
 
 // @public
+export interface ExternalBase {
+    readonly mode?: "cookie" | "worker";
+    readonly origin: string;
+}
+
+// @public
+export const ExternalBase: z.ZodType<ExternalBase>;
+
+// @public
+export interface FaceStatus {
+    readonly artifactId?: string;
+    readonly by: "tailnet" | "funnel" | "cloudflare" | "host" | (string & {});
+    readonly listener: "shell" | "artifact";
+    readonly local: string;
+    readonly origin: string;
+}
+
+// @public
 export const FIELD_ID_MAX_LENGTH = 256;
 
 // @public
@@ -1224,10 +1259,36 @@ export type Frame = {
 };
 
 // @public
+export const FRAME_SESSION_HEADER = "x-mostra-frame";
+
+// @public
+export interface FrameSessionFacts {
+    readonly artifactId: string;
+    readonly csrf: string;
+    readonly mode?: "cookie" | "worker";
+    readonly scopes: readonly string[];
+    readonly shellOrigin: string;
+    readonly streams?: boolean;
+    readonly version?: VersionRef;
+    readonly viewer?: Viewer;
+}
+
+// @public
+export const FrameSessionFacts: z.ZodType<FrameSessionFacts>;
+
+// @public
+export interface FrameSessionFailedParams {
+    readonly code: string;
+    readonly message: string;
+    readonly reason: "unsupported" | "blocked" | "conflict" | "refused" | (string & {});
+}
+
+// @public
 export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
     readonly devPreview?: true;
     readonly follow: boolean;
+    readonly mode?: "worker";
     readonly pinned: boolean;
     readonly serverParked?: true;
     readonly src: string;
@@ -1246,6 +1307,7 @@ export interface GatewayStatus {
         readonly origin: string;
     }[];
     readonly bind: string;
+    readonly faces?: readonly FaceStatus[];
     readonly shell: string;
 }
 
@@ -1347,7 +1409,7 @@ export const hostNotifications: readonly AnyNotification[];
 export type HygieneDiagnosticCode = (typeof hygieneDiagnosticCodes)[number];
 
 // @public
-export const hygieneDiagnosticCodes: readonly ["MOSTRA_HYGIENE_HOST_REFUSED", "MOSTRA_HYGIENE_ORIGIN_REFUSED", "MOSTRA_HYGIENE_CSRF_MISSING", "MOSTRA_HYGIENE_CONTENT_TYPE", "MOSTRA_HYGIENE_REQUEST_MALFORMED", "MOSTRA_HYGIENE_SESSION_MISSING", "MOSTRA_HYGIENE_TOKEN_INVALID", "MOSTRA_HYGIENE_TOKEN_REVOKED", "MOSTRA_HYGIENE_SCOPE_DENIED", "MOSTRA_HYGIENE_RATE_LIMITED", "MOSTRA_HYGIENE_NOT_SERVED", "MOSTRA_HYGIENE_SESSION_CONFLICT", "MOSTRA_HYGIENE_HEADERS_TOO_LARGE"];
+export const hygieneDiagnosticCodes: readonly ["MOSTRA_HYGIENE_HOST_REFUSED", "MOSTRA_HYGIENE_ORIGIN_REFUSED", "MOSTRA_HYGIENE_CSRF_MISSING", "MOSTRA_HYGIENE_CONTENT_TYPE", "MOSTRA_HYGIENE_REQUEST_MALFORMED", "MOSTRA_HYGIENE_SESSION_MISSING", "MOSTRA_HYGIENE_TOKEN_INVALID", "MOSTRA_HYGIENE_TOKEN_REVOKED", "MOSTRA_HYGIENE_SCOPE_DENIED", "MOSTRA_HYGIENE_RATE_LIMITED", "MOSTRA_HYGIENE_NOT_SERVED", "MOSTRA_HYGIENE_SESSION_CONFLICT", "MOSTRA_HYGIENE_HEADERS_TOO_LARGE", "MOSTRA_HYGIENE_FRAME_SESSION"];
 
 // @public
 export type Id<P extends IdPrefix> = `${P}_${string}` & {
@@ -1372,7 +1434,7 @@ export interface IdKind<P extends IdPrefix> {
 }
 
 // @public
-export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut";
+export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut" | "shr";
 
 // @public
 export interface InstanceCapabilities {
@@ -1430,6 +1492,7 @@ export interface InstanceStatusResult {
     readonly idleExitAt?: string;
     readonly instance: InstanceInfo;
     readonly processes: readonly ChildProcessStatus[];
+    readonly shares?: readonly Share[];
     readonly socket: string;
     readonly startedAt: string;
     readonly workers?: readonly WorkerStatus[];
@@ -1521,7 +1584,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -1655,6 +1718,12 @@ export const mostraFlush: BridgeMessage<{
 }, FlushResult>;
 
 // @public
+export const mostraFrameSessionEntered: BridgeMessage<Readonly<Record<string, unknown>>, undefined>;
+
+// @public
+export const mostraFrameSessionFailed: BridgeMessage<FrameSessionFailedParams, undefined>;
+
+// @public
 export const mostraInitializeMethod: MethodDefinition<MostraInitializeParams, MostraInitializeResult>;
 
 // @public
@@ -1733,6 +1802,9 @@ export interface NotificationDefinition<Params> {
 export const OPEN_LINK_SCHEMES: readonly string[];
 
 // @public
+export const OriginString: z.ZodType<string>;
+
+// @public
 export interface OrphanedField {
     readonly fromVersion: number;
     readonly id: string;
@@ -1762,6 +1834,19 @@ export interface PollResult {
 
 // @public
 export const PollResult: z.ZodType<PollResult>;
+
+// @public
+export const portAddressingExternalBaseMethod: MethodDefinition<PortAddressingExternalBaseParams, PortAddressingExternalBaseResult>;
+
+// @public
+export interface PortAddressingExternalBaseParams {
+    readonly artifactId: string;
+    readonly listener: "shell" | "artifact";
+    readonly local: string;
+}
+
+// @public
+export type PortAddressingExternalBaseResult = ExternalBase | null;
 
 // @public
 export const portDraftsMirrorMethod: MethodDefinition<DraftMirror, DraftsMirrorResult>;
@@ -1835,6 +1920,12 @@ export interface ProbedField {
     readonly mounts: number;
     readonly scope: "viewer" | "artifact";
 }
+
+// @public
+export const PUBLIC_SHARE_DEFAULT_TTL: Duration;
+
+// @public
+export const PUBLIC_SHARE_MAX_TTL_MS: number;
 
 // @public
 export type PublishDiagnosticCode = (typeof publishDiagnosticCodes)[number];
@@ -2432,6 +2523,91 @@ export const ServerStatePatchParams: z.ZodType<ServerStatePatchParams>;
 export type ServerStatePatchResult = MutationResult;
 
 // @public
+export interface Share {
+    readonly artifactId: string;
+    readonly artifactOrigin?: string;
+    readonly expiresAt?: string;
+    readonly hostname: string;
+    readonly mode: "cookie" | "worker";
+    readonly shareId: string;
+    readonly startedAt: string;
+    readonly state: "active" | "stopped";
+    readonly stoppedAt?: string;
+    readonly stopReason?: "stopped" | "expired" | "tunnel" | "restart" | "revoked" | (string & {});
+    readonly tokenId: string;
+    readonly url?: string;
+    readonly via: ShareVia;
+}
+
+// @public
+export const Share: z.ZodType<Share>;
+
+// @public
+export type ShareDiagnosticCode = (typeof shareDiagnosticCodes)[number];
+
+// @public
+export const shareDiagnosticCodes: readonly ["MOSTRA_SHARE_TOOL_MISSING", "MOSTRA_SHARE_TOOL_NOT_READY", "MOSTRA_SHARE_NOT_ENABLED", "MOSTRA_SHARE_PORTS_EXHAUSTED", "MOSTRA_SHARE_TUNNEL_FAILED", "MOSTRA_SHARE_NOT_FOUND", "MOSTRA_SHARE_TTL_INVALID"];
+
+// @public
+export type ShareId = Id<"shr">;
+
+// @public
+export const ShareId: GeneratedIdKind<"shr">;
+
+// @public
+export const shareListMethod: MethodDefinition<ShareListParams, ShareListResult>;
+
+// @public
+export interface ShareListParams {
+    readonly all?: boolean;
+    readonly artifact?: ArtifactRef;
+}
+
+// @public
+export interface ShareListResult {
+    readonly shares: readonly Share[];
+}
+
+// @public
+export const shareStartMethod: MethodDefinition<ShareStartParams, ShareStartResult>;
+
+// @public
+export interface ShareStartParams {
+    readonly artifact: ArtifactRef;
+    readonly requestId?: string;
+    readonly scopes?: readonly CapabilityScope[];
+    readonly ttl?: Duration;
+    readonly via: ShareVia;
+    readonly viewer?: ViewerSpec;
+}
+
+// @public
+export type ShareStartResult = Share & {
+    readonly url: string;
+};
+
+// @public
+export const shareStopMethod: MethodDefinition<ShareStopParams, ShareStopResult>;
+
+// @public
+export interface ShareStopParams {
+    readonly artifact?: ArtifactRef;
+    readonly requestId?: string;
+    readonly shareId?: string;
+}
+
+// @public
+export interface ShareStopResult {
+    readonly stopped: readonly Share[];
+}
+
+// @public
+export type ShareVia = "tailnet" | "funnel" | "cloudflare";
+
+// @public
+export const ShareVia: z.ZodType<ShareVia>;
+
+// @public
 export interface ShellSubmitRequest {
     readonly expectedRevision: DocumentRevision;
     readonly viewId: string;
@@ -2514,6 +2690,23 @@ export interface StreamSnapshot {
 
 // @public
 export const StreamSnapshot: z.ZodType<StreamSnapshot>;
+
+// @public
+export interface StreamTicket {
+    readonly expiresAt: string;
+    readonly ticket: string;
+}
+
+// @public
+export const StreamTicket: z.ZodType<StreamTicket>;
+
+// @public
+export interface StreamTicketRequest {
+    readonly purpose?: "stream" | "socket";
+}
+
+// @public
+export const StreamTicketRequest: z.ZodType<StreamTicketRequest>;
 
 // @public
 export interface SubmissionEnvelope {

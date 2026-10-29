@@ -66,11 +66,14 @@ export {
   type FieldRegistration,
   type FieldsParams,
   type FlushResult,
+  type FrameSessionFailedParams,
   MCP_APPS_PROTOCOL_VERSION,
   mostraControlsRequest,
   mostraFieldFocus,
   mostraFields,
   mostraFlush,
+  mostraFrameSessionEntered,
+  mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
   mostraVersionAvailable,
@@ -92,8 +95,12 @@ export {
   ChooseRequest,
   type DeliveryTarget,
   DocumentSnapshot,
+  EnterRequest,
+  EnterResult,
   FieldsRequest,
   FollowRequest,
+  FRAME_SESSION_HEADER,
+  FrameSessionFacts,
   FrameTicket,
   OrphanedField,
   PollResult,
@@ -103,6 +110,8 @@ export {
   SIGNAL_PAYLOAD_MAX_BYTES,
   SignalRequest,
   StreamSnapshot,
+  StreamTicket,
+  StreamTicketRequest,
   SubmitRequest,
   VersionRef,
   ViewContext,
@@ -178,9 +187,11 @@ export {
   regressionDiagnosticCodes,
   runtimeDiagnosticCodes,
   type SecretDiagnosticCode,
+  type ShareDiagnosticCode,
   type SmokeDiagnosticCode,
   type SubmitDiagnosticCode,
   secretDiagnosticCodes,
+  shareDiagnosticCodes,
   smokeDiagnosticCodes,
   submitDiagnosticCodes,
   type TargetDiagnosticCode,
@@ -233,6 +244,7 @@ export {
   type IdPrefix,
   MutationId,
   RunId,
+  ShareId,
   SubmissionId,
   ThreadId,
   TokenId,
@@ -370,6 +382,7 @@ export {
 export {
   ChildProcessStatus,
   DeliveryCounts,
+  type FaceStatus,
   GatewayStatus,
   type InstanceStatusParams,
   type InstanceStatusResult,
@@ -395,6 +408,13 @@ export {
   type MostraShutdownResult,
   mostraShutdownMethod,
 } from "./methods/mostra/shutdown.ts";
+export {
+  ExternalBase,
+  OriginString,
+  type PortAddressingExternalBaseParams,
+  type PortAddressingExternalBaseResult,
+  portAddressingExternalBaseMethod,
+} from "./methods/port/addressing-external-base.ts";
 export {
   DraftMirror,
   type DraftsMirrorResult,
@@ -448,6 +468,25 @@ export {
   type SecretSetResult,
   secretSetMethod,
 } from "./methods/secret/set.ts";
+export {
+  type ShareListParams,
+  type ShareListResult,
+  shareListMethod,
+} from "./methods/share/list.ts";
+export {
+  PUBLIC_SHARE_DEFAULT_TTL,
+  PUBLIC_SHARE_MAX_TTL_MS,
+  Share,
+  type ShareStartParams,
+  type ShareStartResult,
+  ShareVia,
+  shareStartMethod,
+} from "./methods/share/start.ts";
+export {
+  type ShareStopParams,
+  type ShareStopResult,
+  shareStopMethod,
+} from "./methods/share/stop.ts";
 export { type StateGetParams, type StateGetResult, stateGetMethod } from "./methods/state/get.ts";
 export {
   type StatePatchParams,

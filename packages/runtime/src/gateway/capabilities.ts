@@ -40,6 +40,12 @@ export const SECRET_LENGTH = 26;
 /** How long a frame ticket works (D98). */
 export const TICKET_TTL_MS = 60_000;
 
+/** How many frame tickets, and how many stream tickets, a session holds at once (D158 item 5). */
+export const TICKETS_PER_SESSION = 8;
+
+/** How often expired tickets are swept at most. */
+const SWEEP_INTERVAL_MS = 1_000;
+
 /**
  * Failed capability tokens tolerated per artifact and minute (D97 item 8). Tickets don't count:
  * they are single-use 130-bit secrets that live for a minute, and any page on the host could spend
@@ -53,6 +59,17 @@ export const SESSION_MAX_AGE_S: number = 400 * 24 * 60 * 60;
 
 /** How often a session's `last_seen_at` is written at most. */
 const TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Whether two origins are on the same scheme and host, whatever their ports. */
+function sameHost(a: string, b: string): boolean {
+  try {
+    const one = new URL(a);
+    const two = new URL(b);
+    return one.protocol === two.protocol && one.hostname === two.hostname;
+  } catch {
+    return false;
+  }
+}
 
 /** Encodes the first 130 bits of `bytes` as 26 Crockford base32 characters. */
 function crockford(bytes: Uint8Array): string {
@@ -161,6 +178,8 @@ export interface ResolvedSession {
   readonly csrf: string;
   /** The version a frame session entered (D98 item 5). */
   readonly versionId?: string;
+  /** How the session authenticates: a cookie, or the frame header of worker mode (D70). */
+  readonly mode: "cookie" | "worker";
   readonly grant: Grant;
   /**
    * The viewer the session acts as: its link's viewer (D104), else the one the host's identity
@@ -201,6 +220,7 @@ interface SessionRow {
   id: string;
   token_id: string;
   origin: string;
+  mode: "cookie" | "worker";
   csrf: string;
   version_id: string | null;
   viewer_id: string | null;
@@ -225,9 +245,20 @@ export interface CapabilitiesOptions {
   readonly key: Buffer;
   /** The clock, in milliseconds since the epoch. */
   readonly now: () => number;
-  /** The shell's origin, once the gateway listens: links are minted for it and work only there. */
+  /**
+   * The loopback shell's origin, once the gateway listens: links are minted for it unless the
+   * caller names another shell address (a share's, a host's, D158), and work only there.
+   */
   readonly shellOrigin: () => string;
+  /**
+   * Whether the gateway serves a shell at this origin now (the loopback shell, a share's shell
+   * face, a host's): a launch ticket is only minted for a link whose address is served.
+   */
+  readonly servesShell?: (origin: string) => boolean;
 }
+
+/** What a stream ticket opens (D158 item 5). */
+export type StreamTicketPurpose = "stream" | "socket";
 
 /** The capability authority of one instance. */
 export class Capabilities {
@@ -236,9 +267,26 @@ export class Capabilities {
   readonly #key: Buffer;
   readonly #now: () => number;
   readonly #shellOrigin: () => string;
+  readonly #servesShell: (origin: string) => boolean;
+  /** Single-use stream and socket tickets (D158 item 5), by the SHA-256 of their secret. */
+  readonly #streamTickets = new Map<
+    string,
+    {
+      readonly sessionId: string;
+      readonly origin: string;
+      readonly artifactId: string;
+      readonly purpose: StreamTicketPurpose;
+      readonly expires: number;
+    }
+  >();
   readonly #tickets = new Map<string, TicketGrant & { readonly expires: number }>();
   /** One-time launch tickets (D140 item 15), by the SHA-256 of their secret. */
   readonly #launches = new Map<string, { readonly tokenId: string; readonly expires: number }>();
+  /** The frame tickets and the stream tickets each session holds, oldest first. */
+  readonly #ticketsBySession = new Map<string, string[]>();
+  readonly #streamTicketsBySession = new Map<string, string[]>();
+  /** When the tickets were last swept. */
+  #swept = Number.NEGATIVE_INFINITY;
   /** Failure times per artifact (`""` for tokens of no artifact in this home). */
   readonly #failures = new Map<string, number[]>();
   readonly #touched = new Map<string, number>();
@@ -249,6 +297,7 @@ export class Capabilities {
     this.#key = options.key;
     this.#now = options.now;
     this.#shellOrigin = options.shellOrigin;
+    this.#servesShell = options.servesShell ?? ((origin) => origin === this.#shellOrigin());
   }
 
   /** Runs `fn` in the caller's transaction, or in a new one. */
@@ -284,12 +333,13 @@ export class Capabilities {
       readonly isDefault: boolean;
       readonly tokenId?: string;
       readonly viewerId?: string | undefined;
+      readonly shellOrigin?: string | undefined;
     },
   ): MintedToken {
     const tokenId = input.tokenId ?? TokenId.create();
     const secret = this.secretOf(tokenId);
     const scopes = normalizeScopes(input.scopes);
-    const shellOrigin = this.#shellOrigin();
+    const shellOrigin = input.shellOrigin ?? this.#shellOrigin();
     db.run(
       "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, expires_at, revoked_at, created_at, is_default, pinned_version, shell_origin) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
       tokenId,
@@ -325,6 +375,8 @@ export class Capabilities {
       readonly pinnedVersion?: number | undefined;
       /** The viewer the link acts for (D104). */
       readonly viewerId?: string | undefined;
+      /** The shell address the link works at (D97 item 10); default: the loopback shell. */
+      readonly shellOrigin?: string | undefined;
     },
     within?: LedgerDb,
   ): MintedToken {
@@ -336,6 +388,7 @@ export class Capabilities {
         pinnedVersion: input.pinnedVersion,
         isDefault: false,
         viewerId: input.viewerId,
+        shellOrigin: input.shellOrigin,
       }),
     );
   }
@@ -346,7 +399,8 @@ export class Capabilities {
    * key was replaced) stays valid for whoever holds it, and a new default takes its place; so does
    * one minted for another shell address, which works again if the gateway returns there.
    */
-  defaultLink(artifactId: string): MintedToken {
+  defaultLink(artifactId: string, shellOrigin?: string): MintedToken {
+    const origin = shellOrigin ?? this.#shellOrigin();
     return this.#ledger.write((db) => {
       const row = db.get<TokenRow>(
         "SELECT * FROM token WHERE artifact_id = ? AND is_default = 1",
@@ -354,7 +408,7 @@ export class Capabilities {
       );
       if (row) {
         const secret = this.secretOf(row.id);
-        const here = row.shell_origin === this.#shellOrigin();
+        const here = row.shell_origin === origin;
         if (here && safeEqual(hashSecret(secret), row.secret_hash)) {
           return { ...grantOf(row), secret };
         }
@@ -365,7 +419,12 @@ export class Capabilities {
           reason: here ? "the capability key changed" : "the shell's address changed",
         });
       }
-      return this.#insert(db, { artifactId, scopes: ALL_SCOPES, isDefault: true });
+      return this.#insert(db, {
+        artifactId,
+        scopes: ALL_SCOPES,
+        isDefault: true,
+        shellOrigin: origin,
+      });
     });
   }
 
@@ -375,6 +434,24 @@ export class Capabilities {
       db.get<TokenRow>("SELECT * FROM token WHERE id = ?", tokenId),
     );
     return row ? { ...grantOf(row), live: this.#live(row) } : undefined;
+  }
+
+  /**
+   * The token that stands for `tokenId` now: itself, or the token its rotations led to (D97 item
+   * 6), so what holds a token ID (a share) follows its link through `view/rotate`.
+   */
+  current(tokenId: string): string {
+    let id = tokenId;
+    for (let hop = 0; hop < 1000; hop++) {
+      const next = this.#ledger.read(
+        (db) =>
+          db.get<{ replaced_by: string | null }>("SELECT replaced_by FROM token WHERE id = ?", id)
+            ?.replaced_by ?? null,
+      );
+      if (next === null) return id;
+      id = next;
+    }
+    return id;
   }
 
   /** The token's link again, from its derived secret, when the current key still derives it. */
@@ -436,6 +513,14 @@ export class Capabilities {
         pinnedVersion: grant.pinnedVersion,
         isDefault: grant.isDefault,
         viewerId: grant.viewerId,
+        // A link stays at the address its holder uses: a share's, a host's external base, served
+        // now or not (a share's faces are down while it is set up again after a restart, Opus
+        // review of WP-13). Only a loopback link whose shell moved to another port moves to the
+        // shell's address now (D97 item 10, GPT review of WP-13).
+        shellOrigin:
+          sameHost(grant.shellOrigin, this.#shellOrigin()) && !this.#servesShell(grant.shellOrigin)
+            ? undefined
+            : grant.shellOrigin,
       });
       appendEvent(db, {
         artifactId: grant.artifactId,
@@ -490,6 +575,7 @@ export class Capabilities {
   presentToken(
     secret: unknown,
     artifactId: string,
+    shellOrigin?: string,
   ): Grant | (Refusal & { readonly retryAfter?: number }) {
     const limited = this.limited(artifactId);
     if (limited) return limited;
@@ -516,10 +602,10 @@ export class Capabilities {
         row.revoked_at !== null ? "This link was revoked." : "This link has expired.",
       );
     }
-    if (row.shell_origin !== this.#shellOrigin()) {
+    if (row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
-        `This link was made for ${row.shell_origin}, an address this Mostra no longer serves.`,
+        `This link was made for ${row.shell_origin}, not this address.`,
       );
     }
     return grantOf(row);
@@ -532,6 +618,8 @@ export class Capabilities {
     readonly versionId?: string;
     /** The person the host's identity port named, for a link without a viewer (D143 item 2). */
     readonly viewerId?: string | undefined;
+    /** `worker` for a worker-mode frame (D70), whose secret travels in a header; default `cookie`. */
+    readonly mode?: "cookie" | "worker";
   }): {
     readonly cookie: string;
     readonly csrf: string;
@@ -543,10 +631,11 @@ export class Capabilities {
     const now = this.#iso(this.#now());
     this.#ledger.write((db) =>
       db.run(
-        "INSERT INTO session (id, token_id, origin, mode, csrf, version_id, created_at, last_seen_at, viewer_id) VALUES (?, ?, ?, 'cookie', ?, ?, ?, ?, ?)",
+        "INSERT INTO session (id, token_id, origin, mode, csrf, version_id, created_at, last_seen_at, viewer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         id,
         input.tokenId,
         input.origin,
+        input.mode ?? "cookie",
         hashSecret(csrf),
         input.versionId ?? null,
         now,
@@ -566,13 +655,15 @@ export class Capabilities {
     cookies: readonly string[],
     origin: string,
     artifactId: string,
+    mode: "cookie" | "worker" = "cookie",
   ): ResolvedSession | Refusal {
     let revoked = false;
     for (const value of cookies) {
       if (!looksLikeSecret(value)) continue;
       const found = this.#ledger.read((db) => {
         const session = db.get<SessionRow>("SELECT * FROM session WHERE id = ?", hashSecret(value));
-        if (!session || session.origin !== origin) return undefined;
+        // A session works only the way it was made: a cookie never stands for a frame header.
+        if (!session || session.origin !== origin || session.mode !== mode) return undefined;
         const token = db.get<TokenRow>("SELECT * FROM token WHERE id = ?", session.token_id);
         return token && token.artifact_id === artifactId ? { session, token } : undefined;
       });
@@ -591,6 +682,7 @@ export class Capabilities {
       return {
         id: found.session.id,
         csrf,
+        mode,
         ...(found.session.version_id !== null ? { versionId: found.session.version_id } : {}),
         grant,
         ...(viewerId !== undefined ? { viewerId } : {}),
@@ -629,12 +721,31 @@ export class Capabilities {
     );
   }
 
-  /** Mints a single-use frame ticket (D98 item 3). */
+  /** Mints a single-use frame ticket (D98 item 3); a shell session holds at most a few at once. */
   mintTicket(grant: Omit<TicketGrant, never>): string {
     const ticket = randomSecret();
     this.#sweepTickets();
-    this.#tickets.set(hashSecret(ticket), { ...grant, expires: this.#now() + TICKET_TTL_MS });
+    const key = hashSecret(ticket);
+    this.#tickets.set(key, { ...grant, expires: this.#now() + TICKET_TTL_MS });
+    this.#hold(this.#ticketsBySession, this.#tickets, grant.shellSessionId, key);
     return ticket;
+  }
+
+  /**
+   * Records a session's new ticket and drops its oldest beyond {@link TICKETS_PER_SESSION}, so no
+   * link holder can make the maps grow without bound by asking for tickets in a loop (Opus review
+   * of WP-13). A page uses one or two at a time.
+   */
+  #hold(
+    bySession: Map<string, string[]>,
+    tickets: Map<string, unknown>,
+    sessionId: string,
+    key: string,
+  ): void {
+    const held = (bySession.get(sessionId) ?? []).filter((one) => tickets.has(one));
+    held.push(key);
+    while (held.length > TICKETS_PER_SESSION) tickets.delete(held.shift() as string);
+    bySession.set(sessionId, held);
   }
 
   /**
@@ -646,7 +757,7 @@ export class Capabilities {
     const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
     const entry = key === undefined ? undefined : this.#tickets.get(key);
     if (key !== undefined) this.#tickets.delete(key);
-    if (!entry || entry.origin !== origin) {
+    if (!entry || entry.expires <= this.#now() || entry.origin !== origin) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_INVALID",
         "The frame ticket is unknown, used or expired.",
@@ -675,9 +786,101 @@ export class Capabilities {
     return rest;
   }
 
+  /**
+   * Mints a single-use ticket that opens one event stream, long poll or WebSocket of a session
+   * without the session's credential (D158 item 5): a worker-mode page's streams bypass its
+   * service worker, which can't carry them. It lives 60 s in memory and is never recorded.
+   */
+  mintStreamTicket(input: {
+    readonly sessionId: string;
+    readonly origin: string;
+    readonly artifactId: string;
+    readonly purpose: StreamTicketPurpose;
+  }): { readonly ticket: string; readonly expiresAt: string } {
+    this.#sweepTickets();
+    const ticket = randomSecret();
+    const expires = this.#now() + TICKET_TTL_MS;
+    const key = hashSecret(ticket);
+    this.#streamTickets.set(key, { ...input, expires });
+    this.#hold(this.#streamTicketsBySession, this.#streamTickets, input.sessionId, key);
+    return { ticket, expiresAt: this.#iso(expires) };
+  }
+
+  /**
+   * Spends a stream ticket on `origin` for `artifactId` and `purpose`, and resolves its session
+   * as a request carrying the session's credential would, its link's liveness included. The
+   * session's CSRF token isn't known here: a ticket opens reads only (streams, polls, sockets).
+   */
+  redeemStreamTicket(
+    ticket: unknown,
+    origin: string,
+    artifactId: string,
+    purpose: StreamTicketPurpose,
+  ): ResolvedSession | Refusal {
+    this.#sweepTickets();
+    const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
+    const entry = key === undefined ? undefined : this.#streamTickets.get(key);
+    if (key !== undefined) this.#streamTickets.delete(key);
+    if (
+      !entry ||
+      entry.expires <= this.#now() ||
+      entry.origin !== origin ||
+      entry.artifactId !== artifactId ||
+      entry.purpose !== purpose
+    ) {
+      return refusal(
+        "MOSTRA_HYGIENE_TOKEN_INVALID",
+        "The stream ticket is unknown, used or expired.",
+      );
+    }
+    const found = this.#ledger.read((db) => {
+      const session = db.get<SessionRow>("SELECT * FROM session WHERE id = ?", entry.sessionId);
+      if (!session || session.origin !== origin) return undefined;
+      const token = db.get<TokenRow>("SELECT * FROM token WHERE id = ?", session.token_id);
+      return token && token.artifact_id === artifactId ? { session, token } : undefined;
+    });
+    if (!found) {
+      return refusal("MOSTRA_HYGIENE_SESSION_MISSING", "The session behind this ticket has ended.");
+    }
+    if (!this.#live(found.token)) {
+      return refusal(
+        "MOSTRA_HYGIENE_TOKEN_REVOKED",
+        "The link this session came from was revoked or has expired.",
+      );
+    }
+    const grant = grantOf(found.token);
+    const viewerId = grant.viewerId ?? found.session.viewer_id ?? undefined;
+    return {
+      id: found.session.id,
+      csrf: "",
+      mode: found.session.mode,
+      ...(found.session.version_id !== null ? { versionId: found.session.version_id } : {}),
+      grant,
+      ...(viewerId !== undefined ? { viewerId } : {}),
+    };
+  }
+
+  /**
+   * Drops expired tickets, at most once a second: every use checks a ticket's expiry itself, so a
+   * sweep only frees memory, and a burst of requests never makes each one walk every ticket (Opus
+   * review of WP-13).
+   */
   #sweepTickets(): void {
     const now = this.#now();
+    if (now - this.#swept < SWEEP_INTERVAL_MS && now >= this.#swept) return;
+    this.#swept = now;
+    for (const [sessionId, held] of this.#ticketsBySession) {
+      if (!held.some((key) => this.#tickets.has(key))) this.#ticketsBySession.delete(sessionId);
+    }
+    for (const [sessionId, held] of this.#streamTicketsBySession) {
+      if (!held.some((key) => this.#streamTickets.has(key))) {
+        this.#streamTicketsBySession.delete(sessionId);
+      }
+    }
     for (const [key, entry] of this.#tickets) if (entry.expires <= now) this.#tickets.delete(key);
+    for (const [key, entry] of this.#streamTickets) {
+      if (entry.expires <= now) this.#streamTickets.delete(key);
+    }
     for (const [key, entry] of this.#launches) if (entry.expires <= now) this.#launches.delete(key);
   }
 
@@ -695,7 +898,7 @@ export class Capabilities {
     | undefined {
     const grant = this.grant(tokenId);
     if (!grant) return undefined;
-    if (!grant.live || grant.shellOrigin !== this.#shellOrigin()) return "dead";
+    if (!grant.live || !this.#servesShell(grant.shellOrigin)) return "dead";
     this.#sweepTickets();
     const ticket = randomSecret();
     const expires = this.#now() + TICKET_TTL_MS;
@@ -714,12 +917,14 @@ export class Capabilities {
     ticket: unknown,
     artifactId: string,
     spend: boolean,
+    shellOrigin?: string,
   ): Grant | (Refusal & { readonly retryAfter?: number }) {
     const limited = this.limited(artifactId);
     if (limited) return limited;
     this.#sweepTickets();
     const key = looksLikeSecret(ticket) ? hashSecret(ticket) : undefined;
-    const entry = key === undefined ? undefined : this.#launches.get(key);
+    const found = key === undefined ? undefined : this.#launches.get(key);
+    const entry = found && found.expires > this.#now() ? found : undefined;
     const grant = entry ? this.grant(entry.tokenId) : undefined;
     if (!entry || !grant || grant.artifactId !== artifactId) {
       this.#fail(artifactId);
@@ -728,10 +933,10 @@ export class Capabilities {
         "The launch ticket is unknown, used or expired.",
       );
     }
-    if (!grant.live || grant.shellOrigin !== this.#shellOrigin()) {
+    if (!grant.live || grant.shellOrigin !== (shellOrigin ?? this.#shellOrigin())) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
-        "The link behind this launch ticket was revoked or has expired.",
+        "The link behind this launch ticket was revoked, has expired, or is for another address.",
       );
     }
     if (spend && key !== undefined) this.#launches.delete(key);
@@ -745,9 +950,13 @@ export class Capabilities {
    * session between them (GPT review of WP-12, finding 1).
    */
   spendLaunch(ticket: unknown): boolean {
-    // An expired ticket is swept first, so it can't be spent (Opus review of WP-12, finding 3).
+    // An expired ticket can't be spent (Opus review of WP-12, finding 3).
     this.#sweepTickets();
-    return looksLikeSecret(ticket) && this.#launches.delete(hashSecret(ticket));
+    if (!looksLikeSecret(ticket)) return false;
+    const key = hashSecret(ticket);
+    const entry = this.#launches.get(key);
+    if (!entry || entry.expires <= this.#now()) return false;
+    return this.#launches.delete(key);
   }
 
   /** Removes sessions unseen for longer than their cookie lives; no browser holds them any more. */

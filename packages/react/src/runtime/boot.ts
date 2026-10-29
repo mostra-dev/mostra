@@ -19,9 +19,13 @@ import {
 import { builtVersion, connectShell, listenShell, type ShellConnection } from "../shell-bridge.ts";
 import { blockersForShell, clip, firstThatMatter } from "./bridge-limits.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
+import { guardFrameServiceWorker } from "./service-worker.ts";
 import { Store } from "./store.ts";
 import { HttpTransport } from "./transport.ts";
 import { installVerifyProbe } from "./verify-probe.ts";
+
+// Before any artifact code runs: the generated entry imports the runtime first (D70).
+guardFrameServiceWorker();
 
 /** The page's runtime: its store, where it runs, and its shell connection. */
 export interface Runtime {
@@ -193,6 +197,9 @@ export async function startRuntime(): Promise<Runtime> {
     mode: "live",
     transport: new HttpTransport(view.viewId, {
       ...(shell.session.csrf !== "" ? { csrf: shell.session.csrf } : {}),
+      // Worker mode opens streams and polls with tickets, past the service worker (D70).
+      ...(shell.session.mode === "worker" ? { tickets: true } : {}),
+      ...(shell.session.streams ? {} : { streams: false }),
     }),
     journal,
     view,

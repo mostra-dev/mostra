@@ -157,15 +157,33 @@ describe("item 3: exact Origin on every non-GET, stream and upgrade", () => {
     expect(code(sameSite)).toBe("403 MOSTRA_HYGIENE_ORIGIN_REFUSED");
   });
 
-  it("refuses a WebSocket upgrade from another origin, and serves none yet", async () => {
-    const upgrade = (origin: string) =>
+  it("refuses a WebSocket upgrade from another origin or without a socket ticket, and serves none yet", async () => {
+    const upgrade = (origin: string, query = "") =>
       raw(
         framePort,
-        `GET /_mostra/v/1/term/x HTTP/1.1\r\nHost: 127.0.0.1:${framePort}\r\nOrigin: ${origin}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`,
+        `GET /_mostra/v/1/term/x${query} HTTP/1.1\r\nHost: 127.0.0.1:${framePort}\r\nOrigin: ${origin}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`,
       );
     expect((await upgrade("http://evil.example")).status).toBe(403);
     expect((await upgrade(opened.link.shell)).status).toBe(403);
-    expect((await upgrade(opened.frameOrigin)).status).toBe(404);
+    // A socket opens only with a single-use ticket of the frame's session (D158 item 5).
+    expect((await upgrade(opened.frameOrigin)).status).toBe(401);
+    const minted = await holder.fetchJson(opened.frameOrigin, "/_mostra/v/2026-10-15/ticket", {
+      body: { purpose: "socket" },
+      csrf: opened.frameCsrf,
+    });
+    expect(minted.status).toBe(200);
+    const { ticket } = minted.json<{ ticket: string }>();
+    // A stream's ticket opens no socket, and a socket's opens one only once.
+    const stream = await holder.fetchJson(opened.frameOrigin, "/_mostra/v/2026-10-15/ticket", {
+      body: { purpose: "stream" },
+      csrf: opened.frameCsrf,
+    });
+    expect(
+      (await upgrade(opened.frameOrigin, `?ticket=${stream.json<{ ticket: string }>().ticket}`))
+        .status,
+    ).toBe(401);
+    expect((await upgrade(opened.frameOrigin, `?ticket=${ticket}`)).status).toBe(501);
+    expect((await upgrade(opened.frameOrigin, `?ticket=${ticket}`)).status).toBe(401);
   });
 
   it("refuses a read that names another origin", async () => {

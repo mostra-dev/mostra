@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `new`, `open`, `publish`, `push`, `results`, `secret`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `new`, `open`, `publish`, `push`, `results`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -187,6 +187,112 @@ Exit codes:
 
 Example:
   mostra open ./sidebar-review
+```
+
+## mostra share
+
+```text
+Open an artifact to people beyond this machine: inside your tailnet, or publicly with a link that expires.
+
+Usage:
+  mostra share <artifact> [flags]
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+
+Flags:
+  --tailnet                    Share inside your tailnet through Tailscale Serve; each viewer is their tailnet identity.
+  --public                     Share publicly: anyone with the link can open it until it expires.
+  --via <tunnel>               The public tunnel: a Cloudflare quick tunnel (no account), or Tailscale Funnel (shows your device's tailnet name). (cloudflare, funnel) Default: cloudflare.
+  --ttl <d>                    How long the link works, such as 30m or 24h. Public: 1h by default, 7d at most.
+  --scope <a,b>                The link's scopes: view, draft, submit, review, signal, action:*. Default: all.
+  --viewer <ref>               The person the link is for, by your own stable key for them; without it, each link is a viewer of its own.
+  --viewer-name <name>         The display name of --viewer.
+  --request-id <id>            Make a retried share return the same share instead of opening another.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ShareStartResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra share ./sidebar-review --public --ttl 2h
+```
+
+## mostra share stop
+
+```text
+Stop a share, or every share of an artifact: its link stops working and its tunnel closes.
+
+Usage:
+  mostra share stop <target>
+
+Arguments:
+  <target>                     A share's ID (shr_…), or an artifact's source path or ID.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ShareStopResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra share stop ./sidebar-review
+```
+
+## mostra share list
+
+```text
+List the active shares, of every artifact or of one; --all adds the ones that ended.
+
+Usage:
+  mostra share list [<artifact>] [flags]
+
+Arguments:
+  <artifact>                   Only this artifact's shares: its source path or ID.
+
+Flags:
+  --all                        Also list shares that ended, and why.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ShareListResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra share list --all
 ```
 
 ## mostra wait

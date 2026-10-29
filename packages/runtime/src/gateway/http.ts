@@ -73,8 +73,14 @@ export function headerPairs(incoming: IncomingMessage): [string, string][] {
   return pairs;
 }
 
+/** The header the worker-mode service worker adds to a navigation it sends on (D70). */
+export const NAVIGATION_HEADER = "x-mostra-navigation";
+
 /** Whether a request is a navigation that should get an HTML page rather than JSON. */
 export function wantsDocument(headers: Headers): boolean {
+  // A worker-mode frame's navigation, which its service worker sends again as a plain request
+  // (D70): the browser marks that one `Sec-Fetch-Dest: empty`.
+  if (headers.get(NAVIGATION_HEADER) === "1") return true;
   const dest = headers.get("sec-fetch-dest");
   if (dest !== null) return dest === "document" || dest === "iframe" || dest === "frame";
   return (headers.get("accept") ?? "").includes("text/html");
@@ -152,14 +158,18 @@ export function cookieValues(header: string | null, name: string): string[] {
   return values;
 }
 
-/** The `Set-Cookie` value of a session cookie (D98 item 1); never `Secure` over loopback HTTP. */
+/**
+ * The `Set-Cookie` value of a session cookie (D98 item 1): never `Secure` over loopback HTTP,
+ * always over a tunnel's HTTPS address (D158), where it must never travel in clear.
+ */
 export function sessionCookie(
   name: string,
   value: string,
   path: string,
   maxAgeSeconds: number,
+  secure = false,
 ): string {
-  return `${name}=${value}; Path=${path}; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Strict`;
+  return `${name}=${value}; Path=${path}; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
 }
 
 /**

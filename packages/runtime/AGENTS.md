@@ -120,6 +120,26 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   identity over and fails, times out, answers nonsense or is expected but away refuses the
   exchange (503 `MOSTRA_HOST_IDENTITY_UNAVAILABLE`); nobody silently becomes the local user.
   The ports the instance calls are `SUPPORTED_PORTS` in `instance/index.ts`.
+- **A face is judged by its socket, never by a header (D158 item 1).** Every external address
+  (a tailnet, Funnel or Cloudflare address, a host's external base) is a face: its own listener on
+  loopback (`addressing.listenFace`), with one origin, one exact `Host`, one way in (`via`) and one
+  frame-session mode, serving the shell's routes or one artifact's (`gateway/index.ts`, `Way`).
+  Tailscale forwards whatever `Host` a client sends, so nothing may pick a face, an origin or an
+  identity from `Host`. Tailscale's identity headers count only on a tailnet face, from a loopback
+  peer, never beside `Tailscale-Funnel-Request` (`gateway/identity.ts`, `tailnetPerson`); over any
+  tunnel a session without a named person is its link's own viewer (`link:<tokenId>`), never the
+  home's local user.
+- **Worker-mode frames are signed by the worker, streams by tickets (D70, D158 item 5).** In worker
+  mode a frame session travels only as `X-Mostra-Frame`, which only same-origin script (Mostra's
+  worker) can add; a cookie never authenticates it, and a header never authenticates a cookie
+  session. Event streams, polls and WebSockets bypass the worker with single-use tickets
+  (`capabilities.mintStreamTicket`, redeemed once, rechecking the session and its link); a stream
+  through the worker, or on a face streams don't pass, is refused so every client long-polls.
+- **A share ends once, and every end revokes its link (D158 item 3).** `share/index.ts` serializes
+  starts and stops; a `share` row only ever ends (a trigger); a tunnel shared by several shares
+  (Funnel's shell, tailnet faces) stops when the last one ends. Tunnels are recorded children of
+  the process manager, foreground `tailscale serve|funnel` (whose configuration goes with them) and
+  `cloudflared tunnel --url`; nothing ever runs `tailscale serve --bg`.
 - **Orphans are derived, never stored (D109).** A field is an orphan of a view when the view's
   version's `fields` coverage (`builder/coverage.ts`) doesn't cover it; nothing moves or drops a
   field. Coverage that can't be known is open: a version never orphans an answer by a guess.
@@ -200,8 +220,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
-| `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes and `view/url`, `view/rotate`, `view/revoke` (`index.ts`) |
+| `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, faces' loopback listeners (leased under `face`, or ephemeral), the frame-session mode for an origin pair |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes, faces and hosts' external bases (`externalBase`, `external_base`), worker-mode entry, stream tickets, and `view/url`, `view/rotate`, `view/revoke` (`index.ts`); the worker-mode bootstrap page and service worker (`worker.ts`); Tailscale's identity headers (`identity.ts`) |
+| `share` | Shares (D158): `share/start`, `share/stop` and `share/list`, their rows, plans, expiry, recovery after a restart and the busy count (`index.ts`); the tunnel children (`tunnel.ts`); Tailscale Serve and Funnel (`tailscale.ts`) and Cloudflare quick tunnels (`cloudflare.ts`). The tools are found by `platform/tools.ts` (`MOSTRA_TAILSCALE`, `MOSTRA_CLOUDFLARED`, `PATH`, the usual install places) |
 | `actions` | Plain calls and durable action runs (D54, D130): starting, joining, attaching, cancelling and recovering runs, flushing their progress, log and result batches, the worker bridge for `secret`, `signal`, `emit` and `state` |
 | `workers` | The `WorkerLauncher` seam with the local and socket launchers (D124), and the pool: one worker per version, start, ping watchdog, idle eviction, crash kinds, backoff and parking (D129, D133) |
 | `secrets` | The home's secret store, the `secrets` port's precedence and `secret/set`, `secret/list`, `secret/delete` (D131) |
@@ -228,7 +249,14 @@ source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
 `@mostra/worker` (default: `worker/dist/main.js`, or its source under `@mostra/source`).
 `MOSTRA_VERIFY_ENTRY` points at another build of `@mostra/verify`'s runner (default: `verify/dist/main.js`); `MOSTRA_TEST_VERIFY_TIMEOUT_MS` shortens verify's 120 s, `MOSTRA_TEST_SMOKE_INTERACTIONS` the smoke test's 200 interactions, `MOSTRA_TEST_VERIFY_IDLE_MS` the runner's 10 idle minutes, and `MOSTRA_TEST_UNVERIFIED_PUBLISH` makes publish skip verify's gate, for the suites of other features only: such a version records no verdict and never counts as passing (`testHome` sets it; `verifiedHome` keeps the gate). `MOSTRA_SHELL_DIR` points the gateway at another build of `@mostra/shell` (default:
 `shell/dist` beside the runtime package); without one the shell's pages answer
-`MOSTRA_ENV_SHELL_MISSING` and the instance still starts.
+`MOSTRA_ENV_SHELL_MISSING` and the instance still starts. `MOSTRA_TEST_TUNNELS` names a directory of
+stand-ins for `tailscale` and `cloudflared` (`<dir>/tailscale.mjs`, `<dir>/cloudflared.mjs`, run on
+this Node.js; the conformance kit ships them in `packages/conformance/tunnels/`), which forward
+plain HTTP on loopback as the real tools forward from their networks, add what each adds and hold
+responses back as quick tunnels do; `MOSTRA_FAKE_TAILNET_USER` (`login|Display Name`),
+`MOSTRA_FAKE_TAILSCALE` (`stopped`, `no-serve`, `no-funnel`), `MOSTRA_FAKE_TAILSCALE_SERVED` and
+`MOSTRA_FAKE_CLOUDFLARED` (`fail`) script them, and `MOSTRA_TEST_SHARE_PROBE_MS` sets how long a
+new quick tunnel's names are waited for (0: not at all). Tests only, like the rest.
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its

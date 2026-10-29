@@ -136,7 +136,8 @@ Each child runs in its own process group (on Windows its own Job Object, which e
 
 **Origins** (D21, D38, D70). The gateway listens on one port for the shell and on a stably leased port per opened artifact, all on the same loopback hostname. Shell and artifacts are therefore same-site but different origins.
 - **Cookie mode.** A capability token in the launch URL is exchanged once for an origin-bound `HttpOnly; SameSite=Strict` session, and the token is stripped from the URL. The shell then hands the frame a single-use frame ticket, which the frame exchanges for its own session.
-- **Worker mode.** Where shell and artifact are cross-site (Cloudflare quick tunnels in v1), the frame session uses a service worker plus ticketed streams instead.
+- **Worker mode.** Where shell and artifact are cross-site (Cloudflare quick tunnels in v1, a host's external bases on two host names), the frame session uses a service worker plus ticketed streams instead: a bootstrap page exchanges the shell's ticket for a frame-session secret, installs Mostra's worker at `/`, which signs every same-origin request with it, and event streams, polls and WebSockets bypass the worker with single-use tickets (D70, D158 item 5).
+- **Faces.** Every external address (a tailnet, Funnel or Cloudflare address, a host's external base) is a face: a listener of its own on loopback with one origin, one exact `Host`, one way in and one frame-session mode, serving the shell's routes or one artifact's. Which face a request came through is the socket it arrived on, never a header (D158 item 1).
 - The addressing module picks the mode per origin pair. Artifact code never sees the difference.
 
 **The shell** is a small trusted web app (`@mostra/shell`) on the shell origin. It owns:
@@ -269,10 +270,12 @@ The 13-point checklist (seed §11, D06) is implemented in the gateway and the MC
 
 The gateway strips Mostra's cookies before proxying to workers, demos or terminals (D38). Local capability URLs don't expire by default (D63).
 
-**Sharing** (D47, HY-04, HY-05) drives the installed tools and registers their hostnames with the Host allowlist:
+**Sharing** (D47, D158, HY-04, HY-05) drives the installed tools, each as a recorded child of the process manager, and opens a face for each address they give, which is how a tunnel hostname joins the exact Host allowlist:
 - `mostra share --tailnet` uses Tailscale Serve and maps the identity headers to viewers. The backend stays on loopback so the headers can't be spoofed.
 - `mostra share --public` uses Tailscale Funnel (ports 443, 8443 and 10000: the shell plus up to two artifacts) or a Cloudflare quick tunnel (worker-mode frames, D70). Public shares always use short-lived scoped tokens.
-- The event stream falls back to long-polling where SSE doesn't pass. Cloudflare quick tunnels don't support SSE (VERIFIED_FACTS).
+- The event stream falls back to long-polling where SSE doesn't pass. Cloudflare quick tunnels hold a whole response back (VERIFIED_FACTS, WP-13), so the gateway refuses streams there and pages poll from the start; every stream opens with `ready`, so a page that hears nothing polls anyway.
+- A share mints its own link at its tunnel's shell address, ends at its TTL (public: 1 hour by default, 7 days at most), on `share/stop`, or when its tunnel can't continue, and tailnet and Funnel shares are set up again after a restart. Active shares keep a daemon from its idle exit.
+- A host's `addressing` port (HO-10) gives its own tunnel's address for an artifact's links in the same way: each answer becomes a face on a leased loopback port the host forwards to.
 - When a tool is missing, Mostra explains how to install it.
 - **A remote server** (D116) is the last rung: the agent shares a published version to a self-hostable remote server, or to the managed service that runs the same open server, and the link works without a tunnel and while the author's machine sleeps. Hosted artifacts are served only from a separate user-content domain, behind the same capability URLs and scopes (D06, D97). Their action calls and live producers run on the owner's instance through the relay (D117). The design is WP-28's (§14).
 
