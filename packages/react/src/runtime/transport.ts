@@ -81,6 +81,13 @@ export const KEEPALIVE_BODY_MAX: number = 64 * 1024 - 1024;
 const STREAM_FAILURES_BEFORE_POLL = 2;
 
 /**
+ * How long a stream may stay silent after it opens before the page long-polls instead: the
+ * gateway's first message (`ready`) comes at once, so silence means something holds the stream
+ * back (a buffering proxy or tunnel, or a browser that stalled it, WP-13).
+ */
+export const STREAM_FIRST_MESSAGE_MS = 6_000;
+
+/**
  * The browser protocol over HTTP, on the artifact's origin. The CSRF token comes from
  * `/_mostra/session`, once; a refusal is a {@link MostraError} with the gateway's diagnostic, and
  * an unreachable gateway a {@link NetworkError}.
@@ -328,7 +335,24 @@ export class HttpTransport implements Transport {
         return;
       }
       if (closed) return;
-      source = new EventSource(`${this.#base}/events?${query()}${ticket}`);
+      const opened = new EventSource(`${this.#base}/events?${query()}${ticket}`);
+      source = opened;
+      // Silence after opening is a stream held back: poll at once, on the same cursor.
+      let heard = false;
+      const silent = setTimeout(() => {
+        if (heard || closed || source !== opened) return;
+        opened.close();
+        source = undefined;
+        handlers.onStatus("offline");
+        if (!polling) void poll();
+      }, STREAM_FIRST_MESSAGE_MS);
+      const hear = (): void => {
+        heard = true;
+        clearTimeout(silent);
+      };
+      opened.addEventListener("ready", hear);
+      opened.addEventListener("snapshot", hear);
+      opened.addEventListener("mostra", hear);
       source.addEventListener("open", () => {
         failures = 0;
         handlers.onStatus("live");

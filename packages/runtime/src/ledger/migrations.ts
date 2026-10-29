@@ -645,12 +645,11 @@ export const MIGRATIONS: readonly Migration[] = [
         CREATE TABLE external_base (
           key TEXT PRIMARY KEY,
           listener TEXT NOT NULL CHECK (listener IN ('shell', 'artifact')),
-          artifact_id TEXT REFERENCES artifact(id),
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
           origin TEXT NOT NULL,
           mode TEXT CHECK (mode IN ('cookie', 'worker')),
           client TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          CHECK ((listener = 'artifact') = (artifact_id IS NOT NULL))
+          updated_at TEXT NOT NULL
         );
       `);
     },

@@ -72,6 +72,7 @@ export {
   mostraFieldFocus,
   mostraFields,
   mostraFlush,
+  mostraFrameSessionEntered,
   mostraFrameSessionFailed,
   mostraPage,
   mostraReady,

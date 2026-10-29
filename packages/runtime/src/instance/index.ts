@@ -699,7 +699,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
             });
             return { kind: "failed" };
           }
-          return parsed.data === null ? { kind: "none" } : { kind: "base", base: parsed.data };
+          return parsed.data === null
+            ? { kind: "none" }
+            : { kind: "base", base: parsed.data, owner: registrant.owner };
         } catch (error) {
           log.warn("gateway.addressing_failed", {
             owner: registrant.owner,

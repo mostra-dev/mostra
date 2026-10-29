@@ -161,7 +161,12 @@ export interface FaceHandle {
 
 /** The answer a host's addressing port gave, or why there is none. */
 export type ExternalBaseAnswer =
-  | { readonly kind: "base"; readonly base: NonNullable<PortAddressingExternalBaseResult> }
+  | {
+      readonly kind: "base";
+      readonly base: NonNullable<PortAddressingExternalBaseResult>;
+      /** The host that gave it, by its client name. */
+      readonly owner: string;
+    }
   | { readonly kind: "none" }
   | { readonly kind: "failed" }
   | { readonly kind: "away" };
@@ -766,7 +771,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           artifactId,
           origin,
           mode ?? null,
-          "host",
+          answer.owner,
           new Date().toISOString(),
         ),
       );

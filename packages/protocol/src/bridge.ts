@@ -460,6 +460,22 @@ export const mostraFrameSessionFailed: BridgeMessage<FrameSessionFailedParams, u
 };
 
 /**
+ * `mostra/frameSession.entered`: the worker-mode bootstrap page (D70, D158 item 5) has its
+ * session and its service worker, and is loading the version. The shell's wait for the frame's
+ * page starts here: the bootstrap's own load is not the page's (WP-13).
+ */
+export const mostraFrameSessionEntered: BridgeMessage<
+  Readonly<Record<string, unknown>>,
+  undefined
+> = {
+  method: "mostra/frameSession.entered",
+  from: "artifact",
+  kind: "notification",
+  params: z.looseObject({}),
+  result: z.undefined(),
+};
+
+/**
  * Every message of the bridge in this release. WP-20 adds review messages; a message never
  * changes meaning once released (D32).
  */
@@ -476,6 +492,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraVersionAvailable,
   mostraFieldFocus,
   mostraFrameSessionFailed,
+  mostraFrameSessionEntered,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

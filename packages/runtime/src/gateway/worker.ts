@@ -102,8 +102,9 @@ async function signed(request) {
  * The bootstrap page at `/_mostra/enter#t=<ticket>` (D70): it takes the ticket from the fragment
  * (so no server, log or `Referer` sees it), exchanges it at `POST /_mostra/enter` (sending the
  * session it kept, so a frame that re-enters keeps its session and switches version), installs
- * the worker at `/`, hands it the secret and enters the version at `/`. Whatever stops it is
- * reported to the shell as `mostra/frameSession.failed` with `MOSTRA_HYGIENE_FRAME_SESSION`.
+ * the worker at `/`, hands it the secret, tells the shell (`mostra/frameSession.entered`) and
+ * enters the version at `/`. Whatever stops it is reported to the shell as
+ * `mostra/frameSession.failed` with `MOSTRA_HYGIENE_FRAME_SESSION`.
  */
 export const BOOTSTRAP_PAGE: string = `<!doctype html>
 <html lang="en">
@@ -193,6 +194,8 @@ export const BOOTSTRAP_PAGE: string = `<!doctype html>
   } catch (error) {
     return fail("blocked", "This browser didn't let the artifact's frame install the service worker this link needs (" + error + ").");
   }
+  // The shell waits for the page from here: this page's own load wasn't the page's.
+  parent.postMessage({ jsonrpc: "2.0", method: "mostra/frameSession.entered", params: {} }, shell);
   location.replace("/");
 })();
 </script>

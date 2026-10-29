@@ -1,9 +1,12 @@
 /**
  * The frame's service worker in worker mode (D70, D158 item 5): where the shell and the artifact
  * are two sites, Mostra's own service worker at `/` signs every request of the frame with its
- * session. An artifact that registered its own worker at `/` would replace it and end the frame's
- * session silently, so the client runtime refuses that registration with a diagnostic the page
- * can see. A worker at a narrower scope is the artifact's own business and registers as usual.
+ * session. An artifact's own worker can't run there: its script is fetched without the session
+ * (a browser adds nothing to that request), and a page it controlled would send requests no
+ * worker signs, so the page would lose its session. The client runtime refuses such a
+ * registration with a diagnostic the page can see, rather than letting it fail obscurely or end
+ * the session. On a tailnet, Funnel or local link (cookie mode) the artifact registers its own
+ * workers as usual.
  */
 import { MostraError } from "./errors.ts";
 
@@ -25,9 +28,9 @@ export function workerModeFrame(): boolean {
 let guarded = false;
 
 /**
- * In a worker-mode frame, refuses an artifact's own service worker at scope `/` with
+ * In a worker-mode frame, refuses an artifact's own service worker with
  * `MOSTRA_HYGIENE_FRAME_SESSION` (rejecting the registration's promise and saying so on the
- * console), instead of letting it replace Mostra's and lose the page its session. Installed once,
+ * console), instead of letting it fail without its session or end the page's. Installed once,
  * before artifact code runs; a no-op anywhere else.
  */
 export function guardFrameServiceWorker(): void {
@@ -37,21 +40,16 @@ export function guardFrameServiceWorker(): void {
   const register = container.register.bind(container);
   const guard: typeof container.register = (scriptURL, options) => {
     const script = new URL(String(scriptURL), location.href);
-    // A registration's scope defaults to the script's own directory.
-    const scope = new URL(options?.scope ?? "./", script);
-    if (
-      scope.origin === location.origin &&
-      scope.pathname === "/" &&
-      script.pathname !== MOSTRA_WORKER
-    ) {
-      const error = new MostraError(
-        "MOSTRA_HYGIENE_FRAME_SESSION",
-        `This page's frame session runs through Mostra's service worker at "/"; registering ${script.pathname} at that scope would end it. Register it at a narrower scope, such as "/app/".`,
-      );
-      console.error(`[MOSTRA_HYGIENE_FRAME_SESSION] ${error.message}`);
-      return Promise.reject(error);
+    if (script.origin === location.origin && script.pathname === MOSTRA_WORKER) {
+      return register(scriptURL, options);
     }
-    return register(scriptURL, options);
+    const scope = new URL(options?.scope ?? "./", script);
+    const error = new MostraError(
+      "MOSTRA_HYGIENE_FRAME_SESSION",
+      `This page opened through a link whose frame runs on Mostra's own service worker (a public Cloudflare link), so ${script.pathname} can't be registered here (scope ${scope.pathname}): it would run without the page's session. On a tailnet, Funnel or local link the page registers its own service workers.`,
+    );
+    console.error(`[MOSTRA_HYGIENE_FRAME_SESSION] ${error.message}`);
+    return Promise.reject(error);
   };
   container.register = guard;
 }

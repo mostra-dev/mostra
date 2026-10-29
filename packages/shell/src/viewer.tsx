@@ -18,6 +18,7 @@ import {
   mostraFieldFocus,
   mostraFields,
   mostraFlush,
+  mostraFrameSessionEntered,
   mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
@@ -115,6 +116,12 @@ const GREETING_MS = 6_000;
  * never does.
  */
 const LOAD_MS = 12_000;
+/**
+ * How long a worker-mode frame's bootstrap page (D70) has to enter before the frame is loaded
+ * again: it exchanges its ticket, installs the service worker (whose activation it bounds at
+ * 20 s) and says so (`mostra/frameSession.entered`), after which the page's own wait starts.
+ */
+const BOOTSTRAP_MS = 25_000;
 /**
  * How many times a frame that never greeted is loaded again before the viewer is told; `verify`
  * (D138) loads it again once, which covers a connection that failed (two in a row are
@@ -216,6 +223,8 @@ interface FrameHandlers {
   onInitialized(kind: "runtime" | "legacy"): void;
   /** Worker mode's bootstrap page couldn't start the frame's session (D70). */
   onFrameSessionFailed(failure: { readonly reason: string; readonly message: string }): void;
+  /** Worker mode's bootstrap page has its session and is loading the version (D70). */
+  onFrameSessionEntered(): void;
 }
 
 /**
@@ -300,6 +309,7 @@ function Frame(props: {
         if (message === mostraFrameSessionFailed) {
           handlersRef.current.onFrameSessionFailed(params as { reason: string; message: string });
         }
+        if (message === mostraFrameSessionEntered) handlersRef.current.onFrameSessionEntered();
       },
       onRejected: () => {
         rejections += 1;
@@ -490,7 +500,13 @@ export function ViewerPage(props: {
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
   }, []);
-  const onFrameLoaded = useCallback(() => setFrameLoaded(true), []);
+  // A worker-mode frame first loads its bootstrap page (D70), whose load isn't the page's: the
+  // page's wait starts once the bootstrap says it entered.
+  const [bootstrapping, setBootstrapping] = useState(ticket.mode === "worker");
+  const bootstrappingRef = useLatest(bootstrapping);
+  const onFrameLoaded = useCallback(() => {
+    if (!bootstrappingRef.current) setFrameLoaded(true);
+  }, [bootstrappingRef]);
 
   // A new view (the first, or after a switch) starts from its own state: reset while rendering,
   // as React advises for state that follows a prop, so no render shows the old view's state.
@@ -503,6 +519,7 @@ export function ViewerPage(props: {
     setProblem(undefined);
     setFrameKind("loading");
     setFrameLoaded(false);
+    setBootstrapping(ticket.mode === "worker");
   }
 
   // A frame that loaded and never greeted the shell, or never loaded, is entered again with a new
@@ -559,7 +576,7 @@ export function ViewerPage(props: {
           RELOAD_BACKOFF_MS * 2 ** attempt,
         );
       },
-      frameLoaded ? GREETING_MS : LOAD_MS,
+      frameLoaded ? GREETING_MS : bootstrapping ? BOOTSTRAP_MS : LOAD_MS,
     );
     return () => {
       standing = false;
@@ -570,6 +587,7 @@ export function ViewerPage(props: {
   }, [
     ticket,
     frameLoaded,
+    bootstrapping,
     frameKind,
     sessionFailed,
     reloadAttempts,
@@ -804,6 +822,10 @@ export function ViewerPage(props: {
       mark("", { shellPage: path });
     },
     onGreeted: () => entries.greeted(),
+    onFrameSessionEntered: () => {
+      mark("", { frameSession: "entered" });
+      setBootstrapping(false);
+    },
     onFrameSessionFailed: (failure) => {
       mark("", { frameSession: failure.reason });
       // A refused entry (a spent ticket after the frame reloaded by itself) is entered again with
