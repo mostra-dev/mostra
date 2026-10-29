@@ -2525,6 +2525,7 @@ export type ServerStatePatchResult = MutationResult;
 // @public
 export interface Share {
     readonly artifactId: string;
+    readonly artifactOrigin?: string;
     readonly expiresAt?: string;
     readonly hostname: string;
     readonly mode: "cookie" | "worker";

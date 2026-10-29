@@ -227,6 +227,16 @@ describe("every command, with --json and no terminal", () => {
     expect(Date.parse(shared.expiresAt) - Date.now()).toBeLessThanOrEqual(30 * 60_000);
     const tailnet = await run(["share", artifactId, "--tailnet"], { code: 0, ok: true });
     expect(tailnet.result).toMatchObject({ via: "tailnet", mode: "cookie" });
+    // A person reads which of the device's ports the tailnet must let viewers reach.
+    const ports = tailnet.result as { url: string; artifactOrigin: string; shareId: string };
+    const told = await cli(["share", "stop", ports.shareId], { env: home.env });
+    expect(told.code).toBe(0);
+    const again = await cli(["share", artifactId, "--tailnet"], { env: home.env });
+    expect(again.code).toBe(0);
+    const [shellPort, framePort] = [ports.url, ports.artifactOrigin].map(
+      (origin) => new URL(origin).port,
+    );
+    expect(again.stdout).toContain(`ports ${shellPort} and ${framePort} allowed`);
     // Exactly one of --tailnet and --public; --via only with --public; a public link lives 7 days at most.
     await run(["share", artifactId], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
     await run(["share", artifactId, "--tailnet", "--via", "funnel"], {

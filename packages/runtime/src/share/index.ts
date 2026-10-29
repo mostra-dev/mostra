@@ -171,12 +171,20 @@ export function createShares(options: SharesOptions): Shares {
 
   const toShare = (found: ShareRow): Share => {
     const url = found.stopped_at === null ? gateway.reveal(found.token_id) : undefined;
+    const artifactKey = (JSON.parse(found.plan_json) as Plan).faces.find(
+      (face) => face.listener === "artifact",
+    )?.key;
+    const artifactOrigin =
+      found.stopped_at === null && artifactKey !== undefined
+        ? gateway.face(artifactKey)?.origin()
+        : undefined;
     return {
       shareId: found.id,
       artifactId: found.artifact_id,
       via: found.via,
       ...(url !== undefined ? { url } : {}),
       hostname: found.hostname,
+      ...(artifactOrigin !== undefined ? { artifactOrigin } : {}),
       mode: found.mode,
       tokenId: found.token_id,
       startedAt: found.started_at,

@@ -4603,6 +4603,10 @@
           "type": "string",
           "minLength": 1
         },
+        "artifactOrigin": {
+          "type": "string",
+          "minLength": 1
+        },
         "mode": {
           "type": "string",
           "enum": [
@@ -4734,6 +4738,10 @@
           "minLength": 1
         },
         "hostname": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactOrigin": {
           "type": "string",
           "minLength": 1
         },

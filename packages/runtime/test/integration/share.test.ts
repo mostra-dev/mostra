@@ -21,6 +21,7 @@ interface ShareResult {
   readonly via: string;
   readonly url: string;
   readonly hostname: string;
+  readonly artifactOrigin?: string;
   readonly mode: "cookie" | "worker";
   readonly tokenId: string;
   readonly expiresAt?: string;
@@ -289,6 +290,8 @@ describe("shares (D158)", () => {
       expect(shared.mode).toBe("cookie");
       expect(shared.expiresAt).toBeUndefined();
       expect(new URL(opened.frameOrigin).hostname).toBe(new URL(opened.link.shell).hostname);
+      // The share names the frame's address too: the second port the tailnet must allow.
+      expect(shared.artifactOrigin).toBe(opened.frameOrigin);
     });
 
     it("maps the tailnet person to the viewer, their name decoded", async () => {

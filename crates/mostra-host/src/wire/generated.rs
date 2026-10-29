@@ -9431,6 +9431,11 @@ pub struct Share {
     #[serde(rename = "artifactId")]
     pub artifact_id: ArtifactId,
     #[serde(
+        rename = "artifactOrigin",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub artifact_origin: ::std::option::Option<ShareArtifactOrigin>,
+    #[serde(
         rename = "expiresAt",
         skip_serializing_if = "::std::option::Option::is_none"
     )]
@@ -9457,6 +9462,60 @@ pub struct Share {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub url: ::std::option::Option<ShareUrl>,
     pub via: ShareVia,
+}
+///`ShareArtifactOrigin`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ShareArtifactOrigin(::std::string::String);
+impl ::std::ops::Deref for ShareArtifactOrigin {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ShareArtifactOrigin> for ::std::string::String {
+    fn from(value: ShareArtifactOrigin) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ShareArtifactOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ShareArtifactOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ShareArtifactOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ShareArtifactOrigin {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`ShareExpiresAt`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -9762,6 +9821,11 @@ pub struct ShareStartResult {
     #[serde(rename = "artifactId")]
     pub artifact_id: ArtifactId,
     #[serde(
+        rename = "artifactOrigin",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub artifact_origin: ::std::option::Option<ShareStartResultArtifactOrigin>,
+    #[serde(
         rename = "expiresAt",
         skip_serializing_if = "::std::option::Option::is_none"
     )]
@@ -9787,6 +9851,60 @@ pub struct ShareStartResult {
     pub token_id: TokenId,
     pub url: ShareStartResultUrl,
     pub via: ShareVia,
+}
+///`ShareStartResultArtifactOrigin`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ShareStartResultArtifactOrigin(::std::string::String);
+impl ::std::ops::Deref for ShareStartResultArtifactOrigin {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ShareStartResultArtifactOrigin> for ::std::string::String {
+    fn from(value: ShareStartResultArtifactOrigin) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ShareStartResultArtifactOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ShareStartResultArtifactOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ShareStartResultArtifactOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ShareStartResultArtifactOrigin {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`ShareStartResultExpiresAt`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

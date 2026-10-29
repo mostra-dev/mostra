@@ -65,6 +65,11 @@ export interface Share {
   /** The tunnel's host name: the tailnet device's, or the quick tunnel's random one. */
   readonly hostname: string;
   /**
+   * The address the artifact's frame is served at over the tunnel, while the share is active:
+   * on a tailnet, the second port of this device that viewers must be allowed to reach.
+   */
+  readonly artifactOrigin?: string;
+  /**
    * How the artifact's frame authenticates over this tunnel (D70): `cookie` where the shell and
    * the artifact are one site (Tailscale), `worker` where they are two (Cloudflare).
    */
@@ -93,6 +98,7 @@ const shareShape = {
   via: ShareVia,
   url: z.string().min(1).exactOptional(),
   hostname: z.string().min(1),
+  artifactOrigin: z.string().min(1).exactOptional(),
   mode: z.enum(["cookie", "worker"]),
   tokenId: TokenId.schema,
   startedAt: z.iso.datetime(),

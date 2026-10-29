@@ -28,6 +28,21 @@ const THROUGH: Readonly<Record<ShareVia, string>> = {
   cloudflare: "a Cloudflare quick tunnel, public",
 };
 
+/**
+ * What a tailnet viewer's device needs, found on a real tailnet in WP-13: the tailnet's access
+ * policy must let them reach the share's two ports of this device, and their browser's traffic
+ * must go through Tailscale (no private or secure DNS of its own, no split tunneling that leaves
+ * the browser out).
+ */
+function tailnetReach(share: { readonly url?: string; readonly artifactOrigin?: string }): string {
+  const port = (origin: string | undefined): string | undefined =>
+    origin === undefined ? undefined : new URL(origin).port || "443";
+  const ports = [port(share.url), port(share.artifactOrigin)].filter(
+    (value): value is string => value !== undefined,
+  );
+  return `Viewers need this device's port${ports.length === 1 ? "" : "s"} ${ports.join(" and ")} allowed by the tailnet's access policy, and their browser's traffic sent through Tailscale.\n`;
+}
+
 /** One share as a line of human output. */
 function line(share: Share): string {
   const until =
@@ -131,7 +146,7 @@ export const shareCommand: CommandDef = defineCommand({
     const until = share.expiresAt ? `until ${share.expiresAt}` : "until you stop it";
     return {
       result: share,
-      human: `${share.url}\nShared through ${THROUGH[via]}, ${until}.\nStop it with: mostra share stop ${share.shareId}\n`,
+      human: `${share.url}\nShared through ${THROUGH[via]}, ${until}.\n${via === "tailnet" ? tailnetReach(share) : ""}Stop it with: mostra share stop ${share.shareId}\n`,
     };
   },
 });
