@@ -1,5 +1,12 @@
 # @mostra/verify
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [[`7b65b43`](https://github.com/mostra-dev/mostra/commit/7b65b43fefc04527229abcb77fb04385a4a2b02a)]:
+  - @mostra/protocol@0.7.0
+
 ## 0.6.2
 
 ### Patch Changes
