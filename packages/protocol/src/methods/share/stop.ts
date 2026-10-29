@@ -20,6 +20,7 @@ export interface ShareStopParams {
 
 /** The result of `share/stop`: the shares it ended (none when they had ended already). */
 export interface ShareStopResult {
+  /** The shares this call ended. */
   readonly stopped: readonly Share[];
 }
 

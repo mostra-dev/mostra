@@ -122,12 +122,16 @@ class Host {
   }
 }
 
-/** Reads an SSE stream until `count` messages arrived; returns them and closes the request. */
+/**
+ * Reads an SSE stream until `count` messages arrived; returns them and closes the request. The
+ * stream's opening `ready` (WP-13) is left out unless `ready` is set.
+ */
 function readStream(
   browser: Browser,
   url: string,
   count: number,
   headers: Record<string, string> = {},
+  ready = false,
 ): Promise<{ id?: string; event?: string; data?: unknown }[]> {
   const target = new URL(url);
   return new Promise((resolve, reject) => {
@@ -167,7 +171,9 @@ function readStream(
               else if (line.startsWith("event: ")) message.event = line.slice(7);
               else if (line.startsWith("data: ")) message.data = JSON.parse(line.slice(6));
             }
-            if (message.event !== undefined) messages.push(message);
+            if (message.event !== undefined && (ready || message.event !== "ready")) {
+              messages.push(message);
+            }
             if (messages.length >= count) {
               req.destroy();
               resolve(messages);
@@ -411,6 +417,10 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
       ).url,
     );
     const url = `${ana.opened.frameOrigin}/_mostra/v/${V}/events?view=${ana.opened.viewId}`;
+    // The first message comes at once, whatever follows: a page that hears nothing has a stream
+    // something holds back, and long-polls (WP-13).
+    const opening = await readStream(ana.browser, url, 2, {}, true);
+    expect(opening.map((message) => message.event)).toEqual(["ready", "snapshot"]);
     const reading = readStream(ana.browser, url, 3);
     await new Promise((resolve) => setTimeout(resolve, 200));
     await ben.fields([{ id: "secret.answer", value: "bens-private-draft" }], "0");

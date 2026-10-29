@@ -322,10 +322,10 @@ describe("a JavaScript host through the SDK (HO-04)", () => {
       createMostra({
         home: join(dir.path, "home"),
         env: hostEnv(dir.path),
-        // `identity` is served since D143; `addressing` arrives with WP-13 (D143 item 1).
-        ports: { addressing: { externalBase: () => null } } as never,
+        // Every port the SDK knows is served since WP-13 (D143 item 1); `reviews` arrives with WP-20.
+        ports: { reviews: { mirror: () => undefined } } as never,
       }),
-    ).rejects.toThrow('no port "addressing"');
+    ).rejects.toThrow('no port "reviews"');
     const home = join(dir.path, "home");
     await host({ home, env: hostEnv(dir.path) });
     const second = await createMostra({ home, env: hostEnv(dir.path) }).catch(

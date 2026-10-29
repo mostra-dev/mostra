@@ -68,11 +68,16 @@ const params: z.ZodType<PortAddressingExternalBaseParams> = z
 
 /** One external address a host gives a listener (D158 item 6). */
 export interface ExternalBase {
+  /** The origin browsers use for the listener, such as `https://host.example.com`. */
   readonly origin: string;
+  /**
+   * How the frame authenticates there (D70): `cookie` where the shell and the artifact are one
+   * site, `worker` where they are two. Absent: `cookie` for one host name, `worker` for two.
+   */
   readonly mode?: "cookie" | "worker";
 }
 
-/** The schema of {@link ExternalBase}. */
+/** The schema of the `ExternalBase` type. */
 export const ExternalBase: z.ZodType<ExternalBase> = z
   .object({ origin: OriginString, mode: z.enum(["cookie", "worker"]).exactOptional() })
   .register(wireRegistry, {

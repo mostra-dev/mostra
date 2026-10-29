@@ -285,7 +285,7 @@ export const EnterRequest: z.ZodType<EnterRequest> = z
   .object({ ticket: z.string().min(1).max(64) })
   .register(wireRegistry, { id: "EnterRequest", description: "A frame ticket to exchange." });
 
-/** The answer to {@link EnterRequest}. */
+/** The answer to `EnterRequest`. */
 export interface EnterResult {
   /** The frame session's secret, which the service worker sends as `X-Mostra-Frame`. */
   readonly session: string;
@@ -316,7 +316,7 @@ export const StreamTicketRequest: z.ZodType<StreamTicketRequest> = z
   .object({ purpose: z.enum(["stream", "socket"]).exactOptional() })
   .register(wireRegistry, { id: "StreamTicketRequest" });
 
-/** The answer to {@link StreamTicketRequest}. */
+/** The answer to a `StreamTicketRequest`. */
 export interface StreamTicket {
   /** The ticket: 130 bits, single-use. */
   readonly ticket: string;
@@ -338,6 +338,7 @@ export const StreamTicket: z.ZodType<StreamTicket> = z
 export interface FrameSessionFacts {
   /** The CSRF token every mutation sends as `X-Mostra-CSRF`. */
   readonly csrf: string;
+  /** The artifact the frame shows. */
   readonly artifactId: string;
   /** The shell's exact origin: the bridge's only peer. */
   readonly shellOrigin: string;

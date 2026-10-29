@@ -104,6 +104,7 @@ export interface SpawnSpec {
         readonly onNotification?: (method: string, params: unknown) => void;
     };
     readonly kind: string;
+    readonly onStderr?: (line: string) => void;
     readonly onStdout?: (line: string) => void;
     readonly ownerRef: string;
     readonly redact?: readonly string[];

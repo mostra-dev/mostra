@@ -431,17 +431,20 @@ describe("the store (D140 item 5)", () => {
     const old = new Date(Date.now() - 60_000);
     utimesSync(lock, old, old);
     const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
-    // Each process waits for the start signal, then for its own delay, then takes the lock once.
-    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { existsSync } from "node:fs"; while (!existsSync(process.argv[2])) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.argv[3])); const store = new TelemetryStore(process.argv[1]); const done = store.update((current) => ({ ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() })); process.stdout.write(done ? "held the lock" : "gave up");`;
+    // Each process waits for the start signal, then for its own delay, then takes the lock once,
+    // holding it as long as it is told and writing down when it held it.
+    const held = join(dir, "..", `held-${randomUUID()}`);
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { appendFileSync, existsSync } from "node:fs"; const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); while (!existsSync(process.argv[2])) sleep(1); sleep(Number(process.argv[3])); const store = new TelemetryStore(process.argv[1]); const done = store.update((current) => { const from = Date.now(); sleep(Number(process.argv[4])); appendFileSync(process.argv[5], from + " " + Date.now() + "\\n"); return { ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() }; }); process.stdout.write(done ? "held the lock" : "gave up");`;
     const go = join(dir, "..", `go-${randomUUID()}`);
     // The slow breaker judges the crashed lock, then takes its time at each step; meanwhile the
-    // other breaks the same lock, takes a lock of its own and holds it, and releases it while the
-    // slow one may have it moved aside: the old breaker linked it back, a lock nobody owned.
-    const run = (delay: number, env: Record<string, string>) =>
+    // other breaks the same lock, takes a lock of its own, holds it, and releases it while the
+    // slow one may have it moved aside: the old breaker linked it back, a lock nobody owned, and
+    // a breaker that acted without the break lock took a live owner's lock away.
+    const run = (delay: number, hold: number, env: Record<string, string>) =>
       new Promise<string>((resolve) => {
         const child = spawn(
           process.execPath,
-          ["--input-type=module", "-e", script, dir, go, String(delay)],
+          ["--input-type=module", "-e", script, dir, go, String(delay), String(hold), held],
           { stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, ...env } },
         );
         let out = "";
@@ -450,11 +453,21 @@ describe("the store (D140 item 5)", () => {
         });
         child.on("close", () => resolve(out));
       });
-    const slow = run(0, { MOSTRA_TEST_LOCK_BREAK_MS: "300" });
-    const holder = run(60, { MOSTRA_TEST_LOCK_HOLD_MS: "400" });
+    const slow = run(0, 0, { MOSTRA_TEST_LOCK_BREAK_MS: "300" });
+    const holder = run(60, 400, {});
     await new Promise((done) => setTimeout(done, 600));
     writeFileSync(go, "");
     expect(await Promise.all([slow, holder])).toEqual(["held the lock", "held the lock"]);
+    // One at a time: the two held the lock in turn, never together.
+    const spans = readFileSync(held, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split(" ").map(Number) as [number, number])
+      .sort((a, b) => a[0] - b[0]);
+    expect(spans).toHaveLength(2);
+    expect((spans[1] as [number, number])[0]).toBeGreaterThanOrEqual(
+      (spans[0] as [number, number])[1],
+    );
     // Nobody's lock is left behind, nor anything beside it.
     expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
   });

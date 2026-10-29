@@ -322,7 +322,6 @@ export class TelemetryStore {
       }
     }
     try {
-      pause(holdPauseMs());
       return fn();
     } catch {
       return undefined;
@@ -511,11 +510,4 @@ function breakPauseMs(): number {
 }
 function pause(ms: number): void {
   if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-/** How long a lock's owner holds it before its work, for tests only (`MOSTRA_TEST_LOCK_HOLD_MS`). */
-const HOLD_PAUSE_VARIABLE = "MOSTRA_TEST_LOCK_HOLD_MS";
-function holdPauseMs(): number {
-  const value = Number(process.env[HOLD_PAUSE_VARIABLE] ?? "0");
-  return Number.isFinite(value) && value > 0 ? Math.min(value, 5_000) : 0;
 }
