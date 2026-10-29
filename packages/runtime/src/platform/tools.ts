@@ -18,7 +18,7 @@ const TOOL_VARIABLES: Readonly<Record<TunnelTool, string>> = {
 };
 
 /** The usual install locations of each tool, per system, after `PATH`. */
-function usualLocations(
+export function usualLocations(
   tool: TunnelTool,
   env: Readonly<Record<string, string | undefined>>,
 ): string[] {
@@ -37,10 +37,19 @@ function usualLocations(
       ? [
           "/opt/homebrew/bin/tailscale",
           "/usr/local/bin/tailscale",
+          // Homebrew's formula left unlinked (beside the Mac app, which owns the name), as found on
+          // a real Mac in WP-13: its prefix keeps the command line all the same.
+          "/opt/homebrew/opt/tailscale/bin/tailscale",
+          "/usr/local/opt/tailscale/bin/tailscale",
           // The Mac app's own executable is its command line too.
           "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
         ]
-      : ["/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"];
+      : [
+          "/opt/homebrew/bin/cloudflared",
+          "/usr/local/bin/cloudflared",
+          "/opt/homebrew/opt/cloudflared/bin/cloudflared",
+          "/usr/local/opt/cloudflared/bin/cloudflared",
+        ];
   }
   return tool === "tailscale"
     ? ["/usr/bin/tailscale", "/usr/local/bin/tailscale", "/usr/sbin/tailscale"]

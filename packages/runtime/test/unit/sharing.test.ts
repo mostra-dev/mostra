@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeEncodedWords, isLoopbackPeer, tailnetPerson } from "../../src/gateway/identity.ts";
 import { installHint, toolCommand } from "../../src/platform/index.ts";
+import { usualLocations } from "../../src/platform/tools.ts";
 import { tailnetOrigin } from "../../src/share/tailscale.ts";
 
 const WINDOWS = process.platform === "win32";
@@ -84,7 +85,11 @@ describe("the tunnel tools", () => {
       ).toBeUndefined();
       // Found on PATH by its name.
       expect(toolCommand("cloudflared", { PATH: dir, Path: dir })?.command).toBe(tool);
-      expect(toolCommand("tailscale", { PATH: dir, Path: dir, ProgramFiles: dir })).toBeUndefined();
+      // Nothing on PATH: only a usual install location of this machine can answer, or none.
+      const found = toolCommand("tailscale", { PATH: dir, Path: dir, ProgramFiles: dir });
+      if (found !== undefined) {
+        expect(usualLocations("tailscale", { ProgramFiles: dir })).toContain(found.command);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -102,6 +107,22 @@ describe("the tunnel tools", () => {
       toolCommand("cloudflared", { MOSTRA_TEST_TUNNELS: join(fakes, "none") }),
     ).toBeUndefined();
   });
+
+  it.skipIf(WINDOWS)(
+    "looks where Homebrew keeps an unlinked formula, and the Mac app, on macOS",
+    () => {
+      const places = usualLocations("tailscale", {});
+      if (process.platform === "darwin") {
+        expect(places).toContain("/opt/homebrew/opt/tailscale/bin/tailscale");
+        expect(places).toContain("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
+        expect(usualLocations("cloudflared", {})).toContain(
+          "/opt/homebrew/opt/cloudflared/bin/cloudflared",
+        );
+      } else {
+        expect(places).toContain("/usr/bin/tailscale");
+      }
+    },
+  );
 
   it("says how to install each tool on this system", () => {
     expect(installHint("tailscale")).toMatch(/tailscale\.com\/download/);
