@@ -1,6 +1,6 @@
 # WP-13 progress: sharing and remote viewing
 
-**Status:** In progress. Owns HY-04, HY-05, HY-07 and HO-10 ([specification](../design/work-packages/WP-13.md)).
+**Status:** Done. Accepted by Mirza on 2026-10-29 (M48: "absolutely incredible work. accepted!") with D158 and its delegated agent-facing prose, after the GPT-6.1-Sol and Claude Opus 5.5 reviews and their fixes; merged to `main` through the merge queue as `32157ab` (#100) and released as Mostra 0.7.0. Owns HY-04, HY-05, HY-07 and HO-10 ([specification](../design/work-packages/WP-13.md)).
 
 ## Baseline
 
@@ -36,6 +36,10 @@ Every CI leg passed on `512a424`, with every review's fixes: `ci:full` run 40951
 | Issue | State | What was found and done |
 |---|---|---|
 | #98 | Fixed (`1a29400`, `4796e6b`), closes on merge | A stale-lock breaker moved a lock aside and linked it back when it wasn't the one it judged; an owner that released in between left a lock nobody owned. The breaker now acts only under its own break lock (`telemetry.lock.break`, exclusive create with a token), judges the lock again there and removes only a lock still stale, never bringing one back. A two-process test widens the window (`MOSTRA_TEST_LOCK_BREAK_MS`) and fails on the old code; an EN-08 seed red, green The Opus review found the break lock's own removal racing the same way: break locks are numbered now (`telemetry.lock.break.<n>`), a crashed one superseded by creating the next number exclusively and never removed by another breaker (`4796e6b`, two more tests and two seeds). |
+| #99 | Fixed (#105, `46bfce8`), closed | Not on this milestone (filed before WP-13, on no milestone), but in code WP-13 touched and failing the queue of 0.7.0's version pull request on both Windows legs: `windows-bundle.test.ts` moved its bundle with a plain rename, which Windows refuses while Defender or the indexer holds a file. Both of the test's moves use the SDK's own retried rename now (D153 item 5) |
+| #95 | Open, no milestone (D155 item 7) | A new occurrence in the queue of 0.7.0's version pull request (run 40986096617, Windows x64 Firefox): the frame's document reached the gateway at once and was answered after 27.7 s while the gateway answered everything else in milliseconds, so the shell recovered twice instead of once. The request record is on the issue |
+| #106 | Open, new, no milestone | Found checking 0.7.0 on a clean setup: `verify` fails (`MOSTRA_RUNTIME_NOT_READY`) when the runtime bundle sits in a cache on an external APFS volume mounted `noowners`; the same bundle on the system disk passes, and so does a home on that volume. Not WP-13's code; it waits for the package that takes it |
+| #104 | Merged (`b471425`) | Found by the queue of 0.7.0's version pull request: `share.test.ts`'s Funnel stand-in took a random port in 40000–54999, which can fall in a range Windows reserves (`EACCES`). The test now binds three consecutive ports below the lease range once before handing them over |
 
 ## Reviews (D80)
 
@@ -83,3 +87,21 @@ Delegated (M47: "If you're confident with the agent prose, you don't need to pre
 - **The static export's AU-09 check moved to WP-24** (M47), which builds that exporter.
 - **Interfaces past INTERFACES' sketch, additively** (D158): `addressing.externalBase` takes `{ artifactId, listener, local }` instead of `{ artifactId, purpose }`, since a host must know which loopback address to forward; `share/start` takes `scopes`, `viewer` and `requestId` and answers the whole `Share`; `share/list` and `Share.artifactOrigin` are new.
 - **A commit's subject**: `558fe34` ("docs: the GPT review of WP-13 …") also carries the review's code fixes, which were staged when it was made; history isn't rewritten (STANDARDS).
+
+## Commits and publication
+
+- **Range:** `a9758a4..7412e91` on `main`: the signed-off commits of `wp/13-sharing` and its merge commit `32157ab` ([#100](https://github.com/mostra-dev/mostra/pull/100)); two test fixes the version pull request's merge queue found, [#104](https://github.com/mostra-dev/mostra/pull/104) (`b471425`) and [#105](https://github.com/mostra-dev/mostra/pull/105) (`46bfce8`, #99); and the version pull request [#103](https://github.com/mostra-dev/mostra/pull/103) (`7412e91`). The branch's last commit was `aeee66f`.
+- **CI:** `ci:full` on #100's last commits (run 40958508300, 69 jobs) and its merge-queue run (40962139722, 69 jobs) green. #103's queue met two Windows failures in turn (`share.test.ts`'s Funnel ports, then #99), each fixed at its root first, then a Windows Firefox occurrence of #95, recorded on the issue; its fourth queue run passed.
+- **Released, Mostra 0.7.0** (D36, `docs/agents/release.md`): [release run 40992495877](https://github.com/mostra-dev/mostra/actions/runs/40992495877), 20 jobs green. It published the immutable GitHub release [`v0.7.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.7.0) with its 13 assets, every npm package of the group at 0.7.0 with provenance, and `mostra-host` 0.7.0 on crates.io.
+- **External checks, 2026-10-30:**
+  - the darwin-arm64 archive matches `SHA256SUMS` and `gh attestation verify` passes; `npm view @mostra/cli@0.7.0` names an SLSA v1 provenance attestation; npm shows 0.7.0 for the CLI, runtime, SDK, protocol, conformance kit, React, shell, verify, worker, server and `create-mostra`; crates.io's latest `mostra-host` is 0.7.0;
+  - on this Mac, with empty home, cache, config and npm cache directories on the system disk, `npm create mostra@0.7.0 my-artifact` installed the pinned bundle and scaffolded in 135 s; `verify` passed, `publish` made `ver_83DFJZ8SGNMYTSCR0A9C74183A`;
+  - `mostra share my-artifact --public --ttl 15m` gave a Cloudflare quick tunnel in worker mode (`bell-specifications-vital-sleeve.trycloudflare.com`), whose shell answered 200 over the internet; after `mostra share stop` it answered 530. A share left active by a daemon stop was listed `stopped` with the reason `restart` after the next start (a quick tunnel's address can't survive one);
+  - the same check with the cache on an external volume found #106.
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, logs, review texts and the external-evidence artifact in `~/.jcode/scratch/wp13`, the clean checks in `~/.jcode/scratch/wp13/clean070` and `/Volumes/Active/mostra-wp13-tmp` (test temporary files moved there when the system disk filled), and the replacement Tailscale policy Mirza applied (`ext/tailscale-policy.hujson`, a copy of what the admin console holds).
+
+## Next
+
+WP-14, the Agent Skill, AGENTS.md and harness plugins (`docs/design/work-packages/WP-14.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-14`. Its milestone holds what is assigned to it at its start; #39, #46, #55, #85 and #95 stay on no milestone (D155 item 7), and #106 is for the package that next touches the runtime bundle or `verify` (Mirza may assign it).
+
+What later packages build on WP-13 is written into their specifications (`tools/design/wp_specs.py`): WP-14 (sharing in the Skill and the worker-mode limits artifacts meet), WP-15 (sharing and status without links' secrets), WP-23 (the terminal's WebSocket behind socket tickets), WP-24 (demo frames behind cross-site tunnels) and WP-28 (worker mode and faces for hosted frames).
