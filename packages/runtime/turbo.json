@@ -13,6 +13,7 @@
     "test:integration": {
       "inputs": [
         "$TURBO_EXTENDS$",
+        "$TURBO_ROOT$/skills/mostra/assets/examples/**",
         "$TURBO_ROOT$/crates/mostra-win/**",
         "$TURBO_ROOT$/Cargo.lock",
         "!$TURBO_ROOT$/crates/mostra-win/**/*.md"

@@ -153,6 +153,27 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
     VERIFY_MS,
   );
 
+  // The Agent Skill's examples are what agents copy (WP-14): each passes verify with no error or
+  // warning, and shows its data rather than a page still loading it.
+  const SKILL_EXAMPLES = fileURLToPath(
+    new URL("../../../../skills/mostra/assets/examples/", import.meta.url),
+  );
+  for (const name of readdirSync(SKILL_EXAMPLES).sort()) {
+    it(
+      `passes the Skill's example "${name}" with no error or warning`,
+      async () => {
+        const dir = join(tempDir(`verify-skill-${name}`), name);
+        cpSync(join(SKILL_EXAMPLES, name), dir, { recursive: true });
+        const verdict = await verify(dir);
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(codes(verdict, "warning")).toEqual([]);
+        expect(verdict.status).toBe("pass");
+        expect(readFileSync(verdict.aria[0]?.path as string, "utf8")).not.toMatch(/Loading/);
+      },
+      VERIFY_MS,
+    );
+  }
+
   it(
     "renders a live source's first value, never the page still loading it (WP-14)",
     async () => {
