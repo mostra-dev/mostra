@@ -154,6 +154,36 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
   );
 
   it(
+    "renders a live source's first value, never the page still loading it (WP-14)",
+    async () => {
+      // The producer answers after the page first reads the source: verify waits for the value
+      // the page is loading, so the screenshot and ARIA snapshot show the data.
+      const dir = artifact("live-first-value", {
+        "index.tsx": `import { useLive } from "@mostra/react";
+export default function Page() {
+  const live = useLive("deploys");
+  return <main><h1>Deploys</h1><p>{live.isLoading ? "Loading deploys" : \`Deploys today: \${(live.data as { today: number }).today}\`}</p></main>;
+}
+`,
+        "live.ts": `import { defineLive } from "@mostra/server";
+export const deploys = defineLive({
+  load: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return { today: 14 };
+  },
+});
+`,
+      });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      const aria = readFileSync(verdict.aria[0]?.path as string, "utf8");
+      expect(aria).toContain("Deploys today: 14");
+      expect(aria).not.toContain("Loading deploys");
+    },
+    VERIFY_MS,
+  );
+
+  it(
     "doesn't call a canvas-only page blank",
     async () => {
       const verdict = await verify(

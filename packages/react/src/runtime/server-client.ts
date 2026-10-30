@@ -625,9 +625,12 @@ export class ServerClient {
         ...(state.at !== undefined ? { at: state.at } : {}),
       };
     }
+    // A source whose producer hasn't produced yet answers with neither a value nor an error: it is
+    // still loading, and stays pending for verify, until an update brings one (WP-14).
+    const settled = tracked.newest > 0 || state.error !== undefined;
     tracked.view = {
       ...tracked.view,
-      loading: false,
+      loading: !settled,
       ...(state.error ? { error: state.error } : {}),
     };
     if (!state.error && tracked.view.error) {

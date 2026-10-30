@@ -528,4 +528,37 @@ describe("live sources (D56)", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(server.liveRequests.at(-1)).toEqual([{ key: "inbox", refresh: true }]);
   });
+
+  it("stays loading, and pending for verify, until the first value or error arrives (WP-14)", async () => {
+    // A producer that hasn't produced yet: the read answers with no value. The page is still
+    // loading, and verify must keep waiting for it, or it screenshots an empty dashboard.
+    const server = new FakeServer();
+    const page = client(server);
+    page.watchLive("deploys");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.liveRequests).toHaveLength(1);
+    expect(page.liveView("deploys")).toMatchObject({ loading: true });
+    expect(page.pending()).toBe(1);
+    page.receive({
+      kind: "live",
+      live: {
+        key: "deploys",
+        revision: "1",
+        value: await serializeAll({ today: 14 }, { mode: "argument" }),
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("deploys")).toMatchObject({ loading: false, data: { today: 14 } });
+    expect(page.pending()).toBe(0);
+
+    // A producer that failed before its first value isn't loading any more: it has an error.
+    server.live.set("broken", {
+      key: "broken",
+      error: { code: "MOSTRA_LIVE_SOURCE_FAILED", message: "down" },
+    });
+    page.watchLive("broken");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("broken")).toMatchObject({ loading: false, error: { message: "down" } });
+    expect(page.pending()).toBe(0);
+  });
 });
