@@ -47,6 +47,13 @@ protocol over the home's socket.
   CLI's requests.
 - **The platform gate is the runtime's** (`platform.ts`): macOS, Linux and Windows on x64 and
   arm64, everything else `MOSTRA_PLATFORM_UNSUPPORTED`.
+- **`mostra docs` serves the Agent Skill as written** (D162). `src/docs.ts` reads `skills/mostra/`
+  (from a checkout) or the copy the build puts in `dist/skill/` (`tsdown.config.ts`), so `guide`,
+  `guide/<reference>`, `guide/studio.css` and `guide/examples/<name>` are the files the plugin
+  carries, never a second text. `test/unit/skill.test.ts` holds the Skill to the Agent Skills
+  specification and to this package: every `mostra …` it shows parses (`test/commands.ts`), and
+  every command and every export of `@mostra/react` and `@mostra/server` is documented or listed as
+  internal with its reason. A new command joins a reference in the same change.
 
 ## Public interface
 
