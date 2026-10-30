@@ -21,7 +21,7 @@ import { parse as parseYaml } from "yaml";
 import { fail, ROOT } from "../lib/repo.ts";
 import { listPackages, type WorkspacePackage } from "../lib/workspace.ts";
 import { PACKAGE_MAP } from "../package-map.ts";
-import { crateProblems } from "../release/versions.ts";
+import { crateProblems, skillPinProblems } from "../release/versions.ts";
 import { workspaceEngineProblems } from "./engines.ts";
 
 const REPOSITORY = "git+https://github.com/mostra-dev/mostra.git";
@@ -277,6 +277,8 @@ function main(): void {
   problems.push(...publishJobProblems(root));
   // The host crate follows the release group's version (D143).
   problems.push(...crateProblems(root));
+  // The Skill runs the CLI of the release it ships in (WP-14).
+  problems.push(...skillPinProblems(root));
   problems.push(...workspaceEngineProblems(listPackages(root), root));
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(

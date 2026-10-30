@@ -22,12 +22,13 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    (it reads "unreadable EOTP" where npm wants a second factor).
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
    `GITHUB_TOKEN=$(gh auth token) pnpm changeset version` (the changelog names each change's pull
-   request through GitHub's API), then `node tools/release/versions.ts sync` (the host crate takes the
-   group's version; Changesets knows nothing of Cargo, and repo lint refuses a crate that differs),
+   request through GitHub's API), then `node tools/release/versions.ts sync` (the host crate and the
+   Agent Skill's `@mostra/cli@<version>` pins take the group's version; Changesets knows nothing of
+   Cargo or the Skill, and repo lint refuses a crate or a pin that differs),
    then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`.
    Commit `chore(release): Mostra <version>` with `git commit -s`, push, and open the pull request
-   with the version's changelog. Every package of the group and the host crate move to one
-   version; nothing else changes. Before this pull request, `CI`'s release rehearsal rehearses
+   with the version's changelog. Every package of the group, the host crate and the Skill's pins
+   move to one version; nothing else changes. Before this pull request, `CI`'s release rehearsal rehearses
    the version its pending changesets make (`versions.ts plan` and `rehearse`), or the next patch
    when none is pending and npm already has the tree's version (#69): npm refuses even a dry run
    over a version it has. The version pull request itself rehearses its own version.

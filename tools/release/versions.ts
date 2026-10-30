@@ -20,8 +20,8 @@
  * Changesets knows nothing of Cargo. Node.js built-ins only: the release jobs run it.
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -167,7 +167,7 @@ function setCrateVersion(root: string, name: string, path: string, version: stri
   );
 }
 
-/** Sets every group package and versioned crate to `version`. */
+/** Sets every group package, versioned crate and the Skill's CLI pins to `version`. */
 export function apply(version: string, root: string = ROOT): void {
   const members = new Set(group(root));
   for (const [name, path] of manifests(root)) {
@@ -179,6 +179,65 @@ export function apply(version: string, root: string = ROOT): void {
   for (const crate of crates(root)) {
     if (VERSIONED_CRATES.has(crate.name)) setCrateVersion(root, crate.name, crate.path, version);
   }
+  for (const file of skillFiles(root)) {
+    const text = readFileSync(file, "utf8");
+    const pinned = text
+      .replace(SKILL_CLI_PIN, `$1${version}`)
+      .replace(SKILL_METADATA_VERSION, `$1${version}$2`);
+    if (pinned !== text) writeFileSync(file, pinned);
+  }
+}
+
+/**
+ * The Agent Skill's pins (WP-14): `npx -y @mostra/cli@<version>` wherever its Markdown runs the
+ * CLI, and `metadata.version` in its frontmatter. They name the release they ship in, so an agent
+ * runs the CLI the Skill describes.
+ */
+const SKILL_CLI_PIN = /(@mostra\/cli@)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/g;
+const SKILL_METADATA_VERSION = /(^ {2}version: ")(?:[^"]*)("$)/m;
+
+/** Every Markdown file of the Skill. */
+function skillFiles(root: string): string[] {
+  const dir = join(root, "skills", "mostra");
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".md")) out.push(path);
+    }
+  };
+  walk(dir);
+  return out.sort();
+}
+
+/** The Skill's pins that don't name the group's version. */
+export function skillPinProblems(root: string = ROOT): string[] {
+  const version = current(root);
+  const problems: string[] = [];
+  let pins = 0;
+  for (const file of skillFiles(root)) {
+    const text = readFileSync(file, "utf8");
+    const name = relative(root, file);
+    for (const match of text.matchAll(SKILL_CLI_PIN)) {
+      pins += 1;
+      if (match[2] !== version)
+        problems.push(
+          `${name} runs @mostra/cli@${match[2]}, the release group is at ${version}: run node tools/release/versions.ts sync.`,
+        );
+    }
+    const own = /^ {2}version: "([^"]*)"$/m.exec(text)?.[1];
+    if (name.endsWith("SKILL.md") && own !== version)
+      problems.push(
+        `${name}'s metadata.version is ${own ?? "missing"}, the release group is at ${version}: run node tools/release/versions.ts sync.`,
+      );
+  }
+  if (skillFiles(root).length > 0 && pins === 0)
+    problems.push(
+      "The Skill pins no @mostra/cli version: agents without mostra installed need one.",
+    );
+  return problems;
 }
 
 /** The versioned crates whose version isn't the group's. */
@@ -215,9 +274,9 @@ if (import.meta.main) {
     console.log(`rehearsing ${version}`);
   } else if (command === "sync") {
     apply(current());
-    console.log(`crates at ${current()}`);
+    console.log(`crates and the Skill at ${current()}`);
   } else if (command === "check") {
-    const problems = crateProblems();
+    const problems = [...crateProblems(), ...skillPinProblems()];
     for (const problem of problems) console.error(problem);
     process.exitCode = problems.length > 0 ? 1 : 0;
   } else {
