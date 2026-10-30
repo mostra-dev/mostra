@@ -56,13 +56,17 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    (scope `publish-new`), then names the two last steps: add the trusted publisher on crates.io
    (`mostra-dev/mostra`, `release.yml`, environment `release`) and revoke the token. Every later
    release publishes the crate itself.
-   **The plugin repository, once:** `mostra-dev/mostra-plugin` exists (public, with no branch
-   protection the deploy key can't satisfy), its deploy key with write access is the public half
-   of `PLUGIN_DEPLOY_KEY`, and that secret is set on the `release` environment only:
+   **The plugin repository, once** (done in WP-14; `node tools/github/settings.ts verify` checks
+   it): `mostra-dev/mostra-plugin` exists, public, without issues, with the rulesets of
+   `.github/plugin-rulesets` (`main` never rewritten, `v*` tags never moved or deleted); the
+   organization allows deploy keys; the repository's one deploy key, `release`, with write access,
+   is the public half of `PLUGIN_DEPLOY_KEY`, and that secret is set on the `release` environment
+   only. To replace the key:
    `ssh-keygen -t ed25519 -N '' -C mostra-plugin-release -f <scratch>/key`, then
    `gh repo deploy-key add <scratch>/key.pub --repo mostra-dev/mostra-plugin --allow-write --title release`
    and `gh secret set PLUGIN_DEPLOY_KEY --env release --repo mostra-dev/mostra < <scratch>/key`,
-   and the scratch key is deleted. Submitting the plugin to a directory is Mirza's (D147).
+   then remove the old key (`gh repo deploy-key delete <id> --repo mostra-dev/mostra-plugin`) and
+   delete the scratch key. Submitting the plugin to a directory is Mirza's (D147).
 6. **A failure part-way** finishes by itself, never by hand:
    - **Before the release is published** (a draft, nothing on npm): re-run the failed jobs, or let
      the next push to `main` run; the draft's assets are replaced by that run's, since nothing
