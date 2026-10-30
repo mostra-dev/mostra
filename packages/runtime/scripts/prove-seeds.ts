@@ -1978,6 +1978,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "AX-06",
+    name: "a reference's sample calls the API wrongly",
+    file: "../../skills/mostra/references/answers.md",
+    from: '  const ping = useSignal("needs-help");',
+    to: '  const ping = useSignal({ name: "needs-help" });',
+    check: integration("verify.test.ts", "code sample"),
+  },
+  {
+    requirement: "AX-06",
     name: "mostra new writes no AGENTS.md for the next agent",
     file: "src/publish/publisher.ts",
     from: "      files: [...SCAFFOLD_PATHS],",

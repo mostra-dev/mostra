@@ -26,9 +26,13 @@ export async function loadReport(name: string) {
 
 ```tsx
 // index.tsx
+import { useState } from "react";
 import { loadReport } from "./actions";
 
-const report = await loadReport("q3");   // inside an effect or event handler
+function Report() {
+  const [report, setReport] = useState<unknown>();
+  return <button onClick={async () => setReport(await loadReport("q3"))}>Load the Q3 report</button>;
+}
 ```
 
 - Arguments and results are what React's Server Functions accept: JSON values, `Date`, `Map`, `Set`, `BigInt`, typed arrays, `FormData`, `File`, promises, plus async iterables as results. Functions and class instances don't cross (`MOSTRA_ACTION_UNSERIALIZABLE`).
@@ -43,10 +47,10 @@ const report = await loadReport("q3");   // inside an effect or event handler
 import { useAction } from "@mostra/react";
 import { sendReply } from "./actions";
 
-function Reply({ email }: { email: Email }) {
+function Reply({ email, body }: { email: { id: string }; body: string }) {
   const send = useAction(sendReply, { key: `reply-${email.id}` });
   return (
-    <button disabled={send.isPending || send.status === "succeeded"} onClick={() => void send.run(email.id, draft)}>
+    <button disabled={send.isPending || send.status === "succeeded"} onClick={() => void send.run(email.id, body)}>
       {send.status === "succeeded" ? "Sent" : send.isPending ? send.progress?.message ?? "Sending…" : "Send"}
     </button>
   );
@@ -122,9 +126,13 @@ Errors these throw are `MostraServerError`s with a `code`.
 Verify clicks through the page but never runs a server function unless that function opts in by checking `dryRun()`:
 
 ```ts
-export async function sendReply(emailId: string, body: string) {
-  if (dryRun()) return { sent: true };   // verify: no email, a realistic answer
-  // …the real send
+"use server";
+import { dryRun } from "@mostra/server";
+
+export async function archiveEmail(emailId: string) {
+  if (dryRun()) return { archived: emailId };   // verify: nothing archived, a realistic answer
+  // …archive it for real, then:
+  return { archived: emailId };
 }
 ```
 

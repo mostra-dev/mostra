@@ -63,19 +63,23 @@ Base UI is unstyled and accessible; style it with utilities. Each component is a
 ```tsx
 import { Dialog } from "@base-ui/react/dialog";
 
-<Dialog.Root>
-  <Dialog.Trigger render={<button type="button" className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground" />}>
-    Review the plan
-  </Dialog.Trigger>
-  <Dialog.Portal>
-    <Dialog.Backdrop className="fixed inset-0 bg-black/40" />
-    <Dialog.Popup className="fixed top-1/2 left-1/2 w-96 -translate-1/2 rounded-lg bg-card p-6">
-      <Dialog.Title className="font-medium">The plan</Dialog.Title>
-      <Dialog.Description className="mt-2 text-sm text-muted-foreground">…</Dialog.Description>
-      <Dialog.Close className="mt-4 rounded-md border px-3 py-1.5 text-sm">Close</Dialog.Close>
-    </Dialog.Popup>
-  </Dialog.Portal>
-</Dialog.Root>
+function PlanDialog() {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger render={<button type="button" className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground" />}>
+        Review the plan
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 bg-black/40" />
+        <Dialog.Popup className="fixed top-1/2 left-1/2 w-96 -translate-1/2 rounded-lg bg-card p-6">
+          <Dialog.Title className="font-medium">The plan</Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm text-muted-foreground">Three hires in Q4, two in engineering.</Dialog.Description>
+          <Dialog.Close className="mt-4 rounded-md border px-3 py-1.5 text-sm">Close</Dialog.Close>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
 ```
 
 Others: `accordion`, `alert-dialog`, `checkbox`, `collapsible`, `combobox`, `menu`, `popover`, `radio-group`, `select`, `slider`, `switch`, `tabs`, `toggle`, `tooltip` and more, each at `@base-ui/react/<name>`. Radix works too (`import { Dialog } from "radix-ui"`); keep one of them per artifact.
@@ -88,6 +92,8 @@ Version 9 declares the features a table uses, then `useTable`:
 import { createColumnHelper, createSortedRowModel, FlexRender, rowSortingFeature, sortFns, tableFeatures, useTable } from "@tanstack/react-table";
 
 interface Invoice { id: string; customer: string; amount: number }
+
+const euros = new Intl.NumberFormat("en", { style: "currency", currency: "EUR" });
 
 const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel(), sortFns });
 const column = createColumnHelper<typeof features, Invoice>();
@@ -137,14 +143,25 @@ A chart reaches the ARIA snapshot (and screen readers) as little more than its a
 ## Motion
 
 ```tsx
+import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
-const reduce = useReducedMotion();
-<AnimatePresence>
-  {open && (
-    <motion.div initial={{ opacity: 0, y: reduce ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: "easeOut" }} />
-  )}
-</AnimatePresence>;
+function Details() {
+  const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
+  return (
+    <div>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>Details</button>
+      <AnimatePresence>
+        {open && (
+          <motion.p initial={{ opacity: 0, y: reduce ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: "easeOut" }}>
+            Built from Friday's numbers.
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 ```
 
 Motion animates CSS variables too (`animate={{ backgroundColor: "var(--muted)" }}`). Keep durations and easing to [design.md](design.md#motion).

@@ -19,21 +19,27 @@ A field is one saved answer with a stable ID. It behaves like `useState`, and it
 import { useField } from "@mostra/react";
 import * as z from "zod";
 
-const [email, setEmail, meta] = useField("contact.email", "", {
-  label: "Work email",                 // how results and the Submit's blockers name it
-  required: true,                      // blocks Submit until answered
-  validate: z.email("Enter an email address"), // any Standard Schema (Zod 4), or (value) => message | undefined
-  sensitive: false,                    // true: kept in the submission, left out of events and logs
-});
-
-<input
-  type="email"
-  autoComplete="email"
-  value={email}
-  onChange={(event) => setEmail(event.target.value)}
-  aria-invalid={meta.error !== undefined}
-/>;
-{meta.error && <p className="text-sm text-destructive">{meta.error}</p>}
+function WorkEmail() {
+  const [email, setEmail, meta] = useField("contact.email", "", {
+    label: "Work email",                 // how results and the Submit's blockers name it
+    required: true,                      // blocks Submit until answered
+    validate: z.email("Enter an email address"), // any Standard Schema (Zod 4), or (value) => message | undefined
+    sensitive: false,                    // true: kept in the submission, left out of events and logs
+  });
+  return (
+    <label className="grid gap-1">
+      <span>Work email</span>
+      <input
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        aria-invalid={meta.error !== undefined}
+      />
+      {meta.error && <span className="text-sm text-destructive">{meta.error}</span>}
+    </label>
+  );
+}
 ```
 
 - **IDs.** Strings of letters, digits, `.`, `_` and `-`, the same on every render and in every version. Dots nest in results: `contact.email` and `contact.phone` arrive as `contact: { email, phone }`. Write a literal (`"budget"`), or, for one answer per item of your data, a template on the item's own ID (`` `replies.${email.id}` ``, which arrives as `replies: { [id]: … }`). A list the person edits is one field (`useField("tasks", [] as Task[])`). An ID made from an array index, a random value or the time changes between renders: verify reports it as an error.
@@ -54,15 +60,20 @@ import * as z from "zod";
 
 const Intake = z.object({ name: z.string().min(1, "Required"), team: z.string(), size: z.number().int().positive() });
 
-const form = useForm<z.infer<typeof Intake>>({
-  id: "intake",                              // answers save as intake.name, intake.team, intake.size
-  defaultValues: { name: "", team: "core", size: 1 },
-  labels: { name: "Your name", team: "Team", size: "Team size" },
-  resolver: zodResolver(Intake),
-});
-
-<input {...form.register("name", { required: true })} />
-<input type="number" {...form.register("size", { valueAsNumber: true })} />
+function IntakeForm() {
+  const form = useForm<z.infer<typeof Intake>>({
+    id: "intake",                            // answers save as intake.name, intake.team, intake.size
+    defaultValues: { name: "", team: "core", size: 1 },
+    labels: { name: "Your name", team: "Team", size: "Team size" },
+    resolver: zodResolver(Intake),
+  });
+  return (
+    <form className="grid gap-3">
+      <input aria-label="Your name" {...form.register("name", { required: true })} />
+      <input aria-label="Team size" type="number" {...form.register("size", { valueAsNumber: true })} />
+    </form>
+  );
+}
 ```
 
 `required` rules and validation errors block Submit. A field array (`useFieldArray`) is saved as one answer. Use `form.handleSubmit` only for your own buttons; Mostra's Submit reads the saved fields itself.
@@ -74,12 +85,15 @@ Mostra draws a Submit button in its own frame around your page, where your code 
 ```tsx
 import { useSubmit, useSubmitControl } from "@mostra/react";
 
-useSubmitControl({ label: "Approve the plan", confirm: "Approve and send the plan to finance?" });
-
-const submit = useSubmit();
-// submit.state: "open" | "submitting" | "submitted" | "delivered" | "pending-delivery" | "undeliverable" | "closed"
-// submit.blockers: [{ fieldId, label?, reason: "required" | "invalid" | "conflict" }]
-// submit.submission: { id, at } once submitted
+function SubmitStatus() {
+  useSubmitControl({ label: "Approve the plan", confirm: "Approve and send the plan to finance?" });
+  const submit = useSubmit();
+  // submit.state: "open" | "submitting" | "submitted" | "delivered" | "pending-delivery" | "undeliverable" | "closed"
+  // submit.blockers: [{ fieldId, label?, reason: "required" | "invalid" | "conflict" }]
+  // submit.submission: { id, at } once submitted
+  if (submit.state === "delivered") return <p>Thanks, your approval was sent.</p>;
+  return <p>{submit.blockers.length} answers still needed</p>;
+}
 ```
 
 - Name the Submit for what it does ("Send my answers", "Approve the plan"), in at most a few words. It can't read as one of the frame's own states ("Submitted", "Saved").
@@ -104,8 +118,10 @@ A signal tells you something happened without submitting: "Ping the agent", "I'm
 ```tsx
 import { useSignal } from "@mostra/react";
 
-const ping = useSignal("needs-help");
-<button onClick={() => void ping.send({ section: "budget" })}>Ask the agent</button>;
+function AskForHelp() {
+  const ping = useSignal("needs-help");
+  return <button onClick={() => void ping.send({ section: "budget" })}>Ask the agent</button>;
+}
 ```
 
 Names are letters, digits, `.`, `_` and `-` (`submit` is taken). Payloads are JSON up to 64 KiB. Wait for one with `mostra wait <dir> --until signal:needs-help`. A signal wakes nobody by itself: something has to wait for it.
@@ -115,16 +131,29 @@ Names are letters, digits, `.`, `_` and `-` (`submit` is taken). Payloads are JS
 `useChoice` records which of several candidates the person picked, and asks Mostra to draw a trusted Choose button for it:
 
 ```tsx
+import { useState } from "react";
 import { useChoice } from "@mostra/react";
 
-const layout = useChoice("layout", {
-  candidates: [
-    { id: "compact", label: "Compact" },
-    { id: "grouped", label: "Grouped" },
-  ],
-  current: shownCandidateId,         // the candidate on screen, which the trusted Choose picks
-});
-// layout.choice: the chosen id; layout.choose(id) chooses from your own control
+function LayoutChoice() {
+  const [shown, setShown] = useState("compact");   // the candidate on screen
+  const layout = useChoice("layout", {
+    candidates: [
+      { id: "compact", label: "Compact" },
+      { id: "grouped", label: "Grouped" },
+    ],
+    current: shown,                                 // the one the trusted Choose picks
+  });
+  // layout.choice: the chosen id; layout.choose(id) chooses from your own control
+  return (
+    <div role="tablist">
+      {["compact", "grouped"].map((id) => (
+        <button key={id} role="tab" aria-selected={shown === id} onClick={() => setShown(id)}>
+          {id}{layout.choice === id ? " (chosen)" : ""}
+        </button>
+      ))}
+    </div>
+  );
+}
 ```
 
 The choice arrives in results' `choices` and as the field `review.layout.choice`.

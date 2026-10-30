@@ -52,8 +52,10 @@ const RUN_BY: readonly { readonly dir: string; readonly pkg: string }[] = [
   { dir: "crates/mostra-win", pkg: "@mostra/runtime" },
   { dir: "docs/reference", pkg: "@mostra/cli" },
   { dir: "skills/mostra", pkg: "@mostra/cli" },
-  // The Skill's examples pass verify in the runtime's integration suite.
+  // The Skill's examples and its references' code samples pass verify in the runtime's
+  // integration suite.
   { dir: "skills/mostra/assets/examples", pkg: "@mostra/runtime" },
+  { dir: "skills/mostra/references", pkg: "@mostra/runtime" },
 ];
 
 /** The packages a changed file affects directly: its owner, and the package that runs it. */

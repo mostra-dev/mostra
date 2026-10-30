@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ArtifactId, VerifyVerdict } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { skillSampleArtifact } from "../skill-samples.ts";
 import {
   connectTo,
   type DaemonStatus,
@@ -173,6 +174,26 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
       VERIFY_MS,
     );
   }
+
+  it(
+    "type-checks, builds and renders every code sample of the Skill's references (WP-14)",
+    async () => {
+      // A sample that no longer matches the API is an error here, so the references can't drift.
+      // The warnings the samples may cause are the environment's or verify's, never the API's:
+      // live sources call example.com and want a secret no one set, and a link opened in a new
+      // tab or a one-row table's sort changes nothing verify can see.
+      const verdict = await verify(artifact("skill-samples", skillSampleArtifact()));
+      expect(codes(verdict, "error")).toEqual([]);
+      const allowed = new Set([
+        "MOSTRA_VERIFY_LIVE_FAILED",
+        "MOSTRA_VERIFY_SECRET_MISSING",
+        "MOSTRA_SMOKE_NO_EFFECT",
+      ]);
+      expect(codes(verdict, "warning").filter((code) => !allowed.has(code))).toEqual([]);
+      expect(verdict.status).toBe("pass");
+    },
+    VERIFY_MS,
+  );
 
   it(
     "renders a live source's first value, never the page still loading it (WP-14)",

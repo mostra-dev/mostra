@@ -103,8 +103,11 @@ GitHub-flavoured Markdown (tables, task lists) works. MDX isn't type-checked.
 ```tsx
 import { useArtifact, useViewer } from "@mostra/react";
 
-const viewer = useViewer();     // { id, name?, source: "local" | "tailnet" | "token" | "host" }
-const page = useArtifact();     // { id, versionId, version, viewId, mode: "live" | "static" | "mcp-app" | "verify" }
+function Greeting() {
+  const viewer = useViewer();     // { id, name?, source: "local" | "tailnet" | "token" | "host" }
+  const page = useArtifact();     // { id, versionId, version, viewId, mode: "live" | "static" | "mcp-app" | "verify" }
+  return <p>{viewer.name ? `Hello, ${viewer.name}.` : "Hello."} This is version {page.version}.</p>;
+}
 ```
 
 `useViewer().name` is the person's name when the link or tailnet knows it. `mode` is `verify` while verify renders the page and `live` when a person opens it.
@@ -116,7 +119,9 @@ The page runs in a frame that can't navigate the person's tab, so it can never r
 ```tsx
 import { openLink } from "@mostra/react";
 
-<button onClick={() => void openLink("https://github.com/acme/app/pull/42")}>Open the pull request</button>
+function PullRequestLink() {
+  return <button onClick={() => void openLink("https://github.com/acme/app/pull/42")}>Open the pull request</button>;
+}
 ```
 
 Plain `<a href target="_blank">` links work too.

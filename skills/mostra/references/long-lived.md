@@ -15,9 +15,28 @@ A dashboard open all week, a task list a team works through, a status page you k
 A field with `scope: "artifact"` is shared: every viewer sees and edits the same value, and so can you from the command line.
 
 ```tsx
+import { useField } from "@mostra/react";
+
 type Task = { id: string; title: string; done: boolean };
-const [tasks, setTasks, meta] = useField("tasks", [] as Task[], { label: "Tasks", scope: "artifact" });
-// meta.updatedBy: { kind: "viewer" | "agent" | "host", name? } of the last change
+
+function Tasks() {
+  const [tasks, setTasks, meta] = useField("tasks", [] as Task[], { label: "Tasks", scope: "artifact" });
+  // meta.updatedBy: { kind: "viewer" | "agent" | "host", name? } of the last change
+  const toggle = (id: string) =>
+    setTasks((list) => list.map((task) => (task.id === id ? { ...task, done: !task.done } : task)));
+  return (
+    <ul>
+      {tasks.map((task) => (
+        <li key={task.id}>
+          <label>
+            <input type="checkbox" checked={task.done} onChange={() => toggle(task.id)} /> {task.title}
+          </label>
+        </li>
+      ))}
+      {meta.updatedBy && <li className="text-sm text-muted-foreground">Last changed by {meta.updatedBy.name ?? meta.updatedBy.kind}</li>}
+    </ul>
+  );
+}
 ```
 
 ```sh
@@ -38,31 +57,50 @@ A live source is a value that updates without a new version: prices, build statu
 
 ```ts
 // live.ts
+import { readFile } from "node:fs/promises";
 import { defineLive, secret } from "@mostra/server";
 
 export const builds = defineLive({
   refresh: "30s",                                  // load again every 30 s while someone looks
-  load: async () => (await fetch("https://ci.example/api/builds", { headers: { authorization: secret("CI_TOKEN") } })).json(),
+  load: async () => {
+    const response = await fetch("https://ci.example/api/builds", {
+      headers: { authorization: `Bearer ${secret("CI_TOKEN")}` },
+    });
+    return (await response.json()) as { passing: number; failing: number };
+  },
 });
 
 export const latency = defineLive({
   ring: 600,                                       // keep the last 600 values for charts
   stream: async function* (signal) {
     while (!signal.aborted) {
-      yield { at: Date.now(), ms: await probe() };
+      const started = performance.now();
+      await fetch("https://api.example/health", { signal });
+      yield { at: Date.now(), ms: Math.round(performance.now() - started) };
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   },
 });
 
-export const config = defineLive({ watch: "data/*.json", load: async () => readConfig() });   // when a file changes
+export const config = defineLive({                 // load again when a watched file changes
+  watch: "data/*.json",
+  load: async () => JSON.parse(await readFile("data/config.json", "utf8")) as Record<string, unknown>,
+});
 ```
 
 ```tsx
 import { useLive } from "@mostra/react";
 
-const builds = useLive("builds");                                      // { data, isLoading, error, refresh(), revision, at }
-const latency = useLive("latency", { mode: "append", window: 300 });   // data: the last 300 values
+function Builds() {
+  const builds = useLive("builds");                                    // { data, isLoading, error, refresh(), revision, at }
+  const latency = useLive("latency", { mode: "append", window: 300 }); // data: the last 300 values
+  if (builds.isLoading) return <p>Loading builds…</p>;
+  return (
+    <p>
+      {builds.data?.passing} passing, {builds.data?.failing} failing; {latency.data?.length ?? 0} latency samples
+    </p>
+  );
+}
 ```
 
 - A source needs `load`, `stream` or both. `refresh` is `1s` to `24h`. `always: true` keeps it running with nobody looking; otherwise producers run while a page shows the source and stop a minute after.
