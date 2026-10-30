@@ -82,6 +82,7 @@ import {
   versionIdFor,
 } from "./digest.ts";
 import { extractManifest } from "./manifest.ts";
+import { SCAFFOLD_PATHS, type ScaffoldInput, scaffoldFiles } from "./scaffold.ts";
 import {
   copySnapshot,
   listSource,
@@ -249,47 +250,36 @@ async function archiveSnapshot(
   return true;
 }
 
-/** The entry `artifact/create` writes: a manifest with the generated `id` and a minimal page. */
-function scaffold(artifactId: string, title: string): string {
-  return [
-    'import { defineArtifact } from "@mostra/react";',
-    "",
-    "export const artifact = defineArtifact({",
-    `  id: ${JSON.stringify(artifactId)},`,
-    `  title: ${JSON.stringify(title)},`,
-    "});",
-    "",
-    "export default function Page() {",
-    "  return (",
-    '    <main className="mx-auto max-w-2xl p-8">',
-    '      <h1 className="text-2xl font-semibold">{artifact.title}</h1>',
-    "    </main>",
-    "  );",
-    "}",
-    "",
-  ].join("\n");
-}
-
 /**
- * Writes `artifact/create`'s entry into `dir`, completing an interrupted write: an existing file
- * that is the expected text or a prefix of it (a write cut short) ends as the expected text, and
- * anything else the author has written since is left alone.
+ * Writes `artifact/create`'s files (`paths`, of {@link scaffoldFiles}) into `dir`, completing an
+ * interrupted write: an existing file that is the expected text or a prefix of it (a write cut
+ * short) ends as the expected text, and anything else the author has written since is left alone.
  */
-async function writeScaffold(dir: string, artifactId: string, title: string): Promise<void> {
-  const expected = scaffold(artifactId, title);
-  const file = join(dir, "index.tsx");
+async function writeScaffold(
+  dir: string,
+  paths: readonly string[],
+  input: ScaffoldInput,
+): Promise<void> {
+  const files = scaffoldFiles(input);
   await mkdir(dir, { recursive: true });
-  let current: string | undefined;
-  try {
-    current = await readFile(file, "utf8");
-  } catch {
-    current = undefined;
+  let wrote = false;
+  for (const path of paths) {
+    const expected = files.get(path);
+    if (expected === undefined) continue;
+    const file = join(dir, path);
+    let current: string | undefined;
+    try {
+      current = await readFile(file, "utf8");
+    } catch {
+      current = undefined;
+    }
+    if (current !== undefined && !expected.startsWith(current)) continue;
+    if (current === expected) continue;
+    await writeFile(file, expected);
+    fsyncPath(file);
+    wrote = true;
   }
-  if (current !== undefined && !expected.startsWith(current)) return;
-  if (current === expected) return;
-  await writeFile(file, expected);
-  fsyncPath(file);
-  fsyncPath(dir, true);
+  if (wrote) fsyncPath(dir, true);
 }
 
 /**
@@ -884,7 +874,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
     if (key !== undefined) {
       const result = ledger.read((db) => recordedResult<ArtifactCreateResult>(db, key));
       if (result !== undefined) {
-        await writeScaffold(result.dir, result.artifactId, params.title ?? basename(result.dir));
+        await writeScaffold(result.dir, result.files, {
+          artifactId: result.artifactId,
+          title: params.title ?? basename(result.dir),
+          version: options.runtimeVersion,
+        });
         return result;
       }
     }
@@ -910,11 +904,15 @@ export function createPublisher(options: PublisherOptions): Publisher {
     const result: ArtifactCreateResult = {
       artifactId: ArtifactId.create(),
       dir,
-      files: ["index.tsx"],
+      files: [...SCAFFOLD_PATHS],
     };
     record(key, result);
     faults.at("create:after-record");
-    await writeScaffold(dir, result.artifactId, params.title ?? basename(dir));
+    await writeScaffold(dir, result.files, {
+      artifactId: result.artifactId,
+      title: params.title ?? basename(dir),
+      version: options.runtimeVersion,
+    });
     return result;
   }
 }

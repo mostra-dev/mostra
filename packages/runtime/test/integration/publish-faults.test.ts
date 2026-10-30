@@ -176,6 +176,7 @@ describe("artifact/create retried after a crash (H-03, review finding 4)", () =>
     );
     await crashing.daemon.exited;
     expect(existsSync(join(dir, "index.tsx"))).toBe(false);
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
 
     const next = await session(home);
     const created = result(await next.client.call("artifact/create", params)) as {
@@ -183,13 +184,20 @@ describe("artifact/create retried after a crash (H-03, review finding 4)", () =>
       dir: string;
     };
     expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain(created.artifactId);
-    // A write cut short is completed too, and the same request keeps answering the same.
+    const agents = readFileSync(join(dir, "AGENTS.md"), "utf8");
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    // A write cut short is completed too, a file the author edited stays theirs, and the same
+    // request keeps answering the same.
     writeFileSync(
       join(dir, "index.tsx"),
       readFileSync(join(dir, "index.tsx"), "utf8").slice(0, 40),
     );
+    writeFileSync(join(dir, "AGENTS.md"), agents.slice(0, 25));
+    writeFileSync(join(dir, "CLAUDE.md"), "@AGENTS.md\n\nMy own notes.\n");
     expect(result(await next.client.call("artifact/create", params))).toEqual(created);
     expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain('title: "Plan"');
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(agents);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n\nMy own notes.\n");
     // And the artifact publishes with that identity.
     const receipt = result(await next.client.call("artifact/publish", { source: { path: dir } }));
     expect(receipt).toMatchObject({ artifactId: created.artifactId });
