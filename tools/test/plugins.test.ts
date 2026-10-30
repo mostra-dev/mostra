@@ -2,6 +2,8 @@
  * The harness-plugin generator (AX-10, D147, WP-14): it builds a plugin every harness's checks
  * pass, and each check goes red on its violation.
  */
+
+import { spawnSync } from "node:child_process";
 import {
   cpSync,
   mkdirSync,
@@ -18,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { buildPlugin, writeTree } from "../plugins/build.ts";
 import { checkPlugin } from "../plugins/check.ts";
 import { PLUGIN, type PluginDefinition } from "../plugins/definition.ts";
+import { publishPlugin } from "../plugins/publish.ts";
 
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -214,5 +217,28 @@ describe("the harness plugins (AX-10)", () => {
     const { root, check } = built();
     writeFileSync(join(root, "docs", "reference", "cli.md"), "# The mostra CLI\n\n## mostra mcp\n");
     expect(check().join("\n")).toMatch(/WP-15 turns on features.localMcp/);
+  });
+
+  it("publishes a release once, as a tagged commit, and never moves a published tag", () => {
+    const remote = join(mkdtempSync(join(tmpdir(), "plugin-remote-")), "plugin.git");
+    spawnSync("git", ["init", "--quiet", "--bare", "--initial-branch", "main", remote]);
+    const tag = (name: string) =>
+      spawnSync("git", ["--git-dir", remote, "rev-parse", `${name}^{tree}`], {
+        encoding: "utf8",
+      }).stdout.trim();
+    const { dir } = built();
+    expect(publishPlugin({ tree: dir, version: "1.2.3", remote })).toBe("published");
+    const first = tag("v1.2.3");
+    expect(first).toMatch(/^[0-9a-f]{40}$/);
+    expect(tag("main")).toBe(first);
+    // A retried release with the same tree is done; with another tree it fails.
+    expect(publishPlugin({ tree: dir, version: "1.2.3", remote })).toBe("already-published");
+    writeFileSync(join(dir, "README.md"), "changed\n");
+    expect(() => publishPlugin({ tree: dir, version: "1.2.3", remote })).toThrow(/never moves/);
+    expect(tag("v1.2.3")).toBe(first);
+    // The next release is the next commit on main.
+    expect(publishPlugin({ tree: dir, version: "1.2.4", remote })).toBe("published");
+    expect(tag("main")).toBe(tag("v1.2.4"));
+    expect(tag("v1.2.4")).not.toBe(first);
   });
 });

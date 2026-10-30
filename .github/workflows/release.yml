@@ -11,6 +11,8 @@
 #               is publishable. `plan` decides between `fresh` and `finish` (a published release npm
 #               lacks part of: its tag's source for the packages and its own archives, never a new
 #               build); packages/bundle/scripts/github-release.ts
+#   plugin      the harness plugin built from the release's tag and published to its own
+#               repository, tagged v<version> (D147, tools/plugins/)
 #
 # A push to main that publishes nothing runs only the plan: CI's merge-queue run rehearsed the
 # release on every platform before the commit reached main (D152), and pull requests rehearse it
@@ -177,3 +179,53 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           CRATES: ${{ steps.crates.outputs.publish }}
         run: for crate in $CRATES; do cargo publish --locked --allow-dirty -p "$crate"; done
+
+  # The harness plugin (AX-10, D147): built from the release's own tag and published to its own
+  # repository as a commit tagged v<version>, once npm holds the CLI its README and Skill pin. The
+  # deploy key can write to that one repository and lives only in the `release` environment
+  # (docs/agents/release.md). A retried run is a no-op once the tag holds the same tree.
+  plugin:
+    name: plugin
+    needs: [plan, publish]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    concurrency:
+      group: release-plugin
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The release's own tag
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          case "$VERSION" in *[!0-9A-Za-z.+-]* | "") echo "Unexpected version: $VERSION" >&2; exit 1 ;; esac
+          git fetch --no-tags --depth 1 origin "+refs/tags/v$VERSION:refs/tags/v$VERSION"
+          git checkout --detach "v$VERSION"
+      - uses: ./.github/actions/setup
+        with:
+          job: release-plugin
+      - name: Build and check the plugin
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          node tools/plugins/cli.ts build --out "$RUNNER_TEMP/plugin" --version "$VERSION"
+          node tools/plugins/cli.ts check "$RUNNER_TEMP/plugin" --version "$VERSION"
+      # GitHub's SSH host key is pinned (api.github.com/meta, SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU).
+      - name: Publish it to its repository
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          DEPLOY_KEY: ${{ secrets.PLUGIN_DEPLOY_KEY }}
+        run: |
+          ssh_dir="$RUNNER_TEMP/plugin-ssh"
+          mkdir -m 700 "$ssh_dir"
+          (umask 077 && printf '%s\n' "$DEPLOY_KEY" > "$ssh_dir/key")
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+          node tools/plugins/publish.ts --tree "$RUNNER_TEMP/plugin" --version "$VERSION" \
+            --remote git@github.com:mostra-dev/mostra-plugin.git

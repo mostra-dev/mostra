@@ -42,7 +42,12 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    crates, from the release's tag with the same pins as `@mostra/sdk`
    (`crates/mostra-host/bundles.json`, which the crate's build embeds and refuses for another
    version), through crates.io trusted publishing (`tools/release/crates.ts plan` names what to
-   publish). So the `@mostra/sdk` npm and the crate always pin archives that exist.
+   publish). So the `@mostra/sdk` npm and the crate always pin archives that exist. Then the `plugin`
+   job builds the harness plugin from the release's tag (`tools/plugins/cli.ts build` and `check`)
+   and publishes it to `mostra-dev/mostra-plugin` as one commit on `main` tagged `v<version>`
+   (`tools/plugins/publish.ts`), with the deploy key `PLUGIN_DEPLOY_KEY` of the `release`
+   environment. A re-run is a no-op once the tag holds the same tree, and a tag that holds another
+   tree fails the job: a published plugin tag never moves.
 5. **A crate's first release only: Mirza's token.** crates.io configures a trusted publisher only
    for a crate that exists, so a crate's first version waits: the `publish` job's summary says
    "First release of mostra-host". Mirza runs `tools/release/crates-setup.sh <version>` in a
@@ -51,6 +56,13 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    (scope `publish-new`), then names the two last steps: add the trusted publisher on crates.io
    (`mostra-dev/mostra`, `release.yml`, environment `release`) and revoke the token. Every later
    release publishes the crate itself.
+   **The plugin repository, once:** `mostra-dev/mostra-plugin` exists (public, with no branch
+   protection the deploy key can't satisfy), its deploy key with write access is the public half
+   of `PLUGIN_DEPLOY_KEY`, and that secret is set on the `release` environment only:
+   `ssh-keygen -t ed25519 -N '' -C mostra-plugin-release -f <scratch>/key`, then
+   `gh repo deploy-key add <scratch>/key.pub --repo mostra-dev/mostra-plugin --allow-write --title release`
+   and `gh secret set PLUGIN_DEPLOY_KEY --env release --repo mostra-dev/mostra < <scratch>/key`,
+   and the scratch key is deleted. Submitting the plugin to a directory is Mirza's (D147).
 6. **A failure part-way** finishes by itself, never by hand:
    - **Before the release is published** (a draft, nothing on npm): re-run the failed jobs, or let
      the next push to `main` run; the draft's assets are replaced by that run's, since nothing
@@ -78,8 +90,10 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    - on a clean machine, `npm create mostra@latest my-artifact`, then
      `npx @mostra/cli verify my-artifact` and `npx @mostra/cli publish my-artifact`;
    - a fresh Rust program depending on `mostra-host = "<version>"` spawns an instance on a fresh
-     `MOSTRA_CACHE_DIR`: it downloads, checks and caches the pinned bundle.
+     `MOSTRA_CACHE_DIR`: it downloads, checks and caches the pinned bundle;
+   - `git ls-remote https://github.com/mostra-dev/mostra-plugin v<version>` names the tag, and
+     `claude plugin validate` passes on a clone of it.
 
-**Done when** the `publish` job is green, the release is published with its 13 assets, every
+**Done when** the `publish` and `plugin` jobs are green, the release is published with its 13 assets, every
 package of the group shows `<version>` on npm with provenance, `mostra-host` shows `<version>` on
-crates.io, and the clean-machine checks passed.
+crates.io, the plugin repository has the tag `v<version>`, and the clean-machine checks passed.
