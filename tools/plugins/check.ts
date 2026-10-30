@@ -79,6 +79,39 @@ function claudeNameProblem(name: string): string | undefined {
 const COMMERCIAL =
   /\b(upgrade|subscribe|subscription|pricing|free trial|trial|pro plan|paid plan)\b/i;
 
+/** Names Windows reserves for devices, with or without an extension. */
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+/** Files operating systems leave behind, which Anthropic's validator blocks. */
+const SYSTEM_FILES = new Set([".DS_Store", "Thumbs.db", "desktop.ini", "__MACOSX"]);
+/** Package-manager files that set a registry or source, blocked beside a package launcher. */
+const PACKAGE_SOURCES = new Set([
+  ".npmrc",
+  ".yarnrc",
+  ".yarnrc.yml",
+  "bunfig.toml",
+  "uv.toml",
+  "pip.conf",
+]);
+/** Images and fonts, the only binary files the validator reads. */
+const MEDIA = /\.(png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
+/**
+ * A credential read from the user's environment (`$GITHUB_TOKEN`): held by Anthropic's scan even
+ * in an example, since it may be sent somewhere.
+ */
+const ENVIRONMENT_CREDENTIAL =
+  /\$\{?[A-Z][A-Z0-9_]*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b/;
+
+/** Whether a file is text: UTF-8 without NUL bytes. */
+function isText(bytes: Buffer): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function checkPlugin(
   dir: string,
   definition: PluginDefinition,
@@ -92,18 +125,38 @@ export function checkPlugin(
   const validatePlugin = ajv.compile(schema("plugin"));
   const validateMcp = ajv.compile(schema("mcp"));
 
-  // Real files only: no links, nothing a harness or a scan would skip or follow out.
+  // Real files only: no links, nothing a harness or a scan would skip or follow out; files
+  // Anthropic's validator reads (its pre-submission checklist, VERIFIED_FACTS WP-14).
   const paths = walk(dir).filter((path) => path !== ".git" && !path.startsWith(".git/"));
   const folded = new Map<string, string>();
+  let files = 0;
   for (const path of paths) {
     const stat = lstatSync(join(dir, path));
+    const name = path.split("/").at(-1) as string;
     if (stat.isSymbolicLink()) problems.push(`${path} is a link; every file must be a real copy`);
-    if (/[:*?"<>|\\]/.test(path)) problems.push(`${path} has a character Windows refuses`);
+    if (/[:*?"<>|\\]/.test(path) || /[. ]$/.test(name) || WINDOWS_DEVICE.test(name))
+      problems.push(`${path} has a name Windows or macOS refuses`);
     const other = folded.get(path.toLowerCase());
     if (other !== undefined) problems.push(`${path} and ${other} differ only in case`);
     folded.set(path.toLowerCase(), path);
-    if (stat.isFile() && stat.size > 1024 * 1024) problems.push(`${path} is over 1 MiB`);
+    if (SYSTEM_FILES.has(name)) problems.push(`${path} is an operating system's file; remove it`);
+    if (PACKAGE_SOURCES.has(name))
+      problems.push(
+        `${path} sets a package source, which Anthropic's scan blocks beside a launcher`,
+      );
+    if (!stat.isFile()) continue;
+    files += 1;
+    const kind = MEDIA.exec(name)?.[1]?.toLowerCase();
+    if (kind === undefined && !isText(readFileSync(join(dir, path))))
+      problems.push(`${path} is a binary file other than an image or a font`);
+    if (kind === undefined && stat.size >= 256 * 1024) problems.push(`${path} is 256 KiB or more`);
+    if (stat.size >= 5 * 1024 * 1024) problems.push(`${path} is 5 MiB or more`);
   }
+  if (files > 512) problems.push(`the plugin has ${files} files; Anthropic's validator reads 512`);
+  if (existsSync(join(dir, "package.json")))
+    problems.push("package.json at the root: a lockfile beside it installs packages on install");
+  if (existsSync(join(dir, ".gitattributes")))
+    problems.push(".gitattributes can stop Anthropic's validator; the plugin has none");
   if (paths.some((path) => path === "hooks" || path.startsWith("hooks/")))
     problems.push("the plugin has a hooks directory; it must have no hooks (D147)");
 
@@ -217,8 +270,16 @@ export function checkPlugin(
   const readme = existsSync(join(dir, "README.md"))
     ? readFileSync(join(dir, "README.md"), "utf8")
     : "";
-  if (readme.split(/\s+/).filter(Boolean).length < 40)
-    problems.push("README.md has under 40 words");
+  const prose = readme.replace(/```[\s\S]*?```/g, "");
+  if (prose.split(/\s+/).filter(Boolean).length < 40)
+    problems.push("README.md has under 40 words outside code blocks");
+  for (const path of paths) {
+    if (!/\.(md|json|ts|tsx|js|mjs|css|txt)$/.test(path) || !lstatSync(join(dir, path)).isFile())
+      continue;
+    const found = ENVIRONMENT_CREDENTIAL.exec(readFileSync(join(dir, path), "utf8"));
+    if (found)
+      problems.push(`${path} reads ${found[0]} from the environment; Anthropic's scan holds that`);
+  }
   const destinations = [
     "registry.npmjs.org",
     `github.com/mostra-dev/mostra/releases/download/v${version}/`,

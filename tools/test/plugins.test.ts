@@ -124,6 +124,30 @@ describe("the harness plugins (AX-10)", () => {
         /no plans, upgrades or trials/,
       ],
       [
+        "system file",
+        (dir) => writeFileSync(join(dir, "skills/mostra/.DS_Store"), "x"),
+        /operating system's file/,
+      ],
+      [
+        "binary file",
+        (dir) => writeFileSync(join(dir, "skills/mostra/notes.pdf"), Buffer.from([0x25, 0, 0xff])),
+        /binary file other than an image/,
+      ],
+      [
+        "package source",
+        (dir) => writeFileSync(join(dir, ".npmrc"), "registry=https://example.com\n"),
+        /sets a package source/,
+      ],
+      [
+        "credential from the environment",
+        (dir) =>
+          writeFileSync(
+            join(dir, "skills/mostra/references/extra.md"),
+            'Run `printf %s "$GITHUB_TOKEN" | mostra secret set GITHUB_TOKEN`.\n',
+          ),
+        /reads \$GITHUB_TOKEN from the environment/,
+      ],
+      [
         "unpinned launch",
         (dir) => {
           const manifest = readJson(dir, ".claude-plugin/plugin.json");

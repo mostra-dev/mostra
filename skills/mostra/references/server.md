@@ -87,16 +87,16 @@ export async function sendReply(emailId: string, body: string) {
 
 ## Secrets
 
-Keep keys and tokens out of the source. Store one with the value on stdin:
+Keep keys and tokens out of the source. Mostra stores each one in its home, read from stdin:
 
 ```sh
-printf %s "$MAIL_TOKEN" | mostra secret set MAIL_TOKEN --artifact ./inbox   # this artifact only
-mostra secret set GITHUB_TOKEN < token.txt                                   # every artifact in this home
-mostra secret list --artifact ./inbox                                        # names only, never values
-mostra secret rm MAIL_TOKEN --artifact ./inbox                              # remove it
+mostra secret set MAIL_TOKEN --artifact ./inbox < mail-token.txt   # this artifact only
+mostra secret set CALENDAR_KEY < calendar-key.txt                 # every artifact in this home
+mostra secret list --artifact ./inbox                              # names only, never values
+mostra secret rm MAIL_TOKEN --artifact ./inbox                     # remove it
 ```
 
-Server code reads it with `secret("MAIL_TOKEN")`, synchronously; a missing one throws `MOSTRA_SECRET_MISSING`. Mostra redacts every value it hands out from logs, run logs, errors, events, results and live values, so returning or logging one shows `[redacted]`. Ask the person for a secret through your own conversation, never through a page field.
+Server code reads it with `secret("MAIL_TOKEN")`, synchronously; a missing one throws `MOSTRA_SECRET_MISSING`. Mostra redacts every value it hands out from logs, run logs, errors, events, results and live values, so returning or logging one shows `[redacted]`. A secret is the person's to store: ask them to run `mostra secret set` themselves, and never ask for the value in the conversation or in a page field.
 
 ## What server code can use
 
