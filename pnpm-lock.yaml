@@ -275,6 +275,9 @@ catalogs:
     '@xyflow/react':
       specifier: 12.12.0
       version: 12.12.0
+    ajv:
+      specifier: 8.20.0
+      version: 8.20.0
     axe-core:
       specifier: 4.14.0
       version: 4.14.0
@@ -1123,6 +1126,9 @@ importers:
       '@mostra/tools-ts6':
         specifier: workspace:*
         version: link:ts6
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
       publint:
         specifier: 'catalog:'
         version: 0.3.25

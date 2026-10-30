@@ -15,6 +15,7 @@
   "dependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@mostra/tools-ts6": "workspace:*",
+    "ajv": "catalog:",
     "publint": "catalog:",
     "semver": "catalog:",
     "spdx-expression-parse": "catalog:",
