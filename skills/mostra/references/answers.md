@@ -36,7 +36,7 @@ const [email, setEmail, meta] = useField("contact.email", "", {
 {meta.error && <p className="text-sm text-destructive">{meta.error}</p>}
 ```
 
-- **IDs.** Literal strings of letters, digits, `.`, `_` and `-`. Dots nest in results: `contact.email` and `contact.phone` arrive as `contact: { email, phone }`. For a list of items, keep the list in one field (`useField("tasks", [] as Task[])`), or give each fixed item its own literal ID. An ID made at runtime (from an index, a random value or a date) is an error in verify.
+- **IDs.** Strings of letters, digits, `.`, `_` and `-`, the same on every render and in every version. Dots nest in results: `contact.email` and `contact.phone` arrive as `contact: { email, phone }`. Write a literal (`"budget"`), or, for one answer per item of your data, a template on the item's own ID (`` `replies.${email.id}` ``, which arrives as `replies: { [id]: … }`). A list the person edits is one field (`useField("tasks", [] as Task[])`). An ID made from an array index, a random value or the time changes between renders: verify reports it as an error.
 - **The type** comes from `initial`, as with `useState`. Values are JSON: strings, numbers, booleans, null, arrays and objects, up to 1 MiB per field.
 - **What gets submitted** is what the person saw: a field still at its initial value is saved with that value before submit, if it is on screen. Fields on a page or in a section that never rendered aren't.
 - **`meta.save`** is `saving`, `saved`, `offline` (it couldn't save; it keeps the value and retries), `conflict` or `readonly` (the artifact was submitted and is closed). Mostra's frame shows "Saving" and "Saved" itself; show `meta.save` only where it helps.
@@ -88,7 +88,7 @@ const submit = useSubmit();
 
 ## Submission policies
 
-Request one in the manifest's `submission`; the host running Mostra decides (`mostra publish --policy` overrides it too).
+Request one in the manifest's `submission`; the host running Mostra decides (`mostra publish <dir> --policy epochs` overrides it too).
 
 | Policy | Manifest | Use it for |
 |---|---|---|

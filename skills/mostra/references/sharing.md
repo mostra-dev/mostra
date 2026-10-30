@@ -26,7 +26,7 @@ mostra open ./retro --new --viewer grace@example.com --viewer-name "Grace Hopper
 
 `--viewer` is your own stable key for the person (an email, a user ID); the same key always means the same person, and results name them. Use `{ policy: "once", scope: "per-viewer" }` so each of them submits once.
 
-Other options of `mostra open --new`: `--ttl 24h` (the link expires), `--scope view` (look but not answer; also `draft`, `submit`, `review`, `signal`, `action:*`), `--version 3` (only that version).
+Other options of `mostra open <dir> --new`: `--ttl 24h` (the link expires), `--scope view` (look but not answer; also `draft`, `submit`, `review`, `signal`, `action:*`), `--version 3` (only that version).
 
 ## The three setups
 

@@ -93,6 +93,7 @@ Keep keys and tokens out of the source. Store one with the value on stdin:
 printf %s "$MAIL_TOKEN" | mostra secret set MAIL_TOKEN --artifact ./inbox   # this artifact only
 mostra secret set GITHUB_TOKEN < token.txt                                   # every artifact in this home
 mostra secret list --artifact ./inbox                                        # names only, never values
+mostra secret rm MAIL_TOKEN --artifact ./inbox                              # remove it
 ```
 
 Server code reads it with `secret("MAIL_TOKEN")`, synchronously; a missing one throws `MOSTRA_SECRET_MISSING`. Mostra redacts every value it hands out from logs, run logs, errors, events, results and live values, so returning or logging one shows `[redacted]`. Ask the person for a secret through your own conversation, never through a page field.
@@ -108,7 +109,7 @@ Import these from `@mostra/server` inside a `"use server"` function or a live so
 | `abortSignal` | Aborts when the run is cancelled; pass it to `fetch` and child processes |
 | `secret(name)` | Reads a secret |
 | `viewer()` | The person who called: `{ id, name? }` |
-| `signal(name, payload?)` | Raises a signal you can `mostra wait --until signal:<name>` for |
+| `signal(name, payload?)` | Raises a signal you can `mostra wait <dir> --until signal:<name>` for |
 | `emit("host.<name>", payload?)` | An event for the program hosting Mostra; pages never see it |
 | `state.get(id)`, `state.set(id, value)`, `state.patch(ops)` | Reads and writes the artifact's shared fields ([long-lived.md](long-lived.md)) |
 | `dryRun()` | True only while verify exercises the page |

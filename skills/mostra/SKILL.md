@@ -13,7 +13,7 @@ Mostra turns a React page you write into an **artifact**: a web page a person op
 
 ## Running Mostra
 
-Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/cli@0.7.0 <command>` everywhere this Skill says `mostra`; the first run downloads Mostra's own runtime (no global Node.js needed beyond `npx`). Every command takes `--json` (one JSON envelope on stdout, logs on stderr) and `--help`. `mostra docs <topic>` prints the reference, including every diagnostic code's page (`mostra docs MOSTRA_FIELD_DUPLICATE_ID`).
+Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/cli@0.7.0 <command>` everywhere this Skill says `mostra`; the first run downloads Mostra's own runtime (no global Node.js needed beyond `npx`). Every command takes `--json` (one JSON envelope on stdout, logs on stderr) and `--help`. `mostra docs <topic>` prints the reference, including every diagnostic code's page (`mostra docs MOSTRA_FIELD_DUPLICATE_ID`). `mostra list` lists the artifacts you've published, and `mostra status` shows the running instance.
 
 ## Words
 
@@ -32,8 +32,8 @@ Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/c
 Each step ends when its check holds. Don't hand a link out before step 4 passes.
 
 1. **Decide what the person does.** Write one sentence: who it's for, what they do, what comes back to you. Pick the submission policy: `once` (the default: one submission, then it's closed), `epochs` (they can submit again, each round kept), or `none` (a long-lived page that never submits, such as a dashboard or task list: see [references/long-lived.md](references/long-lived.md)). *Done when* the sentence names the answers you need.
-2. **Create it.** `mostra new <dir> --title "<title>"` writes `index.tsx` (with the artifact's `id`; keep it) and an `AGENTS.md`. *Done when* the directory exists.
-3. **Write the page.** Ordinary React 19 and TypeScript with Tailwind CSS 4, no `package.json`, no build config. Every answer is a field with a literal ID:
+2. **Create it.** `mostra new <dir> --title "<title>"` writes `index.tsx` (with the artifact's `id`; keep it) and an `AGENTS.md` for whoever edits it next. *Done when* the directory exists.
+3. **Write the page.** Ordinary React 19 and TypeScript with Tailwind CSS 4, no `package.json`, no build config. Every answer is a field with a stable ID:
 
    ```tsx
    import { defineArtifact, useField, useSubmitControl } from "@mostra/react";
@@ -66,7 +66,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Save an answer, a choice, a note | `useField(id, initial, { label, required, validate })` | [answers.md](references/answers.md) |
 | A form with validation | `useForm` from `@mostra/react/form` (react-hook-form) | [answers.md](references/answers.md) |
 | Name or confirm the trusted Submit | `useSubmitControl({ label, confirm })` | [answers.md](references/answers.md) |
-| Let the person ping you without submitting | `useSignal(name).send(payload)`, then `mostra wait --until signal:<name>` | [answers.md](references/answers.md) |
+| Let the person ping you without submitting | `useSignal(name).send(payload)`, then `mostra wait <dir> --until signal:<name>` | [answers.md](references/answers.md) |
 | Choose one of several candidates | `useChoice(reviewSetId, { candidates })` | [answers.md](references/answers.md) |
 | A button that does something real (send, file, deploy) | a `"use server"` function, run with `useAction(fn, { key })` | [server.md](references/server.md) |
 | Secrets for that code | `mostra secret set NAME`, then `secret("NAME")` in server code | [server.md](references/server.md) |
@@ -77,7 +77,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 
 ## Rules verify enforces
 
-- **Field IDs are literal strings, unique, and stable.** `useField("budget", …)`, never an ID built from an index or a random value. Changing an ID between versions leaves the old answer behind ("Not carried over"). An ID used twice with different types is an error.
+- **Field IDs are stable.** A literal string (`useField("budget", …)`), or a template keyed by your data's own ID for a list (`` useField(`reply.${email.id}`, …) ``); never an array index or a random value. Changing an ID between versions leaves the old answer behind ("Not carried over"). An ID used twice with different types is an error.
 - **The manifest is a literal.** `defineArtifact({...})` holds only literal values; Mostra reads it without running your code.
 - **Imports stay inside the artifact directory.** Packages install on demand; `@/…` imports from the artifact's root.
 - **Server code is opt-in for verify.** Verify never runs a `"use server"` function unless it checks `dryRun()` and skips its side effects. The others are reported as skipped, which is fine.
@@ -90,7 +90,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | `MOSTRA_TYPE_ERROR` | Fix the TypeScript error at the location given |
 | `MOSTRA_BUILD_UNRESOLVED` | Import from inside the artifact, or a package by its name |
 | `MOSTRA_MANIFEST_NOT_LITERAL` | Write the manifest's values as literals |
-| `MOSTRA_FIELD_DUPLICATE_ID`, `MOSTRA_FIELD_ID_UNSTABLE` | Give each field one literal ID |
+| `MOSTRA_FIELD_DUPLICATE_ID`, `MOSTRA_FIELD_ID_UNSTABLE` | Give each field one stable ID |
 | `MOSTRA_RUNTIME_PAGE_ERROR`, `MOSTRA_CONSOLE_ERROR`, `MOSTRA_RUNTIME_BLANK` | Fix the page's runtime error; look at the screenshot |
 | `MOSTRA_VERIFY_ACTION_SKIPPED` | A hint: that action didn't run in verify. Add a `dryRun()` branch if you want it exercised |
 | `MOSTRA_SMOKE_NO_EFFECT`, `MOSTRA_REGRESSION_*` | Observed only: check the screenshot, change nothing that works |

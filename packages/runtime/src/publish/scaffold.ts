@@ -60,7 +60,7 @@ function agents({ title, version }: ScaffoldInput): string {
     "",
     "## Keep in mind",
     "",
-    '- Every answer is a field with a literal ID that stays the same across versions: `useField("budget", 0, { label: "Budget" })`. Answers carry over to a new version by ID.',
+    '- Every answer is a field with an ID that stays the same on every render and in every version: `useField("budget", 0, { label: "Budget" })`, or a template on your data\'s own ID for a list. Answers carry over to a new version by ID.',
     "- Keep the `id` in `defineArtifact`: it is this artifact's identity. Manifest values are literals.",
     '- Code that must run on this machine (send, save, call an API) goes in a module that starts with `"use server"`; live data in `live.ts`; static files in `public/`.',
     "- Imports stay inside this directory, or name an npm package.",
