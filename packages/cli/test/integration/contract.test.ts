@@ -12,6 +12,7 @@ import {
   fstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -370,6 +371,21 @@ describe("every command, with --json and no terminal", () => {
     const page = await run(["docs", "MOSTRA_DEP_MISSING"], { code: 0, ok: true });
     expect((page.result as { url: string }).url).toMatch(/\/errors\/MOSTRA_DEP_MISSING$/);
     await run(["docs", "MOSTRA_NOPE_NOPE"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
+    // The Agent Skill ships in the build as the guide (WP-14): every reference, asset and example.
+    const topics = (index.result as { topics: { topic: string }[] }).topics.map((t) => t.topic);
+    const skill = fileURLToPath(new URL("../../../../skills/mostra/", import.meta.url));
+    for (const name of readdirSync(join(skill, "references")))
+      expect(topics).toContain(`guide/${name.replace(/\.md$/, "")}`);
+    for (const name of readdirSync(join(skill, "assets", "examples")))
+      expect(topics).toContain(`guide/examples/${name}`);
+    const guide = await run(["docs", "guide"], { code: 0, ok: true });
+    const guideText = (guide.result as { markdown: string }).markdown;
+    expect(guideText).not.toMatch(/^---/m);
+    expect(guideText).toContain("mostra docs guide/<name>");
+    const example = await run(["docs", "guide/examples/inbox"], { code: 0, ok: true });
+    expect((example.result as { markdown: string }).markdown).toContain(
+      readFileSync(join(skill, "assets", "examples", "inbox", "actions.ts"), "utf8"),
+    );
   });
 
   it("telemetry status, on and off answer without an instance", async () => {

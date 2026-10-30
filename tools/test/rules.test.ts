@@ -475,6 +475,19 @@ describe("the plan's owners of a changed file", () => {
     ]);
     expect(directOwners(packages, "crates/mostra-winning/x.rs")).toEqual([]);
   });
+
+  it("lets a change to the reference or the Skill affect the CLI, whose build ships them (WP-14)", () => {
+    const packages = listPackages();
+    expect(directOwners(packages, "skills/mostra/references/answers.md")).toEqual(["@mostra/cli"]);
+    expect(directOwners(packages, "docs/reference/errors/MOSTRA_DEP_MISSING.md")).toEqual([
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "skills/mostra/assets/examples/inbox/index.tsx")).toEqual([
+      "@mostra/cli",
+      "@mostra/runtime",
+    ]);
+    expect(directOwners(packages, "skills/mostra-other/SKILL.md")).toEqual([]);
+  });
 });
 
 describe("Node.js lines (#92)", () => {

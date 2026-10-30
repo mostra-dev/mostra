@@ -910,7 +910,7 @@ Example:
 ## mostra docs
 
 ```text
-Print Mostra's reference: the CLI, telemetry, and every diagnostic code's page.
+Print Mostra's reference: the guide to writing artifacts, the CLI, telemetry, and every diagnostic code's page.
 
 Usage:
   mostra docs [<topic>]
