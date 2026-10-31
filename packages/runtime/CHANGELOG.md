@@ -1,5 +1,17 @@
 # @mostra/runtime
 
+## 0.8.0
+
+### Minor Changes
+
+- [#108](https://github.com/mostra-dev/mostra/pull/108) [`9e0fe3c`](https://github.com/mostra-dev/mostra/commit/9e0fe3cc2d2e2534ac3ec31d0bb45029b94237e8) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra new` (`artifact/create`) also writes an `AGENTS.md` with the artifact's loop (verify, publish, wait, results), its rules and where the guide is, pinned to this release's CLI, and a `CLAUDE.md` that imports it, so the next agent working in the directory knows how to finish the artifact. `files` lists all three; a retried creation completes them as it completes the entry.
+
+### Patch Changes
+
+- [#108](https://github.com/mostra-dev/mostra/pull/108) [`895e62a`](https://github.com/mostra-dev/mostra/commit/895e62aa1a6bcd275173ab2285953a3e56a377e7) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `useLive` stays `isLoading` until a source's first value or error arrives, when the artifact's producer is loading it. A source whose producer hadn't produced yet was reported loaded with no data, so a page could render (or crash on) a missing value, and `verify` judged and screenshotted the page before its data arrived. The gateway says which sources a first load is on its way for (`LiveState.awaiting`, additive), so a key only `mostra push` writes, or a source that only streams, is never waited for.
+- Updated dependencies [[`895e62a`](https://github.com/mostra-dev/mostra/commit/895e62aa1a6bcd275173ab2285953a3e56a377e7)]:
+  - @mostra/protocol@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

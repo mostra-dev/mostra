@@ -1,5 +1,12 @@
 # create-mostra
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`404bd3d`](https://github.com/mostra-dev/mostra/commit/404bd3d2461368d77115e2bd285e04f221de6add)]:
+  - @mostra/cli@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes

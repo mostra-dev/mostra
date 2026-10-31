@@ -1,5 +1,17 @@
 # @mostra/cli
 
+## 0.8.0
+
+### Minor Changes
+
+- [#108](https://github.com/mostra-dev/mostra/pull/108) [`404bd3d`](https://github.com/mostra-dev/mostra/commit/404bd3d2461368d77115e2bd285e04f221de6add) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra docs guide` prints the guide to writing artifacts, the same text as the Agent Skill: `guide/<name>` for each of its references, `guide/studio.css` for the baseline stylesheet and `guide/examples/<name>` for each example, so an agent whose harness has no Skill reads it through the CLI.
+
+### Patch Changes
+
+- Updated dependencies [[`895e62a`](https://github.com/mostra-dev/mostra/commit/895e62aa1a6bcd275173ab2285953a3e56a377e7)]:
+  - @mostra/protocol@0.8.0
+  - @mostra/sdk@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
