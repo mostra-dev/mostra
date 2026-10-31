@@ -315,7 +315,9 @@ describe("useSubmit (D40, IN-13)", () => {
   it("lists blockers by label, refuses while they stand, then submits on the artifact channel", async () => {
     const page = await render(<Form />);
     expect(page.text("allowed")).toBe("true");
-    expect(page.text("blockers")).toBe("name:required:Name");
+    // A field registers itself in an effect after the first commit, which is all render() waits
+    // for: the blockers appear with the next render (a loaded machine showed the gap, WP-14).
+    await vi.waitFor(() => expect(page.text("blockers")).toBe("name:required:Name"));
     page.click("submit");
     await vi.waitFor(() => expect(page.text("outcome")).toBe("error:MOSTRA_SUBMIT_BLOCKED"));
     expect(page.gateway.submits).toHaveLength(0);
