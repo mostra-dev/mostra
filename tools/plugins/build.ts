@@ -15,6 +15,8 @@
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { walkTree } from "../lib/files.ts";
+import { isReleaseVersion } from "../lib/release-version.ts";
 import type { PluginDefinition } from "./definition.ts";
 import { readme } from "./readme.ts";
 
@@ -40,17 +42,13 @@ export type PluginTree = Map<string, string | Buffer>;
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
-/** Every file below `dir`, relative to it, sorted. */
+/** Every file below `dir`, relative to it, sorted; a link is refused: the Skill holds real files. */
 function filesBelow(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true })
-    .flatMap((entry) => {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink()) throw new Error(`${path} is a link: the Skill holds real files`);
-      return entry.isDirectory()
-        ? filesBelow(path).map((inner) => join(entry.name, inner))
-        : [entry.name];
-    })
-    .sort();
+  return walkTree(dir).flatMap((entry) => {
+    if (entry.kind === "link")
+      throw new Error(`${join(dir, entry.path)} is a link: the Skill holds real files`);
+    return entry.kind === "file" ? [entry.path] : [];
+  });
 }
 
 /** The local MCP server's launch, pinned to the release, when the feature is on. */
@@ -80,8 +78,7 @@ export const ICON_PATHS = [".claude-plugin/icon.png", "assets/icon.png"] as cons
 /** Builds the plugin's repository tree. */
 export function buildPlugin(definition: PluginDefinition, input: BuildInput): PluginTree {
   const { version } = input;
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version))
-    throw new Error(`"${version}" isn't a release version`);
+  if (!isReleaseVersion(version)) throw new Error(`"${version}" isn't a release version`);
   const tree: PluginTree = new Map();
   const local = localServer(definition, version);
   const remote = remoteServer(definition);
@@ -223,7 +220,7 @@ export function buildPlugin(definition: PluginDefinition, input: BuildInput): Pl
   for (const skill of definition.skills) {
     const source = join(input.root, "skills", skill);
     for (const file of filesBelow(source))
-      tree.set(`skills/${skill}/${file.split("\\").join("/")}`, readFileSync(join(source, file)));
+      tree.set(`skills/${skill}/${file}`, readFileSync(join(source, file)));
   }
 
   if (definition.icon) {

@@ -34,16 +34,25 @@ function repository(): string {
   return root;
 }
 
-const input = (root: string, telemetryEndpoint = "") => ({
+const input = (root: string, telemetryEndpoint = "", version = "1.2.3") => ({
   root,
-  version: "1.2.3",
+  version,
   telemetryEndpoint,
 });
 
-function built(definition: PluginDefinition = PLUGIN, root = repository(), endpoint = "") {
+function built(
+  definition: PluginDefinition = PLUGIN,
+  root = repository(),
+  endpoint = "",
+  version = "1.2.3",
+) {
   const dir = join(mkdtempSync(join(tmpdir(), "plugin-")), "mostra");
-  writeTree(buildPlugin(definition, input(root, endpoint)), dir);
-  return { dir, root, check: () => checkPlugin(dir, definition, input(root, endpoint)) };
+  writeTree(buildPlugin(definition, input(root, endpoint, version)), dir);
+  return {
+    dir,
+    root,
+    check: () => checkPlugin(dir, definition, input(root, endpoint, version)),
+  };
 }
 
 const readJson = (dir: string, path: string) =>
@@ -260,9 +269,29 @@ describe("the harness plugins (AX-10)", () => {
     writeFileSync(join(dir, "README.md"), "changed\n");
     expect(() => publishPlugin({ tree: dir, version: "1.2.3", remote })).toThrow(/never moves/);
     expect(tag("v1.2.3")).toBe(first);
+    // A tree built for another version is never tagged as this one.
+    expect(() => publishPlugin({ tree: dir, version: "1.2.4", remote })).toThrow(/not of 1\.2\.4/);
     // The next release is the next commit on main.
-    expect(publishPlugin({ tree: dir, version: "1.2.4", remote })).toBe("published");
-    expect(tag("main")).toBe(tag("v1.2.4"));
-    expect(tag("v1.2.4")).not.toBe(first);
+    const next = built(PLUGIN, repository(), "", "1.2.5").dir;
+    expect(publishPlugin({ tree: next, version: "1.2.5", remote })).toBe("published");
+    expect(tag("main")).toBe(tag("v1.2.5"));
+    expect(tag("v1.2.5")).not.toBe(first);
+    // An older release published late (a retried run after a newer one) is tagged off main,
+    // which keeps the newest (Opus review, finding 2).
+    const older = built(PLUGIN, repository(), "", "1.2.4").dir;
+    expect(publishPlugin({ tree: older, version: "1.2.4", remote })).toBe("tagged");
+    expect(tag("main")).toBe(tag("v1.2.5"));
+    const tree = (ref: string) =>
+      spawnSync("git", ["--git-dir", remote, "rev-parse", `${ref}^{tree}`], {
+        encoding: "utf8",
+      }).stdout.trim();
+    expect(tree("v1.2.4")).not.toBe(tree("v1.2.5"));
+    expect(
+      spawnSync("git", ["--git-dir", remote, "show", "v1.2.4:plugin.json"], { encoding: "utf8" })
+        .stdout,
+    ).toContain('"version": "1.2.4"');
+    // And a retry of it is done.
+    expect(publishPlugin({ tree: older, version: "1.2.4", remote })).toBe("already-published");
+    expect(tag("main")).toBe(tag("v1.2.5"));
   });
 });

@@ -23,6 +23,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { walkTree } from "../lib/files.ts";
+import { RELEASE_VERSION_PATTERN } from "../lib/release-version.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -193,23 +195,16 @@ export function apply(version: string, root: string = ROOT): void {
  * CLI, and `metadata.version` in its frontmatter. They name the release they ship in, so an agent
  * runs the CLI the Skill describes.
  */
-const SKILL_CLI_PIN = /(@mostra\/cli@)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/g;
+const SKILL_CLI_PIN = new RegExp(`(@mostra/cli@)(${RELEASE_VERSION_PATTERN})`, "g");
 const SKILL_METADATA_VERSION = /(^ {2}version: ")(?:[^"]*)("$)/m;
 
 /** Every Markdown file of the Skill. */
 function skillFiles(root: string): string[] {
   const dir = join(root, "skills", "mostra");
   if (!existsSync(dir)) return [];
-  const out: string[] = [];
-  const walk = (at: string): void => {
-    for (const entry of readdirSync(at, { withFileTypes: true })) {
-      const path = join(at, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".md")) out.push(path);
-    }
-  };
-  walk(dir);
-  return out.sort();
+  return walkTree(dir)
+    .filter((entry) => entry.kind === "file" && entry.path.endsWith(".md"))
+    .map((entry) => join(dir, entry.path));
 }
 
 /** The Skill's pins that don't name the group's version. */

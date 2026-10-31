@@ -3,10 +3,11 @@
  * WP-14). Each problem names the rule it breaks; an empty list is a plugin that loads in each
  * harness's documented layout and passes what the directories check first.
  */
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse as parseYaml } from "yaml";
+import { walkTree } from "../lib/files.ts";
 import type { PluginDefinition } from "./definition.ts";
 
 const SCHEMAS = new URL("./schemas/agent-plugins-1.0.0/", import.meta.url);
@@ -21,13 +22,9 @@ export interface CheckInput {
   readonly telemetryEndpoint: string;
 }
 
-/** Every path below `dir`, relative to it, directories included. */
-function walk(dir: string, prefix = ""): string[] {
-  return readdirSync(join(dir, prefix)).flatMap((name) => {
-    const path = prefix === "" ? name : `${prefix}/${name}`;
-    const stat = lstatSync(join(dir, path));
-    return stat.isDirectory() ? [path, ...walk(dir, path)] : [path];
-  });
+/** Every path below `dir`, relative to it, directories included; links listed, never followed. */
+function walk(dir: string): string[] {
+  return walkTree(dir).map((entry) => entry.path);
 }
 
 function readJson(

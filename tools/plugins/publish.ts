@@ -6,14 +6,19 @@
  *
  * Idempotent, as a release run that is retried must be: a tag that already holds exactly this
  * tree is done; a tag that holds anything else fails, never moved (published plugins are pinned
- * by tag). The commit carries only the tree; `.git` of the build is never pushed. The release job
- * passes an SSH remote and a deploy key that can write to that one repository
- * (`GIT_SSH_COMMAND`); tests pass a local bare repository.
+ * by tag). `main` only moves forward: a version older than one already published (a retried
+ * release after a newer one) gets its tag on a commit off `main`, which keeps the newest (WP-14's
+ * Opus review, finding 2). The tree must be the one built for this version (its `plugin.json`
+ * says so). The commit carries only the tree; `.git` of the build is never pushed. The release
+ * job passes an SSH remote and a deploy key that can write to that one repository
+ * (`GIT_SSH_COMMAND`); tests pass a local bare repository. It imports Node.js built-ins and the
+ * release's version rules only: the job that runs it holds the key and installs nothing.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { compareVersions, isReleaseVersion, option } from "../lib/release-version.ts";
 
 /** Runs git, failing loudly; returns its trimmed stdout. */
 function git(cwd: string, args: readonly string[], allowFailure = false): string {
@@ -23,8 +28,11 @@ function git(cwd: string, args: readonly string[], allowFailure = false): string
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
-/** What `publishPlugin` did. */
-export type PublishOutcome = "published" | "already-published";
+/**
+ * What `publishPlugin` did: `published` moved `main` and tagged it; `tagged` tagged a commit off
+ * `main`, which holds a newer version; `already-published` found the tag holding this tree.
+ */
+export type PublishOutcome = "published" | "tagged" | "already-published";
 
 export function publishPlugin(options: {
   readonly tree: string;
@@ -32,8 +40,12 @@ export function publishPlugin(options: {
   readonly remote: string;
 }): PublishOutcome {
   const { tree, version, remote } = options;
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version))
-    throw new Error(`"${version}" isn't a release version`);
+  if (!isReleaseVersion(version)) throw new Error(`"${version}" isn't a release version`);
+  const built = (
+    JSON.parse(readFileSync(join(tree, "plugin.json"), "utf8")) as { version?: unknown }
+  ).version;
+  if (built !== version)
+    throw new Error(`the tree is the plugin of ${String(built)}, not of ${version}`);
   const tag = `v${version}`;
   const work = mkdtempSync(join(tmpdir(), "mostra-plugin-publish-"));
   try {
@@ -63,9 +75,22 @@ export function publishPlugin(options: {
       if (tagged === wanted) return "already-published";
       throw new Error(`${tag} already holds another tree (${tagged}); a published tag never moves`);
     }
+    // `main` holds the newest version published: an older one is tagged off it.
+    const newest = git(work, ["tag", "--list", "v*"])
+      .split("\n")
+      .map((name) => name.slice(1))
+      .filter(isReleaseVersion)
+      .sort(compareVersions)
+      .at(-1);
+    const forward = newest === undefined || compareVersions(version, newest) > 0;
     const head = hasMain === "" ? "" : git(work, ["rev-parse", "HEAD^{tree}"]);
-    if (head !== wanted) git(work, ["commit", "--quiet", "--message", `Mostra ${version}`]);
+    if (head !== wanted || !forward)
+      git(work, ["commit", "--quiet", "--allow-empty", "--message", `Mostra ${version}`]);
     git(work, ["tag", "--annotate", tag, "--message", `Mostra ${version}`]);
+    if (!forward) {
+      git(work, ["push", "--quiet", "origin", `refs/tags/${tag}`]);
+      return "tagged";
+    }
     git(work, ["push", "--quiet", "--atomic", "origin", "main", `refs/tags/${tag}`]);
     return "published";
   } finally {
@@ -73,15 +98,10 @@ export function publishPlugin(options: {
   }
 }
 
-function option(name: string): string | undefined {
-  const at = process.argv.indexOf(name);
-  return at > 0 ? process.argv[at + 1] : undefined;
-}
-
 if (import.meta.main) {
-  const tree = option("--tree");
-  const version = option("--version");
-  const remote = option("--remote");
+  const tree = option(process.argv, "--tree");
+  const version = option(process.argv, "--version");
+  const remote = option(process.argv, "--remote");
   if (tree === undefined || version === undefined || remote === undefined) {
     console.error("usage: publish.ts --tree <dir> --version <v> --remote <git url>");
     process.exitCode = 2;
@@ -90,7 +110,9 @@ if (import.meta.main) {
     console.log(
       outcome === "published"
         ? `✓ plugin v${version} published to ${remote}`
-        : `✓ plugin v${version} was already published to ${remote}, with this tree`,
+        : outcome === "tagged"
+          ? `✓ plugin v${version} tagged at ${remote}; its main keeps a newer version`
+          : `✓ plugin v${version} was already published to ${remote}, with this tree`,
     );
   }
 }

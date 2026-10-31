@@ -14,6 +14,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { option as argOption } from "../lib/release-version.ts";
 import { current } from "../release/versions.ts";
 import { buildPlugin, writeTree } from "./build.ts";
 import { checkPlugin } from "./check.ts";
@@ -21,10 +22,7 @@ import { PLUGIN } from "./definition.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
-function option(name: string): string | undefined {
-  const at = process.argv.indexOf(name);
-  return at > 0 ? process.argv[at + 1] : undefined;
-}
+const option = (name: string): string | undefined => argOption(process.argv, name);
 
 function main(): void {
   const command = process.argv[2];
