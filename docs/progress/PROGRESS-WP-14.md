@@ -55,6 +55,8 @@
   9. (P3) A bare `npx` can't start on native Windows in a harness that spawns without a shell. `features.localMcp.verifiedOn` must list macOS, Linux and Windows before the check lets the feature on, and the playbook's step 3 and WP-15's handoff say how to prove or adapt the launch there (`33cf7be`).
   10. (P3) The version pattern, the tree walk and the argv helper were copied across the tools; they are `tools/lib/release-version.ts` (no imports, so the key's job may run it) and `tools/lib/files.ts` now, and the workflow's version guard is tested to accept exactly what the tools accept (`2982660`, `baf0f42`).
 
+  A last fix the pre-push unit suite asked for (`e061bea`): a source counts as loading unless its worker says `load: false`. `ci:full` on `e061bea` (run 41210726067): 69 jobs, every leg green.
+
   After the fixes the plugin loads again in Claude Code 2.1.316 (`validate --strict`), Codex, Gemini CLI, Copilot CLI, the `skills` CLI and `skills-ref` (`tools/plugins/try-harnesses.sh`, every line green).
 - **Copilot**: no review (its quota, as on WP-13).
 
