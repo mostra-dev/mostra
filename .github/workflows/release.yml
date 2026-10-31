@@ -46,6 +46,7 @@ jobs:
     outputs:
       version: ${{ steps.plan.outputs.version }}
       publish: ${{ steps.plan.outputs.publish }}
+      plugin: ${{ steps.plan.outputs.plugin }}
       mode: ${{ steps.plan.outputs.mode }}
       node: ${{ steps.plan.outputs.node }}
     steps:
@@ -64,7 +65,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |
-          node packages/bundle/scripts/github-release.ts state --event "$EVENT" --ref "$REF" > "$RUNNER_TEMP/state"
+          node packages/bundle/scripts/github-release.ts state --event "$EVENT" --ref "$REF" \
+            --plugin-repo https://github.com/mostra-dev/mostra-plugin.git > "$RUNNER_TEMP/state"
           cat "$RUNNER_TEMP/state" >> "$GITHUB_OUTPUT"
           echo "node=$(node -p 'require("./packages/bundle/node.json").version')" >> "$GITHUB_OUTPUT"
           {
@@ -183,11 +185,16 @@ jobs:
   # The harness plugin (AX-10, D147): built from the release's own tag and published to its own
   # repository as a commit tagged v<version>, once npm holds the CLI its README and Skill pin. The
   # deploy key can write to that one repository and lives only in the `release` environment
-  # (docs/agents/release.md). A retried run is a no-op once the tag holds the same tree.
+  # (docs/agents/release.md). The plan asks for it while the plugin's repository lacks this
+  # version's tag, whether this run publishes npm or npm was finished before (WP-14's GPT review),
+  # and it waits for this run's publish when there is one. A retried run is a no-op once the tag
+  # holds the same tree.
   plugin:
     name: plugin
     needs: [plan, publish]
-    if: needs.plan.outputs.publish == 'true'
+    if: >-
+      always() && needs.plan.outputs.plugin == 'true' &&
+      (needs.publish.result == 'success' || (needs.plan.outputs.publish != 'true' && needs.publish.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
@@ -207,10 +214,20 @@ jobs:
           case "$VERSION" in *[!0-9A-Za-z.+-]* | "") echo "Unexpected version: $VERSION" >&2; exit 1 ;; esac
           git fetch --no-tags --depth 1 origin "+refs/tags/v$VERSION:refs/tags/v$VERSION"
           git checkout --detach "v$VERSION"
+      # A version released before the generator existed (0.7.0 and older) has no plugin to publish.
+      - name: Whether this release has a plugin
+        id: has
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          if [ -f tools/plugins/cli.ts ]; then echo "plugin=true" >> "$GITHUB_OUTPUT"
+          else echo "v$VERSION predates the harness plugin: nothing to publish" >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: ./.github/actions/setup
+        if: steps.has.outputs.plugin == 'true'
         with:
           job: release-plugin
       - name: Build and check the plugin
+        if: steps.has.outputs.plugin == 'true'
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
@@ -218,6 +235,7 @@ jobs:
           node tools/plugins/cli.ts check "$RUNNER_TEMP/plugin" --version "$VERSION"
       # GitHub's SSH host key is pinned (api.github.com/meta, SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU).
       - name: Publish it to its repository
+        if: steps.has.outputs.plugin == 'true'
         env:
           VERSION: ${{ needs.plan.outputs.version }}
           DEPLOY_KEY: ${{ secrets.PLUGIN_DEPLOY_KEY }}

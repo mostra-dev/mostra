@@ -47,7 +47,8 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    and publishes it to `mostra-dev/mostra-plugin` as one commit on `main` tagged `v<version>`
    (`tools/plugins/publish.ts`), with the deploy key `PLUGIN_DEPLOY_KEY` of the `release`
    environment. A re-run is a no-op once the tag holds the same tree, and a tag that holds another
-   tree fails the job: a published plugin tag never moves.
+   tree fails the job: a published plugin tag never moves. The plan asks for the plugin while its repository lacks this version's tag, so a
+   plugin job that failed after npm finished runs again on the next run, whatever npm holds.
 5. **A crate's first release only: Mirza's token.** crates.io configures a trusted publisher only
    for a crate that exists, so a crate's first version waits: the `publish` job's summary says
    "First release of mostra-host". Mirza runs `tools/release/crates-setup.sh <version>` in a
