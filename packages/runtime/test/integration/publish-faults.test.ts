@@ -7,7 +7,6 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { scaffoldFiles } from "../../src/publish/scaffold.ts";
 import {
   connectTo,
   eventually,
@@ -239,34 +238,40 @@ describe("artifact/create retried by a newer runtime (WP-14's GPT review)", () =
     }
   };
 
-  it("completes the text the first attempt's release began", async () => {
+  it("completes the text the first attempt began, byte for byte, whatever runtime retries", async () => {
     const home = testHome();
-    const dir = join(tempDir("create-upgrade"), "plan");
-    const params = { dir, title: "Plan", requestId: "create-upgrade" };
+    const dir = join(tempDir("create-upgrade"), "Bütçe");
+    const params = { dir, requestId: "create-upgrade" };
     const crashing = await session(home, "create:after-record:crash");
     crashing.client.sendRaw(
       JSON.stringify({ jsonrpc: "2.0", id: 98, method: "artifact/create", params }),
     );
     await crashing.daemon.exited;
-    // The record keeps the result and the release the files were made for.
+    // The record keeps the result and the exact text of each file.
     const recorded = JSON.parse(recordOf(home.home, "create-upgrade").result_json) as {
       result: { artifactId: string; dir: string; files: string[] };
-      scaffold: { version: string };
+      scaffold: { files: Record<string, string> };
     };
     expect(recorded.result.files).toEqual(["index.tsx", "AGENTS.md", "CLAUDE.md"]);
-    // As if an older release had recorded it and begun writing its AGENTS.md.
-    rewrite(home.home, "create-upgrade", { ...recorded, scaffold: { version: "0.6.9" } });
-    const older = scaffoldFiles({
-      artifactId: recorded.result.artifactId,
-      title: "Plan",
-      version: "0.6.9",
-    }).get("AGENTS.md") as string;
-    writeFileSync(join(dir, "AGENTS.md"), older.slice(0, older.indexOf("0.6.9") + 3));
+    expect(Object.keys(recorded.scaffold.files)).toEqual(recorded.result.files);
+    // As if an older release, whose words differ from this one's, had recorded it and begun its
+    // AGENTS.md; and its entry cut short inside a character of the title ("ü" is two bytes).
+    const older = `${recorded.scaffold.files["AGENTS.md"]}\nAn older release's last line.\n`;
+    rewrite(home.home, "create-upgrade", {
+      ...recorded,
+      scaffold: { files: { ...recorded.scaffold.files, "AGENTS.md": older } },
+    });
+    writeFileSync(join(dir, "AGENTS.md"), older.slice(0, older.length - 10));
+    const entry = Buffer.from(recorded.scaffold.files["index.tsx"] as string, "utf8");
+    const cut = entry.indexOf(Buffer.from("ü", "utf8")) + 1;
+    expect(cut).toBeGreaterThan(0);
+    writeFileSync(join(dir, "index.tsx"), entry.subarray(0, cut));
 
     const next = await session(home);
     const created = result(await next.client.call("artifact/create", params));
     expect(created).toEqual(recorded.result);
     expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(older);
+    expect(readFileSync(join(dir, "index.tsx"))).toEqual(entry);
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
     await stop(next.client, next.daemon.exited);
   });

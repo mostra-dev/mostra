@@ -250,37 +250,50 @@ async function archiveSnapshot(
   return true;
 }
 
-/** What `artifact/create` records for its `requestId`: its result and the scaffold's release. */
+/**
+ * What `artifact/create` records for its `requestId`: its result, and the exact text of each file
+ * it writes, so a retry, by this runtime or a newer one, completes exactly the bytes the first
+ * attempt began (WP-14's GPT and Opus reviews).
+ */
 interface CreateRecord {
   readonly result: ArtifactCreateResult;
-  readonly scaffold: { readonly version: string };
+  readonly scaffold: { readonly files: Readonly<Record<string, string>> };
+}
+
+/** The text of each of `paths` (of {@link scaffoldFiles}) for `input`. */
+function scaffoldText(paths: readonly string[], input: ScaffoldInput): Record<string, string> {
+  const all = scaffoldFiles(input);
+  return Object.fromEntries(
+    paths.flatMap((path) => {
+      const text = all.get(path);
+      return text === undefined ? [] : [[path, text]];
+    }),
+  );
 }
 
 /**
- * Writes `artifact/create`'s files (`paths`, of {@link scaffoldFiles}) into `dir`, completing an
- * interrupted write: an existing file that is the expected text or a prefix of it (a write cut
- * short) ends as the expected text, and anything else the author has written since is left alone.
+ * Writes `artifact/create`'s files (`files`, path to text) into `dir`, completing an interrupted
+ * write: an existing file whose bytes are the expected text's or a prefix of them (a write cut
+ * short, even inside a character) ends as the expected text, and anything else the author has
+ * written since is left alone.
  */
-async function writeScaffold(
-  dir: string,
-  paths: readonly string[],
-  input: ScaffoldInput,
-): Promise<void> {
-  const files = scaffoldFiles(input);
+async function writeScaffold(dir: string, files: Readonly<Record<string, string>>): Promise<void> {
   await mkdir(dir, { recursive: true });
   let wrote = false;
-  for (const path of paths) {
-    const expected = files.get(path);
-    if (expected === undefined) continue;
+  for (const [path, text] of Object.entries(files)) {
+    const expected = Buffer.from(text, "utf8");
     const file = join(dir, path);
-    let current: string | undefined;
+    let current: Buffer | undefined;
     try {
-      current = await readFile(file, "utf8");
+      current = await readFile(file);
     } catch {
       current = undefined;
     }
-    if (current !== undefined && !expected.startsWith(current)) continue;
-    if (current === expected) continue;
+    if (current !== undefined) {
+      const prefix =
+        current.length <= expected.length && expected.subarray(0, current.length).equals(current);
+      if (!prefix || current.length === expected.length) continue;
+    }
     await writeFile(file, expected);
     fsyncPath(file);
     wrote = true;
@@ -876,26 +889,30 @@ export function createPublisher(options: PublisherOptions): Publisher {
   async function create(params: ArtifactCreateParams): Promise<ArtifactCreateResult> {
     // A retried request completes what the first attempt recorded (H-03): the files are written
     // only after the result is durable, so a crash in between leaves something to finish. The
-    // record also keeps the release the files were made for, so a retry by a newer runtime
-    // completes exactly the text the first attempt began (WP-14's GPT review); the client gets
-    // the result alone.
+    // record also keeps the files' exact text, so a retry by a newer runtime completes exactly
+    // what the first attempt began (WP-14's GPT and Opus reviews); the client gets the result
+    // alone.
     const key = requestKey("artifact/create", params);
     if (key !== undefined) {
       const recorded = ledger.read((db) =>
         recordedResult<CreateRecord | ArtifactCreateResult>(db, key),
       );
       if (recorded !== undefined) {
-        // A record from before WP-14 is the result itself, with only the entry, which names no release.
-        const { result, scaffold } =
-          "result" in recorded
-            ? recorded
-            : { result: recorded, scaffold: { version: options.runtimeVersion } };
-        await writeScaffold(result.dir, result.files, {
-          artifactId: result.artifactId,
-          title: params.title ?? basename(result.dir),
-          version: scaffold.version,
-        });
-        return result;
+        if ("result" in recorded) {
+          await writeScaffold(recorded.result.dir, recorded.scaffold.files);
+          return recorded.result;
+        }
+        // A record from before WP-14 is the result itself, whose one file, the entry, names no
+        // release: it is written as this runtime writes it.
+        await writeScaffold(
+          recorded.dir,
+          scaffoldText(recorded.files, {
+            artifactId: recorded.artifactId,
+            title: params.title ?? basename(recorded.dir),
+            version: options.runtimeVersion,
+          }),
+        );
+        return recorded;
       }
     }
     if (params.template !== undefined) {
@@ -922,14 +939,15 @@ export function createPublisher(options: PublisherOptions): Publisher {
       dir,
       files: [...SCAFFOLD_PATHS],
     };
-    const recordedCreate: CreateRecord = { result, scaffold: { version: options.runtimeVersion } };
-    record(key, recordedCreate);
-    faults.at("create:after-record");
-    await writeScaffold(dir, result.files, {
+    const files = scaffoldText(result.files, {
       artifactId: result.artifactId,
       title: params.title ?? basename(dir),
       version: options.runtimeVersion,
     });
+    const recordedCreate: CreateRecord = { result, scaffold: { files } };
+    record(key, recordedCreate);
+    faults.at("create:after-record");
+    await writeScaffold(dir, files);
     return result;
   }
 }
