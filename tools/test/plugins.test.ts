@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildPlugin, writeTree } from "../plugins/build.ts";
@@ -29,6 +29,10 @@ function repository(): string {
   const root = mkdtempSync(join(tmpdir(), "plugin-root-"));
   cpSync(join(REPO, "skills"), join(root, "skills"), { recursive: true });
   for (const file of ["LICENSE", "NOTICE"]) cpSync(join(REPO, file), join(root, file));
+  if (PLUGIN.icon !== undefined) {
+    mkdirSync(join(root, dirname(PLUGIN.icon)), { recursive: true });
+    cpSync(join(REPO, PLUGIN.icon), join(root, PLUGIN.icon));
+  }
   mkdirSync(join(root, "docs", "reference"), { recursive: true });
   writeFileSync(join(root, "docs", "reference", "cli.md"), "# The mostra CLI\n\n## mostra new\n");
   return root;

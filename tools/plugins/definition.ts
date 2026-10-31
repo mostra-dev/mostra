@@ -103,6 +103,10 @@ export const PLUGIN: PluginDefinition = {
     "Show me the three designs side by side in Mostra so I can pick one.",
   ],
   skills: ["mostra"],
+  // Mostra's app icon as published for web-app manifests (the blue square, the white m, the
+  // answer dot), 512 px: the listing keeps the first submission's icon. The mark is Mostra's
+  // trademark; Apache-2.0 grants no right to it (its section 6).
+  icon: "tools/plugins/assets/icon.png",
   features: {
     localMcp: { enabled: false, owner: "WP-15", args: ["mcp"], verifiedOn: [] },
     remoteMcp: { enabled: false, owner: "WP-30" },

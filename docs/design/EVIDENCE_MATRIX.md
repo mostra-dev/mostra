@@ -105,7 +105,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
-| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | validated ([WP-14](../progress/PROGRESS-WP-14.md)) |
+| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | AX-07 | WP-26 | B, R | Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews | unverified |
 | AX-08 | WP-27 | E | Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64) | unverified |
 | MC-01 | WP-15 | I, X | MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex | unverified |
