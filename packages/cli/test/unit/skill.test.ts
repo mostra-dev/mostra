@@ -6,7 +6,7 @@
  * examples carry the baseline stylesheet unchanged. Mechanism only: the prose is Mirza's to accept
  * (D149), never tested by its wording.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -101,6 +101,21 @@ const COMMANDS_NOT_FOR_AUTHORS: Readonly<Record<string, string>> = {
   "telemetry status": "a person's choice, not an agent's",
 };
 
+/**
+ * What a link points at: its text for a file, `null` for a directory, `undefined` when nothing is
+ * there. One read, so the answer can't change between a check and a use.
+ */
+function targetText(path: string): string | null | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EISDIR") return null;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+
 describe("the Agent Skill (AX-06)", () => {
   it("has the frontmatter the Agent Skills specification requires", () => {
     const { data, body } = frontmatter();
@@ -136,14 +151,13 @@ describe("the Agent Skill (AX-06)", () => {
         const [path, anchor] = target.split("#") as [string, string | undefined];
         const resolved =
           path === "" ? join(SKILL, file) : resolve(dirname(join(SKILL, file)), path);
-        if (!resolved.startsWith(SKILL) || !existsSync(resolved)) {
+        const linked = targetText(resolved);
+        if (!resolved.startsWith(SKILL) || linked === undefined) {
           broken.push(`${file}: ${target}`);
           continue;
         }
-        if (anchor !== undefined && statSync(resolved).isFile()) {
-          if (!anchors(readFileSync(resolved, "utf8")).has(anchor))
-            broken.push(`${file}: ${target} (no such heading)`);
-        }
+        if (anchor !== undefined && linked !== null && !anchors(linked).has(anchor))
+          broken.push(`${file}: ${target} (no such heading)`);
       }
     }
     expect(broken).toEqual([]);
