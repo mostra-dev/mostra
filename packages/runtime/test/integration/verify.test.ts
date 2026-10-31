@@ -226,6 +226,56 @@ export const deploys = defineLive({
   );
 
   it(
+    "never waits on a live key nothing produces, nor on a stream's first value (WP-14's Opus review)",
+    async () => {
+      // `builds` is only ever pushed; `ticks` only streams, and yields nothing yet. Neither is
+      // loading, so verify doesn't wait out its server limit on the render and after every click.
+      const dir = artifact("live-not-awaited", {
+        "index.tsx": `import { useState } from "react";
+import { useLive } from "@mostra/react";
+export default function Page() {
+  const builds = useLive("builds");
+  const ticks = useLive("ticks");
+  const [count, setCount] = useState(0);
+  return <main><h1>Builds</h1>
+    <p>{builds.isLoading ? "Loading builds" : builds.data === undefined ? "No builds pushed yet" : "Builds"}</p>
+    <p>{ticks.isLoading ? "Loading ticks" : "Ticks: " + String(ticks.data ?? "none yet")}</p>
+    {[1, 2, 3, 4].map((n) => <button key={n} type="button" onClick={() => setCount(count + n)}>Add {n}</button>)}
+    <output>{count}</output></main>;
+}
+`,
+        // A pushed key is typed by the artifact's own declaration beside live.ts' (the Skill's
+        // long-lived reference shows it).
+        "pushed.d.ts": `import "@mostra/react";
+declare module "@mostra/react" {
+  interface LiveSources {
+    builds: { passing: number; failing: number };
+  }
+}
+`,
+        "live.ts": `import { defineLive } from "@mostra/server";
+export const ticks = defineLive({
+  stream: async function* (signal) {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  },
+});
+`,
+      });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      const aria = readFileSync(verdict.aria[0]?.path as string, "utf8");
+      expect(aria).toContain("No builds pushed yet");
+      expect(aria).not.toContain("Loading");
+      // Waiting on either source takes the server limit (10 s) on each viewport's render and 5 s
+      // after each of the four clicks: 29 s and 32 s on the code before (WP-14), 7 to 11 s and
+      // 3 s with it, on a loaded machine.
+      expect(verdict.timingsMs["render"]).toBeLessThan(20_000);
+      expect(verdict.timingsMs["smoke"]).toBeLessThan(15_000);
+    },
+    VERIFY_MS,
+  );
+
+  it(
     "doesn't call a canvas-only page blank",
     async () => {
       const verdict = await verify(

@@ -275,7 +275,12 @@ export function createLive(options: LiveOptions): Live {
     try {
       const handle = await pool.acquire(version);
       described.set(versionId, handle.started.live);
-      if (!handle.started.live.some((source) => source.key === key)) return;
+      const source = handle.started.live.find((info) => info.key === key);
+      if (!source) return;
+      // A page that read it before its worker said may be waiting for a first load that won't
+      // come: a source that only streams.
+      if (!source.load)
+        bus.publishLive(artifactId, { kind: "live", live: { key, awaiting: false } });
       // Known before it starts: its first value can arrive before the start's answer.
       running.set(id, { artifactId, key, versionId, handle });
       try {
@@ -379,6 +384,12 @@ export function createLive(options: LiveOptions): Live {
       key,
     );
     const failure = failures.get(keyOf(artifactId, key));
+    // Its first load is on its way when the latest version defines it and, once its worker said,
+    // has a `load` (a stream's first value may never come). A key only pushes write isn't.
+    const latest = options.latest(artifactId);
+    const producing =
+      latest?.sources.some((source) => source.key === key) === true &&
+      (described.get(latest.versionId)?.find((source) => source.key === key)?.load ?? true);
     const ring =
       window === undefined
         ? undefined
@@ -406,6 +417,7 @@ export function createLive(options: LiveOptions): Live {
         : {}),
       ...(ring ? { ring } : {}),
       ...(failure ? { error: failure } : {}),
+      ...(!row && !failure && producing ? { awaiting: true } : {}),
     };
   };
 

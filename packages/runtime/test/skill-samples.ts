@@ -6,6 +6,7 @@
  * - A block containing `defineArtifact(` is skipped: manifests are the examples' (they pass verify).
  * - A block whose first line is `// live.ts` is the artifact's `live.ts` (at most one).
  * - A block that starts with `"use server"` or `// actions.ts` joins `actions.ts`.
+ * - A block whose first line names a declaration file (`// pushed.d.ts`) is that file.
  * - Every other block is a module of components (`sample-<reference>-<n>.tsx`); a first line
  *   `// index.tsx` is dropped. The entry renders every top-level function it declares, with the
  *   props of `SAMPLE_PROPS`.
@@ -40,6 +41,11 @@ export function skillSampleArtifact(): Record<string, string> {
       const first = code.trimStart().split("\n")[0]?.trim() ?? "";
       if (first === "// live.ts") {
         live.push(code.replace(/^\s*\/\/ live\.ts\n/, ""));
+        continue;
+      }
+      const declaration = /^\/\/ ([\w-]+\.d\.ts)$/.exec(first);
+      if (declaration) {
+        files[declaration[1] as string] = code.replace(/^\s*\/\/ [\w-]+\.d\.ts\n/, "");
         continue;
       }
       if (first === '"use server";' || first === "// actions.ts") {

@@ -1655,6 +1655,7 @@ export interface LiveSourceInfo {
 // @public
 export interface LiveState {
     readonly at?: string;
+    readonly awaiting?: boolean;
     readonly error?: WireError;
     readonly key: string;
     readonly revision?: string;
@@ -1669,6 +1670,7 @@ export interface LiveState {
 // @public
 export interface LiveUpdate {
     readonly at?: string;
+    readonly awaiting?: boolean;
     readonly error?: WireError;
     readonly key: string;
     readonly revision?: string;

@@ -529,10 +529,39 @@ describe("live sources (D56)", () => {
     expect(server.liveRequests.at(-1)).toEqual([{ key: "inbox", refresh: true }]);
   });
 
-  it("stays loading, and pending for verify, until the first value or error arrives (WP-14)", async () => {
-    // A producer that hasn't produced yet: the read answers with no value. The page is still
-    // loading, and verify must keep waiting for it, or it screenshots an empty dashboard.
+  it("isn't loading a key nothing produces, nor one whose producer only streams (WP-14's Opus review)", async () => {
+    // A key only `mostra push` writes: no value yet, and none on its way. Verify mustn't wait for
+    // it on every render and every smoke interaction.
     const server = new FakeServer();
+    const page = client(server);
+    page.watchLive("builds");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("builds")).toMatchObject({ loading: false });
+    expect(page.pending()).toBe(0);
+
+    // Read before its worker said it only streams: awaiting, then told no first load is coming.
+    server.live.set("ticks", { key: "ticks", awaiting: true });
+    page.watchLive("ticks");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.pending()).toBe(1);
+    page.receive({ kind: "live", live: { key: "ticks", awaiting: false } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("ticks")).toMatchObject({ loading: false });
+    expect(page.pending()).toBe(0);
+    // Its first value still shows when it comes.
+    page.receive({
+      kind: "live",
+      live: { key: "ticks", revision: "1", value: await serializeAll(3, { mode: "argument" }) },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("ticks")).toMatchObject({ loading: false, data: 3 });
+  });
+
+  it("stays loading, and pending for verify, until the first value or error arrives (WP-14)", async () => {
+    // A producer whose first load is on its way (`awaiting`): the page is still loading, and
+    // verify must keep waiting for it, or it screenshots an empty dashboard.
+    const server = new FakeServer();
+    server.live.set("deploys", { key: "deploys", awaiting: true });
     const page = client(server);
     page.watchLive("deploys");
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -554,6 +583,7 @@ describe("live sources (D56)", () => {
     // A producer that failed before its first value isn't loading any more: it has an error.
     server.live.set("broken", {
       key: "broken",
+      awaiting: true,
       error: { code: "MOSTRA_LIVE_SOURCE_FAILED", message: "down" },
     });
     page.watchLive("broken");

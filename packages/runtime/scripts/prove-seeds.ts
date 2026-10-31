@@ -2973,6 +2973,22 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "AC-07",
+    name: "a page waits for a first value no producer will bring (WP-14's Opus review)",
+    file: "../react/src/runtime/server-client.ts",
+    from: "const settled = tracked.newest > 0 || state.error !== undefined || state.awaiting !== true;",
+    to: "const settled = tracked.newest > 0 || state.error !== undefined;",
+    check: integration("verify.test.ts", "nothing produces"),
+  },
+  {
+    requirement: "AC-07",
+    name: "the gateway says no first load is on its way",
+    file: "src/live/index.ts",
+    from: "      ...(!row && !failure && producing ? { awaiting: true } : {}),",
+    to: "",
+    check: integration("verify.test.ts", "first value, never the page"),
+  },
+  {
+    requirement: "AC-07",
     name: "a version carries Vite's hot-reload client",
     file: "src/builder/child/spa.ts",
     from: '    <script type="module" src="/${GENERATED}/entry.js"></script>',
