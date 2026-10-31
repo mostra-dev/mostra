@@ -1986,6 +1986,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "AX-06",
+    name: "a retried create rewrites the files for the retrying runtime's release",
+    file: "src/publish/publisher.ts",
+    from: "          version: scaffold.version,",
+    to: "          version: options.runtimeVersion,",
+    check: integration("publish-faults.test.ts", "release began"),
+  },
+  {
+    requirement: "AX-06",
     name: "mostra new writes no AGENTS.md for the next agent",
     file: "src/publish/publisher.ts",
     from: "      files: [...SCAFFOLD_PATHS],",
