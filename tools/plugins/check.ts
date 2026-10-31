@@ -3,7 +3,7 @@
  * WP-14). Each problem names the rule it breaks; an empty list is a plugin that loads in each
  * harness's documented layout and passes what the directories check first.
  */
-import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse as parseYaml } from "yaml";
@@ -27,11 +27,6 @@ export interface CheckInput {
   readonly root: string;
   /** The release's telemetry endpoint, which the README must name when there is one. */
   readonly telemetryEndpoint: string;
-}
-
-/** Every path below `dir`, relative to it, directories included; links listed, never followed. */
-function walk(dir: string): string[] {
-  return walkTree(dir).map((entry) => entry.path);
 }
 
 function readJson(
@@ -171,13 +166,16 @@ export function checkPlugin(
 
   // Real files only: no links, nothing a harness or a scan would skip or follow out; files
   // Anthropic's validator reads (its pre-submission checklist, VERIFIED_FACTS WP-14).
-  const paths = walk(dir).filter((path) => path !== ".git" && !path.startsWith(".git/"));
+  // Each file is read once, here; every later rule judges these bytes (no check-then-read).
+  const entries = walkTree(dir).filter(
+    (entry) => entry.path !== ".git" && !entry.path.startsWith(".git/"),
+  );
+  const paths = entries.map((entry) => entry.path);
+  const contents = new Map<string, Buffer>();
   const folded = new Map<string, string>();
-  let files = 0;
-  for (const path of paths) {
-    const stat = lstatSync(join(dir, path));
+  for (const { path, kind: entryKind } of entries) {
     const name = path.split("/").at(-1) as string;
-    if (stat.isSymbolicLink()) problems.push(`${path} is a link; every file must be a real copy`);
+    if (entryKind === "link") problems.push(`${path} is a link; every file must be a real copy`);
     if (/[:*?"<>|\\]/.test(path) || /[. ]$/.test(name) || WINDOWS_DEVICE.test(name))
       problems.push(`${path} has a name Windows or macOS refuses`);
     const other = folded.get(path.toLowerCase());
@@ -188,14 +186,17 @@ export function checkPlugin(
       problems.push(
         `${path} sets a package source, which Anthropic's scan blocks beside a launcher`,
       );
-    if (!stat.isFile()) continue;
-    files += 1;
+    if (entryKind !== "file") continue;
+    const bytes = readFileSync(join(dir, path));
+    contents.set(path, bytes);
     const kind = MEDIA.exec(name)?.[1]?.toLowerCase();
-    if (kind === undefined && !isText(readFileSync(join(dir, path))))
+    if (kind === undefined && !isText(bytes))
       problems.push(`${path} is a binary file other than an image or a font`);
-    if (kind === undefined && stat.size >= 256 * 1024) problems.push(`${path} is 256 KiB or more`);
-    if (stat.size >= 5 * 1024 * 1024) problems.push(`${path} is 5 MiB or more`);
+    if (kind === undefined && bytes.length >= 256 * 1024)
+      problems.push(`${path} is 256 KiB or more`);
+    if (bytes.length >= 5 * 1024 * 1024) problems.push(`${path} is 5 MiB or more`);
   }
+  const files = contents.size;
   if (files > 512) problems.push(`the plugin has ${files} files; Anthropic's validator reads 512`);
   if (existsSync(join(dir, "package.json")))
     problems.push("package.json at the root: a lockfile beside it installs packages on install");
@@ -266,12 +267,11 @@ export function checkPlugin(
 
   // No hooks anywhere a harness reads one (D147): no JSON file of the plugin outside its Skill
   // holds a `hooks` key, inline marketplace entries and server configurations included.
-  for (const path of paths) {
+  for (const [path, bytes] of contents) {
     if (!path.endsWith(".json") || path.startsWith("skills/")) continue;
-    if (!lstatSync(join(dir, path)).isFile()) continue;
     let value: unknown;
     try {
-      value = JSON.parse(readFileSync(join(dir, path), "utf8"));
+      value = JSON.parse(bytes.toString("utf8"));
     } catch {
       continue; // reported where the file is read as a manifest
     }
@@ -324,31 +324,32 @@ export function checkPlugin(
 
   // The Skill: an Agent Skill whose name is its directory, byte for byte the repository's.
   for (const skill of definition.skills) {
-    const copy = join(dir, "skills", skill);
     const source = join(input.root, "skills", skill);
-    if (!existsSync(join(copy, "SKILL.md"))) {
+    const main = contents.get(`skills/${skill}/SKILL.md`);
+    if (main === undefined) {
       problems.push(`skills/${skill}/SKILL.md is missing`);
       continue;
     }
-    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(
-      readFileSync(join(copy, "SKILL.md"), "utf8"),
-    );
+    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(main.toString("utf8"));
     const name = frontmatter
       ? (parseYaml(frontmatter[1] as string) as { name?: unknown }).name
       : undefined;
     if (name !== skill)
       problems.push(`skills/${skill}/SKILL.md names ${String(name)}, not ${skill}`);
-    const files = (root: string) =>
-      walk(root)
-        .filter((path) => statSync(join(root, path)).isFile())
-        .sort();
-    const expected = files(source);
-    const actual = files(copy);
+    // The copy's bytes are the ones read above; the source's are read once each.
+    const prefix = `skills/${skill}/`;
+    const actual = [...contents.keys()]
+      .filter((path) => path.startsWith(prefix))
+      .map((path) => path.slice(prefix.length))
+      .sort();
+    const expected = walkTree(source)
+      .filter((entry) => entry.kind === "file")
+      .map((entry) => entry.path);
     if (expected.join("\n") !== actual.join("\n"))
       problems.push(`skills/${skill} doesn't hold exactly the files of the repository's Skill`);
     for (const path of expected) {
-      if (!existsSync(join(copy, path))) continue;
-      if (!readFileSync(join(copy, path)).equals(readFileSync(join(source, path))))
+      const copied = contents.get(`${prefix}${path}`);
+      if (copied !== undefined && !copied.equals(readFileSync(join(source, path))))
         problems.push(`skills/${skill}/${path} differs from the repository's`);
     }
   }
@@ -360,10 +361,9 @@ export function checkPlugin(
   const prose = readme.replace(/```[\s\S]*?```/g, "");
   if (prose.split(/\s+/).filter(Boolean).length < 40)
     problems.push("README.md has under 40 words outside code blocks");
-  for (const path of paths) {
-    if (!/\.(md|json|ts|tsx|js|mjs|css|txt)$/.test(path) || !lstatSync(join(dir, path)).isFile())
-      continue;
-    const found = ENVIRONMENT_CREDENTIAL.exec(readFileSync(join(dir, path), "utf8"));
+  for (const [path, bytes] of contents) {
+    if (!/\.(md|json|ts|tsx|js|mjs|css|txt)$/.test(path)) continue;
+    const found = ENVIRONMENT_CREDENTIAL.exec(bytes.toString("utf8"));
     if (found)
       problems.push(`${path} reads ${found[0]} from the environment; Anthropic's scan holds that`);
   }
@@ -386,10 +386,9 @@ export function checkPlugin(
 
   // OpenAI's directory: no plans, upgrades or trials anywhere in the plugin (D147), its Skill and
   // its marketplaces included.
-  for (const path of paths) {
-    const file = join(dir, path);
-    if (!lstatSync(file).isFile() || MEDIA.test(path)) continue;
-    const found = COMMERCIAL.exec(readFileSync(file, "utf8"));
+  for (const [path, bytes] of contents) {
+    if (MEDIA.test(path)) continue;
+    const found = COMMERCIAL.exec(bytes.toString("utf8"));
     if (found)
       problems.push(`${path} says "${found[0]}"; the plugin shows no plans, upgrades or trials`);
   }
