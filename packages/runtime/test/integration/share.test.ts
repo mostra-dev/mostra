@@ -281,10 +281,14 @@ describe("shares (D158)", () => {
         ).shares;
         return all.find((one) => one.shareId === next.shareId)?.stopReason === "tunnel";
       });
-      const left = ok<{ processes: { kind: string }[] }>(
-        await gateway.client.call("instance/status", {}),
-      ).processes.filter((child) => child.kind === "tunnel-cloudflare");
-      expect(left).toEqual([]);
+      // The share's end (and its link's revocation) commits before its tunnels are stopped, so
+      // "stopped" can be read while the other tunnel is still exiting; no tunnel may remain after.
+      await eventually(async () => {
+        const left = ok<{ processes: { kind: string }[] }>(
+          await gateway.client.call("instance/status", {}),
+        ).processes.filter((child) => child.kind === "tunnel-cloudflare");
+        return left.length === 0;
+      });
     }, 60_000);
 
     it("ends at its lifetime", async () => {

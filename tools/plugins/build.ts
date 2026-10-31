@@ -141,6 +141,8 @@ export function buildPlugin(definition: PluginDefinition, input: BuildInput): Pl
       description: definition.description,
       author,
       homepage: definition.homepage,
+      documentationUrl: definition.documentationUrl,
+      supportUrl: definition.supportUrl,
       repository: definition.repository,
       license: definition.license,
       keywords: definition.keywords,

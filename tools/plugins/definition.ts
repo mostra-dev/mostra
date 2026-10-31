@@ -63,6 +63,9 @@ export interface PluginDefinition {
   readonly longDescription: string;
   readonly author: { readonly name: string; readonly url: string };
   readonly homepage: string;
+  /** Where people read how to use it, and where they report a problem (directory listings). */
+  readonly documentationUrl: string;
+  readonly supportUrl: string;
   /** The plugin's own repository (D147): the generated tree is its whole content. */
   readonly repository: string;
   /** `owner/name` of that repository, for install commands. */
@@ -93,6 +96,8 @@ export const PLUGIN: PluginDefinition = {
     "Mostra is the agent artifact runtime. Your agent writes an ordinary React page (questions, a choice between options, a plan to approve, a report, a dashboard), checks it in a headless browser, and publishes it on your machine behind a private link. People answer in the page; their answers are saved as they type and come back to the agent as results.",
   author: { name: "Mostra", url: "https://github.com/mostra-dev" },
   homepage: "https://github.com/mostra-dev/mostra",
+  documentationUrl: "https://github.com/mostra-dev/mostra/blob/main/skills/mostra/SKILL.md",
+  supportUrl: "https://github.com/mostra-dev/mostra/issues",
   repository: "https://github.com/mostra-dev/mostra-plugin",
   repositorySlug: "mostra-dev/mostra-plugin",
   license: "Apache-2.0",
