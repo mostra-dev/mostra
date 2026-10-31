@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apply, bumped, crateProblems, next, pendingBump, rehearsal } from "../release/versions.ts";
+import {
+  apply,
+  bumped,
+  crateProblems,
+  next,
+  pendingBump,
+  rehearsal,
+  skillPinProblems,
+} from "../release/versions.ts";
 
 /** A tiny workspace: the group, a non-member, the host crate and changesets. */
 function workspace(changesets: Record<string, string>): string {
@@ -87,5 +95,32 @@ describe("release versions (D143)", () => {
       '[package]\nname = "mostra-host"\nversion = "0.0.9"\n',
     );
     expect(crateProblems(root)[0]).toContain("mostra-host is at 0.0.9");
+  });
+
+  it("keeps the Skill's CLI pins at the group's version, and sync moves them (WP-14)", () => {
+    const root = workspace({});
+    mkdirSync(join(root, "skills", "mostra", "references"), { recursive: true });
+    const skill = join(root, "skills", "mostra", "SKILL.md");
+    const reference = join(root, "skills", "mostra", "references", "page.md");
+    writeFileSync(
+      skill,
+      '---\nname: mostra\nmetadata:\n  version: "0.1.0"\n---\n\nRun `npx -y @mostra/cli@0.1.0 verify`.\n',
+    );
+    writeFileSync(reference, "No pin here, then `npx -y @mostra/cli@0.1.0 publish`.\n");
+    expect(skillPinProblems(root)).toEqual([]);
+    // A pin left behind is found, in the frontmatter and in the text.
+    writeFileSync(reference, "Then `npx -y @mostra/cli@0.0.9 publish`.\n");
+    expect(skillPinProblems(root)).toEqual([
+      expect.stringContaining("references/page.md runs @mostra/cli@0.0.9"),
+    ]);
+    apply("0.2.0", root);
+    expect(readFileSync(skill, "utf8")).toContain('  version: "0.2.0"');
+    expect(readFileSync(skill, "utf8")).toContain("@mostra/cli@0.2.0 verify");
+    expect(readFileSync(reference, "utf8")).toContain("@mostra/cli@0.2.0 publish");
+    expect(skillPinProblems(root)).toEqual([]);
+    // A Skill that pins nothing gives an agent without mostra no way to run it.
+    writeFileSync(skill, '---\nname: mostra\nmetadata:\n  version: "0.2.0"\n---\n');
+    writeFileSync(reference, "Nothing.\n");
+    expect(skillPinProblems(root)).toEqual([expect.stringContaining("pins no @mostra/cli")]);
   });
 });

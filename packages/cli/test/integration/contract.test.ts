@@ -12,6 +12,7 @@ import {
   fstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -34,6 +35,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
+import { parsesAsShown, shownCommands } from "../commands.ts";
 import {
   asOtherUser,
   BIN,
@@ -102,6 +104,13 @@ afterAll(async () => {
   await home.cleanup();
 });
 
+/** The release this CLI is: the version `mostra new`'s AGENTS.md pins. */
+const CLI_VERSION = (
+  JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
+
 describe("every command, with --json and no terminal", () => {
   it("new, verify, publish and open make an artifact a viewer can open (J1)", async () => {
     const created = await run(["new", artifactDir, "--title", "Sidebar review"], {
@@ -110,6 +119,14 @@ describe("every command, with --json and no terminal", () => {
     });
     const parsed = artifactCreateMethod.result.parse(created.result);
     artifactId = parsed.artifactId;
+    // The AGENTS.md it scaffolds (AX-06, WP-14) shows only commands that exist, as it shows them,
+    // and pins the CLI of this release.
+    expect(parsed.files).toEqual(["index.tsx", "AGENTS.md", "CLAUDE.md"]);
+    const agents = readFileSync(join(artifactDir, "AGENTS.md"), "utf8");
+    const shownByAgents = shownCommands(agents);
+    expect(shownByAgents.length).toBeGreaterThan(4);
+    expect(shownByAgents.filter((command) => !parsesAsShown(command))).toEqual([]);
+    expect(agents).toContain(`@mostra/cli@${CLI_VERSION}`);
     // verify needs the Chromium headless shell `playwright-core` pins (runtime's AGENTS.md).
     const verified = await run(["verify", artifactDir], { code: 0, ok: true });
     expect(VerifyVerdict.parse(verified.result).status).toBe("pass");
@@ -370,6 +387,21 @@ describe("every command, with --json and no terminal", () => {
     const page = await run(["docs", "MOSTRA_DEP_MISSING"], { code: 0, ok: true });
     expect((page.result as { url: string }).url).toMatch(/\/errors\/MOSTRA_DEP_MISSING$/);
     await run(["docs", "MOSTRA_NOPE_NOPE"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
+    // The Agent Skill ships in the build as the guide (WP-14): every reference, asset and example.
+    const topics = (index.result as { topics: { topic: string }[] }).topics.map((t) => t.topic);
+    const skill = fileURLToPath(new URL("../../../../skills/mostra/", import.meta.url));
+    for (const name of readdirSync(join(skill, "references")))
+      expect(topics).toContain(`guide/${name.replace(/\.md$/, "")}`);
+    for (const name of readdirSync(join(skill, "assets", "examples")))
+      expect(topics).toContain(`guide/examples/${name}`);
+    const guide = await run(["docs", "guide"], { code: 0, ok: true });
+    const guideText = (guide.result as { markdown: string }).markdown;
+    expect(guideText).not.toMatch(/^---/m);
+    expect(guideText).toContain("mostra docs guide/<name>");
+    const example = await run(["docs", "guide/examples/inbox"], { code: 0, ok: true });
+    expect((example.result as { markdown: string }).markdown).toContain(
+      readFileSync(join(skill, "assets", "examples", "inbox", "actions.ts"), "utf8"),
+    );
   });
 
   it("telemetry status, on and off answer without an instance", async () => {

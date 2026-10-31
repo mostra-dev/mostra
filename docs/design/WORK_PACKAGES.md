@@ -14,7 +14,7 @@
   - starts from the accepted predecessor;
   - keeps `pnpm check` green;
   - extends the diagnostic catalog, docs pages, playbooks and `AGENTS.md` files for what it adds;
-  - updates the Skill's reference files when it adds author-facing API (the prose is reviewed with Mirza);
+  - updates the Skill's reference files when it adds author-facing API or an author command (the prose is reviewed with Mirza); the Skill's checks (`packages/cli/test/unit/skill.test.ts`, D162) fail on an export of `@mostra/react` or `@mostra/server`, or a command, that no reference documents, and on a `mostra …` a reference shows that doesn't parse;
   - closes with evidence for its owned requirements, then Mirza's acceptance and publication (D36).
 - **Release points.** Packages publish as they're accepted. **C03-B can begin after WP-14**: protocol, Rust crate, interaction core, shell trusted controls, results, events, outbox, identity, tailnet sharing, CLI and Skill are all in place. Later packages add features additively, so Jcode moves to newer minor releases without changes (D01, D32). The phase closeout follows WP-27; the packages after the first release follow it.
 

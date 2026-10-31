@@ -47,6 +47,13 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   behind a gate: on POSIX a `/bin/sh` that `exec`s the command after the supervisor wrote its
   `child` row; on Windows `mostra-win gate`, which creates the command suspended in its Job
   Object, reports its PID and creation time, and resumes it on "go".
+- **A new artifact gets its instructions with it (AX-06, D162).** `artifact/create` writes the
+  files of `publish/scaffold.ts`: the entry with its generated `id`, an `AGENTS.md` with the loop
+  pinned to this runtime's release, and a `CLAUDE.md` that imports it. Its result and each file's
+  exact text are recorded before any file is written, and a retried request (by this runtime or a
+  newer one) completes each file that is missing or cut short, comparing bytes, and leaves one the
+  author changed alone. The text is agent-facing prose (D74); the CLI's contract
+  test checks that every command it shows parses.
 - **Versions are immutable and appear atomically (VR-01, VR-02).** A version directory is built in
   `cache/staging`, sealed read-only, renamed into `versions/`, and becomes visible only when its
   ledger row commits; a failed publish removes what it placed, and the next start removes anything

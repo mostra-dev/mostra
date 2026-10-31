@@ -4,7 +4,7 @@
  * files, except `doctor`, which reads what it needs to explain why an instance can't start.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   artifactGetMethod,
@@ -23,7 +23,7 @@ import {
 } from "@mostra/protocol";
 import { checkBrowser, checkFiles, enclosingBundle, readBundle, readSetup } from "@mostra/sdk";
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
-import { docsIndex, indexMarkdown, nearestTopics } from "../docs.ts";
+import { docsIndex, indexMarkdown, nearestTopics, topicMarkdown } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
 import { embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
 import { usage } from "../parse.ts";
@@ -670,7 +670,8 @@ async function alwaysOnCheck(context: CommandContext): Promise<DoctorCheck> {
 /** `mostra docs [topic]`. */
 export const docsCommand: CommandDef = defineCommand({
   path: ["docs"],
-  summary: "Print Mostra's reference: the CLI, telemetry, and every diagnostic code's page.",
+  summary:
+    "Print Mostra's reference: the guide to writing artifacts, the CLI, telemetry, and every diagnostic code's page.",
   args: [
     { name: "topic", summary: "A topic or a diagnostic code. Default: the index.", optional: true },
   ],
@@ -702,7 +703,7 @@ export const docsCommand: CommandDef = defineCommand({
         `No topic "${wanted}". The nearest: ${nearestTopics(wanted, topics).join(", ")}. Run "mostra docs" for the index.`,
       );
     }
-    const markdown = readFileSync(found.file, "utf8");
+    const markdown = topicMarkdown(found);
     return { result: { topic: found.topic, markdown, url: found.url }, human: markdown };
   },
 });

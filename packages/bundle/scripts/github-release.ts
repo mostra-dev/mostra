@@ -12,14 +12,17 @@
  *   node packages/bundle/scripts/github-release.ts publish --assets <dir> --notes <file> --target <sha>
  *   node packages/bundle/scripts/github-release.ts verify --assets <dir>
  *
- * - `state` prints `version=`, `mode=` and `publish=` lines for `$GITHUB_OUTPUT`. The mode is
+ * - `state` prints `version=`, `mode=`, `publish=` and `plugin=` lines for `$GITHUB_OUTPUT`. The mode is
  *   `none` (a pull request, the unreleased 0.0.0, changesets pending, or released in full),
  *   `fresh` (no published release and nothing on npm: build, release, publish) or `finish` (the
  *   release is published and npm lacks part of the version: its assets, not a new build). A
  *   version on npm with no published release can't happen in this order and fails closed. Under
  *   `finish` the workflow packs from the release's own tag, so every package npm still lacks is
  *   packed from the very source the published ones were (pnpm's tarballs are reproducible: fixed
- *   times, no owners), and those already on npm compare equal.
+ *   times, no owners), and those already on npm compare equal. `plugin` is true when the version
+ *   is due or released in full and the harness plugin's repository (`--plugin-repo`) has no tag
+ *   for it yet, so a plugin publication that failed after npm finished is finished by the next
+ *   run too, whatever npm holds (D162; WP-14's GPT review).
  * - `fetch` downloads one platform's archive and asset record from the published release and
  *   checks the archive against both.
  * - `publish` makes the release: a draft (created at `--target` if missing) whose assets are made
@@ -32,7 +35,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -48,6 +51,7 @@ const { values, positionals } = parseArgs({
     assets: { type: "string" },
     notes: { type: "string" },
     target: { type: "string" },
+    "plugin-repo": { type: "string" },
   },
   allowPositionals: true,
   strict: true,
@@ -140,15 +144,50 @@ function assetProblems(published: Release, local: Map<string, string>): string[]
   return problems;
 }
 
+const RELEASED = "released in full";
+
+/** Whether the harness plugin's repository has this version's tag (anonymous, public). */
+function pluginTagged(): boolean {
+  const repo = values["plugin-repo"];
+  if (!repo) fail("--plugin-repo is required.");
+  return (
+    run("git", ["ls-remote", "--exit-code", "--tags", repo, `refs/tags/${tag}`], true) !== undefined
+  );
+}
+
+/**
+ * Whether this version's source has the plugin generator: the checkout's for a version about to
+ * be released, its tag's for one already released (fetched, shallow, without its tags).
+ */
+function hasGenerator(fresh: boolean): boolean {
+  const generator = "tools/plugins/cli.ts";
+  if (fresh) return existsSync(join(ROOT, generator));
+  run("git", ["fetch", "--quiet", "--no-tags", "--depth", "1", "origin", `refs/tags/${tag}`]);
+  return run("git", ["cat-file", "-e", `FETCH_HEAD:${generator}`], true) !== undefined;
+}
+
 function state(): void {
   const pending = readdirSync(join(ROOT, ".changeset")).filter(
     (name) => name.endsWith(".md") && name !== "README.md",
   ).length;
   const lines = (mode: string, why: string): void => {
+    // The plugin follows a version that is published or about to be, never one that isn't due,
+    // and only one whose source has the generator (0.7.0 and older have none: the Opus review's
+    // finding 7, which saw every push to main start the release environment for nothing).
+    const due = mode !== "none" || why === RELEASED;
+    const pluginState = !due
+      ? "not due"
+      : pluginTagged()
+        ? "published"
+        : hasGenerator(mode === "fresh")
+          ? "to publish"
+          : "none in this version's source";
+    const plugin = pluginState === "to publish";
     console.log(`version=${version}`);
     console.log(`mode=${mode}`);
     console.log(`publish=${mode === "none" ? "false" : "true"}`);
-    console.error(`release state of ${version}: ${mode} (${why})`);
+    console.log(`plugin=${plugin ? "true" : "false"}`);
+    console.error(`release state of ${version}: ${mode} (${why}); plugin: ${pluginState}`);
   };
   const mode = ((): [string, string] => {
     if (values.event !== "push" || values.ref !== "refs/heads/main")
@@ -157,7 +196,7 @@ function state(): void {
     if (pending > 0) return ["none", `${pending} changesets pending`];
     const published = tagged();
     const have = onNpm();
-    if (published && have.length === group.length) return ["none", "released in full"];
+    if (published && have.length === group.length) return ["none", RELEASED];
     if (published)
       return ["finish", `npm lacks ${group.filter((name) => !have.includes(name)).join(", ")}`];
     if (have.length > 0)

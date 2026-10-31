@@ -625,9 +625,13 @@ export class ServerClient {
         ...(state.at !== undefined ? { at: state.at } : {}),
       };
     }
+    // A source whose producer's first load is on its way says so (`awaiting`): it is still
+    // loading, and stays pending for verify, until an update brings its value or its failure. A
+    // key nothing produces, or one that only streams, isn't loading (WP-14, its Opus review).
+    const settled = tracked.newest > 0 || state.error !== undefined || state.awaiting !== true;
     tracked.view = {
       ...tracked.view,
-      loading: false,
+      loading: !settled,
       ...(state.error ? { error: state.error } : {}),
     };
     if (!state.error && tracked.view.error) {
@@ -638,6 +642,13 @@ export class ServerClient {
   }
 
   async #applyLiveUpdateNow(tracked: TrackedLive, update: LiveUpdate): Promise<void> {
+    if (update.awaiting === false && !update.value && !update.error) {
+      if (tracked.newest === 0 && tracked.view.loading) {
+        tracked.view = { ...tracked.view, loading: false };
+        this.#changed();
+      }
+      return;
+    }
     if (update.error && !update.value) {
       tracked.view = { ...tracked.view, loading: false, error: update.error };
       this.#changed();

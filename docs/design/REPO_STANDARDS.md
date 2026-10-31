@@ -23,12 +23,14 @@ mostra/
   packages/           npm packages (§3)
   crates/             mostra-host, its codegen and reference host (D143), mostra-term-capture
   plugins/            first-party plugins (each an npm package)
-  skills/mostra/      the Agent Skill (single source for harness plugins)
+  skills/mostra/      the Agent Skill (single source for harness plugins and `mostra docs guide`)
   templates/          `mostra new` templates, one per family
   examples/           gallery artifacts; every one passes `mostra verify` in CI
   apps/docs/          the documentation site, built with Mostra
   tests/              cross-package end-to-end, conformance runs, hygiene negative tests, fixtures
-  tools/              repo tooling: generators, license audit, harness-plugin generator, release scripts
+  tools/              repo tooling: generators, license audit, harness-plugin generator (tools/plugins/,
+                      which builds the plugin's own repository, mostra-dev/mostra-plugin, D162),
+                      release scripts
   ee/                 enterprise features of self-hosted servers, source-available under a commercial
                       license (D118); created by the first package that needs it, never imported by the core
 ```
@@ -103,7 +105,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 
 | Job | Runs when | Notes |
 |---|---|---|
-| static | always | format-lint (Biome, ESLint for hooks, repository lint, `cargo fmt`, clippy), types (`tsc -b`), build (tsdown, Vite, size budgets), boundaries (dependency-cruiser, knip, the host-neutral audit and the seed anchors: every seeded violation of `prove-seeds.ts` still finds what it plants into), api (API Extractor diff, publint, attw, wire-schema compatibility; a changed report needs a changeset), licenses (when the lockfile or a manifest changed), docs (generated references, the evidence matrix, WP specifications, links) and commits (Conventional Commits with DCO; not in the merge queue, whose merge commits GitHub writes), each as the change needs it, on one machine sharing one Turborepo run |
+| static | always | format-lint (Biome, ESLint for hooks, repository lint, `cargo fmt`, clippy), types (`tsc -b`), build (tsdown, Vite, size budgets), boundaries (dependency-cruiser, knip, the host-neutral audit and the seed anchors: every seeded violation of `prove-seeds.ts` still finds what it plants into), api (API Extractor diff, publint, attw, wire-schema compatibility; a changed report needs a changeset), licenses (when the lockfile or a manifest changed), docs (generated references, the harness plugins built from `skills/` and checked against every harness's rules, the evidence matrix, WP specifications, links) and commits (Conventional Commits with DCO; not in the merge queue, whose merge commits GitHub writes), each as the change needs it, on one machine sharing one Turborepo run |
 | unit | affected | Vitest |
 | windows | when unit, integration or hygiene runs | the unit, hygiene and integration jobs on `windows-latest` and, in the merge queue and full runs, `windows-11-arm`, for the packages that run on Windows (`WINDOWS_PACKAGES` in `tools/check/jobs.ts`, every package with suites since WP-W3), with the helper built by Cargo and a second local user for the access checks (WP-W1, D150). The integration suites run in Windows groups of their own, one machine each, which partition every runtime suite (`windows`, `windows-publish`, `windows-gateway` with the firewall on and audited, `windows-workers`, `windows-verify`, `windows-verify-failures`) plus the clients' (`windows-clients`: the CLI's, the SDK's, `create-mostra`'s and the TypeScript reference host's, D153); a unit test fails on a suite in none or two (WP-W2, D151). From WP-W3 on every package keeps these legs green |
 | windows-seeds (`windows-seeds.yml`) | by hand (`workflow_dispatch`) | a requirement's seeded violations (`prove-seeds.ts --only`) on a Windows runner, x64 or arm64, for the seeds only Windows can run (WP-W1) |
@@ -154,6 +156,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
   - a GitHub artifact attestation per bundle, and the GitHub release (tag `v` plus the version, immutable) with the bundles, their asset records and `SHA256SUMS`, checked from outside before anything goes to npm;
   - npm with trusted publishing, direct, provenance, tokens disallowed per package, from exactly the tarballs the smoke tests used;
   - crates.io with `rust-lang/crates-io-auth-action`, once a crate is publishable (WP-12);
+  - the harness plugin, built from the release's tag and pushed to its own repository `mostra-dev/mostra-plugin` as a commit tagged `v<version>`, with a deploy key that writes only there (D162);
   - the docs site, once it exists (WP-26).
 
   Pull requests and the merge queue rehearse all of it but the publish (§6, `release-build.yml`), so a version pull request merges only after its own rehearsal passed. A release that failed after it was published is finished by the next run (re-run or push), from the release's own tag and archives, never a new build (`docs/agents/release.md`, D142 item 9).

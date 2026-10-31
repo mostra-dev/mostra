@@ -3,7 +3,7 @@
 Mostra is the agent artifact runtime: agents write ordinary React, Mostra turns it into stateful,
 interactive web artifacts that people view, answer and act on, and the answers flow back to the
 agent through any host. This file is for agents working **on this repository**. Agents writing
-artifacts use the Skill (`skills/mostra/`, from WP-14).
+artifacts use the Agent Skill in [skills/mostra/](skills/mostra/SKILL.md) (`mostra docs guide`).
 
 ## The dossier is the contract
 
@@ -37,6 +37,17 @@ time you do something by hand, turn it into a generator or a playbook.
 The package map is [REPO_STANDARDS §3](docs/design/REPO_STANDARDS.md#3-packages), and
 `tools/package-map.ts` encodes it: dependency-cruiser fails any import the map doesn't allow. Each
 package's `AGENTS.md` names the invariants it owns, its public interface and its tests.
+
+## The Skill and the harness plugin
+
+`skills/mostra/` is the one source of what artifact authors are told: the Skill, its references,
+the baseline stylesheet and the example artifacts. The CLI ships it as `mostra docs guide`, and
+`tools/plugins/` builds the harness plugin's own repository from it (`mostra-dev/mostra-plugin`,
+published by each release, D162). When you add author-facing API or a command, add it to a
+reference in the same change: `packages/cli/test/unit/skill.test.ts` fails on an export or command
+no reference shows, and on a `mostra …` a reference shows that doesn't parse. The examples pass
+`verify` in CI. A feature the plugin carries later (its MCP servers) is a flag in
+`tools/plugins/definition.ts` that its package turns on.
 
 ## Invariants and their owners
 
