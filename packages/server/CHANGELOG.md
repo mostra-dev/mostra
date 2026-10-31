@@ -1,5 +1,12 @@
 # @mostra/server
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`895e62a`](https://github.com/mostra-dev/mostra/commit/895e62aa1a6bcd275173ab2285953a3e56a377e7)]:
+  - @mostra/protocol@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes
