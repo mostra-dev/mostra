@@ -491,6 +491,20 @@ describe("the plan's owners of a changed file", () => {
       "@mostra/runtime",
     ]);
     expect(directOwners(packages, "skills/mostra-other/SKILL.md")).toEqual([]);
+    // The Skill's checks read the author API, so a change to it runs them (WP-14's GPT review).
+    expect(directOwners(packages, "packages/react/etc/react.api.md")).toEqual([
+      "@mostra/react",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/server/etc/server.api.md")).toEqual([
+      "@mostra/server",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/react/src/form.ts")).toEqual([
+      "@mostra/react",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/react/src/store.ts")).toEqual(["@mostra/react"]);
   });
 });
 

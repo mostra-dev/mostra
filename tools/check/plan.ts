@@ -52,6 +52,11 @@ const RUN_BY: readonly { readonly dir: string; readonly pkg: string }[] = [
   { dir: "crates/mostra-win", pkg: "@mostra/runtime" },
   { dir: "docs/reference", pkg: "@mostra/cli" },
   { dir: "skills/mostra", pkg: "@mostra/cli" },
+  // The Skill's checks in the CLI read the author API: every export of these must be documented.
+  { dir: "packages/react/etc/react.api.md", pkg: "@mostra/cli" },
+  { dir: "packages/server/etc/server.api.md", pkg: "@mostra/cli" },
+  { dir: "packages/react/src/form.ts", pkg: "@mostra/cli" },
+  { dir: "packages/react/src/router.ts", pkg: "@mostra/cli" },
   // The Skill's examples and its references' code samples pass verify in the runtime's
   // integration suite.
   { dir: "skills/mostra/assets/examples", pkg: "@mostra/runtime" },

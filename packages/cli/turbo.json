@@ -13,7 +13,11 @@
       "inputs": [
         "$TURBO_EXTENDS$",
         "$TURBO_ROOT$/docs/reference/**",
-        "$TURBO_ROOT$/skills/mostra/**"
+        "$TURBO_ROOT$/skills/mostra/**",
+        "$TURBO_ROOT$/packages/react/etc/react.api.md",
+        "$TURBO_ROOT$/packages/server/etc/server.api.md",
+        "$TURBO_ROOT$/packages/react/src/form.ts",
+        "$TURBO_ROOT$/packages/react/src/router.ts"
       ]
     },
     "test:integration": {
