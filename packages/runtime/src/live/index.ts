@@ -278,8 +278,9 @@ export function createLive(options: LiveOptions): Live {
       const source = handle.started.live.find((info) => info.key === key);
       if (!source) return;
       // A page that read it before its worker said may be waiting for a first load that won't
-      // come: a source that only streams.
-      if (!source.load)
+      // come: a source that only streams. (A worker that doesn't say counts as loading, as
+      // `stateOf` reads it.)
+      if (source.load === false)
         bus.publishLive(artifactId, { kind: "live", live: { key, awaiting: false } });
       // Known before it starts: its first value can arrive before the start's answer.
       running.set(id, { artifactId, key, versionId, handle });
