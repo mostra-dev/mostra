@@ -14,6 +14,7 @@ import {
   instanceStatusMethod,
   mostraShutdownMethod,
   RpcError,
+  type Share,
   type WorkerStatus,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "./server.ts";
@@ -37,6 +38,8 @@ export interface SessionMethodsOptions {
   workers?(): readonly WorkerStatus[];
   /** When an idle daemon exits (WP-08); `undefined` while busy or for an instance that never does. */
   idleExitAt?(): string | undefined;
+  /** The active shares (WP-13, D158). */
+  shares?(): readonly Share[];
   /**
    * The supervisor's own checks of its home (`instance/check`, D140 item 18), in order; `deep`
    * also hashes every version against its output digest.
@@ -62,6 +65,7 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         ...(gateway ? { gateway } : {}),
         ...(options.deliveries ? { deliveries: [...options.deliveries()] } : {}),
         ...(options.workers ? { workers: [...options.workers()] } : {}),
+        ...(options.shares ? { shares: [...options.shares()] } : {}),
         ...(() => {
           const at = options.idleExitAt?.();
           return at === undefined ? {} : { idleExitAt: at };

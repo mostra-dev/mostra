@@ -1,5 +1,30 @@
 # @mostra/cli
 
+## 0.8.0
+
+### Minor Changes
+
+- [#108](https://github.com/mostra-dev/mostra/pull/108) [`404bd3d`](https://github.com/mostra-dev/mostra/commit/404bd3d2461368d77115e2bd285e04f221de6add) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra docs guide` prints the guide to writing artifacts, the same text as the Agent Skill: `guide/<name>` for each of its references, `guide/studio.css` for the baseline stylesheet and `guide/examples/<name>` for each example, so an agent whose harness has no Skill reads it through the CLI.
+
+### Patch Changes
+
+- Updated dependencies [[`895e62a`](https://github.com/mostra-dev/mostra/commit/895e62aa1a6bcd275173ab2285953a3e56a377e7)]:
+  - @mostra/protocol@0.8.0
+  - @mostra/sdk@0.8.0
+
+## 0.7.0
+
+### Minor Changes
+
+- [#100](https://github.com/mostra-dev/mostra/pull/100) [`7b65b43`](https://github.com/mostra-dev/mostra/commit/7b65b43fefc04527229abcb77fb04385a4a2b02a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Sharing (D158). `mostra share <artifact> --tailnet` opens an artifact to the people of your tailnet through Tailscale Serve, each known by their tailnet identity; `mostra share <artifact> --public` opens it to anyone holding the link through a Cloudflare quick tunnel (or Tailscale Funnel with `--via funnel`), for 1 hour by default and 7 days at most. `mostra share stop` and `mostra share list` end and list shares; the host protocol has `share/start`, `share/stop` and `share/list`, and `instance/status` reports active shares, which keep a daemon running. Each tunnel address is a gateway face of its own on loopback, so a request is judged by the socket it came through, never by its `Host`. Frames on another site than their shell (a Cloudflare share, a host's external bases) enter in worker mode: a bootstrap page, Mostra's service worker, and single-use tickets for event streams, long polls and WebSockets; where a tunnel holds streams back, pages long-poll. Hosts get the `addressing` port (`port/addressing.externalBase`, HO-10) in the SDK, the Rust crate and the conformance kit, whose new `ports.addressing` scenario, and the shares in `ports.identity`, run through local stand-ins for `tailscale` and `cloudflared`.
+
+### Patch Changes
+
+- [#100](https://github.com/mostra-dev/mostra/pull/100) [`7b65b43`](https://github.com/mostra-dev/mostra/commit/7b65b43fefc04527229abcb77fb04385a4a2b02a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Telemetry's lock is taken from a crashed process only under a break lock of its own, so a slow breaker can no longer move a live owner's lock aside and bring it back after its owner released it, which held other commands' telemetry up for 10 s ([#98](https://github.com/mostra-dev/mostra/issues/98)).
+- Updated dependencies [[`7b65b43`](https://github.com/mostra-dev/mostra/commit/7b65b43fefc04527229abcb77fb04385a4a2b02a)]:
+  - @mostra/protocol@0.7.0
+  - @mostra/sdk@0.7.0
+
 ## 0.6.2
 
 ### Patch Changes

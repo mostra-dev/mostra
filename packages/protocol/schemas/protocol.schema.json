@@ -185,6 +185,16 @@
         "$ref": "#/$defs/MostraShutdownResult"
       }
     },
+    "port/addressing.externalBase": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortAddressingExternalBaseParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortAddressingExternalBaseResult"
+      }
+    },
     "port/drafts.mirror": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -279,6 +289,36 @@
       },
       "result": {
         "$ref": "#/$defs/SecretEntry"
+      }
+    },
+    "share/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ShareListParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ShareListResult"
+      }
+    },
+    "share/start": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ShareStartParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ShareStartResult"
+      }
+    },
+    "share/stop": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ShareStopParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ShareStopResult"
       }
     },
     "state/get": {
@@ -2005,6 +2045,38 @@
       "pattern": "^[1-9][0-9]{0,8}[smhd]$",
       "description": "A duration: a positive whole number and s, m, h or d, such as 30m, 24h or 7d."
     },
+    "EnterRequest": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "ticket"
+      ],
+      "description": "A frame ticket to exchange."
+    },
+    "EnterResult": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shellOrigin": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "session",
+        "shellOrigin"
+      ],
+      "description": "A worker-mode frame session's secret and the shell's origin."
+    },
     "EventFilter": {
       "type": "object",
       "properties": {
@@ -2239,6 +2311,25 @@
       "type": "object",
       "properties": {}
     },
+    "ExternalBase": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "$ref": "#/$defs/OriginString"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cookie",
+            "worker"
+          ]
+        }
+      },
+      "required": [
+        "origin"
+      ],
+      "description": "The origin browsers use for a listener, and how its frame authenticates there."
+    },
     "FieldConflict": {
       "type": "object",
       "properties": {
@@ -2379,6 +2470,52 @@
       ],
       "description": "Whether the viewer follows the artifact's new versions."
     },
+    "FrameSessionFacts": {
+      "type": "object",
+      "properties": {
+        "csrf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "shellOrigin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "viewer": {
+          "$ref": "#/$defs/Viewer"
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRef"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cookie",
+            "worker"
+          ]
+        },
+        "streams": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "csrf",
+        "artifactId",
+        "shellOrigin",
+        "scopes"
+      ],
+      "description": "A frame session's CSRF token, shell origin, scopes, viewer, version and mode."
+    },
     "FrameTicket": {
       "type": "object",
       "properties": {
@@ -2444,6 +2581,10 @@
         "devPreview": {
           "type": "boolean",
           "const": true
+        },
+        "mode": {
+          "type": "string",
+          "const": "worker"
         }
       },
       "required": [
@@ -2487,6 +2628,40 @@
             "required": [
               "artifactId",
               "origin"
+            ]
+          }
+        },
+        "faces": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "origin": {
+                "type": "string"
+              },
+              "local": {
+                "type": "string"
+              },
+              "listener": {
+                "type": "string",
+                "enum": [
+                  "shell",
+                  "artifact"
+                ]
+              },
+              "artifactId": {
+                "type": "string"
+              },
+              "by": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "origin",
+              "local",
+              "listener",
+              "by"
             ]
           }
         }
@@ -2883,6 +3058,13 @@
         },
         "idleExitAt": {
           "type": "string"
+        },
+        "shares": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Share"
+          }
         }
       },
       "required": [
@@ -3214,6 +3396,12 @@
       ],
       "description": "A mutation's outcome: the revision after it, the applied field IDs, the conflicts."
     },
+    "OriginString": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^(?!http:\\/\\/[^/]*:80$)(?!https:\\/\\/[^/]*:443$)https?:\\/\\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|\\[[0-9a-f:.]+\\])(?::(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$",
+      "description": "A web origin: scheme, host and a port only when it isn't the default."
+    },
     "OrphanedField": {
       "type": "object",
       "properties": {
@@ -3270,6 +3458,42 @@
         "events"
       ],
       "description": "A long-poll answer: the cursor, the events after the asked one, and a snapshot."
+    },
+    "PortAddressingExternalBaseParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "listener": {
+          "type": "string",
+          "enum": [
+            "shell",
+            "artifact"
+          ]
+        },
+        "local": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifactId",
+        "listener",
+        "local"
+      ],
+      "description": "Which listener of which artifact needs an external address, and where it listens."
+    },
+    "PortAddressingExternalBaseResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExternalBase"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The external origin a host gives a listener, or null for loopback."
     },
     "PortIdentityResolveParams": {
       "type": "object",
@@ -4359,6 +4583,258 @@
       "pattern": "^[0-9a-f]{64}$",
       "description": "A SHA-256 digest in lowercase hex."
     },
+    "Share": {
+      "type": "object",
+      "properties": {
+        "shareId": {
+          "$ref": "#/$defs/ShareId"
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "via": {
+          "$ref": "#/$defs/ShareVia"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hostname": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactOrigin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cookie",
+            "worker"
+          ]
+        },
+        "tokenId": {
+          "$ref": "#/$defs/TokenId"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "stopped"
+          ]
+        },
+        "stoppedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "stopReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "shareId",
+        "artifactId",
+        "via",
+        "hostname",
+        "mode",
+        "tokenId",
+        "startedAt",
+        "state"
+      ],
+      "description": "A share: its tunnel, link, address, frame mode and lifetime."
+    },
+    "ShareId": {
+      "type": "string",
+      "pattern": "^shr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Share ID: \"shr_\" followed by a 26-character ULID."
+    },
+    "ShareListParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "all": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ShareListResult": {
+      "type": "object",
+      "properties": {
+        "shares": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Share"
+          }
+        }
+      },
+      "required": [
+        "shares"
+      ],
+      "description": "Shares with their links and state."
+    },
+    "ShareStartParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "via": {
+          "$ref": "#/$defs/ShareVia"
+        },
+        "ttl": {
+          "$ref": "#/$defs/Duration"
+        },
+        "scopes": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityScope"
+          }
+        },
+        "viewer": {
+          "$ref": "#/$defs/ViewerSpec"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "via"
+      ]
+    },
+    "ShareStartResult": {
+      "type": "object",
+      "properties": {
+        "shareId": {
+          "$ref": "#/$defs/ShareId"
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "via": {
+          "$ref": "#/$defs/ShareVia"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hostname": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactOrigin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cookie",
+            "worker"
+          ]
+        },
+        "tokenId": {
+          "$ref": "#/$defs/TokenId"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "stopped"
+          ]
+        },
+        "stoppedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "stopReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "shareId",
+        "artifactId",
+        "via",
+        "url",
+        "hostname",
+        "mode",
+        "tokenId",
+        "startedAt",
+        "state"
+      ],
+      "description": "The share that started, with its capability URL."
+    },
+    "ShareStopParams": {
+      "type": "object",
+      "properties": {
+        "shareId": {
+          "$ref": "#/$defs/ShareId"
+        },
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ShareStopResult": {
+      "type": "object",
+      "properties": {
+        "stopped": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Share"
+          }
+        }
+      },
+      "required": [
+        "stopped"
+      ],
+      "description": "The shares that ended."
+    },
+    "ShareVia": {
+      "type": "string",
+      "enum": [
+        "tailnet",
+        "funnel",
+        "cloudflare"
+      ],
+      "description": "How a share reaches its viewers: tailnet, funnel or cloudflare."
+    },
     "ShellSubmitRequest": {
       "type": "object",
       "properties": {
@@ -4528,6 +5004,37 @@
         "state"
       ],
       "description": "Where a page stands: cursor, viewer, draft, artifact state and its submission."
+    },
+    "StreamTicket": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "ticket",
+        "expiresAt"
+      ],
+      "description": "A single-use ticket for one stream, poll or WebSocket."
+    },
+    "StreamTicketRequest": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "stream",
+            "socket"
+          ]
+        }
+      }
     },
     "SubmissionEnvelope": {
       "type": "object",

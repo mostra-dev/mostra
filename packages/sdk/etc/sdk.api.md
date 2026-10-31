@@ -24,12 +24,17 @@ import { InstanceInfo } from '@mostra/protocol';
 import { LivePushParams } from '@mostra/protocol';
 import { LivePushResult } from '@mostra/protocol';
 import { MethodDefinition } from '@mostra/protocol';
+import { PortAddressingExternalBaseParams } from '@mostra/protocol';
+import { PortAddressingExternalBaseResult } from '@mostra/protocol';
 import { PortIdentityResolveParams } from '@mostra/protocol';
 import { PortSecretsGetParams } from '@mostra/protocol';
 import { PortTrustedControlsActivatedParams } from '@mostra/protocol';
 import { PublishReceipt } from '@mostra/protocol';
 import { Results } from '@mostra/protocol';
 import { ResultsMarkdown } from '@mostra/protocol';
+import { ShareStartParams } from '@mostra/protocol';
+import { ShareStartResult } from '@mostra/protocol';
+import { ShareStopResult } from '@mostra/protocol';
 import { SourceRef } from '@mostra/protocol';
 import { StateGetResult } from '@mostra/protocol';
 import { StatePatchParams } from '@mostra/protocol';
@@ -205,6 +210,8 @@ export interface Mostra {
     }): Promise<ResultsMarkdown>;
     readonly revision: string;
     readonly runtime: Runtime;
+    share(artifact: ArtifactInput, options: Omit<ShareStartParams, "artifact">): Promise<ShareStartResult>;
+    stopShare(shareId: string): Promise<ShareStopResult>;
     verify(source: ArtifactInput, options?: {
         readonly screenshots?: "on-failure" | "always" | "never";
     }): Promise<VerifyVerdict>;
@@ -249,6 +256,9 @@ export interface PlatformFacts {
 
 // @public
 export interface Ports {
+    readonly addressing?: {
+        externalBase(request: PortAddressingExternalBaseParams): PortAddressingExternalBaseResult | Promise<PortAddressingExternalBaseResult>;
+    };
     readonly drafts?: {
         mirror(draft: DraftMirror): void | Promise<void>;
     };

@@ -14,7 +14,14 @@
  * - `parent-blocked`: the frame can't read the shell's document;
  * - `top-blocked`: the frame can't navigate the viewer's tab, which would replace the shell
  *   (D98 item 7); a navigation that went through would log `top-navigated` and fail the run;
- * - the first four with `reload-`, after the frame reloaded itself on its persisted session.
+ * - `worker-missing` (cookie mode) or `worker-controlled` (worker mode): whether Mostra's service
+ *   worker controls the page;
+ * - the first five with `reload-`, after the frame reloaded itself on its persisted session.
+ *
+ * With `--worker` (HY-07, D158) it runs the same probe in worker mode: a host's `addressing` port
+ * puts the shell on `localhost` and the artifact on `127.0.0.1`, two sites as two tunnel host
+ * names are, so the frame enters through the bootstrap page and Mostra's service worker signs
+ * every request it makes, the probes included; a probe that reaches the files proves it.
  */
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -32,7 +39,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bin.js");
-const FACTS = ["frame-ran", "cookie-hidden", "bridge-ready", "parent-blocked"];
+const WORKER = process.argv.includes("--worker");
+const FACTS = [
+  "frame-ran",
+  "cookie-hidden",
+  "bridge-ready",
+  "parent-blocked",
+  WORKER ? "worker-controlled" : "worker-missing",
+];
 const EXPECTED = [...FACTS, "top-blocked", ...FACTS.map((fact) => `reload-${fact}`)];
 
 const PROBE = `import { connectShell } from "@mostra/react";
@@ -56,6 +70,8 @@ export default function Page() {
         parent = "readable";
       } catch {}
       await probe(\`\${tag}parent-\${parent}\`);
+      const worker = navigator.serviceWorker?.controller?.scriptURL ?? "";
+      await probe(\`\${tag}worker-\${worker.endsWith("/_mostra/sw.js") ? "controlled" : "missing"}\`);
       if (!again) {
         let top = "blocked";
         try {
@@ -132,9 +148,56 @@ async function call(method: string, params: unknown, id: number): Promise<Record
   });
 }
 
-const receipt = await call("artifact/publish", { source: { path: source } }, 1);
+/**
+ * In worker mode, a host on its own connection that answers the `addressing` port: the shell on
+ * `localhost`, the artifact on `127.0.0.1`, each at the port of the face Mostra opened for it.
+ */
+async function addressingHost(): Promise<() => void> {
+  const socket = createConnection(status.socket);
+  socket.setEncoding("utf8");
+  let buffer = "";
+  const ready = new Promise<void>((resolve) => {
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      let end = buffer.indexOf("\n");
+      while (end >= 0) {
+        const line = buffer.slice(0, end);
+        buffer = buffer.slice(end + 1);
+        end = buffer.indexOf("\n");
+        if (!line.trim()) continue;
+        const message = JSON.parse(line) as {
+          id?: number | string;
+          method?: string;
+          params?: { listener: string; local: string };
+        };
+        if (message.id === 0 && message.method === undefined) resolve();
+        if (message.method === "port/addressing.externalBase" && message.params) {
+          const port = new URL(message.params.local).port;
+          const host = message.params.listener === "shell" ? "localhost" : "127.0.0.1";
+          socket.write(
+            `${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { origin: `http://${host}:${port}` } })}\n`,
+          );
+        }
+      }
+    });
+  });
+  socket.write(
+    `${JSON.stringify({ jsonrpc: "2.0", id: 0, method: "mostra/initialize", params: { client: { name: "safari-smoke-host", version: "0" }, revisions: ["2026-10-10"], capabilities: {}, ports: ["addressing"] } })}\n`,
+  );
+  await ready;
+  return () => socket.end();
+}
+const stopHost = WORKER ? await addressingHost() : () => undefined;
+
+// The probe's requests answer 404 on purpose, which verify reports as failed requests, so the
+// probe is published with `force` (D41): the codes are recorded, and the build is the same.
+const receipt = await call("artifact/publish", { source: { path: source }, force: true }, 1);
 const url = receipt["url"] as string;
-console.log(`published version ${receipt["version"]}; opening the link in Safari`);
+console.log(
+  `published version ${receipt["version"]}; opening the link in Safari${WORKER ? " (worker mode)" : ""}`,
+);
+// Only what Safari reports counts: publish's verify run renders the probe too, in its own browser.
+const openedAt = new Date().toISOString();
 const opened = spawnSync("open", ["-a", "Safari", url]);
 if (opened.status !== 0) throw new Error("couldn't open Safari");
 
@@ -144,7 +207,8 @@ function seen(): Map<string, string> {
   for (const file of readdirSync(join(home, "logs"))) {
     for (const line of readFileSync(join(home, "logs", file), "utf8").split("\n")) {
       if (!line.includes("/_mostra-probe/")) continue;
-      const entry = JSON.parse(line) as { path: string; code: string };
+      const entry = JSON.parse(line) as { at: string; path: string; code: string };
+      if (entry.at < openedAt) continue;
       facts.set(entry.path.replace("/_mostra-probe/", ""), entry.code);
     }
   }
@@ -180,6 +244,7 @@ for (const fact of EXPECTED) {
 for (const [fact, code] of facts)
   if (!EXPECTED.includes(fact)) console.log(`FAIL unexpected ${fact} (${code})`);
 passed &&= [...facts.keys()].every((fact) => EXPECTED.includes(fact));
+stopHost();
 daemon.kill("SIGTERM");
 await new Promise((resolve) => daemon.once("exit", resolve));
 // The run's home goes too; published versions are sealed read-only, so directories open first.

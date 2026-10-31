@@ -54,53 +54,69 @@ export const devCommand: CommandDef = defineCommand({
   example: "dev ./sidebar-review",
   streams: true,
   async run(context) {
-    const connection = await context.connection();
-    let sessionId: string | undefined;
-    const early: DevNotifyParams[] = [];
-    const show = (event: DevNotifyParams): void => {
-      if (event.kind === "diagnostics") {
-        for (const diagnostic of event.diagnostics ?? []) context.warn(diagnostic);
-      }
-      context.emit(event, line(event));
-    };
-    connection?.onNotification(DEV_NOTIFY, (params) => {
-      const event = params as DevNotifyParams;
-      if (sessionId === undefined) early.push(event);
-      else if (event.sessionId === sessionId) show(event);
-    });
-    const portFlag = context.flags["port"];
-    const started = await context.call(devStartMethod, {
-      source: sourceRef(arg(context, "path"), context.cwd),
-      ...(typeof portFlag === "number" ? { port: portFlag } : {}),
-    });
-    sessionId = started.sessionId;
-    context.emit(
-      { kind: "started", ...started },
-      `Development preview, not published: ${started.url}\nPress Ctrl-C to stop.\n`,
-    );
-    for (const event of early.splice(0)) if (event.sessionId === sessionId) show(event);
     // The session lasts until Ctrl-C (or SIGTERM; Ctrl+Break on Windows), or until the instance
-    // ends it.
-    let stop: () => void = () => {};
+    // ends it. The handlers are in place before anything starts or is printed: a Ctrl-C between
+    // "started" and a later handler met Node's default action and ended the process without
+    // stopping the session or printing its result (#110's CI).
     const signals = ["SIGINT", "SIGTERM", "SIGBREAK"] as const;
-    const ended = await new Promise<"signal" | "closed">((done) => {
-      stop = (): void => done("signal");
-      for (const signal of signals) process.once(signal, stop);
-      void connection?.closed.then(() => done("closed"));
-    });
-    for (const signal of signals) process.off(signal, stop);
-    if (ended === "closed") {
-      throw new RpcError(
-        createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
-          message: "The instance ended the development preview (it stopped or restarted).",
-          hint: "Run mostra dev again.",
-        }),
-      );
-    }
-    await context.call(devStopMethod, { sessionId }).catch(() => undefined);
-    return {
-      result: { sessionId, stopped: "signal" },
-      human: "Stopped.\n",
+    let interrupted = false;
+    let stop: () => void = () => {
+      interrupted = true;
     };
+    const onSignal = (): void => stop();
+    for (const signal of signals) process.once(signal, onSignal);
+    const release = (): void => {
+      for (const signal of signals) process.off(signal, onSignal);
+    };
+    try {
+      const connection = await context.connection();
+      let sessionId: string | undefined;
+      const early: DevNotifyParams[] = [];
+      const show = (event: DevNotifyParams): void => {
+        if (event.kind === "diagnostics") {
+          for (const diagnostic of event.diagnostics ?? []) context.warn(diagnostic);
+        }
+        context.emit(event, line(event));
+      };
+      connection?.onNotification(DEV_NOTIFY, (params) => {
+        const event = params as DevNotifyParams;
+        if (sessionId === undefined) early.push(event);
+        else if (event.sessionId === sessionId) show(event);
+      });
+      const portFlag = context.flags["port"];
+      const started = await context.call(devStartMethod, {
+        source: sourceRef(arg(context, "path"), context.cwd),
+        ...(typeof portFlag === "number" ? { port: portFlag } : {}),
+      });
+      sessionId = started.sessionId;
+      context.emit(
+        { kind: "started", ...started },
+        `Development preview, not published: ${started.url}\nPress Ctrl-C to stop.\n`,
+      );
+      for (const event of early.splice(0)) if (event.sessionId === sessionId) show(event);
+      const ended = interrupted
+        ? "signal"
+        : await new Promise<"signal" | "closed">((done) => {
+            stop = (): void => done("signal");
+            void connection?.closed.then(() => done("closed"));
+          });
+      // A second Ctrl-C from here on ends the process, as before.
+      release();
+      if (ended === "closed") {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+            message: "The instance ended the development preview (it stopped or restarted).",
+            hint: "Run mostra dev again.",
+          }),
+        );
+      }
+      await context.call(devStopMethod, { sessionId }).catch(() => undefined);
+      return {
+        result: { sessionId, stopped: "signal" },
+        human: "Stopped.\n",
+      };
+    } finally {
+      release();
+    }
   },
 });

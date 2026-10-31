@@ -183,6 +183,16 @@ impl super::Method for MostraShutdown {
     type Params = super::generated::MostraShutdownParams;
     type Result = super::generated::MostraShutdownResult;
 }
+///`port/addressing.externalBase`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortAddressingExternalBase;
+impl super::Method for PortAddressingExternalBase {
+    const NAME: &'static str = "port/addressing.externalBase";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortAddressingExternalBaseParams;
+    type Result = super::generated::PortAddressingExternalBaseResult;
+}
 ///`port/drafts.mirror`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortDraftsMirror;
@@ -282,6 +292,36 @@ impl super::Method for SecretSet {
     const MUTATING: bool = false;
     type Params = super::generated::SecretSetParams;
     type Result = super::generated::SecretEntry;
+}
+///`share/list`.
+#[derive(Clone, Copy, Debug)]
+pub struct ShareList;
+impl super::Method for ShareList {
+    const NAME: &'static str = "share/list";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ShareListParams;
+    type Result = super::generated::ShareListResult;
+}
+///`share/start`.
+#[derive(Clone, Copy, Debug)]
+pub struct ShareStart;
+impl super::Method for ShareStart {
+    const NAME: &'static str = "share/start";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ShareStartParams;
+    type Result = super::generated::ShareStartResult;
+}
+///`share/stop`.
+#[derive(Clone, Copy, Debug)]
+pub struct ShareStop;
+impl super::Method for ShareStop {
+    const NAME: &'static str = "share/stop";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ShareStopParams;
+    type Result = super::generated::ShareStopResult;
 }
 ///`state/get`.
 #[derive(Clone, Copy, Debug)]
@@ -477,6 +517,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "port/addressing.externalBase",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "port/drafts.mirror",
         direction: super::Direction::InstanceToHost,
         mutating: false,
@@ -525,6 +570,21 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "secret/set",
         direction: super::Direction::ClientToInstance,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "share/list",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "share/start",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "share/stop",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
     },
     super::MethodInfo {
         name: "state/get",

@@ -3,7 +3,9 @@
  * a shell session, a frame ticket, the frame's entry) and speaks the browser protocol the way a
  * page does, with a per-host cookie jar (browsers keep cookies per host, not per port, D98) and the
  * `Origin`, `Sec-Fetch-*` and CSRF headers a browser sends. It also sends what no browser would,
- * for the hygiene scenarios. It never follows redirects.
+ * for the hygiene scenarios. It never follows redirects. Where the shell and the artifact are two
+ * sites (a host's external bases, a Cloudflare share), it enters the frame as the bootstrap page
+ * does and signs the frame's requests as Mostra's service worker does (D70, D158 item 5).
  */
 import { request as httpRequest } from "node:http";
 import {
@@ -50,11 +52,15 @@ export function send(ask: Ask): Promise<Answer> {
   return new Promise((resolve, reject) => {
     const req = httpRequest(
       {
-        host: url.hostname.replace(/^\[|\]$/g, ""),
+        // `localhost` and its subdomains are this machine, as browsers resolve them (WHATWG URL,
+        // RFC 6761); Mostra's listeners bind 127.0.0.1.
+        host: /(^|\.)localhost$/i.test(url.hostname)
+          ? "127.0.0.1"
+          : url.hostname.replace(/^\[|\]$/g, ""),
         port: url.port,
         method: ask.method ?? "GET",
         path: `${url.pathname}${url.search}`,
-        headers: ask.headers,
+        headers: { host: url.host, ...ask.headers },
         agent: false,
       },
       (res) => {
@@ -121,6 +127,18 @@ export function parseLink(link: string): ParsedLink {
 /** A browser-like client with a per-host cookie jar. */
 export class Browser {
   readonly #jar = new Map<string, { value: string; path: string }>();
+  /** Worker-mode frame sessions by origin: the header Mostra's service worker adds (D70). */
+  readonly #frames = new Map<string, string>();
+
+  /** Signs every later request to `origin` with a worker-mode frame session, as its worker does. */
+  enterFrame(origin: string, secret: string): void {
+    this.#frames.set(origin, secret);
+  }
+
+  /** Whether `origin` has a worker-mode frame session in this browser. */
+  workerFrame(origin: string): boolean {
+    return this.#frames.has(origin);
+  }
 
   /** The cookies the jar sends to `url`: every cookie of the host whose path matches. */
   cookiesFor(url: string): string {
@@ -137,9 +155,16 @@ export class Browser {
   /** Sends a request with the jar's cookies and keeps the ones that come back. */
   async ask(ask: Ask): Promise<Answer> {
     const cookie = ask.noCookies ? "" : this.cookiesFor(ask.url);
+    const url = new URL(ask.url);
+    // The service worker signs every same-origin request but a ticketed one, which bypasses it.
+    const frame = url.searchParams.has("ticket") ? undefined : this.#frames.get(url.origin);
     const answer = await send({
       ...ask,
-      headers: { ...(cookie ? { cookie } : {}), ...ask.headers },
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(frame !== undefined ? { "x-mostra-frame": frame } : {}),
+        ...ask.headers,
+      },
     });
     for (const line of answer.headers["set-cookie"] ?? []) {
       const [pair = "", ...attributes] = line.split(";").map((part) => part.trim());
@@ -251,6 +276,28 @@ export class Viewer {
     });
     if (ticketAnswer.status !== 200) throw new OpenError("ticket", ticketAnswer);
     const ticket = ticketAnswer.json<FrameTicket>();
+    if (ticket.mode === "worker") {
+      // The bootstrap page (D70): it loads, then exchanges the ticket in its fragment.
+      const page = await browser.ask({
+        url: ticket.src.replace(/#.*$/, ""),
+        headers: {
+          accept: "text/html",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "iframe",
+          "sec-fetch-site": "cross-site",
+        },
+      });
+      if (page.status !== 200) throw new OpenError("bootstrap", page);
+      const fragment = new URLSearchParams(new URL(ticket.src).hash.slice(1)).get("t") ?? "";
+      const entered = await browser.fetchJson(ticket.artifactOrigin, "/_mostra/enter", {
+        body: { ticket: fragment },
+      });
+      if (entered.status !== 200) throw new OpenError("enter", entered);
+      browser.enterFrame(ticket.artifactOrigin, entered.json<{ session: string }>().session);
+      const session = await browser.fetchJson(ticket.artifactOrigin, "/_mostra/session");
+      if (session.status !== 200) throw new OpenError("frame session", session);
+      return new Viewer(browser, parsed, ticket, shellCsrf, session.json<{ csrf: string }>().csrf);
+    }
     const enter = await browser.ask({
       url: ticket.src,
       headers: {
@@ -364,9 +411,14 @@ export class Viewer {
     }
   }
 
-  /** The page's long poll: events after `cursor` (D47). */
-  poll(cursor?: string): Promise<Answer> {
-    const query = `view=${this.viewId}&wait=0${cursor !== undefined ? `&cursor=${cursor}` : ""}`;
+  /** The page's long poll: events after `cursor` (D47); in worker mode with its ticket (D70). */
+  async poll(cursor?: string): Promise<Answer> {
+    let query = `view=${this.viewId}&wait=0${cursor !== undefined ? `&cursor=${cursor}` : ""}`;
+    if (this.browser.workerFrame(this.ticket.artifactOrigin)) {
+      const ticket = await this.page("ticket", { purpose: "stream" });
+      if (ticket.status !== 200) return ticket;
+      query += `&ticket=${ticket.json<{ ticket: string }>().ticket}`;
+    }
     return this.browser.fetchJson(
       this.ticket.artifactOrigin,
       `/_mostra/v/${REVISION}/events/poll?${query}`,

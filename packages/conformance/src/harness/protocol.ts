@@ -223,6 +223,17 @@ export interface StoreResult {
   }[];
   /** `secrets.get` calls. */
   readonly secrets: readonly { readonly artifactId: string; readonly name: string }[];
+  /**
+   * `addressing.externalBase` calls (WP-13): the artifact, the listener, the loopback origin the
+   * host forwards to, and what the host answered (absent when it failed). A host without the port
+   * leaves it out.
+   */
+  readonly addressing?: readonly {
+    readonly artifactId: string;
+    readonly listener: string;
+    readonly local: string;
+    readonly answer?: { readonly origin: string; readonly mode?: string } | null;
+  }[];
 }
 
 /** The schema of `StoreResult`. */
@@ -275,6 +286,18 @@ export const StoreResult: z.ZodType<StoreResult> = z.object({
     }),
   ),
   secrets: z.array(z.object({ artifactId: z.string(), name: z.string() })),
+  addressing: z
+    .array(
+      z.object({
+        artifactId: z.string(),
+        listener: z.string(),
+        local: z.string(),
+        answer: z
+          .union([z.object({ origin: z.string(), mode: z.string().optional() }), z.null()])
+          .optional(),
+      }),
+    )
+    .optional(),
 }) as z.ZodType<StoreResult>;
 
 /** How a scripted port answers from now on (feature `faults`). */
@@ -303,7 +326,23 @@ export type ScriptParams =
         | null
         | { readonly ref: string; readonly name?: string };
     }
-  | { readonly port: "secrets"; readonly answer: Readonly<Record<string, string>> };
+  | { readonly port: "secrets"; readonly answer: Readonly<Record<string, string>> }
+  | {
+      readonly port: "addressing";
+      /**
+       * `null`: no external base (the loopback ports); `fail`: the call fails; a pair of host
+       * names: each listener at its loopback port under that name (`http://<host>:<port>`), the
+       * shell's and the artifact's, which the kit sets apart to make them two sites (WP-13).
+       */
+      readonly answer:
+        | null
+        | "fail"
+        | {
+            readonly shellHost: string;
+            readonly artifactHost: string;
+            readonly mode?: "cookie" | "worker";
+          };
+    };
 
 /** The schema of `ScriptParams`. */
 export const ScriptParams: z.ZodType<ScriptParams> = z.union([
@@ -333,6 +372,18 @@ export const ScriptParams: z.ZodType<ScriptParams> = z.union([
     ]),
   }),
   z.object({ port: z.literal("secrets"), answer: z.record(z.string(), z.string()) }),
+  z.object({
+    port: z.literal("addressing"),
+    answer: z.union([
+      z.null(),
+      z.literal("fail"),
+      z.object({
+        shellHost: z.string(),
+        artifactHost: z.string(),
+        mode: z.enum(["cookie", "worker"]).optional(),
+      }),
+    ]),
+  }),
 ]) as z.ZodType<ScriptParams>;
 
 /** `harness/events`'s params: read pages from the host's own named stream (feature `events`). */

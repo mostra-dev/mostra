@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createDiagnostic,
   type EventRecord,
@@ -30,6 +31,12 @@ import { HostUnderTest } from "./harness/client.ts";
 import type { StartParams, StartResult, StoreResult } from "./harness/protocol.ts";
 import { kitVersion } from "./version.ts";
 import { Viewer } from "./viewer.ts";
+
+/**
+ * The local stand-ins for `tailscale` and `cloudflared` the share scenarios start instances with
+ * (`MOSTRA_TEST_TUNNELS`, D158): shipped in the kit's package beside `src` and `dist`.
+ */
+export const TUNNELS: string = fileURLToPath(new URL("../tunnels/", import.meta.url));
 
 /** A scenario: one property of a host integration, with the requirements it covers. */
 export interface Scenario {

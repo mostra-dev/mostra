@@ -20,6 +20,7 @@ export const hygieneDiagnosticCodes = [
   "MOSTRA_HYGIENE_NOT_SERVED",
   "MOSTRA_HYGIENE_SESSION_CONFLICT",
   "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+  "MOSTRA_HYGIENE_FRAME_SESSION",
   // gen:codes
 ] as const;
 
@@ -169,6 +170,17 @@ export const hygieneDiagnostics: AreaCatalog<HygieneDiagnosticCode> = {
       explanation:
         "The request's headers passed the gateway's limit of 1 MiB, more than any browser sends for one host's cookies. Every port of the loopback host shares one cookie jar, so a page on any of them can fill it. The gateway answers 431 with `Clear-Site-Data: \"cookies\"`, which empties the host's cookies, so the next request works. Mostra's sessions go with them and come back when a link is opened again.",
       fix: "Open the artifact's link again. If it keeps happening, find the page that sets the cookies: it runs on this host.",
+    },
+  },
+  MOSTRA_HYGIENE_FRAME_SESSION: {
+    severity: "error",
+    phase: "hygiene",
+    title: "Frame session couldn't start",
+    hint: "Open the artifact's tailnet or Funnel link, or this link in a normal window of another browser.",
+    docs: {
+      explanation:
+        "Where the shell and the artifact are two sites (a Cloudflare quick tunnel, or a host's addresses on two hosts), the artifact's frame can't use a cookie: it enters through a bootstrap page that installs Mostra's service worker at `/`, which signs every request of the frame (worker mode, D70). Mostra reports this code when that can't happen: the browser offers the frame no service worker (a private window, a setting that blocks third-party storage), refuses to install it, or the gateway refused the frame's entry. The client runtime reports it too when the artifact's own code registers another service worker at `/`, which would replace Mostra's and end the frame's session.",
+      fix: "Open the artifact through a tailnet or Funnel share, where the frame uses a cookie, or in a browser window that allows service workers in frames. An artifact that needs its own service worker registers it at a narrower scope than `/`.",
     },
   },
   // gen:entries

@@ -170,6 +170,8 @@ export interface ShellConnection {
         readonly csrf: string;
         readonly scopes: readonly string[];
         readonly viewer?: Viewer;
+        readonly mode: "cookie" | "worker";
+        readonly streams: boolean;
     };
     readonly shellOrigin: string;
 }

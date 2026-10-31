@@ -260,7 +260,7 @@ async function fetchInto(
  * tried again with backoff for up to 3 s, as the runtime's renames are (D150 item 8), and never
  * turned into a copy; a refusal that lasts is thrown, and EPERM over an existing directory with it.
  */
-async function renameIntoPlace(from: string, to: string): Promise<void> {
+export async function renameIntoPlace(from: string, to: string): Promise<void> {
   const deadline = Date.now() + 3000;
   for (let wait = 25; ; wait = Math.min(wait * 2, 400)) {
     try {

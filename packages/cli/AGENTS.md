@@ -24,7 +24,8 @@ protocol over the home's socket.
 - **A hint never names a command that doesn't exist.** A unit test parses every `mostra …` a
   catalog entry's hint, explanation or fix names. A later package's command (`share`, `review
   export`, `export`, `mcp`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a
-  placeholder (D140 item 12).
+  placeholder (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
+  (`src/commands/sharing.ts`).
 - **No prompt outside a terminal.** Only telemetry asks anything, and only when stdin and stderr
   are terminals, without `--json`, CI, an agent's marker or a command that reads stdin.
 - **Telemetry is this package's alone (D119, D140).** `src/telemetry/` is the only code in Mostra
@@ -46,6 +47,13 @@ protocol over the home's socket.
   CLI's requests.
 - **The platform gate is the runtime's** (`platform.ts`): macOS, Linux and Windows on x64 and
   arm64, everything else `MOSTRA_PLATFORM_UNSUPPORTED`.
+- **`mostra docs` serves the Agent Skill as written** (D162). `src/docs.ts` reads `skills/mostra/`
+  (from a checkout) or the copy the build puts in `dist/skill/` (`tsdown.config.ts`), so `guide`,
+  `guide/<reference>`, `guide/studio.css` and `guide/examples/<name>` are the files the plugin
+  carries, never a second text. `test/unit/skill.test.ts` holds the Skill to the Agent Skills
+  specification and to this package: every `mostra …` it shows parses (`test/commands.ts`), and
+  every command and every export of `@mostra/react` and `@mostra/server` is documented or listed as
+  internal with its reason. A new command joins a reference in the same change.
 
 ## Public interface
 
@@ -70,6 +78,10 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
 - Tests always set `MOSTRA_CONFIG_DIR` to a temporary directory, so no run writes a developer's
   real telemetry settings, and `MOSTRA_TEST_LOCALTIME` stands for `/etc/localtime` (empty for
   none), because CI machines' zone is UTC, an ask-first zone.
+- **`share` runs the stand-in tunnels in tests** (`MOSTRA_TEST_TUNNELS` names
+  `packages/conformance/tunnels/`); a share lives in the daemon, so the command returns once its
+  link exists, and `share.done` records only the driver's name (D140 item 8). A tailnet share's
+  human output names the device's two ports its viewers' tailnet must allow.
 - `wait --timeout` is the wait's own length (exit 5, `still_waiting`), not the global request
   limit (exit 4).
 - The runtime is found as the SDK finds it (`resolveRuntime`): `MOSTRA_BUNDLE`, then

@@ -43,6 +43,11 @@ export const seen: Answer[] = [];
 /** A browser-like client with a per-host cookie jar. */
 export class Browser {
   readonly jar = new Map<string, Cookie>();
+  /**
+   * Worker-mode frame sessions by artifact origin (D70): what the service worker adds to every
+   * request of that origin as `X-Mostra-Frame`, except the ticketed streams it lets bypass it.
+   */
+  readonly frames = new Map<string, string>();
 
   /** The cookies the jar sends to `url`: every cookie of the host whose path matches. */
   cookiesFor(url: string): string {
@@ -84,9 +89,19 @@ export class Browser {
   /** Sends a request with the jar's cookies and stores what comes back. */
   async ask(ask: Ask): Promise<Answer> {
     const cookie = ask.noCookies ? "" : this.cookiesFor(ask.url);
+    const url = new URL(ask.url);
+    const frame =
+      ask.noCookies || url.searchParams.has("ticket") ? undefined : this.frames.get(url.origin);
+    const navigation = ask.headers?.["sec-fetch-mode"] === "navigate";
     const answer = await send({
       ...ask,
-      headers: { ...(cookie ? { cookie } : {}), ...ask.headers },
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(frame
+          ? { "x-mostra-frame": frame, ...(navigation ? { "x-mostra-navigation": "1" } : {}) }
+          : {}),
+        ...ask.headers,
+      },
     });
     this.store(answer);
     return answer;
@@ -134,14 +149,20 @@ export class Browser {
 /** Sends one request; resolves with the full answer. */
 export function send(ask: Ask): Promise<Answer> {
   const url = new URL(ask.url);
+  // `localhost` and its subdomains are loopback (RFC 6761), as browsers resolve them: the test
+  // tunnels' sites (`<name>.localhost`) live there.
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const loopback = host === "localhost" || host.endsWith(".localhost");
   return new Promise((resolve, reject) => {
     const req = httpRequest(
       {
-        host: url.hostname.replace(/^\[|\]$/g, ""),
+        host: loopback ? "127.0.0.1" : host,
+        // The Host the URL names, as a browser sends it, whatever address it connects to.
+        setHost: false,
         port: url.port,
         method: ask.method ?? "GET",
         path: `${url.pathname}${url.search}`,
-        headers: ask.headers,
+        headers: { host: url.host, ...ask.headers },
         agent: false,
       },
       (res) => {
@@ -280,9 +301,24 @@ export async function openLink(browser: Browser, url: string, version?: number):
     artifactOrigin: string;
     viewId: string;
   }>();
-  const enter = await browser.navigate(src, link.shell);
-  if (enter.status !== 303) throw new Error(`enter: ${enter.status} ${enter.body}`);
-  const page = await browser.navigate(`${artifactOrigin}${enter.header("location")}`, link.shell);
+  let page: Answer;
+  const worker = new URL(src).hash.startsWith("#t=");
+  if (worker) {
+    // Worker mode (D70): the bootstrap page, then its exchange of the fragment's ticket for the
+    // frame session its service worker sends from then on.
+    const boot = await browser.navigate(src.replace(/#.*$/, ""), link.shell);
+    if (boot.status !== 200) throw new Error(`bootstrap: ${boot.status} ${boot.body}`);
+    const entered = await browser.fetchJson(artifactOrigin, "/_mostra/enter", {
+      body: { ticket: new URL(src).hash.slice(3) },
+    });
+    if (entered.status !== 200) throw new Error(`enter: ${entered.status} ${entered.body}`);
+    browser.frames.set(artifactOrigin, entered.json<{ session: string }>().session);
+    page = await browser.navigate(`${artifactOrigin}/`, link.shell);
+  } else {
+    const enter = await browser.navigate(src, link.shell);
+    if (enter.status !== 303) throw new Error(`enter: ${enter.status} ${enter.body}`);
+    page = await browser.navigate(`${artifactOrigin}${enter.header("location")}`, link.shell);
+  }
   const session = await browser.fetchJson(artifactOrigin, "/_mostra/session");
   if (session.status !== 200) throw new Error(`frame session: ${session.status} ${session.body}`);
   return {

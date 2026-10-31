@@ -91,7 +91,7 @@ export interface CommandContext {
 /** A command-specific telemetry event: its name and its own fields. */
 export interface TelemetryEventInput {
   /** The event's name. */
-  readonly event: "verify.result" | "publish.done";
+  readonly event: "verify.result" | "publish.done" | "share.done";
   /** Its own fields; the schema keeps only the published ones. */
   readonly fields: Readonly<Record<string, unknown>>;
 }

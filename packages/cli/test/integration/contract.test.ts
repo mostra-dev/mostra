@@ -12,6 +12,7 @@ import {
   fstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -34,6 +35,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
 import { exitCodes } from "../../src/help.ts";
+import { parsesAsShown, shownCommands } from "../commands.ts";
 import {
   asOtherUser,
   BIN,
@@ -90,13 +92,24 @@ async function run(
 }
 
 beforeAll(() => {
-  home = testHome({ MOSTRA_OFFLINE: "1" });
+  home = testHome({
+    MOSTRA_OFFLINE: "1",
+    // `share` runs the conformance kit's stand-ins for tailscale and cloudflared (D158).
+    MOSTRA_TEST_TUNNELS: fileURLToPath(new URL("../../../conformance/tunnels/", import.meta.url)),
+  });
   artifactDir = join(home.root, "review");
 });
 
 afterAll(async () => {
   await home.cleanup();
 });
+
+/** The release this CLI is: the version `mostra new`'s AGENTS.md pins. */
+const CLI_VERSION = (
+  JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
 
 describe("every command, with --json and no terminal", () => {
   it("new, verify, publish and open make an artifact a viewer can open (J1)", async () => {
@@ -106,6 +119,14 @@ describe("every command, with --json and no terminal", () => {
     });
     const parsed = artifactCreateMethod.result.parse(created.result);
     artifactId = parsed.artifactId;
+    // The AGENTS.md it scaffolds (AX-06, WP-14) shows only commands that exist, as it shows them,
+    // and pins the CLI of this release.
+    expect(parsed.files).toEqual(["index.tsx", "AGENTS.md", "CLAUDE.md"]);
+    const agents = readFileSync(join(artifactDir, "AGENTS.md"), "utf8");
+    const shownByAgents = shownCommands(agents);
+    expect(shownByAgents.length).toBeGreaterThan(4);
+    expect(shownByAgents.filter((command) => !parsesAsShown(command))).toEqual([]);
+    expect(agents).toContain(`@mostra/cli@${CLI_VERSION}`);
     // verify needs the Chromium headless shell `playwright-core` pins (runtime's AGENTS.md).
     const verified = await run(["verify", artifactDir], { code: 0, ok: true });
     expect(VerifyVerdict.parse(verified.result).status).toBe("pass");
@@ -206,6 +227,58 @@ describe("every command, with --json and no terminal", () => {
     const replacement = CapabilityLink.parse(rotated.result);
     await run(["open", artifactId, "--revoke", replacement.tokenId], { code: 0, ok: true });
   });
+
+  it("share opens a public and a tailnet share, lists them and stops them (D158)", async () => {
+    const publicly = await run(["share", artifactId, "--public", "--ttl", "30m"], {
+      code: 0,
+      ok: true,
+    });
+    const shared = publicly.result as {
+      shareId: string;
+      url: string;
+      via: string;
+      mode: string;
+      expiresAt: string;
+    };
+    expect(shared).toMatchObject({ via: "cloudflare", mode: "worker" });
+    expect(Date.parse(shared.expiresAt) - Date.now()).toBeLessThanOrEqual(30 * 60_000);
+    const tailnet = await run(["share", artifactId, "--tailnet"], { code: 0, ok: true });
+    expect(tailnet.result).toMatchObject({ via: "tailnet", mode: "cookie" });
+    // A person reads which of the device's ports the tailnet must let viewers reach.
+    const ports = tailnet.result as { url: string; artifactOrigin: string; shareId: string };
+    const told = await cli(["share", "stop", ports.shareId], { env: home.env });
+    expect(told.code).toBe(0);
+    const again = await cli(["share", artifactId, "--tailnet"], { env: home.env });
+    expect(again.code).toBe(0);
+    const [shellPort, framePort] = [ports.url, ports.artifactOrigin].map(
+      (origin) => new URL(origin).port,
+    );
+    expect(again.stdout).toContain(`ports ${shellPort} and ${framePort} allowed`);
+    // Exactly one of --tailnet and --public; --via only with --public; a public link lives 7 days at most.
+    await run(["share", artifactId], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
+    await run(["share", artifactId, "--tailnet", "--via", "funnel"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    await run(["share", artifactId, "--public", "--ttl", "8d"], {
+      code: 3,
+      ok: false,
+      error: "MOSTRA_SHARE_TTL_INVALID",
+    });
+    const listed = await run(["share", "list", artifactId], { code: 0, ok: true });
+    expect((listed.result as { shares: unknown[] }).shares).toHaveLength(2);
+    const one = await run(["share", "stop", shared.shareId], { code: 0, ok: true });
+    expect((one.result as { stopped: unknown[] }).stopped).toHaveLength(1);
+    const rest = await run(["share", "stop", artifactId], { code: 0, ok: true });
+    expect((rest.result as { stopped: unknown[] }).stopped).toHaveLength(1);
+    const all = await run(["share", "list", "--all"], { code: 0, ok: true });
+    expect(
+      (all.result as { shares: { state: string }[] }).shares.every(
+        (one) => one.state === "stopped",
+      ),
+    ).toBe(true);
+  }, 120_000);
 
   it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
     // A stand-in browser: Node.js running a script that records the arguments it was started with
@@ -314,6 +387,21 @@ describe("every command, with --json and no terminal", () => {
     const page = await run(["docs", "MOSTRA_DEP_MISSING"], { code: 0, ok: true });
     expect((page.result as { url: string }).url).toMatch(/\/errors\/MOSTRA_DEP_MISSING$/);
     await run(["docs", "MOSTRA_NOPE_NOPE"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
+    // The Agent Skill ships in the build as the guide (WP-14): every reference, asset and example.
+    const topics = (index.result as { topics: { topic: string }[] }).topics.map((t) => t.topic);
+    const skill = fileURLToPath(new URL("../../../../skills/mostra/", import.meta.url));
+    for (const name of readdirSync(join(skill, "references")))
+      expect(topics).toContain(`guide/${name.replace(/\.md$/, "")}`);
+    for (const name of readdirSync(join(skill, "assets", "examples")))
+      expect(topics).toContain(`guide/examples/${name}`);
+    const guide = await run(["docs", "guide"], { code: 0, ok: true });
+    const guideText = (guide.result as { markdown: string }).markdown;
+    expect(guideText).not.toMatch(/^---/m);
+    expect(guideText).toContain("mostra docs guide/<name>");
+    const example = await run(["docs", "guide/examples/inbox"], { code: 0, ok: true });
+    expect((example.result as { markdown: string }).markdown).toContain(
+      readFileSync(join(skill, "assets", "examples", "inbox", "actions.ts"), "utf8"),
+    );
   });
 
   it("telemetry status, on and off answer without an instance", async () => {

@@ -159,6 +159,8 @@ catalog:
   yaml: 2.9.1
   spdx-expression-parse: 5.0.0
   '@types/spdx-expression-parse': 4.0.0
+  # The harness plugins' manifests checked against the Agent Plugins JSON Schemas (WP-14)
+  ajv: 8.20.0
 
 catalogs:
   # TypeScript 7 has no JavaScript compiler API. Tools that need it (API Extractor,

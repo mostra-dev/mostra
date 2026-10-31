@@ -1,16 +1,26 @@
 /**
- * The gateway (ARCHITECTURE §5, §10; D38, D96 to D99): the HTTP side of an instance. It serves
- * the shell on the shell's leased port and each opened artifact on its own leased port, all on one
- * host, so the shell and every artifact are same-site but different origins. Only capability
- * holders get in: a link's token becomes a shell session, the shell hands the artifact's frame a
- * single-use ticket, and the frame's session lets it load its version's files. Every request goes
- * through the same checks (`routes.ts`), and published versions are served straight from disk,
- * with no process (RT-05). It also serves `view/url`, `view/rotate` and `view/revoke`.
+ * The gateway (ARCHITECTURE §5, §10; D38, D96 to D99, D158): the HTTP side of an instance. It
+ * serves the shell on the shell's leased port and each opened artifact on its own leased port, all
+ * on one host, so the shell and every artifact are same-site but different origins. Only
+ * capability holders get in: a link's token becomes a shell session, the shell hands the
+ * artifact's frame a single-use ticket, and the frame's session lets it load its version's files.
+ * Every request goes through the same checks (`routes.ts`), and published versions are served
+ * straight from disk, with no process (RT-05). It also serves `view/url`, `view/rotate` and
+ * `view/revoke`.
+ *
+ * Beside those loopback listeners, the gateway has **faces** (D158 item 1): external addresses of
+ * the shell or one artifact (a tailnet, Funnel or Cloudflare address a share set up, or a host's
+ * external base), each its own listener on loopback with one origin and one exact `Host`. Which
+ * face a request came through is the socket it arrived on, so a tunnel's visitor can't claim
+ * another address. A face pairs with the faces of its group (a share's, a host's): its shell opens
+ * frames on the group's artifact face, in cookie mode when both are one site and in worker mode
+ * (D70) when they are two.
  *
  * ```ts
  * const gateway = createGateway({ ledger, log, addressing, capabilities, artifacts, shellDir });
  * await gateway.start();
  * const { url } = await gateway.defaultLink(artifactId); // the publish receipt's URL
+ * const face = await gateway.openFace({ by: "cloudflare", group, listener: "shell", … });
  * ```
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -29,11 +39,17 @@ import {
   createDiagnostic,
   type Diagnostic,
   durationMs,
+  EnterRequest,
+  type FaceStatus,
+  FRAME_SESSION_HEADER,
+  type FrameSessionFacts,
   type FrameTicket,
   type IdentityVia,
+  type PortAddressingExternalBaseResult,
   type Refusal,
   RpcError,
   refusal,
+  StreamTicketRequest,
   safePath,
   scopeAllows,
   viewDefaultMethod,
@@ -43,7 +59,7 @@ import {
   viewUrlMethod,
 } from "@mostra/protocol";
 import type { Actions } from "../actions/index.ts";
-import type { Addressing } from "../addressing/index.ts";
+import { type Addressing, type FrameMode, hostOf } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
 import type { EphemeralBus, Interaction } from "../interaction/index.ts";
 import {
@@ -77,11 +93,12 @@ import {
   refusalResponse,
   sessionCookie,
 } from "./http.ts";
-import type { IdentityOutcome } from "./identity.ts";
+import { type IdentityOutcome, tailnetPerson } from "./identity.ts";
 import { versionIntegrity } from "./integrity.ts";
 import { createListener, type Listener } from "./listener.ts";
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
+import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./worker.ts";
 
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
@@ -97,6 +114,56 @@ export interface GatewayArtifacts {
   /** What is wrong with a version's stored files, or `undefined` when they match their digest. */
   damage(versionId: string): Promise<string | undefined>;
 }
+
+/** Who keeps a face (D158 item 1): a share's tunnel, or a host's addressing port. */
+export type FaceBy = "tailnet" | "funnel" | "cloudflare" | "host";
+
+/** What a share asks the gateway to open: one external address of the shell or an artifact. */
+export interface FaceSpec {
+  readonly by: FaceBy;
+  /**
+   * The faces that pair: a shell face opens frames on the artifact faces of its group (`tailnet`,
+   * `funnel`, a Cloudflare share's own, a host's per artifact).
+   */
+  readonly group: string;
+  readonly listener: "shell" | "artifact";
+  /** The artifact, for an artifact's face. */
+  readonly artifactId?: string;
+  /** How requests through it reach the gateway, as the identity port hears it (D143 item 2). */
+  readonly via: IdentityVia;
+  /** Keep a leased loopback port, so the face's address survives restarts. */
+  readonly lease: boolean;
+  /** Whether event streams pass; `false` behind a Cloudflare quick tunnel. Default `true`. */
+  readonly streams?: boolean;
+  /** An artifact face's frame mode, when its keeper knows it; else decided by the pair (D70). */
+  readonly mode?: FrameMode;
+}
+
+/** An open face. */
+export interface FaceHandle {
+  /** Its key: `<group>:shell` or `<group>:<artifactId>`. */
+  readonly key: string;
+  /** The loopback port the tunnel forwards to. */
+  readonly port: number;
+  /** `http://127.0.0.1:<port>`. */
+  readonly local: string;
+  /** The origin browsers use; until it is set, the face refuses every request (421). */
+  origin(): string | undefined;
+  /** Sets the origin once the tunnel knows its address; `undefined` closes the address again. */
+  setOrigin(origin: string | undefined): void;
+}
+
+/** The answer a host's addressing port gave, or why there is none. */
+export type ExternalBaseAnswer =
+  | {
+      readonly kind: "base";
+      readonly base: NonNullable<PortAddressingExternalBaseResult>;
+      /** The host that gave it, by its client name. */
+      readonly owner: string;
+    }
+  | { readonly kind: "none" }
+  | { readonly kind: "failed" }
+  | { readonly kind: "away" };
 
 /** Options for {@link createGateway}. */
 export interface GatewayOptions {
@@ -125,6 +192,19 @@ export interface GatewayOptions {
     readonly via: IdentityVia;
     readonly headers: Headers;
   }) => Promise<IdentityOutcome>;
+  /**
+   * Asks the host that registered the `addressing` port for a listener's external origin (HO-10,
+   * D158 item 6). Absent: no host addresses, links stay on loopback.
+   */
+  readonly externalBase?: {
+    /** Whether a connected host registered the port now: none asks nothing and opens no face. */
+    readonly registered: () => boolean;
+    readonly ask: (input: {
+      readonly artifactId: string;
+      readonly listener: "shell" | "artifact";
+      readonly local: string;
+    }) => Promise<ExternalBaseAnswer>;
+  };
   /**
    * Logs every connection and request of every listener (`MOSTRA_TEST_REQUEST_LOG`, #66): tests
    * only, so a request a browser saw go unanswered shows whether it reached the gateway.
@@ -159,17 +239,46 @@ export interface GatewayOptions {
 
 /** The gateway of one instance. */
 export interface Gateway {
-  /** Binds the shell's port and every leased artifact port (D99). */
+  /** Binds the shell's port, recently viewed artifacts' ports and the hosts' kept faces (D99). */
   start(): Promise<void>;
-  /** The shell's origin. */
+  /** The loopback shell's origin. */
   readonly shellOrigin: () => string;
-  /** The artifact's default link (D97 item 3), shown again or minted: the publish receipt's URL. */
-  defaultLink(artifactId: string): { readonly url: string; readonly tokenId: string };
+  /**
+   * The artifact's default link (D97 item 3), shown again or minted: the publish receipt's URL. A
+   * host's external base (D158 item 6), when it gives one, is the link's address.
+   */
+  defaultLink(artifactId: string): Promise<{ readonly url: string; readonly tokenId: string }>;
   /**
    * Mints a link with every scope, for a version only when `version` names its number (D97
    * item 9): what `view/url` mints, for callers inside the instance (a verify run's sandbox).
    */
   link(input: { readonly artifactId: string; readonly version?: number }): string;
+  /**
+   * Mints a link at a face's shell address (a share's, D158 item 3), in the caller's transaction
+   * when it passes one.
+   */
+  mintAt(
+    input: {
+      readonly artifactId: string;
+      readonly shellOrigin: string;
+      readonly scopes?: readonly CapabilityScope[] | undefined;
+      readonly ttlMs?: number | undefined;
+      readonly viewerId?: string | undefined;
+    },
+    within?: LedgerDb,
+  ): CapabilityLink;
+  /** A link minted before, shown again from its derived secret; `undefined` once it can't be. */
+  reveal(tokenId: string): string | undefined;
+  /** Opens a face (D158 item 1): its listener on loopback, refusing everything until its origin is set. */
+  openFace(spec: FaceSpec): Promise<FaceHandle>;
+  /** The face with this key, if it is open. */
+  face(key: string): FaceHandle | undefined;
+  /** Closes a face's listener; its leased port is released when `release` is set. */
+  closeFace(key: string, release?: boolean): Promise<void>;
+  /** The open faces, for `instance/status`. */
+  faces(): readonly FaceStatus[];
+  /** Whether a shell is served at this origin now: launch tickets are minted only for those. */
+  servesShell(origin: string): boolean;
   /** The handlers of `view/url`, `view/rotate` and `view/revoke`. */
   methods(): MethodHandler[];
   /** The origins of the artifact listeners that are bound, by artifact ID. */
@@ -186,17 +295,56 @@ const NO_STORE = { "cache-control": "no-store" };
 /** How recently an artifact must have been viewed for its port to be bound at start (D129). */
 const RECENT_VIEW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** How long a host's answer for an artifact's frame address is reused (D158 item 6). */
+const EXTERNAL_BASE_REUSE_MS = 30_000;
+
+/**
+ * How long a withdrawn face's listener stays open, refusing everything, so the request that
+ * learned of the withdrawal still gets its answer (D158 item 6).
+ */
+const FACE_LINGER_MS = 2_000;
+
+/** The key of a face: `<group>:shell`, or `<group>:<artifactId>` for an artifact's. */
+export function faceKey(
+  group: string,
+  listener: "shell" | "artifact",
+  artifactId?: string,
+): string {
+  return `${group}:${listener === "shell" ? "shell" : (artifactId ?? "")}`;
+}
+
+/**
+ * One way into the gateway, for the routes it serves: the loopback shell or an artifact's
+ * listener, or a face. Everything a route needs to know about where a request came in.
+ */
+interface Way {
+  readonly listener: "shell" | "artifact";
+  /** `loopback` for the gateway's own listeners. */
+  readonly by: FaceBy | "loopback";
+  readonly via: IdentityVia;
+  readonly artifactId: string | undefined;
+  port(): number;
+  /** The origin browsers use; `undefined` while a face waits for its tunnel. */
+  origin(): string | undefined;
+  /** The exact `Host` values accepted. */
+  hosts(): readonly string[];
+  streams(): boolean;
+}
+
 /**
  * The browser-protocol routes of INTERFACES §4 (D96): WP-06 serves `fields`, `submit`, `signal`,
- * `events` and `events/poll`; the others answer 501 until their package attaches a handler.
+ * `events` and `events/poll`; WP-08 the calls, runs and live sources; WP-13 the stream tickets.
  */
-function laterArtifactRoutes(served: BrowserRoutes, acting: ActionRoutes | undefined): RouteSpec[] {
+function laterArtifactRoutes(
+  served: BrowserRoutes,
+  acting: ActionRoutes | undefined,
+  ticket: (context: RouteContext) => Promise<Response>,
+): RouteSpec[] {
   const action = (params: Readonly<Record<string, string>>): CapabilityScope | "any-action" => {
     const id = params["fn"];
     return id ? (`action:${id}` as CapabilityScope) : "any-action";
   };
   return [
-    { method: "GET", path: "/_mostra/sw.js", intent: "read", auth: "none" },
     {
       method: "POST",
       path: "/_mostra/v/:rev/fields",
@@ -263,12 +411,20 @@ function laterArtifactRoutes(served: BrowserRoutes, acting: ActionRoutes | undef
       auth: "session",
       ...(acting ? { handler: acting.live } : {}),
     },
-    { method: "POST", path: "/_mostra/v/:rev/ticket", intent: "mutation", auth: "session" },
+    // WP-13: single-use tickets for streams, polls and WebSockets that bypass the worker (D70).
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/ticket",
+      intent: "mutation",
+      auth: "session",
+      handler: ticket,
+    },
     {
       method: "GET",
       path: "/_mostra/v/:rev/events",
       intent: "stream",
       auth: "session",
+      sse: true,
       handler: served.stream,
     },
     {
@@ -279,6 +435,15 @@ function laterArtifactRoutes(served: BrowserRoutes, acting: ActionRoutes | undef
       handler: served.poll,
     },
   ];
+}
+
+/** A face as the gateway keeps it. */
+interface FaceEntry {
+  readonly key: string;
+  readonly spec: FaceSpec;
+  readonly listener: Listener;
+  readonly port: number;
+  origin: string | undefined;
 }
 
 /** Creates the gateway; nothing is bound until {@link Gateway.start}. */
@@ -322,10 +487,79 @@ export function createGateway(options: GatewayOptions): Gateway {
     { readonly listener: Listener; readonly port: number }
   >();
   const opening = new Map<string, Promise<number>>();
+  const faces = new Map<string, FaceEntry>();
+  const openingFaces = new Map<string, Promise<FaceEntry>>();
+  /** A host's recent answers for artifacts' frame addresses, by face key (D158 item 6). */
+  const askedRecently = new Map<string, number>();
   const integrity = versionIntegrity(artifacts, log);
 
+  // ── Ways in: the loopback listeners and the faces ───────────────────────────────────────
+
+  const loopbackShell: Way = {
+    listener: "shell",
+    by: "loopback",
+    via: "local",
+    artifactId: undefined,
+    port: () => shellPort ?? 0,
+    origin: () => shellOrigin(),
+    hosts: () => addressing.hosts(shellPort ?? 0),
+    streams: () => true,
+  };
+
+  const loopbackArtifact = (artifactId: string, port: () => number): Way => ({
+    listener: "artifact",
+    by: "loopback",
+    via: "local",
+    artifactId,
+    port,
+    origin: () => addressing.origin(port()),
+    hosts: () => addressing.hosts(port()),
+    streams: () => true,
+  });
+
+  const faceWay = (entry: FaceEntry): Way => ({
+    listener: entry.spec.listener,
+    by: entry.spec.by,
+    via: entry.spec.via,
+    artifactId: entry.spec.artifactId,
+    port: () => entry.port,
+    origin: () => entry.origin,
+    hosts: () => (entry.origin === undefined ? [] : [hostOf(entry.origin)]),
+    streams: () => entry.spec.streams !== false,
+  });
+
+  /** The shell of a way's group: the loopback shell, or the group's shell face. */
+  const shellOf = (way: Way, group: string | undefined): Way | undefined => {
+    if (way.by === "loopback" || group === undefined) return loopbackShell;
+    const entry = faces.get(faceKey(group, "shell"));
+    return entry ? faceWay(entry) : undefined;
+  };
+
+  /** How an artifact way's frames authenticate: by the pair, unless its keeper said (D70). */
+  const modeOf = (artifact: Way, group: string | undefined): FrameMode => {
+    if (artifact.by === "loopback" || group === undefined) return "cookie";
+    const entry = faces.get(faceKey(group, "artifact", artifact.artifactId));
+    if (entry?.spec.mode) return entry.spec.mode;
+    const shell = shellOf(artifact, group)?.origin();
+    const own = artifact.origin();
+    return shell !== undefined && own !== undefined ? addressing.frameMode(shell, own) : "worker";
+  };
+
+  /** Whether an origin is `https:`, where every cookie is `Secure`. */
+  const secure = (origin: string | undefined): boolean => origin?.startsWith("https:") === true;
+
+  /** Whether the gateway serves a shell at this origin now: launch tickets go only there. */
+  const servesShell = (origin: string): boolean =>
+    origin === shellOrigin() ||
+    [...faces.values()].some((entry) => entry.spec.listener === "shell" && entry.origin === origin);
+
   /** The answer for a damaged version: a plain page for a navigation, else the diagnostic. */
-  const damaged = (number: number | undefined, damage: string, document: boolean): Response =>
+  const damaged = (
+    number: number | undefined,
+    damage: string,
+    document: boolean,
+    frameAncestors: string,
+  ): Response =>
     refusalResponse(
       {
         status: 500,
@@ -333,11 +567,11 @@ export function createGateway(options: GatewayOptions): Gateway {
           message: `${number === undefined ? "A version" : `Version ${number}`} of this artifact is damaged: ${damage}.`,
         }),
       },
-      { document, frameAncestors: shellOrigin() },
+      { document, frameAncestors },
     );
 
   const link = (token: MintedToken): CapabilityLink => ({
-    url: `${shellOrigin()}/a/${token.artifactId}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
+    url: `${token.shellOrigin}/a/${token.artifactId}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
     tokenId: token.tokenId,
     scopes: token.scopes,
     ...(token.expiresAt !== undefined ? { expiresAt: token.expiresAt } : {}),
@@ -364,24 +598,322 @@ export function createGateway(options: GatewayOptions): Gateway {
       : undefined;
   };
 
+  // ── Faces (D158 item 1) ─────────────────────────────────────────────────────────────────
+
+  const openFace = (spec: FaceSpec, origin?: string): Promise<FaceEntry> => {
+    const key = faceKey(spec.group, spec.listener, spec.artifactId);
+    const open = faces.get(key);
+    if (open) return Promise.resolve(open);
+    const pending = openingFaces.get(key);
+    if (pending) return pending;
+    const started = (async () => {
+      let entry: FaceEntry | undefined;
+      const way = (): Way =>
+        entry
+          ? faceWay(entry)
+          : {
+              ...loopbackShell,
+              origin: () => undefined,
+              hosts: () => [],
+            };
+      const listener = createListener({
+        policy: () => ({ origin: entry?.origin ?? "", hosts: way().hosts() }),
+        log,
+        frameAncestors: () =>
+          spec.listener === "shell" ? "'none'" : (shellOf(way(), spec.group)?.origin() ?? "'none'"),
+        configure: (app) => {
+          if (spec.listener === "shell") mount(app, shellChecks(way), shellRoutes(way, spec.group));
+          else {
+            const artifactId = spec.artifactId as string;
+            mount(
+              app,
+              artifactChecks(artifactId, way, spec.group),
+              artifactRoutes(artifactId, way, spec.group),
+            );
+          }
+        },
+        ...(spec.listener === "artifact"
+          ? { upgrade: socketUpgrade(spec.artifactId as string, way, spec.group) }
+          : {}),
+        ...(options.traceRequests ? { traceRequests: true } : {}),
+      });
+      // A withdrawn face of this key may still hold its leased port for a moment.
+      await endLingering(key);
+      const port = await addressing.listenFace(listener.server, { key, lease: spec.lease });
+      entry = { key, spec, listener, port, origin };
+      faces.set(key, entry);
+      log.info("gateway.face_open", {
+        key,
+        by: spec.by,
+        local: addressing.faceLocal(port),
+        ...(origin !== undefined ? { origin } : {}),
+      });
+      return entry;
+    })().finally(() => openingFaces.delete(key));
+    openingFaces.set(key, started);
+    return started;
+  };
+
+  const handleOf = (entry: FaceEntry): FaceHandle => ({
+    key: entry.key,
+    port: entry.port,
+    local: addressing.faceLocal(entry.port),
+    origin: () => entry.origin,
+    setOrigin: (origin) => {
+      if (entry.origin !== origin) {
+        log.info("gateway.face_address", {
+          key: entry.key,
+          ...(origin !== undefined ? { origin } : {}),
+        });
+      }
+      entry.origin = origin;
+    },
+  });
+
+  const closeFace = async (key: string, release = false): Promise<void> => {
+    const pending = openingFaces.get(key);
+    if (pending) await pending.catch(() => undefined);
+    const entry = faces.get(key);
+    if (entry) {
+      faces.delete(key);
+      await entry.listener.close();
+      log.info("gateway.face_closed", { key });
+    }
+    if (release) addressing.releaseFace(key);
+  };
+
+  /**
+   * Withdrawn faces' listeners, by face key, closing after {@link FACE_LINGER_MS}; a face of the
+   * same key opened meanwhile, or the gateway's close, closes one at once.
+   */
+  const lingering = new Map<string, Listener>();
+
+  /** Closes a withdrawn face's listener now, if one still lingers, freeing its port. */
+  const endLingering = async (key: string): Promise<void> => {
+    const listener = lingering.get(key);
+    if (!listener) return;
+    lingering.delete(key);
+    await listener.close();
+  };
+
+  /**
+   * Withdraws a face at once and closes its listener a moment later: from now on its `Host` is
+   * served nowhere (every request is refused, 421), while the request that learned of the
+   * withdrawal (an exchange that asked the host) still gets its own answer, 410, rather than a
+   * connection closed under it.
+   */
+  const withdrawFace = (key: string): void => {
+    const entry = faces.get(key);
+    if (!entry) {
+      addressing.releaseFace(key);
+      return;
+    }
+    faces.delete(key);
+    entry.origin = undefined;
+    lingering.set(key, entry.listener);
+    log.info("gateway.face_withdrawn", { key });
+    const timer = setTimeout(() => {
+      if (lingering.get(key) !== entry.listener) return;
+      void endLingering(key).then(() => {
+        // Its lease goes once its port is free, unless a new face of the key holds it.
+        if (!faces.has(key)) addressing.releaseFace(key);
+      });
+    }, FACE_LINGER_MS);
+    timer.unref?.();
+  };
+
+  // ── A host's external bases (HO-10, D158 item 6) ────────────────────────────────────────
+
+  /** The kept external bases, so a restart serves their links before the host answers again. */
+  const keptBases = (): {
+    key: string;
+    listener: "shell" | "artifact";
+    artifact_id: string | null;
+    origin: string;
+    mode: FrameMode | null;
+  }[] =>
+    options.ledger.read((db) =>
+      db.all<{
+        key: string;
+        listener: "shell" | "artifact";
+        artifact_id: string | null;
+        origin: string;
+        mode: FrameMode | null;
+      }>("SELECT key, listener, artifact_id, origin, mode FROM external_base"),
+    );
+
+  const hostSpec = (
+    artifactId: string,
+    listener: "shell" | "artifact",
+    mode?: FrameMode,
+  ): FaceSpec => ({
+    by: "host",
+    group: `host:${artifactId}`,
+    listener,
+    artifactId,
+    via: "token",
+    lease: true,
+    ...(mode ? { mode } : {}),
+  });
+
+  /**
+   * The host's face of one of an artifact's listeners, asked again now: the address it gives
+   * (kept, so its links work after a restart), or none. `null`, or another origin, withdraws the
+   * face given before, whose links stop working; a host that fails or is away keeps what it gave.
+   */
+  const hostFaceTurns = new Map<string, Promise<unknown>>();
+  /**
+   * One question to the host per face at a time (Opus review of WP-13): a question that fails
+   * never closes a face another question just set up, and every question reads what the one
+   * before it left.
+   */
+  const hostFace = (
+    artifactId: string,
+    listener: "shell" | "artifact",
+  ): Promise<FaceEntry | undefined> => {
+    const key = faceKey(`host:${artifactId}`, listener, artifactId);
+    const before = hostFaceTurns.get(key) ?? Promise.resolve();
+    const turn = before.then(
+      () => askHostFace(artifactId, listener),
+      () => askHostFace(artifactId, listener),
+    );
+    const settled = turn.catch(() => undefined);
+    hostFaceTurns.set(key, settled);
+    void settled.then(() => {
+      if (hostFaceTurns.get(key) === settled) hostFaceTurns.delete(key);
+    });
+    return turn;
+  };
+
+  const askHostFace = async (
+    artifactId: string,
+    listener: "shell" | "artifact",
+  ): Promise<FaceEntry | undefined> => {
+    // Only an artifact of this home has a host's address: nothing is opened or asked for others.
+    try {
+      artifacts.get({ artifactId });
+    } catch {
+      return undefined;
+    }
+    const port = options.externalBase;
+    const group = `host:${artifactId}`;
+    const key = faceKey(group, listener, artifactId);
+    const kept = faces.get(key);
+    // Without a host to ask, a face a host gave before (kept across a restart) still serves.
+    if (!port?.registered()) return kept?.origin !== undefined ? kept : undefined;
+    if (
+      listener === "artifact" &&
+      kept &&
+      Date.now() - (askedRecently.get(key) ?? 0) < EXTERNAL_BASE_REUSE_MS
+    ) {
+      return kept;
+    }
+    // The face listens first, on its leased port, so the host is told where to forward.
+    const entry = kept ?? (await openFace(hostSpec(artifactId, listener)));
+    const answer = await port.ask({
+      artifactId,
+      listener,
+      local: addressing.faceLocal(entry.port),
+    });
+    if (answer.kind === "failed" || answer.kind === "away") {
+      if (kept?.origin !== undefined) return kept;
+      if (!kept) await closeFace(key, true);
+      return undefined;
+    }
+    if (answer.kind === "none") {
+      options.ledger.write((db) => db.run("DELETE FROM external_base WHERE key = ?", key));
+      if (kept?.origin !== undefined) withdrawFace(key);
+      else await closeFace(key, true);
+      return undefined;
+    }
+    const origin = answer.base.origin;
+    const mode = answer.base.mode;
+    if (entry.origin !== origin || (entry.spec.mode ?? null) !== (mode ?? null)) {
+      // Another origin withdraws the one before: its Host is no longer served. The same mode
+      // keeps the listener, whose Host and origin follow the entry at once; another mode needs a
+      // listener of its own, on the same leased port.
+      if ((entry.spec.mode ?? null) !== (mode ?? null)) await closeFace(key);
+      const fresh =
+        faces.get(key) ?? (await openFace(hostSpec(artifactId, listener, mode), origin));
+      fresh.origin = origin;
+      options.ledger.write((db) =>
+        db.run(
+          "INSERT INTO external_base (key, listener, artifact_id, origin, mode, client, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET origin = excluded.origin, mode = excluded.mode, updated_at = excluded.updated_at",
+          key,
+          listener,
+          artifactId,
+          origin,
+          mode ?? null,
+          answer.owner,
+          new Date().toISOString(),
+        ),
+      );
+      askedRecently.set(key, Date.now());
+      return fresh;
+    }
+    askedRecently.set(key, Date.now());
+    return entry;
+  };
+
+  /** Where an artifact's links point: a host's external base when it gives one, else loopback. */
+  const linkBase = async (artifactId: string): Promise<string> => {
+    const face = await hostFace(artifactId, "shell");
+    return face?.origin ?? shellOrigin();
+  };
+
+  /** The artifact way a shell way opens frames on, or why there is none. */
+  const artifactWayFor = async (
+    shell: Way,
+    group: string | undefined,
+    artifactId: string,
+  ): Promise<{ readonly way: Way; readonly group: string | undefined } | Refusal> => {
+    if (shell.by === "loopback" || group === undefined) {
+      const port = await openArtifact(artifactId);
+      return { way: loopbackArtifact(artifactId, () => port), group: undefined };
+    }
+    if (shell.by === "host") {
+      const entry = await hostFace(artifactId, "artifact");
+      if (entry?.origin === undefined) {
+        return refusal(
+          "MOSTRA_HYGIENE_NOT_SERVED",
+          "The host gives this artifact's frame no address here.",
+          503,
+        );
+      }
+      return { way: faceWay(entry), group };
+    }
+    const entry = faces.get(faceKey(group, "artifact", artifactId));
+    if (entry?.origin === undefined) {
+      return refusal("MOSTRA_HYGIENE_NOT_SERVED", "This artifact isn't shared at this address.");
+    }
+    return { way: faceWay(entry), group };
+  };
+
   // ── The shell ────────────────────────────────────────────────────────────────────────────
 
-  const shellKind = (): ListenerKind => ({
+  const shellKind = (way: Way): ListenerKind => ({
     kind: "shell",
-    origin: shellOrigin(),
-    shellOrigin: shellOrigin(),
+    origin: way.origin() ?? "",
+    shellOrigin: way.origin() ?? "",
   });
-  const shellChecks: ListenerChecks = {
-    policy: () => ({ origin: shellOrigin(), hosts: addressing.hosts(shellPort ?? 0) }),
+  const shellChecks = (way: () => Way): ListenerChecks => ({
+    policy: () => ({ origin: way().origin() ?? "", hosts: way().hosts() }),
     capabilities,
     log,
-    cookieName: () => `mostra-${shellPort}`,
+    cookieName: () => `mostra-${way().port()}`,
     frameAncestors: () => "'none'",
     artifactOf: (params) => {
       const id = params["artifactId"];
-      return id !== undefined && ArtifactId.is(id) ? id : undefined;
+      // A face kept for one artifact (a host's external base) serves that artifact only: any
+      // other path is refused before anything is opened or asked (Opus review of WP-13).
+      const own = way().artifactId;
+      return id !== undefined && ArtifactId.is(id) && (own === undefined || own === id)
+        ? id
+        : undefined;
     },
-  };
+    // The shell's own stream is refused where streams don't pass, as the frame's is (D158 item 5).
+    streams: () => way().streams(),
+  });
 
   const shellMissing = (): Response =>
     jsonResponse(
@@ -391,52 +923,13 @@ export function createGateway(options: GatewayOptions): Gateway {
       { status: 503 },
     );
 
-  /** The shell's page: the same for every artifact; it learns everything from its session. */
-  const shellPage = (context: RouteContext): Response => {
-    if (options.shellDir === undefined) return shellMissing();
-    if (context.artifactId === undefined) {
-      return refuse(
-        shellChecks,
-        refusal("MOSTRA_HYGIENE_NOT_SERVED", "No artifact is named at this path."),
-        {
-          method: context.request.method,
-          path: new URL(context.request.url).pathname,
-          document: true,
-        },
-      );
-    }
-    const html = readFileSync(join(options.shellDir, "index.html"));
-    return new Response(context.request.method === "HEAD" ? null : html, {
-      headers: {
-        ...BASE_HEADERS,
-        ...documentHeaders(shellKind(), `http://${addressing.urlHost}:*`),
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-cache",
-      },
-    });
-  };
-
-  const shellAsset = async (context: RouteContext): Promise<Response> => {
-    if (options.shellDir === undefined) return shellMissing();
-    const url = new URL(context.request.url);
-    const path = safePath(url.pathname)?.slice("/_mostra/shell".length) ?? "";
-    const file = path.startsWith("/assets/") ? await findFile(options.shellDir, path) : undefined;
-    if (!file) {
-      return refuse(
-        shellChecks,
-        refusal("MOSTRA_HYGIENE_NOT_SERVED", "No shell file at this path."),
-        {
-          method: context.request.method,
-          path: url.pathname,
-          document: false,
-        },
-      );
-    }
-    return fileResponse(file, context.request, {
-      ...documentHeaders(shellKind(), `http://${addressing.urlHost}:*`),
-      "cache-control": "public, max-age=31536000, immutable",
-    });
-  };
+  /** The exchanges each browser made, by artifact (WP-12; see `exchange`). */
+  const madeSessions = new Map<string, { readonly order: number; readonly grant: Grant }>();
+  let exchangeOrder = 0;
+  const browserKey = (artifactId: string, browser: unknown): string | undefined =>
+    typeof browser === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(browser)
+      ? `${artifactId}\u0000${browser}`
+      : undefined;
 
   /** What a link allows, as the shell shows it when two links meet. */
   const access = (grant: Grant) => ({
@@ -451,364 +944,491 @@ export function createGateway(options: GatewayOptions): Gateway {
     return { artifact: { id: detail.id, title: detail.title }, ...access(grant) };
   };
 
-  /**
-   * The sessions exchanges made, by artifact and browser (the shell's own random key, kept in its
-   * origin's storage and sent with every exchange), each with the order it was made in. An
-   * exchange that waited (the identity port answering) checks here whether another link's
-   * session was made for the same browser meanwhile: its request carried no cookie of that session,
-   * so D98 item 8's check alone would let the later answer silently replace it (Opus review of
-   * WP-12, finding 2). Only the last few thousand are kept; the window that matters is seconds.
-   */
-  const madeSessions = new Map<string, { readonly order: number; readonly grant: Grant }>();
-  let exchangeOrder = 0;
-  const browserKey = (artifactId: string, browser: unknown): string | undefined =>
-    typeof browser === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(browser)
-      ? `${artifactId}\u0000${browser}`
-      : undefined;
+  const shellRoutes = (wayOf: () => Way, group: string | undefined): RouteSpec[] => {
+    const checks = shellChecks(wayOf);
 
-  const exchange = async (context: RouteContext): Promise<Response> => {
-    const artifactId = context.artifactId as string;
-    const startedAt = exchangeOrder;
-    const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
-    const body = await readJsonObject(context.request);
-    if (isRefusal(body)) return refuse(shellChecks, body, meta);
-    // A link's token, or a one-time launch ticket from `mostra open` (D140 item 15), which is
-    // spent only once it started (or reused) a session.
-    const launch = body["token"] === undefined && body["launch"] !== undefined;
-    const browser = browserKey(artifactId, body["browser"]);
-    let grant = launch
-      ? capabilities.presentLaunch(body["launch"], artifactId, false)
-      : capabilities.presentToken(body["token"], artifactId);
-    if (isRefusal(grant)) return refuse(shellChecks, grant, meta);
-    // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
-    // could send the viewer to its own, narrower link and take over their tabs.
-    const existing = capabilities.session(
-      cookieValues(context.request.headers.get("cookie"), shellChecks.cookieName()),
-      shellOrigin(),
-      artifactId,
-    );
-    if (!isRefusal(existing)) {
-      if (existing.grant.tokenId === grant.tokenId) {
-        if (launch) capabilities.spendLaunch(body["launch"]);
-        return jsonResponse({ csrf: existing.csrf, ...sessionFacts(artifactId, existing.grant) });
+    /** The shell's page: the same for every artifact; it learns everything from its session. */
+    const shellPage = async (context: RouteContext): Promise<Response> => {
+      if (options.shellDir === undefined) return shellMissing();
+      const way = wayOf();
+      if (context.artifactId === undefined) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_NOT_SERVED", "No artifact is named at this path."),
+          {
+            method: context.request.method,
+            path: new URL(context.request.url).pathname,
+            document: true,
+          },
+        );
       }
-      if (body["replace"] !== true) {
-        log.info("gateway.session_conflict", { artifactId, origin: shellOrigin() });
+      // The page may frame only its artifact's origin: on loopback any port of the host, at an
+      // external address exactly the artifact's face there.
+      let frames = `http://${addressing.urlHost}:*`;
+      if (way.by !== "loopback") {
+        const found = await artifactWayFor(way, group, context.artifactId).catch(() => undefined);
+        frames = found && !isRefusal(found) ? (found.way.origin() ?? "'none'") : "'none'";
+      }
+      const html = readFileSync(join(options.shellDir, "index.html"));
+      return new Response(context.request.method === "HEAD" ? null : html, {
+        headers: {
+          ...BASE_HEADERS,
+          ...documentHeaders(shellKind(way), frames),
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-cache",
+        },
+      });
+    };
+
+    const shellAsset = async (context: RouteContext): Promise<Response> => {
+      if (options.shellDir === undefined) return shellMissing();
+      const url = new URL(context.request.url);
+      const path = safePath(url.pathname)?.slice("/_mostra/shell".length) ?? "";
+      const file = path.startsWith("/assets/") ? await findFile(options.shellDir, path) : undefined;
+      if (!file) {
+        return refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", "No shell file at this path."), {
+          method: context.request.method,
+          path: url.pathname,
+          document: false,
+        });
+      }
+      return fileResponse(file, context.request, {
+        ...documentHeaders(shellKind(wayOf()), `http://${addressing.urlHost}:*`),
+        "cache-control": "public, max-age=31536000, immutable",
+      });
+    };
+
+    /**
+     * Who the session acts as when the link names nobody and no host did (D143 item 2, D158 item
+     * 2): the home's local user on loopback; over a tunnel the tailnet person Tailscale Serve
+     * named, else the link's own viewer, never the home's local user.
+     */
+    const defaultViewer = (way: Way, context: RouteContext, grant: Grant): string | undefined => {
+      if (way.via === "local") return undefined;
+      if (way.via === "tailnet") {
+        const person = tailnetPerson(context.request.headers, context.remote);
+        if (person) return interaction.viewerForTailnet(person);
+      }
+      return interaction.viewerForLink(grant.tokenId, "Shared link");
+    };
+
+    const exchange = async (context: RouteContext): Promise<Response> => {
+      const way = wayOf();
+      const origin = way.origin() ?? "";
+      const startedAt = exchangeOrder;
+      const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
+      // No artifact this address serves (another's, at a host's address): nothing is read,
+      // opened or asked (Opus review of WP-13).
+      if (context.artifactId === undefined) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_NOT_SERVED", "No artifact is served at this path."),
+          meta,
+        );
+      }
+      const artifactId = context.artifactId;
+      const body = await readJsonObject(context.request);
+      if (isRefusal(body)) return refuse(checks, body, meta);
+      // A host's address is asked again at every exchange: one it withdrew stops working (D158).
+      if (way.by === "host") {
+        const still = await hostFace(artifactId, "shell");
+        if (still?.origin !== origin) {
+          return refuse(
+            checks,
+            refusal("MOSTRA_HYGIENE_TOKEN_REVOKED", "The host no longer serves this address.", 410),
+            meta,
+          );
+        }
+      }
+      // A link's token, or a one-time launch ticket from `mostra open` (D140 item 15), which is
+      // spent only once it started (or reused) a session.
+      const launch = body["token"] === undefined && body["launch"] !== undefined;
+      const browser = browserKey(artifactId, body["browser"]);
+      let grant = launch
+        ? capabilities.presentLaunch(body["launch"], artifactId, false, origin)
+        : capabilities.presentToken(body["token"], artifactId, origin);
+      if (isRefusal(grant)) return refuse(checks, grant, meta);
+      // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
+      // could send the viewer to its own, narrower link and take over their tabs.
+      const existing = capabilities.session(
+        cookieValues(context.request.headers.get("cookie"), checks.cookieName()),
+        origin,
+        artifactId,
+      );
+      if (!isRefusal(existing)) {
+        if (existing.grant.tokenId === grant.tokenId) {
+          if (launch) capabilities.spendLaunch(body["launch"]);
+          return jsonResponse({ csrf: existing.csrf, ...sessionFacts(artifactId, existing.grant) });
+        }
+        if (body["replace"] !== true) {
+          log.info("gateway.session_conflict", { artifactId, origin });
+          return jsonResponse(
+            {
+              ...refusal(
+                "MOSTRA_HYGIENE_SESSION_CONFLICT",
+                "This browser already has this artifact open from another link.",
+              ).diagnostic,
+              current: access(existing.grant),
+              offered: access(grant),
+            },
+            { status: 409 },
+          );
+        }
+      }
+      // A link without a viewer acts for whoever the host's identity port names (D143 item 2);
+      // a host that took identity over and can't answer refuses the link, never a guess.
+      let viewerId: string | undefined;
+      if (grant.viewerId === undefined) {
+        const outcome: IdentityOutcome = options.identity
+          ? await options.identity({ artifactId, via: way.via, headers: context.request.headers })
+          : { kind: "default" };
+        if (outcome.kind === "unavailable") {
+          log.warn("gateway.session_refused", { artifactId, code: outcome.diagnostic.code });
+          return jsonResponse(outcome.diagnostic, { status: 503 });
+        }
+        viewerId =
+          outcome.kind === "person"
+            ? interaction.viewerForHost(outcome.viewer)
+            : defaultViewer(way, context, grant);
+      }
+      // Everything is judged again after the await, in one synchronous step with the session's
+      // creation: a link revoked or expired meanwhile gets no session (Opus review of WP-12,
+      // finding 3), and a launch ticket is spent here, so it opens one session however many
+      // exchanges presented it while the identity port answered (GPT review finding 1).
+      const now = launch
+        ? capabilities.presentLaunch(body["launch"], artifactId, true, origin)
+        : capabilities.presentToken(body["token"], artifactId, origin);
+      if (isRefusal(now)) return refuse(checks, now, meta);
+      grant = now;
+      const made = browser === undefined ? undefined : madeSessions.get(browser);
+      if (
+        made !== undefined &&
+        made.order > startedAt &&
+        made.grant.tokenId !== grant.tokenId &&
+        body["replace"] !== true
+      ) {
+        log.info("gateway.session_conflict", { artifactId, origin });
         return jsonResponse(
           {
             ...refusal(
               "MOSTRA_HYGIENE_SESSION_CONFLICT",
               "This browser already has this artifact open from another link.",
             ).diagnostic,
-            current: access(existing.grant),
+            current: access(made.grant),
             offered: access(grant),
           },
           { status: 409 },
         );
       }
-    }
-    // A link without a viewer acts for whoever the host's identity port names (D143 item 2);
-    // a host that took identity over and can't answer refuses the link, never a guess.
-    let viewerId: string | undefined;
-    if (grant.viewerId === undefined && options.identity) {
-      const outcome = await options.identity({
-        artifactId,
-        via: "local",
-        headers: context.request.headers,
-      });
-      if (outcome.kind === "unavailable") {
-        log.warn("gateway.session_refused", { artifactId, code: outcome.diagnostic.code });
-        return jsonResponse(outcome.diagnostic, { status: 503 });
+      const session = capabilities.createSession({ tokenId: grant.tokenId, origin, viewerId });
+      if (browser !== undefined) {
+        exchangeOrder += 1;
+        madeSessions.delete(browser);
+        madeSessions.set(browser, { order: exchangeOrder, grant });
+        if (madeSessions.size > 4096)
+          madeSessions.delete(madeSessions.keys().next().value as string);
       }
-      if (outcome.kind === "person") viewerId = interaction.viewerForHost(outcome.viewer);
-    }
-    // Everything is judged again after the await, in one synchronous step with the session's
-    // creation: a link revoked or expired meanwhile gets no session (Opus review of WP-12,
-    // finding 3), and a launch ticket is spent here, so it opens one session however many
-    // exchanges presented it while the identity port answered (GPT review finding 1).
-    const now = launch
-      ? capabilities.presentLaunch(body["launch"], artifactId, true)
-      : capabilities.presentToken(body["token"], artifactId);
-    if (isRefusal(now)) return refuse(shellChecks, now, meta);
-    grant = now;
-    const made = browser === undefined ? undefined : madeSessions.get(browser);
-    if (
-      made !== undefined &&
-      made.order > startedAt &&
-      made.grant.tokenId !== grant.tokenId &&
-      body["replace"] !== true
-    ) {
-      log.info("gateway.session_conflict", { artifactId, origin: shellOrigin() });
+      log.info("gateway.session_started", { origin, artifactId, tokenId: grant.tokenId });
       return jsonResponse(
+        { csrf: session.csrf, ...sessionFacts(artifactId, grant) },
         {
-          ...refusal(
-            "MOSTRA_HYGIENE_SESSION_CONFLICT",
-            "This browser already has this artifact open from another link.",
-          ).diagnostic,
-          current: access(made.grant),
-          offered: access(grant),
-        },
-        { status: 409 },
-      );
-    }
-    const session = capabilities.createSession({
-      tokenId: grant.tokenId,
-      origin: shellOrigin(),
-      viewerId,
-    });
-    if (browser !== undefined) {
-      exchangeOrder += 1;
-      madeSessions.delete(browser);
-      madeSessions.set(browser, { order: exchangeOrder, grant });
-      if (madeSessions.size > 4096) madeSessions.delete(madeSessions.keys().next().value as string);
-    }
-    log.info("gateway.session_started", {
-      origin: shellOrigin(),
-      artifactId,
-      tokenId: grant.tokenId,
-    });
-    return jsonResponse(
-      { csrf: session.csrf, ...sessionFacts(artifactId, grant) },
-      {
-        headers: {
-          "set-cookie": sessionCookie(
-            shellChecks.cookieName(),
-            session.cookie,
-            `/a/${artifactId}`,
-            SESSION_MAX_AGE_S,
-          ),
-        },
-      },
-    );
-  };
-
-  const readShellSession = (context: RouteContext): Response => {
-    const session = context.session;
-    if (!session || context.artifactId === undefined)
-      throw new Error("session route without a session");
-    return jsonResponse({ csrf: session.csrf, ...sessionFacts(context.artifactId, session.grant) });
-  };
-
-  const ticket = async (context: RouteContext): Promise<Response> => {
-    const session = context.session;
-    const artifactId = context.artifactId;
-    if (!session || artifactId === undefined) throw new Error("session route without a session");
-    const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
-    const body = await readJsonObject(context.request);
-    if (isRefusal(body)) return refuse(shellChecks, body, meta);
-    const asked = body["version"];
-    if (asked !== undefined && !(Number.isSafeInteger(asked) && (asked as number) >= 1)) {
-      return refuse(
-        shellChecks,
-        refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "`version` must be a version number."),
-        meta,
-      );
-    }
-    const pinned = session.grant.pinnedVersion;
-    // A link that names a version opens that version only (D97 item 9).
-    if (pinned !== undefined && asked !== undefined && asked !== pinned) {
-      return refuse(
-        shellChecks,
-        refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`),
-        meta,
-      );
-    }
-    const detail = artifacts.get({ artifactId });
-    const version = versionOf(detail, (asked as number | undefined) ?? pinned);
-    const latest = versionOf(detail, undefined);
-    if (!version || !latest) {
-      return jsonResponse(
-        createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
-          message:
-            `This artifact has no version ${asked ?? session.grant.pinnedVersion ?? ""}.`.replace(
-              " .",
-              ".",
+          headers: {
+            "set-cookie": sessionCookie(
+              checks.cookieName(),
+              session.cookie,
+              `/a/${artifactId}`,
+              SESSION_MAX_AGE_S,
+              secure(origin),
             ),
-        }),
-        { status: 404 },
+          },
+        },
       );
-    }
-    // A collected version's files are gone until its source is published again (D140 item 14).
-    if (version.collected !== undefined) {
-      return jsonResponse(collectedDiagnostic(version.number), { status: 410 });
-    }
-    // A damaged version is never shown (FAILURE_MODEL §3).
-    // A dev preview has no stored build to check: Vite serves the source (D140 item 12).
-    const damage = options.dev ? undefined : await integrity.check(version.id);
-    if (damage !== undefined) return damaged(version.number, damage, false);
-    const port = await openArtifact(artifactId);
-    const artifactOrigin = addressing.origin(port);
-    if (addressing.frameMode(shellOrigin(), artifactOrigin) === "worker") {
-      // Cross-site frames use worker mode (D70), which WP-13 builds; nothing here pretends otherwise.
-      return refuse(
-        shellChecks,
-        refusal("MOSTRA_HYGIENE_NOT_SERVED", "Cross-site frame sessions arrive with sharing.", 501),
-        meta,
-      );
-    }
-    const value = capabilities.mintTicket({
-      tokenId: session.grant.tokenId,
-      artifactId,
-      versionId: version.id,
-      origin: artifactOrigin,
-      shellOrigin: shellOrigin(),
-      shellSessionId: session.id,
-      viewerId: session.viewerId,
-    });
-    // One frame load is one view, of exactly this version, by this link's viewer (D104), with
-    // the channels and controls in force for it (D108).
-    const controls = await options.controls(detail);
-    const viewerId = interaction.viewerOf(session.viewerId);
-    const viewId = interaction.openView({
-      artifactId,
-      versionId: version.id,
-      viewerId,
-      tokenId: session.grant.tokenId,
-      controls,
-    });
-    const answer: TicketAnswer = {
-      artifactId,
-      viewId,
-      src: `${artifactOrigin}/_mostra/enter?ticket=${value}`,
-      artifactOrigin,
-      version,
-      latest,
-      policy: detail.policy ?? { policy: "once", scope: "per-artifact" },
-      submitChannels: controls.submitChannels,
-      // What the shell offers this link: a control its scopes can't use isn't shown (D97).
-      controls: (controls.controls ?? ["submit", "choose", "approve"]).filter((control) =>
-        control === "submit"
-          ? scopeAllows(session.grant.scopes, "submit")
-          : control === "choose"
-            ? scopeAllows(session.grant.scopes, "review")
-            : true,
-      ),
-      target: options.target ?? "live",
-      follow: interaction.following({ artifactId, viewerId }),
-      pinned: pinned !== undefined,
-      ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
-      ...(options.dev ? { devPreview: true as const } : {}),
     };
-    return jsonResponse(answer);
-  };
 
-  const shellRoutes: RouteSpec[] = [
-    { method: "GET", path: "/a/:artifactId", intent: "read", auth: "none", handler: shellPage },
-    { method: "GET", path: "/a/:artifactId/", intent: "read", auth: "none", handler: shellPage },
-    {
-      method: "GET",
-      path: "/a/:artifactId/v/:number{[1-9][0-9]{0,8}}",
-      intent: "read",
-      auth: "none",
-      handler: shellPage,
-    },
-    { method: "GET", path: "/_mostra/shell/*", intent: "read", auth: "none", handler: shellAsset },
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/session",
-      intent: "exchange",
-      auth: "none",
-      tokenPath: true,
-      handler: exchange,
-    },
-    {
-      method: "GET",
-      path: "/a/:artifactId/_mostra/session",
-      intent: "read",
-      auth: "session",
-      handler: readShellSession,
-    },
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/ticket",
-      intent: "mutation",
-      auth: "session",
-      handler: ticket,
-    },
-    // The trusted controls, the version banner's sources and follow (WP-07), and review
-    // (WP-20), behind the shell's session (D96). The specific routes come before the wildcard.
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/v/:rev/submit",
-      intent: "mutation",
-      auth: "session",
-      scope: () => "submit",
-      handler: served.shellSubmit,
-    },
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/v/:rev/review/choose",
-      intent: "mutation",
-      auth: "session",
-      scope: () => "review",
-      handler: served.choose,
-    },
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/v/:rev/follow",
-      intent: "mutation",
-      auth: "session",
-      handler: served.follow,
-    },
-    {
-      method: "GET",
-      path: "/a/:artifactId/_mostra/v/:rev/carry",
-      intent: "read",
-      auth: "session",
-      handler: served.carry,
-    },
-    {
-      method: "GET",
-      path: "/a/:artifactId/_mostra/v/:rev/events",
-      intent: "stream",
-      auth: "session",
-      handler: served.stream,
-    },
-    {
-      method: "GET",
-      path: "/a/:artifactId/_mostra/v/:rev/events/poll",
-      intent: "stream",
-      auth: "session",
-      handler: served.poll,
-    },
-    {
-      method: "POST",
-      path: "/a/:artifactId/_mostra/v/:rev/review/*",
-      intent: "mutation",
-      auth: "session",
-      scope: () => "review",
-    },
-  ];
+    const readShellSession = (context: RouteContext): Response => {
+      const session = context.session;
+      if (!session || context.artifactId === undefined)
+        throw new Error("session route without a session");
+      return jsonResponse({
+        csrf: session.csrf,
+        ...sessionFacts(context.artifactId, session.grant),
+      });
+    };
+
+    const ticket = async (context: RouteContext): Promise<Response> => {
+      const way = wayOf();
+      const session = context.session;
+      const artifactId = context.artifactId;
+      if (!session || artifactId === undefined) throw new Error("session route without a session");
+      const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
+      const body = await readJsonObject(context.request);
+      if (isRefusal(body)) return refuse(checks, body, meta);
+      const asked = body["version"];
+      if (asked !== undefined && !(Number.isSafeInteger(asked) && (asked as number) >= 1)) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "`version` must be a version number."),
+          meta,
+        );
+      }
+      const pinned = session.grant.pinnedVersion;
+      // A link that names a version opens that version only (D97 item 9).
+      if (pinned !== undefined && asked !== undefined && asked !== pinned) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`),
+          meta,
+        );
+      }
+      const detail = artifacts.get({ artifactId });
+      const version = versionOf(detail, (asked as number | undefined) ?? pinned);
+      const latest = versionOf(detail, undefined);
+      if (!version || !latest) {
+        return jsonResponse(
+          createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
+            message:
+              `This artifact has no version ${asked ?? session.grant.pinnedVersion ?? ""}.`.replace(
+                " .",
+                ".",
+              ),
+          }),
+          { status: 404 },
+        );
+      }
+      // A collected version's files are gone until its source is published again (D140 item 14).
+      if (version.collected !== undefined) {
+        return jsonResponse(collectedDiagnostic(version.number), { status: 410 });
+      }
+      // A damaged version is never shown (FAILURE_MODEL §3).
+      // A dev preview has no stored build to check: Vite serves the source (D140 item 12).
+      const damage = options.dev ? undefined : await integrity.check(version.id);
+      if (damage !== undefined) return damaged(version.number, damage, false, "'none'");
+      // The frame opens on the artifact's way in this shell's group: its loopback listener, or
+      // the artifact's face at this address (D158 item 1), in the mode the pair needs (D70).
+      const found = await artifactWayFor(way, group, artifactId);
+      if (isRefusal(found)) return refuse(checks, found, meta);
+      const artifactOrigin = found.way.origin() as string;
+      const mode = modeOf(found.way, found.group);
+      const value = capabilities.mintTicket({
+        tokenId: session.grant.tokenId,
+        artifactId,
+        versionId: version.id,
+        origin: artifactOrigin,
+        shellOrigin: way.origin() ?? "",
+        shellSessionId: session.id,
+        viewerId: session.viewerId,
+      });
+      // One frame load is one view, of exactly this version, by this link's viewer (D104), with
+      // the channels and controls in force for it (D108).
+      const controls = await options.controls(detail);
+      const viewerId = interaction.viewerOf(session.viewerId);
+      const viewId = interaction.openView({
+        artifactId,
+        versionId: version.id,
+        viewerId,
+        tokenId: session.grant.tokenId,
+        controls,
+      });
+      const answer: TicketAnswer = {
+        artifactId,
+        viewId,
+        // Worker mode takes its ticket in the fragment, which only the bootstrap page reads.
+        src:
+          mode === "worker"
+            ? `${artifactOrigin}/_mostra/enter#t=${value}`
+            : `${artifactOrigin}/_mostra/enter?ticket=${value}`,
+        artifactOrigin,
+        version,
+        latest,
+        policy: detail.policy ?? { policy: "once", scope: "per-artifact" },
+        submitChannels: controls.submitChannels,
+        // What the shell offers this link: a control its scopes can't use isn't shown (D97).
+        controls: (controls.controls ?? ["submit", "choose", "approve"]).filter((control) =>
+          control === "submit"
+            ? scopeAllows(session.grant.scopes, "submit")
+            : control === "choose"
+              ? scopeAllows(session.grant.scopes, "review")
+              : true,
+        ),
+        target: options.target ?? "live",
+        follow: interaction.following({ artifactId, viewerId }),
+        pinned: pinned !== undefined,
+        ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
+        ...(options.dev ? { devPreview: true as const } : {}),
+        ...(mode === "worker" ? { mode: "worker" as const } : {}),
+      };
+      return jsonResponse(answer);
+    };
+
+    return [
+      { method: "GET", path: "/a/:artifactId", intent: "read", auth: "none", handler: shellPage },
+      { method: "GET", path: "/a/:artifactId/", intent: "read", auth: "none", handler: shellPage },
+      {
+        method: "GET",
+        path: "/a/:artifactId/v/:number{[1-9][0-9]{0,8}}",
+        intent: "read",
+        auth: "none",
+        handler: shellPage,
+      },
+      {
+        method: "GET",
+        path: "/_mostra/shell/*",
+        intent: "read",
+        auth: "none",
+        handler: shellAsset,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/session",
+        intent: "exchange",
+        auth: "none",
+        tokenPath: true,
+        handler: exchange,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/session",
+        intent: "read",
+        auth: "session",
+        handler: readShellSession,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/ticket",
+        intent: "mutation",
+        auth: "session",
+        handler: ticket,
+      },
+      // The trusted controls, the version banner's sources and follow (WP-07), and review
+      // (WP-20), behind the shell's session (D96). The specific routes come before the wildcard.
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/submit",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "submit",
+        handler: served.shellSubmit,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/review/choose",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "review",
+        handler: served.choose,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/follow",
+        intent: "mutation",
+        auth: "session",
+        handler: served.follow,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/v/:rev/carry",
+        intent: "read",
+        auth: "session",
+        handler: served.carry,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/v/:rev/events",
+        intent: "stream",
+        auth: "session",
+        sse: true,
+        handler: served.stream,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/v/:rev/events/poll",
+        intent: "stream",
+        auth: "session",
+        handler: served.poll,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/review/*",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "review",
+      },
+    ];
+  };
 
   // ── Artifacts ────────────────────────────────────────────────────────────────────────────
 
-  const artifactRoutes = (artifactId: string, port: () => number): RouteSpec[] => {
-    const origin = (): string => addressing.origin(port());
+  const artifactChecks = (
+    artifactId: string,
+    wayOf: () => Way,
+    group: string | undefined,
+  ): ListenerChecks => ({
+    policy: () => ({ origin: wayOf().origin() ?? "", hosts: wayOf().hosts() }),
+    capabilities,
+    log,
+    cookieName: () => `mostra-${wayOf().port()}`,
+    frameAncestors: () => shellOf(wayOf(), group)?.origin() ?? "'none'",
+    artifactOf: () => artifactId,
+    mode: () => modeOf(wayOf(), group),
+    streams: () => wayOf().streams(),
+  });
+
+  const artifactRoutes = (
+    artifactId: string,
+    wayOf: () => Way,
+    group: string | undefined,
+  ): RouteSpec[] => {
+    const origin = (): string => wayOf().origin() ?? "";
+    const shell = (): string => shellOf(wayOf(), group)?.origin() ?? "";
     const kind = (): ListenerKind => ({
       kind: "artifact",
       origin: origin(),
-      shellOrigin: shellOrigin(),
+      shellOrigin: shell(),
     });
-    const checks = (): ListenerChecks => artifactChecks(artifactId, port);
+    const checks = artifactChecks(artifactId, wayOf, group);
+    const mode = (): FrameMode => modeOf(wayOf(), group);
+    const notServed = (context: RouteContext, message: string): Response =>
+      refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", message), {
+        method: context.request.method,
+        path: new URL(context.request.url).pathname,
+        document: context.document,
+      });
 
+    /**
+     * `GET /_mostra/enter`: in cookie mode the frame's entry with its ticket (D98 item 3); in
+     * worker mode the bootstrap page, whose ticket is in the fragment (D70).
+     */
     const enter = (context: RouteContext): Response => {
       const url = new URL(context.request.url);
       const meta = { method: "GET", path: url.pathname, document: true };
+      if (mode() === "worker") {
+        if (url.searchParams.has("ticket")) {
+          return notServed(context, "A worker-mode frame enters through its bootstrap page.");
+        }
+        return new Response(context.request.method === "HEAD" ? null : BOOTSTRAP_PAGE, {
+          headers: {
+            ...BASE_HEADERS,
+            ...documentHeaders(kind(), ""),
+            ...NO_STORE,
+            "content-type": "text/html; charset=utf-8",
+          },
+        });
+      }
       // A frame enters from its shell, which is same-site. A page elsewhere can navigate a hidden
       // frame here with junk tickets; its entries are refused before redeeming, so they never
       // count towards the guessing limit and can't lock real viewers out (D97 item 8).
       if (context.request.headers.get("sec-fetch-site") === "cross-site") {
         return refuse(
-          checks(),
+          checks,
           refusal("MOSTRA_HYGIENE_ORIGIN_REFUSED", "A frame enters only from its shell."),
           meta,
         );
       }
       const redeemed = capabilities.redeemTicket(url.searchParams.get("ticket"), origin());
-      if (isRefusal(redeemed)) return refuse(checks(), redeemed, meta);
+      if (isRefusal(redeemed)) return refuse(checks, redeemed, meta);
       if (redeemed.artifactId !== artifactId) {
         return refuse(
-          checks(),
+          checks,
           refusal("MOSTRA_HYGIENE_TOKEN_INVALID", "The ticket is for another artifact."),
           meta,
         );
@@ -816,7 +1436,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const headers: Record<string, string> = { ...BASE_HEADERS, ...NO_STORE, location: "/" };
       // A frame that has a session from the same link keeps it and switches version (D98 item 5).
       const existing = capabilities.session(
-        cookieValues(context.request.headers.get("cookie"), checks().cookieName()),
+        cookieValues(context.request.headers.get("cookie"), checks.cookieName()),
         origin(),
         artifactId,
       );
@@ -836,10 +1456,11 @@ export function createGateway(options: GatewayOptions): Gateway {
           viewerId: redeemed.viewerId,
         });
         headers["set-cookie"] = sessionCookie(
-          checks().cookieName(),
+          checks.cookieName(),
           session.cookie,
           "/",
           SESSION_MAX_AGE_S,
+          secure(origin()),
         );
         log.info("gateway.session_started", {
           origin: origin(),
@@ -850,21 +1471,126 @@ export function createGateway(options: GatewayOptions): Gateway {
       return new Response(null, { status: 303, headers });
     };
 
+    /**
+     * `POST /_mostra/enter` (worker mode, D70): the bootstrap page exchanges the shell's ticket
+     * for a frame session whose secret it hands the service worker. A frame that presents the
+     * session it kept, from the same link and viewer, keeps it and switches version.
+     */
+    const enterWorker = async (context: RouteContext): Promise<Response> => {
+      const url = new URL(context.request.url);
+      const meta = { method: "POST", path: url.pathname, document: false };
+      if (mode() !== "worker") {
+        return notServed(context, "This frame enters in cookie mode, with `GET /_mostra/enter`.");
+      }
+      const body = await readJsonObject(context.request);
+      if (isRefusal(body)) return refuse(checks, body, meta);
+      const parsed = EnterRequest.safeParse(body);
+      if (!parsed.success) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "The entry needs the frame's `ticket`."),
+          meta,
+        );
+      }
+      const redeemed = capabilities.redeemTicket(parsed.data.ticket, origin());
+      if (isRefusal(redeemed)) return refuse(checks, redeemed, meta);
+      if (redeemed.artifactId !== artifactId) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_TOKEN_INVALID", "The ticket is for another artifact."),
+          meta,
+        );
+      }
+      const kept = context.request.headers.get(FRAME_SESSION_HEADER);
+      const existing =
+        kept === null ? undefined : capabilities.session([kept], origin(), artifactId, "worker");
+      let secret: string;
+      if (
+        kept !== null &&
+        existing !== undefined &&
+        !isRefusal(existing) &&
+        existing.grant.tokenId === redeemed.tokenId &&
+        existing.viewerId === redeemed.viewerId
+      ) {
+        capabilities.enterVersion(existing.id, redeemed.versionId);
+        secret = kept;
+      } else {
+        const session = capabilities.createSession({
+          tokenId: redeemed.tokenId,
+          origin: origin(),
+          versionId: redeemed.versionId,
+          viewerId: redeemed.viewerId,
+          mode: "worker",
+        });
+        secret = session.cookie;
+        log.info("gateway.session_started", {
+          origin: origin(),
+          artifactId,
+          tokenId: redeemed.tokenId,
+          mode: "worker",
+        });
+      }
+      return jsonResponse({ session: secret, shellOrigin: redeemed.shellOrigin });
+    };
+
+    /** `GET /_mostra/sw.js`: the worker-mode service worker, allowed to control `/` (D70). */
+    const serviceWorker = (context: RouteContext): Response => {
+      if (mode() !== "worker") {
+        return notServed(context, "This frame enters in cookie mode and has no service worker.");
+      }
+      return new Response(context.request.method === "HEAD" ? null : SERVICE_WORKER_SOURCE, {
+        headers: {
+          ...BASE_HEADERS,
+          "content-type": "text/javascript; charset=utf-8",
+          "service-worker-allowed": "/",
+          "cache-control": "no-cache",
+        },
+      });
+    };
+
+    /** `POST /_mostra/v/{rev}/ticket`: a single-use ticket for one stream, poll or socket. */
+    const streamTicket = async (context: RouteContext): Promise<Response> => {
+      const session = context.session;
+      if (!session) throw new Error("session route without a session");
+      const meta = { method: "POST", path: new URL(context.request.url).pathname, document: false };
+      const body = await readJsonObject(context.request);
+      if (isRefusal(body)) return refuse(checks, body, meta);
+      const parsed = StreamTicketRequest.safeParse(body);
+      if (!parsed.success) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", "`purpose` is `stream` or `socket`."),
+          meta,
+        );
+      }
+      return jsonResponse(
+        capabilities.mintStreamTicket({
+          sessionId: session.id,
+          origin: origin(),
+          artifactId,
+          purpose: parsed.data.purpose ?? "stream",
+        }),
+      );
+    };
+
     const frameSession = (context: RouteContext): Response => {
       const session = context.session;
       if (!session) throw new Error("session route without a session");
       const detail = artifacts.get({ artifactId });
       const version = detail.versions.find((entry) => entry.id === session.versionId);
-      return jsonResponse({
+      const facts: FrameSessionFacts = {
         csrf: session.csrf,
         artifactId,
-        shellOrigin: shellOrigin(),
+        shellOrigin: shell(),
         scopes: session.grant.scopes,
         // The viewer the page acts as, so edits made before its first snapshot are journaled
         // under it (WP-07; Claude review finding 4).
         viewer: interaction.viewer(interaction.viewerOf(session.viewerId)),
         ...(version ? { version: { id: version.id, number: version.number } } : {}),
-      });
+        ...(mode() === "worker" ? { mode: "worker" as const } : {}),
+        ...(wayOf().streams() ? {} : { streams: false }),
+      };
+      return jsonResponse(facts);
     };
 
     const files = async (context: RouteContext): Promise<Response> => {
@@ -884,7 +1610,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         path.startsWith("/_mostra/")
       ) {
         return refuse(
-          checks(),
+          checks,
           refusal("MOSTRA_HYGIENE_NOT_SERVED", "Nothing is served at this path."),
           meta,
         );
@@ -895,7 +1621,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         const upstream = options.dev.upstream();
         if (!upstream) {
           return refuse(
-            checks(),
+            checks,
             refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server isn't running.", 503),
             meta,
           );
@@ -905,7 +1631,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         );
         if (!answered) {
           return refuse(
-            checks(),
+            checks,
             refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server didn't answer.", 502),
             meta,
           );
@@ -942,7 +1668,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         const damage = await integrity.serve(from, checked);
         if (damage !== undefined) {
           const number = artifacts.get({ artifactId }).versions.find((v) => v.id === from)?.number;
-          return damaged(number, damage, context.document);
+          return damaged(number, damage, context.document, shell() || "'none'");
         }
       }
       if (file && options.target === "verify" && file.path.endsWith(".html")) {
@@ -972,19 +1698,27 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (page)
         return fileResponse(page, context.request, { ...headers, "cache-control": "no-cache" });
       return refuse(
-        checks(),
+        checks,
         refusal("MOSTRA_HYGIENE_NOT_SERVED", "This version has no file at this path."),
         meta,
       );
     };
 
     return [
+      { method: "GET", path: "/_mostra/enter", intent: "read", auth: "none", handler: enter },
+      {
+        method: "POST",
+        path: "/_mostra/enter",
+        intent: "exchange",
+        auth: "none",
+        handler: enterWorker,
+      },
       {
         method: "GET",
-        path: "/_mostra/enter",
+        path: SERVICE_WORKER_PATH,
         intent: "read",
         auth: "none",
-        handler: enter,
+        handler: serviceWorker,
       },
       {
         method: "GET",
@@ -993,39 +1727,51 @@ export function createGateway(options: GatewayOptions): Gateway {
         auth: "session",
         handler: frameSession,
       },
-      ...laterArtifactRoutes(served, acting),
+      ...laterArtifactRoutes(served, acting, streamTicket),
       { method: "GET", path: "/*", intent: "read", auth: "session", handler: files },
     ];
   };
 
-  const artifactChecks = (artifactId: string, port: () => number): ListenerChecks => ({
-    policy: () => ({ origin: addressing.origin(port()), hosts: addressing.hosts(port()) }),
-    capabilities,
-    log,
-    cookieName: () => `mostra-${port()}`,
-    frameAncestors: () => shellOrigin(),
-    artifactOf: () => artifactId,
-  });
-
   /**
-   * The HMR WebSocket of a dev sandbox's artifact origin (D140 item 12): after the listener checked
-   * Host and Origin, only a live frame session of this origin reaches the dev server.
+   * WebSocket upgrades on an artifact's listener, after the listener checked Host, target and
+   * Origin: a dev sandbox's HMR socket (D140 item 12), and the browser protocol's sockets
+   * (`/_mostra/v/{rev}/term/{session}`), which open with a single-use socket ticket (D158 item 5)
+   * and arrive with the terminals (WP-22, WP-23).
    */
-  const devSocket =
-    (artifactId: string, port: () => number) =>
+  const socketUpgrade =
+    (artifactId: string, wayOf: () => Way, group: string | undefined) =>
     (incoming: IncomingMessage, socket: Duplex, head: Buffer): Refusal | undefined => {
-      const upstream = options.dev?.upstream();
-      if (!upstream)
-        return refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server isn't running.", 503);
-      const cookie = incoming.headers.cookie;
-      const session = capabilities.session(
-        cookieValues(typeof cookie === "string" ? cookie : null, `mostra-${port()}`),
-        addressing.origin(port()),
-        artifactId,
-      );
-      if (isRefusal(session)) return session;
-      devUpgrade(upstream, incoming, socket, head);
-      return undefined;
+      const way = wayOf();
+      const url = new URL(incoming.url ?? "/", "http://gateway.invalid");
+      if (/^\/_mostra\/v\/[^/]+\/term\/[^/]+$/.test(url.pathname)) {
+        const redeemed = capabilities.redeemStreamTicket(
+          url.searchParams.get("ticket"),
+          way.origin() ?? "",
+          artifactId,
+          "socket",
+        );
+        if (isRefusal(redeemed)) return redeemed;
+        return refusal(
+          "MOSTRA_HYGIENE_NOT_SERVED",
+          "Live terminals arrive with a later Mostra release.",
+          501,
+        );
+      }
+      if (options.dev && way.by === "loopback" && group === undefined) {
+        const upstream = options.dev.upstream();
+        if (!upstream)
+          return refusal("MOSTRA_HYGIENE_NOT_SERVED", "The dev server isn't running.", 503);
+        const cookie = incoming.headers.cookie;
+        const session = capabilities.session(
+          cookieValues(typeof cookie === "string" ? cookie : null, `mostra-${way.port()}`),
+          way.origin() ?? "",
+          artifactId,
+        );
+        if (isRefusal(session)) return session;
+        devUpgrade(upstream, incoming, socket, head);
+        return undefined;
+      }
+      return refusal("MOSTRA_HYGIENE_NOT_SERVED", "This gateway serves no WebSocket here.");
     };
 
   /** Binds the artifact's listener on its leased port, once; resolves with the port. */
@@ -1036,6 +1782,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (pending) return pending;
     const started = (async () => {
       let port = 0;
+      const way = loopbackArtifact(artifactId, () => port);
       const listener = createListener({
         policy: () => ({ origin: addressing.origin(port), hosts: addressing.hosts(port) }),
         log,
@@ -1043,10 +1790,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         configure: (app) =>
           mount(
             app,
-            artifactChecks(artifactId, () => port),
-            artifactRoutes(artifactId, () => port),
+            artifactChecks(artifactId, () => way, undefined),
+            artifactRoutes(artifactId, () => way, undefined),
           ),
-        ...(options.dev ? { upgrade: devSocket(artifactId, () => port) } : {}),
+        upgrade: socketUpgrade(artifactId, () => way, undefined),
         ...(options.traceRequests ? { traceRequests: true } : {}),
       });
       port = await addressing.listen(listener.server, { purpose: "artifact", owner: artifactId });
@@ -1098,16 +1845,42 @@ export function createGateway(options: GatewayOptions): Gateway {
     throw new RpcError(refused.diagnostic);
   };
 
+  /** Opens the faces a host gave before a restart, so their links work before it answers again. */
+  const restoreBases = async (): Promise<void> => {
+    for (const row of keptBases()) {
+      if (row.artifact_id === null) continue;
+      try {
+        artifacts.get({ artifactId: row.artifact_id });
+      } catch {
+        continue;
+      }
+      try {
+        const entry = await openFace(
+          hostSpec(row.artifact_id, row.listener, row.mode ?? undefined),
+          row.origin,
+        );
+        entry.origin = row.origin;
+      } catch (error) {
+        log.warn("gateway.face_restore_failed", { key: row.key, error: (error as Error).message });
+      }
+    }
+  };
+
   return {
     shellOrigin,
     async start() {
       const pruned = capabilities.prune();
       if (pruned > 0) log.info("gateway.sessions_pruned", { count: pruned });
       shellListener = createListener({
-        policy: () => shellChecks.policy(),
+        policy: () => ({ origin: shellOrigin(), hosts: addressing.hosts(shellPort ?? 0) }),
         log,
         frameAncestors: () => "'none'",
-        configure: (app) => mount(app, shellChecks, shellRoutes),
+        configure: (app) =>
+          mount(
+            app,
+            shellChecks(() => loopbackShell),
+            shellRoutes(() => loopbackShell, undefined),
+          ),
         ...(options.traceRequests ? { traceRequests: true } : {}),
       });
       shellPort = await addressing.listen(shellListener.server, {
@@ -1139,9 +1912,11 @@ export function createGateway(options: GatewayOptions): Gateway {
         }
         await openArtifact(lease.owner);
       }
+      await restoreBases();
     },
-    defaultLink(artifactId) {
-      const { url, tokenId } = link(capabilities.defaultLink(artifactId));
+    async defaultLink(artifactId) {
+      const base = await linkBase(artifactId);
+      const { url, tokenId } = link(capabilities.defaultLink(artifactId, base));
       return { url, tokenId };
     },
     link(input) {
@@ -1152,8 +1927,44 @@ export function createGateway(options: GatewayOptions): Gateway {
         }),
       ).url;
     },
+    mintAt(input, within) {
+      return link(
+        capabilities.mint(
+          {
+            artifactId: input.artifactId,
+            scopes: input.scopes,
+            ttlMs: input.ttlMs,
+            viewerId: input.viewerId,
+            shellOrigin: input.shellOrigin,
+          },
+          within,
+        ),
+      );
+    },
+    reveal(tokenId) {
+      const shown = capabilities.reveal(tokenId);
+      return shown ? link(shown).url : undefined;
+    },
+    async openFace(spec) {
+      return handleOf(await openFace(spec));
+    },
+    face(key) {
+      const entry = faces.get(key);
+      return entry ? handleOf(entry) : undefined;
+    },
+    closeFace,
+    faces: () =>
+      [...faces.values()]
+        .filter((entry) => entry.origin !== undefined)
+        .map((entry) => ({
+          origin: entry.origin as string,
+          local: addressing.faceLocal(entry.port),
+          listener: entry.spec.listener,
+          ...(entry.spec.artifactId !== undefined ? { artifactId: entry.spec.artifactId } : {}),
+          by: entry.spec.by,
+        })),
     methods: () => [
-      handler(viewUrlMethod, (params) => {
+      handler(viewUrlMethod, async (params) => {
         const detail = artifacts.get(params.artifact);
         const version = versionOf(detail, params.version);
         if (!version) {
@@ -1168,6 +1979,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         }
         if (version.collected !== undefined)
           throw new RpcError(collectedDiagnostic(version.number));
+        const base = await linkBase(detail.id);
         return recorded(requestKey("view/url", params), (db) =>
           capabilities.mint(
             {
@@ -1179,14 +1991,15 @@ export function createGateway(options: GatewayOptions): Gateway {
                 params.viewer === undefined
                   ? undefined
                   : interaction.viewerForSpec(db, params.viewer),
+              shellOrigin: base,
             },
             db,
           ),
         );
       }),
-      handler(viewDefaultMethod, (params) => {
+      handler(viewDefaultMethod, async (params) => {
         const detail = artifacts.get(params.artifact);
-        return link(capabilities.defaultLink(detail.id));
+        return link(capabilities.defaultLink(detail.id, await linkBase(detail.id)));
       }),
       handler(viewLaunchMethod, (params) => {
         const minted = capabilities.mintLaunch(params.tokenId);
@@ -1208,7 +2021,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         }
         const { grant } = minted;
         return {
-          url: `${shellOrigin()}/a/${grant.artifactId}${grant.pinnedVersion !== undefined ? `/v/${grant.pinnedVersion}` : ""}#l=${minted.ticket}`,
+          url: `${grant.shellOrigin}/a/${grant.artifactId}${grant.pinnedVersion !== undefined ? `/v/${grant.pinnedVersion}` : ""}#l=${minted.ticket}`,
           expiresAt: minted.expiresAt,
         };
       }),
@@ -1257,12 +2070,16 @@ export function createGateway(options: GatewayOptions): Gateway {
         ]),
       ),
     async close() {
-      await Promise.allSettled([...opening.values()]);
+      await Promise.allSettled([...opening.values(), ...openingFaces.values()]);
       await Promise.all([
         shellListener?.close(),
         ...[...artifactListeners.values()].map((entry) => entry.listener.close()),
+        ...[...faces.values()].map((entry) => entry.listener.close()),
+        ...[...lingering.keys()].map((key) => endLingering(key)),
       ]);
+      faces.clear();
     },
+    servesShell,
   };
 }
 

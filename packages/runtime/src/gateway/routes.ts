@@ -7,7 +7,9 @@
  * 1. the `Origin` and content type its intent needs (`checkRequest`; the envelope was checked
  *    before routing);
  * 2. the rate limit, on token paths;
- * 3. the session, bound to this origin, with a live token (401, 410);
+ * 3. the session, bound to this origin, with a live token (401, 410): its cookie in cookie mode,
+ *    its frame header in worker mode (D70), or a single-use stream ticket on stream routes
+ *    (D158 item 5);
  * 4. the session's CSRF token, on mutations;
  * 5. the scope.
  *
@@ -17,6 +19,7 @@
 import {
   type CapabilityScope,
   checkRequest,
+  FRAME_SESSION_HEADER,
   type Refusal,
   type RequestIntent,
   type RequestPolicy,
@@ -50,6 +53,11 @@ export interface RouteSpec {
    * action scope; the handler checks the exact function (D96).
    */
   readonly scope?: (params: Readonly<Record<string, string>>) => CapabilityScope | "any-action";
+  /**
+   * An event stream (SSE): refused on a face streams don't pass, and in worker mode without a
+   * ticket, so the page long-polls instead (D158 item 5).
+   */
+  readonly sse?: true;
   /** Serves the request. Absent: declared for a later package, answered with 501. */
   readonly handler?: (context: RouteContext) => Response | Promise<Response>;
 }
@@ -64,6 +72,8 @@ export interface RouteContext {
   readonly session?: ResolvedSession;
   /** Whether the client is navigating (answer with HTML rather than JSON). */
   readonly document: boolean;
+  /** The address of the connection's peer: on a face, the tunnel's own process (D158 item 2). */
+  readonly remote: string | undefined;
 }
 
 /** What a listener contributes to every route's checks. */
@@ -78,6 +88,13 @@ export interface ListenerChecks {
   readonly frameAncestors: () => string;
   /** The artifact a request is for: fixed on an artifact's listener, from the path on the shell. */
   readonly artifactOf: (params: Readonly<Record<string, string>>) => string | undefined;
+  /**
+   * How this listener's sessions authenticate (D70): `cookie` (the default), or `worker`, where a
+   * frame's service worker sends the session's secret as `X-Mostra-Frame`.
+   */
+  readonly mode?: () => "cookie" | "worker";
+  /** Whether event streams pass to this listener's browsers; `false` behind a quick tunnel. */
+  readonly streams?: () => boolean;
 }
 
 /** Logs a refusal without any of the request's capability material, and answers it. */
@@ -148,14 +165,41 @@ export function mount(
         const limited = checks.capabilities.limited(artifactId);
         if (limited) return refuse(checks, limited, meta);
       }
-      // 3. The session.
+      // 3. The session: a stream ticket on a stream route, else the cookie, or the frame header
+      // in worker mode. An event stream only passes where streams do, and in worker mode only
+      // with a ticket: a stream through the service worker stalls in Firefox (VERIFIED_FACTS).
+      const mode = checks.mode?.() ?? "cookie";
+      const ticket = route.intent === "stream" ? url.searchParams.get("ticket") : null;
+      if (route.sse && (checks.streams?.() === false || (mode === "worker" && ticket === null))) {
+        return refuse(
+          checks,
+          refusal(
+            "MOSTRA_HYGIENE_NOT_SERVED",
+            checks.streams?.() === false
+              ? "Event streams don't pass this address; long-poll instead (events/poll)."
+              : "A worker-mode frame opens its event stream with a ticket; long-poll instead.",
+            503,
+          ),
+          meta,
+        );
+      }
       let session: ResolvedSession | undefined;
       if (route.auth === "session" && artifactId !== undefined) {
-        const resolved = checks.capabilities.session(
-          cookieValues(request.headers.get("cookie"), checks.cookieName()),
-          policy.origin,
-          artifactId,
-        );
+        const resolved =
+          ticket !== null
+            ? checks.capabilities.redeemStreamTicket(ticket, policy.origin, artifactId, "stream")
+            : mode === "worker"
+              ? checks.capabilities.session(
+                  [request.headers.get(FRAME_SESSION_HEADER) ?? ""],
+                  policy.origin,
+                  artifactId,
+                  "worker",
+                )
+              : checks.capabilities.session(
+                  cookieValues(request.headers.get("cookie"), checks.cookieName()),
+                  policy.origin,
+                  artifactId,
+                );
         if (isRefusal(resolved)) return refuse(checks, resolved, meta);
         session = resolved;
         // 4. The CSRF token of this session.
@@ -189,6 +233,7 @@ export function mount(
         artifactId,
         ...(session ? { session } : {}),
         document,
+        remote: incoming.socket.remoteAddress,
       });
     };
     if (route.method === "GET") app.get(route.path, handle);

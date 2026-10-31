@@ -44,10 +44,23 @@ const GLOBAL_INPUTS: readonly RegExp[] = [
 /**
  * Directories outside every workspace package that a package runs, so a change in them affects
  * that package's jobs (and its dependents'): the Windows helper is run by the runtime and is only
- * exercised by the runtime's Windows suites, since its code compiles on Windows alone (WP-W1).
+ * exercised by the runtime's Windows suites, since its code compiles on Windows alone (WP-W1); the
+ * reference and the Agent Skill ship inside the CLI's build, which `mostra docs` reads, and the
+ * Skill's examples are verified by the runtime's suite (WP-14).
  */
 const RUN_BY: readonly { readonly dir: string; readonly pkg: string }[] = [
   { dir: "crates/mostra-win", pkg: "@mostra/runtime" },
+  { dir: "docs/reference", pkg: "@mostra/cli" },
+  { dir: "skills/mostra", pkg: "@mostra/cli" },
+  // The Skill's checks in the CLI read the author API: every export of these must be documented.
+  { dir: "packages/react/etc/react.api.md", pkg: "@mostra/cli" },
+  { dir: "packages/server/etc/server.api.md", pkg: "@mostra/cli" },
+  { dir: "packages/react/src/form.ts", pkg: "@mostra/cli" },
+  { dir: "packages/react/src/router.ts", pkg: "@mostra/cli" },
+  // The Skill's examples and its references' code samples pass verify in the runtime's
+  // integration suite.
+  { dir: "skills/mostra/assets/examples", pkg: "@mostra/runtime" },
+  { dir: "skills/mostra/references", pkg: "@mostra/runtime" },
 ];
 
 /** The packages a changed file affects directly: its owner, and the package that runs it. */

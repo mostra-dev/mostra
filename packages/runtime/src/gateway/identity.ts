@@ -99,3 +99,78 @@ export async function resolveIdentity(input: IdentityInput): Promise<IdentityOut
   }
   return { kind: "default" };
 }
+
+/**
+ * Decodes RFC 2047 encoded words (`=?utf-8?q?Ferris_B=C3=BCller?=`, and `b` for base64), as
+ * Tailscale Serve writes a non-ASCII name; text outside encoded words is kept, and whitespace
+ * between two encoded words is dropped (RFC 2047 §6.2). Anything malformed is kept as written.
+ */
+export function decodeEncodedWords(value: string): string {
+  const word = /=\?([^?\s]+)\?([qQbB])\?([^?\s]*)\?=/g;
+  const decodeOne = (charset: string, encoding: string, text: string): string | undefined => {
+    let bytes: Uint8Array;
+    if (encoding.toLowerCase() === "b") {
+      bytes = Buffer.from(text, "base64");
+    } else {
+      const out: number[] = [];
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index] as string;
+        if (char === "_") out.push(0x20);
+        else if (char === "=" && /^[0-9A-Fa-f]{2}$/.test(text.slice(index + 1, index + 3))) {
+          out.push(Number.parseInt(text.slice(index + 1, index + 3), 16));
+          index += 2;
+        } else out.push(char.charCodeAt(0) & 0xff);
+      }
+      bytes = Uint8Array.from(out);
+    }
+    try {
+      return new TextDecoder(charset, { fatal: true }).decode(bytes);
+    } catch {
+      return undefined;
+    }
+  };
+  let result = "";
+  let last = 0;
+  let previousWasWord = false;
+  for (const match of value.matchAll(word)) {
+    const between = value.slice(last, match.index);
+    const decoded = decodeOne(match[1] as string, match[2] as string, match[3] as string);
+    if (decoded === undefined) {
+      result += between + match[0];
+      previousWasWord = false;
+    } else {
+      result += previousWasWord && /^\s*$/.test(between) ? "" : between;
+      result += decoded;
+      previousWasWord = true;
+    }
+    last = match.index + match[0].length;
+  }
+  return result + value.slice(last);
+}
+
+/** Whether a connection's peer is this machine: the only way a tunnel tool reaches a face. */
+export function isLoopbackPeer(remote: string | undefined): boolean {
+  if (remote === undefined) return false;
+  const address = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
+  return address === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(address);
+}
+
+/**
+ * The tailnet person Tailscale Serve names in a request (D158 item 2): `Tailscale-User-Login` and
+ * `Tailscale-User-Name`, which Serve sets on every tailnet request after removing any a client
+ * sent. They are believed only from a loopback peer (faces bind loopback, so only `tailscaled` and
+ * this machine's own programs reach them) and never beside `Tailscale-Funnel-Request`, which
+ * marks a public request. A tagged device sends no login, so nobody is named.
+ */
+export function tailnetPerson(
+  headers: Headers,
+  remote: string | undefined,
+): ViewerSpec | undefined {
+  if (!isLoopbackPeer(remote) || headers.has("tailscale-funnel-request")) return undefined;
+  const login = headers.get("tailscale-user-login");
+  if (login === null) return undefined;
+  const ref = decodeEncodedWords(login).trim();
+  if (ref === "" || ref.length > 512) return undefined;
+  const name = decodeEncodedWords(headers.get("tailscale-user-name") ?? "").trim();
+  return { ref, ...(name !== "" && name.length <= 256 ? { name } : {}) };
+}

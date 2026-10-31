@@ -106,6 +106,6 @@ Added by the C03-A design. Every row is a generic mechanism; none names Jcode in
 | H-11 | The host chooses the home (`HomeConfig.home`); versions keep source snapshots in the home (DATA_MODEL §1) | `home.authoring-removed` |
 | H-12 | `mostra host` over stdio, or attach to the home's daemon over its socket (D45) | `session.process-models` |
 | H-13 | Rust crate `mostra-host` with a tokio client, port traits and runtime-bundle download and cache by hash | `session.negotiation`; every scenario runs through the Rust reference host, which is the crate (the bundle cache by hash: the crate's own suite) |
-| H-14 | `addressing.externalBase`, `share/start` and capability minting through `view/url` | `ports.identity`, `viewing.links` (tunnel hostnames: WP-13) |
+| H-14 | `addressing.externalBase`, `share/start` and capability minting through `view/url` | `ports.addressing`, `ports.identity` (its tailnet and public-share part, D158), `viewing.links` |
 | H-15 | `@mostra/conformance` runs against the host's adapter, with expected-failure baselines | `session.negotiation`; the kit itself, its baselines proven by the broken reference hosts |
 | H-16 | No telemetry in host-embedded instances (D119): a host-spawned instance, the SDK, the Rust crate and every home a host configures send nothing; homes are created 0700 and secrets 0600 | `home.privacy` |

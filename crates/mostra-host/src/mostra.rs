@@ -29,7 +29,7 @@ use tokio::process::{Child, Command};
 use crate::bundle::{Environment, InstallStep};
 use crate::error::{Error, Result};
 use crate::events::{EventStream, EventStreamOptions};
-use crate::ports::{Drafts, Identity, PortSet, Secrets, Submissions, TrustedControls};
+use crate::ports::{Addressing, Drafts, Identity, PortSet, Secrets, Submissions, TrustedControls};
 use crate::rpc::Peer;
 use crate::runtime::{Runtime, RuntimeOptions, resolve_runtime};
 use crate::wire::{
@@ -107,6 +107,13 @@ impl Options {
     #[must_use]
     pub fn identity(mut self, port: impl Identity) -> Self {
         self.ports.identity(port);
+        self
+    }
+
+    /// Serves the `addressing` port (HO-10, D158 item 6).
+    #[must_use]
+    pub fn addressing(mut self, port: impl Addressing) -> Self {
+        self.ports.addressing(port);
         self
     }
 
@@ -911,6 +918,9 @@ const PATH_VARIABLES: &[&str] = &[
     "MOSTRA_WIN_HELPER",
     "MOSTRA_TEST_WORKER_HOST",
     "MOSTRA_TEST_BUNDLE_PINS",
+    "MOSTRA_TAILSCALE",
+    "MOSTRA_CLOUDFLARED",
+    "MOSTRA_TEST_TUNNELS",
 ];
 
 /// `env` with every relative path variable made absolute against this process's directory, for

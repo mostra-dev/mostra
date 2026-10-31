@@ -221,6 +221,13 @@ export interface LiveState {
   }[];
   /** The producer's last failure, while the last good value stays (FAILURE_MODEL §6). */
   readonly error?: WireError;
+  /**
+   * `true` while the source has no value and no failure and the artifact's latest version has a
+   * producer whose first `load` is on its way: the page shows it loading, and verify waits for it.
+   * Absent for a key nothing produces (one only `mostra push` writes) and for a source that only
+   * streams, whose first value may never come (WP-14's Opus review).
+   */
+  readonly awaiting?: boolean;
 }
 
 /** One live update on the event stream: never stored as an event (D63, LL-04). */
@@ -235,6 +242,11 @@ export interface LiveUpdate {
   readonly value?: Batches;
   /** What went wrong. */
   readonly error?: WireError;
+  /**
+   * `false` when a source read as {@link LiveState.awaiting} turned out to have no first `load`
+   * (its producer only streams): the page stops waiting for a first value.
+   */
+  readonly awaiting?: boolean;
 }
 
 /**

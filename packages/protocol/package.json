@@ -1,6 +1,6 @@
 {
   "name": "@mostra/protocol",
-  "version": "0.6.2",
+  "version": "0.8.0",
   "description": "Mostra's shared protocol vocabulary: IDs, dated revisions and diagnostics, with Zod schemas and generated JSON Schema.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
@@ -75,7 +75,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "49 kB"
+      "limit": "52 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",

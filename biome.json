@@ -74,6 +74,17 @@
   },
   "overrides": [
     {
+      "includes": ["skills/**"],
+      "css": { "parser": { "tailwindDirectives": true } },
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useImportExtensions": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["**/test/**", "**/*.test.ts"],
       "linter": {
         "rules": {

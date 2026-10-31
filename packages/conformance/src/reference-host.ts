@@ -27,6 +27,8 @@ import {
   createDiagnostic,
   type DraftMirror,
   hostMethods,
+  type PortAddressingExternalBaseParams,
+  type PortAddressingExternalBaseResult,
   type PortIdentityResolveParams,
   type PortSecretsGetParams,
   type PortTrustedControlsActivatedParams,
@@ -62,6 +64,9 @@ export class ReferenceStore {
   readonly #identity: StoreResult["identity"][number][] = [];
   readonly #policies: StoreResult["policies"][number][] = [];
   readonly #secrets: StoreResult["secrets"][number][] = [];
+  readonly #addressing: NonNullable<StoreResult["addressing"]>[number][] = [];
+  /** No external base until scripted: the loopback ports every other scenario expects. */
+  #base: Extract<ScriptParams, { port: "addressing" }>["answer"] = null;
   readonly #faults: ReadonlySet<string>;
   #order = 0;
   /** How the scripted ports answer (feature `faults`). */
@@ -88,6 +93,7 @@ export class ReferenceStore {
     if (params.port === "submissions") this.#deliver = params.answer;
     else if (params.port === "trustedControls") this.#policy = params.answer;
     else if (params.port === "identity") this.#person = params.answer;
+    else if (params.port === "addressing") this.#base = params.answer;
     else this.#secretValues = params.answer;
   }
 
@@ -202,6 +208,32 @@ export class ReferenceStore {
           });
         },
       },
+      addressing: {
+        externalBase: (
+          request: PortAddressingExternalBaseParams,
+        ): PortAddressingExternalBaseResult => {
+          const answer = this.#base;
+          const call = {
+            artifactId: request.artifactId,
+            listener: request.listener,
+            local: request.local,
+          };
+          if (answer === "fail") {
+            this.#addressing.push(call);
+            throw new Error("the host's tunnel is unavailable");
+          }
+          const host = request.listener === "shell" ? answer?.shellHost : answer?.artifactHost;
+          const base =
+            answer === null
+              ? null
+              : {
+                  origin: `http://${host}:${new URL(request.local).port}`,
+                  ...(answer.mode ? { mode: answer.mode } : {}),
+                };
+          this.#addressing.push({ ...call, answer: base });
+          return base;
+        },
+      },
       secrets: {
         get: (request: PortSecretsGetParams) => {
           this.#secrets.push({ artifactId: request.artifactId, name: request.name });
@@ -220,6 +252,7 @@ export class ReferenceStore {
       identity: [...this.#identity],
       policies: [...this.#policies],
       secrets: [...this.#secrets],
+      addressing: [...this.#addressing],
     };
   }
 }

@@ -44,11 +44,14 @@ import {
   type MethodDefinition,
   type MostraInitializeResult,
   mostraInitializeMethod,
+  type PortAddressingExternalBaseParams,
+  type PortAddressingExternalBaseResult,
   type PortIdentityResolveParams,
   type PortName,
   type PortSecretsGetParams,
   type PortTrustedControlsActivatedParams,
   type PublishReceipt,
+  portAddressingExternalBaseMethod,
   portDraftsMirrorMethod,
   portIdentityResolveMethod,
   portSecretsGetMethod,
@@ -61,6 +64,9 @@ import {
   RpcPeer,
   receivable,
   resultsGetMethod,
+  type ShareStartParams,
+  type ShareStartResult,
+  type ShareStopResult,
   type SourceRef,
   type StateGetResult,
   type StatePatchParams,
@@ -69,6 +75,8 @@ import {
   type SubmissionPolicy,
   type SubmissionsDeliverResult,
   type SubmitChannel,
+  shareStartMethod,
+  shareStopMethod,
   stateGetMethod,
   statePatchMethod,
   type VerifyVerdict,
@@ -109,6 +117,17 @@ export interface Ports {
   };
   /** Receives each viewer draft's latest revision, best effort, never retried (IN-06). */
   readonly drafts?: { mirror(draft: DraftMirror): void | Promise<void> };
+  /**
+   * Gives one of an artifact's listeners an external address (HO-10, D158 item 6): the origin of
+   * the host's own tunnel that forwards to `request.local`, which joins the links Mostra mints
+   * and its Host allowlist; `null` keeps the loopback address, and withdraws one given before.
+   * Answer within 5 s.
+   */
+  readonly addressing?: {
+    externalBase(
+      request: PortAddressingExternalBaseParams,
+    ): PortAddressingExternalBaseResult | Promise<PortAddressingExternalBaseResult>;
+  };
   /** Answers `secret()` first, before the home's store (D131); `null` falls back. */
   readonly secrets?: {
     get(request: PortSecretsGetParams): string | null | Promise<string | null>;
@@ -253,6 +272,16 @@ export interface Mostra {
     options?: Omit<ViewUrlParams, "artifact">,
   ): Promise<CapabilityLink>;
   /**
+   * `share/start`: opens the artifact through a tunnel this machine runs (D158): `tailnet`
+   * (Tailscale Serve), or a public `funnel` or `cloudflare` share with a link that expires.
+   */
+  share(
+    artifact: ArtifactInput,
+    options: Omit<ShareStartParams, "artifact">,
+  ): Promise<ShareStartResult>;
+  /** `share/stop`: ends a share by its ID, and revokes its link. */
+  stopShare(shareId: string): Promise<ShareStopResult>;
+  /**
    * The events matching `options.filter`, page by page, in cursor order, with no gap across a
    * pause (`events/subscribe`). With a `name`, each page is acknowledged when the next one is
    * asked for, so a later stream of that name resumes after the last page handled.
@@ -271,6 +300,7 @@ export interface CallOptions {
 /** The port methods the SDK serves, by port. */
 const PORT_METHODS = {
   identity: [portIdentityResolveMethod],
+  addressing: [portAddressingExternalBaseMethod],
   submissions: [portSubmissionsDeliverMethod],
   drafts: [portDraftsMirrorMethod],
   secrets: [portSecretsGetMethod],
@@ -296,6 +326,11 @@ function portHandler(ports: Ports, method: string): ((params: unknown) => unknow
     case portIdentityResolveMethod.method:
       return (
         ports.identity && ((params) => ports.identity?.resolve(params as PortIdentityResolveParams))
+      );
+    case portAddressingExternalBaseMethod.method:
+      return (
+        ports.addressing &&
+        ((params) => ports.addressing?.externalBase(params as PortAddressingExternalBaseParams))
       );
     case portSubmissionsDeliverMethod.method:
       return (
@@ -592,6 +627,9 @@ export async function createMostra(options: MostraOptions): Promise<Mostra> {
       call(livePushMethod, { artifact: artifactRef(artifact), ...push }),
     viewUrl: (artifact, urlOptions = {}) =>
       call(viewUrlMethod, { artifact: artifactRef(artifact), ...urlOptions }),
+    share: (artifact, shareOptions) =>
+      call(shareStartMethod, { artifact: artifactRef(artifact), ...shareOptions }),
+    stopShare: (shareId) => call(shareStopMethod, { shareId }),
     events: (streamOptions = {}) =>
       openEventStream(
         {

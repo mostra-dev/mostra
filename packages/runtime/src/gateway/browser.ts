@@ -363,7 +363,9 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     const body = new ReadableStream<Uint8Array>(
       {
         start(controller) {
-          let text = "retry: 2000\n\n";
+          // `ready` first, whatever follows: a page that hears nothing has a stream something holds
+          // back (a buffering proxy or tunnel, a stalled browser) and long-polls instead (WP-13).
+          let text = "retry: 2000\n\nevent: ready\ndata: {}\n\n";
           if (resume === undefined) text += snapshotText(interaction.pageSnapshot(page));
           controller.enqueue(encoder.encode(text));
         },

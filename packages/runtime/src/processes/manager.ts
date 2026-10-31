@@ -55,6 +55,12 @@ export interface SpawnSpec {
    */
   readonly onStdout?: (line: string) => void;
   /**
+   * Receives each line the child writes to stderr, redacted, instead of the log (the exit's
+   * `stderrTail` keeps the last ones as always): for a tool that reports its state there, such as
+   * `cloudflared`'s tunnel address (D158).
+   */
+  readonly onStderr?: (line: string) => void;
+  /**
    * Opens a JSON-RPC channel over Node IPC; the command must then be a Node.js executable. The
    * handlers answer the child's requests besides the built-in `child/adopt` and `child/release`.
    */
@@ -270,9 +276,11 @@ function createManager({
       drained.push(new Promise((resolve) => lines.once("close", resolve)));
       lines.on("line", (line) => {
         // The log redacts what it writes; the tail feeds diagnostics, so it is redacted here.
-        stderrTail.push(redactor.redact(line));
+        const redacted = redactor.redact(line);
+        stderrTail.push(redacted);
         if (stderrTail.length > STDERR_TAIL) stderrTail.shift();
-        log.info("process.stderr", { kind: spec.kind, pid, line });
+        if (spec.onStderr) spec.onStderr(redacted);
+        else log.info("process.stderr", { kind: spec.kind, pid, line });
       });
     }
 

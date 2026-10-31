@@ -1,6 +1,6 @@
 {
   "name": "@mostra/react",
-  "version": "0.6.2",
+  "version": "0.8.0",
   "description": "Mostra client runtime for artifact authors: fields, submit, signals, choices, window.storage, routing and the shell bridge.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

@@ -422,6 +422,121 @@ describe("the store (D140 item 5)", () => {
     expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
   });
 
+  it("never brings back a lock whose owner released it while a slow breaker held it aside (#98)", async () => {
+    const dir = configDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const lock = join(dir, "telemetry.lock");
+    // A crashed process's lock (PID 2^22 + 1 is above every default pid_max).
+    writeFileSync(lock, "4194305 crashed", { mode: 0o600 });
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
+    // Each process waits for the start signal, then for its own delay, then takes the lock once,
+    // holding it as long as it is told and writing down when it held it.
+    const held = join(dir, "..", `held-${randomUUID()}`);
+    const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; import { appendFileSync, existsSync } from "node:fs"; const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); while (!existsSync(process.argv[2])) sleep(1); sleep(Number(process.argv[3])); const store = new TelemetryStore(process.argv[1]); const done = store.update((current) => { const from = Date.now(); sleep(Number(process.argv[4])); appendFileSync(process.argv[5], from + " " + Date.now() + "\\n"); return { ...current, noticeShownAt: current.noticeShownAt ?? new Date().toISOString() }; }); process.stdout.write(done ? "held the lock" : "gave up");`;
+    const go = join(dir, "..", `go-${randomUUID()}`);
+    // The slow breaker judges the crashed lock, then takes its time at each step; meanwhile the
+    // other breaks the same lock, takes a lock of its own, holds it, and releases it while the
+    // slow one may have it moved aside: the old breaker linked it back, a lock nobody owned, and
+    // a breaker that acted without the break lock took a live owner's lock away.
+    const run = (delay: number, hold: number, env: Record<string, string>) =>
+      new Promise<string>((resolve) => {
+        const child = spawn(
+          process.execPath,
+          ["--input-type=module", "-e", script, dir, go, String(delay), String(hold), held],
+          { stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, ...env } },
+        );
+        let out = "";
+        child.stdout.on("data", (chunk: Buffer) => {
+          out += chunk.toString();
+        });
+        child.on("close", () => resolve(out));
+      });
+    const slow = run(0, 0, { MOSTRA_TEST_LOCK_BREAK_MS: "300" });
+    const holder = run(60, 400, {});
+    await new Promise((done) => setTimeout(done, 600));
+    writeFileSync(go, "");
+    expect(await Promise.all([slow, holder])).toEqual(["held the lock", "held the lock"]);
+    // One at a time: the two held the lock in turn, never together.
+    const spans = readFileSync(held, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split(" ").map(Number) as [number, number])
+      .sort((a, b) => a[0] - b[0]);
+    expect(spans).toHaveLength(2);
+    expect((spans[1] as [number, number])[0]).toBeGreaterThanOrEqual(
+      (spans[0] as [number, number])[1],
+    );
+    // Nobody's lock is left behind, nor anything beside it.
+    expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
+  });
+
+  it("clears a break lock a crashed breaker left, then the crashed owner's lock (#98)", () => {
+    const dir = configDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const lock = join(dir, "telemetry.lock");
+    const old = new Date(Date.now() - 60_000);
+    for (const file of [lock, `${lock}.break.1`]) {
+      writeFileSync(file, "4194305 crashed", { mode: 0o600 });
+      utimesSync(file, old, old);
+    }
+    const store = new TelemetryStore(dir);
+    expect(store.update((current) => ({ ...current, choice: "on" }))).toBeDefined();
+    expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
+    // A live breaker's break lock is waited for: the crashed owner's lock stays until it is done.
+    writeFileSync(lock, "4194305 crashed", { mode: 0o600 });
+    utimesSync(lock, old, old);
+    writeFileSync(`${lock}.break.1`, `${process.pid} breaking`, { mode: 0o600 });
+    expect(store.update((current) => ({ ...current, choice: "off" }))).toBeUndefined();
+    expect(readFileSync(lock, "utf8")).toBe("4194305 crashed");
+  });
+
+  it.each([
+    ["the next number", 2],
+    ["a higher number", 3],
+  ])(
+    "never acts beside a live breaker that took over a crashed one at %s (Opus review of WP-13)",
+    async (_, number) => {
+      const dir = configDir();
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const lock = join(dir, "telemetry.lock");
+      const old = new Date(Date.now() - 60_000);
+      // A crashed owner's lock, and a crashed breaker's break lock.
+      for (const file of [lock, `${lock}.break.1`]) {
+        writeFileSync(file, "4194305 crashed", { mode: 0o600 });
+        utimesSync(file, old, old);
+      }
+      const entry = fileURLToPath(new URL("../../src/telemetry/store.ts", import.meta.url));
+      const script = `import { TelemetryStore } from ${JSON.stringify(pathToFileURL(entry).href)}; const store = new TelemetryStore(process.argv[1]); process.stdout.write(store.update((current) => ({ ...current, choice: "on" })) ? "held the lock" : "gave up");`;
+      // A slow breaker judges the crashed break lock, then pauses; meanwhile another breaker, alive,
+      // takes over from the crashed one. The slow one must leave that breaker's lock alone.
+      const slow = new Promise<string>((resolve) => {
+        const child = spawn(process.execPath, ["--input-type=module", "-e", script, dir], {
+          stdio: ["ignore", "pipe", "inherit"],
+          env: { ...process.env, MOSTRA_TEST_LOCK_BREAK_MS: "800" },
+        });
+        let out = "";
+        child.stdout.on("data", (chunk: Buffer) => {
+          out += chunk.toString();
+        });
+        child.on("close", () => resolve(out));
+      });
+      await new Promise((done) => setTimeout(done, 300));
+      const live = `${lock}.break.${number}`;
+      writeFileSync(live, `${process.pid} breaking`, { flag: "wx", mode: 0o600 });
+      // While the live breaker holds on, the slow one takes nothing: it gives up at its deadline.
+      expect(await slow).toBe("gave up");
+      expect(readFileSync(live, "utf8")).toBe(`${process.pid} breaking`);
+      expect(readFileSync(lock, "utf8")).toBe("4194305 crashed");
+      // The live breaker done, the next one clears everything.
+      rmSync(live);
+      const store = new TelemetryStore(dir);
+      expect(store.update((current) => ({ ...current, choice: "off" }))).toBeDefined();
+      expect(readdirSync(dir).filter((name) => name.includes("lock"))).toEqual([]);
+    },
+  );
+
   it("deletes the install ID and the queue when telemetry turns off, and bounds the queue", () => {
     const store = new TelemetryStore(configDir());
     const id = store.installId();

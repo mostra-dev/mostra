@@ -10,8 +10,12 @@ export default defineConfig({
   clean: true,
   fixedExtension: false,
   tsconfig: "tsconfig.src.json",
-  // `mostra docs` reads the reference that ships with the CLI (D140 item 17).
-  copy: [{ from: "../../docs/reference", to: "dist" }],
+  // `mostra docs` reads the reference that ships with the CLI (D140 item 17), and the Agent Skill
+  // as its `guide` topics (WP-14).
+  copy: [
+    { from: "../../docs/reference", to: "dist" },
+    { from: "../../skills/mostra", to: "dist", rename: "skill" },
+  ],
   // The telemetry endpoint is set only by the release workflow (D140 item 7): empty here.
   define: {
     __MOSTRA_TELEMETRY_ENDPOINT__: JSON.stringify(

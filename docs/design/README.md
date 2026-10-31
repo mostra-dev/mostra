@@ -8,13 +8,13 @@
 | **Status** | **Design accepted** by Mirza on 2026-10-10 ([DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)). WP specifications are in [work-packages/](work-packages/). |
 | **Authority** | This folder. The seed it started from was imported verbatim in commit `e1a5683`; the seed folder in Mirza's program is history (D03). |
 | **Plan update** | 2026-10-16 (M20, D116 to D127): the remote server, relay and team features join v1; Windows and the terminal packages follow the first release as `v1.1`; new packages WP-28 to WP-32. 2026-10-22 (M34, D146): Windows moves into v1.0 as WP-W1 to WP-W3, built after WP-12; WP-32 is withdrawn. |
-| **Next unit** | WP-13, sharing and remote viewing (work-package mode). MT-02b is done (D156, D157, [PROGRESS-MT-02b](../progress/PROGRESS-MT-02b.md)), released as Mostra 0.6.2, after MT-02 (D154, D155, [PROGRESS-MT-02](../progress/PROGRESS-MT-02.md)); #39, #46, #55, #85 and #95 stay open on no milestone (D155 item 7). Windows x64 and arm64 are supported like macOS and Linux since WP-W3 (D153), and every package keeps the Windows legs green. Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
+| **Next unit** | WP-15, the local MCP server (work-package mode). WP-14 is done (D162, [PROGRESS-WP-14](../progress/PROGRESS-WP-14.md)), released as Mostra 0.8.0: the Agent Skill (`skills/mostra/`, also `mostra docs guide`), `AGENTS.md` and `CLAUDE.md` in every new artifact, and the harness plugin generated into `mostra-dev/mostra-plugin` by each release, submitted to Anthropic's directory (listed on Claude Code until WP-30). WP-15 turns on the plugin's local MCP server (`features.localMcp`), WP-30 its remote one. #39, #46, #55, #85 and #95 stay open on no milestone (D155 item 7), and #106 (verify with a bundle on an external volume) waits for the package that takes it. Windows x64 and arm64 are supported like macOS and Linux since WP-W3 (D153), and every package keeps the Windows legs green. Every WP session starts from [work-packages/PROMPT.md](work-packages/PROMPT.md) with only the `WORK PACKAGE` line changed. |
 
 ## Reading order
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D161, with source messages M1 to M48. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D162, with source messages M1 to M51. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J14, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, and the resolution of every seed open question (§15).
