@@ -222,8 +222,13 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           DEPLOY_KEY: ${{ secrets.PLUGIN_DEPLOY_KEY }}
         run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "PLUGIN_DEPLOY_KEY isn't set on the release environment (docs/agents/release.md)" >&2
+            exit 1
+          fi
           ssh_dir="$RUNNER_TEMP/plugin-ssh"
           mkdir -m 700 "$ssh_dir"
+          trap 'rm -rf "$ssh_dir"' EXIT
           (umask 077 && printf '%s\n' "$DEPLOY_KEY" > "$ssh_dir/key")
           echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$ssh_dir/known_hosts"
           export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"

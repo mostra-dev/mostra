@@ -105,7 +105,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
-| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | unverified |
+| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | validated ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | AX-07 | WP-26 | B, R | Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews | unverified |
 | AX-08 | WP-27 | E | Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64) | unverified |
 | MC-01 | WP-15 | I, X | MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex | unverified |
@@ -156,7 +156,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
 | AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
-| AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | unverified |
+| AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | RV-06 | WP-21 | B | Comments on a Timeline, a video and a deck slide anchor to time plus region or slide plus step and re-resolve after reload | unverified |
 
