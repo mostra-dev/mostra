@@ -17,7 +17,14 @@ each harness's own CLI loading it (D162).
    CLI (scratch homes), the `skills` CLI and skills-ref. Each line says what the harness found.
 3. **With a server feature on**, also start the server the plugin declares from each harness that
    ran (Claude Code's `/mcp`, Codex's `codex mcp list`, Gemini's `/mcp`), and check that it sends
-   nothing (D148: `MOSTRA_TELEMETRY_DEBUG=1` prints any event it would send).
+   nothing (D148: `MOSTRA_TELEMETRY_DEBUG=1` prints any event it would send). Do it on macOS,
+   Linux and native Windows (a GitHub `windows-latest` runner, `docs/agents/run-on-windows.md`):
+   on Windows `npx` is `npx.cmd`, which a harness that starts servers without a shell can't run.
+   Where one can't, change that harness's launch in `tools/plugins/build.ts` and prove it again on
+   all three: every system reads the same manifest, so a `cmd /c npx …` launch would break macOS
+   and Linux; use the harness's own per-system setting where it has one. List each system the
+   launch started on in `features.localMcp.verifiedOn`; the check keeps the feature off until all
+   three are there.
 4. **Cursor and Muse Code** need what the script can't give them: Cursor's agent CLI manages
    marketplaces only after sign-in (copy the built plugin to `~/.cursor/plugins/local/mostra` and
    reload Cursor instead), and Muse Code's plugins are a developer preview (`muse plugins

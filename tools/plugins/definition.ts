@@ -21,6 +21,15 @@ export interface LocalMcpFeature {
    * plugin's MCP entry, and an argument reaches every harness the same way.
    */
   readonly args: readonly string[];
+  /**
+   * The systems on which the server was started from every harness the plugin serves, with this
+   * launch (`npx -y @mostra/cli@<version> mcp …`): the check refuses `enabled` until all three are
+   * here (WP-14's Opus review, finding 9). On native Windows `npx` is `npx.cmd`, which a harness
+   * that starts its servers without a shell can't run; WP-15 starts the server from each harness
+   * on Windows (docs/agents/check-harness-plugins.md, step 3) and, where one can't, changes that
+   * harness's launch in `build.ts` (`cmd /c`, as some harnesses document) before listing `win32`.
+   */
+  readonly verifiedOn: readonly ("darwin" | "linux" | "win32")[];
 }
 
 /** The remote MCP server with OAuth (D116, WP-30), for chat hosts and OpenAI's directory. */
@@ -95,7 +104,7 @@ export const PLUGIN: PluginDefinition = {
   ],
   skills: ["mostra"],
   features: {
-    localMcp: { enabled: false, owner: "WP-15", args: ["mcp"] },
+    localMcp: { enabled: false, owner: "WP-15", args: ["mcp"], verifiedOn: [] },
     remoteMcp: { enabled: false, owner: "WP-30" },
   },
 };

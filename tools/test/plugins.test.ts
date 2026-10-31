@@ -167,6 +167,65 @@ describe("the harness plugins (AX-10)", () => {
         },
         /launches @mostra\/cli@latest/,
       ],
+      // The Opus review's finding 5: files the check didn't look at.
+      [
+        "hook in a marketplace entry",
+        (dir) => {
+          const market = readJson(dir, ".claude-plugin/marketplace.json");
+          const plugins = market["plugins"] as Record<string, unknown>[];
+          writeFileSync(
+            join(dir, ".claude-plugin/marketplace.json"),
+            JSON.stringify({ ...market, plugins: [{ ...plugins[0], hooks: {} }] }),
+          );
+        },
+        /marketplace.json declares hooks/,
+      ],
+      [
+        "upgrade prompt in the Skill",
+        (dir) =>
+          writeFileSync(
+            join(dir, "skills/mostra/references/extra.md"),
+            "Upgrade to the Pro plan for more pages.\n",
+          ),
+        /skills\/mostra\/references\/extra.md says "Upgrade to"/,
+      ],
+      [
+        "a component in Claude's manifest",
+        (dir) => {
+          const manifest = readJson(dir, ".claude-plugin/plugin.json");
+          writeFileSync(
+            join(dir, ".claude-plugin/plugin.json"),
+            JSON.stringify({ ...manifest, commands: "./commands" }),
+          );
+        },
+        /\.claude-plugin\/plugin.json breaks its harness's shape/,
+      ],
+      [
+        "a context file in Gemini's manifest",
+        (dir) => {
+          const manifest = readJson(dir, "gemini-extension.json");
+          writeFileSync(
+            join(dir, "gemini-extension.json"),
+            JSON.stringify({ ...manifest, contextFileName: "GEMINI.md" }),
+          );
+        },
+        /gemini-extension.json breaks its harness's shape/,
+      ],
+      [
+        "another policy in the Codex marketplace",
+        (dir) => {
+          const market = readJson(dir, ".agents/plugins/marketplace.json");
+          const plugins = market["plugins"] as Record<string, unknown>[];
+          writeFileSync(
+            join(dir, ".agents/plugins/marketplace.json"),
+            JSON.stringify({
+              ...market,
+              plugins: [{ ...plugins[0], policy: { installation: "ALWAYS" } }],
+            }),
+          );
+        },
+        /\.agents\/plugins\/marketplace.json breaks its harness's shape/,
+      ],
     ];
     for (const [name, seed, problem] of seeds) {
       const { dir, check } = built();
@@ -180,7 +239,12 @@ describe("the harness plugins (AX-10)", () => {
     const definition: PluginDefinition = {
       ...PLUGIN,
       features: {
-        localMcp: { ...PLUGIN.features.localMcp, enabled: true, args: ["mcp", "--plugin"] },
+        localMcp: {
+          ...PLUGIN.features.localMcp,
+          enabled: true,
+          args: ["mcp", "--plugin"],
+          verifiedOn: ["darwin", "linux", "win32"],
+        },
         remoteMcp: {
           enabled: true,
           owner: "WP-30",
@@ -202,6 +266,48 @@ describe("the harness plugins (AX-10)", () => {
     expect(readJson(dir, ".claude-plugin/plugin.json")["privacyPolicyUrl"]).toBe(
       "https://example.com/privacy",
     );
+    // Every launch runs an exact version: a bare command, an unpinned or ranged package, another
+    // package launcher, or a remote over HTTP is refused (the Opus review's finding 8).
+    const launches: [unknown, RegExp][] = [
+      [{ command: "mostra", args: ["mcp"] }, /runs mostra, which no version pins/],
+      [
+        { command: "npx", args: ["-y", "some-helper"] },
+        /some-helper, which isn't an exact version/,
+      ],
+      [{ command: "npx", args: ["-y", "some-helper@^1.0.0"] }, /isn't an exact version/],
+      [{ command: "uvx", args: ["helper"] }, /runs uvx helper, which isn't an exact version/],
+      [{ command: "npx", args: ["-y", "some-helper@1.0.0"] }, /^$/],
+      [{ command: "uvx", args: ["--from", "helper==1.2.0", "helper"] }, /^$/],
+      [{ command: "./bin/server", args: [] }, /^$/],
+    ];
+    for (const [server, problem] of launches) {
+      const mcp = readJson(dir, ".mcp.json") as { mcpServers: Record<string, unknown> };
+      writeFileSync(
+        join(dir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { ...mcp.mcpServers, helper: server } }),
+      );
+      const found = check()
+        .filter((line) => line.includes("server helper"))
+        .join("\n");
+      expect(found, JSON.stringify(server)).toMatch(problem);
+      writeFileSync(join(dir, ".mcp.json"), JSON.stringify(mcp));
+    }
+    const gemini = readJson(dir, "gemini-extension.json");
+    writeFileSync(
+      join(dir, "gemini-extension.json"),
+      JSON.stringify({ ...gemini, mcpServers: { plain: { httpUrl: "http://mcp.example.com" } } }),
+    );
+    expect(check().join("\n")).toMatch(/server plain isn't HTTPS/);
+    writeFileSync(join(dir, "gemini-extension.json"), JSON.stringify(gemini));
+    // The local server is on only once its launch was started on every system (finding 9).
+    const unproven = built({
+      ...definition,
+      features: {
+        ...definition.features,
+        localMcp: { ...definition.features.localMcp, verifiedOn: ["darwin", "linux"] },
+      },
+    });
+    expect(unproven.check().join("\n")).toMatch(/wasn't started from every harness on win32/);
     // A server file left behind when the feature is off again is refused.
     const off = built();
     writeFileSync(join(off.dir, "mcp.json"), readFileSync(join(dir, "mcp.json")));

@@ -9,6 +9,13 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse as parseYaml } from "yaml";
 import { walkTree } from "../lib/files.ts";
 import type { PluginDefinition } from "./definition.ts";
+import {
+  CLAUDE_MARKETPLACE,
+  CLAUDE_MCP,
+  CLAUDE_PLUGIN,
+  CODEX_MARKETPLACE,
+  GEMINI_EXTENSION,
+} from "./manifests.ts";
 
 const SCHEMAS = new URL("./schemas/agent-plugins-1.0.0/", import.meta.url);
 
@@ -72,9 +79,49 @@ function claudeNameProblem(name: string): string | undefined {
   return undefined;
 }
 
-/** Words OpenAI's directory refuses inside a plugin: plans, upgrades, trials (D147). */
+/**
+ * What OpenAI's directory refuses inside a plugin: plans, upgrades, trials (D147). Phrases, not
+ * words, since the Skill speaks of event subscriptions and upgrades of packages.
+ */
 const COMMERCIAL =
-  /\b(upgrade|subscribe|subscription|pricing|free trial|trial|pro plan|paid plan)\b/i;
+  /\b(upgrade (to|your)|pricing|free trial|trial (plan|version|period)|(pro|paid|premium|subscription|business) plans?|subscribe (to|now)|plans? (and|&) pricing)\b/i;
+
+/** Package launchers, and how each names an exact version of the package it runs. */
+const LAUNCHERS: Record<string, RegExp> = {
+  npx: /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*@\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/,
+  bunx: /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*@\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/,
+  uvx: /^[A-Za-z0-9][\w.-]*==\d+(\.\d+)*([a-z]+\d*)?$/,
+};
+/** A command inside the plugin itself, which the plugin's own version pins. */
+const BUNDLED_COMMAND =
+  /^(\.\/|\$\{(PLUGIN_ROOT|CLAUDE_PLUGIN_ROOT|CURSOR_PLUGIN_ROOT|extensionPath)\})/;
+
+/**
+ * Whether a local server's launch runs an exact version (Anthropic blocks any launcher that
+ * doesn't; WP-14's Opus review, finding 8): a package launcher whose package names one, or a
+ * program the plugin carries. A bare command runs whatever the machine has.
+ */
+function launchProblem(command: string, args: readonly string[]): string | undefined {
+  const launcher = LAUNCHERS[command];
+  if (launcher === undefined)
+    return BUNDLED_COMMAND.test(command)
+      ? undefined
+      : `runs ${command}, which no version pins: launch an exact package version or a program the plugin carries`;
+  const operands = args.filter((arg) => !arg.startsWith("-"));
+  const from = args.indexOf("--from");
+  const pkg = command === "uvx" && from >= 0 ? args[from + 1] : operands[0];
+  if (pkg === undefined) return `runs ${command} with no package`;
+  return launcher.test(pkg) ? undefined : `runs ${command} ${pkg}, which isn't an exact version`;
+}
+
+/** Every server a manifest declares, by name. */
+function serversOf(
+  manifest: Record<string, unknown> | undefined,
+): [string, Record<string, unknown>][] {
+  const servers = manifest?.["mcpServers"];
+  if (servers === null || typeof servers !== "object") return [];
+  return Object.entries(servers as Record<string, Record<string, unknown>>);
+}
 
 /** Names Windows reserves for devices, with or without an extension. */
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
@@ -169,17 +216,31 @@ export function checkPlugin(
       `mcp.json breaks the Agent Plugins MCP schema: ${ajv.errorsText(validateMcp.errors)}`,
     );
 
-  // Claude Code and its marketplace.
+  // Claude Code, Gemini CLI and the marketplaces, each held to its closed shape (manifests.ts).
   const claude = readJson(dir, ".claude-plugin/plugin.json", problems);
   if (claude) {
-    for (const field of ["name", "version", "description", "author", "license"])
-      if (claude[field] === undefined) problems.push(`.claude-plugin/plugin.json has no ${field}`);
     const reserved = claudeNameProblem(String(claude["name"]));
     if (reserved) problems.push(`.claude-plugin/plugin.json's name ${reserved}`);
   }
   const claudeMarket = readJson(dir, ".claude-plugin/marketplace.json", problems);
   const codexMarket = readJson(dir, ".agents/plugins/marketplace.json", problems);
   const gemini = readJson(dir, "gemini-extension.json", problems);
+  const claudeMcp = existsSync(join(dir, ".mcp.json"))
+    ? readJson(dir, ".mcp.json", problems)
+    : undefined;
+  const shapes = [
+    [".claude-plugin/plugin.json", claude, CLAUDE_PLUGIN],
+    [".claude-plugin/marketplace.json", claudeMarket, CLAUDE_MARKETPLACE],
+    [".agents/plugins/marketplace.json", codexMarket, CODEX_MARKETPLACE],
+    ["gemini-extension.json", gemini, GEMINI_EXTENSION],
+    [".mcp.json", claudeMcp, CLAUDE_MCP],
+  ] as const;
+  for (const [path, manifest, shape] of shapes) {
+    if (!manifest) continue;
+    const validate = ajv.compile(shape);
+    if (!validate(manifest))
+      problems.push(`${path} breaks its harness's shape: ${ajv.errorsText(validate.errors)}`);
+  }
 
   // One name and one version everywhere, the release's.
   const named = [
@@ -194,25 +255,47 @@ export function checkPlugin(
     if (manifest["version"] !== version)
       problems.push(`${path} is at ${String(manifest["version"])}, not the release's ${version}`);
   }
-  const claudeEntry = (claudeMarket?.["plugins"] as Record<string, unknown>[] | undefined)?.[0];
-  if (claudeEntry && (claudeEntry["name"] !== definition.name || claudeEntry["source"] !== "./"))
-    problems.push(".claude-plugin/marketplace.json must list this plugin at ./");
-  const codexEntry = (codexMarket?.["plugins"] as Record<string, unknown>[] | undefined)?.[0];
-  const codexSource = codexEntry?.["source"] as Record<string, unknown> | undefined;
-  if (codexEntry && (codexEntry["name"] !== definition.name || codexSource?.["path"] !== "./"))
-    problems.push(".agents/plugins/marketplace.json must list this plugin at ./");
-  for (const field of ["policy", "category"])
-    if (codexEntry && codexEntry[field] === undefined)
-      problems.push(`.agents/plugins/marketplace.json's entry has no ${field}`);
+  for (const [path, market] of [
+    [".claude-plugin/marketplace.json", claudeMarket],
+    [".agents/plugins/marketplace.json", codexMarket],
+  ] as const) {
+    const entry = (market?.["plugins"] as Record<string, unknown>[] | undefined)?.[0];
+    if (entry && entry["name"] !== definition.name)
+      problems.push(`${path} lists ${String(entry["name"])}, not ${definition.name}`);
+  }
 
-  // No hooks in any manifest (D147).
-  for (const [path, manifest] of [...named, ["mcp.json", mcp]] as const)
-    if (manifest && hasKey(manifest, "hooks"))
-      problems.push(`${path} declares hooks; D147 allows none`);
+  // No hooks anywhere a harness reads one (D147): no JSON file of the plugin outside its Skill
+  // holds a `hooks` key, inline marketplace entries and server configurations included.
+  for (const path of paths) {
+    if (!path.endsWith(".json") || path.startsWith("skills/")) continue;
+    if (!lstatSync(join(dir, path)).isFile()) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(join(dir, path), "utf8"));
+    } catch {
+      continue; // reported where the file is read as a manifest
+    }
+    if (hasKey(value, "hooks")) problems.push(`${path} declares hooks; D147 allows none`);
+  }
 
-  // Every launch of Mostra is pinned to this release.
-  const manifests = [portable, mcp, claude, gemini, readJsonQuiet(dir, ".mcp.json")];
-  for (const text of manifests.flatMap(strings)) {
+  // Every server's launch runs an exact version, Mostra's this release's; every remote is HTTPS.
+  for (const [path, manifest] of [
+    ["mcp.json", mcp],
+    [".mcp.json", claudeMcp],
+    ["gemini-extension.json", gemini],
+  ] as const) {
+    for (const [server, config] of serversOf(manifest)) {
+      if (typeof config["command"] === "string") {
+        const args = Array.isArray(config["args"]) ? (config["args"] as string[]) : [];
+        const problem = launchProblem(config["command"], args);
+        if (problem) problems.push(`${path}'s server ${server} ${problem}`);
+      }
+      for (const field of ["url", "httpUrl"])
+        if (typeof config[field] === "string" && !(config[field] as string).startsWith("https://"))
+          problems.push(`${path}'s server ${server} isn't HTTPS`);
+    }
+  }
+  for (const text of [portable, mcp, claude, gemini, claudeMcp].flatMap(strings)) {
     for (const match of text.matchAll(/@mostra\/cli(@[^\s"]*)?/g)) {
       if (match[1] !== `@${version}`)
         problems.push(`"${text}" launches @mostra/cli${match[1] ?? ""}, not @${version}`);
@@ -222,6 +305,13 @@ export function checkPlugin(
   // The features decide the MCP servers, in every harness alike.
   const { localMcp, remoteMcp } = definition.features;
   const wantsServers = localMcp.enabled || remoteMcp.enabled;
+  const unproven = (["darwin", "linux", "win32"] as const).filter(
+    (system) => !localMcp.verifiedOn.includes(system),
+  );
+  if (localMcp.enabled && unproven.length > 0)
+    problems.push(
+      `features.localMcp is on but its launch wasn't started from every harness on ${unproven.join(", ")} (docs/agents/check-harness-plugins.md, step 3)`,
+    );
   const serverFiles = [
     ["mcp.json", existsSync(join(dir, "mcp.json"))],
     [".mcp.json", existsSync(join(dir, ".mcp.json"))],
@@ -294,15 +384,11 @@ export function checkPlugin(
   if (input.telemetryEndpoint === "" && !/sends no usage data/.test(readme))
     problems.push("README.md doesn't say this release sends no usage data");
 
-  // OpenAI's directory: no plans, upgrades or trials inside the plugin (D147).
-  for (const path of [
-    "README.md",
-    "plugin.json",
-    ".claude-plugin/plugin.json",
-    "gemini-extension.json",
-  ]) {
+  // OpenAI's directory: no plans, upgrades or trials anywhere in the plugin (D147), its Skill and
+  // its marketplaces included.
+  for (const path of paths) {
     const file = join(dir, path);
-    if (!existsSync(file)) continue;
+    if (!lstatSync(file).isFile() || MEDIA.test(path)) continue;
     const found = COMMERCIAL.exec(readFileSync(file, "utf8"));
     if (found)
       problems.push(`${path} says "${found[0]}"; the plugin shows no plans, upgrades or trials`);
@@ -346,11 +432,4 @@ function pngSize(png: Buffer): { width: number; height: number } | undefined {
   if (png.length < 24 || !png.subarray(0, 8).equals(signature)) return undefined;
   if (png.subarray(12, 16).toString("latin1") !== "IHDR") return undefined;
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
-}
-
-function readJsonQuiet(dir: string, path: string): Record<string, unknown> | undefined {
-  const file = join(dir, path);
-  return existsSync(file)
-    ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)
-    : undefined;
 }
