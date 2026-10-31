@@ -705,6 +705,8 @@ describe("the release's harness plugin (D162, WP-14's Opus review)", () => {
   const release = load(".github/workflows/release.yml").jobs;
   const build = load(".github/workflows/release-build.yml").jobs;
   const text = (job: ReleaseJob | undefined): string => JSON.stringify(job ?? {});
+  /** A GitHub Actions expression, `${{ inner }}`, as the workflow writes it. */
+  const expression = (inner: string): string => `$\{{ ${inner} }}`;
 
   it("keeps the deploy key away from installed code: the key's job installs nothing", () => {
     // `plugin-build` installs and builds with no secret and no environment; `plugin` holds the
@@ -730,7 +732,7 @@ describe("the release's harness plugin (D162, WP-14's Opus review)", () => {
     const plan = text(release["plan"]);
     expect(plan).toContain("vars.MOSTRA_RELEASE_TELEMETRY_ENDPOINT");
     expect(release["build"]?.with?.["telemetry-endpoint"]).toBe(
-      "${{ needs.plan.outputs.telemetry-endpoint }}",
+      expression("needs.plan.outputs.telemetry-endpoint"),
     );
     const builds = Object.values(build)
       .flatMap((job) => job.steps ?? [])
@@ -738,13 +740,13 @@ describe("the release's harness plugin (D162, WP-14's Opus review)", () => {
     expect(builds.length).toBe(2);
     for (const step of builds)
       expect(step.env?.["MOSTRA_RELEASE_TELEMETRY_ENDPOINT"], step.name).toBe(
-        "${{ inputs.telemetry-endpoint }}",
+        expression("inputs.telemetry-endpoint"),
       );
     const pluginBuild = (release["plugin-build"]?.steps ?? []).find((step) =>
       (step.run ?? "").includes("tools/plugins/cli.ts build"),
     );
     expect(pluginBuild?.env?.["MOSTRA_RELEASE_TELEMETRY_ENDPOINT"]).toBe(
-      "${{ needs.plan.outputs.telemetry-endpoint }}",
+      expression("needs.plan.outputs.telemetry-endpoint"),
     );
     // Turbo hands the CLI's build the variable, and hashes it.
     const cli = JSON.parse(readFileSync(fromRoot("packages/cli/turbo.json"), "utf8")) as {
