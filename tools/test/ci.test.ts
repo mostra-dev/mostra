@@ -27,6 +27,7 @@ import {
   type Runners,
   usageMinutes,
 } from "../check/runners.ts";
+import { isReleaseVersion } from "../lib/release-version.ts";
 import { fromRoot } from "../lib/repo.ts";
 
 const inputs = (over: Partial<RunnerInputs> = {}): RunnerInputs => ({
@@ -679,5 +680,95 @@ describe("the CI workflow's shape (D152)", () => {
     expect((workflow.on["pull_request"] as { types: string[] }).types).toContain(
       "ready_for_review",
     );
+  });
+});
+
+describe("the release's harness plugin (D162, WP-14's Opus review)", () => {
+  interface Step {
+    name?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, unknown>;
+  }
+  interface ReleaseJob {
+    needs?: string | string[];
+    if?: string;
+    environment?: string;
+    uses?: string;
+    with?: Record<string, unknown>;
+    outputs?: Record<string, string>;
+    steps?: Step[];
+  }
+  const load = (file: string) =>
+    parse(readFileSync(fromRoot(file), "utf8")) as { jobs: Record<string, ReleaseJob> };
+  const release = load(".github/workflows/release.yml").jobs;
+  const build = load(".github/workflows/release-build.yml").jobs;
+  const text = (job: ReleaseJob | undefined): string => JSON.stringify(job ?? {});
+
+  it("keeps the deploy key away from installed code: the key's job installs nothing", () => {
+    // `plugin-build` installs and builds with no secret and no environment; `plugin` holds the
+    // key and runs only checked-out scripts on Node.js (repo lint holds those to built-ins).
+    const builder = release["plugin-build"];
+    const publisher = release["plugin"];
+    expect(builder?.environment).toBeUndefined();
+    expect(text(builder)).not.toMatch(/secrets\./);
+    expect(publisher?.environment).toBe("release");
+    expect(text(publisher)).toContain("secrets.PLUGIN_DEPLOY_KEY");
+    for (const step of publisher?.steps ?? []) {
+      expect(step.uses ?? "", step.name).not.toMatch(/\.\/\.github\/actions\/setup/);
+      expect(step.run ?? "", step.name).not.toMatch(/\b(pnpm|npm|npx|yarn|corepack)\b/);
+    }
+    // The tree it publishes is the one the build job checked.
+    expect(text(publisher)).toContain("needs.plugin-build.outputs.digest");
+    expect(text(publisher)).toMatch(/sha256sum --check/);
+  });
+
+  it("builds the CLI and discloses the plugin's telemetry endpoint from one value", () => {
+    // The plan reads the endpoint once; the bundles, the npm packages and the plugin's README all
+    // take that one value, so the README never says "no usage data" of a CLI that sends some.
+    const plan = text(release["plan"]);
+    expect(plan).toContain("vars.MOSTRA_RELEASE_TELEMETRY_ENDPOINT");
+    expect(release["build"]?.with?.["telemetry-endpoint"]).toBe(
+      "${{ needs.plan.outputs.telemetry-endpoint }}",
+    );
+    const builds = Object.values(build)
+      .flatMap((job) => job.steps ?? [])
+      .filter((step) => /bundle\/scripts\/build\.ts|turbo run build/.test(step.run ?? ""));
+    expect(builds.length).toBe(2);
+    for (const step of builds)
+      expect(step.env?.["MOSTRA_RELEASE_TELEMETRY_ENDPOINT"], step.name).toBe(
+        "${{ inputs.telemetry-endpoint }}",
+      );
+    const pluginBuild = (release["plugin-build"]?.steps ?? []).find((step) =>
+      (step.run ?? "").includes("tools/plugins/cli.ts build"),
+    );
+    expect(pluginBuild?.env?.["MOSTRA_RELEASE_TELEMETRY_ENDPOINT"]).toBe(
+      "${{ needs.plan.outputs.telemetry-endpoint }}",
+    );
+    // Turbo hands the CLI's build the variable, and hashes it.
+    const cli = JSON.parse(readFileSync(fromRoot("packages/cli/turbo.json"), "utf8")) as {
+      tasks: { build: { env?: string[] } };
+    };
+    expect(cli.tasks.build.env).toContain("MOSTRA_RELEASE_TELEMETRY_ENDPOINT");
+  });
+
+  it("accepts exactly the release versions the tools accept", () => {
+    const guard = (release["plugin-build"]?.steps ?? [])
+      .map((step) => step.run ?? "")
+      .map((run) => /=~ \^(.+)\$ \]\]/.exec(run)?.[1])
+      .find((found) => found !== undefined);
+    expect(guard).toBeDefined();
+    const workflow = new RegExp(`^${(guard as string).replaceAll("\\\\", "\\")}$`);
+    for (const version of [
+      "1.2.3",
+      "0.8.0",
+      "1.2.3-rc.1",
+      "1.2.3+build",
+      "1.2",
+      "v1.2.3",
+      "1.2.3-",
+    ])
+      expect(workflow.test(version), version).toBe(isReleaseVersion(version));
   });
 });

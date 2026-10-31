@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { fail, ROOT } from "../lib/repo.ts";
 import { listPackages, type WorkspacePackage } from "../lib/workspace.ts";
@@ -68,10 +68,17 @@ const OWN_VERSION = /^@mostra\/contract-/;
 
 /**
  * The imports in `source` that aren't Node.js built-ins (`node:`): a script the release's
- * `publish` job runs has only the checkout and Node.js there, no installed packages, and the job
- * holds the publishing credentials, so it runs nothing installed (EN-05).
+ * `publish` and `plugin` jobs run has only the checkout and Node.js there, no installed packages,
+ * and those jobs hold the publishing credentials and the plugin's deploy key, so they run nothing
+ * installed (EN-05, D162). A relative import is allowed when `resolve` gives its source, whose own
+ * imports must hold to the same rule (the release's shared version rules, `tools/lib`).
  */
-export function privilegedImportProblems(source: string, file: string): string[] {
+export function privilegedImportProblems(
+  source: string,
+  file: string,
+  resolve?: (specifier: string, from: string) => { source: string; file: string } | undefined,
+  seen: Set<string> = new Set([file]),
+): string[] {
   const problems: string[] = [];
   const specifiers = [
     ...source.matchAll(/^\s*(?:import|export)\s[^;]*?\sfrom\s+["']([^"']+)["']/gm),
@@ -79,30 +86,50 @@ export function privilegedImportProblems(source: string, file: string): string[]
     ...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g),
   ].map((match) => match[1] as string);
   for (const specifier of specifiers) {
-    if (!specifier.startsWith("node:"))
+    if (specifier.startsWith("node:")) continue;
+    const local = specifier.startsWith(".") ? resolve?.(specifier, file) : undefined;
+    if (local === undefined) {
       problems.push(
-        `${file} imports "${specifier}", but the release's publish job runs it with Node.js built-ins only.`,
+        `${file} imports "${specifier}", but the release's privileged jobs run it with Node.js built-ins only.`,
       );
+      continue;
+    }
+    if (seen.has(local.file)) continue;
+    seen.add(local.file);
+    problems.push(...privilegedImportProblems(local.source, local.file, resolve, seen));
   }
   return problems;
 }
 
-/** The scripts `.github/workflows/release.yml`'s `publish` job runs with `node`, and their problems. */
+/**
+ * The scripts `.github/workflows/release.yml`'s privileged jobs (`publish`, and `plugin`, which
+ * holds the plugin's deploy key) run with `node`, and their problems.
+ */
 function publishJobProblems(root: string): string[] {
   const file = join(root, ".github", "workflows", "release.yml");
   if (!existsSync(file)) return [];
   const workflow = parseYaml(readFileSync(file, "utf8")) as {
     jobs?: Record<string, { steps?: { run?: string }[] }>;
   };
-  const steps = workflow.jobs?.["publish"]?.steps ?? [];
   const problems: string[] = [];
-  for (const step of steps) {
-    for (const match of (step.run ?? "").matchAll(/\bnode\s+(\S+\.(?:ts|mjs|js))\b/g)) {
-      const script = match[1] as string;
-      const path = join(root, script);
-      if (!existsSync(path))
-        problems.push(`release.yml's publish job runs ${script}, which doesn't exist.`);
-      else problems.push(...privilegedImportProblems(readFileSync(path, "utf8"), script));
+  const resolve = (
+    specifier: string,
+    from: string,
+  ): { source: string; file: string } | undefined => {
+    const file = join(dirname(from), specifier).split("\\").join("/");
+    const path = join(root, file);
+    return existsSync(path) ? { source: readFileSync(path, "utf8"), file } : undefined;
+  };
+  for (const job of ["publish", "plugin"]) {
+    for (const step of workflow.jobs?.[job]?.steps ?? []) {
+      for (const match of (step.run ?? "").matchAll(/\bnode\s+(\S+\.(?:ts|mjs|js))\b/g)) {
+        const script = match[1] as string;
+        const path = join(root, script);
+        if (!existsSync(path))
+          problems.push(`release.yml's ${job} job runs ${script}, which doesn't exist.`);
+        else
+          problems.push(...privilegedImportProblems(readFileSync(path, "utf8"), script, resolve));
+      }
     }
   }
   return problems;

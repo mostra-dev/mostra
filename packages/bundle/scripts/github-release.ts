@@ -35,7 +35,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -155,21 +155,39 @@ function pluginTagged(): boolean {
   );
 }
 
+/**
+ * Whether this version's source has the plugin generator: the checkout's for a version about to
+ * be released, its tag's for one already released (fetched, shallow, without its tags).
+ */
+function hasGenerator(fresh: boolean): boolean {
+  const generator = "tools/plugins/cli.ts";
+  if (fresh) return existsSync(join(ROOT, generator));
+  run("git", ["fetch", "--quiet", "--no-tags", "--depth", "1", "origin", `refs/tags/${tag}`]);
+  return run("git", ["cat-file", "-e", `FETCH_HEAD:${generator}`], true) !== undefined;
+}
+
 function state(): void {
   const pending = readdirSync(join(ROOT, ".changeset")).filter(
     (name) => name.endsWith(".md") && name !== "README.md",
   ).length;
   const lines = (mode: string, why: string): void => {
-    // The plugin follows a version that is published or about to be, never one that isn't due.
+    // The plugin follows a version that is published or about to be, never one that isn't due,
+    // and only one whose source has the generator (0.7.0 and older have none: the Opus review's
+    // finding 7, which saw every push to main start the release environment for nothing).
     const due = mode !== "none" || why === RELEASED;
-    const plugin = due && !pluginTagged();
+    const pluginState = !due
+      ? "not due"
+      : pluginTagged()
+        ? "published"
+        : hasGenerator(mode === "fresh")
+          ? "to publish"
+          : "none in this version's source";
+    const plugin = pluginState === "to publish";
     console.log(`version=${version}`);
     console.log(`mode=${mode}`);
     console.log(`publish=${mode === "none" ? "false" : "true"}`);
     console.log(`plugin=${plugin ? "true" : "false"}`);
-    console.error(
-      `release state of ${version}: ${mode} (${why}); plugin: ${plugin ? "to publish" : due ? "published" : "not due"}`,
-    );
+    console.error(`release state of ${version}: ${mode} (${why}); plugin: ${pluginState}`);
   };
   const mode = ((): [string, string] => {
     if (values.event !== "push" || values.ref !== "refs/heads/main")

@@ -49,6 +49,12 @@ on:
         description: The runner of the packing and old-Node.js jobs
         type: string
         default: ubuntu-24.04
+      telemetry-endpoint:
+        description: >-
+          The release's telemetry endpoint, baked into the CLI (D140 item 7); empty (no collector)
+          in rehearsals and until the managed service's collector exists (D142 item 11)
+        type: string
+        default: ""
       rehearsal:
         description: >-
           A rehearsal (CI), which may build only some platforms and pins exactly those; a release
@@ -95,6 +101,8 @@ jobs:
         run: node tools/release/versions.ts rehearse --version "$VERSION"
       - name: Build the bundle
         if: inputs.mode != 'finish'
+        env:
+          MOSTRA_RELEASE_TELEMETRY_ENDPOINT: ${{ inputs.telemetry-endpoint }}
         # Through pnpm, which names itself to the assembler (npm_execpath): on Windows pnpm is a
         # .cmd shim Node.js can't start without cmd.exe.
         run: pnpm exec node packages/bundle/scripts/build.ts --out "$RUNNER_TEMP/bundle"
@@ -241,6 +249,8 @@ jobs:
           path: ${{ runner.temp }}/assets
           merge-multiple: true
       - name: Build the published packages
+        env:
+          MOSTRA_RELEASE_TELEMETRY_ENDPOINT: ${{ inputs.telemetry-endpoint }}
         run: pnpm exec turbo run build --filter=./packages/*
       - name: Pin the bundles in @mostra/sdk
         env:
