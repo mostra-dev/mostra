@@ -22,10 +22,18 @@ protocol over the home's socket.
 - **One exit-code table** (`src/exit.ts`), keyed by diagnostic code and total over the catalog's
   areas by type; a test checks every catalog code.
 - **A hint never names a command that doesn't exist.** A unit test parses every `mostra …` a
-  catalog entry's hint, explanation or fix names. A later package's command (`share`, `review
-  export`, `export`, `mcp`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a
-  placeholder (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
-  (`src/commands/sharing.ts`).
+  catalog entry's hint, explanation or fix names. A later package's command (`review export`,
+  `export`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a placeholder
+  (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
+  (`src/commands/sharing.ts`), and `mcp` with WP-15 (`src/commands/mcp.ts`, `src/mcp.ts`).
+- **`mostra mcp` serves `@mostra/mcp`, adding no tool logic of its own** (D164). This package
+  gives it the home's daemon (attached on the first call, attached again after the daemon
+  restarts, released after five idle minutes), the workspace, the bundled reference (with the
+  guide's links read as MCP topics) and the browser opener. Like `host`, it owns stdout (the MCP
+  protocol) and takes no `--timeout`. Telemetry counts each MCP client once per run
+  (`mcp.session`, queued at once with `checkpoint`, since a harness stops its server within a
+  second); `--embedded` (D148) makes the command quiet: no notice, no question, no event, and the
+  home stays unmarked.
 - **No prompt outside a terminal.** Only telemetry asks anything, and only when stdin and stderr
   are terminals, without `--json`, CI, an agent's marker or a command that reads stdin.
 - **Telemetry is this package's alone (D119, D140).** `src/telemetry/` is the only code in Mostra

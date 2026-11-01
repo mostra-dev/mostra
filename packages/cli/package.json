@@ -51,6 +51,7 @@
   "devDependencies": {
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/conformance": "catalog:",
+    "@modelcontextprotocol/conformance-next": "catalog:",
     "@mostra/runtime": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@types/node": "catalog:",

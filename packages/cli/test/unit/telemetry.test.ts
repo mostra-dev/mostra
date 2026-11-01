@@ -912,3 +912,45 @@ describe("replacing a telemetry file (MT-01)", () => {
     expect(missing.calls()).toBe(1);
   });
 });
+
+describe("mcp.session's client (D140 item 8, D164 item 4)", () => {
+  it("names a known MCP client by its agent's ID, and any other only as other", async () => {
+    const { mcpSessionFields } = await import("../../src/telemetry/harness.ts");
+    const { TelemetryEvent } = await import("../../src/telemetry/events.ts");
+    expect(mcpSessionFields({ name: "claude-code", version: "2.1.316" })).toEqual({
+      client: "claude-code",
+      clientVersion: "2.1.316",
+    });
+    expect(mcpSessionFields({ name: "codex-mcp-client", version: "0.162.1" })).toEqual({
+      client: "codex",
+      clientVersion: "0.162.1",
+    });
+    // An unknown name can name a private tool: neither it nor its version is sent.
+    expect(mcpSessionFields({ name: "acme-internal-agent", version: "1.0.0" })).toEqual({
+      client: "other",
+    });
+    expect(mcpSessionFields({ name: "__proto__" })).toEqual({ client: "other" });
+    expect(mcpSessionFields({ name: "claude-code", version: "not a version!" })).toEqual({
+      client: "claude-code",
+    });
+    const common = {
+      schema: 1,
+      at: "2026-11-01T12:00:00Z",
+      installId: randomUUID(),
+      version: "0.9.0",
+      os: "darwin",
+      arch: "arm64",
+      node: 24,
+      harness: "none",
+      ci: false,
+      consent: "default",
+    };
+    expect(
+      TelemetryEvent.safeParse({
+        ...common,
+        event: "mcp.session",
+        ...mcpSessionFields({ name: "codex-mcp-client", version: "0.162.1" }),
+      }).success,
+    ).toBe(true);
+  });
+});

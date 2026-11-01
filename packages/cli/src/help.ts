@@ -41,7 +41,7 @@ function flagLine(flag: FlagDef): string {
 }
 
 /** Commands that run until their connection or Ctrl-C ends them: `--timeout` doesn't bound them. */
-export const UNBOUNDED: ReadonlySet<string> = new Set(["host", "dev"]);
+export const UNBOUNDED: ReadonlySet<string> = new Set(["host", "dev", "mcp"]);
 
 /**
  * The global flags a command doesn't define again (`wait --timeout` is the wait's own); a command

@@ -71,6 +71,11 @@ export interface CommandContext {
   /** Records a telemetry event of this command (D140 item 8), when telemetry allows it. */
   record(event: TelemetryEventInput): void;
   /**
+   * Queues the events recorded so far, for a command that runs until it is stopped (`mcp`);
+   * `hostInstance` says whether the instance it reached was host-spawned (then nothing is sent).
+   */
+  checkpoint(hostInstance: boolean): void;
+  /**
    * The session with the home's instance, starting its daemon unless `autostart` is false; then
    * `undefined` when none runs. `call` uses the same session.
    */
@@ -91,7 +96,7 @@ export interface CommandContext {
 /** A command-specific telemetry event: its name and its own fields. */
 export interface TelemetryEventInput {
   /** The event's name. */
-  readonly event: "verify.result" | "publish.done" | "share.done";
+  readonly event: "verify.result" | "publish.done" | "share.done" | "mcp.session";
   /** Its own fields; the schema keeps only the published ones. */
   readonly fields: Readonly<Record<string, unknown>>;
 }
@@ -106,6 +111,8 @@ export interface CommandOutcome {
   readonly exit?: number;
   /** The command wrote its own stdout (`host`): the runner prints no envelope and no text. */
   readonly raw?: boolean;
+  /** The instance the command reached on a session of its own was host-spawned (`mcp`). */
+  readonly hostInstance?: boolean;
 }
 
 /** One command. */
@@ -130,8 +137,11 @@ export interface CommandDef {
   readonly local?: boolean;
   /** It writes a stream of events before its result (NDJSON in `--json` mode). */
   readonly streams?: boolean;
-  /** Telemetry and its question leave it alone (`telemetry`, `docs`, D140 item 11). */
-  readonly quiet?: boolean;
+  /**
+   * Telemetry and its question leave it alone (`telemetry`, `docs`, D140 item 11), or, as a
+   * function of its flags, when it runs on someone's behalf (`mcp --embedded`, D148).
+   */
+  readonly quiet?: boolean | ((flags: CommandContext["flags"]) => boolean);
   /** Does the command's work. */
   run(context: CommandContext): Promise<CommandOutcome>;
 }

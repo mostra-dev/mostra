@@ -150,14 +150,22 @@ const FENCE_LANGUAGES: Readonly<Record<string, string>> = {
 };
 
 /** How the guide's relative links read through the CLI, before each of its pages. */
-const GUIDE_LINKS =
+export const GUIDE_LINKS: string =
   "> Read through `mostra docs`: a link to `references/<name>.md` is `mostra docs guide/<name>`, `assets/<file>` is `mostra docs guide/<file>`, and `assets/examples/<name>/` is `mostra docs guide/examples/<name>`.";
 
+/** The same for the guide read through `mostra mcp` (D164): topics of `docs_search`, or resources. */
+export const MCP_GUIDE_LINKS: string =
+  "> Read through Mostra's MCP server: a link to `references/<name>.md` is the topic `guide/<name>`, `assets/<file>` is `guide/<file>`, and `assets/examples/<name>/` is `guide/examples/<name>`; read one with docs_search (`topic`) or the resource `mostra://docs/<topic>`. Where the guide runs a `mostra` command, use the tool of the same step (artifact_verify for `mostra verify`, artifact_wait for `mostra wait`).";
+
 /**
- * A topic's Markdown. A guide page loses its frontmatter and says how its links read through the
- * CLI; a guide topic made of files shows each one as code under its path.
+ * A topic's Markdown. A guide page loses its frontmatter and says how its links read (through the
+ * CLI by default, or `links`); a guide topic made of files shows each one as code under its path.
  */
-export function topicMarkdown(topic: DocsTopic, dir: string = skillDir()): string {
+export function topicMarkdown(
+  topic: DocsTopic,
+  dir: string = skillDir(),
+  links: string = GUIDE_LINKS,
+): string {
   if (topic.files !== undefined) {
     const parts = topic.files.map((path) => {
       const text = readFileSync(join(dir, "assets", path), "utf8");
@@ -165,11 +173,11 @@ export function topicMarkdown(topic: DocsTopic, dir: string = skillDir()): strin
       const body = text.endsWith("\n") ? text : `${text}\n`;
       return `## \`${path}\`\n\n${fence}${FENCE_LANGUAGES[extname(path)] ?? ""}\n${body}${fence}\n`;
     });
-    return [`# ${topic.title}`, "", GUIDE_LINKS, "", ...parts].join("\n");
+    return [`# ${topic.title}`, "", links, "", ...parts].join("\n");
   }
   const text = readFileSync(topic.file, "utf8");
   if (topic.topic !== "guide" && !topic.topic.startsWith("guide/")) return text;
-  return [GUIDE_LINKS, "", text.replace(/^---\n[\s\S]*?\n---\n+/, "")].join("\n");
+  return [links, "", text.replace(/^---\n[\s\S]*?\n---\n+/, "")].join("\n");
 }
 
 /** The index as Markdown: what `mostra docs` prints without a topic. */

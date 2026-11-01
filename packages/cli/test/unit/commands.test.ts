@@ -148,7 +148,9 @@ describe("the command line (AX-01)", () => {
       expect(names).toContain(name);
     }
     for (const name of ["share", "share stop", "share list"]) expect(names).toContain(name);
-    for (const later of ["review", "export", "mcp", "plugin", "term", "run"]) {
+    // WP-15 added `mcp` (D164).
+    expect(names).toContain("mcp");
+    for (const later of ["review", "export", "plugin", "term", "run"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
     }
   });
@@ -271,7 +273,8 @@ describe("--json (D140 item 16)", () => {
 
   it("documents exit 4 wherever --timeout applies, and refuses --timeout where it doesn't", async () => {
     for (const command of COMMANDS) {
-      const unbounded = command.path[0] === "host" || command.path[0] === "dev";
+      // `host`, `dev` and `mcp` (D164) run until they are stopped.
+      const unbounded = ["host", "dev", "mcp"].includes(command.path[0] ?? "");
       const help = await inProcess([...command.path, "--help", "--json"]);
       const definition = JSON.parse(help.out[0] as string).result as {
         exitCodes: { code: number }[];
@@ -284,6 +287,7 @@ describe("--json (D140 item 16)", () => {
     for (const argv of [
       ["dev", "./a", "--timeout", "5s", "--json"],
       ["host", "--timeout", "5s", "--json"],
+      ["mcp", "--timeout", "5s", "--json"],
     ]) {
       const { code, out } = await inProcess(argv);
       expect(code, argv.join(" ")).toBe(EXIT.usage);

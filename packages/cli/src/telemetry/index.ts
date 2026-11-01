@@ -84,11 +84,17 @@ export const QUESTION_TIMEOUT_MS = 60_000;
 export interface TelemetrySession {
   /** Before the command's work: the notice, or the question. Resolves `false` when Ctrl-C ended it. */
   begin(): Promise<boolean>;
-  /** Records an event of the command (`verify.result`, `publish.done`, `share.done`). */
+  /** Records an event of the command (`verify.result`, `publish.done`, `share.done`, `mcp.session`). */
   record(event: {
-    readonly event: "verify.result" | "publish.done" | "share.done";
+    readonly event: "verify.result" | "publish.done" | "share.done" | "mcp.session";
     readonly fields: Readonly<Record<string, unknown>>;
   }): void;
+  /**
+   * Queues the events recorded so far, when telemetry allows, without the command's own event: a
+   * command that runs for days (`mostra mcp`) records as it goes, since nothing may outlive its
+   * end (a harness stops a server within a second, D164 item 4).
+   */
+  checkpoint(state: { readonly hostInstance: boolean }): void;
   /** After the command: queues its events and starts the flusher, when telemetry allows. */
   end(outcome: {
     readonly exit: number;
@@ -121,7 +127,7 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
   const now = options.now ?? Date.now;
   const store = new TelemetryStore(options.configDir);
   const pending: {
-    event: "verify.result" | "publish.done" | "share.done";
+    event: "verify.result" | "publish.done" | "share.done" | "mcp.session";
     fields: Readonly<Record<string, unknown>>;
   }[] = [];
   const decision = (embedded: boolean): TelemetryDecision =>
@@ -199,39 +205,59 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
       pending.push({ event: event.event, fields: event.fields });
     },
 
+    checkpoint(state) {
+      if (options.quiet || pending.length === 0) return;
+      queue(state.hostInstance, undefined);
+    },
+
     end(outcome) {
       if (options.quiet) return;
-      const current = decision(options.hostHome || outcome.hostInstance);
-      if (!current.enabled || current.consent === undefined || !shown()) return;
-      const id = store.installId();
-      if (!id) return;
-      const common: CommonFields = {
-        schema: SCHEMA,
-        at: minute(new Date(now())),
-        installId: id.id,
-        version: cliVersion(),
-        os:
-          process.platform === "darwin" || process.platform === "win32"
-            ? process.platform
-            : "linux",
-        arch: process.arch,
-        node: Number(process.versions.node.split(".")[0]),
-        harness,
-        ci,
-        consent: current.consent,
-      };
-      const events: unknown[] = [];
-      if (id.created) events.push({ ...common, event: "cli.first_run" });
-      for (const item of pending) {
-        const fields =
-          item.event === "verify.result"
-            ? {
-                status: item.fields["status"],
-                ...catalogCodes((item.fields["codes"] as string[] | undefined) ?? [], CATALOG),
-              }
-            : item.fields;
-        events.push({ ...common, ...fields, event: item.event });
-      }
+      queue(outcome.hostInstance, outcome);
+    },
+  };
+
+  /**
+   * Queues the pending events, and the command's own when `outcome` is given, and starts the
+   * flusher; nothing when telemetry doesn't allow it. The pending events are taken either way, so
+   * none is queued twice.
+   */
+  function queue(
+    hostInstance: boolean,
+    outcome:
+      | { readonly exit: number; readonly durationMs: number; readonly error?: string }
+      | undefined,
+  ): void {
+    const taken = pending.splice(0);
+    const current = decision(options.hostHome || hostInstance);
+    if (!current.enabled || current.consent === undefined || !shown()) return;
+    const id = store.installId();
+    if (!id) return;
+    const common: CommonFields = {
+      schema: SCHEMA,
+      at: minute(new Date(now())),
+      installId: id.id,
+      version: cliVersion(),
+      os:
+        process.platform === "darwin" || process.platform === "win32" ? process.platform : "linux",
+      arch: process.arch,
+      node: Number(process.versions.node.split(".")[0]),
+      harness,
+      ci,
+      consent: current.consent,
+    };
+    const events: unknown[] = [];
+    if (id.created) events.push({ ...common, event: "cli.first_run" });
+    for (const item of taken) {
+      const fields =
+        item.event === "verify.result"
+          ? {
+              status: item.fields["status"],
+              ...catalogCodes((item.fields["codes"] as string[] | undefined) ?? [], CATALOG),
+            }
+          : item.fields;
+      events.push({ ...common, ...fields, event: item.event });
+    }
+    if (outcome !== undefined) {
       events.push({
         ...common,
         event: "cli.command",
@@ -243,20 +269,21 @@ export function telemetrySession(options: TelemetryOptions): TelemetrySession {
           ? { error: outcome.error }
           : {}),
       });
-      const lines: string[] = [];
-      for (const event of events) {
-        const parsed = TelemetryEvent.safeParse(event);
-        if (parsed.success) lines.push(JSON.stringify(parsed.data));
-      }
-      if (truthy(options.env["MOSTRA_TELEMETRY_DEBUG"])) {
-        // Exactly what would be sent, and nothing sent.
-        for (const line of lines) options.stderr(`mostra telemetry (debug, not sent): ${line}\n`);
-        return;
-      }
-      store.append(lines, now());
-      if (options.flush !== false) startFlusher(store, options.env, now());
-    },
-  };
+    }
+    const lines: string[] = [];
+    for (const event of events) {
+      const parsed = TelemetryEvent.safeParse(event);
+      if (parsed.success) lines.push(JSON.stringify(parsed.data));
+    }
+    if (lines.length === 0) return;
+    if (truthy(options.env["MOSTRA_TELEMETRY_DEBUG"])) {
+      // Exactly what would be sent, and nothing sent.
+      for (const line of lines) options.stderr(`mostra telemetry (debug, not sent): ${line}\n`);
+      return;
+    }
+    store.append(lines, now());
+    if (options.flush !== false) startFlusher(store, options.env, now());
+  }
 }
 
 /** `mostra telemetry status`'s result. */

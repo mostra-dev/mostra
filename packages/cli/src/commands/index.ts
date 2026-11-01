@@ -1,7 +1,7 @@
 /**
  * Every command of `mostra` (D60, D140 item 13), in the order help lists them. Commands later
- * packages own (`review export`, `export`, `mcp`, `plugin`, `term`, `run`) join this list with
- * their packages, never as placeholders; `share` joined with WP-13.
+ * packages own (`review export`, `export`, `plugin`, `term`, `run`) join this list with their
+ * packages, never as placeholders; `share` joined with WP-13 and `mcp` with WP-15.
  */
 import type { CommandDef } from "../command.ts";
 import {
@@ -34,6 +34,7 @@ import {
   stateSetCommand,
   waitCommand,
 } from "./interaction.ts";
+import { mcpCommand } from "./mcp.ts";
 import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
 import { openCommand } from "./viewing.ts";
 
@@ -66,6 +67,7 @@ export const COMMANDS: readonly CommandDef[] = [
   daemonInstallCommand,
   daemonUninstallCommand,
   hostCommand,
+  mcpCommand,
   docsCommand,
   doctorCommand,
   gcCommand,

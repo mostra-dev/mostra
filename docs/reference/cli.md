@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `new`, `open`, `publish`, `push`, `results`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `mcp`, `new`, `open`, `publish`, `push`, `results`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -905,6 +905,39 @@ Exit codes:
 
 Example:
   mostra host --home ~/.my-host/mostra
+```
+
+## mostra mcp
+
+```text
+Run Mostra's MCP server, so an MCP client can create, verify and publish artifacts, wait for answers and read results.
+
+Usage:
+  mostra mcp [flags]
+
+Flags:
+  --http                       Serve Streamable HTTP at /mcp instead of stdio; every request needs Authorization: Bearer <token>.
+  --port <port>                With --http, the port; default one the system picks.
+  --bind <address>             With --http, listen on this address instead of 127.0.0.1.
+  --url-host <name>            With --http, the host name clients use; a wildcard --bind needs it.
+  --workspace <dir>            Where relative artifact directories and new artifacts go. Default: MOSTRA_MCP_WORKSPACE, else ~/mostra-artifacts.
+  --embedded                   This server runs on someone's behalf (a harness plugin or another host started it), so it sends no telemetry.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: the MCP protocol on stdin and stdout, or over HTTP (mostra docs cli)
+
+Exit codes:
+  0  success
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+
+Example:
+  mostra mcp
 ```
 
 ## mostra docs

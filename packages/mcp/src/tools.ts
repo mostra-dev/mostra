@@ -32,7 +32,7 @@ import * as z from "zod";
 import { planPatch } from "./patch.ts";
 import type { McpServerOptions } from "./ports.ts";
 import { errorResult, jsonResult, textResult } from "./results.ts";
-import { docsUri, searchDocs } from "./search.ts";
+import { searchDocs } from "./search.ts";
 
 /** The registry of every tool's input schema, published as the `mcp-tools` bundle. */
 export const toolRegistry: z.core.$ZodRegistry<{ id: string; description?: string }> = z.registry<{
@@ -754,5 +754,3 @@ export function createTools(
 function usage(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", { message }));
 }
-
-export { docsUri };
