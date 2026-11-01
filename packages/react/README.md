@@ -13,5 +13,5 @@ export default function Page() {
 }
 ```
 
-Artifacts don't install it: every Mostra build resolves it from the warm set. Fields, submissions,
-actions and live data arrive in later releases. Apache-2.0.
+Artifacts don't install it: every Mostra build resolves it from the warm set. It carries fields,
+submissions, actions and live data. Apache-2.0.

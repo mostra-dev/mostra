@@ -19,12 +19,24 @@ choose, and the answers flow back to the agent through whatever host it runs in.
 
 ## Status
 
-The v1 design is accepted, and implementation is under way, one work package at a time. Nothing
-is published to npm yet. Mostra runs on macOS, glibc-based Linux and Windows, each on x64 and arm64.
+The v1 design is accepted, and implementation is under way, one work package at a time. Each
+release is published to npm: start with `npm create mostra`, or give your coding agent the
+[plugin](https://github.com/mostra-dev/mostra-plugin). Mostra runs on macOS, glibc-based Linux and
+Windows, each on x64 and arm64.
 
-| Package | What it is | Status |
-|---|---|---|
-| [`@mostra/protocol`](packages/protocol) | IDs, protocol revisions, diagnostics, JSON Schema | in development |
+| Package | What it is |
+|---|---|
+| [`@mostra/cli`](packages/cli) | The `mostra` command: author, verify, publish, share and wait on artifacts |
+| [`create-mostra`](packages/create-mostra) | `npm create mostra`: create an artifact, installing the runtime on first use |
+| [`@mostra/react`](packages/react) | What artifact pages import: fields, submit, signals, choices, storage, routing |
+| [`@mostra/server`](packages/server) | What server code imports: request context, progress, secrets, signals, state, live sources |
+| [`@mostra/sdk`](packages/sdk) | Embed Mostra in a JavaScript host |
+| [`@mostra/conformance`](packages/conformance) | Prove a host's Mostra integration with conformance scenarios |
+| [`@mostra/protocol`](packages/protocol) | IDs, protocol revisions, diagnostics, JSON Schema |
+| [`@mostra/runtime`](packages/runtime) | The supervisor that owns a home, its ledger, its child processes and the host protocol server |
+| [`@mostra/shell`](packages/shell) | The trusted page that hosts an artifact's frame |
+| [`@mostra/verify`](packages/verify) | The runner that renders pages in headless Chromium for `mostra verify` |
+| [`@mostra/worker`](packages/worker) | The process that runs one version's server code |
 
 ## Repository
 

@@ -6,6 +6,7 @@ the artifact's own origin, talking to it over the validated bridge (`@mostra/pro
 
 The package ships built files only (`dist/`), which the runtime's gateway serves at
 `/_mostra/shell/`; there is nothing to import. Build it with `pnpm --filter @mostra/shell build`.
-The version banner, trusted controls and review overlay join it in later releases.
+It carries the version banner and the trusted controls; the review overlay joins it in a later
+release.
 
 Part of [Mostra](https://github.com/mostra-dev/mostra), the agent artifact runtime. Apache-2.0.
