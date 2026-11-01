@@ -6,7 +6,7 @@
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { eeLeaks } from "../api/pack.ts";
-import { directOwners } from "../check/plan.ts";
+import { affectedPackages, directOwners } from "../check/plan.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
 import { runSync } from "../lib/repo.ts";
@@ -539,6 +539,23 @@ describe("the plan's owners of a changed file", () => {
       "@mostra/cli",
     ]);
     expect(directOwners(packages, "packages/react/src/store.ts")).toEqual(["@mostra/react"]);
+  });
+
+  it("lets a change to the dossier's generators affect only the tools, which every package lists (#102)", () => {
+    const packages = listPackages();
+    expect(affectedPackages(packages, ["tools/design/wp_specs.py"])).toEqual(["@mostra/tools"]);
+    expect(
+      affectedPackages(packages, ["tools/design/evidence_matrix.py", "docs/design/README.md"]),
+    ).toEqual(["@mostra/tools"]);
+    // The rest of the tools still reaches every package that lists them.
+    const tools = affectedPackages(packages, ["tools/plugins/build.ts"]);
+    expect(tools).toContain("@mostra/runtime");
+    expect(tools).toContain("@mostra/cli");
+    expect(affectedPackages(packages, ["tools/designs/x.py"])).toContain("@mostra/runtime");
+    // A generator change beside a package's change keeps that package's dependents.
+    expect(
+      affectedPackages(packages, ["tools/design/wp_specs.py", "packages/protocol/src/ids.ts"]),
+    ).toEqual(expect.arrayContaining(["@mostra/protocol", "@mostra/runtime", "@mostra/tools"]));
   });
 });
 

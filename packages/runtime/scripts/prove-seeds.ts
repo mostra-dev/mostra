@@ -1269,6 +1269,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EN-07",
+    name: "a change to the dossier's generators runs every package's jobs (#102)",
+    file: "../../tools/check/plan.ts",
+    from: "const OWN_ONLY: readonly RegExp[] = [/^tools\\/design\\//];",
+    to: "const OWN_ONLY: readonly RegExp[] = [];",
+    check: ["test/ci.test.ts", "-t", "the dossier's generators"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
     name: "ci-ok lets through a result it doesn't list as bad (#90's abandoned leg)",
     file: "../../.github/workflows/ci.yml",
     from: 'jq -e \'length > 0 and all(.[]; . == "success" or . == "skipped")\' > /dev/null',
