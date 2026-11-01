@@ -17,7 +17,7 @@ import {
 } from "../check/ci.ts";
 import { JOBS } from "../check/jobs.ts";
 import { ciMatrix, ciScope, FULL_LABEL, MACOS_PULL_REQUEST_LEGS } from "../check/matrix.ts";
-import type { Plan } from "../check/plan.ts";
+import { affectedPackages, type Plan } from "../check/plan.ts";
 import {
   BLACKSMITH_LINUX,
   chooseRunners,
@@ -29,6 +29,7 @@ import {
 } from "../check/runners.ts";
 import { isReleaseVersion } from "../lib/release-version.ts";
 import { fromRoot } from "../lib/repo.ts";
+import { listPackages } from "../lib/workspace.ts";
 
 const inputs = (over: Partial<RunnerInputs> = {}): RunnerInputs => ({
   policy: undefined,
@@ -340,6 +341,18 @@ describe("what runs when (D152)", () => {
     expect(docs.static[0]?.["names"]).toBe("format-lint, boundaries, docs, commits");
     expect([docs.unit, docs.hygiene, docs.integration, docs.windows, docs.e2e].flat()).toEqual([]);
     expect(docs.release).toBeNull();
+  });
+
+  it("runs a change to the dossier's generators as the tools' change alone (#102)", () => {
+    const files = ["docs/design/work-packages/WP-28.md", "tools/design/wp_specs.py"];
+    const design = ciMatrix(pr, change(files, affectedPackages(listPackages(), files)), github);
+    expect(design.static[0]?.["names"]).toContain("docs");
+    expect(design.unit.map((leg) => leg["os"])).toEqual(["linux"]);
+    // The tools' own suites run on Windows too; nothing of the runtime's does.
+    expect(design.windows.map((leg) => `${leg["os"]} ${leg["job"]}`)).toEqual(["windows-x64 unit"]);
+    expect([design.hygiene, design.integration, design.e2e].flat()).toEqual([]);
+    expect([design.rust, design.conformance].flat()).toEqual([]);
+    expect(design.release).toBeNull();
   });
 
   it("puts Linux jobs on the chosen pool and the rest on GitHub's runners", () => {

@@ -63,6 +63,16 @@ const RUN_BY: readonly { readonly dir: string; readonly pkg: string }[] = [
   { dir: "skills/mostra/references", pkg: "@mostra/runtime" },
 ];
 
+/**
+ * Files a package owns that none of its dependents consume, so a change to them runs the owner's
+ * jobs and never its dependents'. Every package lists `@mostra/tools` as a dependency for the check
+ * machinery, and the dossier's generators (`tools/design/`) sit inside it: without this, a change to
+ * a work-package specification's reading list ran every job of every package on every platform
+ * (#102). The docs job runs the generators' checks, and `@mostra/tools`' own gate tests run them
+ * against seeded drift.
+ */
+const OWN_ONLY: readonly RegExp[] = [/^tools\/design\//];
+
 /** The packages a changed file affects directly: its owner, and the package that runs it. */
 export function directOwners(packages: readonly WorkspacePackage[], file: string): string[] {
   const owners: string[] = [];
@@ -84,10 +94,24 @@ export function makePlan(options: { affected: boolean; base?: string }): Plan {
   if (changed.some((file) => GLOBAL_INPUTS.some((pattern) => pattern.test(file)))) {
     return { base, changed: "all", packages: "all" };
   }
-  const packages = listPackages();
-  const direct = new Set<string>();
-  for (const file of changed) for (const name of directOwners(packages, file)) direct.add(name);
-  return { base, changed, packages: [...withDependents(packages, direct)].sort() };
+  return { base, changed, packages: affectedPackages(listPackages(), changed) };
+}
+
+/**
+ * The packages a change to `changed` affects: each file's direct owners with their dependents,
+ * except that a file only its owner uses ({@link OWN_ONLY}) affects its owner alone.
+ */
+export function affectedPackages(
+  packages: readonly WorkspacePackage[],
+  changed: readonly string[],
+): string[] {
+  const spreading = new Set<string>();
+  const own = new Set<string>();
+  for (const file of changed) {
+    const target = OWN_ONLY.some((pattern) => pattern.test(file)) ? own : spreading;
+    for (const name of directOwners(packages, file)) target.add(name);
+  }
+  return [...new Set([...withDependents(packages, spreading), ...own])].sort();
 }
 
 /** Files changed since `base`: committed, staged, unstaged and untracked. */
