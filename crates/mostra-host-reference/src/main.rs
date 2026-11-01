@@ -18,11 +18,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use mostra_host::ports::{
-    Delivered, Delivery, Drafts, Identity, Person, PortError, Secrets, Submissions, TrustedControls,
+    Addressing, Delivered, Delivery, Drafts, Identity, Person, PortError, Secrets, Submissions,
+    TrustedControls,
 };
 use mostra_host::wire::{
-    ArtifactSummary, ControlsPolicy, DraftMirror, EventFilter, PortIdentityResolveParams,
-    PortSecretsGetParams, PortTrustedControlsActivatedParams,
+    ArtifactSummary, ControlsPolicy, DraftMirror, EventFilter, ExternalBase,
+    PortAddressingExternalBaseParams, PortAddressingExternalBaseParamsListener,
+    PortIdentityResolveParams, PortSecretsGetParams, PortTrustedControlsActivatedParams,
 };
 use mostra_host::{EventStreamOptions, Mostra, Options};
 use serde_json::{Value, json};
@@ -51,6 +53,9 @@ struct State {
     identity: Vec<Value>,
     policies: Vec<Value>,
     secrets_asked: Vec<Value>,
+    addressing: Vec<Value>,
+    /// No external base until scripted: the loopback ports every other scenario expects.
+    base: Value,
     deliver: String,
     policy: Value,
     person: Value,
@@ -74,6 +79,8 @@ impl Store {
                 identity: Vec::new(),
                 policies: Vec::new(),
                 secrets_asked: Vec::new(),
+                addressing: Vec::new(),
+                base: Value::Null,
                 deliver: "accept".into(),
                 policy: json!({ "submitChannels": ["shell"], "controls": ["submit", "choose", "approve"] }),
                 person: json!("headers"),
@@ -134,6 +141,7 @@ impl Store {
             "identity": state.identity,
             "policies": state.policies,
             "secrets": state.secrets_asked,
+            "addressing": state.addressing,
         })
     }
 
@@ -149,6 +157,7 @@ impl Store {
             }
             Some("trustedControls") => state.policy = answer,
             Some("identity") => state.person = answer,
+            Some("addressing") => state.base = answer,
             Some("secrets") => {
                 state.secret_values = serde_json::from_value(answer).map_err(|e| e.to_string())?;
             }
@@ -316,6 +325,52 @@ impl TrustedControls for Store {
     }
 }
 
+impl Addressing for Store {
+    async fn external_base(
+        &self,
+        request: PortAddressingExternalBaseParams,
+    ) -> Result<Option<ExternalBase>, PortError> {
+        let mut state = self.lock();
+        let shell = request.listener == PortAddressingExternalBaseParamsListener::Shell;
+        let listener = if shell { "shell" } else { "artifact" };
+        let call = json!({
+            "artifactId": request.artifact_id.to_string(),
+            "listener": listener,
+            "local": request.local.to_string(),
+        });
+        let base = state.base.clone();
+        if base.as_str() == Some("fail") {
+            state.addressing.push(call);
+            return Err(PortError::new("the host's tunnel is unavailable"));
+        }
+        if base.is_null() {
+            let mut entry = call;
+            entry["answer"] = Value::Null;
+            state.addressing.push(entry);
+            return Ok(None);
+        }
+        let host = base[if shell { "shellHost" } else { "artifactHost" }]
+            .as_str()
+            .unwrap_or("127.0.0.1");
+        let port = request
+            .local
+            .rsplit(':')
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches('/');
+        let mut answer = json!({ "origin": format!("http://{host}:{port}") });
+        if let Some(mode) = base["mode"].as_str() {
+            answer["mode"] = json!(mode);
+        }
+        let mut entry = call;
+        entry["answer"] = answer.clone();
+        state.addressing.push(entry);
+        serde_json::from_value(answer)
+            .map(Some)
+            .map_err(|error| PortError::new(error.to_string()))
+    }
+}
+
 impl Secrets for Store {
     async fn get(&self, request: PortSecretsGetParams) -> Result<Option<String>, PortError> {
         let mut state = self.lock();
@@ -351,6 +406,7 @@ impl Host {
                 "submissions",
                 "drafts",
                 "identity",
+                "addressing",
                 "trustedControls",
                 "secrets",
             ]
@@ -380,6 +436,7 @@ impl Host {
                 .submissions(self.store.clone())
                 .drafts(self.store.clone())
                 .identity(self.store.clone())
+                .addressing(self.store.clone())
                 .trusted_controls(self.store.clone())
                 .secrets(self.store.clone());
         }

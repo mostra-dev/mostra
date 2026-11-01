@@ -3,6 +3,7 @@
  * every publish step, as a crash (SIGKILL) or a thrown error, and a builder that crashes or hangs.
  */
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -19,6 +20,9 @@ import {
   testHome,
 } from "../support.ts";
 
+const Database = createRequire(import.meta.url)(
+  "better-sqlite3",
+) as typeof import("better-sqlite3");
 const FIXTURE = fileURLToPath(new URL("../fixtures/artifacts/directory", import.meta.url));
 
 function artifact(): string {
@@ -176,6 +180,7 @@ describe("artifact/create retried after a crash (H-03, review finding 4)", () =>
     );
     await crashing.daemon.exited;
     expect(existsSync(join(dir, "index.tsx"))).toBe(false);
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
 
     const next = await session(home);
     const created = result(await next.client.call("artifact/create", params)) as {
@@ -183,16 +188,114 @@ describe("artifact/create retried after a crash (H-03, review finding 4)", () =>
       dir: string;
     };
     expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain(created.artifactId);
-    // A write cut short is completed too, and the same request keeps answering the same.
+    const agents = readFileSync(join(dir, "AGENTS.md"), "utf8");
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    // A write cut short is completed too, a file the author edited stays theirs, and the same
+    // request keeps answering the same.
     writeFileSync(
       join(dir, "index.tsx"),
       readFileSync(join(dir, "index.tsx"), "utf8").slice(0, 40),
     );
+    writeFileSync(join(dir, "AGENTS.md"), agents.slice(0, 25));
+    writeFileSync(join(dir, "CLAUDE.md"), "@AGENTS.md\n\nMy own notes.\n");
     expect(result(await next.client.call("artifact/create", params))).toEqual(created);
     expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain('title: "Plan"');
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(agents);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n\nMy own notes.\n");
     // And the artifact publishes with that identity.
     const receipt = result(await next.client.call("artifact/publish", { source: { path: dir } }));
     expect(receipt).toMatchObject({ artifactId: created.artifactId });
+    await stop(next.client, next.daemon.exited);
+  });
+});
+
+describe("artifact/create retried by a newer runtime (WP-14's GPT review)", () => {
+  // A creation cut short by a crash, then retried after the runtime was upgraded: the retry
+  // completes the files the first attempt began, with the release it pinned, rather than taking
+  // the cut-short file for the author's and leaving it so.
+  const recordOf = (home: string, requestId: string): { result_json: string } => {
+    const ledger = new Database(join(home, "store", "ledger.sqlite"), { readonly: true });
+    try {
+      return ledger
+        .prepare(
+          "SELECT result_json FROM request WHERE method = 'artifact/create' AND request_id = ?",
+        )
+        .get(requestId) as { result_json: string };
+    } finally {
+      ledger.close();
+    }
+  };
+  const rewrite = (home: string, requestId: string, record: unknown): void => {
+    const ledger = new Database(join(home, "store", "ledger.sqlite"));
+    try {
+      ledger
+        .prepare(
+          "UPDATE request SET result_json = ? WHERE method = 'artifact/create' AND request_id = ?",
+        )
+        .run(JSON.stringify(record), requestId);
+    } finally {
+      ledger.close();
+    }
+  };
+
+  it("completes the text the first attempt began, byte for byte, whatever runtime retries", async () => {
+    const home = testHome();
+    const dir = join(tempDir("create-upgrade"), "Bütçe");
+    const params = { dir, requestId: "create-upgrade" };
+    const crashing = await session(home, "create:after-record:crash");
+    crashing.client.sendRaw(
+      JSON.stringify({ jsonrpc: "2.0", id: 98, method: "artifact/create", params }),
+    );
+    await crashing.daemon.exited;
+    // The record keeps the result and the exact text of each file.
+    const recorded = JSON.parse(recordOf(home.home, "create-upgrade").result_json) as {
+      result: { artifactId: string; dir: string; files: string[] };
+      scaffold: { files: Record<string, string> };
+    };
+    expect(recorded.result.files).toEqual(["index.tsx", "AGENTS.md", "CLAUDE.md"]);
+    expect(Object.keys(recorded.scaffold.files)).toEqual(recorded.result.files);
+    // As if an older release, whose words differ from this one's, had recorded it and begun its
+    // AGENTS.md; and its entry cut short inside a character of the title ("ü" is two bytes).
+    const older = `${recorded.scaffold.files["AGENTS.md"]}\nAn older release's last line.\n`;
+    rewrite(home.home, "create-upgrade", {
+      ...recorded,
+      scaffold: { files: { ...recorded.scaffold.files, "AGENTS.md": older } },
+    });
+    writeFileSync(join(dir, "AGENTS.md"), older.slice(0, older.length - 10));
+    const entry = Buffer.from(recorded.scaffold.files["index.tsx"] as string, "utf8");
+    const cut = entry.indexOf(Buffer.from("ü", "utf8")) + 1;
+    expect(cut).toBeGreaterThan(0);
+    writeFileSync(join(dir, "index.tsx"), entry.subarray(0, cut));
+
+    const next = await session(home);
+    const created = result(await next.client.call("artifact/create", params));
+    expect(created).toEqual(recorded.result);
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(older);
+    expect(readFileSync(join(dir, "index.tsx"))).toEqual(entry);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    await stop(next.client, next.daemon.exited);
+  });
+
+  it("completes a creation an earlier runtime recorded as its result alone", async () => {
+    const home = testHome();
+    const dir = join(tempDir("create-old-record"), "plan");
+    const params = { dir, title: "Plan", requestId: "create-old" };
+    const crashing = await session(home, "create:after-record:crash");
+    crashing.client.sendRaw(
+      JSON.stringify({ jsonrpc: "2.0", id: 98, method: "artifact/create", params }),
+    );
+    await crashing.daemon.exited;
+    const recorded = JSON.parse(recordOf(home.home, "create-old").result_json) as {
+      result: { artifactId: string; dir: string };
+    };
+    // A runtime before WP-14 recorded the result itself, with the entry alone.
+    const old = { ...recorded.result, files: ["index.tsx"] };
+    rewrite(home.home, "create-old", old);
+
+    const next = await session(home);
+    expect(result(await next.client.call("artifact/create", params))).toEqual(old);
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toContain(old.artifactId);
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
     await stop(next.client, next.daemon.exited);
   });
 });

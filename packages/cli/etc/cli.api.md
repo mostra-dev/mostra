@@ -159,7 +159,7 @@ export interface RunnerIo {
 
 // @public
 export interface TelemetryEventInput {
-    readonly event: "verify.result" | "publish.done";
+    readonly event: "verify.result" | "publish.done" | "share.done";
     readonly fields: Readonly<Record<string, unknown>>;
 }
 

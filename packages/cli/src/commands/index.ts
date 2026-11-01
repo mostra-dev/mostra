@@ -1,7 +1,7 @@
 /**
  * Every command of `mostra` (D60, D140 item 13), in the order help lists them. Commands later
- * packages own (`share`, `review export`, `export`, `mcp`, `plugin`, `term`, `run`) join this
- * list with their packages, never as placeholders.
+ * packages own (`review export`, `export`, `mcp`, `plugin`, `term`, `run`) join this list with
+ * their packages, never as placeholders; `share` joined with WP-13.
  */
 import type { CommandDef } from "../command.ts";
 import {
@@ -34,6 +34,7 @@ import {
   stateSetCommand,
   waitCommand,
 } from "./interaction.ts";
+import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
 import { openCommand } from "./viewing.ts";
 
 /** The commands, in help's order: the authoring loop first. */
@@ -43,6 +44,9 @@ export const COMMANDS: readonly CommandDef[] = [
   verifyCommand,
   publishCommand,
   openCommand,
+  shareCommand,
+  shareStopCommand,
+  shareListCommand,
   waitCommand,
   resultsCommand,
   stateGetCommand,

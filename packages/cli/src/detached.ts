@@ -26,6 +26,9 @@ export const PATH_VARIABLES: readonly string[] = [
   "MOSTRA_WIN_HELPER",
   "MOSTRA_TEST_WORKER_HOST",
   "MOSTRA_TEST_BUNDLE_PINS",
+  "MOSTRA_TAILSCALE",
+  "MOSTRA_CLOUDFLARED",
+  "MOSTRA_TEST_TUNNELS",
 ];
 
 /** `env` with every relative path variable resolved against `cwd`. */

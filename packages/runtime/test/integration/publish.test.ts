@@ -292,6 +292,12 @@ describe("content-addressed versions (VR-01)", () => {
   });
 });
 
+const RUNTIME_VERSION = (
+  JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
+
 describe("identity (AU-07)", () => {
   it("keeps a moved source's artifact through its manifest id, and refuses a copy that claims it", async () => {
     const created = ok(
@@ -300,7 +306,12 @@ describe("identity (AU-07)", () => {
         title: "Q3 plan",
       }),
     ) as { artifactId: string; dir: string; files: string[] };
-    expect(created.files).toEqual(["index.tsx"]);
+    expect(created.files).toEqual(["index.tsx", "AGENTS.md", "CLAUDE.md"]);
+    // The artifact's own instructions for the next agent (AX-06): the loop, pinned to this release.
+    const agents = readFileSync(join(created.dir, "AGENTS.md"), "utf8");
+    expect(agents.startsWith("# Q3 plan\n")).toBe(true);
+    expect(agents).toContain(`@mostra/cli@${RUNTIME_VERSION}`);
+    expect(readFileSync(join(created.dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
     const first = await publish(created.dir);
     expect(first.artifactId).toBe(created.artifactId);
 

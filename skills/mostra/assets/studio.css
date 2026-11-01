@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/*
+ * Studio: Mostra's quiet baseline theme. White and warm grey surfaces, near-black text, one blue
+ * for the main action and focus, and a yellow `answer` reserved for what the person answered or
+ * chose. Change any value; nothing depends on it.
+ */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.191 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.191 0 0);
+  --muted: oklch(0.972 0.004 106.5);
+  --muted-foreground: oklch(0.466 0.008 106.7);
+  --border: oklch(0.917 0.008 106.6);
+  --input: oklch(0.88 0.009 106.6);
+  --primary: oklch(0.45 0.212 267);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.957 0.004 106.5);
+  --secondary-foreground: oklch(0.191 0 0);
+  --accent: oklch(0.959 0.015 273.9);
+  --accent-foreground: oklch(0.37 0.173 267.5);
+  --destructive: oklch(0.541 0.198 32);
+  --success: oklch(0.513 0.111 161.3);
+  --warning: oklch(0.528 0.109 82.4);
+  --answer: oklch(0.814 0.167 83.9);
+  --ring: oklch(0.45 0.212 267);
+  --chart-1: oklch(0.45 0.212 267);
+  --chart-2: oklch(0.627 0.201 33);
+  --chart-3: oklch(0.559 0.192 301.5);
+  --chart-4: oklch(0.561 0.121 160.3);
+  --chart-5: oklch(0.651 0.135 80.9);
+  --chart-6: oklch(0.586 0.176 358.8);
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.178 0.006 271);
+    --foreground: oklch(0.96 0.004 106.5);
+    --card: oklch(0.205 0.008 274.5);
+    --card-foreground: oklch(0.96 0.004 106.5);
+    --muted: oklch(0.223 0.01 276.6);
+    --muted-foreground: oklch(0.717 0.007 286.2);
+    --border: oklch(0.29 0.011 278.2);
+    --input: oklch(0.331 0.012 279.2);
+    --primary: oklch(0.662 0.18 272.8);
+    --primary-foreground: oklch(0.165 0.009 274.3);
+    --secondary: oklch(0.258 0.013 279);
+    --secondary-foreground: oklch(0.96 0.004 106.5);
+    --accent: oklch(0.265 0.055 271.9);
+    --accent-foreground: oklch(0.855 0.072 277);
+    --destructive: oklch(0.706 0.188 32.9);
+    --success: oklch(0.797 0.164 159.7);
+    --warning: oklch(0.861 0.163 87.1);
+    --answer: oklch(0.861 0.163 87.1);
+    --ring: oklch(0.662 0.18 272.8);
+    --chart-1: oklch(0.657 0.182 273.1);
+    --chart-2: oklch(0.636 0.186 35.5);
+    --chart-3: oklch(0.63 0.182 299);
+    --chart-4: oklch(0.627 0.133 159.6);
+    --chart-5: oklch(0.645 0.131 81.9);
+    --chart-6: oklch(0.63 0.169 355.6);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-answer: var(--answer);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light dark;
+    background: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--answer) 45%, transparent);
+  }
+}

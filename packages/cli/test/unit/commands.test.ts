@@ -147,7 +147,8 @@ describe("the command line (AX-01)", () => {
     ]) {
       expect(names).toContain(name);
     }
-    for (const later of ["share", "review", "export", "mcp", "plugin", "term", "run"]) {
+    for (const name of ["share", "share stop", "share list"]) expect(names).toContain(name);
+    for (const later of ["review", "export", "mcp", "plugin", "term", "run"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
     }
   });

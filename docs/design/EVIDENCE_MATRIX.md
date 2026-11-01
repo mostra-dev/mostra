@@ -73,8 +73,8 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | HY-01 | WP-05 | M, I (negative tests: bad Host, bad Origin, missing token, CSRF) | All 13 checklist items as automated negative tests (bad Host, bad Origin, missing token, CSRF, CORS, CORP, referrer, revocation 410, rate limit, redaction, GET side effects, header fuzzing, MCP HTTP) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-02 | WP-05 | I | Default bind is loopback only (socket inspection); wider bind needs the flag | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
-| HY-04 | WP-13 | X | External: real `tailscale serve` share from a phone; identity header maps to viewer; spoofed header from loopback-bypassing request impossible | unverified |
-| HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | unverified |
+| HY-04 | WP-13 | X | External: real `tailscale serve` share from a phone; identity header maps to viewer; spoofed header from loopback-bypassing request impossible | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
+| HY-05 | WP-13 | X | External: Funnel share with short-lived token; Cloudflare quick tunnel share in worker mode with long-poll | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
 | HY-06 | WP-01 | R | SECURITY.md with private vulnerability reporting enabled (repository setting checked); Mirza reviews | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HY-08 | WP-30 | B | Signed-in and anonymous viewers record the right viewer kind; a forged identity claim is refused; a link without sign-in still works within its scopes | unverified |
 | HY-09 | WP-30 | B | Serving from the main domain is impossible (route test); the artifact can't click or hide the report control (forgery suite of WP-07 reused); interstitial and expiry honored | unverified |
@@ -87,7 +87,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | HO-07 | WP-01 | M | Schema snapshot test fails on any non-additive change to protocol, browser protocol, CLI JSON or MCP tool schemas | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | HO-08 | WP-12 | I, C | Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-09 | WP-30 | M, C | A fixture operator denies a share over its limit with a diagnostic, receives metering events, and suspends an artifact; with no operator everything works | unverified |
-| HO-10 | WP-13 | M, C | Conformance: a host's external base appears in minted links and passes the Host and Origin checks; without the port, links stay on loopback; a base the host withdraws stops working | unverified |
+| HO-10 | WP-13 | M, C | Conformance: a host's external base appears in minted links and passes the Host and Origin checks; without the port, links stay on loopback; a base the host withdraws stops working | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
 | HO-11 | WP-20 | M, C | Conformance: a host's reviews port receives each thread and choice, and its capture port supplies the crop a comment stores; without them, no mirror and the verify runner's browser | unverified |
 | KT-01 | WP-19 | M, B | Render test per D26 library wrapper in three engines; license and version re-verified in VERIFIED_FACTS | unverified |
 | KT-02 | WP-01 | M | License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
@@ -105,7 +105,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | AX-03 | WP-01 | M | Diagnostic schema validation; code catalog and docs pages generated; codes covered by API snapshot | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
-| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | unverified |
+| AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | AX-07 | WP-26 | B, R | Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews | unverified |
 | AX-08 | WP-27 | E | Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64) | unverified |
 | MC-01 | WP-15 | I, X | MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex | unverified |
@@ -153,10 +153,10 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | LL-04 | WP-08 | I | Live updates produce no durable events; producer lifecycle with viewers, subscriptions and always:true; ring buffer bounded | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
-| HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | unverified |
+| HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
 | KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
 | AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
-| AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | unverified |
+| AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | RV-06 | WP-21 | B | Comments on a Timeline, a video and a deck slide anchor to time plus region or slide plus step and re-resolve after reload | unverified |
 

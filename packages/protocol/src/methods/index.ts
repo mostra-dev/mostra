@@ -22,6 +22,7 @@ import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
+import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
@@ -32,6 +33,9 @@ import { resultsGetMethod } from "./results/get.ts";
 import { secretDeleteMethod } from "./secret/delete.ts";
 import { secretListMethod } from "./secret/list.ts";
 import { secretSetMethod } from "./secret/set.ts";
+import { shareListMethod } from "./share/list.ts";
+import { shareStartMethod } from "./share/start.ts";
+import { shareStopMethod } from "./share/stop.ts";
 import { stateGetMethod } from "./state/get.ts";
 import { statePatchMethod } from "./state/patch.ts";
 import { viewDefaultMethod } from "./view/default.ts";
@@ -80,6 +84,10 @@ export const hostMethods: readonly AnyMethod[] = [
   devStartMethod,
   devStopMethod,
   portIdentityResolveMethod,
+  shareStartMethod,
+  shareStopMethod,
+  shareListMethod,
+  portAddressingExternalBaseMethod,
   // gen:methods
 ];
 

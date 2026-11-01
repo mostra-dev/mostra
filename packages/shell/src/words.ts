@@ -122,6 +122,9 @@ export const BANNER_WORDS = {
 /** The artifact's frame (D157). */
 export const FRAME_WORDS = {
   unreachable: "This page didn't load. Reload this page to try again.",
+  /** Worker mode's bootstrap couldn't start the frame's session (D70, FAILURE_MODEL §8). */
+  frameSession:
+    "This browser didn't let the page start here: it needs service workers, which private windows and some settings turn off. Open the link in a normal window, or ask for a tailnet or Funnel link.",
 } as const;
 
 /** The "Not carried over" panel (D42). */

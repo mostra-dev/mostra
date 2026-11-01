@@ -51,3 +51,4 @@ export {
 } from "./helper.ts";
 export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
 export { adoptable, launch, reapRecorded } from "./launch.ts";
+export { installHint, type ToolCommand, toolCommand } from "./tools.ts";

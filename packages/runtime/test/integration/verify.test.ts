@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ArtifactId, VerifyVerdict } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { skillSampleArtifact } from "../skill-samples.ts";
 import {
   connectTo,
   type DaemonStatus,
@@ -149,6 +150,127 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
       expect(verdict.status).toBe("pass");
       // `archive` checks dryRun() through a helper: it ran, so nothing was skipped (D55).
       expect(verdict.smoke.skippedActions).toEqual([]);
+    },
+    VERIFY_MS,
+  );
+
+  // The Agent Skill's examples are what agents copy (WP-14): each passes verify with no error or
+  // warning, and shows its data rather than a page still loading it.
+  const SKILL_EXAMPLES = fileURLToPath(
+    new URL("../../../../skills/mostra/assets/examples/", import.meta.url),
+  );
+  for (const name of readdirSync(SKILL_EXAMPLES).sort()) {
+    it(
+      `passes the Skill's example "${name}" with no error or warning`,
+      async () => {
+        const dir = join(tempDir(`verify-skill-${name}`), name);
+        cpSync(join(SKILL_EXAMPLES, name), dir, { recursive: true });
+        const verdict = await verify(dir);
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(codes(verdict, "warning")).toEqual([]);
+        expect(verdict.status).toBe("pass");
+        expect(readFileSync(verdict.aria[0]?.path as string, "utf8")).not.toMatch(/Loading/);
+      },
+      VERIFY_MS,
+    );
+  }
+
+  it(
+    "type-checks, builds and renders every code sample of the Skill's references (WP-14)",
+    async () => {
+      // A sample that no longer matches the API is an error here, so the references can't drift.
+      // The warnings the samples may cause are the environment's or verify's, never the API's:
+      // live sources call example.com and want a secret no one set, and a link opened in a new
+      // tab or a one-row table's sort changes nothing verify can see.
+      const verdict = await verify(artifact("skill-samples", skillSampleArtifact()));
+      expect(codes(verdict, "error")).toEqual([]);
+      const allowed = new Set([
+        "MOSTRA_VERIFY_LIVE_FAILED",
+        "MOSTRA_VERIFY_SECRET_MISSING",
+        "MOSTRA_SMOKE_NO_EFFECT",
+      ]);
+      expect(codes(verdict, "warning").filter((code) => !allowed.has(code))).toEqual([]);
+      expect(verdict.status).toBe("pass");
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "renders a live source's first value, never the page still loading it (WP-14)",
+    async () => {
+      // The producer answers after the page first reads the source: verify waits for the value
+      // the page is loading, so the screenshot and ARIA snapshot show the data.
+      const dir = artifact("live-first-value", {
+        "index.tsx": `import { useLive } from "@mostra/react";
+export default function Page() {
+  const live = useLive("deploys");
+  return <main><h1>Deploys</h1><p>{live.isLoading ? "Loading deploys" : \`Deploys today: \${(live.data as { today: number }).today}\`}</p></main>;
+}
+`,
+        "live.ts": `import { defineLive } from "@mostra/server";
+export const deploys = defineLive({
+  load: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return { today: 14 };
+  },
+});
+`,
+      });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      const aria = readFileSync(verdict.aria[0]?.path as string, "utf8");
+      expect(aria).toContain("Deploys today: 14");
+      expect(aria).not.toContain("Loading deploys");
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "never waits on a live key nothing produces, nor on a stream's first value (WP-14's Opus review)",
+    async () => {
+      // `builds` is only ever pushed; `ticks` only streams, and yields nothing yet. Neither is
+      // loading, so verify doesn't wait out its server limit on the render and after every click.
+      const dir = artifact("live-not-awaited", {
+        "index.tsx": `import { useState } from "react";
+import { useLive } from "@mostra/react";
+export default function Page() {
+  const builds = useLive("builds");
+  const ticks = useLive("ticks");
+  const [count, setCount] = useState(0);
+  return <main><h1>Builds</h1>
+    <p>{builds.isLoading ? "Loading builds" : builds.data === undefined ? "No builds pushed yet" : "Builds"}</p>
+    <p>{ticks.isLoading ? "Loading ticks" : "Ticks: " + String(ticks.data ?? "none yet")}</p>
+    {[1, 2, 3, 4].map((n) => <button key={n} type="button" onClick={() => setCount(count + n)}>Add {n}</button>)}
+    <output>{count}</output></main>;
+}
+`,
+        // A pushed key is typed by the artifact's own declaration beside live.ts' (the Skill's
+        // long-lived reference shows it).
+        "pushed.d.ts": `import "@mostra/react";
+declare module "@mostra/react" {
+  interface LiveSources {
+    builds: { passing: number; failing: number };
+  }
+}
+`,
+        "live.ts": `import { defineLive } from "@mostra/server";
+export const ticks = defineLive({
+  stream: async function* (signal) {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  },
+});
+`,
+      });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      const aria = readFileSync(verdict.aria[0]?.path as string, "utf8");
+      expect(aria).toContain("No builds pushed yet");
+      expect(aria).not.toContain("Loading");
+      // Waiting on either source takes the server limit (10 s) on each viewport's render and 5 s
+      // after each of the four clicks: 29 s and 32 s on the code before (WP-14), 7 to 11 s and
+      // 3 s with it, on a loaded machine.
+      expect(verdict.timingsMs["render"]).toBeLessThan(20_000);
+      expect(verdict.timingsMs["smoke"]).toBeLessThan(15_000);
     },
     VERIFY_MS,
   );

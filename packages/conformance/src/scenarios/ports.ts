@@ -1,10 +1,65 @@
 /**
- * The host's ports, each with and without registration (HO-01): identity, trusted controls,
- * secrets, and what server code raises for the host (D108, D131, D143, AC-05, H-05, H-14).
+ * The host's ports, each with and without registration (HO-01): identity, addressing, trusted
+ * controls, secrets, and what server code raises for the host (D108, D131, D143, D158, AC-05,
+ * H-05, H-14).
  */
 import { ACTIONS, FORM } from "../fixtures.ts";
-import { check, type Scenario, same } from "../scenario.ts";
-import { OpenError, resultOf } from "../viewer.ts";
+import { check, type Scenario, type ScenarioContext, same, TUNNELS } from "../scenario.ts";
+import { Browser, OpenError, resultOf, send, Viewer } from "../viewer.ts";
+
+/** What `share/start` answers, as the scenarios read it. */
+interface Shared {
+  readonly shareId: string;
+  readonly url: string;
+  readonly tokenId: string;
+  readonly mode: string;
+}
+
+/** The person the stand-in for Tailscale Serve names on every tailnet request (D158 item 2). */
+const TAILNET_PERSON = { ref: "ada@example.com", name: "Ada Lövelace" };
+
+/** Starts the host's instance with the stand-ins for `tailscale` and `cloudflared` (D158). */
+function startWithTunnels(context: ScenarioContext): Promise<unknown> {
+  return context.start({
+    env: {
+      MOSTRA_TEST_TUNNELS: TUNNELS,
+      MOSTRA_FAKE_TAILNET_USER: `${TAILNET_PERSON.ref}|${TAILNET_PERSON.name}`,
+    },
+  });
+}
+
+/**
+ * Opens a share of `artifactId` through `via`, answers on it, and returns the submission's viewer
+ * with the identity calls the host saw meanwhile.
+ */
+async function answeredThrough(
+  context: ScenarioContext,
+  artifactId: string,
+  via: "tailnet" | "cloudflare",
+): Promise<{
+  readonly shared: Shared;
+  readonly viewer: { readonly kind: string; readonly ref?: string };
+  readonly calls: Awaited<ReturnType<ScenarioContext["store"]>>["identity"];
+}> {
+  const before = context.host.serves("identity") ? (await context.store()).identity.length : 0;
+  const shared = await context.host.call<Shared>(
+    "share/start",
+    { artifact: { artifactId }, via },
+    120_000,
+  );
+  try {
+    const viewer = await Viewer.open(shared.url);
+    const channel = viewer.ticket.submitChannels.includes("artifact") ? "artifact" : "shell";
+    same((await viewer.answer({ name: via }, channel)).status, 200, `the submit through ${via}`);
+    const read = await context.results(artifactId);
+    const calls = context.host.serves("identity")
+      ? (await context.store()).identity.slice(before)
+      : [];
+    return { shared, viewer: read.submission.viewer, calls };
+  } finally {
+    await context.host.call("share/stop", { shareId: shared.shareId });
+  }
+}
 
 /** D143: the identity port names the person behind a link minted without a viewer. */
 export const identity: Scenario = {
@@ -72,6 +127,7 @@ export const identity: Scenario = {
       ["token", "grace@example.com"],
       "the viewer a link was minted for",
     );
+    await sharedIdentity(context);
     if (context.host.supports("faults")) {
       // A host that can't answer refuses the link rather than guess (D143).
       await context.host.script({ port: "identity", answer: "fail" });
@@ -98,6 +154,144 @@ export const identity: Scenario = {
         "a null answer's viewer",
       );
     }
+  },
+};
+
+/**
+ * D143 item 2, D158 item 2: through Tailscale Serve the identity port hears `via: "tailnet"` with
+ * Serve's identity headers, and through a public share `via: "token"`; a host's answer names the
+ * person, and without one the tailnet person, or the link itself, is the viewer, never the home's
+ * local user.
+ */
+async function sharedIdentity(context: ScenarioContext): Promise<void> {
+  await context.host.stopInstance();
+  await startWithTunnels(context);
+  const receipt = await context.published(FORM, { policy: { policy: "epochs" } });
+  for (const via of ["tailnet", "cloudflare"] as const) {
+    const { shared, viewer, calls } = await answeredThrough(context, receipt.artifactId, via);
+    const call = calls.at(-1);
+    const expected = via === "tailnet" ? "tailnet" : "token";
+    if (call !== undefined) {
+      same(call.via, expected, `how a request through ${via} reached the gateway`);
+      if (via === "tailnet") {
+        check(
+          call.headers.includes("tailscale-user-login"),
+          "the port didn't receive Tailscale Serve's identity headers",
+        );
+      }
+    } else {
+      check(!context.host.serves("identity"), `the identity port wasn't asked through ${via}`);
+    }
+    if (call?.answer) {
+      same(
+        [viewer.kind, viewer.ref],
+        ["host", call.answer.ref],
+        `the viewer the host named (${via})`,
+      );
+    } else if (via === "tailnet") {
+      same([viewer.kind, viewer.ref], ["tailnet", TAILNET_PERSON.ref], "the tailnet person");
+    } else {
+      same(
+        [viewer.kind, viewer.ref],
+        ["token", `link:${shared.tokenId}`],
+        "the public link's viewer",
+      );
+    }
+  }
+}
+
+/**
+ * HO-10, D158 item 6: a host's `addressing` port gives the external base of an artifact's links.
+ * The base appears in the links Mostra mints and passes the Host and Origin checks, a frame on
+ * another site enters in worker mode, a base the host withdraws stops working, and without the
+ * port every link stays on loopback.
+ */
+export const addressing: Scenario = {
+  id: "ports.addressing",
+  title:
+    "With an addressing port, the links Mostra mints use the host's external base, which passes the Host and Origin checks and opens a frame on another site in worker mode; a withdrawn base stops working; without the port, links stay on loopback",
+  covers: ["HO-01", "HO-05", "HO-10", "HY-07", "H-14"],
+  async run(context) {
+    await context.start();
+    // Epochs: the loopback link after the withdrawal answers again (a once artifact takes one).
+    const receipt = await context.published(FORM, { policy: { policy: "epochs" } });
+    const loopback = (link: string): boolean =>
+      ["127.0.0.1", "[::1]"].includes(new URL(link).hostname);
+    if (!context.host.serves("addressing")) {
+      check(receipt.url !== undefined && loopback(receipt.url), "the publish receipt's link");
+      check(loopback(await context.link(receipt.artifactId)), "a minted link without the port");
+      return;
+    }
+    // A host that can be scripted puts the shell and the artifact on two sites (`localhost` and
+    // `127.0.0.1` are as cross-site as two tunnel hostnames); any other host is judged by its own
+    // answers.
+    if (context.host.supports("faults")) {
+      await context.host.script({
+        port: "addressing",
+        answer: { shellHost: "localhost", artifactHost: "127.0.0.1" },
+      });
+    }
+    const link = await context.link(receipt.artifactId);
+    const calls = (await context.store()).addressing ?? [];
+    const asked = calls.filter(
+      (call) => call.artifactId === receipt.artifactId && call.listener === "shell",
+    );
+    const answer = asked.at(-1)?.answer;
+    check(asked.length > 0, "the host's addressing port wasn't asked for the link's base");
+    if (!answer) {
+      check(loopback(link), "a link whose host gave no base");
+      return;
+    }
+    same(new URL(link).origin, answer.origin, "the minted link's base");
+    const local = asked.at(-1)?.local as string;
+    check(loopback(local), `the loopback origin the host forwards to (${local})`);
+    const viewer = await Viewer.open(link);
+    const frameBase = (await context.store()).addressing?.findLast(
+      (call) => call.artifactId === receipt.artifactId && call.listener === "artifact",
+    )?.answer;
+    if (frameBase) {
+      same(viewer.ticket.artifactOrigin, frameBase.origin, "the frame's base");
+      const crossSite = new URL(frameBase.origin).hostname !== new URL(answer.origin).hostname;
+      same(
+        viewer.ticket.mode ?? "cookie",
+        frameBase.mode ?? (crossSite ? "worker" : "cookie"),
+        "the frame's session mode",
+      );
+    }
+    const channel = viewer.ticket.submitChannels.includes("artifact") ? "artifact" : "shell";
+    same((await viewer.answer({ name: "Ada" }, channel)).status, 200, "a submit at the base");
+    const polled = await viewer.poll();
+    same(polled.status, 200, "the page's long poll at the base");
+    // The base passes the Host and Origin checks; another Host or Origin is refused.
+    const parsed = new URL(link);
+    const strangerHost = await send({
+      url: `${parsed.origin}/a/${receipt.artifactId}`,
+      headers: { host: `evil.example:${parsed.port}`, accept: "text/html" },
+    });
+    same(strangerHost.status, 421, "another Host at the base");
+    const otherOrigin = await new Browser().ask({
+      method: "POST",
+      url: `${parsed.origin}/a/${receipt.artifactId}/_mostra/session`,
+      headers: {
+        origin: local,
+        "content-type": "application/json",
+        "sec-fetch-site": "cross-site",
+      },
+      body: JSON.stringify({ token: new URLSearchParams(parsed.hash.slice(1)).get("t") }),
+    });
+    same(otherOrigin.status, 403, "an exchange from another origin");
+    if (!context.host.supports("faults")) return;
+    // The host withdraws its base: new links are on loopback, and the old one stops working.
+    await context.host.script({ port: "addressing", answer: null });
+    const after = await context.link(receipt.artifactId);
+    check(loopback(after), `a link minted after the base was withdrawn (${after})`);
+    const stale = await Viewer.open(link).then(
+      () => "opened",
+      (error: unknown) => (error instanceof OpenError ? error.status : "unreachable"),
+    );
+    check(stale !== "opened", "a link at a withdrawn base still opened");
+    const reopened = await Viewer.open(after);
+    same((await reopened.answer({ name: "Grace" }, channel)).status, 200, "a submit on loopback");
   },
 };
 
@@ -272,6 +466,7 @@ export const serverEvents: Scenario = {
 /** The port scenarios. */
 export const PORT_SCENARIOS: readonly Scenario[] = [
   identity,
+  addressing,
   trustedControls,
   secrets,
   serverEvents,

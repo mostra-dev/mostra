@@ -312,13 +312,18 @@ export const JOBS: readonly Job[] = [
   },
   {
     name: "docs",
-    summary: "Generated references, the evidence matrix and WP specifications, links",
+    summary:
+      "Generated references, the harness plugins, the evidence matrix and WP specifications, links",
     applies: (plan) =>
       touches(plan, [
         /\.md$/,
         /^docs\//,
         /^tools\/design\//,
         /^tools\/docs\//,
+        /^tools\/plugins\//,
+        /^skills\//,
+        /^LICENSE$/,
+        /^NOTICE$/,
         /^packages\/protocol\/src\/diagnostics\//,
         /^packages\/cli\/src\//,
       ]),
@@ -333,6 +338,9 @@ export const JOBS: readonly Job[] = [
         command: "node",
         args: ["--conditions=@mostra/source", "tools/docs/cli.ts", "check"],
       },
+      // The harness plugins built from skills/ and their one definition hold every harness's and
+      // directory's rules (AX-10, D147, WP-14).
+      { label: "harness plugins", command: "node", args: ["tools/plugins/cli.ts", "check"] },
       {
         label: "evidence matrix",
         command: "python3",

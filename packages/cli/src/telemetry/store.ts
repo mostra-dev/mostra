@@ -16,13 +16,14 @@ import {
   linkSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /** What `telemetry.json` holds. */
 export interface TelemetrySettings {
@@ -340,43 +341,94 @@ export class TelemetryStore {
   }
 
   /**
-   * Takes a crashed owner's lock away. The lock is moved aside under a name of this process's own
-   * (a rename is atomic, so of two processes breaking it one gets it), and a lock that turns out
-   * to be another, live owner's goes back. Answers `broken` when the caller should try again at
-   * once, `absent` when no lock file exists, and `held` when the caller should wait: a live
-   * owner's lock, or one that can't be read (on Windows, a lock being deleted).
+   * Takes a crashed owner's lock away (#98). Only one process breaks locks at a time: it holds the
+   * break lock while it judges the lock again and removes it. An owner removes only its own lock
+   * and every other remover holds the break lock, so the lock judged is the lock removed: no
+   * breaker ever moves a live owner's lock aside or brings back one its owner released.
+   *
+   * The break lock is never removed by anyone but its holder, since removing a file only if it is
+   * the one judged can't be done atomically (Opus review of WP-13): break locks are numbered
+   * (`telemetry.lock.break.<n>`), the highest is the one in force, and a crashed breaker's is
+   * superseded, never removed, by creating the next number exclusively. Two that judged the same
+   * one crashed race for the same next number, and one of them wins; one that created a number
+   * below a higher one holds nothing. The holder removes the ones below its own, then its own
+   * when done. A break lock is crashed by the lock's own rules (older
+   * than 10 s with its owner gone, or older than 60 s).
+   *
+   * Answers `broken` when the caller should try again at once, `absent` when no lock file exists,
+   * and `held` when the caller should wait: a live owner's lock, another breaker at work, or a
+   * lock that can't be read (on Windows, a lock being deleted).
    */
   #breakStale(): "broken" | "absent" | "held" {
-    // One descriptor for the age and the contents, so both describe the same file.
-    let seen: string;
-    let age: number;
-    let handle: number | undefined;
-    try {
-      handle = openSync(this.#lockFile, "r");
-      age = Date.now() - fstatSync(handle).mtimeMs;
-      if (age <= STALE_LOCK_MS) return "held";
-      seen = readFileSync(handle, "utf8");
-    } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "held";
-    } finally {
-      if (handle !== undefined) closeSync(handle);
+    const judged = judge(this.#lockFile);
+    if (judged !== "stale") return judged;
+    const dir = dirname(this.#lockFile);
+    const prefix = `${basename(this.#lockFile)}.break.`;
+    const numbered = (): number[] => {
+      try {
+        return readdirSync(dir)
+          .filter(
+            (name) =>
+              name.startsWith(prefix) && /^[1-9][0-9]{0,15}$/.test(name.slice(prefix.length)),
+          )
+          .map((name) => Number(name.slice(prefix.length)))
+          .sort((a, b) => a - b);
+      } catch {
+        return [];
+      }
+    };
+    const file = (n: number): string => join(dir, `${prefix}${n}`);
+    const below = numbered();
+    const current = below.at(-1);
+    if (current !== undefined) {
+      // Another breaker is at work, or one crashed at it.
+      if (judge(file(current)) !== "stale") return "held";
+      pause(breakPauseMs());
     }
-    if (age <= DEAD_LOCK_MS && ownerAlive(seen)) return "held";
-    const aside = `${this.#lockFile}.${process.pid}.${randomUUID()}.stale`;
+    const mine = (current ?? 0) + 1;
+    const token = `${process.pid} ${randomUUID()}`;
     try {
-      renameSync(this.#lockFile, aside);
-    } catch (error) {
-      // Another breaker moved it first: try for it at once; anything else, wait.
-      return (error as NodeJS.ErrnoException).code === "ENOENT" ? "broken" : "held";
-    }
-    try {
-      if (readFileSync(aside, "utf8") !== seen) linkSync(aside, this.#lockFile);
+      writeFileSync(file(mine), token, { flag: "wx", mode: 0o600 });
     } catch {
-      // Another process holds a new lock already; ours goes, and the caller waits for theirs.
-    } finally {
-      rmSync(aside, { force: true });
+      // Another breaker took this number first, or the directory can't be written.
+      return "held";
     }
-    return "broken";
+    try {
+      // A process that listed before a later number existed may create a lower one: the highest
+      // holds, and this one, not the highest, never acts.
+      if (numbered().some((n) => n > mine)) return "held";
+      // The ones before are superseded: a crashed breaker's, or ones a holder left by crashing.
+      for (const n of below) rmSync(file(n), { force: true });
+      // Judged again under the break lock: the lock may have gone, or been replaced, meanwhile.
+      const now = judge(this.#lockFile);
+      if (now !== "stale") return now;
+      pause(breakPauseMs());
+      rmSync(this.#lockFile, { force: true });
+      return "broken";
+    } finally {
+      rmSync(file(mine), { force: true });
+    }
+  }
+}
+
+/**
+ * Whether a lock file may be taken away: `stale` when it is older than 10 s and its owner no
+ * longer runs, or older than 60 s whoever it names; `held` while it is younger, its owner runs,
+ * or it can't be read; `absent` when there is none. One descriptor reads the age and the
+ * contents, so both describe the same file.
+ */
+function judge(file: string): "stale" | "absent" | "held" {
+  let handle: number | undefined;
+  try {
+    handle = openSync(file, "r");
+    const age = Date.now() - fstatSync(handle).mtimeMs;
+    if (age <= STALE_LOCK_MS) return "held";
+    const seen = readFileSync(handle, "utf8");
+    return age <= DEAD_LOCK_MS && ownerAlive(seen) ? "held" : "stale";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "held";
+  } finally {
+    if (handle !== undefined) closeSync(handle);
   }
 }
 
@@ -476,4 +528,17 @@ function bounded(lines: readonly string[], now: number): string[] {
     }
   });
   return fresh.slice(-QUEUE_MAX_EVENTS);
+}
+
+/**
+ * A pause inside a breaker's step, for tests only (`MOSTRA_TEST_LOCK_BREAK_MS`): it widens the
+ * window a slow machine opens between judging a lock and acting on it (#98).
+ */
+const BREAK_PAUSE_VARIABLE = "MOSTRA_TEST_LOCK_BREAK_MS";
+function breakPauseMs(): number {
+  const value = Number(process.env[BREAK_PAUSE_VARIABLE] ?? "0");
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 5_000) : 0;
+}
+function pause(ms: number): void {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }

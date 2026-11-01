@@ -4,6 +4,8 @@
  * The desired settings live here and in `.github/rulesets/*.json`; this tool applies them through
  * `gh api` and verifies the live repository matches.
  *
+ * It covers the plugin's own repository too (WP-14).
+ *
  *   node tools/github/settings.ts verify   report every setting that differs (read-only)
  *   node tools/github/settings.ts apply    apply the settings, then verify
  *
@@ -69,8 +71,8 @@ function gh(args: readonly string[], input?: string): unknown {
   return result.stdout.trim() ? JSON.parse(result.stdout) : undefined;
 }
 
-function desiredRulesets(): Ruleset[] {
-  const dir = fromRoot(".github/rulesets");
+function desiredRulesets(folder = ".github/rulesets"): Ruleset[] {
+  const dir = fromRoot(folder);
   return readdirSync(dir)
     .filter((file) => file.endsWith(".json"))
     .map((file) => JSON.parse(readFileSync(join(dir, file), "utf8")) as Ruleset);
@@ -261,12 +263,106 @@ function apply(): void {
   }
 }
 
+/**
+ * The harness plugin's own repository (D147, WP-14): public, without issues (they go to the main
+ * repository), its `main` never rewritten and its `v*` release tags never moved or deleted
+ * (`.github/plugin-rulesets`), written only by the release's deploy key, whose private half is the
+ * `release` environment's `PLUGIN_DEPLOY_KEY` (docs/agents/release.md). The organization allows
+ * deploy keys for that key.
+ */
+const PLUGIN_REPO = "mostra-dev/mostra-plugin";
+const PLUGIN_REPOSITORY = { visibility: "public", has_issues: false, has_wiki: false } as const;
+const PLUGIN_DEPLOY_KEY = { title: "release", read_only: false } as const;
+
+function verifyPlugin(): string[] {
+  const problems: string[] = [];
+  const org = gh([`orgs/${REPO.split("/")[0]}`]) as {
+    deploy_keys_enabled_for_repositories?: boolean;
+  };
+  if (org.deploy_keys_enabled_for_repositories !== true)
+    problems.push("the organization doesn't allow deploy keys, which the plugin's release uses");
+  const repo = gh([`repos/${PLUGIN_REPO}`]) as Record<string, unknown> & {
+    security_and_analysis: Record<string, { status: string }>;
+  };
+  for (const [key, value] of Object.entries(PLUGIN_REPOSITORY))
+    if (repo[key] !== value)
+      problems.push(
+        `${PLUGIN_REPO} ${key} is ${JSON.stringify(repo[key])}, want ${JSON.stringify(value)}`,
+      );
+  for (const [key, value] of Object.entries(SECURITY))
+    if (repo.security_and_analysis[key]?.status !== value)
+      problems.push(`${PLUGIN_REPO} ${key} is not ${value}`);
+  const keys = gh([`repos/${PLUGIN_REPO}/keys`]) as { title: string; read_only: boolean }[];
+  if (
+    !keys.some(
+      (key) =>
+        key.title === PLUGIN_DEPLOY_KEY.title && key.read_only === PLUGIN_DEPLOY_KEY.read_only,
+    )
+  )
+    problems.push(`${PLUGIN_REPO} has no write deploy key "${PLUGIN_DEPLOY_KEY.title}"`);
+  if (keys.length !== 1)
+    problems.push(`${PLUGIN_REPO} has ${keys.length} deploy keys, want only the release's`);
+  const secrets = gh([`repos/${REPO}/environments/${RELEASE_ENVIRONMENT}/secrets`]) as {
+    secrets: { name: string }[];
+  };
+  if (!secrets.secrets.some((secret) => secret.name === "PLUGIN_DEPLOY_KEY"))
+    problems.push(`the "${RELEASE_ENVIRONMENT}" environment has no PLUGIN_DEPLOY_KEY`);
+  const live = gh([`repos/${PLUGIN_REPO}/rulesets`]) as { id: number; name: string }[];
+  for (const ruleset of desiredRulesets(".github/plugin-rulesets")) {
+    const match = live.find((candidate) => candidate.name === ruleset.name);
+    if (!match) {
+      problems.push(`${PLUGIN_REPO} ruleset "${ruleset.name}" is missing`);
+      continue;
+    }
+    if (!same(ruleset, gh([`repos/${PLUGIN_REPO}/rulesets/${match.id}`])))
+      problems.push(
+        `${PLUGIN_REPO} ruleset "${ruleset.name}" differs from .github/plugin-rulesets`,
+      );
+  }
+  return problems;
+}
+
+/** The plugin repository's settings and rulesets; its deploy key is made once, by hand (release.md). */
+function applyPlugin(): void {
+  gh([
+    "-X",
+    "PATCH",
+    `orgs/${REPO.split("/")[0]}`,
+    "-F",
+    "deploy_keys_enabled_for_repositories=true",
+  ]);
+  gh([
+    "-X",
+    "PATCH",
+    `repos/${PLUGIN_REPO}`,
+    "-F",
+    "has_issues=false",
+    "-F",
+    "has_wiki=false",
+    ...Object.entries(SECURITY).flatMap(([key, value]) => [
+      "-f",
+      `security_and_analysis[${key}][status]=${value}`,
+    ]),
+  ]);
+  const live = gh([`repos/${PLUGIN_REPO}/rulesets`]) as { id: number; name: string }[];
+  for (const ruleset of desiredRulesets(".github/plugin-rulesets")) {
+    const match = live.find((candidate) => candidate.name === ruleset.name);
+    const body = JSON.stringify(ruleset);
+    if (match) gh(["-X", "PUT", `repos/${PLUGIN_REPO}/rulesets/${match.id}`, "--input", "-"], body);
+    else gh(["-X", "POST", `repos/${PLUGIN_REPO}/rulesets`, "--input", "-"], body);
+  }
+}
+
 const mode = process.argv[2];
-if (mode === "apply") apply();
-else if (mode !== "verify") {
+if (mode === "apply") {
+  apply();
+  applyPlugin();
+} else if (mode !== "verify") {
   console.error("usage: settings.ts <verify|apply>");
   process.exit(2);
 }
-const problems = verify();
-if (problems.length > 0) fail(problems, `GitHub settings of ${REPO}`);
-console.log(`✓ GitHub settings of ${REPO} match tools/github/settings.ts and .github/rulesets`);
+const problems = [...verify(), ...verifyPlugin()];
+if (problems.length > 0) fail(problems, `GitHub settings of ${REPO} and ${PLUGIN_REPO}`);
+console.log(
+  `✓ GitHub settings of ${REPO} and ${PLUGIN_REPO} match tools/github/settings.ts, .github/rulesets and .github/plugin-rulesets`,
+);

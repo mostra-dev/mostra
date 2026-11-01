@@ -7,6 +7,9 @@
 import type { EventRecord, PollResult, StreamSnapshot } from "@mostra/protocol";
 import { eventsUrl } from "./api.ts";
 
+/** How long the shell's stream may stay silent after it opens before it long-polls (WP-13). */
+const STREAM_FIRST_MESSAGE_MS = 6_000;
+
 /** What the stream hears. */
 export interface StreamListener {
   onSnapshot(snapshot: StreamSnapshot): void;
@@ -52,6 +55,21 @@ export function openStream(apiBase: string, viewId: string, listener: StreamList
   };
 
   source = new EventSource(eventsUrl(apiBase, viewId));
+  // The gateway's first message (`ready`) comes at once: silence after opening means something
+  // holds the stream back (a buffering proxy or tunnel), so the shell long-polls instead.
+  let heard = false;
+  const silent = setTimeout(() => {
+    if (heard || closed || !source) return;
+    source.close();
+    source = undefined;
+    listener.onStatus("offline");
+    if (!polling) void poll();
+  }, STREAM_FIRST_MESSAGE_MS);
+  const hear = (): void => {
+    heard = true;
+    clearTimeout(silent);
+  };
+  for (const name of ["ready", "snapshot", "mostra"]) source.addEventListener(name, hear);
   source.addEventListener("open", () => {
     failures = 0;
     listener.onStatus("live");
@@ -81,6 +99,7 @@ export function openStream(apiBase: string, viewId: string, listener: StreamList
 
   return () => {
     closed = true;
+    clearTimeout(silent);
     source?.close();
     if (timer !== undefined) clearTimeout(timer);
   };

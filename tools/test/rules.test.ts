@@ -3,11 +3,13 @@
  * (EN-01), action pinning (EN-06), the release group (RT-01, EN-05), Node.js lines (#92) and
  * Markdown links.
  */
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { eeLeaks } from "../api/pack.ts";
 import { directOwners } from "../check/plan.ts";
 import { checkMessage } from "../commits/cli.ts";
 import { brokenLinks } from "../docs/links.ts";
+import { runSync } from "../lib/repo.ts";
 import { listPackages } from "../lib/workspace.ts";
 import {
   privilegedImportProblems,
@@ -464,6 +466,38 @@ describe("the release's publish job runs built-ins only (EN-05)", () => {
   });
 });
 
+describe("the release's privileged jobs follow local imports (WP-14's Opus review)", () => {
+  it("allows a local module that imports built-ins only, and refuses one that imports a package", () => {
+    const files: Record<string, string> = {
+      "tools/lib/rules.ts": 'export const X = 1;\nimport { join } from "node:path";\n',
+      "tools/lib/bad.ts": 'import semver from "semver";\n',
+      "tools/lib/loop.ts": 'import "./loop.ts";\n',
+    };
+    const resolve = (specifier: string, from: string) => {
+      const file = join(dirname(from), specifier).split("\\").join("/");
+      return files[file] === undefined ? undefined : { source: files[file] as string, file };
+    };
+    expect(
+      privilegedImportProblems('import { X } from "../lib/rules.ts";\n', "tools/x/a.ts", resolve),
+    ).toEqual([]);
+    expect(privilegedImportProblems('import "../lib/loop.ts";\n', "tools/x/a.ts", resolve)).toEqual(
+      [],
+    );
+    expect(
+      privilegedImportProblems('import { y } from "../lib/bad.ts";\n', "tools/x/a.ts", resolve),
+    ).toEqual([expect.stringMatching(/tools\/lib\/bad\.ts imports "semver"/)]);
+    expect(
+      privilegedImportProblems('import "../lib/missing.ts";\n', "tools/x/a.ts", resolve),
+    ).toEqual([expect.stringContaining('"../lib/missing.ts"')]);
+  });
+
+  it("holds publish.ts, the plugin job's script, to it", () => {
+    const run = runSync("node", ["tools/repo-lint/cli.ts"]);
+    expect(run.stdout + run.stderr).toContain("a publish job on built-ins");
+    expect(run.code).toBe(0);
+  });
+});
+
 describe("the plan's owners of a changed file", () => {
   it("lets a change to the Windows helper affect the runtime, which runs it (GPT review of WP-W1)", () => {
     const packages = listPackages();
@@ -474,6 +508,37 @@ describe("the plan's owners of a changed file", () => {
       "@mostra/runtime",
     ]);
     expect(directOwners(packages, "crates/mostra-winning/x.rs")).toEqual([]);
+  });
+
+  it("lets a change to the reference or the Skill affect the CLI, whose build ships them (WP-14)", () => {
+    const packages = listPackages();
+    expect(directOwners(packages, "skills/mostra/references/answers.md")).toEqual([
+      "@mostra/cli",
+      "@mostra/runtime",
+    ]);
+    expect(directOwners(packages, "skills/mostra/SKILL.md")).toEqual(["@mostra/cli"]);
+    expect(directOwners(packages, "docs/reference/errors/MOSTRA_DEP_MISSING.md")).toEqual([
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "skills/mostra/assets/examples/inbox/index.tsx")).toEqual([
+      "@mostra/cli",
+      "@mostra/runtime",
+    ]);
+    expect(directOwners(packages, "skills/mostra-other/SKILL.md")).toEqual([]);
+    // The Skill's checks read the author API, so a change to it runs them (WP-14's GPT review).
+    expect(directOwners(packages, "packages/react/etc/react.api.md")).toEqual([
+      "@mostra/react",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/server/etc/server.api.md")).toEqual([
+      "@mostra/server",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/react/src/form.ts")).toEqual([
+      "@mostra/react",
+      "@mostra/cli",
+    ]);
+    expect(directOwners(packages, "packages/react/src/store.ts")).toEqual(["@mostra/react"]);
   });
 });
 

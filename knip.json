@@ -90,7 +90,7 @@
       "project": ["src/**/*.{ts,tsx}", "test/**/*.ts"]
     }
   },
-  "ignore": ["docs/design/evaluations/**"],
+  "ignore": ["docs/design/evaluations/**", "skills/**"],
   "ignoreExportsUsedInFile": true,
   "ignoreBinaries": ["netstat", "schtasks", "whoami", "icacls", "gpgv", "taskkill.exe"]
 }
