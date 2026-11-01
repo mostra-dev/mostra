@@ -34,8 +34,11 @@ export interface RequestPolicy {
  *   `Origin` and a JSON content type, but no CSRF token yet.
  * - `mutation`: any other state change: `Origin`, a JSON content type and the session's CSRF
  *   token in `X-Mostra-CSRF`.
+ * - `rpc`: a JSON-RPC POST from a program that holds a bearer token (`mostra mcp --http`, D164): a
+ *   foreign `Origin` is refused and none is fine, since browsers send one on every POST; a JSON
+ *   content type. The endpoint checks the token itself, as it checks a session.
  */
-export type RequestIntent = "read" | "stream" | "upgrade" | "exchange" | "mutation";
+export type RequestIntent = "read" | "stream" | "upgrade" | "exchange" | "mutation" | "rpc";
 
 /** One request as the transport received it. */
 export interface RequestFacts {
@@ -185,6 +188,14 @@ export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refu
     case "read":
       if (origin !== undefined && origin !== policy.origin) {
         return refusal("MOSTRA_HYGIENE_ORIGIN_REFUSED", "The request came from another origin.");
+      }
+      return undefined;
+    case "rpc":
+      if (origin !== undefined && origin !== policy.origin) {
+        return refusal("MOSTRA_HYGIENE_ORIGIN_REFUSED", "The request came from another origin.");
+      }
+      if (!isJsonContentType(headerValue(request.headers, "content-type"))) {
+        return refusal("MOSTRA_HYGIENE_CONTENT_TYPE", "The request's body isn't declared as JSON.");
       }
       return undefined;
     case "stream": {

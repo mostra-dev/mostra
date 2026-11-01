@@ -41,11 +41,16 @@
     "test:integration": "vitest run --project integration"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
+    "@modelcontextprotocol/server": "catalog:",
+    "@mostra/mcp": "workspace:*",
     "@mostra/protocol": "workspace:*",
     "@mostra/sdk": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/conformance": "catalog:",
     "@mostra/runtime": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@types/node": "catalog:",

@@ -99,6 +99,44 @@ describe("request hygiene (HY-01)", () => {
     );
   });
 
+  it("lets a program's JSON-RPC POST through without Origin, and refuses a page's (D164)", () => {
+    const rpc: RequestFacts = {
+      method: "POST",
+      target: "/mcp",
+      headers: [
+        ["Host", "127.0.0.1:23456"],
+        ["Content-Type", "application/json"],
+      ],
+      intent: "rpc",
+    };
+    expect(code(rpc)).toBeUndefined();
+    expect(code({ ...rpc, headers: [...rpc.headers, ["Origin", policy.origin]] })).toBeUndefined();
+    expect(code({ ...rpc, headers: [...rpc.headers, ["Origin", "http://evil.example"]] })).toBe(
+      "403 MOSTRA_HYGIENE_ORIGIN_REFUSED",
+    );
+    expect(code({ ...rpc, headers: [...rpc.headers, ["Origin", "null"]] })).toBe(
+      "403 MOSTRA_HYGIENE_ORIGIN_REFUSED",
+    );
+    expect(
+      code({
+        ...rpc,
+        headers: [
+          ["Host", "127.0.0.1:23456"],
+          ["Content-Type", "text/plain"],
+        ],
+      }),
+    ).toBe("415 MOSTRA_HYGIENE_CONTENT_TYPE");
+    expect(
+      code({
+        ...rpc,
+        headers: [
+          ["Host", "localhost:23456"],
+          ["Content-Type", "application/json"],
+        ],
+      }),
+    ).toBe("421 MOSTRA_HYGIENE_HOST_REFUSED");
+  });
+
   it("lets streams through only from their own origin", () => {
     const stream: RequestFacts = {
       method: "GET",

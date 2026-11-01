@@ -145,6 +145,24 @@
       "fix": "Use an ID or path from `mostra list`. A source that was never published becomes an artifact at its first `mostra publish`. A host that uses its own home sees only the artifacts published there."
     },
     {
+      "code": "MOSTRA_ARTIFACT_PATCH_REJECTED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Patch doesn't apply",
+      "hint": "Read the file again and send edits whose `old` text appears in it exactly once, or a diff made against its current content.",
+      "explanation": "An `artifact_patch` changes a file only when every edit applies: each `old` text must appear exactly once in the file as it is now, and each hunk of a unified diff must match its lines. When one doesn't, nothing is written, and the message lists each edit or hunk that didn't apply and why (not found, found more than once, the file is missing).",
+      "fix": "Use a longer `old` text that appears only once, fix the hunk's context lines, or write the whole file with `artifact_write`."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_PATH_INVALID",
+      "severity": "error",
+      "phase": "host",
+      "title": "File path outside the artifact",
+      "hint": "Name the file by a relative path inside the artifact's directory, such as `index.tsx` or `components/chart.tsx`.",
+      "explanation": "`artifact_write` and `artifact_patch` change an artifact's own files, which live in its directory. A path that is absolute, climbs out with `..`, names the directory itself or passes through a link to somewhere else names no file of the artifact, so nothing is written.",
+      "fix": "Give each file's path relative to the artifact's directory, with `/` between folders. To write elsewhere, use your own file tools."
+    },
+    {
       "code": "MOSTRA_ARTIFACT_SOURCE_MISSING",
       "severity": "error",
       "phase": "publish",

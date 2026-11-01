@@ -55,7 +55,8 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/bundle` (unpublished) | the runtime bundle's assembler (D142): what a bundle carries, its Node.js pins, the assembler, smoke tests and release scripts | the packages a bundle carries, as dependencies only | |
 | `@mostra/pty-host` | runtime bundle | node-pty, protocol | runtime |
 | `@mostra/sdk` | JavaScript hosts | protocol | runtime internals (spawns it) |
-| `@mostra/cli` | agents, people | protocol, sdk | runtime internals |
+| `@mostra/mcp` | MCP clients, through `mostra mcp` and the remote server (D164): the tools, resources and HTTP handler, independent of any transport | protocol, the v2 MCP SDK (`@modelcontextprotocol/server`), zod, diff | runtime internals, cli |
+| `@mostra/cli` | agents, people | protocol, sdk, mcp | runtime internals |
 | `create-mostra` | people | cli | |
 | `@mostra/conformance` | host authors | protocol, sdk | runtime internals |
 | `@mostra/contract-*` | plugin authors | protocol | everything else |

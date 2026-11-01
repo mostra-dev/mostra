@@ -58,6 +58,12 @@ catalog:
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
   '@hono/node-server': 2.1.5
+  # The MCP server (WP-15, D164): the v2 TypeScript SDK's server package, its client for tests,
+  # jsdiff for artifact_patch's unified diffs, and the MCP conformance suites (D48; VERIFIED_FACTS)
+  '@modelcontextprotocol/server': 2.4.0
+  '@modelcontextprotocol/client': 2.4.0
+  diff: 9.0.0
+  '@modelcontextprotocol/conformance': 0.1.16
 
   # The installer the deps module's install child runs (D94): pnpm 10, whose published package
   # contains no code from pnpm's PolyForm-licensed pnpr/ directory. Never 11 or later.

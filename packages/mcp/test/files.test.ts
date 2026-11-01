@@ -1,0 +1,201 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { artifactPath, localWorkspace, planPatch, slug } from "@mostra/mcp";
+import { describe, expect, it } from "vitest";
+
+const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+const files = (map: Record<string, string>) => async (path: string) =>
+  map[path] === undefined ? undefined : encode(map[path] as string);
+
+describe("artifact_patch's plan", () => {
+  it("replaces text that appears exactly once, in order", async () => {
+    const plan = await planPatch(
+      {
+        path: "index.tsx",
+        edits: [
+          { old: "Hello", new: "Hi" },
+          { old: "Hi there", new: "Hi, you" },
+        ],
+      },
+      files({ "index.tsx": "Hello there" }),
+    );
+    expect(plan).toEqual({
+      ok: true,
+      change: { write: [{ path: "index.tsx", content: "Hi, you" }], delete: [] },
+    });
+  });
+
+  it("names each edit that doesn't apply, and why, and writes nothing", async () => {
+    const plan = await planPatch(
+      {
+        path: "index.tsx",
+        edits: [
+          { old: "a", new: "b" },
+          { old: "zzz", new: "y" },
+        ],
+      },
+      files({ "index.tsx": "a a" }),
+    );
+    expect(plan).toEqual({
+      ok: false,
+      rejected: [
+        { path: "index.tsx", edit: 0, reason: "ambiguous", occurrences: 2 },
+        { path: "index.tsx", edit: 1, reason: "not-found" },
+      ],
+    });
+    expect(
+      await planPatch({ path: "gone.tsx", edits: [{ old: "a", new: "b" }] }, files({})),
+    ).toEqual({
+      ok: false,
+      rejected: [{ path: "gone.tsx", reason: "missing" }],
+    });
+  });
+
+  it("writes a new file from an edit with an empty old text", async () => {
+    expect(await planPatch({ path: "new.tsx", edits: [{ old: "", new: "x" }] }, files({}))).toEqual(
+      {
+        ok: true,
+        change: { write: [{ path: "new.tsx", content: "x" }], delete: [] },
+      },
+    );
+  });
+
+  it("applies a unified diff of several files, creating and deleting", async () => {
+    const diff = [
+      "--- a/index.tsx",
+      "+++ b/index.tsx",
+      "@@ -1,3 +1,3 @@",
+      " one",
+      "-two",
+      "+deux",
+      " three",
+      "--- /dev/null",
+      "+++ b/added.ts",
+      "@@ -0,0 +1 @@",
+      "+export const x = 1;",
+      "--- a/old.ts",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "-gone",
+      "",
+    ].join("\n");
+    const plan = await planPatch(
+      { diff },
+      files({ "index.tsx": "one\ntwo\nthree\n", "old.ts": "gone\n" }),
+    );
+    expect(plan).toEqual({
+      ok: true,
+      change: {
+        write: [
+          { path: "index.tsx", content: "one\ndeux\nthree\n" },
+          { path: "added.ts", content: "export const x = 1;\n" },
+        ],
+        delete: ["old.ts"],
+      },
+    });
+  });
+
+  it("names the hunk whose context doesn't match", async () => {
+    const diff = [
+      "--- a/index.tsx",
+      "+++ b/index.tsx",
+      "@@ -1,2 +1,2 @@",
+      " alpha",
+      "-beta",
+      "+gamma",
+      "",
+    ].join("\n");
+    expect(await planPatch({ diff }, files({ "index.tsx": "alpha\nBETA\n" }))).toEqual({
+      ok: false,
+      rejected: [{ path: "index.tsx", hunk: 0, header: "@@ -1,2 +1,2 @@", reason: "context" }],
+    });
+    expect(await planPatch({ diff: "not a diff" }, files({}))).toMatchObject({
+      ok: false,
+      rejected: [{ reason: "malformed" }],
+    });
+  });
+});
+
+describe("the local workspace", () => {
+  it("refuses paths that leave the artifact", () => {
+    for (const bad of [
+      "",
+      "/etc/passwd",
+      "../x",
+      "a/../../x",
+      "a//b",
+      "./a",
+      "C:\\x",
+      "a\u0000b",
+    ]) {
+      expect(() => artifactPath(bad), bad).toThrow(/isn't a path inside the artifact/);
+    }
+    expect(artifactPath("components\\chart.tsx")).toBe("components/chart.tsx");
+  });
+
+  it("writes and deletes files, creating folders, and never through a link out of the artifact", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
+    const outside = mkdtempSync(join(tmpdir(), "mostra-outside-"));
+    const workspace = localWorkspace(root);
+    const dir = workspace.resolveDir("page");
+    const done = await workspace.apply(dir, {
+      write: [
+        { path: "components/a.tsx", content: encode("a") },
+        { path: "index.tsx", content: encode("i") },
+      ],
+      delete: ["missing.txt"],
+    });
+    expect(done).toEqual({ written: ["components/a.tsx", "index.tsx"], deleted: [] });
+    expect(readFileSync(join(dir, "components", "a.tsx"), "utf8")).toBe("a");
+    // A junction on Windows, which needs no privilege; a symbolic link elsewhere.
+    symlinkSync(outside, join(dir, "escape"), "junction");
+    await expect(
+      workspace.apply(dir, {
+        write: [{ path: "escape/new/x.txt", content: encode("x") }],
+        delete: [],
+      }),
+    ).rejects.toThrow(/leads out of the artifact's directory/);
+    expect(existsSync(join(outside, "new"))).toBe(false);
+    if (process.platform !== "win32") {
+      // A file link needs a privilege on Windows that ordinary users don't hold.
+      writeFileSync(join(outside, "target.txt"), "keep");
+      symlinkSync(join(outside, "target.txt"), join(dir, "linked.txt"));
+      await expect(
+        workspace.apply(dir, { write: [{ path: "linked.txt", content: encode("x") }], delete: [] }),
+      ).rejects.toThrow(/is a link/);
+      expect(readFileSync(join(outside, "target.txt"), "utf8")).toBe("keep");
+    }
+    await expect(
+      workspace.apply(dir, {
+        write: [
+          { path: "ok.txt", content: encode("x") },
+          { path: "../x", content: encode("y") },
+        ],
+        delete: [],
+      }),
+    ).rejects.toThrow();
+    expect(existsSync(join(dir, "ok.txt"))).toBe(false);
+    expect(await workspace.apply(dir, { write: [], delete: ["index.tsx"] })).toEqual({
+      written: [],
+      deleted: ["index.tsx"],
+    });
+  });
+
+  it("allocates a new folder named after the title", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
+    const workspace = localWorkspace(root);
+    expect(slug("Café: the Q3 plan!")).toBe("cafe-the-q3-plan");
+    expect(slug(undefined)).toBe("artifact");
+    mkdirSync(join(root, "plan"));
+    expect(await workspace.allocateDir("Plan")).toBe(join(root, "plan-2"));
+    expect(workspace.resolveDir(resolve("/abs/dir"))).toBe(resolve("/abs/dir"));
+  });
+});
