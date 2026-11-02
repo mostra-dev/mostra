@@ -113,7 +113,7 @@ export const PLUGIN: PluginDefinition = {
   // trademark; Apache-2.0 grants no right to it (its section 6).
   icon: "tools/plugins/assets/icon.png",
   features: {
-    localMcp: { enabled: false, owner: "WP-15", args: ["mcp"], verifiedOn: [] },
+    localMcp: { enabled: false, owner: "WP-15", args: ["mcp", "--embedded"], verifiedOn: [] },
     remoteMcp: { enabled: false, owner: "WP-30" },
   },
 };

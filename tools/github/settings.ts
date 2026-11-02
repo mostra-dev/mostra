@@ -51,12 +51,20 @@ const RELEASE_BRANCHES = ["main"];
  */
 const FORK_APPROVAL = "all_external_contributors";
 
-/** Labels the workflow reads: `ci:full` runs a pull request as the merge queue does (D152). */
+/**
+ * Labels the workflows read: `ci:full` runs a pull request as the merge queue does (D152);
+ * `check:harnesses` starts the plugin's server from each harness on each system (D164).
+ */
 const LABELS = [
   {
     name: "ci:full",
     color: "1d76db",
     description: "Run every CI leg on this pull request, as the merge queue does (D152)",
+  },
+  {
+    name: "check:harnesses",
+    color: "0e8a16",
+    description: "Start the plugin's MCP server from each harness on each system (D164)",
   },
 ] as const;
 
