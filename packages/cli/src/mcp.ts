@@ -28,6 +28,8 @@ import {
   type MethodDefinition,
   RpcError,
 } from "@mostra/protocol";
+import { resolveRuntime } from "@mostra/sdk";
+import { progressReporter } from "./bootstrap.ts";
 import { openInBrowser } from "./browser.ts";
 import { connect, type InstanceConnection } from "./client.ts";
 import { docsIndex, MCP_GUIDE_LINKS, skillDir, topicMarkdown } from "./docs.ts";
@@ -36,12 +38,101 @@ import type { Environment } from "./home.ts";
 /** How long the session with the daemon stays open after the last call. */
 export const MCP_IDLE_MS: number = 5 * 60_000;
 
+/** How long one call waits for the runtime's first install before it answers that it's still on. */
+export const MCP_RUNTIME_WAIT_MS: number = 45_000;
+
+/**
+ * The runtime `mostra mcp` starts its instance from (D164 item 7). Installed from npm, the server
+ * answers its client before the bundle its release pins is there, so it installs it in the
+ * background as it starts (`start`), and every call that needs the instance waits for it (`wait`):
+ * up to {@link MCP_RUNTIME_WAIT_MS}, then `MOSTRA_ENV_RUNTIME_INSTALLING` with how far it is, while
+ * the install goes on. One install serves every call; a failed one is tried again by the next.
+ * Anywhere else (inside a bundle, a checkout, `MOSTRA_RUNTIME_BIN`) it resolves at once.
+ */
+export interface RuntimeInstall {
+  start(): void;
+  wait(): Promise<void>;
+}
+
+/** The runtime install of {@link RuntimeInstall}, reporting its progress through `log`. */
+export function runtimeInstall(options: {
+  readonly env: Environment;
+  readonly log: (line: string) => void;
+  readonly waitMs?: number;
+}): RuntimeInstall {
+  const testWait = Number(options.env["MOSTRA_TEST_RUNTIME_WAIT_MS"]);
+  const waitMs =
+    options.waitMs ?? (Number.isFinite(testWait) && testWait > 0 ? testWait : MCP_RUNTIME_WAIT_MS);
+  const report = progressReporter({
+    stderr: (text) => {
+      for (const line of text.split("\n")) if (line.trim() !== "") options.log(line.trim());
+    },
+    stderrTty: false,
+  });
+  let ready = false;
+  let pending: Promise<void> | undefined;
+  let done: string | undefined;
+  const start = (): Promise<void> => {
+    if (pending !== undefined) return pending;
+    const installing = resolveRuntime({
+      env: options.env,
+      onProgress: (progress) => {
+        if (progress.step === "download") {
+          done = `${Math.floor((progress.received / progress.total) * 100)}% downloaded`;
+        } else if (progress.step === "files") done = "downloaded, checking its files";
+        else if (progress.step === "browser") done = "fetching the browser verify uses";
+        report(progress);
+      },
+    }).then(() => {
+      ready = true;
+    });
+    pending = installing;
+    installing.catch((error: unknown) => {
+      // The next call tries again, and a waiting call is answered with the failure itself.
+      if (pending === installing) pending = undefined;
+      done = undefined;
+      const diagnostic = error instanceof RpcError ? error.diagnostic : undefined;
+      options.log(
+        `mostra mcp: the runtime's install failed: ${diagnostic?.code ?? ""} ${diagnostic?.message ?? String(error)}`.trim(),
+      );
+    });
+    return installing;
+  };
+  return {
+    start() {
+      void start().catch(() => {});
+    },
+    async wait() {
+      if (ready) return;
+      const installing = start();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new RpcError(
+                createDiagnostic("MOSTRA_ENV_RUNTIME_INSTALLING", {
+                  message: `Mostra is installing its runtime for this release (${done ?? "starting the download"}); the install goes on.`,
+                }),
+              ),
+            ),
+          waitMs,
+        );
+        timer.unref();
+      });
+      try {
+        await Promise.race([installing, late]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+
 /** The instance port over the home's daemon, as the CLI reaches it. */
 export interface DaemonInstance extends McpInstance {
   /** Whether the instance reached is a host-spawned one (then telemetry sends nothing). */
   hostInstance(): boolean;
-  /** Opens the session (starting the daemon when none runs), so {@link hostInstance} is known. */
-  ensure(): Promise<void>;
   /** Ends the session. */
   close(): void;
 }
@@ -52,8 +143,10 @@ export function daemonInstance(options: {
   readonly env: Environment;
   readonly log: (line: string) => void;
   readonly idleMs?: number;
+  readonly runtime?: RuntimeInstall;
 }): DaemonInstance {
   const idleMs = options.idleMs ?? MCP_IDLE_MS;
+  const runtime = options.runtime;
   const listeners = new Map<string, (progress: ArtifactProgressParams) => void>();
   let session: Promise<InstanceConnection> | undefined;
   let host = false;
@@ -108,6 +201,8 @@ export function daemonInstance(options: {
       inflight += 1;
       clearTimeout(idle);
       try {
+        // The runtime first (D164 item 7): a call during its install waits for it, or says so.
+        await runtime?.wait();
         try {
           return await (await open()).call(method, params);
         } catch (error) {
@@ -128,9 +223,6 @@ export function daemonInstance(options: {
       return () => listeners.delete(token);
     },
     hostInstance: () => host,
-    async ensure() {
-      await open();
-    },
     close() {
       clearTimeout(idle);
       release();
@@ -170,9 +262,16 @@ export interface ServeOptions {
   readonly log: (line: string) => void;
   /**
    * Told each MCP client the server serves (for telemetry, which counts each once), with the
-   * instance, so the count can wait to learn whether it was host-spawned.
+   * instance, whose session (when one is open) says whether a host spawned it.
    */
   readonly onClient: (client: McpClientInfo, instance: DaemonInstance) => void;
+}
+
+/** The daemon instance, with the runtime's install started at once (D164 item 7). */
+function startInstance(options: ServeOptions): DaemonInstance {
+  const runtime = runtimeInstall({ env: options.env, log: options.log });
+  runtime.start();
+  return daemonInstance({ ...options, runtime });
 }
 
 function factoryFor(options: ServeOptions, instance: DaemonInstance) {
@@ -197,7 +296,7 @@ function stopSignal(): Promise<string> {
 
 /** Serves over stdio until the client closes stdin or the process is stopped. */
 export async function serveOverStdio(options: ServeOptions): Promise<DaemonInstance> {
-  const instance = daemonInstance(options);
+  const instance = startInstance(options);
   const handle = serveStdio(factoryFor(options, instance), {
     onerror: (error) => options.log(`mostra mcp: ${error.message}`),
   });
@@ -284,7 +383,7 @@ export async function serveOverHttp(
     ...(options.urlHost !== undefined ? { urlHost: options.urlHost } : {}),
   });
   const { token, generated } = mcpToken(options.env);
-  const instance = daemonInstance(options);
+  const instance = startInstance(options);
   const factory = factoryFor(options, instance);
   let endpoint: ReturnType<typeof createHttpEndpoint> | undefined;
   const server = serve({

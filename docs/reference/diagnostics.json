@@ -424,6 +424,15 @@
       "fix": "Mint new links with `view/url` (the publish receipt of the next publish carries the new default link too). Stop the program that took the port if you want the old links back; `mostra doctor` names it where it can."
     },
     {
+      "code": "MOSTRA_ENV_RUNTIME_INSTALLING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Runtime still installing",
+      "hint": "Call the tool again in a minute: Mostra keeps installing its runtime meanwhile.",
+      "explanation": "`mostra mcp` installed from npm answers its client at once and installs its release's runtime bundle in the background on its first start (about 200 MB, D164 item 7), so a client's startup timeout never waits for the download. A tool that needs the instance waits for that install, up to 45 seconds per call; this call's time ran out first. The install goes on, and the message says how far it is. Tools that need no instance (`docs_search`, `artifact_write`, `artifact_patch`) work during it.",
+      "fix": "Call the tool again once the install has had time to finish. When it fails instead, the next call says why (`MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED`, `MOSTRA_ENV_BUNDLE_UNAVAILABLE` offline) and starts it again."
+    },
+    {
       "code": "MOSTRA_ENV_RUNTIME_MISSING",
       "severity": "error",
       "phase": "host",

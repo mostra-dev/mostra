@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import type { McpClientInfo } from "@mostra/mcp";
 import { defaultWorkspaceRoot } from "@mostra/mcp";
 import { type CommandDef, defineCommand } from "../command.ts";
+import { embeddedHome, readHomeMarks } from "../home.ts";
 import { type DaemonInstance, serveOverHttp, serveOverStdio } from "../mcp.ts";
 import { usage } from "../parse.ts";
 import { mcpSessionFields } from "../telemetry/harness.ts";
@@ -87,18 +88,16 @@ export const mcpCommand: CommandDef = defineCommand({
       log: context.log,
       onClient(client: McpClientInfo, instance: DaemonInstance) {
         // Each client once per process (D140 item 8), and queued at once, since a harness stops
-        // its server within a second, before any end of the command (D164 item 4); once the
-        // session says whether a host spawned the instance, which then sends nothing.
+        // its server within a second, before any end of the command (D164 item 4). Connecting
+        // starts nothing: a host-spawned instance always marks its home (D140 item 4), which
+        // the mark read now tells, as does a session a call already opened.
         reached = instance;
         const fields = mcpSessionFields(client);
         const key = `${fields.client}@${fields.clientVersion ?? ""}`;
         if (counted.has(key)) return;
         counted.add(key);
         context.record({ event: "mcp.session", fields });
-        void instance
-          .ensure()
-          .then(() => context.checkpoint(instance.hostInstance()))
-          .catch(() => {});
+        context.checkpoint(instance.hostInstance() || embeddedHome(readHomeMarks(context.home)));
       },
     };
     const done = { result: undefined, raw: true as const };

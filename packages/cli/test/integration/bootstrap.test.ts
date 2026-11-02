@@ -21,9 +21,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { constants } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { BUNDLE_NAME, type BundleInfo, bundleAssetName } from "@mostra/protocol";
 import { bundlePlatform, describeTree } from "@mostra/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -247,5 +251,86 @@ describe.skipIf(NO_BUNDLE)("the npm bootstrap (RT-01)", () => {
       ? readdirSync(bundles).filter((name) => !name.startsWith("."))
       : [];
     expect(kept).toEqual([]);
+  });
+
+  it("serves mostra mcp at once from its own process while the pinned bundle installs (D164 item 7)", async () => {
+    // A mirror that holds the archive back until the test lets it go, as a slow first download.
+    let release: () => void = () => {};
+    const held = new Promise<void>((done) => {
+      release = done;
+    });
+    const mirror = createServer((req, res) => {
+      const file = join(dir, "release", decodeURIComponent((req.url ?? "/").slice(1)));
+      if (!existsSync(file)) {
+        res.writeHead(404).end();
+        return;
+      }
+      void held.then(() => res.end(readFileSync(file)));
+    });
+    await new Promise<void>((done) => mirror.listen(0, "127.0.0.1", done));
+    const cache = join(dir, "cache-mcp");
+    const log = join(dir, "boot-mcp.log");
+    const client = new Client({ name: "boot-test", version: "1.0.0" });
+    try {
+      const startedAt = Date.now();
+      await client.connect(
+        new StdioClientTransport({
+          command: process.execPath,
+          args: [BIN, "mcp"],
+          env: {
+            PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+            HOME: join(dir, "user"),
+            MOSTRA_TEST_BUNDLE_PINS: pins,
+            MOSTRA_BUNDLE_MIRROR: `http://127.0.0.1:${(mirror.address() as AddressInfo).port}`,
+            MOSTRA_CACHE_DIR: cache,
+            MOSTRA_HOME: join(dir, "mcp-home"),
+            MOSTRA_CONFIG_DIR: join(dir, "mcp-config"),
+            MOSTRA_MCP_WORKSPACE: join(dir, "mcp-artifacts"),
+            MOSTRA_TEST_RUNTIME_WAIT_MS: "1000",
+            DO_NOT_TRACK: "1",
+            BOOT_LOG: log,
+          },
+          stderr: "pipe",
+        }),
+      );
+      const tools = await client.listTools();
+      // The client's startup timeout never waits for the download: the handshake and the tool list
+      // answer while the archive is still held, from this process (the bundle's CLI ran nothing).
+      expect(Date.now() - startedAt).toBeLessThan(10_000);
+      expect(tools.tools.map((tool) => tool.name)).toContain("artifact_verify");
+      expect(existsSync(log)).toBe(false);
+      const text = (result: Awaited<ReturnType<typeof client.callTool>>): string =>
+        (result.content as { text?: string }[])[0]?.text ?? "";
+      // What needs no instance works during the install.
+      const guide = await client.callTool({ name: "docs_search", arguments: { topic: "guide" } });
+      expect(guide.isError).not.toBe(true);
+      expect(text(guide)).toContain("# Mostra");
+      // What needs the instance says the runtime is still installing, and how far it is.
+      const early = await client.callTool({ name: "artifact_list", arguments: {} });
+      expect(early.isError).toBe(true);
+      const installing = JSON.parse(text(early)) as { error: { code: string; message: string } };
+      expect(installing.error.code).toBe("MOSTRA_ENV_RUNTIME_INSTALLING");
+      expect(installing.error.message).toMatch(/installing its runtime/);
+      // Once the archive arrives, the same install (this process's) finishes, and the next call
+      // goes on to the instance. The synthetic bundle's runtime starts no daemon, so that call
+      // fails, but no longer for the install.
+      release();
+      let later = "";
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const answer = await client.callTool({ name: "artifact_list", arguments: {} });
+        later = text(answer);
+        if (!later.includes("MOSTRA_ENV_RUNTIME_INSTALLING")) break;
+      }
+      expect(later).not.toContain("MOSTRA_ENV_RUNTIME_INSTALLING");
+      expect(
+        readdirSync(join(cache, "bundles")).filter((name) => !name.startsWith(".")),
+      ).toHaveLength(1);
+      expect(existsSync(log)).toBe(false);
+    } finally {
+      release();
+      await client.close().catch(() => {});
+      mirror.closeAllConnections();
+      await new Promise((done) => mirror.close(done));
+    }
   });
 });

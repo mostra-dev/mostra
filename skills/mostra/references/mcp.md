@@ -28,6 +28,8 @@ Use Mostra's tools when they're in your tool list (`artifact_create`, `artifact_
 
 A tool that fails returns `isError` with `{ "error": <diagnostic> }`: its `code`, `hint` and `docs` mean what the same code means anywhere in this guide. Fix what the hint says and call again.
 
+The first time the server runs on a computer, it installs Mostra's runtime in the background (a few minutes on a slow connection). A tool called meanwhile answers `MOSTRA_ENV_RUNTIME_INSTALLING` with how far it is: write the page in the meantime (`artifact_write` and `docs_search` already work), then call the tool again.
+
 ## Files and directories
 
 `artifact_create` returns the artifact's `dir` and its `artifactId`; pass either to the other tools. A relative `dir` is inside the server's workspace folder, which its instructions name. Paths in `artifact_write` and `artifact_patch` are relative to the artifact's directory (`index.tsx`, `components/chart.tsx`), and a tool only ever changes files inside it.

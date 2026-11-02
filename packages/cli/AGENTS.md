@@ -103,6 +103,11 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   forwards SIGTERM and SIGHUP, and SIGINT only when no terminal is attached: at a terminal Ctrl-C
   already reaches the bundle's `mostra` (one process group), and a second SIGINT would cut short
   `mostra dev`'s graceful stop. Every failure, a spawn error included, is one `--json` envelope.
+  `mostra mcp` is the exception (`servesBeforeBundle`, D164 item 7): an MCP client gives a server
+  seconds to start, so it runs in the bootstrap's own process on the system's Node.js and installs
+  the bundle in the background (`runtimeInstall` in `src/mcp.ts`); a call that needs the instance
+  waits for it up to 45 s, then answers `MOSTRA_ENV_RUNTIME_INSTALLING`. The daemon it starts still
+  runs on the bundle's Node.js, and everything `mostra mcp` loads must keep to Node.js 22.19 too.
 - **One timer per deadline.** `--timeout` belongs to the command's one timer (`withTimeout` in
   `run.ts`), which names what was underway when it runs out: starting the home's daemon (the
   connection reports it through `onStarting`) or the command itself. `startDaemon` keeps only its

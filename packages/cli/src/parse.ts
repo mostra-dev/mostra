@@ -132,12 +132,11 @@ export function topWords(commands: readonly CommandDef[]): string[] {
   return [...new Set(commands.map((command) => command.path[0] as string))].sort();
 }
 
-/** Parses the command line against the definitions. Throws a usage diagnostic. */
-export function parseCommandLine(commands: readonly CommandDef[], argv: readonly string[]): Parsed {
-  const bare = argv.filter((word) => word !== "--json");
-  if (bare.length === 1 && (bare[0] === "--version" || bare[0] === "-v"))
-    return { kind: "version" };
-  // The command path is the leading words that aren't flags; global flags may stand before it.
+/**
+ * The command path's candidates: the leading words that aren't flags, with the global flags (and
+ * their values) that may stand before them skipped, and where each stands in `argv`.
+ */
+function leadingWords(argv: readonly string[]): { words: string[]; pathAt: number[] } {
   const words: string[] = [];
   const pathAt: number[] = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -152,6 +151,21 @@ export function parseCommandLine(commands: readonly CommandDef[], argv: readonly
     words.push(word);
     pathAt.push(index);
   }
+  return { words, pathAt };
+}
+
+/** The words a command line starts its command with (`["mcp"]`, `["share", "stop", …]`). */
+export function commandWords(argv: readonly string[]): string[] {
+  return leadingWords(argv).words;
+}
+
+/** Parses the command line against the definitions. Throws a usage diagnostic. */
+export function parseCommandLine(commands: readonly CommandDef[], argv: readonly string[]): Parsed {
+  const bare = argv.filter((word) => word !== "--json");
+  if (bare.length === 1 && (bare[0] === "--version" || bare[0] === "-v"))
+    return { kind: "version" };
+  // The command path is the leading words that aren't flags; global flags may stand before it.
+  const { words, pathAt } = leadingWords(argv);
   const helpAsked = argv.includes("--help") || argv.includes("-h");
   if (words.length === 0) {
     if (helpAsked || argv.every((word) => word === "--json")) return { kind: "help" };

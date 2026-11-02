@@ -17,6 +17,7 @@ import { createDiagnostic, type Diagnostic, RpcError } from "@mostra/protocol";
 import { enclosingBundle, type InstallProgress, readPins, resolveRuntime } from "@mostra/sdk";
 import { exitCodeFor } from "./exit.ts";
 import type { Environment } from "./home.ts";
+import { commandWords } from "./parse.ts";
 
 /** How the bootstrap talks to the terminal. */
 export interface BootstrapIo {
@@ -41,8 +42,19 @@ export function needsBootstrap(env: Environment): boolean {
   return readPins(env) !== undefined;
 }
 
+/**
+ * Whether the command serves in this process instead of in the bundle (D164 item 7): `mostra mcp`
+ * answers its client at once and installs the bundle in the background, since a client gives a
+ * server only seconds to start (Codex 10 s) and a first install takes minutes.
+ */
+export function servesBeforeBundle(argv: readonly string[]): boolean {
+  return commandWords(argv)[0] === "mcp";
+}
+
 /** Progress lines for a person waiting on the first download. */
-function progressReporter(io: BootstrapIo): (progress: InstallProgress) => void {
+export function progressReporter(
+  io: Pick<BootstrapIo, "stderr" | "stderrTty">,
+): (progress: InstallProgress) => void {
   let lastPercent = -1;
   let lastStep = "";
   return (progress) => {
@@ -88,7 +100,8 @@ function failed(io: BootstrapIo, diagnostic: Diagnostic): number {
 
 /**
  * When this copy needs the bundle its release pins (`needsBootstrap`), runs the bundle's
- * `mostra` with `io.argv` and resolves with its exit code; otherwise resolves `undefined`, and the
+ * `mostra` with `io.argv` and resolves with its exit code; otherwise, or for `mostra mcp`, which
+ * installs the bundle itself while it serves (`servesBeforeBundle`), resolves `undefined`, and the
  * caller runs the command itself. Any failure, deciding included, is a diagnostic (one envelope
  * with `--json`) and its exit code. Signals this process gets are passed on to the child.
  */
@@ -96,7 +109,7 @@ export async function bootstrap(io: BootstrapIo): Promise<number | undefined> {
   try {
     // Deciding is inside the boundary too: pins that can't be read are a diagnostic, never a
     // stack trace (GPT review finding 3).
-    if (!needsBootstrap(io.env)) return undefined;
+    if (!needsBootstrap(io.env) || servesBeforeBundle(io.argv)) return undefined;
     return await runInBundle(io);
   } catch (error) {
     // Whatever goes wrong, `--json` still gets exactly one envelope (D140 item 16).

@@ -8,7 +8,9 @@
 # With the machine's own Node.js and npm (any version from 22.19; CI uses an older line than the
 # bundle's on purpose), it installs the tarballs into a fresh project, runs create-mostra, then
 # mostra verify and publish, submits an answer through the shell in the installed bundle's own
-# browser, reads it back with mostra wait and results, and checks that every Mostra process ran
+# browser, reads it back with mostra wait and results, starts `mostra mcp` with an empty cache as
+# an MCP client would (it must answer at once and install the bundle itself, D164 item 7), and
+# checks that every Mostra process ran
 # on the bundle's own Node.js (doctor's platform check names it), not the machine's. On Windows it
 # runs in Git's sh.
 set -eu
@@ -104,6 +106,16 @@ say "a submission through the shell, in the bundle's browser"
   die "results failed: $(cat "$work/logs/results.json")"
 [ "$(field result.answers.note < "$work/logs/results.json")" = "answered through npm" ] ||
   die "results don't hold the answer: $(cat "$work/logs/results.json")"
+
+say "mostra mcp from npm with an empty cache: it answers at once and installs the bundle itself"
+mkdir -p "$work/cache-mcp"
+MOSTRA_CACHE_DIR=$(native "$work/cache-mcp") node "$(native "$here/mcp-smoke.mjs")" "$artifact" -- \
+  node "$(native "$work/project/node_modules/@mostra/cli/dist/bin.js")" mcp --embedded \
+  > "$work/logs/mcp.out" 2> "$work/logs/mcp.err" ||
+  die "mostra mcp failed: $(cat "$work/logs/mcp.out"; tail -20 "$work/logs/mcp.err")"
+cat "$work/logs/mcp.out"
+[ -n "$(find "$work/cache-mcp/bundles" -mindepth 2 -maxdepth 2 -name bundle.json)" ] ||
+  die "mostra mcp left no bundle in its cache"
 
 say "mostra doctor: the bundle's Node.js runs Mostra"
 ./node_modules/.bin/mostra doctor --json > "$work/logs/doctor.json" 2> "$work/logs/doctor.err" || true
