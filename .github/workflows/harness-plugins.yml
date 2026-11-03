@@ -79,7 +79,8 @@ jobs:
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4873/-/ping >/dev/null && break; sleep 1; done
           printf '//127.0.0.1:4873/:_authToken=loopback\n' >"$work/registry/npmrc"
           for tarball in "$work"/tarballs/*.tgz; do
-            npm publish "$tarball" --registry http://127.0.0.1:4873/ --userconfig "$work/registry/npmrc" --access public >/dev/null
+            # The packages ask for provenance, which only the release pipeline makes.
+            npm publish "$tarball" --registry http://127.0.0.1:4873/ --userconfig "$work/registry/npmrc" --access public --provenance=false >/dev/null
           done
           curl -sf http://127.0.0.1:4873/@mostra%2fcli | node -e 'let s="";process.stdin.on("data",(c)=>s+=c).on("end",()=>console.log("served @mostra/cli", Object.keys(JSON.parse(s).versions).join(", ")))'
       - name: The harness CLIs
