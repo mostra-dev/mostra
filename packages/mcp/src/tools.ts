@@ -15,6 +15,7 @@ import {
   artifactVerifyMethod,
   CapabilityScope,
   createDiagnostic,
+  type Diagnostic,
   Duration,
   livePushMethod,
   MutationId,
@@ -385,7 +386,7 @@ export function createTools(
       name: "artifact_create",
       title: "Create an artifact",
       description:
-        "Create a new artifact: a directory with an index.tsx page (it holds the artifact's id; keep it), an AGENTS.md and a CLAUDE.md. Returns the directory to pass to the other tools.",
+        "Create a new artifact: a directory with an index.tsx page, an AGENTS.md and a CLAUDE.md. The page's defineArtifact holds the artifact's id: keep that line when you rewrite the page. Returns the directory to pass to the other tools.",
       input: createInput,
       annotations: {
         readOnlyHint: false,
@@ -421,17 +422,16 @@ export function createTools(
       },
       async run(args, { options }) {
         const dir = options.workspace.resolveDir(args.dir);
-        const changed = await options.workspace.apply(dir, {
-          write: args.files.map((file) => ({
-            path: file.path,
-            content:
-              file.encoding === "base64"
-                ? new Uint8Array(Buffer.from(file.content, "base64"))
-                : new TextEncoder().encode(file.content),
-          })),
-          delete: args.deletes ?? [],
-        });
-        return jsonResult({ dir, ...changed });
+        const write = args.files.map((file) => ({
+          path: file.path,
+          content:
+            file.encoding === "base64"
+              ? new Uint8Array(Buffer.from(file.content, "base64"))
+              : new TextEncoder().encode(file.content),
+        }));
+        const warnings = await droppedIds(options, dir, write);
+        const changed = await options.workspace.apply(dir, { write, delete: args.deletes ?? [] });
+        return jsonResult({ dir, ...changed, ...(warnings.length > 0 ? { warnings } : {}) });
       },
     }),
     defineTool({
@@ -470,14 +470,18 @@ export function createTools(
             { rejected: plan.rejected },
           );
         }
-        const changed = await options.workspace.apply(dir, {
-          write: plan.change.write.map((file) => ({
-            path: file.path,
-            content: new TextEncoder().encode(file.content),
-          })),
-          delete: plan.change.delete,
+        const write = plan.change.write.map((file) => ({
+          path: file.path,
+          content: new TextEncoder().encode(file.content),
+        }));
+        const warnings = await droppedIds(options, dir, write);
+        const changed = await options.workspace.apply(dir, { write, delete: plan.change.delete });
+        return jsonResult({
+          dir,
+          patched: changed.written,
+          deleted: changed.deleted,
+          ...(warnings.length > 0 ? { warnings } : {}),
         });
-        return jsonResult({ dir, patched: changed.written, deleted: changed.deleted });
       },
     }),
     defineTool({
@@ -748,6 +752,35 @@ export function createTools(
       },
     }),
   ];
+}
+
+const ENTRIES = new Set(["index.tsx", "index.jsx", "index.mdx"]);
+const MANIFEST_ID = /\bid\s*:\s*["'`]?(art_[0-9A-HJKMNP-TV-Z]{26})\b/;
+
+/**
+ * A warning for each entry a write replaces with text that no longer names the artifact ID its
+ * manifest held: the write goes ahead (the agent's choice), but the next publish would bind the
+ * artifact by its path under a new ID, which the agent can't see from here (D51, D164).
+ */
+async function droppedIds(
+  options: McpServerOptions,
+  dir: string,
+  write: readonly { readonly path: string; readonly content: Uint8Array }[],
+): Promise<Diagnostic[]> {
+  const warnings: Diagnostic[] = [];
+  const decoder = new TextDecoder();
+  for (const file of write) {
+    if (!ENTRIES.has(file.path)) continue;
+    const before = await options.workspace.read(dir, file.path);
+    const id = before === undefined ? undefined : MANIFEST_ID.exec(decoder.decode(before))?.[1];
+    if (id === undefined || decoder.decode(file.content).includes(id)) continue;
+    warnings.push(
+      createDiagnostic("MOSTRA_ARTIFACT_ID_DROPPED", {
+        message: `${file.path} no longer names the artifact's id, ${id}; it was written as given.`,
+      }),
+    );
+  }
+  return warnings;
 }
 
 /** A usage error the model can correct: the arguments don't fit together. */

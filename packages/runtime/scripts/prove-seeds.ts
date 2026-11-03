@@ -135,6 +135,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MC-01",
+    name: "a write that drops the entry's artifact id says nothing",
+    file: "../mcp/src/tools.ts",
+    from: "    if (id === undefined || decoder.decode(file.content).includes(id)) continue;",
+    to: '    if (id !== "seeded") continue;',
+    check: ["test/server.test.ts", "-t", "drops the entry's artifact id"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
     name: "a server a harness plugin starts (--embedded) counts its client in telemetry (D148)",
     file: "../cli/src/commands/mcp.ts",
     from: '  quiet: (flags) => flags["embedded"] === true,',

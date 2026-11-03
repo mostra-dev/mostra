@@ -144,6 +144,64 @@ describe("the MCP server", () => {
     });
   });
 
+  it("says when a write drops the entry's artifact id, and writes it as given (D164)", async () => {
+    const { options, root } = base();
+    const dir = join(root, "page");
+    const id = "art_01M6GSAP4PFBS48CBX8G53N2FR";
+    await options.workspace.apply(dir, {
+      write: [
+        {
+          path: "index.tsx",
+          content: new TextEncoder().encode(
+            `export const artifact = defineArtifact({ id: "${id}", title: "A" });\n`,
+          ),
+        },
+      ],
+      delete: [],
+    });
+    const client = await connect(options);
+    const kept = await client.callTool({
+      name: "artifact_write",
+      arguments: {
+        dir: "page",
+        files: [{ path: "index.tsx", content: `defineArtifact({ id: "${id}", title: "B" })` }],
+      },
+    });
+    expect(JSON.parse(text(kept))).not.toHaveProperty("warnings");
+    const dropped = await client.callTool({
+      name: "artifact_write",
+      arguments: {
+        dir: "page",
+        files: [{ path: "index.tsx", content: 'defineArtifact({ title: "C" })' }],
+      },
+    });
+    expect(dropped.isError).toBeFalsy();
+    const written = JSON.parse(text(dropped)) as {
+      written: string[];
+      warnings: { code: string; message: string }[];
+    };
+    expect(written.written).toEqual(["index.tsx"]);
+    expect(written.warnings).toMatchObject([{ code: "MOSTRA_ARTIFACT_ID_DROPPED" }]);
+    expect(written.warnings[0]?.message).toContain(id);
+    // A patch that removes it says so too; one that keeps it, or another file, says nothing.
+    await client.callTool({
+      name: "artifact_write",
+      arguments: { dir: "page", files: [{ path: "index.tsx", content: `id: "${id}"` }] },
+    });
+    const patched = await client.callTool({
+      name: "artifact_patch",
+      arguments: { dir: "page", path: "index.tsx", edits: [{ old: `id: "${id}"`, new: "x" }] },
+    });
+    expect(JSON.parse(text(patched))).toMatchObject({
+      warnings: [{ code: "MOSTRA_ARTIFACT_ID_DROPPED" }],
+    });
+    const other = await client.callTool({
+      name: "artifact_write",
+      arguments: { dir: "page", files: [{ path: "chart.tsx", content: "export {}" }] },
+    });
+    expect(JSON.parse(text(other))).not.toHaveProperty("warnings");
+  });
+
   it("creates an artifact in a new workspace folder named after its title", async () => {
     const { options, instance, root } = base({
       "artifact/create": (params) => ({

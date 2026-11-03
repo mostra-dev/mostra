@@ -17,6 +17,7 @@ export const artifactDiagnosticCodes = [
   "MOSTRA_ARTIFACT_VERSION_COLLECTED",
   "MOSTRA_ARTIFACT_PATH_INVALID",
   "MOSTRA_ARTIFACT_PATCH_REJECTED",
+  "MOSTRA_ARTIFACT_ID_DROPPED",
   // gen:codes
 ] as const;
 
@@ -155,6 +156,17 @@ export const artifactDiagnostics: AreaCatalog<ArtifactDiagnosticCode> = {
       explanation:
         "An `artifact_patch` changes a file only when every edit applies: each `old` text must appear exactly once in the file as it is now, and each hunk of a unified diff must match its lines. When one doesn't, nothing is written, and the message lists each edit or hunk that didn't apply and why (not found, found more than once, the file is missing).",
       fix: "Use a longer `old` text that appears only once, fix the hunk's context lines, or write the whole file with `artifact_write`.",
+    },
+  },
+  MOSTRA_ARTIFACT_ID_DROPPED: {
+    severity: "warning",
+    phase: "host",
+    title: "Manifest id removed",
+    hint: 'Put the `id: "art_…"` line back into the entry\'s `defineArtifact` (or its frontmatter), or the next publish gives the artifact a new ID.',
+    docs: {
+      explanation:
+        "A write replaced the artifact's entry (`index.tsx`, `index.jsx` or `index.mdx`) with text that no longer names the artifact ID its manifest held. Mostra wrote it as asked. An artifact without an `id` is bound to its source path at its first publish, so a page that was never published gets a new ID there, and one that was published keeps its ID only while its path stays the same: links, waits and results named by the old ID then don't find it.",
+      fix: 'Add the `id` back, exactly as it was (`id: "art_01…"` in `defineArtifact`, or `id:` in the MDX frontmatter), with `artifact_patch` or `artifact_write`.',
     },
   },
   // gen:entries

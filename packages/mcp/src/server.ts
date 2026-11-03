@@ -41,7 +41,7 @@ export function serverInstructions(workspaceRoot: string): string {
     "",
     "The loop; each step is done when its check holds:",
     "1. artifact_create. Keep the directory it returns.",
-    '2. Write index.tsx with artifact_write: ordinary React 19, TypeScript and Tailwind CSS 4, no package.json. Every answer is a field with a stable ID: useField("budget", 0, { label: "Budget" }). Read the guide first: docs_search with topic "guide".',
+    '2. Write index.tsx with artifact_write, keeping the id line of its defineArtifact: ordinary React 19, TypeScript and Tailwind CSS 4, no package.json. Every answer is a field with a stable ID: useField("budget", 0, { label: "Budget" }). Read the guide first: docs_search with topic "guide".',
     "3. artifact_verify until its status is pass, then look at the screenshots (screenshots: always).",
     "4. artifact_publish.",
     "5. artifact_open for the link. Give it to the person with what it's for and who is asking.",
