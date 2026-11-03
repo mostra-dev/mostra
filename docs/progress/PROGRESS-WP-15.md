@@ -1,6 +1,6 @@
 # WP-15 progress: the local MCP server
 
-**Status:** In progress. Owns MC-01 ([specification](../design/work-packages/WP-15.md)).
+**Status:** Candidate, awaiting review and Mirza's acceptance. Owns MC-01 ([specification](../design/work-packages/WP-15.md)).
 
 ## Baseline
 
@@ -9,17 +9,48 @@
 | Branch | `wp/15-mcp`, created from `origin/main` |
 | Starting `HEAD` | `7663aec` (`origin/main`, 2026-11-01: "docs(design): WP-28 keeps identity providers behind a port (#117)") |
 | `git status` | clean |
-| `pnpm check` | running on `7663aec` (macOS 26.2 arm64, Node 24.22.1, `TMPDIR` on the external `Active` disk); result to follow |
+| `pnpm check` | green on `7663aec` in a detached worktree on the external `Active` disk (macOS 26.2 arm64, Node 24.22.1): format-lint, types, unit, integration, hygiene, e2e, build, boundaries, api, licenses, rust, conformance, docs and commits, in 505 s. A first run in the main checkout printed only its header and `exit 1` (no job ran to a report); the rerun is the baseline |
 | Predecessors | WP-14 done ([PROGRESS-WP-14](PROGRESS-WP-14.md) on `origin/main`), released as Mostra 0.8.0; no `RECOVERY-WP-15-*.md` |
 | Milestone `WP-15` | empty; #39, #46, #55, #85, #95 and #106 stay on no milestone (D155 item 7) |
-| Local toolchain | Node 24.22.1 (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64; Claude Code 2.1.316, codex-cli 0.162.1, Claude Desktop installed |
+| Local toolchain | Node 24.22.1 (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64; Claude Code 2.1.316, codex-cli 0.162.1, Gemini CLI 0.66.0, Copilot CLI 1.0.105, Claude Desktop installed |
 
 ## Decisions
 
-(to follow)
+- **M53** (2026-11-01): Mirza delegated WP-15's eight questions (the package, the tool set, the HTTP transport's security, D148's marker, external evidence, the Windows launch, the prose, first-launch latency) with `<ITU/>`.
+- **M54** (2026-11-02): Mirza approved the fix for a first `npx` launch that outlives a client's start-up limit ("I trust your judgement and solution proposal").
+- **D164**: the package `@mostra/mcp` with transport-independent tools, resources and instructions over ports, which `mostra mcp` in `@mostra/cli` serves over stdio and Streamable HTTP and WP-30's remote server reuses (item 1); thirteen tools, INTERFACES §12's eleven plus `state_get` and `state_patch`, raw results, failures as `isError` results with the diagnostic, input schemas as a wire-schema bundle (item 2); `mostra mcp --http` on loopback behind a bearer token, with `@mostra/protocol`'s `checkRequest` (a new `rpc` intent) and the gateway's guessing limit (item 3); `--embedded` as D148's marker and `mcp.session` per known client otherwise (item 4); the home's daemon reached as the CLI does, released after five idle minutes (item 5); prose accepted in one batch (item 6); an npm-installed `mostra mcp` serves at once and installs its runtime in the background, answering `MOSTRA_ENV_RUNTIME_INSTALLING` meanwhile (item 7).
+- **Found while building** (within D164): a write that drops the entry's `id` (which the external Codex session did) still writes, and warns `MOSTRA_ARTIFACT_ID_DROPPED`, since the next publish would bind the artifact by its path under a new ID.
 
 ## Evidence
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
-| MC-01 | unverified | (in progress) | | |
+| MC-01 | verified | `mostra mcp` serves thirteen tools with short `artifact_`, `live_`, `state_` and `docs_` names (create, write, patch, verify, publish, open, wait, results, list, live push, state get and patch, docs search) and two resources (`mostra://docs/{+topic}`, `mostra://artifacts/{id}/report`), stateless with explicit handles (an artifact ID or directory on every call). A scripted session through the built binary over stdio goes create → write → patch (and a rejected patch) → verify (two PNGs) → publish (through the real verify gate) → open → wait → a viewer's submission in the real shell → results (Markdown and JSON) → list → report → guide; the same tools over Streamable HTTP to both protocol eras (`2026-07-28` and `2025-06-18`) behind the token; `artifact_wait` capped at 50 s; paths confined to the artifact, links never followed out of it; patches all or nothing; `--embedded` sends nothing whatever the consent, and a known client is counted once otherwise; a daemon restart under the server is recovered; an npm-installed server answers `initialize` at once while its bundle installs. MCP conformance: `@modelcontextprotocol/conformance` 0.1.16 (2025 revisions) and 0.2.0-alpha.12 (`2026-07-28`) with baselines whose every entry has a reason. External: the harness plugin's server started from Claude Code, Gemini CLI and Codex on Linux, macOS and Windows x64 and arm64 with nothing sent; GPT (gpt-6-luna) in `codex exec`, given only the MCP tools, took a page from create to the person's answer twice | `vitest run` (packages/mcp, 25 tests); `vitest run --project integration test/integration/mcp.test.ts mcp-conformance.test.ts bootstrap.test.ts contract.test.ts` (packages/cli); `prove-seeds.ts --only MC-01`; `tools/plugins/try-servers.sh` through `.github/workflows/harness-plugins.yml` (run 41637680175); `codex-session/run.sh` (scratch; below) | packages/mcp 25/25; CLI mcp 8/8, conformance 2/2, bootstrap 5/5, contract 16/16; seven MC-01 seeds each red planted, green restored (wait cap at 600 s, `..` in a path, a partial patch, `--embedded` counted, the npm server waiting for its bundle, a dropped id unreported, and HY-01's below); conformance 0.1.16 6 passed (initialize, ping, tools-list, resources-list, dns-rebinding ×2) with 25 baselined fixtures and features Mostra doesn't offer, alpha 93 passed with 37 baselined; harnesses ✓ on all four runners, Copilot lists only (needs sign-in), D148 ✓ (no event, no install ID, no queue), red on a plugin without `--embedded`; Codex (external, 2026-11-03): run 3 in 3.5 min, 427,272 input tokens (401,792 cached), 3,115 output, which rewrote the page without its `id`, so publish bound a second ID (found here, fixed by `MOSTRA_ARTIFACT_ID_DROPPED`); run 4 in 1.5 min, 546,528 input (500,864 cached), 2,465 output, the artifact's ID held from create to publish, a rejected patch read and retried; both answered "You wrote: Ship it on Friday" |
+
+**Checks that extend earlier packages' rows** (each stays with its owner):
+- **HY-01 item 13** (WP-05, D96): the MCP endpoint runs `@mostra/protocol`'s `checkRequest`, the gateway's own code, with a new `rpc` intent (Origin absent or the server's own, a JSON body), then a constant-time bearer-token check under the gateway's guessing limit (30 wrong tokens a minute refuse every token, the right one too). Negative tests in process (`packages/mcp/test/http.test.ts`: another, repeated or no Host; another origin and `null`; a form body; a missing, wrong or repeated token; the guessing limit; GET, OPTIONS and other paths; targets that aren't plain paths) and on the real `mostra mcp --http` listener (`mcp.test.ts`: 421, 403, 415, 401, 405, 404), plus the conformance suites' DNS-rebinding and HTTP-header scenarios. Every answer carries `Cross-Origin-Resource-Policy: same-origin`, `nosniff`, `no-referrer` and no `Access-Control-*`; loopback by default, a wildcard bind needs `--url-host` (`MOSTRA_ENV_BIND_FAILED`). Five seeds, each red planted and green restored: the checks skipped in process and on the real listener, a foreign Origin accepted, any token accepted, no guessing limit (`prove-seeds.ts --only HY-01 --name MCP`).
+- **AX-10** (WP-14): the plugin's local server is on (`features.localMcp`, `verifiedOn` darwin, linux, win32), launched as `npx -y @mostra/cli@<release> mcp --embedded`, which the plugin check requires (a seed for each wrong launch), and the README discloses it.
+- **AX-06** (WP-14): the Skill gains `references/mcp.md` and its route in `SKILL.md`; the Skill's checks cover the `mcp` command.
+- **IN-10** (WP-06): `artifact_wait` returns `still_waiting` with its cursor at 50 s and loses nothing (`server.test.ts`).
+- **RT-01** (WP-11): the npm path's smoke test (`packages/bundle/scripts/npm-smoke.sh`) starts `mostra mcp` from an empty cache on the machine's Node.js and waits for its bundle (`mcp-smoke.mjs`), in the release rehearsal.
+
+## Reviews (D80)
+
+(to follow)
+
+## Agent-facing prose (D149)
+
+Waiting for Mirza's acceptance in one batch: the server's `instructions` (`packages/mcp/src/server.ts`); the thirteen tools' titles, descriptions and argument descriptions (`packages/mcp/src/tools.ts`) and the resources' (`server.ts`); `mostra mcp`'s help (`packages/cli/src/commands/mcp.ts`, in `docs/reference/cli.md`); the Skill's `references/mcp.md` and its lines in `SKILL.md`; the hints and docs of `MOSTRA_ARTIFACT_PATH_INVALID`, `MOSTRA_ARTIFACT_PATCH_REJECTED`, `MOSTRA_ARTIFACT_ID_DROPPED` and `MOSTRA_ENV_RUNTIME_INSTALLING`; the plugin README's server line (`tools/plugins/readme.ts`); `docs/reference/telemetry.md`'s `--embedded` and `mcp.session` lines (his text of M28); `packages/mcp/AGENTS.md` and `README.md`, and the `mcp` bullets of `packages/cli/AGENTS.md`; `docs/agents/check-harness-plugins.md` step 3.
+
+## Untested boundaries
+
+- **Copilot CLI** lists the plugin's server but starts it only in a signed-in session with a model prompt; not started here.
+- **Claude Desktop, VS Code, Cursor and Goose** were not run: Claude Desktop needs a person's Anthropic sign-in (offered to Mirza), Cursor's agent CLI an account. **Muse Code** still reports a plugin's root `mcp.json` inactive (VERIFIED_FACTS, WP-15).
+- **GPT-6.1-Sol** isn't offered to this ChatGPT account in Codex (`gpt-6.1-sol … not supported when using Codex with a ChatGPT account`); the sessions ran on gpt-6-luna, the account's default.
+- **The harness runs served `@mostra/cli` from a loopback registry** (verdaccio) at this branch's build, with a bundle from the release's pins; the real registry and a release's own bundle meet it first at the next release, whose rehearsal runs the npm path's `mcp` step.
+- **A slow first launch** is covered by D164 item 7 (an answer within a second; tools that need the instance answer `MOSTRA_ENV_RUNTIME_INSTALLING` for the 1 to 2 minutes the bundle takes); a client that gives up on a tool call faster than 45 s sees its own timeout instead.
+
+## Deviations
+
+- **Two tools beyond INTERFACES §12's table** (`state_get`, `state_patch`), additive (D164 item 2).
+- **A fix in another package's crate**: `mostra-host`'s list of path variables follows the CLI's, which gained `MOSTRA_MCP_WORKSPACE`.
