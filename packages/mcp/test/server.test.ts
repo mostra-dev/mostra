@@ -306,4 +306,47 @@ describe("the MCP server", () => {
       viewer: { ref: "ada@example.com", name: "Ada" },
     });
   });
+
+  it("reports a none page's shared state, since it takes no submissions (#115)", async () => {
+    const id = "art_01M6H4VZWXKQ9R8SX367CB4F8F";
+    const detail = (policy: unknown) => ({
+      id,
+      title: "Tasks",
+      links: [],
+      mode: "spa",
+      policy,
+      createdAt: "2026-11-03T00:00:00.000Z",
+      versions: [],
+    });
+    const none = (message: string) => {
+      throw new RpcError(createDiagnostic("MOSTRA_SUBMIT_NOT_FOUND", { message }));
+    };
+    const { options } = base({
+      "artifact/get": () => detail({ policy: "none" }),
+      "state/get": () => ({ revision: "3", fields: { "tasks.done": ["```js\nx\n```"] } }),
+      "results/get": () => none("no submission"),
+    });
+    const read = async (opts: McpServerOptions): Promise<string> => {
+      const { contents } = await (await connect(opts)).readResource({
+        uri: `mostra://artifacts/${id}/report`,
+      });
+      return (contents[0] as { text: string }).text;
+    };
+    const report = await read(options);
+    expect(report).toContain("## Shared state");
+    expect(report).toContain("at revision 3");
+    expect(report).toContain('"tasks.done"');
+    expect(report).toContain("(none: it takes no submissions)");
+    // A fence the values can't close (D101).
+    expect(report).toMatch(/````json/);
+
+    const once = base({
+      "artifact/get": () => detail({ policy: "once", scope: "per-artifact" }),
+      "results/get": () => none("no submission"),
+    });
+    const plain = await read(once.options);
+    expect(plain).not.toContain("## Shared state");
+    expect(plain).toContain("(none yet)");
+    expect(once.instance.calls.map((call) => call.method)).not.toContain("state/get");
+  });
 });

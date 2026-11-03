@@ -40,7 +40,7 @@ When you also have your own file tools on the same computer, use whichever you l
 
 ## Waiting and results
 
-`artifact_wait` waits at most 50 seconds per call. When it returns `still_waiting`, nothing is lost: call it again with `after` set to the `cursor` it returned, or do other work and check later. Under `once`, a wait for `submitted` returns at once when the person already submitted. `artifact_results` returns the latest submission; `MOSTRA_SUBMIT_NOT_FOUND` means nobody has submitted yet.
+`artifact_wait` waits at most 50 seconds per call. When it returns `still_waiting`, nothing is lost: call it again with `after` set to the `cursor` it returned, or do other work and check later. Under `once`, a wait for `submitted` returns at once when the person already submitted. `artifact_results` returns the latest submission; `MOSTRA_SUBMIT_NOT_FOUND` means nobody has submitted yet. A page with the `none` policy never has one: read its shared state with `state_get`, and wait for its signals with `until: "signal:<name>"`, whose event carries the payload the page sent (`event.payload.payload`).
 
 ## Links for people
 

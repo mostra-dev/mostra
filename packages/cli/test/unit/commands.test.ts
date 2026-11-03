@@ -364,3 +364,24 @@ describe("a status a newer instance adds (Opus review of MT-01, 2; #45)", () => 
     expect(firstFailing([check("ok"), check("critical")])?.name).toBe("critical");
   });
 });
+
+describe("wait's line for a signal (#115)", () => {
+  it("names the signal and prints the payload the page sent", async () => {
+    const { satisfiedLine } = await import("../../src/commands/interaction.ts");
+    expect(
+      satisfiedLine(
+        {
+          type: "signal.raised",
+          payload: { name: "approved", source: "action", payload: { ok: true } },
+        },
+        "6",
+      ),
+    ).toBe('signal.raised approved at cursor 6\npayload: {"ok":true}\n');
+    expect(
+      satisfiedLine({ type: "signal.raised", payload: { name: "ping", source: "artifact" } }, "7"),
+    ).toBe("signal.raised ping at cursor 7\n");
+    expect(satisfiedLine({ type: "submission.created", payload: {} }, "8")).toBe(
+      "submission.created at cursor 8\n",
+    );
+  });
+});

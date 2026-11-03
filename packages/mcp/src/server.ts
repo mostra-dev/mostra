@@ -20,6 +20,7 @@ import {
   artifactListMethod,
   RpcError,
   resultsGetMethod,
+  stateGetMethod,
 } from "@mostra/protocol";
 import type { McpClientInfo, McpServerOptions } from "./ports.ts";
 import { diagnosticOf, errorResult } from "./results.ts";
@@ -87,15 +88,36 @@ async function artifactReport(options: McpServerOptions, artifact: ArtifactRef):
           .slice(0, 20)
           .map((version) => `- ${version.number}: ${version.id}, ${version.publishedAt}`)),
     "",
-    "## Latest submission",
-    "",
   ];
+  // A page whose policy is `none` takes no submissions: its viewers' work is its shared state
+  // (D63, #115), which the report shows first. A submission made under an earlier policy still
+  // shows below.
+  const none = detail.policy?.policy === "none";
+  if (none) {
+    const state = await options.instance.call(stateGetMethod, { artifact });
+    const json = JSON.stringify(state.fields, null, 2);
+    // A fence longer than any run of backticks in the values, as results' Markdown does (D101).
+    const fence = "`".repeat(Math.max(3, ...[...json.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+    lines.push(
+      "## Shared state",
+      "",
+      `This artifact takes no submissions (its policy is none). Its shared state, at revision ${state.revision}:`,
+      "",
+      `${fence}json`,
+      json,
+      fence,
+      "",
+      "Wait for its signals with artifact_wait (until: signal:<name>); each event carries the payload the page sent.",
+      "",
+    );
+  }
+  lines.push("## Latest submission", "");
   try {
     const results = await options.instance.call(resultsGetMethod, { artifact, format: "md" });
     lines.push("markdown" in results ? results.markdown : JSON.stringify(results));
   } catch (error) {
     if (error instanceof RpcError && error.diagnostic.code === "MOSTRA_SUBMIT_NOT_FOUND") {
-      lines.push("(none yet)");
+      lines.push(none ? "(none: it takes no submissions)" : "(none yet)");
     } else throw error;
   }
   return lines.join("\n");

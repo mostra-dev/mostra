@@ -6,6 +6,7 @@
 import type { ArtifactLink, ArtifactManifest, DeliveryStatus, Results } from "@mostra/protocol";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { LedgerDb } from "../ledger/index.ts";
+import { storedPolicy } from "./policy.ts";
 import {
   deliveriesOf,
   overallDelivery,
@@ -89,6 +90,19 @@ export function submissionFor(
           artifactId,
         );
   if (!row) {
+    if (submissionId === undefined) {
+      // A page whose policy in force is `none` never gets one (D63): say where its answers are,
+      // since waiting for a submission is refused too (#115).
+      const artifact = db.get<{ policy_json: string | null }>(
+        "SELECT policy_json FROM artifact WHERE id = ?",
+        artifactId,
+      );
+      if (artifact && storedPolicy(artifact.policy_json).policy === "none") {
+        throw notFound(
+          `The artifact ${artifactId} takes no submissions (its submission policy is none): what its viewers do is in its shared state and its signals, so read its state, or wait for one of its signals (signal:<name>), whose event carries the payload the page sent.`,
+        );
+      }
+    }
     throw notFound(
       submissionId === undefined
         ? `The artifact ${artifactId} has no submission yet.`

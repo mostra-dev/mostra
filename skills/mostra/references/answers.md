@@ -124,7 +124,7 @@ function AskForHelp() {
 }
 ```
 
-Names are letters, digits, `.`, `_` and `-` (`submit` is taken). Payloads are JSON up to 64 KiB. Wait for one with `mostra wait <dir> --until signal:needs-help`. A signal wakes nobody by itself: something has to wait for it.
+Names are letters, digits, `.`, `_` and `-` (`submit` is taken). Payloads are JSON up to 64 KiB. Wait for one with `mostra wait <dir> --until signal:needs-help`, which prints the payload the page sent (with `--json`, it is `result.event.payload.payload`). A signal wakes nobody by itself: something has to wait for it.
 
 ## Choosing between candidates
 

@@ -22,6 +22,24 @@ import { arg, artifactRef, flag, jsonInput, parseJson, pretty } from "./shared.t
 /** The longest one `wait` request may ask for (INTERFACES §6: 2^31 − 1 ms). */
 const MAX_WAIT_MS = 2 ** 31 - 1;
 
+/**
+ * What `wait` prints when its condition held: the event and cursor, and for a signal its name and
+ * the payload the page or action sent (#115), which is otherwise only in `--json`.
+ */
+export function satisfiedLine(
+  event: { readonly type: string; readonly payload?: Readonly<Record<string, unknown>> },
+  cursor: string,
+): string {
+  const line = `${event.type} at cursor ${cursor}`;
+  if (event.type !== "signal.raised") return `${line}\n`;
+  const name = typeof event.payload?.["name"] === "string" ? ` ${event.payload["name"]}` : "";
+  const payload =
+    event.payload !== undefined && Object.hasOwn(event.payload, "payload")
+      ? `\npayload: ${JSON.stringify(event.payload["payload"])}`
+      : "";
+  return `${event.type}${name} at cursor ${cursor}${payload}\n`;
+}
+
 /** `mostra wait <artifact>`. */
 export const waitCommand: CommandDef = defineCommand({
   path: ["wait"],
@@ -67,7 +85,7 @@ export const waitCommand: CommandDef = defineCommand({
         ...(after !== undefined ? { after } : {}),
       });
       if (result.status === "satisfied") {
-        return { result, human: `${result.event.type} at cursor ${result.cursor}\n` };
+        return { result, human: satisfiedLine(result.event, result.cursor) };
       }
       // Waiting again is for still_waiting alone: an answer a newer instance gives that this CLI
       // doesn't know ends the wait as a failure, so it is neither looped on nor taken for a
