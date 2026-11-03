@@ -73,8 +73,12 @@ describe("the harness plugins (AX-10)", () => {
     expect(readFileSync(join(dir, "skills/mostra/SKILL.md"))).toEqual(
       readFileSync(join(REPO, "skills/mostra/SKILL.md")),
     );
-    // Features off: no MCP server anywhere, and the README says this release sends nothing.
-    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toBeUndefined();
+    // The local server is on (WP-15): every manifest starts it, pinned and marked as a plugin's
+    // (D148); the remote one is off until WP-30, and the README says this release sends nothing.
+    const launch = { command: "npx", args: ["-y", "@mostra/cli@1.2.3", "mcp", "--embedded"] };
+    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toEqual({ mostra: launch });
+    expect(readJson(dir, ".mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
+    expect(readJson(dir, "mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
     expect(readFileSync(join(dir, "README.md"), "utf8")).toContain("sends no usage data");
   });
 

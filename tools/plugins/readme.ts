@@ -60,7 +60,7 @@ export function readme(definition: PluginDefinition, input: ReadmeInput, servers
   ];
   if (servers.local) {
     lines.push(
-      `- **The MCP server this plugin starts** (\`${cli} ${definition.features.localMcp.args.join(" ")}\`) runs on your computer, speaks only to your agent over stdio, and sends no usage data: \`--embedded\` marks it as started on your behalf. Artifacts its tools create go in \`~/mostra-artifacts\` unless your agent names another directory.`,
+      `- **The MCP server this plugin starts** (\`${cli} ${definition.features.localMcp.args.join(" ")}\`) runs on your computer, speaks only to your agent over stdio, and sends no usage data: \`--embedded\` marks it as started on your behalf. Artifacts its tools create go in \`~/mostra-artifacts\` unless your agent names another directory, and it opens a page in your browser only when your agent asks it to.`,
     );
   }
   if (servers.remote !== undefined) {
