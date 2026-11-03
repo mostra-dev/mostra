@@ -412,7 +412,7 @@ export function createTools(
       name: "artifact_write",
       title: "Write artifact files",
       description:
-        "Write files of an artifact, each replaced whole, and delete files. Paths are relative to the artifact's directory. Use it to write a page in full; for a small change to a file, artifact_patch sends less.",
+        "Write files of an artifact, each replaced whole, and delete files, all or nothing. Paths are relative to the artifact's directory. Use it to write a page in full; for a small change to a file, artifact_patch sends less.",
       input: writeInput,
       annotations: {
         readOnlyHint: false,

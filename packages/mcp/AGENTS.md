@@ -23,8 +23,8 @@ Audience: MCP clients, through `mostra mcp` and WP-30's remote server. Runs in: 
   isn't additive. Tool names are short and stable, under 64 characters.
 - **A tool changes only the files of the artifact it names.** `localWorkspace` checks every path
   before writing anything, walks folders one at a time so nothing is created through a link out of
-  the artifact, and replaces each file whole (written aside, then renamed). A patch applies whole
-  or not at all.
+  the artifact, and applies a change all or nothing: every file is written aside first, then each
+  one it replaces or deletes is moved aside and put back if anything later fails (`commit`).
 - **HTTP is guarded by the gateway's own checks** (HY-01 item 13, D96): `createHttpEndpoint`
   runs `checkRequest` with the `rpc` intent (exact `Host`, a sane target and headers, no foreign
   `Origin`, a JSON body), then the bearer token in constant time under a guessing limit, before
@@ -50,6 +50,7 @@ over stdio and HTTP against a real daemon. After changing a tool's input, `pnpm 
 - The SDK builds a server per HTTP request, so `onClient` fires once per request there and once
   per connection on stdio; whoever counts sessions dedupes.
 - Relative directories resolve inside the workspace root (`~/mostra-artifacts` by default), never
-  the server's working directory, which differs by client (a desktop app has no project folder).
+  the server's working directory, which differs by client (a desktop app has no project folder);
+  one that climbs out of it is refused, and an absolute path names any directory.
 - `artifact_wait` is capped at 50 s (`WAIT_MAX_SECONDS`) because clients time tool calls out
   (ChatGPT's reported limit is 60 s); the model calls again with the cursor it got.

@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { McpWorkspace, WorkspaceFile } from "./ports.ts";
 
@@ -45,10 +45,15 @@ export function artifactPath(path: string): string {
   return segments.join("/");
 }
 
+/** Whether `target` is `dir` itself or inside it (both absolute paths). */
+function within(target: string, dir: string): boolean {
+  const rel = relative(dir, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
 /** Whether `target` is strictly inside `dir` (both real, absolute paths). */
 function inside(target: string, dir: string): boolean {
-  const rel = relative(dir, target);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  return relative(dir, target) !== "" && within(target, dir);
 }
 
 const errno = (error: unknown): string | undefined => {
@@ -97,6 +102,57 @@ export function slug(title: string | undefined): string {
     .slice(0, 48)
     .replace(/-+$/, "");
   return words === "" ? "artifact" : words;
+}
+
+/** A scratch name beside `to` for a file being written or moved aside. */
+const scratch = (to: string): string => `${to}.mostra-${randomBytes(6).toString("hex")}.tmp`;
+
+/**
+ * Applies a checked change all or nothing: every new file is written aside first, then each file
+ * it replaces or deletes is moved aside and the new one moved into place. A failure on the way (a
+ * full disk, a file another program holds) undoes everything done so far, in reverse, so the
+ * artifact is as it was; the moved-aside files are removed only once all of it held.
+ */
+async function commit(
+  writes: readonly { readonly file: WorkspaceFile; readonly to: string }[],
+  deletes: readonly { readonly path: string; readonly to: string }[],
+): Promise<{ written: string[]; deleted: string[] }> {
+  const staged: { readonly to: string; readonly aside: string }[] = [];
+  const undo: (() => Promise<void>)[] = [];
+  const kept: string[] = [];
+  try {
+    for (const { file, to } of writes) {
+      const aside = scratch(to);
+      staged.push({ to, aside });
+      await writeFile(aside, file.content, { flag: "wx" });
+    }
+    for (const { to, aside } of staged) {
+      if ((await lstatOrUndefined(to)) !== undefined) {
+        const old = scratch(to);
+        await renameWithRetry(to, old);
+        kept.push(old);
+        undo.push(() => renameWithRetry(old, to));
+      } else {
+        undo.push(() => rm(to, { force: true }));
+      }
+      await renameWithRetry(aside, to);
+    }
+    const deleted: string[] = [];
+    for (const { path, to } of deletes) {
+      if ((await lstatOrUndefined(to)) === undefined) continue;
+      const old = scratch(to);
+      await renameWithRetry(to, old);
+      kept.push(old);
+      undo.push(() => renameWithRetry(old, to));
+      deleted.push(artifactPath(path));
+    }
+    for (const old of kept) await rm(old, { force: true }).catch(() => {});
+    return { written: writes.map(({ file }) => artifactPath(file.path)), deleted };
+  } catch (error) {
+    for (const step of undo.reverse()) await step().catch(() => {});
+    for (const { aside } of staged) await rm(aside, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /** The workspace on this computer, rooted at `root` (absolute). */
@@ -159,7 +215,16 @@ export function localWorkspace(root: string): McpWorkspace {
     root: base,
     resolveDir(dir) {
       if (dir === "" || CONTROL.test(dir)) throw invalid("Give the artifact's directory.");
-      return isAbsolute(dir) ? resolve(dir) : resolve(base, dir);
+      if (isAbsolute(dir)) return resolve(dir);
+      // A relative directory is a folder inside the workspace: one that climbs out of it, or is
+      // the workspace itself, is refused; an absolute path names any other (D164).
+      const resolved = resolve(base, dir);
+      if (!inside(resolved, base)) {
+        throw invalid(
+          `"${dir.slice(0, 200)}" isn't a folder inside the workspace (${base}): give a folder name there, or an absolute path.`,
+        );
+      }
+      return resolved;
     },
     async allocateDir(title) {
       await mkdir(base, { recursive: true });
@@ -197,28 +262,7 @@ export function localWorkspace(root: string): McpWorkspace {
       const deletes: { path: string; to: string }[] = [];
       for (const path of changes.delete)
         deletes.push({ path, to: await target(real, path, false) });
-      const written: string[] = [];
-      for (const { file, to } of writes) {
-        const aside = `${to}.mostra-${randomBytes(6).toString("hex")}.tmp`;
-        try {
-          await writeFile(aside, file.content, { flag: "wx" });
-          await renameWithRetry(aside, to);
-        } catch (error) {
-          await rm(aside, { force: true });
-          throw error;
-        }
-        written.push(artifactPath(file.path));
-      }
-      const deleted: string[] = [];
-      for (const { path, to } of deletes) {
-        try {
-          await rm(to);
-          deleted.push(artifactPath(path));
-        } catch (error) {
-          if (errno(error) !== "ENOENT") throw error;
-        }
-      }
-      return { written, deleted };
+      return await commit(writes, deletes);
     },
   };
 }

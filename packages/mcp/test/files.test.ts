@@ -141,6 +141,19 @@ describe("the local workspace", () => {
     expect(artifactPath("components\\chart.tsx")).toBe("components/chart.tsx");
   });
 
+  it("keeps a relative directory inside the workspace, and takes any absolute one", () => {
+    const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
+    const workspace = localWorkspace(root);
+    expect(workspace.resolveDir("my-page")).toBe(join(root, "my-page"));
+    expect(workspace.resolveDir("a/../b")).toBe(join(root, "b"));
+    expect(workspace.resolveDir("..foo")).toBe(join(root, "..foo"));
+    for (const bad of ["..", "../outside", "a/../../outside", ".", "a/.."]) {
+      expect(() => workspace.resolveDir(bad), bad).toThrow(/isn't a folder inside the workspace/);
+    }
+    const elsewhere = resolve(tmpdir(), "elsewhere");
+    expect(workspace.resolveDir(elsewhere)).toBe(elsewhere);
+  });
+
   it("writes and deletes files, creating folders, and never through a link out of the artifact", async () => {
     const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
     const outside = mkdtempSync(join(tmpdir(), "mostra-outside-"));
