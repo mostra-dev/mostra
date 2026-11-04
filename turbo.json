@@ -43,6 +43,7 @@
       "env": ["MOSTRA_BASE"]
     },
     "schemas": {
+      "dependsOn": ["^build"],
       "outputs": [],
       "env": ["MOSTRA_BASE"]
     },
