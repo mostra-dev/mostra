@@ -114,11 +114,18 @@ export function slug(title: string | undefined): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
-    .replace(/-+$/, "");
-  return words === "" ? "artifact" : words;
+    .replace(/[^a-z0-9]+/g, "-");
+  const slugged = trimDashes(trimDashes(words).slice(0, 48));
+  return slugged === "" ? "artifact" : slugged;
+}
+
+/** `text` without the dashes at its ends, in one pass (a regex would backtrack on a long run). */
+function trimDashes(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === "-") start += 1;
+  while (end > start && text[end - 1] === "-") end -= 1;
+  return text.slice(start, end);
 }
 
 /** A scratch name beside `to` for a file being written or moved aside. */

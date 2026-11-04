@@ -330,6 +330,9 @@ describe("the local workspace", () => {
     const workspace = localWorkspace(root);
     expect(slug("Café: the Q3 plan!")).toBe("cafe-the-q3-plan");
     expect(slug(undefined)).toBe("artifact");
+    expect(slug("--- !!! ---")).toBe("artifact");
+    expect(slug(`${"a".repeat(47)}-b`)).toBe("a".repeat(47));
+    expect(slug(`x${"-".repeat(1000)}x!`)).toBe("x-x");
     mkdirSync(join(root, "plan"));
     expect(await workspace.allocateDir("Plan")).toBe(join(root, "plan-2"));
     expect(workspace.resolveDir(resolve("/abs/dir"))).toBe(resolve("/abs/dir"));

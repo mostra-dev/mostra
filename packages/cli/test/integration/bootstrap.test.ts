@@ -259,9 +259,14 @@ describe.skipIf(NO_BUNDLE)("the npm bootstrap (RT-01)", () => {
     const held = new Promise<void>((done) => {
       release = done;
     });
+    // It serves only the files the release directory holds, looked up by name, never a path the
+    // request builds.
+    const served = new Map(
+      readdirSync(join(dir, "release")).map((name) => [name, join(dir, "release", name)]),
+    );
     const mirror = createServer((req, res) => {
-      const file = join(dir, "release", decodeURIComponent((req.url ?? "/").slice(1)));
-      if (!existsSync(file)) {
+      const file = served.get(decodeURIComponent((req.url ?? "/").slice(1)));
+      if (file === undefined) {
         res.writeHead(404).end();
         return;
       }
