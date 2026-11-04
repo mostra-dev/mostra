@@ -1,6 +1,6 @@
 # WP-15 progress: the local MCP server
 
-**Status:** Accepted by Mirza on 2026-11-04 (M55: "absolutely incredible work. accepted all, 100%!") with D164 and its agent-facing prose, after the Claude Opus 5.5 review and its fixes; merging and releasing (below). Owns MC-01 ([specification](../design/work-packages/WP-15.md)).
+**Status:** Done. Accepted by Mirza on 2026-11-04 (M55: "absolutely incredible work. accepted all, 100%!") with D164 and its agent-facing prose (D149), after the Claude Opus 5.5 review and its fixes; merged to `main` through the merge queue as `83a0503` (#120), released as Mostra 0.9.0, with the harness plugin starting its server. Owns MC-01 ([specification](../design/work-packages/WP-15.md)).
 
 ## Baseline
 
@@ -73,3 +73,31 @@ Accepted by Mirza at M55, in one batch: the server's `instructions` (`packages/m
 - **#115** (an open issue in WP-06's and WP-10's code, taken because the MCP server's `artifact_results` and report gave the same misleading hint): `results` on a `none` page says the artifact takes no submissions and points at its shared state and signals (the code stays `MOSTRA_SUBMIT_NOT_FOUND`, so nothing that reads it changes), the report shows the shared state, and `mostra wait --until signal:<name>` prints the signal's payload, which only `--json` carried (`9b2acf9`).
 - **Two build fixes** found by the gates: `@mostra/mcp`'s `schemas` task read protocol's `dist` while protocol's build rewrote it in the same run, so `schemas` now depends on `^build` (`5ddae30`); WP-15's four codes and the `rpc` intent took protocol's whole entry to 52.18 kB, so its ceiling moves from 52 to 54 kB, as WP-13's codes moved it before (`c823be8`).
 - **A fix in another package's crate**: `mostra-host`'s list of path variables follows the CLI's, which gained `MOSTRA_MCP_WORKSPACE`.
+
+## Issues at the closeout
+
+| Issue | State | What was found and done |
+|---|---|---|
+| #115 | Closed by #120 | `results` on a `none` page pointed at a wait that refuses; fixed in WP-06's and WP-10's code, since the MCP server's results and report repeated it (Deviations) |
+| #111 | Open, no milestone (D155 item 7) | Met once more on #120 (Windows x64 `windows-workers`, RT-03's first-need worker test at its 60 s limit), recorded on the issue; it passed on the re-run. WP-15 doesn't touch the workers |
+| #95 | Open, no milestone | Met once on #120 (Windows x64 Firefox, `client.spec.ts` IN-04's offline replay), recorded on the issue; passed on the re-run |
+| #124 | New, no milestone | The darwin-x64 bundle smoke test stalled until its job limit on #123 with no log kept; passed on the re-run in 3 minutes. Filed with a proposal (a deadline inside the smoke script, as `pnpm check --deadline` gives the integration legs) |
+
+No issue is on the `WP-15` milestone. #39, #46, #55, #85, #95, #111 and #124 stay on no milestone (D155 item 7), and #106 waits for the package that next touches the bundle cache or `verify`.
+
+## Commits and publication
+
+- **Range:** `7663aec..4219a29` on `main`: the signed-off commits of `wp/15-mcp` (last `98c4479`) and its merge commit `83a0503` ([#120](https://github.com/mostra-dev/mostra/pull/120)), then the version pull request [#123](https://github.com/mostra-dev/mostra/pull/123) (`330b045`, merged as `4219a29`).
+- **CI:** #120's last pull-request run (41891906338) green after one Windows Firefox re-run (#95), and its merge-queue run (41904301276) green on every leg; before it, `ci:full` on `03a4514` (41872669347) green on every job that got a runner, with macOS jobs re-run while GitHub's macOS runners were scarce (an Actions incident that day). #123's run (41918341393) green after one darwin-x64 smoke re-run (#124).
+- **Released, Mostra 0.9.0** (D36, `docs/agents/release.md`): [release run 41930640790](https://github.com/mostra-dev/mostra/actions/runs/41930640790), every job green. It published the immutable GitHub release [`v0.9.0`](https://github.com/mostra-dev/mostra/releases/tag/v0.9.0) with its 13 assets; every npm package of the group at 0.9.0 with provenance, `@mostra/mcp` first among the new (its placeholder and trusted publisher set by Mirza with `tools/release/npm-setup.sh @mostra/mcp`); `mostra-host` 0.9.0 on crates.io; and the plugin to [`mostra-dev/mostra-plugin`](https://github.com/mostra-dev/mostra-plugin) (`main` and `v0.9.0` at `851e5e6`), its `.mcp.json` launching `npx -y @mostra/cli@0.9.0 mcp --embedded`.
+- **External checks, 2026-11-04:**
+  - `npm view @mostra/mcp@0.9.0` names an SLSA v1 provenance attestation (Apache-2.0); npm shows 0.9.0 as `latest` for the CLI, MCP server, runtime, protocol, SDK, React, server, shell, verify, worker, conformance kit and `create-mostra` (protocol, SDK and React answered 404 for a few minutes after the publish: npm's CDN kept the negative answers the run had asked for, VERIFIED_FACTS, WP-15); crates.io's latest `mostra-host` is 0.9.0; `gh attestation verify` passes for the darwin-arm64 archive;
+  - on this Mac, with empty home, cache, config and npm cache directories on the system disk, `npm create mostra@0.9.0 my-artifact` scaffolded `index.tsx`, `AGENTS.md` and `CLAUDE.md` in 110 s; `verify` passed and `publish` made version 1;
+  - the plugin's own launch, `npx -y @mostra/cli@0.9.0 mcp --embedded`, from a fresh empty cache: `initialize` answered in 2 s (npx fetching the CLI included), 13 tools, two `MOSTRA_ENV_RUNTIME_INSTALLING` answers, then `artifact_list` named the published artifact, 107 s in all; nothing was written to the config directory (no install ID, no queue);
+  - the plugin repository at `v0.9.0` passes `claude plugin validate --strict`, and its README discloses the server's launch.
+- **Anthropic's plugin directory:** the listing tracks the repository's `main`, auto-publish off (WP-14); the new version, with its pinned `npx` server, waits for a reviewer there as VERIFIED_FACTS (WP-14) says, and goes live when Mirza selects Publish.
+- **Remaining dirty paths:** none in the repository. Outside it: scratch scripts, logs, review texts, the Codex sessions and the clean-machine check in `~/.jcode/scratch/wp15`; worktrees and builds on the external volume (`/Volumes/Active/mostra-wp15-baseline`, `-pack`, `-tmp`, `-tools`, including a stopped verdaccio); the GitHub label `check:harnesses`.
+
+## Next
+
+WP-28, the remote design pass (`docs/design/work-packages/WP-28.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-28`. It designs the remote MCP surface on `@mostra/mcp`'s factory and ports (its specification, from WP-15); WP-30 serves it with OAuth and turns on the plugin's remote server; WP-17 adds the MCP App to `artifact_open`.

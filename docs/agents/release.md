@@ -93,7 +93,11 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
 
    Never delete a tag or a published release: both are immutable (the release-tags ruleset,
    immutable releases); a release that can't be finished is replaced by the next version.
-7. **Check it from outside** (external evidence for the progress report):
+7. **Check it from outside** (external evidence for the progress report). npm's CDN keeps a 404
+   it answered before the publish (the run asks for each version first) for a few minutes: a
+   version that answers 404 right after a green `publish` job is read again with a cache-busting
+   query (`…/<package>/<version>?nocache=<time>`) and the job's log, never republished
+   (VERIFIED_FACTS, WP-15):
    - `npm view @mostra/cli@<version> dist.attestations` names a provenance attestation, and
      `npm audit signatures` in a project that installed it verifies;
    - `gh release view v<version>` lists six `mostra-<version>-<platform>.tar.gz`, their `.json`
