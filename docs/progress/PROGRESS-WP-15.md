@@ -33,7 +33,7 @@
 - **AX-06** (WP-14): the Skill gains `references/mcp.md` and its route in `SKILL.md`; the Skill's checks cover the `mcp` command.
 - **IN-10** (WP-06): `artifact_wait` returns `still_waiting` with its cursor at 50 s and loses nothing (`server.test.ts`).
 - **LL-02** (WP-06) and **IN-10** (WP-06), #115: on a `none` page `results` says it takes no submissions and names its shared state and signals, the MCP report shows the shared state, and `mostra wait --until signal:<name>` prints the signal's name and payload (`interaction.test.ts` "policy none", `commands.test.ts`, `server.test.ts`; a seed each).
-- **RT-01** (WP-11): the npm path's smoke test (`packages/bundle/scripts/npm-smoke.sh`) starts `mostra mcp` from an empty cache on the machine's Node.js and waits for its bundle (`mcp-smoke.mjs`), in the release rehearsal.
+- **RT-01** (WP-11): the npm path's smoke test (`packages/bundle/scripts/npm-smoke.sh`) starts `mostra mcp` from an empty cache on the machine's Node.js and waits for its bundle (`mcp-smoke.mjs`), in the release rehearsal: on run 41872669347 it passed on linux-x64, darwin-arm64, win32-x64 and win32-arm64 on Node.js 22 (win32-arm64: `initialize` answered in 790 ms, one `MOSTRA_ENV_RUNTIME_INSTALLING`, then the artifact listed, 89 s in all).
 
 ## Reviews (D80)
 
@@ -51,6 +51,7 @@
   9. (P3) Nothing tied the schemas `tools/list` serves to the bundle the D32 snapshot holds. A test holds them equal on both eras.
   10. (P3) `bearer` in lower case was refused and counted as a guess, and `MOSTRA_MCP_TOKEN=aaaa…` was accepted. The scheme is read without regard to case, only a wrong bearer token counts, and a chosen token needs eight different characters.
 - **CI on `ci:full`** after the fixes found two failures in this package's tests on the Windows clients legs, both fixed: the session test compared the created directory with `realpathSync`, while the instance answers with the native real path that writes out 8.3 names such as `RUNNER~1` (D151 item 5; `8c5e309`), and the conformance suites' bearer proxy wrote headers a second time when a stream the suite cut off reached it as a reset (`0f827d2`). Every test had passed there; the proxy's error was unhandled.
+- **CodeQL** flagged `slug`'s trimming regex (`js/polynomial-redos`) and the bootstrap test's mirror building a path from the request (`js/path-injection`). The first was harmless in practice, since the step before it collapses every run of dashes to one, but both are now plain code, and no alert is open (`03a4514`).
 - **Copilot**: no review (its quota, as on WP-13 and WP-14).
 
 ## Agent-facing prose (D149)
