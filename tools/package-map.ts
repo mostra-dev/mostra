@@ -162,11 +162,22 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     published: true,
   },
   {
+    // The MCP server's tools, resources and HTTP handler, independent of any transport (D164):
+    // `mostra mcp` serves them locally, WP-30's remote server with its own ports.
+    name: "@mostra/mcp",
+    dir: "packages/mcp",
+    audience: "MCP clients, through `mostra mcp` and the remote server",
+    environment: "node",
+    workspace: ["@mostra/protocol"],
+    external: ["@modelcontextprotocol/server", "zod", "diff"],
+    published: true,
+  },
+  {
     name: "@mostra/cli",
     dir: "packages/cli",
     audience: "agents, people",
     environment: "node",
-    workspace: ["@mostra/protocol", "@mostra/sdk"],
+    workspace: ["@mostra/protocol", "@mostra/sdk", "@mostra/mcp"],
     external: "any",
     published: true,
   },

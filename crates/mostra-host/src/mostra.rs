@@ -921,6 +921,7 @@ const PATH_VARIABLES: &[&str] = &[
     "MOSTRA_TAILSCALE",
     "MOSTRA_CLOUDFLARED",
     "MOSTRA_TEST_TUNNELS",
+    "MOSTRA_MCP_WORKSPACE",
 ];
 
 /// `env` with every relative path variable made absolute against this process's directory, for

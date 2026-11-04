@@ -73,8 +73,12 @@ describe("the harness plugins (AX-10)", () => {
     expect(readFileSync(join(dir, "skills/mostra/SKILL.md"))).toEqual(
       readFileSync(join(REPO, "skills/mostra/SKILL.md")),
     );
-    // Features off: no MCP server anywhere, and the README says this release sends nothing.
-    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toBeUndefined();
+    // The local server is on (WP-15): every manifest starts it, pinned and marked as a plugin's
+    // (D148); the remote one is off until WP-30, and the README says this release sends nothing.
+    const launch = { command: "npx", args: ["-y", "@mostra/cli@1.2.3", "mcp", "--embedded"] };
+    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toEqual({ mostra: launch });
+    expect(readJson(dir, ".mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
+    expect(readJson(dir, "mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
     expect(readFileSync(join(dir, "README.md"), "utf8")).toContain("sends no usage data");
   });
 
@@ -246,7 +250,7 @@ describe("the harness plugins (AX-10)", () => {
         localMcp: {
           ...PLUGIN.features.localMcp,
           enabled: true,
-          args: ["mcp", "--plugin"],
+          args: ["mcp", "--embedded"],
           verifiedOn: ["darwin", "linux", "win32"],
         },
         remoteMcp: {
@@ -259,7 +263,7 @@ describe("the harness plugins (AX-10)", () => {
     };
     const { dir, check } = built(definition);
     expect(check()).toEqual([]);
-    const launch = { command: "npx", args: ["-y", "@mostra/cli@1.2.3", "mcp", "--plugin"] };
+    const launch = { command: "npx", args: ["-y", "@mostra/cli@1.2.3", "mcp", "--embedded"] };
     expect(readJson(dir, "mcp.json")["mcpServers"]).toEqual({
       mostra: { type: "stdio", ...launch },
       "mostra-remote": { type: "streamable-http", url: "https://mcp.example.com/mcp" },
@@ -312,8 +316,24 @@ describe("the harness plugins (AX-10)", () => {
       },
     });
     expect(unproven.check().join("\n")).toMatch(/wasn't started from every harness on win32/);
+    // The plugin's server is embedded use (D148): a launch without the marker is refused.
+    for (const args of [["mcp"], ["mcp", "--http"], ["host", "--embedded"]]) {
+      const unmarked = built({
+        ...definition,
+        features: { ...definition.features, localMcp: { ...definition.features.localMcp, args } },
+      });
+      expect(unmarked.check().join("\n"), args.join(" ")).toMatch(
+        /not `mostra mcp --embedded` \(D148/,
+      );
+    }
+    expect(readFileSync(join(dir, "README.md"), "utf8")).toContain(
+      "@mostra/cli@1.2.3 mcp --embedded",
+    );
     // A server file left behind when the feature is off again is refused.
-    const off = built();
+    const off = built({
+      ...PLUGIN,
+      features: { ...PLUGIN.features, localMcp: { ...PLUGIN.features.localMcp, enabled: false } },
+    });
     writeFileSync(join(off.dir, "mcp.json"), readFileSync(join(dir, "mcp.json")));
     expect(off.check().join("\n")).toMatch(/mcp.json declares a server no feature turns on/);
     // A remote server needs an https URL.
@@ -356,8 +376,11 @@ describe("the harness plugins (AX-10)", () => {
     );
   });
 
-  it("tells WP-15 to turn the local server on once the CLI has mostra mcp", () => {
-    const { root, check } = built();
+  it("refuses a CLI with mostra mcp whose plugin doesn't start it (WP-14's trip-wire)", () => {
+    const { root, check } = built({
+      ...PLUGIN,
+      features: { ...PLUGIN.features, localMcp: { ...PLUGIN.features.localMcp, enabled: false } },
+    });
     writeFileSync(join(root, "docs", "reference", "cli.md"), "# The mostra CLI\n\n## mostra mcp\n");
     expect(check().join("\n")).toMatch(/WP-15 turns on features.localMcp/);
   });

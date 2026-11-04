@@ -504,6 +504,61 @@ describe("every command, with --json and no terminal", () => {
     }
   });
 
+  it("mcp speaks MCP on stdout and nothing else, even with --json, and ends with its stdin (D164)", async () => {
+    const other = testHome();
+    try {
+      const messages = [
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            clientInfo: { name: "contract", version: "1.0.0" },
+          },
+        },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      ];
+      // Stdin stays open until the answers came: closing it is the client's shutdown (MCP's stdio
+      // lifecycle), so a request still running then has nobody to answer.
+      const child = spawn(process.execPath, [BIN, "mcp", "--json", "--embedded"], {
+        env: other.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      const answered = new Promise<void>((resolve) => {
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+          if (stdout.split("\n").some((line) => line.includes('"id":2'))) resolve();
+        });
+      });
+      for (const message of messages) child.stdin.write(`${JSON.stringify(message)}\n`);
+      await answered;
+      child.stdin.end();
+      const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+      expect(code, stderr).toBe(0);
+      const lines = stdout.split("\n").filter((line) => line.length > 0);
+      for (const line of lines) expect(JSON.parse(line)).toMatchObject({ jsonrpc: "2.0" });
+      expect(JSON.parse(lines[0] as string)).toMatchObject({
+        id: 1,
+        result: { serverInfo: { name: "mostra" } },
+      });
+      const tools = lines
+        .map((line) => JSON.parse(line) as { id?: number; result?: { tools?: unknown[] } })
+        .find((message) => message.id === 2);
+      expect(tools?.result?.tools).toHaveLength(13);
+      covered.add("mcp");
+    } finally {
+      await other.cleanup();
+    }
+  });
+
   it("dev streams NDJSON envelopes until Ctrl-C, then its result (VR-08, D140 items 12 and 15)", async () => {
     // Ctrl-C at a terminal; on Windows Ctrl+Break, which the probe sends to a group of its own
     // (Ctrl-C can't reach a process that leads its own console group).

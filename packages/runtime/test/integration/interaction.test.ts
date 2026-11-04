@@ -397,6 +397,12 @@ describe("drafts, state and conflicts through the gateway and the protocol (IN-0
         }),
       ),
     ).toBe("MOSTRA_SUBMIT_POLICY_NONE");
+    // Results have nothing to show, and say where a none page's answers are instead (#115).
+    const empty = await gateway.client.call("results/get", {
+      artifact: { artifactId: receipt.artifactId },
+    });
+    expect(refused(empty)).toBe("MOSTRA_SUBMIT_NOT_FOUND");
+    expect(empty.error?.data.message).toMatch(/policy is none.*state.*signal:<name>/);
   });
 
   it("streams a page's snapshot and then its events, resumes from Last-Event-ID, and never shows another viewer's draft", async () => {

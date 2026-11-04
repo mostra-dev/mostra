@@ -1,0 +1,102 @@
+# The harness plugin's local MCP server, started from each harness on each system (D162 item 5,
+# D164; docs/agents/check-harness-plugins.md, step 3). No Mostra machine runs Linux or Windows, so
+# this is where the plugin's launch (`npx -y @mostra/cli@<release> mcp --embedded`) is seen to start
+# there: npm installs the branch's packed tarballs from a loopback registry, each harness CLI loads
+# the built plugin in a scratch home and starts its server, and a loopback collector must receive
+# nothing (D148). A package that changes the launch, the plugin's servers or `mostra mcp`'s start
+# runs it and lists each system that passed in `features.localMcp.verifiedOn`.
+#
+# Run it on a pull request by adding the label `check:harnesses`, or by hand on a branch the
+# workflow is on: `gh workflow run harness-plugins.yml --ref <branch>`.
+name: Harness plugins
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-plugins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  servers:
+    name: servers (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'check:harnesses'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      LEFTHOOK: "0"
+      # The harness CLIs this check was written against (VERIFIED_FACTS, WP-15).
+      HARNESSES: >-
+        @anthropic-ai/claude-code@2.1.316 @openai/codex@0.162.1 @google/gemini-cli@0.66.0
+        @github/copilot@1.0.105
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "@mostra/cli..." build
+      # One scratch directory, spelled as bash spells it on every system.
+      - run: echo "WORK=$(cygpath -u "$RUNNER_TEMP" 2>/dev/null || printf '%s' "$RUNNER_TEMP")/harness" >>"$GITHUB_ENV"
+      - name: The branch's packages in a loopback registry
+        run: |
+          work="$WORK"
+          mkdir -p "$work/tarballs" "$work/registry"
+          for package in protocol sdk mcp cli; do
+            pnpm --filter "@mostra/$package" pack --pack-destination "$work/tarballs" >/dev/null
+          done
+          cat >"$work/registry/config.yaml" <<EOF
+          storage: ./storage
+          uplinks:
+            npmjs:
+              url: https://registry.npmjs.org/
+          packages:
+            "@mostra/*":
+              access: \$all
+              publish: \$anonymous
+            "**":
+              access: \$all
+              proxy: npmjs
+          log: { type: stdout, format: pretty, level: warn }
+          EOF
+          (cd "$work/registry" && npx -y verdaccio@6.11.1 --config ./config.yaml --listen 127.0.0.1:4873 >verdaccio.log 2>&1 &)
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4873/-/ping >/dev/null && break; sleep 1; done
+          printf '//127.0.0.1:4873/:_authToken=loopback\n' >"$work/registry/npmrc"
+          for tarball in "$work"/tarballs/*.tgz; do
+            # The packages ask for provenance, which only the release pipeline makes.
+            npm publish "$tarball" --registry http://127.0.0.1:4873/ --userconfig "$work/registry/npmrc" --access public --provenance=false >/dev/null
+          done
+          curl -sf http://127.0.0.1:4873/@mostra%2fcli | node -e 'let s="";process.stdin.on("data",(c)=>s+=c).on("end",()=>console.log("served @mostra/cli", Object.keys(JSON.parse(s).versions).join(", ")))'
+      - name: The harness CLIs
+        run: |
+          npm install --no-audit --no-fund --prefix "$WORK/clis" $HARNESSES >/dev/null
+          echo "MOSTRA_HARNESS_BIN=$WORK/clis/node_modules/.bin" >>"$GITHUB_ENV"
+      - name: The plugin's server from each harness
+        env:
+          npm_config_registry: http://127.0.0.1:4873/
+        run: |
+          node tools/plugins/cli.ts build --out "$WORK/plugin" --prove localMcp
+          bash tools/plugins/try-servers.sh "$WORK/plugin" "$WORK/scratch"
+      - name: Logs
+        if: failure()
+        run: |
+          for log in "$WORK"/scratch/*/*.log "$WORK"/scratch/*/mcp.err "$WORK"/registry/verdaccio.log; do
+            [ -f "$log" ] && { echo "::group::$log"; tail -60 "$log"; echo "::endgroup::"; }
+          done
+          exit 0

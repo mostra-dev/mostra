@@ -27,7 +27,8 @@ The collector doesn't store IP addresses.
 - `mostra telemetry off`, `MOSTRA_TELEMETRY=0` or `DO_NOT_TRACK=1`. Any of these wins over every
   setting that turns it on.
 - Embedded use never sends anything: the TypeScript SDK, the Rust crate, an instance a host starts
-  (`mostra host`) and any home a host has configured.
+  (`mostra host`), any home a host has configured, and an MCP server started with
+  `mostra mcp --embedded`, as a harness plugin starts it.
 - A build without a telemetry endpoint sends nothing.
 
 `mostra telemetry status` shows whether telemetry is on, why, your install ID and how many
@@ -66,12 +67,13 @@ one.
 | `verify.result` | `mostra verify` finishes | `status` (`pass` or `fail`), `codes` (up to 50 diagnostic codes, never their messages), `codesTruncated` |
 | `publish.done` | A version is published | `reused`, `forced` |
 | `share.done` | A share starts | `kind`: `tailnet`, `funnel`, `cloudflare` or `remote` |
-| `mcp.session` | An MCP client connects to `mostra mcp` | `client` (a known agent's ID, or `other`), `clientVersion` (known agents only) |
+| `mcp.session` | An MCP client first uses `mostra mcp`, once per client in each run | `client` (a known agent's ID, or `other`), `clientVersion` (known agents only) |
 
 ## How it is sent
 
 Events wait in a small queue in the config directory and are sent in the background after a
-command finishes, at most 100 per request. No command waits for the network, and the network
+command finishes (`mostra mcp`, which runs until its client stops it, sends `mcp.session` as it
+happens), at most 100 per request. No command waits for the network, and the network
 never changes a command's result. Events that can't be sent within 7 days are dropped.
 
 ## Retention and your rights

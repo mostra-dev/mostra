@@ -126,10 +126,10 @@ function Builds() {
 With `{ policy: "none" }` the page has no Submit. It talks to you through:
 
 - shared fields you watch with `mostra wait <dir> --until state:<fieldId>`;
-- signals the page sends (`useSignal`) or server code raises (`signal()`), watched with `mostra wait <dir> --until signal:<name>`;
+- signals the page sends (`useSignal`) or server code raises (`signal()`), watched with `mostra wait <dir> --until signal:<name>`, which prints each signal's payload;
 - actions that do the work themselves ([server.md](server.md)).
 
-`mostra wait <dir> --until submitted` is refused under `none` (`MOSTRA_SUBMIT_POLICY_NONE`).
+`mostra wait <dir> --until submitted` is refused under `none` (`MOSTRA_SUBMIT_POLICY_NONE`), and `mostra results` has no submission to show: read what the page keeps with `mostra state get <dir>`.
 
 ## New versions of a page people keep open
 

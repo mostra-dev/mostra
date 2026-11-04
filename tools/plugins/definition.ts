@@ -113,7 +113,13 @@ export const PLUGIN: PluginDefinition = {
   // trademark; Apache-2.0 grants no right to it (its section 6).
   icon: "tools/plugins/assets/icon.png",
   features: {
-    localMcp: { enabled: false, owner: "WP-15", args: ["mcp"], verifiedOn: [] },
+    localMcp: {
+      enabled: true,
+      owner: "WP-15",
+      args: ["mcp", "--embedded"],
+      // Started from Claude Code, Gemini CLI and Codex on each, harness-plugins.yml run 41637680175.
+      verifiedOn: ["darwin", "linux", "win32"],
+    },
     remoteMcp: { enabled: false, owner: "WP-30" },
   },
 };

@@ -1,0 +1,421 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mostra's MCP tools: the input schema of each tool",
+  "x-mostra-revisions": {},
+  "definitions": {
+    "ArtifactCreateInput": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "description": "Where to create it: a directory that doesn't exist yet or is empty. Without it, a new folder in the workspace, named after the title.",
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "description": "The artifact's title.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "template": {
+          "description": "A template to start from (none by default).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ArtifactListInput": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "object",
+          "properties": {
+            "family": {
+              "description": "Only artifacts of this family.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "ArtifactOpenInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "version": {
+          "description": "A new link that opens only this version (its number or ID).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "viewer": {
+          "description": "A new link for one person: their own draft and, under once per-viewer, their own submission.",
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Your own stable key for the person, such as their email."
+            },
+            "name": {
+              "description": "Their display name.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "ref"
+          ]
+        },
+        "scopes": {
+          "description": "A new link that allows only these: view, draft, submit, review, signal, action:*, action:<name>.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(view|draft|submit|review|signal|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$"
+          }
+        },
+        "ttl": {
+          "description": "A new link that stops working after this long, such as 24h or 7d.",
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,8}[smhd]$"
+        },
+        "open": {
+          "description": "Also open the link in a browser on this computer, for the person sitting at it.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "ArtifactPatchInput": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact's directory: an absolute path, or a name inside the workspace folder (the server's instructions name it)."
+        },
+        "path": {
+          "description": "The file to change, relative to the artifact's directory. Needed with edits; with a diff, it overrides the file the diff names.",
+          "type": "string",
+          "minLength": 1
+        },
+        "edits": {
+          "description": "Exact replacements, applied in order.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "old": {
+                "type": "string",
+                "description": "Text that appears exactly once in the file (empty to write a new file)."
+              },
+              "new": {
+                "type": "string",
+                "description": "What replaces it."
+              }
+            },
+            "required": [
+              "old",
+              "new"
+            ]
+          }
+        },
+        "diff": {
+          "description": "A unified diff of one or more files.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    },
+    "ArtifactPublishInput": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact's directory: an absolute path, or a name inside the workspace folder (the server's instructions name it)."
+        },
+        "force": {
+          "description": "Publish even though verify reports errors; the version records them.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    },
+    "ArtifactResultsInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "submission": {
+          "description": "A submission's ID (sub_…); the latest by default.",
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "description": "md (the default): Markdown to read; json: the full Results structure.",
+          "type": "string",
+          "enum": [
+            "md",
+            "json"
+          ]
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "ArtifactVerifyInput": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact's directory: an absolute path, or a name inside the workspace folder (the server's instructions name it)."
+        },
+        "screenshots": {
+          "description": "Which screenshots come back as images: on-failure (the default), always (to look at the page), or never.",
+          "type": "string",
+          "enum": [
+            "on-failure",
+            "always",
+            "never"
+          ]
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    },
+    "ArtifactWaitInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "until": {
+          "type": "string",
+          "pattern": "^(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$",
+          "description": "submitted, signal:<name>, state:<fieldId> or event:<type> (event:submission.* matches a family)."
+        },
+        "after": {
+          "description": "Wait for what happens after this cursor: the one a previous wait returned.",
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$"
+        },
+        "timeoutSeconds": {
+          "description": "How long to wait, at most 50 seconds (the default); 0 checks once.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "artifact",
+        "until"
+      ]
+    },
+    "ArtifactWriteInput": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact's directory: an absolute path, or a name inside the workspace folder (the server's instructions name it)."
+        },
+        "files": {
+          "default": [],
+          "description": "Files to write, each replaced whole.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Relative to the artifact's directory, such as index.tsx or components/chart.tsx."
+              },
+              "content": {
+                "type": "string",
+                "description": "The file's whole content."
+              },
+              "encoding": {
+                "description": "utf8 (the default) for text; base64 for an image or other binary file.",
+                "type": "string",
+                "enum": [
+                  "utf8",
+                  "base64"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "deletes": {
+          "description": "Files to delete, relative to the artifact's directory.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    },
+    "DocsSearchInput": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "description": "What you want to know, in a few words.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "topic": {
+          "description": "A topic to read whole instead, such as guide, guide/answers or a diagnostic code.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "LivePushInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "The live source's key."
+        },
+        "value": {
+          "description": "Any JSON value, at most 4 MiB."
+        },
+        "mode": {
+          "description": "replace (the default): the new latest value; append: also kept in the source's ring.",
+          "type": "string",
+          "enum": [
+            "replace",
+            "append"
+          ]
+        }
+      },
+      "required": [
+        "artifact",
+        "key",
+        "value"
+      ]
+    },
+    "StateGetInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "ids": {
+          "description": "Only these field IDs; every field by default.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "StatePatchInput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The artifact: its ID (art_…), or its directory as artifact_create returned it."
+        },
+        "ops": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The field ID."
+              },
+              "value": {
+                "description": "The new value, any JSON."
+              },
+              "delete": {
+                "description": "Remove the field instead.",
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "description": "The changes, applied together."
+        },
+        "baseRevision": {
+          "description": "The revision you last read: fields changed after it aren't overwritten and come back in conflicts.",
+          "type": "string",
+          "minLength": 1
+        },
+        "mutationId": {
+          "description": "Your ID for this change (mut_ and a ULID), so a retry applies it once; one is made when you leave it out.",
+          "type": "string",
+          "pattern": "^mut_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        }
+      },
+      "required": [
+        "artifact",
+        "ops"
+      ]
+    }
+  }
+}

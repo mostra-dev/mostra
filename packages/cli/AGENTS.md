@@ -22,10 +22,18 @@ protocol over the home's socket.
 - **One exit-code table** (`src/exit.ts`), keyed by diagnostic code and total over the catalog's
   areas by type; a test checks every catalog code.
 - **A hint never names a command that doesn't exist.** A unit test parses every `mostra …` a
-  catalog entry's hint, explanation or fix names. A later package's command (`share`, `review
-  export`, `export`, `mcp`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a
-  placeholder (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
-  (`src/commands/sharing.ts`).
+  catalog entry's hint, explanation or fix names. A later package's command (`review export`,
+  `export`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a placeholder
+  (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
+  (`src/commands/sharing.ts`), and `mcp` with WP-15 (`src/commands/mcp.ts`, `src/mcp.ts`).
+- **`mostra mcp` serves `@mostra/mcp`, adding no tool logic of its own** (D164). This package
+  gives it the home's daemon (attached on the first call, attached again after the daemon
+  restarts, released after five idle minutes), the workspace, the bundled reference (with the
+  guide's links read as MCP topics) and the browser opener. Like `host`, it owns stdout (the MCP
+  protocol) and takes no `--timeout`. Telemetry counts each MCP client once per run
+  (`mcp.session`, queued at once with `checkpoint`, since a harness stops its server within a
+  second); `--embedded` (D148) makes the command quiet: no notice, no question, no event, and the
+  home stays unmarked.
 - **No prompt outside a terminal.** Only telemetry asks anything, and only when stdin and stderr
   are terminals, without `--json`, CI, an agent's marker or a command that reads stdin.
 - **Telemetry is this package's alone (D119, D140).** `src/telemetry/` is the only code in Mostra
@@ -95,6 +103,11 @@ API report is `etc/cli.api.md`. The binary is `src/bin.ts`.
   forwards SIGTERM and SIGHUP, and SIGINT only when no terminal is attached: at a terminal Ctrl-C
   already reaches the bundle's `mostra` (one process group), and a second SIGINT would cut short
   `mostra dev`'s graceful stop. Every failure, a spawn error included, is one `--json` envelope.
+  `mostra mcp` is the exception (`servesBeforeBundle`, D164 item 7): an MCP client gives a server
+  seconds to start, so it runs in the bootstrap's own process on the system's Node.js and installs
+  the bundle in the background (`runtimeInstall` in `src/mcp.ts`); a call that needs the instance
+  waits for it up to 45 s, then answers `MOSTRA_ENV_RUNTIME_INSTALLING`. The daemon it starts still
+  runs on the bundle's Node.js, and everything `mostra mcp` loads must keep to Node.js 22.19 too.
 - **One timer per deadline.** `--timeout` belongs to the command's one timer (`withTimeout` in
   `run.ts`), which names what was underway when it runs out: starting the home's daemon (the
   connection reports it through `onStarting`) or the command itself. `startDaemon` keeps only its

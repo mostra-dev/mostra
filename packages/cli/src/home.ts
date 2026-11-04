@@ -89,9 +89,11 @@ export interface RuntimeLocation {
 
 /**
  * The runtime the CLI starts (D85, RT-01), found as the SDK finds it: `MOSTRA_BUNDLE`,
- * `MOSTRA_RUNTIME_BIN`, the runtime bundle this CLI sits in, or a development checkout's built
- * runtime beside it. The bootstrap (`bootstrap.ts`) has already moved a CLI installed from npm
- * into its pinned bundle, so this never downloads. Throws the SDK's diagnostic when there is none.
+ * `MOSTRA_RUNTIME_BIN`, the runtime bundle this CLI sits in, its release's pinned bundle, or a
+ * development checkout's built runtime beside it. The bootstrap (`bootstrap.ts`) has already moved
+ * a CLI installed from npm into its pinned bundle, so this downloads nothing, except under
+ * `mostra mcp`, which serves before the bundle is there and installs it itself (D164 item 7), so
+ * this finds it installed. Throws the SDK's diagnostic when there is none.
  */
 export async function locateRuntime(env: Environment): Promise<RuntimeLocation> {
   const runtime = await resolveRuntime({ env });

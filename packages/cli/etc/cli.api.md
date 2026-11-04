@@ -19,6 +19,7 @@ export interface ArgDef {
 export interface CommandContext {
     readonly args: Readonly<Record<string, string | readonly string[] | undefined>>;
     call<P, R>(method: MethodDefinition<P, R>, params: P): Promise<R>;
+    checkpoint(hostInstance: boolean): void;
     readonly configDir: string;
     connection(autostart?: boolean): Promise<InstanceConnection | undefined>;
     readonly cwd: string;
@@ -57,7 +58,7 @@ export interface CommandDef {
         readonly topic: string;
     };
     readonly path: readonly string[];
-    readonly quiet?: boolean;
+    readonly quiet?: boolean | ((flags: CommandContext["flags"]) => boolean);
     readonly readsStdin?: boolean | ((flags: CommandContext["flags"]) => boolean);
     run(context: CommandContext): Promise<CommandOutcome>;
     readonly streams?: boolean;
@@ -73,6 +74,7 @@ export function commandHelp(command: CommandDef): string;
 // @public
 export interface CommandOutcome {
     readonly exit?: number;
+    readonly hostInstance?: boolean;
     readonly human?: string;
     readonly raw?: boolean;
     readonly result: unknown;
@@ -159,7 +161,7 @@ export interface RunnerIo {
 
 // @public
 export interface TelemetryEventInput {
-    readonly event: "verify.result" | "publish.done" | "share.done";
+    readonly event: "verify.result" | "publish.done" | "share.done" | "mcp.session";
     readonly fields: Readonly<Record<string, unknown>>;
 }
 

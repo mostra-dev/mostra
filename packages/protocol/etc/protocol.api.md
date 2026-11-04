@@ -113,7 +113,7 @@ export const ArtifactDetail: z.ZodType<ArtifactDetail>;
 export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
 
 // @public
-export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED"];
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED", "MOSTRA_ARTIFACT_PATH_INVALID", "MOSTRA_ARTIFACT_PATCH_REJECTED", "MOSTRA_ARTIFACT_ID_DROPPED"];
 
 // @public
 export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
@@ -1003,7 +1003,7 @@ export const EnterResult: z.ZodType<EnterResult>;
 export type EnvDiagnosticCode = (typeof envDiagnosticCodes)[number];
 
 // @public
-export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING", "MOSTRA_ENV_RUNTIME_MISSING", "MOSTRA_ENV_BUNDLE_INVALID", "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED", "MOSTRA_ENV_BUNDLE_UNAVAILABLE", "MOSTRA_ENV_NODE_UNSUPPORTED", "MOSTRA_ENV_HELPER_MISSING"];
+export const envDiagnosticCodes: readonly ["MOSTRA_ENV_WARM_MISSING", "MOSTRA_ENV_PORT_TAKEN", "MOSTRA_ENV_BIND_FAILED", "MOSTRA_ENV_SHELL_MISSING", "MOSTRA_ENV_SERVICE_FAILED", "MOSTRA_ENV_BROWSER_MISSING", "MOSTRA_ENV_RUNTIME_MISSING", "MOSTRA_ENV_BUNDLE_INVALID", "MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED", "MOSTRA_ENV_BUNDLE_UNAVAILABLE", "MOSTRA_ENV_NODE_UNSUPPORTED", "MOSTRA_ENV_HELPER_MISSING", "MOSTRA_ENV_RUNTIME_INSTALLING"];
 
 // @public
 export type EphemeralMessage = {
@@ -2039,7 +2039,7 @@ export interface RequestFacts {
 }
 
 // @public
-export type RequestIntent = "read" | "stream" | "upgrade" | "exchange" | "mutation";
+export type RequestIntent = "read" | "stream" | "upgrade" | "exchange" | "mutation" | "rpc";
 
 // @public
 export interface RequestPolicy {

@@ -17,6 +17,7 @@ export const envDiagnosticCodes = [
   "MOSTRA_ENV_BUNDLE_UNAVAILABLE",
   "MOSTRA_ENV_NODE_UNSUPPORTED",
   "MOSTRA_ENV_HELPER_MISSING",
+  "MOSTRA_ENV_RUNTIME_INSTALLING",
   // gen:codes
 ] as const;
 
@@ -155,6 +156,17 @@ export const envDiagnostics: AreaCatalog<EnvDiagnosticCode> = {
       explanation:
         "On Windows the runtime runs `mostra-win.exe`, a helper that ships with it, for what Node.js can't do there: owner-only access to the home, the home's control pipe, and every child process in a Job Object. The runtime looked for it at `MOSTRA_WIN_HELPER`, in its runtime bundle, and in a development checkout's Cargo build, and found none, so it stopped before touching the home.",
       fix: "Reinstall Mostra so the runtime bundle is complete. In a development checkout, build the helper with `cargo build -p mostra-win`. A custom layout can point the runtime at the helper with `MOSTRA_WIN_HELPER`.",
+    },
+  },
+  MOSTRA_ENV_RUNTIME_INSTALLING: {
+    severity: "error",
+    phase: "host",
+    title: "Runtime still installing",
+    hint: "Call the tool again in a minute: Mostra keeps installing its runtime meanwhile.",
+    docs: {
+      explanation:
+        "`mostra mcp` installed from npm answers its client at once and installs its release's runtime bundle in the background on its first start (about 200 MB, D164 item 7), so a client's startup timeout never waits for the download. A tool that needs the instance waits for that install, up to 45 seconds per call; this call's time ran out first. The install goes on, and the message says how far it is. Tools that need no instance (`docs_search`, `artifact_write`, `artifact_patch`) work during it.",
+      fix: "Call the tool again once the install has had time to finish. When it fails instead, the next call says why (`MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED`, `MOSTRA_ENV_BUNDLE_UNAVAILABLE` offline) and starts it again.",
     },
   },
   // gen:entries

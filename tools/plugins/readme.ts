@@ -45,10 +45,12 @@ export function readme(definition: PluginDefinition, input: ReadmeInput, servers
     "",
     "## What it runs, sends and fetches",
     "",
-    "The plugin has no hooks and runs nothing on its own. When your agent follows the Skill:",
+    servers.local
+      ? "The plugin has no hooks. Your harness starts its MCP server (below) when a session begins; the rest runs when your agent follows the Skill or uses the server's tools:"
+      : "The plugin has no hooks and runs nothing on its own. When your agent follows the Skill:",
     "",
     `- **It runs \`mostra\`** on your computer, or \`${cli}\` where \`mostra\` isn't installed.`,
-    "- **The first run downloads Mostra** (no account, nothing sent about you):",
+    "- **The first run downloads Mostra** (no account, nothing sent about you), the MCP server's first start included:",
     `  - the \`@mostra/cli\` package from the npm registry (\`registry.npmjs.org\`, or the registry your npm is set to);`,
     `  - Mostra's runtime for your platform from its GitHub release (\`github.com/mostra-dev/mostra/releases/download/v${version}/\`, served from GitHub's download hosts), checked against the SHA-256 the package pins;`,
     "  - the headless Chromium that `mostra verify` renders pages in, from Playwright's download server (`cdn.playwright.dev`), checked file by file against the pins in the runtime.",
@@ -58,7 +60,7 @@ export function readme(definition: PluginDefinition, input: ReadmeInput, servers
   ];
   if (servers.local) {
     lines.push(
-      `- **The MCP server this plugin starts** (\`${cli} mcp\`) runs on your computer, speaks only to your agent over stdio, and sends no usage data: a server a plugin starts counts as embedded use.`,
+      `- **The MCP server this plugin starts** (\`${cli} ${definition.features.localMcp.args.join(" ")}\`) runs on your computer, speaks only to your agent over stdio, and sends no usage data: \`--embedded\` marks it as started on your behalf. Artifacts its tools create go in \`~/mostra-artifacts\` unless your agent names another directory, and it opens a page in your browser only when your agent asks it to.`,
     );
   }
   if (servers.remote !== undefined) {

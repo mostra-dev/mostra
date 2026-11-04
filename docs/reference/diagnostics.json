@@ -118,6 +118,15 @@
       "fix": "Keep the entry you mean and rename the others, for example into `components/`."
     },
     {
+      "code": "MOSTRA_ARTIFACT_ID_DROPPED",
+      "severity": "warning",
+      "phase": "host",
+      "title": "Manifest id removed",
+      "hint": "Put the `id: \"art_…\"` line back into the entry's `defineArtifact` (or its frontmatter), or the next publish gives the artifact a new ID.",
+      "explanation": "A write replaced the artifact's entry (`index.tsx`, `index.jsx` or `index.mdx`) with text that no longer names the artifact ID its manifest held. Mostra wrote it as asked. An artifact without an `id` is bound to its source path at its first publish, so a page that was never published gets a new ID there, and one that was published keeps its ID only while its path stays the same: links, waits and results named by the old ID then don't find it.",
+      "fix": "Add the `id` back, exactly as it was (`id: \"art_01…\"` in `defineArtifact`, or `id:` in the MDX frontmatter), with `artifact_patch` or `artifact_write`."
+    },
+    {
       "code": "MOSTRA_ARTIFACT_NO_ENTRY",
       "severity": "error",
       "phase": "manifest",
@@ -143,6 +152,24 @@
       "hint": "Check the artifact ID or source path, or list the home's artifacts with `mostra list`.",
       "explanation": "The artifact named by an ID or a source path doesn't exist in this home: the ID was never published here, or the path was never published.",
       "fix": "Use an ID or path from `mostra list`. A source that was never published becomes an artifact at its first `mostra publish`. A host that uses its own home sees only the artifacts published there."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_PATCH_REJECTED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Patch doesn't apply",
+      "hint": "Read the file again and send edits whose `old` text appears in it exactly once, or a diff made against its current content.",
+      "explanation": "An `artifact_patch` changes a file only when every edit applies: each `old` text must appear exactly once in the file as it is now, and each hunk of a unified diff must match its lines. When one doesn't, nothing is written, and the message lists each edit or hunk that didn't apply and why (not found, found more than once, the file is missing).",
+      "fix": "Use a longer `old` text that appears only once, fix the hunk's context lines, or write the whole file with `artifact_write`."
+    },
+    {
+      "code": "MOSTRA_ARTIFACT_PATH_INVALID",
+      "severity": "error",
+      "phase": "host",
+      "title": "File path outside the artifact",
+      "hint": "Name the file by a relative path inside the artifact's directory, such as `index.tsx` or `components/chart.tsx`.",
+      "explanation": "`artifact_write` and `artifact_patch` change an artifact's own files, which live in its directory. A path that is absolute, climbs out with `..`, names the directory itself or passes through a link to somewhere else names no file of the artifact, so nothing is written.",
+      "fix": "Give each file's path relative to the artifact's directory, with `/` between folders. To write elsewhere, use your own file tools."
     },
     {
       "code": "MOSTRA_ARTIFACT_SOURCE_MISSING",
@@ -404,6 +431,15 @@
       "hint": "Open the artifact through a new link: `view/url` or `mostra open` mints one on the new port.",
       "explanation": "The shell's port or an artifact's port is leased per home and reused across restarts, so links keep working (D62, D99). At start-up another program held the leased port, so Mostra leased a new one. Links that named the old port stop working; the shell's port changing affects every link of the home.",
       "fix": "Mint new links with `view/url` (the publish receipt of the next publish carries the new default link too). Stop the program that took the port if you want the old links back; `mostra doctor` names it where it can."
+    },
+    {
+      "code": "MOSTRA_ENV_RUNTIME_INSTALLING",
+      "severity": "error",
+      "phase": "host",
+      "title": "Runtime still installing",
+      "hint": "Call the tool again in a minute: Mostra keeps installing its runtime meanwhile.",
+      "explanation": "`mostra mcp` installed from npm answers its client at once and installs its release's runtime bundle in the background on its first start (about 200 MB, D164 item 7), so a client's startup timeout never waits for the download. A tool that needs the instance waits for that install, up to 45 seconds per call; this call's time ran out first. The install goes on, and the message says how far it is. Tools that need no instance (`docs_search`, `artifact_write`, `artifact_patch`) work during it.",
+      "fix": "Call the tool again once the install has had time to finish. When it fails instead, the next call says why (`MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED`, `MOSTRA_ENV_BUNDLE_UNAVAILABLE` offline) and starts it again."
     },
     {
       "code": "MOSTRA_ENV_RUNTIME_MISSING",
@@ -1202,9 +1238,9 @@
       "severity": "error",
       "phase": "runtime",
       "title": "No such submission",
-      "hint": "Wait for a submission with `mostra wait <artifact> --until submitted`, or name one that exists.",
-      "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home).",
-      "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events."
+      "hint": "Wait for a submission with `mostra wait <artifact> --until submitted`, or, when the message says the policy is none, read `mostra state get <artifact>` or wait for a signal with `--until signal:<name>`.",
+      "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home). An artifact whose submission policy is `none` never has one, and the message says so: its viewers' work is in its shared state, its signals and its action runs.",
+      "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events. Under policy `none`, read the shared state with `mostra state get <artifact>`, or wait for a signal the page raises with `mostra wait <artifact> --until signal:<name>`: its event carries the signal's payload."
     },
     {
       "code": "MOSTRA_SUBMIT_POLICY_NONE",

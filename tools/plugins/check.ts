@@ -312,6 +312,13 @@ export function checkPlugin(
     problems.push(
       `features.localMcp is on but its launch wasn't started from every harness on ${unproven.join(", ")} (docs/agents/check-harness-plugins.md, step 3)`,
     );
+  // A server the plugin starts runs on the person's behalf: embedded use, which sends nothing
+  // whatever their CLI's telemetry setting (D148). The marker is the launch's own argument, since
+  // Muse Code refuses `env` in a plugin's MCP entry (D162 item 5, D164 item 4).
+  if (localMcp.enabled && (localMcp.args[0] !== "mcp" || !localMcp.args.includes("--embedded")))
+    problems.push(
+      `features.localMcp launches \`mostra ${localMcp.args.join(" ")}\`, not \`mostra mcp --embedded\` (D148: a plugin's server sends no telemetry)`,
+    );
   const serverFiles = [
     ["mcp.json", existsSync(join(dir, "mcp.json"))],
     [".mcp.json", existsSync(join(dir, ".mcp.json"))],

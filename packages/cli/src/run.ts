@@ -204,7 +204,8 @@ export async function run(io: RunnerIo): Promise<number> {
     json,
     tty: io.tty,
     readsStdin,
-    quiet: command.quiet === true,
+    quiet:
+      typeof command.quiet === "function" ? command.quiet(parsed.flags) : command.quiet === true,
     hostHome: embeddedHome(marks),
     stderr: io.stderr,
     ask: (question, timeoutMs) => ask(io, question, timeoutMs),
@@ -276,11 +277,19 @@ export async function run(io: RunnerIo): Promise<number> {
       io.stderr(describe(diagnostic));
     },
     record: (event) => telemetry.record(event),
+    checkpoint(hostInstance) {
+      try {
+        telemetry.checkpoint({ hostInstance });
+      } catch {
+        // Telemetry never changes a command's outcome.
+      }
+    },
     runtime: (args, stdio = "pipe") => runRuntime(io, args, stdio),
   };
 
   let exit: number;
   let error: string | undefined;
+  let ownHostInstance = false;
   try {
     // Telemetry never stops a command: a failure in it is a run without telemetry.
     if (!(await telemetry.begin().catch(() => true))) return 130;
@@ -291,15 +300,18 @@ export async function run(io: RunnerIo): Promise<number> {
       () => startingDaemon,
     );
     exit = outcome.exit ?? EXIT.ok;
-    if (outcome.raw) return exit;
-    if (json) {
-      writeJson({
-        ok: true,
-        result: outcome.result ?? null,
-        ...(summary && !streamed && command.local !== true ? { instance: summary } : {}),
-        warnings,
-      });
-    } else io.stdout(outcome.human ?? `${JSON.stringify(outcome.result, null, 2)}\n`);
+    ownHostInstance = outcome.hostInstance === true;
+    // A command that wrote its own stdout (`host`, `mcp`) gets no envelope and no text.
+    if (outcome.raw !== true) {
+      if (json) {
+        writeJson({
+          ok: true,
+          result: outcome.result ?? null,
+          ...(summary && !streamed && command.local !== true ? { instance: summary } : {}),
+          warnings,
+        });
+      } else io.stdout(outcome.human ?? `${JSON.stringify(outcome.result, null, 2)}\n`);
+    }
   } catch (caught) {
     const diagnostic = diagnosticOf(caught);
     error = diagnostic.code;
@@ -311,7 +323,7 @@ export async function run(io: RunnerIo): Promise<number> {
     telemetry.end({
       exit,
       durationMs: Date.now() - started,
-      hostInstance: summary?.mode === "host",
+      hostInstance: summary?.mode === "host" || ownHostInstance,
       ...(error !== undefined ? { error } : {}),
     });
   } catch {
@@ -330,8 +342,7 @@ async function withTimeout(
   timeoutMs: number | undefined,
   startingDaemon: () => boolean,
 ): Promise<CommandOutcome> {
-  if (timeoutMs === undefined || command.path[0] === "host" || command.path[0] === "dev")
-    return command.run(context);
+  if (timeoutMs === undefined || UNBOUNDED.has(command.path[0] ?? "")) return command.run(context);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
