@@ -145,9 +145,10 @@ describe("mostra mcp", () => {
       dir: string;
       files: string[];
     };
-    // The instance answers with the directory's real path (macOS's /tmp is /private/tmp).
+    // The instance names a directory by its native real path: links followed (macOS's /tmp is
+    // /private/tmp), and on Windows short 8.3 names such as RUNNER~1 written out (D151 item 5).
     mkdirSync(join(at.root, "ws"), { recursive: true });
-    expect(created.dir).toBe(join(realpathSync(join(at.root, "ws")), "name-please"));
+    expect(created.dir).toBe(join(realpathSync.native(join(at.root, "ws")), "name-please"));
     expect(created.files).toEqual(expect.arrayContaining(["index.tsx", "AGENTS.md"]));
 
     const written = await call(client, "artifact_write", {
