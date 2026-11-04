@@ -6,9 +6,9 @@
  * its own file tools (D05).
  */
 import { randomBytes } from "node:crypto";
-import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { McpWorkspace, WorkspaceFile } from "./ports.ts";
 
@@ -24,10 +24,19 @@ function invalid(message: string): RpcError {
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses.
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
+/** Characters Windows refuses in a name (`:` would also name an NTFS stream). */
+const UNPORTABLE = /[<>:"|?*]/;
+
+/** Windows' device names, with any extension (`nul.tsx` is the device too), any case. */
+const DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
+
 /**
  * A file's path inside its artifact, checked and spelled with `/`: relative, no `.` or `..`
- * segments, no empty segment, no drive or control characters. Throws
- * `MOSTRA_ARTIFACT_PATH_INVALID` otherwise.
+ * segments, no empty segment, no drive or control characters, and only names every system can
+ * hold, so an artifact written on one moves to another whole: no `<>:"|?*`, no Windows device
+ * name and no name ending in a dot or a space, which Windows strips, making `index.tsx.` the same
+ * file as `index.tsx` (Opus review of WP-15, finding 5). Throws `MOSTRA_ARTIFACT_PATH_INVALID`
+ * otherwise.
  */
 export function artifactPath(path: string): string {
   const segments = path.split(/[\\/]/);
@@ -40,6 +49,14 @@ export function artifactPath(path: string): string {
   ) {
     throw invalid(
       `"${path.slice(0, 200)}" isn't a path inside the artifact: give it relative to the artifact's directory, with no "..", such as "components/chart.tsx".`,
+    );
+  }
+  const unportable = segments.find(
+    (segment) => UNPORTABLE.test(segment) || DEVICE.test(segment) || /[. ]$/.test(segment),
+  );
+  if (unportable !== undefined) {
+    throw invalid(
+      `"${path.slice(0, 200)}" has a name not every system can hold ("${unportable.slice(0, 60)}"): name it without <>:"|?*, a device name such as CON or NUL, or a dot or space at its end.`,
     );
   }
   return segments.join("/");
@@ -108,12 +125,28 @@ export function slug(title: string | undefined): string {
 const scratch = (to: string): string => `${to}.mostra-${randomBytes(6).toString("hex")}.tmp`;
 
 /**
+ * Refuses to act on `to` unless its folder is still inside the artifact's real directory: a
+ * folder another program turned into a link after the path was checked would otherwise take the
+ * write out of the artifact (Opus review of WP-15, finding 7).
+ */
+async function guard(real: string, to: string): Promise<void> {
+  const folder = await realpath(dirname(to)).catch(() => undefined);
+  if (folder === undefined || !within(folder, real)) {
+    throw invalid(
+      `A folder of the artifact moved out of its directory while the change was made (it became a link): ${relative(real, to)}. The change was undone; make it again.`,
+    );
+  }
+}
+
+/**
  * Applies a checked change all or nothing: every new file is written aside first, then each file
- * it replaces or deletes is moved aside and the new one moved into place. A failure on the way (a
- * full disk, a file another program holds) undoes everything done so far, in reverse, so the
+ * it replaces or deletes is moved aside and the new one moved into place, each step only while
+ * its folder is still inside the artifact. A failure on the way (a full disk, a file another
+ * program holds, a folder swapped for a link) undoes everything done so far, in reverse, so the
  * artifact is as it was; the moved-aside files are removed only once all of it held.
  */
 async function commit(
+  real: string,
   writes: readonly { readonly file: WorkspaceFile; readonly to: string }[],
   deletes: readonly { readonly path: string; readonly to: string }[],
 ): Promise<{ written: string[]; deleted: string[] }> {
@@ -123,10 +156,12 @@ async function commit(
   try {
     for (const { file, to } of writes) {
       const aside = scratch(to);
+      await guard(real, to);
       staged.push({ to, aside });
       await writeFile(aside, file.content, { flag: "wx" });
     }
     for (const { to, aside } of staged) {
+      await guard(real, to);
       if ((await lstatOrUndefined(to)) !== undefined) {
         const old = scratch(to);
         await renameWithRetry(to, old);
@@ -140,6 +175,7 @@ async function commit(
     const deleted: string[] = [];
     for (const { path, to } of deletes) {
       if ((await lstatOrUndefined(to)) === undefined) continue;
+      await guard(real, to);
       const old = scratch(to);
       await renameWithRetry(to, old);
       kept.push(old);
@@ -155,13 +191,24 @@ async function commit(
   }
 }
 
+/** Makes `dir` and any folder above it that is missing; returns each one made, outermost first. */
+async function makeDirectory(dir: string): Promise<string[]> {
+  const first = await mkdir(dir, { recursive: true });
+  if (first === undefined) return [];
+  const made: string[] = [];
+  for (let at = resolve(dir); ; at = dirname(at)) {
+    made.unshift(at);
+    if (at === resolve(first) || at === dirname(at)) break;
+  }
+  return made;
+}
+
 /** The workspace on this computer, rooted at `root` (absolute). */
 export function localWorkspace(root: string): McpWorkspace {
   const base = resolve(root);
 
-  /** The artifact's real directory, created when `create`; checked to be a directory. */
-  async function realDir(dir: string, create: boolean): Promise<string> {
-    if (create) await mkdir(dir, { recursive: true });
+  /** The artifact's real directory, checked to be a directory. */
+  async function realDir(dir: string): Promise<string> {
     let real: string;
     try {
       real = await realpath(dir);
@@ -177,10 +224,11 @@ export function localWorkspace(root: string): McpWorkspace {
   /**
    * The path a file of the artifact will have, walking its folders one at a time from the
    * artifact's real directory: a folder that is a link must lead to a folder inside the artifact,
-   * a missing one is created when `create` (never through a link, since each is checked before the
-   * next is made), and the file itself may not be a link or a folder.
+   * a missing one is created when `created` is given, which records it (never through a link,
+   * since each is checked before the next is made), and the file itself may not be a link or a
+   * folder.
    */
-  async function target(real: string, path: string, create: boolean): Promise<string> {
+  async function target(real: string, path: string, created?: string[]): Promise<string> {
     const segments = artifactPath(path).split("/");
     const name = segments.pop() as string;
     let at = real;
@@ -189,8 +237,9 @@ export function localWorkspace(root: string): McpWorkspace {
       const info = await lstatOrUndefined(next);
       if (info === undefined) {
         // Nothing to read there, and nothing written yet: the path as it would be.
-        if (!create) return join(next, ...segments.slice(index + 1), name);
+        if (created === undefined) return join(next, ...segments.slice(index + 1), name);
         await mkdir(next);
+        created.push(next);
         at = next;
         continue;
       }
@@ -236,8 +285,8 @@ export function localWorkspace(root: string): McpWorkspace {
       return join(base, `${name}-${randomBytes(4).toString("hex")}`);
     },
     async read(dir, path) {
-      const real = await realDir(dir, false);
-      const file = await target(real, path, false);
+      const real = await realDir(dir);
+      const file = await target(real, path);
       try {
         return new Uint8Array(await readFile(file));
       } catch (error) {
@@ -246,23 +295,50 @@ export function localWorkspace(root: string): McpWorkspace {
       }
     },
     async apply(dir, changes) {
-      // Every path is checked before the first byte is written.
+      // Every path is checked before anything is made: its spelling, then (in a directory that
+      // exists) every folder on its way. Names that differ only in case are one file on macOS
+      // and Windows, so they count as one here (Opus review of WP-15, findings 3 and 4).
       const paths = [...changes.write.map((file) => file.path), ...changes.delete];
       for (const path of paths) artifactPath(path);
       const seen = new Set<string>();
       for (const path of paths) {
-        const key = artifactPath(path);
-        if (seen.has(key)) throw invalid(`"${path}" appears twice in one change.`);
+        const key = artifactPath(path).toLowerCase();
+        if (seen.has(key)) {
+          throw invalid(
+            `"${path}" appears twice in one change (names that differ only in case are one file on macOS and Windows).`,
+          );
+        }
         seen.add(key);
       }
-      const real = await realDir(dir, changes.write.length > 0);
-      const writes: { file: WorkspaceFile; to: string }[] = [];
-      for (const file of changes.write)
-        writes.push({ file, to: await target(real, file.path, true) });
-      const deletes: { path: string; to: string }[] = [];
-      for (const path of changes.delete)
-        deletes.push({ path, to: await target(real, path, false) });
-      return await commit(writes, deletes);
+      for (const path of paths) {
+        const segments = artifactPath(path).toLowerCase().split("/");
+        for (let end = 1; end < segments.length; end++) {
+          const folder = segments.slice(0, end).join("/");
+          if (seen.has(folder)) {
+            throw invalid(`"${folder}" is both a file and a folder in one change.`);
+          }
+        }
+      }
+      const exists = (await lstatOrUndefined(dir)) !== undefined;
+      if (exists || changes.write.length === 0) {
+        const real = await realDir(dir);
+        for (const path of paths) await target(real, path);
+      }
+      // Then the folders it needs, each recorded so a change that fails removes them again.
+      const created: string[] = [];
+      try {
+        if (!exists) created.push(...(await makeDirectory(dir)));
+        const real = await realDir(dir);
+        const writes: { file: WorkspaceFile; to: string }[] = [];
+        for (const file of changes.write)
+          writes.push({ file, to: await target(real, file.path, created) });
+        const deletes: { path: string; to: string }[] = [];
+        for (const path of changes.delete) deletes.push({ path, to: await target(real, path) });
+        return await commit(real, writes, deletes);
+      } catch (error) {
+        for (const folder of created.reverse()) await rmdir(folder).catch(() => {});
+        throw error;
+      }
     },
   };
 }

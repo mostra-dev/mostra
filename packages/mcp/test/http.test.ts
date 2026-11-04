@@ -132,6 +132,24 @@ describe("the MCP endpoint's request checks (HY-01 item 13)", () => {
     );
   });
 
+  it("reads the scheme without regard to case, and counts only wrong bearer tokens as guesses (Opus review of WP-15, finding 10)", async () => {
+    const at = endpoint();
+    const as = (value: string) =>
+      good().map(([name, header]): [string, string] =>
+        name === "Authorization" ? [name, value] : [name, header],
+      );
+    expect((await send("/mcp", as(`bearer ${TOKEN}`), { at })).status).toBe(200);
+    expect((await send("/mcp", as(`BEARER  ${TOKEN}`), { at })).status).toBe(200);
+    // Another scheme can never succeed, so it isn't a guess: past the limit's count, the right
+    // token still works.
+    const basic = await Promise.all(
+      Array.from({ length: GUESS_LIMIT + 5 }, () => send("/mcp", as(`Basic ${TOKEN}`), { at })),
+    );
+    expect(basic.every((response) => response.status === 401)).toBe(true);
+    expect(await code(basic[0] as Response)).toBe("MOSTRA_HYGIENE_TOKEN_INVALID");
+    expect((await send("/mcp", good(), { at })).status).toBe(200);
+  });
+
   it("limits guessing: past the limit every token is refused, the right one too, until the window clears", async () => {
     let now = 1_000_000;
     const at = endpoint(() => now);

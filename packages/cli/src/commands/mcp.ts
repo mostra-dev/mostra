@@ -111,11 +111,11 @@ export const mcpCommand: CommandDef = defineCommand({
       ...(bind !== undefined ? { bind } : {}),
       ...(urlHost !== undefined ? { urlHost } : {}),
       onListening({ url, token, generated }) {
-        if (context.json) {
-          context.emit({ kind: "listening", url, ...(generated ? { token } : {}) });
-          return;
-        }
-        context.stderr(`Mostra's MCP server is listening at ${url}\n`);
+        // The token is a secret: it goes to stderr once, never to stdout, which a supervisor
+        // may keep in a log (D164 item 3, Opus review of WP-15, finding 8). A program that needs
+        // the token sets MOSTRA_MCP_TOKEN; `listening` gives it the URL.
+        if (context.json) context.emit({ kind: "listening", url });
+        else context.stderr(`Mostra's MCP server is listening at ${url}\n`);
         context.stderr(
           generated
             ? `Send Authorization: Bearer ${token} with every request (set MOSTRA_MCP_TOKEN to choose the token).\n`

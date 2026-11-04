@@ -429,8 +429,9 @@ export function createTools(
               ? new Uint8Array(Buffer.from(file.content, "base64"))
               : new TextEncoder().encode(file.content),
         }));
-        const warnings = await droppedIds(options, dir, write);
-        const changed = await options.workspace.apply(dir, { write, delete: args.deletes ?? [] });
+        const deletes = args.deletes ?? [];
+        const warnings = await droppedIds(options, dir, write, deletes);
+        const changed = await options.workspace.apply(dir, { write, delete: deletes });
         return jsonResult({ dir, ...changed, ...(warnings.length > 0 ? { warnings } : {}) });
       },
     }),
@@ -474,7 +475,7 @@ export function createTools(
           path: file.path,
           content: new TextEncoder().encode(file.content),
         }));
-        const warnings = await droppedIds(options, dir, write);
+        const warnings = await droppedIds(options, dir, write, plan.change.delete);
         const changed = await options.workspace.apply(dir, { write, delete: plan.change.delete });
         return jsonResult({
           dir,
@@ -758,29 +759,51 @@ const ENTRIES = new Set(["index.tsx", "index.jsx", "index.mdx"]);
 const MANIFEST_ID = /\bid\s*:\s*["'`]?(art_[0-9A-HJKMNP-TV-Z]{26})\b/;
 
 /**
- * A warning for each entry a write replaces with text that no longer names the artifact ID its
- * manifest held: the write goes ahead (the agent's choice), but the next publish would bind the
- * artifact by its path under a new ID, which the agent can't see from here (D51, D164).
+ * Warnings for a change after which no entry file names the artifact's `id` any more: the next
+ * publish would bind the artifact by its path under a new ID (found in an external Codex session).
+ * The change is judged whole: an entry rewritten without the id, deleted, or swapped for another
+ * entry, with entry names matched without regard to case, since macOS and Windows keep
+ * `Index.tsx` and `index.tsx` as one file (Opus review of WP-15, finding 4). The change is made
+ * as given either way.
  */
 async function droppedIds(
   options: McpServerOptions,
   dir: string,
   write: readonly { readonly path: string; readonly content: Uint8Array }[],
+  deletes: readonly string[],
 ): Promise<Diagnostic[]> {
-  const warnings: Diagnostic[] = [];
   const decoder = new TextDecoder();
-  for (const file of write) {
-    if (!ENTRIES.has(file.path)) continue;
-    const before = await options.workspace.read(dir, file.path);
-    const id = before === undefined ? undefined : MANIFEST_ID.exec(decoder.decode(before))?.[1];
-    if (id === undefined || decoder.decode(file.content).includes(id)) continue;
-    warnings.push(
-      createDiagnostic("MOSTRA_ARTIFACT_ID_DROPPED", {
-        message: `${file.path} no longer names the artifact's id, ${id}; it was written as given.`,
-      }),
-    );
+  const entry = (path: string): string | undefined => {
+    const name = path.replaceAll("\\", "/").toLowerCase();
+    return ENTRIES.has(name) ? name : undefined;
+  };
+  const touched = [...write.map((file) => file.path), ...deletes].some((path) => entry(path));
+  if (!touched) return [];
+  // The id the entries hold now, and what each entry holds once the change is made.
+  let id: string | undefined;
+  const after = new Map<string, string | undefined>();
+  for (const name of ENTRIES) {
+    const before = await options.workspace.read(dir, name).catch(() => undefined);
+    const text = before === undefined ? undefined : decoder.decode(before);
+    id ??= text === undefined ? undefined : MANIFEST_ID.exec(text)?.[1];
+    after.set(name, text);
   }
-  return warnings;
+  if (id === undefined) return [];
+  for (const path of deletes) {
+    const name = entry(path);
+    if (name !== undefined) after.set(name, undefined);
+  }
+  for (const file of write) {
+    const name = entry(file.path);
+    if (name !== undefined) after.set(name, decoder.decode(file.content));
+  }
+  if ([...after.values()].some((text) => text?.includes(id))) return [];
+  const changed = [...write.map((file) => file.path), ...deletes].filter((path) => entry(path));
+  return [
+    createDiagnostic("MOSTRA_ARTIFACT_ID_DROPPED", {
+      message: `After this change no entry file names the artifact's id, ${id} (${changed.join(", ")} changed); it was made as given.`,
+    }),
+  ];
 }
 
 /** A usage error the model can correct: the arguments don't fit together. */

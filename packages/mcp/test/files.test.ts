@@ -103,6 +103,48 @@ describe("artifact_patch's plan", () => {
     });
   });
 
+  it("drops a/ and b/ only from git's headers, and never renames onto a file that is there (Opus review of WP-15, finding 6)", async () => {
+    const hunk = ["@@ -1 +1 @@", "-old", "+new", ""];
+    const tree = files({ "a/index.tsx": "old\n", "index.tsx": "old\n" });
+    // A plain diff -u of a file in a folder named a: that file, not the root's.
+    const plain = await planPatch(
+      { diff: ["--- a/index.tsx", "+++ a/index.tsx", ...hunk].join("\n") },
+      tree,
+    );
+    expect(plain).toEqual({
+      ok: true,
+      change: { write: [{ path: "a/index.tsx", content: "new\n" }], delete: [] },
+    });
+    // Git's form names the root's file.
+    const git = await planPatch(
+      { diff: ["--- a/index.tsx", "+++ b/index.tsx", ...hunk].join("\n") },
+      tree,
+    );
+    expect(git).toEqual({
+      ok: true,
+      change: { write: [{ path: "index.tsx", content: "new\n" }], delete: [] },
+    });
+    // A rename onto a file that exists is refused; onto a new name it moves the file.
+    const rename = (to: string) =>
+      [
+        `diff --git a/index.tsx b/${to}`,
+        "similarity index 100%",
+        "rename from index.tsx",
+        `rename to ${to}`,
+        "",
+      ].join("\n");
+    const onto = await planPatch(
+      { diff: rename("page.tsx") },
+      files({ "index.tsx": "x\n", "page.tsx": "keep\n" }),
+    );
+    expect(onto).toEqual({ ok: false, rejected: [{ path: "page.tsx", reason: "exists" }] });
+    const moved = await planPatch({ diff: rename("main.tsx") }, files({ "index.tsx": "x\n" }));
+    expect(moved).toEqual({
+      ok: true,
+      change: { write: [{ path: "main.tsx", content: "x\n" }], delete: ["index.tsx"] },
+    });
+  });
+
   it("names the hunk whose context doesn't match", async () => {
     const diff = [
       "--- a/index.tsx",
@@ -152,6 +194,87 @@ describe("the local workspace", () => {
     }
     const elsewhere = resolve(tmpdir(), "elsewhere");
     expect(workspace.resolveDir(elsewhere)).toBe(elsewhere);
+  });
+
+  it("refuses names not every system can hold (Opus review of WP-15, finding 5)", () => {
+    for (const bad of [
+      "index.tsx:x",
+      "index.tsx.",
+      "index.tsx ",
+      "pages /a.tsx",
+      "CON",
+      "nul.tsx",
+      "Lpt1.txt",
+      "com9",
+      "a?b.tsx",
+      'a"b',
+      "a|b",
+      "a<b>",
+      "a*b",
+    ]) {
+      expect(() => artifactPath(bad), bad).toThrow(/not every system can hold/);
+    }
+    for (const good of [
+      "pages/[id].tsx",
+      "pages/docs/[...rest].tsx",
+      "con-tents.tsx",
+      "console.tsx",
+      "a b.tsx",
+      ".well-known/x.json",
+    ]) {
+      expect(artifactPath(good), good).toBe(good);
+    }
+  });
+
+  it("makes no folder for a change it refuses, and removes those a failed change made (Opus review of WP-15, finding 3)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
+    const outside = mkdtempSync(join(tmpdir(), "mostra-outside-"));
+    const workspace = localWorkspace(root);
+    const dir = workspace.resolveDir("page");
+    await workspace.apply(dir, {
+      write: [{ path: "index.tsx", content: encode("i") }],
+      delete: [],
+    });
+    symlinkSync(outside, join(dir, "link"), "junction");
+    await expect(
+      workspace.apply(dir, {
+        write: [
+          { path: "a/b/c.tsx", content: encode("c") },
+          { path: "link/x.tsx", content: encode("x") },
+        ],
+        delete: [],
+      }),
+    ).rejects.toThrow(/leads out of the artifact's directory/);
+    expect(existsSync(join(dir, "a"))).toBe(false);
+    // One change can't make a name both a file and a folder; nothing is made for it.
+    const fresh = join(root, "typo", "new");
+    await expect(
+      workspace.apply(fresh, {
+        write: [
+          { path: "a/b.tsx", content: encode("b") },
+          { path: "A/b.tsx/c.tsx", content: encode("c") },
+        ],
+        delete: [],
+      }),
+    ).rejects.toThrow(/both a file and a folder/);
+    expect(existsSync(join(root, "typo"))).toBe(false);
+  });
+
+  it("counts names that differ only in case as one file in a change (Opus review of WP-15, finding 4)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mostra-ws-"));
+    const workspace = localWorkspace(root);
+    const dir = workspace.resolveDir("page");
+    await workspace.apply(dir, {
+      write: [{ path: "index.tsx", content: encode("i") }],
+      delete: [],
+    });
+    await expect(
+      workspace.apply(dir, {
+        write: [{ path: "index.tsx", content: encode("new") }],
+        delete: ["INDEX.tsx"],
+      }),
+    ).rejects.toThrow(/appears twice in one change/);
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toBe("i");
   });
 
   it("writes and deletes files, creating folders, and never through a link out of the artifact", async () => {

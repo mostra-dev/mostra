@@ -144,9 +144,12 @@ export function daemonInstance(options: {
   readonly log: (line: string) => void;
   readonly idleMs?: number;
   readonly runtime?: RuntimeInstall;
+  /** How a session is opened: `connect`, or a test's stand-in. */
+  readonly connect?: typeof connect;
 }): DaemonInstance {
   const idleMs = options.idleMs ?? MCP_IDLE_MS;
   const runtime = options.runtime;
+  const opener = options.connect ?? connect;
   const listeners = new Map<string, (progress: ArtifactProgressParams) => void>();
   let session: Promise<InstanceConnection> | undefined;
   let host = false;
@@ -155,7 +158,7 @@ export function daemonInstance(options: {
 
   const open = (): Promise<InstanceConnection> => {
     if (session !== undefined) return session;
-    const opening = connect({ home: options.home, env: options.env }).then((connection) => {
+    const opening = opener({ home: options.home, env: options.env }).then((connection) => {
       if (connection === undefined) {
         throw new RpcError(
           createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
@@ -203,15 +206,18 @@ export function daemonInstance(options: {
       try {
         // The runtime first (D164 item 7): a call during its install waits for it, or says so.
         await runtime?.wait();
+        const used = open();
         try {
-          return await (await open()).call(method, params);
+          return await (await used).call(method, params);
         } catch (error) {
           // A daemon that restarted or went idle closed the session: a method that changes
-          // nothing is asked again on a new one; a change is never sent twice.
+          // nothing is asked again on a new one; a change is never sent twice. Only the session
+          // this call used is dropped: calls that fail together then share one new session, and
+          // none is left open behind another (Opus review of WP-15, finding 1).
           const closed =
             error instanceof RpcError && error.diagnostic.code === "MOSTRA_HOST_CONNECTION_CLOSED";
           if (!closed || method.mutating) throw error;
-          session = undefined;
+          if (session === used) session = undefined;
           return await (await open()).call(method, params);
         }
       } finally {
@@ -336,6 +342,9 @@ export function mcpBind(options: { readonly bind?: string; readonly urlHost?: st
   return { address, urlHost: (options.urlHost ?? canonical).toLowerCase() };
 }
 
+/** The fewest distinct characters a chosen token must have, so `aaaa…` isn't accepted. */
+const TOKEN_VARIETY = 8;
+
 /** The bearer token: `MOSTRA_MCP_TOKEN`, or one made for this run (160 bits). */
 export function mcpToken(env: Environment): {
   readonly token: string;
@@ -343,10 +352,10 @@ export function mcpToken(env: Environment): {
 } {
   const given = env["MOSTRA_MCP_TOKEN"];
   if (given !== undefined && given !== "") {
-    if (given.length < 26 || /\s/.test(given)) {
+    if (given.length < 26 || /\s/.test(given) || new Set(given).size < TOKEN_VARIETY) {
       throw new RpcError(
         createDiagnostic("MOSTRA_CLI_USAGE", {
-          message: "MOSTRA_MCP_TOKEN must be at least 26 characters with no spaces.",
+          message: `MOSTRA_MCP_TOKEN must be at least 26 characters, with no spaces and at least ${TOKEN_VARIETY} different characters: a random one, such as from \`openssl rand -hex 20\`.`,
         }),
       );
     }

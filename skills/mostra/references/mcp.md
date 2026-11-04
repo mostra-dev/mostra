@@ -32,11 +32,11 @@ The first time the server runs on a computer, it installs Mostra's runtime in th
 
 ## Files and directories
 
-`artifact_create` returns the artifact's `dir` and its `artifactId`; pass either to the other tools. A relative `dir` is inside the server's workspace folder, which its instructions name. Paths in `artifact_write` and `artifact_patch` are relative to the artifact's directory (`index.tsx`, `components/chart.tsx`), and a tool only ever changes files inside it.
+`artifact_create` returns the artifact's `dir` and its `artifactId`; pass either to the other tools. A relative `dir` is inside the server's workspace folder, which its instructions name. Paths in `artifact_write` and `artifact_patch` are relative to the artifact's directory (`index.tsx`, `components/chart.tsx`), and a tool only ever changes files inside it. Names are ones every system can hold, so the artifact moves between macOS, Linux and Windows whole: no `<>:"|?*`, no device name such as `CON` or `NUL`, no dot or space at the end, and two names that differ only in case are one file.
 
 When you also have your own file tools on the same computer, use whichever you like for the files: verify and publish read the directory as it is.
 
-`artifact_patch` applies all or nothing. When an `old` text appears twice, or a diff's lines don't match the file, nothing is written and `rejected` names each edit or hunk and why; read the file again and send a patch that fits.
+`artifact_write` and `artifact_patch` apply all or nothing. When an `old` text appears twice, or a diff's lines don't match the file, nothing is written and `rejected` names each edit or hunk and why; read the file again and send a patch that fits.
 
 ## Waiting and results
 
@@ -60,4 +60,4 @@ A client starts the server as `mostra mcp` over stdio, or `npx -y @mostra/cli@0.
 { "mcpServers": { "mostra": { "command": "npx", "args": ["-y", "@mostra/cli@0.8.0", "mcp"] } } }
 ```
 
-For a client that speaks only HTTP, `mostra mcp --http` serves Streamable HTTP on `127.0.0.1` and prints its URL and a token; every request sends `Authorization: Bearer <token>` (set `MOSTRA_MCP_TOKEN` to choose it). `--workspace <dir>` chooses where new artifacts go.
+For a client that speaks only HTTP, `mostra mcp --http` serves Streamable HTTP on `127.0.0.1` and prints its URL and a token on stderr; every request sends `Authorization: Bearer <token>` (set `MOSTRA_MCP_TOKEN` to choose it). `--workspace <dir>` chooses where new artifacts go.

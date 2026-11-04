@@ -104,7 +104,6 @@ export function createHttpEndpoint(
     ...(policy.onError !== undefined ? { onerror: policy.onError } : {}),
   });
   const failures: number[] = [];
-  const expected = `Bearer ${policy.token}`;
 
   const refused = (result: Refusal, extra?: Record<string, string>): Response => {
     policy.onRefusal?.({ status: result.status, code: result.diagnostic.code });
@@ -162,14 +161,22 @@ export function createHttpEndpoint(
         );
       }
       const authorization = authorizations[0]?.[1];
-      if (authorization === undefined || !safeEqual(authorization, expected)) {
-        if (authorization !== undefined) failures.push(at);
+      // The scheme is case-insensitive (RFC 9110 §11.1); the credential is compared whole, in
+      // constant time. Only a wrong bearer token counts as a guess: another scheme can never
+      // succeed (Opus review of WP-15, finding 10).
+      const parts =
+        authorization === undefined ? undefined : /^([!-~]+)[ \t]+(.*)$/.exec(authorization);
+      const bearer = parts?.[1]?.toLowerCase() === "bearer" ? (parts[2] ?? "").trim() : undefined;
+      if (bearer === undefined || !safeEqual(bearer, policy.token)) {
+        if (bearer !== undefined) failures.push(at);
         return refused(
           refusal(
             "MOSTRA_HYGIENE_TOKEN_INVALID",
             authorization === undefined
               ? "The request has no Authorization header; send Authorization: Bearer <token>."
-              : "The request's token isn't this server's.",
+              : bearer === undefined
+                ? "The request's Authorization header isn't a bearer token; send Authorization: Bearer <token>."
+                : "The request's token isn't this server's.",
           ),
           { "WWW-Authenticate": 'Bearer realm="mostra"' },
         );

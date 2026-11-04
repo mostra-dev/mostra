@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
@@ -348,5 +348,72 @@ describe("the MCP server", () => {
     expect(plain).not.toContain("## Shared state");
     expect(plain).toContain("(none yet)");
     expect(once.instance.calls.map((call) => call.method)).not.toContain("state/get");
+  });
+
+  it("tells onClient of a client that only lists tools, on both eras (Opus review finding 2)", async () => {
+    for (const era of ["modern", "legacy"] as const) {
+      const seen: { name: string; version?: string }[] = [];
+      const { options } = base();
+      const client = await connect({ ...options, onClient: (info) => seen.push(info) }, era);
+      await client.listTools();
+      await client.close();
+      expect(seen.length, era).toBeGreaterThan(0);
+      expect(seen[0], era).toEqual({ name: "test-harness", version: "1.2.3" });
+    }
+  });
+
+  it("judges a dropped id on the whole change: a case-changed entry, a deleted one, a swapped one (Opus review of WP-15, finding 4)", async () => {
+    const id = "art_01M6GSAP4PFBS48CBX8G53N2FR";
+    const page = `export const artifact = defineArtifact({ id: "${id}", title: "A" });\n`;
+    const warned = async (args: Record<string, unknown>): Promise<boolean> => {
+      const { options, root } = base();
+      const dir = join(root, "page");
+      await options.workspace.apply(dir, {
+        write: [{ path: "index.tsx", content: new TextEncoder().encode(page) }],
+        delete: [],
+      });
+      const client = await connect(options);
+      const result = await client.callTool({
+        name: "artifact_write",
+        arguments: { dir: "page", ...args },
+      });
+      expect(result.isError).toBeFalsy();
+      return "warnings" in (JSON.parse(text(result)) as object);
+    };
+    const bare = "export default function Page() { return null; }";
+    expect(await warned({ files: [{ path: "Index.tsx", content: bare }] })).toBe(true);
+    expect(
+      await warned({ files: [{ path: "index.jsx", content: bare }], deletes: ["index.tsx"] }),
+    ).toBe(true);
+    expect(await warned({ files: [], deletes: ["index.tsx"] })).toBe(true);
+    // Swapped for another entry that keeps the id, or another file changed: nothing to say.
+    expect(
+      await warned({
+        files: [{ path: "index.mdx", content: `---\nid: ${id}\n---\n` }],
+        deletes: ["index.tsx"],
+      }),
+    ).toBe(false);
+    expect(await warned({ files: [{ path: "chart.tsx", content: bare }] })).toBe(false);
+  });
+
+  it("serves in tools/list exactly the input schemas the published bundle holds, on both eras (D32; Opus review of WP-15, finding 9)", async () => {
+    // Clients freeze what tools/list serves; the bundle is what the api job's snapshot check
+    // holds to additive changes, so the two must be one.
+    const bundle = JSON.parse(
+      readFileSync(new URL("../schemas/mcp-tools.schema.json", import.meta.url), "utf8"),
+    ) as { $defs: Record<string, Record<string, unknown>> };
+    const idOf = (name: string): string =>
+      name
+        .split("_")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join("")
+        .concat("Input");
+    for (const era of ["modern", "legacy"] as const) {
+      const { tools } = await (await connect(base().options, era)).listTools();
+      for (const tool of tools) {
+        const { $schema: _ignored, ...served } = tool.inputSchema as Record<string, unknown>;
+        expect(served, `${era} ${tool.name}`).toEqual(bundle.$defs[idOf(tool.name)]);
+      }
+    }
   });
 });

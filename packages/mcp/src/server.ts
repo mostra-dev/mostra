@@ -135,16 +135,37 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
       { instructions },
     );
     let told = false;
-    const seen = (ctx: ServerContext): void => {
-      if (told || options.onClient === undefined) return;
-      const client = clientOf(server, ctx);
-      if (client === undefined) return;
+    const tell = (info: { name?: unknown; version?: unknown } | undefined): void => {
+      if (told || options.onClient === undefined || typeof info?.name !== "string") return;
       told = true;
       try {
-        options.onClient(client);
+        options.onClient({
+          name: info.name,
+          ...(typeof info.version === "string" ? { version: info.version } : {}),
+        });
       } catch {
-        // Counting a session never fails a tool.
+        // Counting a session never fails a request.
       }
+    };
+    const seen = (ctx: ServerContext): void => {
+      if (!told) tell(clientOf(server, ctx));
+    };
+    // Every request names its client, but only tool calls and resource reads reach a handler
+    // here: a 2025-era client names itself once, in `initialize`, and a client that only lists
+    // tools (a harness's health check) reaches neither. So the client is also read once the
+    // handshake is done (a stdio session) and when the instance closes, which over HTTP is after
+    // each request, the `initialize` one included (Opus review of WP-15, finding 2).
+    const identity = () =>
+      server.server.getClientVersion() as { name?: unknown; version?: unknown } | undefined;
+    const initialized = server.server.oninitialized;
+    server.server.oninitialized = () => {
+      initialized?.();
+      tell(identity());
+    };
+    const closed = server.server.onclose;
+    server.server.onclose = () => {
+      closed?.();
+      tell(identity());
     };
 
     for (const tool of tools) {

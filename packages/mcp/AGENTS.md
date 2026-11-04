@@ -22,9 +22,13 @@ Audience: MCP clients, through `mostra mcp` and WP-30's remote server. Runs in: 
   published as `schemas/mcp-tools.*.json`; the `api` job's snapshot check refuses a change that
   isn't additive. Tool names are short and stable, under 64 characters.
 - **A tool changes only the files of the artifact it names.** `localWorkspace` checks every path
-  before writing anything, walks folders one at a time so nothing is created through a link out of
-  the artifact, and applies a change all or nothing: every file is written aside first, then each
-  one it replaces or deletes is moved aside and put back if anything later fails (`commit`).
+  before it makes anything: names every system can hold (`artifactPath`: no `<>:"|?*`, device
+  names or trailing dots and spaces), no name twice or as both a file and a folder (case folded,
+  as macOS and Windows fold it), and every folder on the way, walked one at a time so nothing is
+  created through a link out of the artifact. It then applies the change all or nothing: every
+  file is written aside first, then each one it replaces or deletes is moved aside, each step only
+  while its folder is still inside the artifact (`guard`), and everything, folders it made
+  included, is put back if anything later fails (`commit`).
 - **HTTP is guarded by the gateway's own checks** (HY-01 item 13, D96): `createHttpEndpoint`
   runs `checkRequest` with the `rpc` intent (exact `Host`, a sane target and headers, no foreign
   `Origin`, a JSON body), then the bearer token in constant time under a guessing limit, before
@@ -48,7 +52,10 @@ over stdio and HTTP against a real daemon. After changing a tool's input, `pnpm 
 - Tool descriptions, argument descriptions and the instructions are agent-facing prose (D74,
   D149): Mirza accepts them with the package that changes them.
 - The SDK builds a server per HTTP request, so `onClient` fires once per request there and once
-  per connection on stdio; whoever counts sessions dedupes.
+  per connection on stdio; whoever counts sessions dedupes. It fires on the first tool call or
+  resource read, once a stdio handshake is done, or when an instance closes (after each HTTP
+  request, `initialize` included), so a 2025-era client over HTTP, which names itself only in
+  `initialize`, and a client that only lists tools are counted too.
 - Relative directories resolve inside the workspace root (`~/mostra-artifacts` by default), never
   the server's working directory, which differs by client (a desktop app has no project folder);
   one that climbs out of it is refused, and an absolute path names any directory.

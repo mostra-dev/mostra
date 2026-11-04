@@ -44,6 +44,43 @@ afterEach(async () => {
   fake.requests.splice(0);
 });
 
+/**
+ * `mostra mcp --http --json` started on `at`, once it listens: the URL from stdout's `listening`
+ * event, and the bearer token from stderr (generated, or `MOSTRA_MCP_TOKEN`).
+ */
+async function httpServer(
+  at: TestHome,
+): Promise<{ url: string; token: string; stdout: () => string }> {
+  const server = spawn(process.execPath, [BIN, "mcp", "--http", "--json"], {
+    env: at.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  servers.push(server);
+  let out = "";
+  let err = "";
+  server.stdout?.setEncoding("utf8");
+  server.stderr?.setEncoding("utf8");
+  return await new Promise((resolve, reject) => {
+    const check = (): void => {
+      const line = out.split("\n").find((entry) => entry.includes('"listening"'));
+      const given = at.env["MOSTRA_MCP_TOKEN"];
+      const token = given ?? /Bearer ([A-Za-z0-9_-]{26,}) /.exec(err)?.[1];
+      if (line === undefined || token === undefined) return;
+      const { url } = (JSON.parse(line) as { event: { url: string } }).event;
+      resolve({ url, token, stdout: () => out });
+    };
+    server.stdout?.on("data", (chunk: string) => {
+      out += chunk;
+      check();
+    });
+    server.stderr?.on("data", (chunk: string) => {
+      err += chunk;
+      check();
+    });
+    server.once("exit", (code) => reject(new Error(`mostra mcp --http exited ${code}: ${err}`)));
+  });
+}
+
 function home(extra: Record<string, string> = {}): TestHome {
   const made = testHome(extra);
   homes.push(made);
@@ -246,24 +283,13 @@ describe("mostra mcp", () => {
   });
 
   it("serves the same tools over Streamable HTTP to both protocol eras, behind its token", async () => {
-    const at = home();
-    const server = spawn(process.execPath, [BIN, "mcp", "--http", "--json"], {
-      env: at.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    servers.push(server);
-    const listening = await new Promise<{ url: string; token: string }>((resolve, reject) => {
-      let out = "";
-      server.stdout?.setEncoding("utf8");
-      server.stdout?.on("data", (chunk: string) => {
-        out += chunk;
-        const line = out.split("\n").find((entry) => entry.includes('"listening"'));
-        if (line) resolve((JSON.parse(line) as { event: { url: string; token: string } }).event);
-      });
-      server.once("exit", (code) => reject(new Error(`mostra mcp --http exited ${code}`)));
-    });
+    const listening = await httpServer(home());
     expect(new URL(listening.url).hostname).toBe("127.0.0.1");
     expect(listening.token.length).toBeGreaterThanOrEqual(26);
+    // The generated token is printed once, on stderr: never on stdout, which a supervisor may
+    // keep in a log (D164 item 3, Opus review of WP-15, finding 8).
+    expect(listening.stdout()).not.toContain(listening.token);
+    expect(listening.stdout()).toContain('"listening"');
     for (const era of ["modern", "legacy"] as const) {
       const client = new Client(
         { name: `http-${era}`, version: "1.0.0" },
@@ -287,7 +313,7 @@ describe("mostra mcp", () => {
   });
 
   it("refuses requests a stranger's page or a wrong token could send, on the real listener (HY-01 item 13)", async () => {
-    const at = home({ MOSTRA_MCP_TOKEN: "S".repeat(32) });
+    const at = home({ MOSTRA_MCP_TOKEN: "S7kq2ZpXw9mRb4LvN0cTj6hY3dFg" });
     const server = spawn(process.execPath, [BIN, "mcp", "--http", "--json"], {
       env: at.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -325,10 +351,14 @@ describe("mostra mcp", () => {
       host: `127.0.0.1:${port}`,
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
-      authorization: `Bearer ${"S".repeat(32)}`,
+      authorization: "Bearer S7kq2ZpXw9mRb4LvN0cTj6hY3dFg",
     };
     const ok = await send(good);
     expect(ok.status).toBe(200);
+    // The scheme is case-insensitive (RFC 9110; Opus review of WP-15, finding 10).
+    expect(
+      (await send({ ...good, authorization: "bearer S7kq2ZpXw9mRb4LvN0cTj6hY3dFg" })).status,
+    ).toBe(200);
     expect(ok.headers["cross-origin-resource-policy"]).toBe("same-origin");
     expect(Object.keys(ok.headers).some((name) => name.startsWith("access-control-"))).toBe(false);
     expect((await send({ ...good, host: `evil.example:${port}` })).status).toBe(421);
@@ -384,6 +414,26 @@ describe("mostra mcp", () => {
       const sessions = events().filter((event) => event.event === "mcp.session");
       expect(sessions).toHaveLength(1);
       expect(sessions[0]).toMatchObject({ client: "claude-code", clientVersion: "9.9.9" });
+    });
+
+    it("counts a 2025-era client over HTTP that only lists the tools (Opus review of WP-15, finding 2)", async () => {
+      const at = telemetryHome();
+      at.env["MOSTRA_MCP_TOKEN"] = "Tq7Z0123456789abcdefghijklmnop";
+      const listening = await httpServer(at);
+      const client = new Client({ name: "codex-mcp-client", version: "0.162.1" });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(listening.url), {
+          requestInit: { headers: { Authorization: `Bearer ${listening.token}` } },
+        }),
+      );
+      clients.push(client);
+      expect(client.getProtocolEra()).toBe("legacy");
+      await client.listTools();
+      await client.listTools();
+      await eventually(() => events().some((event) => event.event === "mcp.session"));
+      const sessions = events().filter((event) => event.event === "mcp.session");
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({ client: "codex", clientVersion: "0.162.1" });
     });
 
     it("sends nothing from a server a harness plugin starts (--embedded), whatever the consent", async () => {

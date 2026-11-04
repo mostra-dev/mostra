@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { BIN, type TestHome, testHome } from "../support.ts";
 
-const TOKEN = "K".repeat(32);
+const TOKEN = "K4wz9Qp2Lm7Xr0Bv5Nt8Hc3Jd6Fy";
 const FIXTURES = fileURLToPath(new URL("../fixtures/mcp-conformance/", import.meta.url));
 const require = createRequire(import.meta.url);
 /** Each suite's command line, as its package's `bin` names it. */

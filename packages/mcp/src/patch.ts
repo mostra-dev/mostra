@@ -128,12 +128,23 @@ async function planEdits(path: string, edits: readonly TextEdit[], read: ReadFil
 
 const NULL_FILE = /^(\/dev\/null|nul)$/i;
 
-/** A diff header's file name without its `a/` or `b/` prefix and any timestamp. */
-function headerPath(name: string | undefined): string | undefined {
+/** A diff header's file name without any timestamp, or `undefined` for none or the null file. */
+function headerName(name: string | undefined): string | undefined {
   if (name === undefined) return undefined;
   const plain = name.split("\t")[0]?.trim() ?? "";
-  if (plain === "" || NULL_FILE.test(plain)) return undefined;
-  return plain.replace(/^[ab]\//, "");
+  return plain === "" || NULL_FILE.test(plain) ? undefined : plain;
+}
+
+/**
+ * Whether a file's headers are in git's form (`a/<path>` and `b/<path>`, or the null file on one
+ * side), whose prefixes are dropped. A plain `diff -u` names the files as they are, so `a/x.tsx`
+ * there is the file `x.tsx` in a folder `a` (Opus review of WP-15, finding 6).
+ */
+function gitHeaders(patch: StructuredPatch): boolean {
+  const from = headerName(patch.oldFileName);
+  const to = headerName(patch.newFileName);
+  if (from === undefined && to === undefined) return false;
+  return (from === undefined || from.startsWith("a/")) && (to === undefined || to.startsWith("b/"));
 }
 
 function hunkHeader(hunk: StructuredPatch["hunks"][number]): string {
@@ -157,8 +168,11 @@ async function planDiff(
   const remove: string[] = [];
   const rejected: PatchRejection[] = [];
   for (const patch of patches) {
-    const from = headerPath(patch.oldFileName);
-    const to = headerPath(patch.newFileName);
+    const git = gitHeaders(patch);
+    const strip = (name: string | undefined): string | undefined =>
+      name !== undefined && git ? name.slice(2) : name;
+    const from = strip(headerName(patch.oldFileName));
+    const to = strip(headerName(patch.newFileName));
     const creates =
       patch.oldFileName !== undefined &&
       from === undefined &&
@@ -185,6 +199,11 @@ async function planDiff(
     }
     if (!creates && file.kind === "missing") {
       rejected.push({ path: source, reason: "missing" });
+      continue;
+    }
+    // A rename never replaces a file that is already there (Opus review of WP-15, finding 6).
+    if (source !== path && (await readText(path, read)).kind !== "missing") {
+      rejected.push({ path, reason: "exists" });
       continue;
     }
     const text = file.kind === "text" ? file.text : "";
