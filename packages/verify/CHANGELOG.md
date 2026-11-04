@@ -1,5 +1,12 @@
 # @mostra/verify
 
+## 0.9.0
+
+### Patch Changes
+
+- Updated dependencies [[`1c414a8`](https://github.com/mostra-dev/mostra/commit/1c414a854fc8c205e24c7220d6da97945b7b820a), [`9b2acf9`](https://github.com/mostra-dev/mostra/commit/9b2acf916a9fd762a62b6c087f560c541e742755)]:
+  - @mostra/protocol@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes

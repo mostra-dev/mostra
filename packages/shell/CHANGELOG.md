@@ -1,5 +1,13 @@
 # @mostra/shell
 
+## 0.9.0
+
+### Patch Changes
+
+- [#112](https://github.com/mostra-dev/mostra/pull/112) [`c7ea80c`](https://github.com/mostra-dev/mostra/commit/c7ea80cd60ee03aef1fbd17c6d38003b287d153b) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The READMEs say what the package carries today: fields, submissions, actions and live data in `@mostra/react`; the version banner and trusted controls in `@mostra/shell`.
+- Updated dependencies [[`1c414a8`](https://github.com/mostra-dev/mostra/commit/1c414a854fc8c205e24c7220d6da97945b7b820a), [`9b2acf9`](https://github.com/mostra-dev/mostra/commit/9b2acf916a9fd762a62b6c087f560c541e742755)]:
+  - @mostra/protocol@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes

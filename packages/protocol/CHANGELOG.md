@@ -1,5 +1,15 @@
 # @mostra/protocol
 
+## 0.9.0
+
+### Minor Changes
+
+- [#120](https://github.com/mostra-dev/mostra/pull/120) [`1c414a8`](https://github.com/mostra-dev/mostra/commit/1c414a854fc8c205e24c7220d6da97945b7b820a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Mostra's MCP server, `@mostra/mcp`: thirteen tools (`artifact_create`, `artifact_write`, `artifact_patch`, `artifact_verify`, `artifact_publish`, `artifact_open`, `artifact_wait`, `artifact_results`, `artifact_list`, `live_push`, `state_get`, `state_patch`, `docs_search`), the reference and artifact reports as resources, and instructions for the loop, independent of the transport. `@mostra/protocol`'s request checks gain the `rpc` intent (a program's JSON-RPC POST with a bearer token) and the diagnostics `MOSTRA_ARTIFACT_PATH_INVALID`, `MOSTRA_ARTIFACT_PATCH_REJECTED`, `MOSTRA_ARTIFACT_ID_DROPPED` (a warning when a write removes the entry's artifact id) and `MOSTRA_ENV_RUNTIME_INSTALLING`.
+
+### Patch Changes
+
+- [#120](https://github.com/mostra-dev/mostra/pull/120) [`9b2acf9`](https://github.com/mostra-dev/mostra/commit/9b2acf916a9fd762a62b6c087f560c541e742755) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On a page whose submission policy is `none`, `results` says it takes no submissions and points at its shared state and signals, and the MCP server's artifact report shows that state; `mostra wait --until signal:<name>` prints the signal's name and payload ([#115](https://github.com/mostra-dev/mostra/issues/115)).
+
 ## 0.8.0
 
 ### Patch Changes
