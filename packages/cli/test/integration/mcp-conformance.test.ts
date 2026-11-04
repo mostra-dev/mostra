@@ -94,7 +94,14 @@ async function bearerProxy(target: string): Promise<string> {
         answer.pipe(res);
       },
     );
-    forward.on("error", () => res.writeHead(502).end());
+    // A connection that fails after the answer started (a stream the suite cut off, which
+    // Windows reports as a reset) ends the answer; only one that never started gets a 502.
+    forward.on("error", () => {
+      if (res.headersSent) res.destroy();
+      else res.writeHead(502).end();
+    });
+    req.on("aborted", () => forward.destroy());
+    res.on("close", () => forward.destroy());
     req.pipe(forward);
   });
   await new Promise<void>((done) => proxy.listen(0, "127.0.0.1", done));
