@@ -50,6 +50,7 @@
   8. (P3) `--json` put a generated token on stdout, against D164 item 3. It goes to stderr only; `listening` carries the URL.
   9. (P3) Nothing tied the schemas `tools/list` serves to the bundle the D32 snapshot holds. A test holds them equal on both eras.
   10. (P3) `bearer` in lower case was refused and counted as a guess, and `MOSTRA_MCP_TOKEN=aaaa…` was accepted. The scheme is read without regard to case, only a wrong bearer token counts, and a chosen token needs eight different characters.
+- **CI on `ci:full`** after the fixes found two failures in this package's tests on the Windows clients legs, both fixed: the session test compared the created directory with `realpathSync`, while the instance answers with the native real path that writes out 8.3 names such as `RUNNER~1` (D151 item 5; `8c5e309`), and the conformance suites' bearer proxy wrote headers a second time when a stream the suite cut off reached it as a reset (`0f827d2`). Every test had passed there; the proxy's error was unhandled.
 - **Copilot**: no review (its quota, as on WP-13 and WP-14).
 
 ## Agent-facing prose (D149)
