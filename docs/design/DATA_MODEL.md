@@ -247,11 +247,12 @@ The plan update of 2026-10-16 added stored data for the remote server and teams.
 <data>/                         the server's --data (INTERFACES §18.1); never on a network filesystem: the server
                                 refuses one it can detect (NFS, SMB, network FUSE), since its locks and WAL need a local disk
   server.sqlite                 the server's directory (WAL, normal locking, synchronous=FULL)
-  server.lock                   an advisory lock the running server holds; the operating system releases it when the
-                                process dies, so it never goes stale (no PID file); a second server on the directory refuses
+  server.lock                   the server's lock: a one-row SQLite database held in locking_mode=EXCLUSIVE with a
+                                transaction open, an advisory lock the operating system releases when the process dies,
+                                so it never goes stale (no PID file); nothing else opens it; a second server refuses
   homes/<homeId>/               one hosted home (§7.2)
-  files/<sha256>                version files, content-addressed, shared by every home of the directory, so a home moves
-                                with its ledger and the files it names
+  files/<sha256>                version files, content-addressed and stored once for the directory; a file counts as present
+                                for a home only through home_file (below), so a home moves with its ledger and its files
   keys/                         the authorization server's token keys and the monthly metering key (mode 0700)
 ```
 
@@ -262,16 +263,35 @@ account(id PK (acct_), name NULL, status, created_at)          -- the server's o
                                                                -- may map identities to its own IDs instead (D165 item 9)
 identity(provider, subject, account_id FK, email NULL, name NULL, linked_at, PRIMARY KEY(provider, subject))
 home(id PK (hom_), owner_account_id FK, data_path, created_at, suspended_at NULL)   -- one home per owner per server
-instance_link(id PK (lnk_), account_id FK, home_id FK, name, is_default, linked_at, revoked_at NULL)
-                                                               -- an owner instance; one default per account (D165 item 1b)
-artifact_route(artifact_id PK, home_id FK, owner_link_id FK, label UNIQUE, created_at)
-                                                               -- which home serves an artifact, its owner instance and
-                                                               -- its derived label (INTERFACES §18.4)
-oauth_client(id PK, kind CHECK(kind IN ('metadata','registered','shell','cli')), metadata_json, created_at)
+instance_link(id PK (lnk_), account_id FK, home_id FK, name, is_default, relay_high INTEGER, linked_at, revoked_at NULL)
+                                                               -- an owner instance; one default per account (D165 item 1b);
+                                                               -- a new grant for the same instance rebinds this row;
+                                                               -- relay_high: the highest relay sequence it accepted
+home_cursor(home_id PK FK, incarnation, high_cursor, updated_at)
+                                                               -- the highest cursor the server saw each home reach; a
+                                                               -- home opened below it was restored: its incarnation rotates
+artifact_route(id PK (rte_), home_id FK, artifact_id, owner_link_id FK, label UNIQUE, created_at,
+               UNIQUE(home_id, artifact_id))                    -- a hosted route: one artifact on one home, its owner
+                                                               -- instance and its random label (INTERFACES §18.4); an
+                                                               -- owner link is never removed by a revoked grant
+label_issued(label PK, home_id, route_id NULL, kind CHECK(kind IN ('server','operator')), issued_at)
+                                                               -- every label ever issued, never deleted: a label is
+                                                               -- never issued twice nor moved to another home
+home_file(home_id, sha256, PRIMARY KEY(home_id, sha256))       -- the files a home uploaded or a version of it names;
+                                                               -- written in the push's transaction
+file_ref(sha256 PK, homes INTEGER, unreferenced_at NULL)       -- how many homes hold a file; one held by none is swept
+                                                               -- after a grace period, never inside a push or a removal
+oauth_client(id PK, kind CHECK(kind IN ('metadata','registered','shell','cli')), metadata_json, created_at, last_used_at)
+                                                               -- registered clients unused for 30 days are removed
+consent(account_id, client_id, granted_at, revoked_at NULL, PRIMARY KEY(account_id, client_id))
+                                                               -- the authorization server's own consent (INTERFACES §18.5)
+sender_shown(account_id, home_id, at, PRIMARY KEY(account_id, home_id))
+                                                               -- a viewer was told whose page they sign in to (once)
 grant(id PK, account_id FK, client_id FK, scope, resource, created_at, revoked_at NULL)
-token(hash PK, grant_id FK, kind CHECK(kind IN ('access','refresh','device','code')), expires_at, used_at NULL)
-                                                               -- tokens only as SHA-256 hashes; a refresh token is used
-                                                               -- once (rotation), and a reuse revokes its grant
+token(hash PK, grant_id FK, kind CHECK(kind IN ('access','refresh','device','code')), expires_at, used_at NULL,
+      successor_hash NULL)                                     -- tokens only as SHA-256 hashes; a refresh token rotates:
+                                                               -- for 30 s after use it returns the same successor, and a
+                                                               -- reuse after that revokes its grant
 outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempts, next_attempt_at)
                                                                -- what an operator hasn't acknowledged yet (at least once)
 ```
@@ -280,16 +300,18 @@ outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempt
 
 A hosted home is a home (§1) with these differences:
 - **No** `sources/`, `deps/`, `cache/builds/`, `cache/verify/`, `secrets/` or `versions/<id>/server/`. Each version keeps `manifest.json`, `registry.json`, `lock.yaml` and its output listing, and names its client files in `<data>/files/` by SHA-256, checked against `outputDigest` through the listing when pushed (D165 item 3).
-- **Locking** (D165 item 0b, amending D81 for hosted homes). The ledger opens in WAL with normal locking and `synchronous=FULL`, so a backup replicator may read it from its own process. Its one writer is the server process that holds `homes/<homeId>/home.lock`, an advisory lock the operating system releases when the process dies, together with the server's in-process registry of open homes. A process that can't take the lock refuses to serve the home (`MOSTRA_HOME_LOCKED`).
+- **Locking** (D165 item 0b, amending D81 for hosted homes). The ledger opens in WAL with normal locking, `synchronous=FULL` and the configured `wal_autocheckpoint`, so a backup replicator may read it from its own process. Its one writer is the server process that holds `homes/<homeId>/home.lock`, a one-row SQLite database held in `locking_mode=EXCLUSIVE` with a transaction open (an advisory lock the operating system releases when the process dies, which nothing else opens), together with the server's in-process registry of open homes. A process that can't take the lock refuses to serve the home (`MOSTRA_HOME_LOCKED`).
+- **Incarnation.** `home_meta(id PK CHECK(id = 1), incarnation, created_at)` holds a random incarnation, rotated in one transaction when the home is restored from a backup (`ServerHandle.restored`, or a head below `home_cursor.high_cursor`). The binding reports it with every cursor it hands out (INTERFACES §18.2).
 - **Viewers** of kind `account` (`external_ref` the account ID) and `anonymous` (`external_ref` a random browser key the hosted shell keeps; `name` chosen by the person and never verified).
 - **Sessions** keep `mode` `header` for the hosted shell's session secret (sent as `X-Mostra-Shell`), beside `worker` for frames; the ledger keeps only hashes (§3).
 - **Tables of its own:**
 
 ```sql
-relay_run(run_id PK FK, owner_link_id, attempt, sent_at NULL, owner_heard_at NULL, offline_limit_at, last_seq)
-                                                    -- a relayed run's progress through the relay: waiting until
-                                                    -- sent, unreachable past owner_heard_at, `unknown` at
-                                                    -- offline_limit_at (D165 item 4)
+relay_run(run_id PK FK, owner_link_id, relay_seq UNIQUE, attempt, sent_at NULL, accepted_at NULL, owner_heard_at NULL,
+          offline_limit_at, last_seq)               -- a relayed run through the relay: never sent (may end failed,
+                                                    -- owner-offline), sent (resent; `unknown` at its limit), accepted
+                                                    -- (reconciled after each reconnect; `unknown` at its limit or when
+                                                    -- the owner no longer knows it); D165 item 4
 artifact_pause(artifact_id PK, by CHECK(by IN ('owner','operator')), reason, paused_at)   -- D165 item 14; a row exists
                                                     -- only while paused; an operator's row is removed only by the operator
 quarantine(target PK, reason, at)                  -- an artifact or version the operator quarantined (D165 item 9)
@@ -306,21 +328,24 @@ A local home that shares to a server adds:
 ```
 
 ```sql
-remote_link(server PK, account_id, instance_id, is_default, linked_at, state, follow_cursor NULL)
-                                                    -- follow_cursor: the hosted home's cursor this instance has
-                                                    -- committed (the sync cursor); the server also keeps its
-                                                    -- acknowledged cursor as the named subscriber `owner:<lnk_…>`
-hosted_artifact(artifact_id PK FK, server FK, hosted_home, shared_at, stopped_at NULL)
+remote_link(server PK, account_id, instance_id, is_default, linked_at, state, incarnation NULL, follow_cursor NULL,
+            relay_mark INTEGER NOT NULL DEFAULT 0)
+                                                    -- instance_id is kept on logout (unless --forget), so signing in
+                                                    -- again rebinds the same link; follow_cursor and incarnation: the
+                                                    -- hosted home's position this instance has committed (the sync
+                                                    -- cursor); the server also keeps the named subscriber `owner:<lnk_…>`
+hosted_artifact(artifact_id PK FK, server FK, hosted_home, route_id, label, shared_at, stopped_at NULL)
 version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','complete')), attempts, next_attempt_at,
              PRIMARY KEY(artifact_id, version_id, server))   -- publishes waiting to reach the server (D165 item 3)
-relayed_run(run_id PK, server, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
+relayed_run(run_id PK, server, relay_seq, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
                                                     -- the hosted run's ID recorded before its worker starts, so a
                                                     -- repeated relay.run joins it; a crash mid-run ends it failed,
                                                     -- reason interrupted, reported on reconnect (D165 item 4)
 ```
 
-- **Imported submissions** keep their hosted IDs, digest and snapshot, with `origin_json` (`{ server, home, position }`, additive to `submission`); a delivery of the same submission again finds it and answers accepted. Their viewers are imported as rows of their kind (`account`, `anonymous`, `token`) with `external_ref` prefixed by the server's hash.
-- **Followed events** are appended with local cursors and `origin_json` (`{ server, home, cursor }`, additive to `event`, unique when present), so a page of followed events committed twice appends nothing. `submission.created` comes only from the import, so it appears once.
+- **`relay_mark`** (in `remote_link`'s row, beside `follow_cursor`): the highest relay sequence this home ever accepted, which `mostra/initialize` reports (INTERFACES §18.3), so a home restored to before runs it accepted is found.
+- **Imported submissions** keep their hosted IDs, digest and snapshot, with `origin_json` (`{ server, home, incarnation, position }`, additive to `submission`); a delivery of the same submission again finds it and answers accepted. Only submissions of artifacts this instance owns (its `hosted_artifact` rows) are imported. Their viewers are imported as rows of their kind (`account`, `anonymous`, `token`) with `external_ref` prefixed by the server's hash. A local delivery of an imported submission has the ID `dlv_` plus 26 Crockford base32 characters of SHA-256(submission ID ‖ 0x00 ‖ host owner), so a re-import repeats it (D105's identity).
+- **Followed events** of owned artifacts are appended with local cursors and `origin_json` (`{ server, home, incarnation, cursor }`, additive to `event`, unique when present), so a page of followed events committed twice appends nothing. A followed hosted `submission.created` is never appended itself: it imports the submission when it is missing (the import appends the local `submission.created`), so each appears once.
 - **A hosted artifact's artifact state and live values** are not kept locally; reads and writes go to the hosted home (D165 item 1).
 
 ### 7.4 Tallies
@@ -333,4 +358,4 @@ Written only inside the submit transaction, one more for the choice the new subm
 
 ### 7.5 Retention
 
-The open server deletes nothing on its own (D165 item 13): hosted homes keep every version, submission and event as local homes do (D47), and `files/` keeps every file a kept version names. An operator removes an artifact through its server handle (`remove`, INTERFACES §18.6), which deletes the artifact's rows, its links and the files no other version names. Retention policies (automatic removal after a time) are `ee/` or operator features (D165 item 11), never the core's. A submission still pending delivery to its owner is never removed by anything but an explicit `remove`.
+The open server deletes nothing on its own (D165 item 13): hosted homes keep every version, submission and event as local homes do (D47), and `files/` keeps every file a kept version names. An operator removes an artifact through its server handle (`remove`, INTERFACES §18.6), which deletes the artifact's rows and links and its home's `home_file` rows no other version of the home names, in one transaction with `file_ref`'s counts; a file no home holds is swept after a grace period, so a push that names it meanwhile keeps it. The route's label stays in `label_issued`, never to be issued again. Retention policies (automatic removal after a time) are `ee/` or operator features (D165 item 11), never the core's. A submission still pending delivery to its owner is never removed by anything but an explicit `remove`.

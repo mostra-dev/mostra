@@ -335,7 +335,7 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Owns:** RM-01, RM-02, RM-04, RM-07.
 - **Builds:** the owner's side and the server's core of ARCHITECTURE §15 (D165):
   - from WP-24: the `bundle` export class, moving a bundle between homes with its version identity, `mostra run <bundle>`, and the `WorkerLauncher` seam documented as the future `SandboxPort` (RM-01);
-  - `mostra-runtime server`'s core: the data directory and its locks, hosted homes opened on demand and closed when idle, the server's directory ledger, version files over HTTPS, `hosted/push`, and hosted pages routed by exact `Host` (derived labels, the shell on the apex) with cookie-free header sessions and worker-mode frames;
+  - `mostra-runtime server`'s core: the data directory and its locks, hosted homes opened on demand and closed when idle, the server's directory ledger, version files over HTTPS, `hosted/push`, and hosted pages routed by exact `Host` (hosted routes with random labels, the shell on the apex) with cookie-free header sessions and worker-mode frames;
   - the network binding (JSON-RPC over WebSocket, heartbeats, the message limit, reconnection) and the authorization server's device grant for `mostra login`, with a development identity provider for tests (WP-30 adds the real ones);
   - the owner instance as a host of its hosted home: `remote/*`, the submissions port feeding the local outbox, the sync cursor, forwarded state and live writes, one owner instance per artifact and the account's default instance;
   - the relay: runs, calls, live producers and server code's effects, the offline policy, the capped queue and its drain, `ownerUnreachable` and `unknown`;
