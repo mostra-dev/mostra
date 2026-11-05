@@ -155,6 +155,16 @@
         "$ref": "#/definitions/GcRunResult"
       }
     },
+    "hosted/push": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/HostedPushParams"
+      },
+      "result": {
+        "$ref": "#/definitions/HostedPushResult"
+      }
+    },
     "instance/check": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -269,6 +279,56 @@
       },
       "result": {
         "$ref": "#/definitions/ControlsPolicy"
+      }
+    },
+    "remote/login": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RemoteLoginParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteLoginResult"
+      }
+    },
+    "remote/login.wait": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RemoteLoginWaitParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteLoginWaitResult"
+      }
+    },
+    "remote/logout": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RemoteLogoutParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteLogoutResult"
+      }
+    },
+    "remote/status": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RemoteStatusParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteStatusResult"
+      }
+    },
+    "remote/token": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RemoteTokenParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteTokenResult"
       }
     },
     "results/get": {
@@ -440,6 +500,11 @@
     }
   },
   "definitions": {
+    "AccountId": {
+      "type": "string",
+      "pattern": "^acct_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Account ID: \"acct_\" followed by a 26-character ULID."
+    },
     "ActionError": {
       "type": "object",
       "properties": {
@@ -3099,6 +3164,102 @@
       },
       "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105)."
     },
+    "HomeId": {
+      "type": "string",
+      "pattern": "^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Hosted home ID: \"hom_\" followed by a 26-character ULID."
+    },
+    "HostedPushParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/definitions/ArtifactId"
+        },
+        "version": {
+          "$ref": "#/definitions/VersionPush"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifactId",
+        "version"
+      ]
+    },
+    "HostedPushResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "complete"
+            },
+            "versionId": {
+              "type": "string"
+            },
+            "number": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "route": {
+              "$ref": "#/definitions/HostedRoute"
+            }
+          },
+          "required": [
+            "status",
+            "versionId",
+            "number",
+            "route"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "missing"
+            },
+            "files": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "route": {
+              "$ref": "#/definitions/HostedRoute"
+            }
+          },
+          "required": [
+            "status",
+            "files",
+            "route"
+          ]
+        }
+      ],
+      "description": "A push's state: the client files the server still lacks, or the hosted version."
+    },
+    "HostedRoute": {
+      "type": "object",
+      "properties": {
+        "routeId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "routeId",
+        "label"
+      ],
+      "description": "An artifact's hosted route: its rte_ ID and random label."
+    },
     "HostedSettings": {
       "type": "object",
       "properties": {
@@ -3247,8 +3408,15 @@
           "type": "string",
           "enum": [
             "host",
-            "daemon"
+            "daemon",
+            "hosted"
           ]
+        },
+        "incarnation": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
         }
       },
       "required": [
@@ -3469,6 +3637,11 @@
       ],
       "description": "A successful JSON-RPC 2.0 response."
     },
+    "LinkId": {
+      "type": "string",
+      "pattern": "^lnk_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Instance link ID: \"lnk_\" followed by a 26-character ULID."
+    },
     "LivePushParams": {
       "type": "object",
       "properties": {
@@ -3578,6 +3751,13 @@
               "$ref": "#/definitions/HomeConfig"
             }
           ]
+        },
+        "link": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OwnerLinkInfo"
+            }
+          ]
         }
       },
       "required": [
@@ -3683,6 +3863,41 @@
         "fromVersion"
       ],
       "description": "A draft field a version doesn't cover: its ID, label, value and source version."
+    },
+    "OwnerLinkInfo": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relayMark": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "followed": {
+          "type": "object",
+          "properties": {
+            "incarnation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cursor": {
+              "$ref": "#/definitions/Cursor"
+            }
+          },
+          "required": [
+            "incarnation",
+            "cursor"
+          ]
+        }
+      },
+      "required": [
+        "instanceId",
+        "relayMark"
+      ],
+      "description": "An owner instance's link on its binding session: its link ID, its relay mark and the hosted home's position it committed."
     },
     "PollResult": {
       "type": "object",
@@ -3952,6 +4167,260 @@
         "reused"
       ],
       "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
+    },
+    "RemoteLink": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/definitions/ServerOrigin"
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "connected",
+            "connecting",
+            "offline",
+            "signed-out"
+          ]
+        },
+        "since": {
+          "type": "string"
+        },
+        "pendingPushes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastError": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "account",
+        "instanceId",
+        "name",
+        "default",
+        "state",
+        "since",
+        "pendingPushes"
+      ],
+      "description": "One remote server this home is linked to, and the state of the link."
+    },
+    "RemoteLoginParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ServerOrigin"
+            }
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RemoteLoginResult": {
+      "type": "object",
+      "properties": {
+        "loginId": {
+          "type": "string"
+        },
+        "server": {
+          "$ref": "#/definitions/ServerOrigin"
+        },
+        "verificationUri": {
+          "type": "string"
+        },
+        "verificationUriComplete": {
+          "type": "string"
+        },
+        "userCode": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loginId",
+        "server",
+        "verificationUri",
+        "userCode",
+        "expiresAt"
+      ],
+      "description": "A device-grant sign-in that started: where to go and the code to enter."
+    },
+    "RemoteLoginWaitParams": {
+      "type": "object",
+      "properties": {
+        "loginId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "loginId",
+        "timeoutMs"
+      ]
+    },
+    "RemoteLoginWaitResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "signed-in"
+            },
+            "server": {
+              "$ref": "#/definitions/ServerOrigin"
+            },
+            "account": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ]
+            },
+            "instanceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "server",
+            "account",
+            "instanceId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "pending"
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      ],
+      "description": "A sign-in's end: signed in with the account and instance link, or pending."
+    },
+    "RemoteLogoutParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ServerOrigin"
+            }
+          ]
+        },
+        "forget": {
+          "type": "boolean"
+        }
+      }
+    },
+    "RemoteLogoutResult": {
+      "type": "object",
+      "properties": {
+        "servers": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ServerOrigin"
+          }
+        }
+      },
+      "required": [
+        "servers"
+      ],
+      "description": "The servers signed out of."
+    },
+    "RemoteStatusParams": {
+      "type": "object",
+      "properties": {}
+    },
+    "RemoteStatusResult": {
+      "type": "object",
+      "properties": {
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteLink"
+          }
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "description": "Every remote server this home is linked to."
+    },
+    "RemoteTokenParams": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "accessToken"
+      ]
+    },
+    "RemoteTokenResult": {
+      "type": "object",
+      "properties": {
+        "expiresAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expiresAt"
+      ],
+      "description": "When the binding closes unless its token is refreshed again."
     },
     "ResultComment": {
       "type": "object",
@@ -4524,6 +4993,11 @@
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
       "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
     },
+    "RouteId": {
+      "type": "string",
+      "pattern": "^rte_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Hosted route ID: \"rte_\" followed by a 26-character ULID."
+    },
     "RunAttachRequest": {
       "type": "object",
       "properties": {
@@ -4873,6 +5347,11 @@
       ],
       "description": "A secret's name, value and optional artifact scope."
     },
+    "ServerOrigin": {
+      "type": "string",
+      "pattern": "^https?:\\/\\/[^/?#\\s]+$",
+      "description": "A remote server, by its API origin, such as https://api.example."
+    },
     "Sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
@@ -4995,6 +5474,10 @@
         },
         "via": {
           "$ref": "#/definitions/ShareVia"
+        },
+        "server": {
+          "type": "string",
+          "pattern": "^https?:\\/\\/[^/?#\\s]+$"
         },
         "ttl": {
           "allOf": [
@@ -5146,9 +5629,10 @@
       "enum": [
         "tailnet",
         "funnel",
-        "cloudflare"
+        "cloudflare",
+        "remote"
       ],
-      "description": "How a share reaches its viewers: tailnet, funnel or cloudflare."
+      "description": "How a share reaches its viewers: tailnet, funnel or cloudflare, or remote: hosted on a remote server (D165)."
     },
     "ShellSubmitRequest": {
       "type": "object",
@@ -5825,6 +6309,86 @@
       "type": "string",
       "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
       "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
+    },
+    "VersionPush": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sourceDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "envDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "outputDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manifest": {
+          "type": "string",
+          "maxLength": 4194304
+        },
+        "registry": {
+          "type": "string",
+          "maxLength": 16777216
+        },
+        "lock": {
+          "type": "string",
+          "maxLength": 16777216
+        },
+        "listing": {
+          "readOnly": true,
+          "maxItems": 100000,
+          "type": "array",
+          "items": {
+            "readOnly": true,
+            "type": "array",
+            "items": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            ],
+            "additionalItems": false,
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      },
+      "required": [
+        "versionId",
+        "number",
+        "sourceDigest",
+        "envDigest",
+        "outputDigest",
+        "manifest",
+        "registry",
+        "lock",
+        "listing"
+      ],
+      "description": "A version an owner pushes to its hosted home: its identity, manifest, registry, lockfile and output listing."
     },
     "VersionRef": {
       "type": "object",

@@ -15,7 +15,13 @@ import { configDefaults, defineConfig } from "vitest/config";
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
 const DEV = "test/integration/dev.test.ts";
-const FAULTS = ["test/integration/publish-faults.test.ts", "test/integration/lifecycle.test.ts"];
+// The binding's heartbeat suite waits out a proxy's real 60 s idle limit and a 45 s silence
+// (WP-29): about two minutes, so it joins the shorter group.
+const FAULTS = [
+  "test/integration/publish-faults.test.ts",
+  "test/integration/lifecycle.test.ts",
+  "test/integration/heartbeat.test.ts",
+];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
@@ -37,6 +43,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/deps.test.ts",
       "test/integration/windows.test.ts",
       "test/integration/server.test.ts",
+      "test/integration/binding.test.ts",
+      "test/integration/heartbeat.test.ts",
     ],
     exclude: [],
   },

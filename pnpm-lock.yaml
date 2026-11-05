@@ -266,6 +266,9 @@ catalogs:
     '@types/spdx-expression-parse':
       specifier: 4.0.0
       version: 4.0.0
+    '@types/ws':
+      specifier: 8.18.2
+      version: 8.18.2
     '@vitejs/plugin-react':
       specifier: 6.1.2
       version: 6.1.2
@@ -455,6 +458,9 @@ catalogs:
     vitest:
       specifier: 5.0.5
       version: 5.0.5
+    ws:
+      specifier: 8.22.0
+      version: 8.22.0
     yaml:
       specifier: 2.9.1
       version: 2.9.1
@@ -818,6 +824,9 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1)
+      ws:
+        specifier: 'catalog:'
+        version: 8.22.0
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
@@ -849,6 +858,9 @@ importers:
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.2
       fast-check:
         specifier: 'catalog:'
         version: 4.10.2
@@ -3720,6 +3732,9 @@ packages:
 
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript-eslint/eslint-plugin@8.72.0':
     resolution: {integrity: sha512-aysKgysPX9XOv/dk95UkvUDe++Q3n3dJPG9CEWT3RUccxfkPJ+Qn6nhKPDhZXU6Ofo9kgwGWwKyQCnZIXTgngg==}
@@ -9237,6 +9252,10 @@ snapshots:
   '@types/unist@3.0.3': {}
 
   '@types/use-sync-external-store@0.0.6': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 24.19.2
 
   '@typescript-eslint/eslint-plugin@8.72.0(@typescript-eslint/parser@8.72.0(eslint@10.13.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3))(eslint@10.13.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)':
     dependencies:

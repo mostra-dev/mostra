@@ -26,6 +26,7 @@ const THROUGH: Readonly<Record<ShareVia, string>> = {
   tailnet: "Tailscale Serve, inside your tailnet",
   funnel: "Tailscale Funnel, public",
   cloudflare: "a Cloudflare quick tunnel, public",
+  remote: "a remote server, hosted",
 };
 
 /**

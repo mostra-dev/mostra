@@ -19,6 +19,7 @@ import { eventsReadMethod } from "./events/read.ts";
 import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
+import { hostedPushMethod } from "./hosted/push.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
@@ -31,6 +32,11 @@ import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
+import { remoteLoginMethod } from "./remote/login.ts";
+import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
+import { remoteLogoutMethod } from "./remote/logout.ts";
+import { remoteStatusMethod } from "./remote/status.ts";
+import { remoteTokenMethod } from "./remote/token.ts";
 import { resultsGetMethod } from "./results/get.ts";
 import { secretDeleteMethod } from "./secret/delete.ts";
 import { secretListMethod } from "./secret/list.ts";
@@ -92,6 +98,12 @@ export const hostMethods: readonly AnyMethod[] = [
   portAddressingExternalBaseMethod,
   artifactExportMethod,
   artifactImportMethod,
+  remoteLoginMethod,
+  remoteLoginWaitMethod,
+  remoteLogoutMethod,
+  remoteStatusMethod,
+  remoteTokenMethod,
+  hostedPushMethod,
   // gen:methods
 ];
 

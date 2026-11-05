@@ -153,6 +153,16 @@ impl super::Method for GcRun {
     type Params = super::generated::GcRunParams;
     type Result = super::generated::GcRunResult;
 }
+///`hosted/push`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostedPush;
+impl super::Method for HostedPush {
+    const NAME: &'static str = "hosted/push";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::HostedPushParams;
+    type Result = super::generated::HostedPushResult;
+}
 ///`instance/check`.
 #[derive(Clone, Copy, Debug)]
 pub struct InstanceCheck;
@@ -272,6 +282,56 @@ impl super::Method for PortTrustedControlsPolicy {
     const MUTATING: bool = false;
     type Params = super::generated::PortTrustedControlsPolicyParams;
     type Result = super::generated::ControlsPolicy;
+}
+///`remote/login`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLogin;
+impl super::Method for RemoteLogin {
+    const NAME: &'static str = "remote/login";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RemoteLoginParams;
+    type Result = super::generated::RemoteLoginResult;
+}
+///`remote/login.wait`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLoginWait;
+impl super::Method for RemoteLoginWait {
+    const NAME: &'static str = "remote/login.wait";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteLoginWaitParams;
+    type Result = super::generated::RemoteLoginWaitResult;
+}
+///`remote/logout`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLogout;
+impl super::Method for RemoteLogout {
+    const NAME: &'static str = "remote/logout";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RemoteLogoutParams;
+    type Result = super::generated::RemoteLogoutResult;
+}
+///`remote/status`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteStatus;
+impl super::Method for RemoteStatus {
+    const NAME: &'static str = "remote/status";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteStatusParams;
+    type Result = super::generated::RemoteStatusResult;
+}
+///`remote/token`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteToken;
+impl super::Method for RemoteToken {
+    const NAME: &'static str = "remote/token";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteTokenParams;
+    type Result = super::generated::RemoteTokenResult;
 }
 ///`results/get`.
 #[derive(Clone, Copy, Debug)]
@@ -522,6 +582,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: true,
     },
     super::MethodInfo {
+        name: "hosted/push",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
         name: "instance/check",
         direction: super::Direction::ClientToInstance,
         mutating: false,
@@ -579,6 +644,31 @@ pub const METHODS: &[super::MethodInfo] = &[
     super::MethodInfo {
         name: "port/trustedControls.policy",
         direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "remote/login",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/login.wait",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "remote/logout",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/status",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "remote/token",
+        direction: super::Direction::ClientToInstance,
         mutating: false,
     },
     super::MethodInfo {

@@ -152,3 +152,64 @@ export async function send(
     outgoing.end();
   });
 }
+
+/** Sends a form to the API origin. */
+export function postForm(
+  port: number,
+  path: string,
+  fields: Record<string, string>,
+  headers: Record<string, string> = {},
+): Promise<Reply> {
+  return send(port, `api.localhost:${port}`, path, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
+    body: new URLSearchParams(fields).toString(),
+  });
+}
+
+/** Tokens a sign-in gave. */
+export interface SignedIn {
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly accountId: string;
+  readonly instanceId: string;
+}
+
+/**
+ * Signs in by the device grant as `name` through the development provider, as `mostra login` and
+ * a person on the device page would: start, approve on the page, then redeem the code.
+ */
+export async function deviceSignIn(
+  port: number,
+  name: string,
+  extra: Record<string, string> = {},
+): Promise<SignedIn> {
+  const started = await postForm(port, "/oauth/device", { client_id: "mostra-cli", ...extra });
+  if (started.status !== 200) throw new Error(`device: ${started.status} ${started.body}`);
+  const device = JSON.parse(started.body) as { device_code: string; user_code: string };
+  const approved = await postForm(
+    port,
+    "/device",
+    { user_code: device.user_code, name, provider: "dev", decision: "approve" },
+    { origin: `http://api.localhost:${port}` },
+  );
+  if (approved.status !== 200) throw new Error(`approve: ${approved.status} ${approved.body}`);
+  const token = await postForm(port, "/oauth/token", {
+    client_id: "mostra-cli",
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    device_code: device.device_code,
+  });
+  if (token.status !== 200) throw new Error(`token: ${token.status} ${token.body}`);
+  const answer = JSON.parse(token.body) as {
+    access_token: string;
+    refresh_token: string;
+    mostra_account: { id: string };
+    mostra_instance: string;
+  };
+  return {
+    accessToken: answer.access_token,
+    refreshToken: answer.refresh_token,
+    accountId: answer.mostra_account.id,
+    instanceId: answer.mostra_instance,
+  };
+}

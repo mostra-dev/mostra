@@ -58,6 +58,8 @@ catalog:
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
   '@hono/node-server': 2.1.5
+  # The remote server's network binding (WP-29, D165 item 2): JSON-RPC over WebSocket, with pings
+  ws: 8.22.0
   # The MCP server (WP-15, D164): the v2 TypeScript SDK's server package, its client for tests,
   # jsdiff for artifact_patch's unified diffs, and the MCP conformance suites (D48; VERIFIED_FACTS)
   '@modelcontextprotocol/server': 2.4.0
@@ -144,6 +146,7 @@ catalog:
   '@types/pngjs': 6.0.5
   '@types/node': 24.19.2
   '@types/better-sqlite3': 9.6.0
+  '@types/ws': 8.18.2
 
   # Lint, format and boundaries
   '@biomejs/biome': 2.5.15

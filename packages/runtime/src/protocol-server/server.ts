@@ -15,9 +15,11 @@ import {
   type InstanceInfo,
   type JsonRpcParams,
   type MethodDefinition,
+  type MostraInitializeParams,
   type MostraInitializeResult,
   mostraInitializeMethod,
   negotiateRevision,
+  type OwnerLinkInfo,
   parseParams,
   type Revision,
   RpcError,
@@ -27,8 +29,8 @@ import type { Log } from "../log.ts";
 import { type ControlListener, type LaunchPipe, listenControl } from "../platform/index.ts";
 import { pump, writeLine } from "./streams.ts";
 
-/** How a connection reached the instance. */
-export type ConnectionKind = "stdio" | "socket";
+/** How a connection reached the instance: also `websocket`, a remote server's binding (§18.2). */
+export type ConnectionKind = "stdio" | "socket" | "websocket";
 
 /** One connection's session, as handlers see it. */
 export interface Session {
@@ -45,6 +47,13 @@ export interface Session {
   readonly notifications: ReadonlySet<string>;
   /** Aborts when the connection closes, so long requests (`wait`) end with it. */
   readonly signal: AbortSignal;
+  /**
+   * What the transport knows of the connection: on a remote server's binding, the account and
+   * grant its access token named (INTERFACES §18.2). Empty for stdio and the socket.
+   */
+  readonly attributes: Readonly<Record<string, unknown>>;
+  /** The owner link a binding session announced in `mostra/initialize` (§18.2). */
+  readonly link: OwnerLinkInfo | undefined;
 }
 
 /** A method a module serves. */
@@ -64,8 +73,13 @@ export function handler<P, R>(
 /** Options for {@link ProtocolServer}. */
 export interface ProtocolServerOptions {
   readonly log: Log;
-  /** Describes the instance for `mostra/initialize`. */
-  describe(): InstanceInfo;
+  /** Describes the instance for `mostra/initialize`, for the session being opened. */
+  describe(session?: Session): InstanceInfo;
+  /**
+   * Judges a session before `mostra/initialize` is answered: a remote server's hosted home checks
+   * the owner link there (its incarnation, its relay mark, D165). A throw refuses the session.
+   */
+  admit?(session: Session, params: MostraInitializeParams): void;
   /** Whether a client's `home.path` names this instance's home (D84). */
   servesHome(path: string): boolean;
   /**
@@ -108,6 +122,8 @@ interface Connection {
 interface MutableSession {
   id: number;
   kind: ConnectionKind;
+  attributes: Readonly<Record<string, unknown>>;
+  link: OwnerLinkInfo | undefined;
   client: ClientInfo | undefined;
   revision: Revision | undefined;
   ports: Set<string>;
@@ -152,11 +168,19 @@ export class ProtocolServer {
    * Serves one stream connection (stdio, or an accepted socket). `onClose` runs once when it
    * ends.
    */
-  serve(kind: ConnectionKind, input: Readable, output: Writable, onClose?: () => void): Session {
+  serve(
+    kind: ConnectionKind,
+    input: Readable,
+    output: Writable,
+    onClose?: () => void,
+    attributes: Readonly<Record<string, unknown>> = {},
+  ): Session {
     const closed = new AbortController();
     const session: MutableSession = {
       id: this.#nextId++,
       kind,
+      attributes,
+      link: undefined,
       client: undefined,
       revision: undefined,
       ports: new Set(),
@@ -329,7 +353,9 @@ export class ProtocolServer {
       .filter((connection) => connection.session.initialized && connection.session.ports.has(port))
       .map((connection) => ({
         session: connection.session.id,
-        owner: connection.session.client?.name ?? "",
+        // On a hosted home a delivery's owner is the owner instance's link, never a client name
+        // (D165, after the Opus review): two instances of one account are two owners.
+        owner: connection.session.link?.instanceId ?? connection.session.client?.name ?? "",
       }));
   }
 
@@ -472,7 +498,9 @@ export class ProtocolServer {
       this.#options.revisions ?? HOST_PROTOCOL_REVISIONS,
     );
     if (!negotiation.ok) throw new RpcError(negotiation.diagnostic);
-    const instance = this.#options.describe();
+    session.link = params.link;
+    this.#options.admit?.(session, params);
+    const instance = this.#options.describe(session);
     if (params.home?.path !== undefined && !this.#options.servesHome(params.home.path)) {
       throw new RpcError(
         createDiagnostic("MOSTRA_HOME_MISMATCH", {

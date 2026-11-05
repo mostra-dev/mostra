@@ -39,6 +39,7 @@ export interface HomeAssembler<T> {
     readonly id: string;
     readonly dir: string;
     readonly ledger: Ledger;
+    readonly incarnation: string;
   }): Promise<T>;
   /** Stops them, before the ledger closes. */
   disassemble(assembled: T): Promise<void>;
@@ -183,7 +184,12 @@ export async function openDataDirectory<T>(
         return fresh;
       });
       try {
-        const assembled = await options.assembler.assemble({ id, dir: homeDir, ledger });
+        const assembled = await options.assembler.assemble({
+          id,
+          dir: homeDir,
+          ledger,
+          incarnation,
+        });
         const entry = entries.get(id);
         if (entry) entry.lock = lock;
         log.info("server.home_opened", { home: id });

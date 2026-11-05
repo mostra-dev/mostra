@@ -129,7 +129,7 @@ export interface InstanceConnection {
 // @public
 export interface InstanceSummary {
     readonly home: string;
-    readonly mode: "host" | "daemon";
+    readonly mode: "host" | "daemon" | "hosted";
     readonly pid: number;
     readonly socket: string;
     readonly started: boolean;

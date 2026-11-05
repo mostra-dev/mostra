@@ -13,6 +13,12 @@ export type A11yDiagnosticCode = (typeof a11yDiagnosticCodes)[number];
 export const a11yDiagnosticCodes: readonly ["MOSTRA_A11Y_SERIOUS", "MOSTRA_A11Y_MINOR"];
 
 // @public
+export type AccountId = Id<"acct">;
+
+// @public
+export const AccountId: GeneratedIdKind<"acct">;
+
+// @public
 export const ACTION_ARGS_MAX: number;
 
 // @public
@@ -1428,6 +1434,12 @@ export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE", "MOSTRA_HOME_NETWORK_FILESYSTEM"];
 
 // @public
+export type HomeId = Id<"hom">;
+
+// @public
+export const HomeId: GeneratedIdKind<"hom">;
+
+// @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
 
 // @public
@@ -1441,6 +1453,37 @@ export const HOSTED_OFFLINE_LIMIT_DEFAULT: Duration;
 
 // @public
 export const HOSTED_OFFLINE_LIMIT_MAX_MS: number;
+
+// @public
+export const hostedPushMethod: MethodDefinition<HostedPushParams, HostedPushResult>;
+
+// @public
+export interface HostedPushParams {
+    readonly artifactId: string;
+    readonly requestId?: string;
+    readonly version: VersionPush;
+}
+
+// @public
+export type HostedPushResult = {
+    readonly status: "complete";
+    readonly versionId: string;
+    readonly number: number;
+    readonly route: HostedRoute;
+} | {
+    readonly status: "missing";
+    readonly files: readonly string[];
+    readonly route: HostedRoute;
+};
+
+// @public
+export interface HostedRoute {
+    readonly label: string;
+    readonly routeId: string;
+}
+
+// @public
+export const HostedRoute: z.ZodType<HostedRoute>;
 
 // @public
 export interface HostedSettings {
@@ -1491,7 +1534,7 @@ export interface IdKind<P extends IdPrefix> {
 }
 
 // @public
-export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut" | "shr";
+export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut" | "shr" | "acct" | "hom" | "lnk" | "rte";
 
 // @public
 export interface InstanceCapabilities {
@@ -1525,8 +1568,10 @@ export interface InstanceCheckResult {
 
 // @public
 export interface InstanceInfo {
+    readonly cursor?: string;
     readonly home: string;
-    readonly mode: "host" | "daemon";
+    readonly incarnation?: string;
+    readonly mode: "host" | "daemon" | "hosted";
     readonly pid: number;
     readonly platform: string;
     readonly version: string;
@@ -1649,6 +1694,15 @@ export class LineSplitter {
     push(chunk: string): string[];
     get rest(): string;
 }
+
+// @public
+export type LinkId = Id<"lnk">;
+
+// @public
+export const LinkId: GeneratedIdKind<"lnk">;
+
+// @public
+export type ListingEntry = readonly [path: string, executable: boolean, sha256: string, size: number];
 
 // @public
 export const LIVE_KEY_PATTERN: RegExp;
@@ -1796,6 +1850,7 @@ export interface MostraInitializeParams {
     readonly capabilities: ClientCapabilities;
     readonly client: ClientInfo;
     readonly home?: HomeConfig;
+    readonly link?: OwnerLinkInfo;
     readonly ports: readonly PortName[];
     readonly revisions: readonly string[];
 }
@@ -1879,6 +1934,19 @@ export interface OrphanedField {
 
 // @public
 export const OrphanedField: z.ZodType<OrphanedField>;
+
+// @public
+export interface OwnerLinkInfo {
+    readonly followed?: {
+        readonly incarnation: string;
+        readonly cursor: Cursor;
+    };
+    readonly instanceId: string;
+    readonly relayMark: number;
+}
+
+// @public
+export const OwnerLinkInfo: z.ZodType<OwnerLinkInfo>;
 
 // @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
@@ -2049,12 +2117,113 @@ export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOS
 export type RemoteDiagnosticCode = (typeof remoteDiagnosticCodes)[number];
 
 // @public
-export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID"];
+export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID", "MOSTRA_REMOTE_LOGIN_FAILED", "MOSTRA_REMOTE_UNREACHABLE", "MOSTRA_REMOTE_OWNER_OFFLINE", "MOSTRA_REMOTE_QUEUE_FULL", "MOSTRA_REMOTE_NOT_OWNER_INSTANCE", "MOSTRA_REMOTE_SIGN_IN_REQUIRED", "MOSTRA_REMOTE_RATE_LIMITED"];
 
 // @public
 export class RemoteError extends Error {
     constructor(error: WireError);
     readonly code: string | undefined;
+}
+
+// @public
+export interface RemoteLink {
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly default: boolean;
+    readonly instanceId: string;
+    readonly lastError?: string;
+    readonly name: string;
+    readonly pendingPushes: number;
+    readonly server: ServerOrigin;
+    readonly since: string;
+    readonly state: RemoteLinkState;
+}
+
+// @public
+export const RemoteLink: z.ZodType<RemoteLink>;
+
+// @public
+export type RemoteLinkState = "connected" | "connecting" | "offline" | "signed-out";
+
+// @public
+export const remoteLoginMethod: MethodDefinition<RemoteLoginParams, RemoteLoginResult>;
+
+// @public
+export interface RemoteLoginParams {
+    readonly requestId?: string;
+    readonly server?: ServerOrigin;
+}
+
+// @public
+export interface RemoteLoginResult {
+    readonly expiresAt: string;
+    readonly loginId: string;
+    readonly server: ServerOrigin;
+    readonly userCode: string;
+    readonly verificationUri: string;
+    readonly verificationUriComplete?: string;
+}
+
+// @public
+export const remoteLoginWaitMethod: MethodDefinition<RemoteLoginWaitParams, RemoteLoginWaitResult>;
+
+// @public
+export interface RemoteLoginWaitParams {
+    readonly loginId: string;
+    readonly timeoutMs: number;
+}
+
+// @public
+export type RemoteLoginWaitResult = {
+    readonly status: "signed-in";
+    readonly server: ServerOrigin;
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly instanceId: string;
+} | {
+    readonly status: "pending";
+};
+
+// @public
+export const remoteLogoutMethod: MethodDefinition<RemoteLogoutParams, RemoteLogoutResult>;
+
+// @public
+export interface RemoteLogoutParams {
+    readonly forget?: boolean;
+    readonly server?: ServerOrigin;
+}
+
+// @public
+export interface RemoteLogoutResult {
+    readonly servers: readonly ServerOrigin[];
+}
+
+// @public
+export const remoteStatusMethod: MethodDefinition<RemoteStatusParams, RemoteStatusResult>;
+
+// @public
+export type RemoteStatusParams = Record<string, never>;
+
+// @public
+export interface RemoteStatusResult {
+    readonly links: readonly RemoteLink[];
+}
+
+// @public
+export const remoteTokenMethod: MethodDefinition<RemoteTokenParams, RemoteTokenResult>;
+
+// @public
+export interface RemoteTokenParams {
+    readonly accessToken: string;
+}
+
+// @public
+export interface RemoteTokenResult {
+    readonly expiresAt: string;
 }
 
 // @public
@@ -2270,6 +2439,12 @@ export type RevisionNegotiation = {
     readonly ok: false;
     readonly diagnostic: Diagnostic;
 };
+
+// @public
+export type RouteId = Id<"rte">;
+
+// @public
+export const RouteId: GeneratedIdKind<"rte">;
 
 // @public
 export class RpcError extends Error {
@@ -2549,6 +2724,12 @@ export interface ServerLogParams {
 export const ServerLogParams: z.ZodType<ServerLogParams>;
 
 // @public
+export type ServerOrigin = string;
+
+// @public
+export const ServerOrigin: z.ZodType<ServerOrigin>;
+
+// @public
 export interface ServerProgressParams extends RunProgress {
     readonly callId: string;
 }
@@ -2650,6 +2831,7 @@ export interface ShareStartParams {
     readonly artifact: ArtifactRef;
     readonly requestId?: string;
     readonly scopes?: readonly CapabilityScope[];
+    readonly server?: string;
     readonly ttl?: Duration;
     readonly via: ShareVia;
     readonly viewer?: ViewerSpec;
@@ -2676,7 +2858,7 @@ export interface ShareStopResult {
 }
 
 // @public
-export type ShareVia = "tailnet" | "funnel" | "cloudflare";
+export type ShareVia = "tailnet" | "funnel" | "cloudflare" | "remote";
 
 // @public
 export const ShareVia: z.ZodType<ShareVia>;
@@ -3113,6 +3295,22 @@ export const VersionId: VersionIdKind;
 export interface VersionIdKind extends IdKind<"ver"> {
     fromSha256(digest: Uint8Array): VersionId;
 }
+
+// @public
+export interface VersionPush {
+    readonly envDigest: string;
+    readonly listing: readonly ListingEntry[];
+    readonly lock: string;
+    readonly manifest: string;
+    readonly number: number;
+    readonly outputDigest: string;
+    readonly registry: string;
+    readonly sourceDigest: string;
+    readonly versionId: string;
+}
+
+// @public
+export const VersionPush: z.ZodType<VersionPush>;
 
 // @public
 export interface VersionRef {

@@ -44,6 +44,7 @@ describe("what the CLI's detached processes get", () => {
     // CLI is either a path (made absolute for a detached process) or named here as not one, so a
     // new variable can't reach a detached process unresolved unnoticed.
     const notPaths = [
+      "MOSTRA_TEST_GRANT_RECHECK_MS",
       "MOSTRA_BUNDLE_MIRROR",
       "MOSTRA_MCP_TOKEN",
       "MOSTRA_OFFLINE",

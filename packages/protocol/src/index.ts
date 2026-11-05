@@ -232,16 +232,20 @@ export {
   safePath,
 } from "./hygiene.ts";
 export {
+  AccountId,
   ArtifactId,
   CommentId,
   Cursor,
   DeliveryId,
   type GeneratedIdKind,
+  HomeId,
   type Id,
   type IdBody,
   type IdKind,
   type IdPrefix,
+  LinkId,
   MutationId,
+  RouteId,
   RunId,
   ShareId,
   SubmissionId,
@@ -389,6 +393,14 @@ export {
   type GcVersion,
   gcRunMethod,
 } from "./methods/gc/run.ts";
+export {
+  type HostedPushParams,
+  type HostedPushResult,
+  HostedRoute,
+  hostedPushMethod,
+  type ListingEntry,
+  VersionPush,
+} from "./methods/hosted/push.ts";
 export { hostMethods, hostNotifications } from "./methods/index.ts";
 export {
   type InstanceCheck,
@@ -463,6 +475,31 @@ export {
   type PortTrustedControlsPolicyResult,
   portTrustedControlsPolicyMethod,
 } from "./methods/port/trusted-controls-policy.ts";
+export {
+  type RemoteLoginParams,
+  type RemoteLoginResult,
+  remoteLoginMethod,
+} from "./methods/remote/login.ts";
+export {
+  type RemoteLoginWaitParams,
+  type RemoteLoginWaitResult,
+  remoteLoginWaitMethod,
+} from "./methods/remote/login-wait.ts";
+export {
+  type RemoteLogoutParams,
+  type RemoteLogoutResult,
+  remoteLogoutMethod,
+} from "./methods/remote/logout.ts";
+export {
+  type RemoteStatusParams,
+  type RemoteStatusResult,
+  remoteStatusMethod,
+} from "./methods/remote/status.ts";
+export {
+  type RemoteTokenParams,
+  type RemoteTokenResult,
+  remoteTokenMethod,
+} from "./methods/remote/token.ts";
 export {
   type ResultsGetParams,
   type ResultsGetResult,
@@ -543,6 +580,12 @@ export {
   waitMethod,
 } from "./methods/wait/wait.ts";
 export { receivable } from "./receive.ts";
+export {
+  OwnerLinkInfo,
+  RemoteLink,
+  type RemoteLinkState,
+  ServerOrigin,
+} from "./remote.ts";
 export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,

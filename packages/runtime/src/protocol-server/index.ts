@@ -20,7 +20,20 @@ import {
 import { handler, type MethodHandler } from "./server.ts";
 
 export { attach, type SocketClient } from "./client.ts";
-export { handler, type MethodHandler, ProtocolServer, type Session } from "./server.ts";
+export {
+  handler,
+  type MethodHandler,
+  ProtocolServer,
+  type Session,
+} from "./server.ts";
+export {
+  BINDING_SUBPROTOCOL,
+  type HeartbeatOptions,
+  keepAlive,
+  MAX_FRAME_BYTES,
+  readFrame,
+  serveWebSocket,
+} from "./websocket.ts";
 
 /** What the session methods need from the instance. */
 export interface SessionMethodsOptions {

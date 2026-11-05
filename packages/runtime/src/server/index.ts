@@ -13,12 +13,17 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { createDiagnostic, type Diagnostic, RpcError } from "@mostra/protocol";
+import { appendEvent } from "../interaction/index.ts";
 import type { LedgerOwner } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
+import { type Api, createApi } from "./api.ts";
+import { type Authorization, createAuthorization } from "./auth.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
+import { type HostedHome, openHostedHome } from "./hosted.ts";
 
 export { type RemoteServerConfig, readServerConfig } from "./config.ts";
 
@@ -44,11 +49,6 @@ export interface RemoteServer {
   readonly config: RemoteServerConfig;
   /** Stops listening, closes every hosted home, then the directory, and releases the locks. */
   close(): Promise<void>;
-}
-
-/** The parts of a hosted home the server builds over its ledger. */
-interface HostedParts {
-  readonly connections: number;
 }
 
 /** An answer as JSON, with the headers every server answer carries. */
@@ -85,12 +85,25 @@ function parseListen(listen: string): { host: string; port: number } {
 /** Starts the remote server: its data directory, then its listener. */
 export async function startServer(options: ServerOptions): Promise<RemoteServer> {
   const { config, log } = options;
-  const assembler: HomeAssembler<HostedParts> = {
-    assemble: async () => ({ connections: 0 }),
-    disassemble: async () => {},
-    busy: (parts) => parts.connections > 0,
+  // The authorization server is made once the directory is open; homes open only after that.
+  let auth: Authorization | undefined;
+  const assembler: HomeAssembler<HostedHome> = {
+    assemble: (home) =>
+      openHostedHome({
+        id: home.id,
+        dir: home.dir,
+        ledger: home.ledger,
+        incarnation: home.incarnation,
+        directory: data.directory,
+        filesDir: join(options.data, "files"),
+        auth: auth as Authorization,
+        runtimeVersion: options.runtimeVersion,
+        log,
+      }),
+    disassemble: (home) => home.stop(),
+    busy: (home) => home.busy(),
   };
-  const data: DataDirectory<HostedParts> = await openDataDirectory({
+  const data: DataDirectory<HostedHome> = await openDataDirectory({
     dir: options.data,
     runtimeVersion: options.runtimeVersion,
     owner: options.owner,
@@ -103,6 +116,34 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     ...(config.ledger?.walAutocheckpoint !== undefined
       ? { walAutocheckpoint: config.ledger.walAutocheckpoint }
       : {}),
+  });
+  auth = createAuthorization({
+    directory: data.directory,
+    config,
+    log,
+    // A new instance link is a hosted event the account's instances see (§18.5).
+    linked: ({ homeId, linkId, name }) => {
+      void data.home(homeId).then(
+        (home) =>
+          home.assembled.ledger.write((db) =>
+            appendEvent(db, {
+              artifactId: null,
+              type: "instance.linked",
+              actor: { kind: "mostra" },
+              payload: { instanceId: linkId, name },
+            }),
+          ),
+        (error: unknown) => log.error("server.linked_event_failed", { home: homeId, error }),
+      );
+    },
+  });
+  const api: Api = createApi({
+    config,
+    auth,
+    log,
+    filesDir: join(options.data, "files"),
+    home: async (id) => (await data.home(id)).assembled,
+    touch: (id) => data.touch(id),
   });
   const apiHost = new URL(config.apiOrigin).host;
   const domains = new Set([config.domains.active, ...(config.domains.spares ?? [])]);
@@ -117,13 +158,18 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         json(response, 200, { status: "ok", homes: data.open().length });
         return;
       }
-      refusal(
-        response,
-        404,
-        createDiagnostic("MOSTRA_HYGIENE_NOT_SERVED", {
-          message: "Nothing is served at this path.",
-        }),
-      );
+      api.request(request, response, path).catch((error: unknown) => {
+        log.error("server.api_failed", { path, error });
+        if (!response.headersSent) {
+          refusal(
+            response,
+            500,
+            createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+              message: "The server failed to answer.",
+            }),
+          );
+        } else response.destroy();
+      });
       return;
     }
     const domain = [...domains].find(
@@ -150,9 +196,14 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   listener.keepAliveTimeout = 305_000;
   listener.headersTimeout = 30_000;
   listener.requestTimeout = 120_000;
-  listener.on("upgrade", (request: IncomingMessage, socket: Duplex) => {
+  listener.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const host = (request.headers.host ?? "").toLowerCase();
+    const path = (request.url ?? "/").split("?")[0] ?? "/";
+    if (host === apiHost) {
+      api.upgrade(request, socket, head, path);
+      return;
+    }
     socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\ncontent-length: 0\r\n\r\n");
-    void request;
   });
   const { host, port } = parseListen(options.listen ?? "127.0.0.1:8080");
   try {
@@ -180,6 +231,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     config,
     close() {
       closing ??= (async () => {
+        api.close();
         await new Promise<void>((resolve) => {
           listener.close(() => resolve());
           listener.closeAllConnections();

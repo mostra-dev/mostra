@@ -133,6 +133,12 @@ export interface InteractionOptions {
   readonly coverage: (versionId: string) => (fieldId: string) => boolean;
   /** How long a host has to answer a port call (30 s; tests shorten it). */
   readonly portTimeoutMs?: number;
+  /**
+   * Who a submission of this artifact is delivered to, instead of every registered or expected
+   * host: on a hosted home, the artifact's owner link alone, connected or not (D165, after the Opus
+   * review). `undefined` keeps D105's rule.
+   */
+  readonly deliveryOwners?: (artifactId: string) => readonly string[] | undefined;
 }
 
 /** A browser session as the interaction core sees it: who it acts as. */
@@ -577,7 +583,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       return result;
     },
     submit(page, input) {
-      const owners = outbox.owners();
+      const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
       const outcome = ledger.write((db) =>
         submit(db, {
           artifactId: page.artifactId,
@@ -844,7 +850,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     ],
     connected(session) {
       if (session.ports.has("submissions") && session.client)
-        outbox.registered(session.client.name);
+        outbox.registered(session.link?.instanceId ?? session.client.name);
     },
     disconnected(session) {
       subscriptions.closed(session.id);
