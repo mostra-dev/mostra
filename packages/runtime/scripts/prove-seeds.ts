@@ -61,6 +61,24 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "IN-13",
+    name: "#118: under epochs a new round's view shows the last round's Submitted card",
+    file: "../shell/src/model.ts",
+    from: '  if (state.ticket.policy.policy === "epochs" && submission.viewId !== state.ticket.viewId) {',
+    to: '  if (state.ticket.policy.policy === "epochs" && submission.viewId !== state.ticket.viewId && false) {',
+    check: e2e("118"),
+    e2e: true,
+  },
+  {
+    requirement: "AX-01",
+    name: "#114: mostra open opens no browser and doesn't say so",
+    file: "../cli/src/commands/viewing.ts",
+    from: "    if (reason !== undefined) context.log(reason);",
+    to: "    void reason;",
+    check: integration("contract.test.ts", "J1"),
+    cwd: "../cli",
+  },
+  {
     requirement: "RM-01",
     name: "an imported bundle's builds aren't checked against its output digest",
     file: "src/publish/bundle.ts",

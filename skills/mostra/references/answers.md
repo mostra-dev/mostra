@@ -112,6 +112,16 @@ Request one in the manifest's `submission`; the host running Mostra decides (`mo
 | epochs | `{ policy: "epochs" }` | Rounds: the person submits, you reply with a new version, they submit again. Each round is kept and linked |
 | none | `{ policy: "none" }` | No Submit at all: dashboards, task lists, pages that talk through shared state, actions and signals ([long-lived.md](long-lived.md)) |
 
+### Approvals that do something
+
+When approving should make something happen (place the order, write the config, send the mail), keep the approval a submission: it is the durable record of who approved what, it arrives in `mostra results`, and the person presses one trusted button.
+
+1. Use `once` and name the trusted Submit for the effect: `useSubmitControl({ label: "Approve and place the order", confirm: "Place the order for 3 laptops?" })`.
+2. `mostra wait <dir> --until submitted`, read `mostra results <dir>`, then do the effect yourself.
+3. Publish a new version, or set shared state, that says it's done, so the person sees the outcome.
+
+When the effect must happen the moment they press, even while you aren't waiting, run it from the page with `useAction(fn, { key })` (a key makes it happen once, [server.md](server.md)), and still submit with the trusted Submit: `results` lists the run under `actions`. Choosing `none` with a signal instead leaves no submission and no trusted control, so nothing records the approval.
+
 ## Counts by choice
 
 To show everyone how a fixed-choice question is going ("12 for Ship, 4 for Wait"), name the field in the manifest's `tally`. Mostra counts each submission's answer as it is accepted and sends the counts to every open page, with no server code:

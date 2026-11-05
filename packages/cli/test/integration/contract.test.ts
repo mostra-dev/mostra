@@ -138,6 +138,12 @@ describe("every command, with --json and no terminal", () => {
     const opened = await run(["open", artifactDir, "--no-browser"], { code: 0, ok: true });
     const shown = CapabilityLink.parse(opened.result);
     expect(shown.url).toBe(receipt.url);
+    expect(opened.ran.stderr).not.toContain("No browser opened");
+    // An agent's shell isn't a terminal: no browser opens, and it says so (#114).
+    const plain = await cli(["open", artifactDir], { env: home.env });
+    expect(plain.code).toBe(0);
+    expect(plain.stdout.trim()).toBe(receipt.url);
+    expect(plain.stderr).toMatch(/No browser opened: .*[Gg]ive the person the link\./);
     link = shown.url;
   });
 

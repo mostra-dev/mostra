@@ -406,6 +406,21 @@ export function choiceOf(state: ViewState, reviewSetId: string): string | undefi
   return typeof value === "string" ? value : undefined;
 }
 
+/**
+ * The submission the receipt shows, if any. Under `epochs` a submission ends its round and the
+ * draft is open for the next one, so only the view that made it shows its receipt; a later view (a
+ * new tab, a new version) shows the round as open, not the last one as finished (#118). Under
+ * `once` the receipt stays, since the submission closed the draft for good.
+ */
+export function receiptOf(state: ViewState): SubmissionSummary | undefined {
+  const submission = state.submission;
+  if (!submission) return undefined;
+  if (state.ticket.policy.policy === "epochs" && submission.viewId !== state.ticket.viewId) {
+    return undefined;
+  }
+  return submission;
+}
+
 /** What the viewer sees of the submission (IN-13, D47). */
 export type DeliveryView =
   | { readonly kind: "submitted" }

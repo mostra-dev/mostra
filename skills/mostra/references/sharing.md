@@ -12,7 +12,7 @@
 
 ## The link
 
-`mostra publish` prints the artifact's **default link**; `mostra open <dir>` prints it again and opens it in a browser when run at a terminal (`--no-browser` only prints it). The link is a capability URL: whoever holds it can view, answer, submit and run the page's actions. The secret is after the `#`, so it never reaches a server log, but treat the whole link like a password.
+`mostra publish` prints the artifact's **default link**; `mostra open <dir>` prints it again; `--browser` also opens it in this machine's browser (without it, only a terminal opens one), and stderr says when no browser opened. The link is a capability URL: whoever holds it can view, answer, submit and run the page's actions. The secret is after the `#`, so it never reaches a server log, but treat the whole link like a password.
 
 The default link doesn't expire and stays the same across versions. It opens on this machine only (`http://127.0.0.1:…`).
 
@@ -33,7 +33,7 @@ Other options of `mostra open <dir> --new`: `--ttl 24h` (the link expires), `--s
 
 | Setup | Who can open it | Command |
 |---|---|---|
-| **Local** | Only this machine's browser | `mostra open <dir>` |
+| **Local** | Only this machine's browser | `mostra open <dir> --browser` |
 | **Tailnet share** | People and devices in your Tailscale network, such as your phone | `mostra share <dir> --tailnet` |
 | **Public share** | Anyone with the link, on any device | `mostra share <dir> --public` |
 

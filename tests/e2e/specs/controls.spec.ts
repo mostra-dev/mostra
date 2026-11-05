@@ -8,7 +8,15 @@
  * order (IN-13).
  */
 import { expect, type Page, test } from "@playwright/test";
-import { linkFor, openInShell, publishOwn, results, saved, viewerName } from "../support/client.ts";
+import {
+  linkFor,
+  openInShell,
+  publishOwn,
+  republish,
+  results,
+  saved,
+  viewerName,
+} from "../support/client.ts";
 import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
 const run = readRun();
@@ -517,6 +525,32 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
       daemon.child.kill("SIGTERM");
       await new Promise((resolve) => daemon.child.once("exit", resolve));
       removeTree(daemon.root);
+    }
+  });
+});
+
+test.describe("under epochs, a new round is open (#118)", () => {
+  test("the tab that submitted shows its receipt; the next round's tab shows no Submitted card", async ({
+    page,
+    context,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { policy: { policy: "epochs" } });
+      const url = await linkFor(client, own.artifactId, viewerName(info));
+      const frame = await openInShell(page, url);
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("[data-mostra-receipt]")).toBeVisible({ timeout: 15_000 });
+      // The agent replies with a new version; the person opens the link again for round two.
+      await republish(client, own, (text) => text.replace("</main>", "<p>Round two</p></main>"));
+      const next = await context.newPage();
+      await openInShell(next, url);
+      await expect(next.locator("#mostra-submit")).toBeVisible();
+      await expect(next.locator("[data-mostra-receipt]")).toHaveCount(0);
+    } finally {
+      client.close();
     }
   });
 });

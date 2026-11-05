@@ -60,6 +60,7 @@ import {
   deliveryView,
   type FrameKind,
   initialState,
+  receiptOf,
   showsChoose,
   showsSubmit,
   submitRevision,
@@ -400,7 +401,7 @@ function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactEl
 
 /** The submission receipt (IN-13, D47): Mostra's record and each host's delivery, kept apart. */
 function Receipt(props: { readonly state: ViewState }): ReactElement | null {
-  const submission = props.state.submission;
+  const submission = receiptOf(props.state);
   if (!submission) return null;
   const view = deliveryView(submission);
   const title =

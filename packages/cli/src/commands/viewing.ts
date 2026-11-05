@@ -37,16 +37,34 @@ function wantsBrowser(context: CommandContext): boolean {
   return context.tty.stdout && !context.json && hasDisplay(context.env);
 }
 
-/** The link, opened in a browser when wanted. */
+/**
+ * Why no browser was opened, for stderr (#114): an agent's shell isn't a terminal, so without a
+ * word it would tell its person the page is open when it isn't.
+ */
+function notOpenedReason(context: CommandContext, tried: boolean): string | undefined {
+  if (context.flags["no-browser"] === true) return undefined;
+  if (tried) return "No browser opened: none could be started here. Give the person the link.";
+  if (!hasDisplay(context.env)) {
+    return "No browser opened: this session has no display. Give the person the link.";
+  }
+  return "No browser opened: this isn't a terminal. Pass --browser to open it here, or give the person the link.";
+}
+
+/** The link, opened in a browser when wanted; why not on stderr when it wasn't. */
 async function show(
   context: CommandContext,
   link: CapabilityLink,
 ): Promise<{ result: CapabilityLink & { readonly opened: boolean }; human: string }> {
   let opened = false;
-  if (wantsBrowser(context)) {
+  const tried = wantsBrowser(context);
+  if (tried) {
     const launch = await context.call(viewLaunchMethod, { tokenId: link.tokenId });
     // The launch URL reaches the browser through a 0600 page, never its arguments.
     opened = await openInBrowser(launch.url, context.env);
+  }
+  if (!opened) {
+    const reason = notOpenedReason(context, tried);
+    if (reason !== undefined) context.log(reason);
   }
   return { result: { ...link, opened }, human: `${link.url}\n` };
 }
