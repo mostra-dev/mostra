@@ -1,6 +1,6 @@
 # WP-28 progress: the remote design pass
 
-**Status:** Accepted by Mirza on 2026-11-05 (M57); closing out. Owns RM-05 ([specification](../design/work-packages/WP-28.md)). This package writes design, not code.
+**Status:** Done. Accepted by Mirza on 2026-11-05 (M57: "absolutely. you have my acceptance on all points and WP-28 itself.") with D165 as refined by two Claude Opus reviews; merged to `main` through the merge queue as `a910bb2` (#126). Owns RM-05 ([specification](../design/work-packages/WP-28.md)). This package writes design, not code.
 
 ## Baseline
 
@@ -17,6 +17,7 @@
 
 - **Question set** (2026-11-05T00:39Z): the fourteen questions of the specification, the infrastructure questions and the CLI names, each with options and a recommendation, given to Mirza in one set.
 - **M56** (2026-11-05T02:08:17.505Z): "Go with your recommendations, with the changes and additions below." Recorded as **D165**, one entry naming what it amends: D81 for hosted homes (item 0b), IN-13 for hosted links (item 1a), D117's offline states (item 4).
+- **M57** (2026-11-05T04:29:33.707Z): accepted WP-28, D165 with both reviews' refinements, RM-07 to RM-09, anonymous hosted submissions by default (`hosted.submissions: "link"`) and Litestream named as WP-29's test tool. GPT's D80 review was skipped at his word.
 - **Written into the dossier:** ARCHITECTURE §15 (new; the seed's resolution table moves to §16), INTERFACES §18 (new) with pointers from §1, §2.2, §2.3, §4, §6, §7, §9, §12 and §13, DATA_MODEL §3, §4 and §7, FAILURE_MODEL §11, PRODUCT's vocabulary and J10, REPO_STANDARDS §3 (the runtime modules `link` and `server`; `server` may import `@mostra/mcp`), REQUIREMENTS (IN-13 and RM-04 amended; RM-07 to RM-09 added), WORK_PACKAGES' WP-29 and WP-30, and `tools/design/wp_specs.py`'s WP-29, WP-30 and WP-31 detail, regenerated.
 
 ## Reviews (D80, D144)
@@ -45,3 +46,41 @@
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
 | RM-05 | verified | Mirza accepts the design; the generators pass with the refined WP-29 and WP-30 specifications. The design is D165 in ARCHITECTURE §15, INTERFACES §18 (with its pointers in §1 to §13), DATA_MODEL §3, §4 and §7 and FAILURE_MODEL §11; WP-29's and WP-30's entries and specifications are refined from it, with RM-07 to RM-09; two Claude Opus reviews (27 and 9 findings) were fixed in the documents | `python3 tools/design/wp_specs.py`; `python3 tools/design/evidence_matrix.py --check`; `pnpm check --affected`; CI on #126 | Mirza accepted at M57 (2026-11-05T04:29:33Z: "absolutely. you have my acceptance on all points and WP-28 itself."); `wrote 34 specifications`; `ok 154 v1 and 7 v1.1 requirements`, WP-29 owning 4 and WP-30 7; `pnpm check --affected` green (format-lint, types, unit, build, boundaries, api, docs, commits); CI `ci-ok` green on `a04fd6c` |
+
+## Untested boundaries
+
+- **This package wrote design, not code.** Every behavior in ARCHITECTURE §15, INTERFACES §18, DATA_MODEL §7 and FAILURE_MODEL §11 is proven by WP-29's and WP-30's checks (RM-01 to RM-04, RM-07 to RM-09, MC-04, HY-08, HY-09, HO-09), not here. RM-05's own check (Mirza's acceptance and the generators) is what this package closes.
+- **One accepted boundary of the relay** (FAILURE_MODEL §11.1): a run the owner recorded and started, whose acknowledgement was lost in the moments before the owner's home was restored to an earlier backup, can run a second time when sent again.
+- **Third-party facts** were verified on 2026-11-05 from vendors' documentation (VERIFIED_FACTS, WP-28): the MCP authorization specification, Claude's and ChatGPT's OAuth clients, cookies and storage per site, Safari's 7-day cap, SQLite's exclusive locking, WAL replicators and the edges' idle timeouts. Cloudflare doesn't document its WebSocket idle limit; the binding's 20 s heartbeat (a ping and a JSON-RPC notification) sits inside the shortest documented default (60 s). WP-30 re-verifies the chat hosts on its day.
+- **Not checked against a running browser or server:** the cookie-free header sessions, the shell's CSP with Trusted Types, and the storage-failure fallback are designed from the facts above; WP-30's seeded tests prove them.
+
+## Deviations
+
+- **Three requirements added** (RM-07 the tally, WP-29; RM-08 anonymous answers at volume, WP-30; RM-09 pause, WP-30), and IN-13 and RM-04 reworded to D165, accepted at M57: without them D165's items 12 to 14 had no owner or check. v1 grows from 151 to 154 requirements.
+- **D165 item 7's derived label** became a random per-route label and `rte_` route ID (the first review's P1), and the shell's paths `/a/<routeId>`; accepted with the review's fixes.
+- **The ARCHITECTURE section on the seed's open questions** moved from §15 to §16 so the remote server could take §15, as WP-28's specification asked; every link was updated.
+- **REPO_STANDARDS §3** names the runtime's new modules `link` and `server`, and lets `server` import `@mostra/mcp` for the remote MCP endpoint (WP-30).
+- **Reviews:** GPT's D80 review was skipped at Mirza's word; Claude Opus reviewed twice instead of once (D144), at Mirza's choice.
+
+## Commits and publication
+
+- **Range:** `821322e..a910bb2` on `main`: the fifteen signed-off commits of `wp/28-remote-design` (last `e6fefbb`) and the merge commit `a910bb2` ([#126](https://github.com/mostra-dev/mostra/pull/126)).
+- **CI:** #126's last pull-request run green (`ci-ok`, the docs-only plan: static, unit on Linux and Windows x64, dependency review); its merge-queue run (41969245224) green.
+- **Publication:** none needed. No package changed, so there is no changeset and no release; the docs site doesn't exist yet (WP-26), so nothing deploys. The dossier on `main` is the publication.
+- **Remaining dirty paths:** none in the repository. Outside it: the baseline worktree `/Volumes/Active/mostra-wp28-baseline` (detached at `821322e`) and its logs in `/Volumes/Active/wp28-logs/`; the side-panel pages of the question set and the review prompt. Mostra HQ was not written to: its roadmap and changelog lines for WP-28 wait for Mirza's go (D127).
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #114, #116, #118, #119 | Open, now on the `WP-29` milestone | Bugs from WP-14's and WP-15's sample sessions that were on no milestone; WP-29 is the next package that touches their code (the CLI and the Skill's references, the shell's after-submit card, run updates over polls), so they are on its milestone and named in its specification (M41) |
+| #39, #46, #55, #85, #95, #111, #124 | Open, no milestone (D155 item 7) | Flakes kept diagnosable; none met in this package, which ran no browser or integration suite of its own |
+| #106 | Open, no milestone | Waits for the package that next touches the bundle cache or `verify` |
+| #4 | Open | Renovate's dependency dashboard |
+
+No issue is on the `WP-28` milestone (there is none).
+
+## Next
+
+WP-29, remote transport and relay (`docs/design/work-packages/WP-29.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-29`. It builds the server's core, the network binding, sign-in by the device grant, the owner's side, the relay and the tally on D165 (RM-01, RM-02, RM-04, RM-07), and owns #114, #116, #118 and #119.
+
