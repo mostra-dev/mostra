@@ -15,7 +15,9 @@
 
 ## Decisions
 
-To be recorded once Mirza answers the question set.
+- **Question set** (2026-11-05T00:39Z): the fourteen questions of the specification, the infrastructure questions and the CLI names, each with options and a recommendation, given to Mirza in one set.
+- **M56** (2026-11-05T02:08:17.505Z): "Go with your recommendations, with the changes and additions below." Recorded as **D165**, one entry naming what it amends: D81 for hosted homes (item 0b), IN-13 for hosted links (item 1a), D117's offline states (item 4).
+- **Written into the dossier:** ARCHITECTURE §15 (new; the seed's resolution table moves to §16), INTERFACES §18 (new) with pointers from §1, §2.2, §2.3, §4, §6, §7, §9, §12 and §13, DATA_MODEL §3, §4 and §7, FAILURE_MODEL §11, PRODUCT's vocabulary and J10, REPO_STANDARDS §3 (the runtime modules `link` and `server`; `server` may import `@mostra/mcp`), REQUIREMENTS (IN-13 and RM-04 amended; RM-07 to RM-09 added), WORK_PACKAGES' WP-29 and WP-30, and `tools/design/wp_specs.py`'s WP-29, WP-30 and WP-31 detail, regenerated.
 
 ## Evidence
 
