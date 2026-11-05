@@ -31,7 +31,7 @@ An agent writes ordinary React. Mostra turns it into a beautiful, stateful, inte
 Known hosts and use cases (D11):
 - **Jcode** (Mirza's Rust coding-agent harness). It spawns Mostra, owns durable answers and wakes its agent on submit ([JCODE_HOST.md](JCODE_HOST.md)).
 - **Codex, Claude Code and other coding agents** use the CLI and MCP.
-- **Chat products** such as ChatGPT and Claude.ai show inline MCP Apps, which persist answers through a remote MCP server (D116). Agents there reach Mostra through that server; D117 recommends that building and verifying run on the owner's instance (WP-28 decides), and authoring without one stays v1.x (RM-06).
+- **Chat products** such as ChatGPT and Claude.ai show inline MCP Apps, which persist answers through a remote MCP server (D116). Agents there reach Mostra through that server; building and verifying run on the owner's instance through the relay (D165 item 5), and authoring without one stays v1.x (RM-06).
 - **Personal AI applications** host Mostra to show things like an inbox dashboard with real "Send" buttons.
 
 ## Vocabulary
@@ -72,6 +72,8 @@ Use these words consistently in code, docs, errors and the Skill. One word per c
 | **Ledger** | The home's transactional store, written only by the supervisor (D58, D71). |
 | **Remote server** | A Mostra server that hosts many homes behind one gateway on a separate user-content domain, so a shared link works without a tunnel and while the author's machine sleeps (D116). |
 | **Relay** | The outbound connection over which a remote server forwards a hosted artifact's action calls and live producers to the owner's instance (D117). |
+| **Hosted home** | The home on a remote server that holds an owner's hosted artifacts and everything their viewers create (D165). |
+| **Owner instance** | The local instance that shared a hosted artifact: it keeps the artifact's source, versions and secrets, runs its server code through the relay, and receives its submissions (D165). |
 | **Expected respondent** | A person an artifact or share names as someone who should answer; the roster of expected respondents drives "everyone has answered" waits (D121). |
 
 ## Journeys
@@ -96,7 +98,7 @@ These are the caller-first scenarios that the design and acceptance must serve. 
 
 **J9. Agent installs a plugin.** An agent needs video-style compositions beyond the built-in primitive. It searches the plugin index, inspects the Remotion adapter, and sees its license class. It installs it with `--accept-license LicenseRef-Remotion`, which is recorded in the lockfile, and runs the plugin's verify baselines.
 
-**J10. Authoring from a chat host.** A ChatGPT or claude.ai user's agent connects to a remote MCP server (D116) attached to the user's own Mostra instance. It creates an artifact, writes and patches files, verifies, publishes and returns the URL. D117 recommends that building and `verify` run on the owner's instance through the relay; WP-28 decides. Authoring for agents with no instance at all, through server-side builds in a sandbox, stays v1.x (RM-06).
+**J10. Authoring from a chat host.** A ChatGPT or claude.ai user's agent connects to a remote MCP server (D116) attached to the user's own Mostra instance. It creates an artifact, writes and patches files, verifies, publishes and returns the URL. Building and `verify` run on the owner's instance through the relay (D165 item 5). Authoring for agents with no instance at all, through server-side builds in a sandbox, stays v1.x (RM-06).
 
 **J11. Personal dashboard, all week (D63).** A personal AI application publishes a dashboard with submission policy `none`, on a home whose daemon runs as a login service. Live sources refresh calendar, mail and finance data. The agent updates artifact state ("today's priorities") through `mostra state set` and publishes new versions as it learns what the user wants. The user follows the artifact, so new versions load automatically when nothing is unsaved. The user ticks off priorities and presses actions all day. The host wakes the agent only for the `state.changed` events it filters for. After a month the home is still bounded and fast.
 

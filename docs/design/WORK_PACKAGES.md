@@ -332,28 +332,33 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Evidence:** the dossier documents and refined specifications; the generators pass; Mirza accepts the design.
 
 ### WP-29. Remote transport and relay
-- **Owns:** RM-01, RM-02, RM-04.
-- **Builds:**
+- **Owns:** RM-01, RM-02, RM-04, RM-07.
+- **Builds:** the owner's side and the server's core of ARCHITECTURE §15 (D165):
   - from WP-24: the `bundle` export class, moving a bundle between homes with its version identity, `mostra run <bundle>`, and the `WorkerLauncher` seam documented as the future `SandboxPort` (RM-01);
-  - the host protocol over the network binding with authentication; sign-in and sign-out from the CLI; sharing a published version to a remote server (the managed service by default, any URL allowed);
-  - `wait`, `results` and events against a remote artifact; remote submissions delivered through the local outbox;
-  - the relay on both sides: action calls and live producers (authoring operations too if WP-28 decides so), offline policy, reconnection with backoff;
-  - remote scenarios added to the conformance kit;
-  - Skill and docs updates for sharing (prose drafted with Mirza, D74).
+  - `mostra-runtime server`'s core: the data directory and its locks, hosted homes opened on demand and closed when idle, the server's directory ledger, version files over HTTPS, `hosted/push`, and hosted pages routed by exact `Host` (derived labels, the shell on the apex) with cookie-free header sessions and worker-mode frames;
+  - the network binding (JSON-RPC over WebSocket, heartbeats, the message limit, reconnection) and the authorization server's device grant for `mostra login`, with a development identity provider for tests (WP-30 adds the real ones);
+  - the owner instance as a host of its hosted home: `remote/*`, the submissions port feeding the local outbox, the sync cursor, forwarded state and live writes, one owner instance per artifact and the account's default instance;
+  - the relay: runs, calls, live producers and server code's effects, the offline policy, the capped queue and its drain, `ownerUnreachable` and `unknown`;
+  - the respondent's "Your answer was sent." on hosted links (IN-13 as amended);
+  - the tally (RM-07), locally and hosted;
+  - the CLI's `login`, `logout`, `share --cloud`, cloud shares in `share list` and `stop`, and links in `status`;
+  - remote scenarios in the conformance kit, and the Skill and docs for sharing to a server (prose with Mirza, D149).
 - **Depends on:** WP-28.
-- **Evidence:** RM-01's check (including a bundle that moves between two homes and keeps its version identity), RM-02's and RM-04's, with a minimal remote endpoint fixture until WP-30 provides the full server.
+- **Evidence:** RM-01's check (including a bundle that moves between two homes and keeps its version identity), RM-02's, RM-04's and RM-07's, against a real `mostra-runtime server` on the same machine.
 
 ### WP-30. Remote server and remote MCP
-- **Owns:** RM-03, MC-04, HY-08, HY-09, HO-09.
-- **Builds:**
-  - the remote server mode: many homes, one gateway, per-artifact origins on the user-content domain, worker-mode frames;
-  - viewer sign-in and display names;
-  - the shell's report control, and policy hooks for interstitials and expiry;
-  - operator ports with no-op defaults;
-  - the remote MCP endpoint, so WP-17's MCP Apps persist in cloud chat hosts;
-  - a container image and self-hosting docs.
+- **Owns:** RM-03, MC-04, HY-08, HY-09, HO-09, RM-08, RM-09.
+- **Builds:** the public server on WP-29's core (ARCHITECTURE §15, D165):
+  - viewer sign-in: identity providers behind their port (OpenID Connect and GitHub adapters), account viewers with verified names, anonymous viewers per browser, and the full authorization server (Client ID Metadata Documents, Dynamic Client Registration, PKCE, resource indicators, `iss`, rotating refresh tokens);
+  - the hosted shell's rules and its trusted chrome (D161), the report control, and policy hooks for interstitials and expiry (HY-09);
+  - the operator ports (`limits`, `metering`, `accounts`, `abuse`, `policy`, `routing`, `events`, and `invitations` reserved) with no-op defaults, the server handle, and hostnames an operator supplies;
+  - anonymous answers at D165 item 13's targets with per-IP and per-link limits (RM-08);
+  - pause and resume from the CLI and the operator (RM-09);
+  - the remote MCP endpoint on `@mostra/mcp`'s factory, with authoring relayed to the default owner instance, so WP-17's MCP Apps persist in cloud chat hosts;
+  - a container image and self-hosting docs;
+  - the adversarial suite of D159 and D165.
 - **Depends on:** WP-29.
-- **Evidence:** the RM-03, MC-04, HY-08, HY-09 and HO-09 checks; external evidence from claude.ai and ChatGPT against a test deployment, labelled as external.
+- **Evidence:** the RM-03, MC-04, HY-08, HY-09, HO-09, RM-08 and RM-09 checks; external evidence from claude.ai and ChatGPT against a test deployment, labelled as external.
 
 ### WP-31. Teams
 - **Owns:** CO-01, CO-02, CO-03, CO-04, CO-05, CO-07.
