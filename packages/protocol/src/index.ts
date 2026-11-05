@@ -138,14 +138,7 @@ export {
   isWindowsBundle,
 } from "./bundle.ts";
 export { canonicalJson } from "./canonical.ts";
-export {
-  ALL_SCOPES,
-  CapabilityScope,
-  Duration,
-  durationMs,
-  normalizeScopes,
-  scopeAllows,
-} from "./capability.ts";
+export { ALL_SCOPES, CapabilityScope, normalizeScopes, scopeAllows } from "./capability.ts";
 export {
   type A11yDiagnosticCode,
   type ActionDiagnosticCode,
@@ -224,6 +217,7 @@ export {
   type DiagnosticSpec,
   docsUrl,
 } from "./diagnostics/spec.ts";
+export { Duration, durationMs } from "./duration.ts";
 export {
   CSRF_HEADER,
   checkRequest,
