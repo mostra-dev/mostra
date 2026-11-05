@@ -276,7 +276,8 @@ Authoring
   artifact/publish { source: SourceRef, force?, policy?: SubmissionPolicy } → PublishReceipt
   artifact/list    { filter? }                      → { artifacts: ArtifactSummary[] }
   artifact/get     { artifact: ArtifactRef }        → ArtifactDetail (versions, views, policy, links, metadata)
-  artifact/export  { artifact, version?, as: ExportClass, out } → { files: string[] }
+  artifact/export  { artifact, version?, as: ExportClass, out } → { files: string[], versionId }   (WP-29: `bundle`)
+  artifact/import  { bundle, requestId? } → PublishReceipt   (WP-29, RM-01: `mostra run <bundle>`)
   deps/add         { artifact: SourceRef, packages: string[] } → { packages: AddedPackage[], lockDigest }   (D95; `mostra add`)
 
 Viewing and sharing
@@ -554,7 +555,7 @@ These are specified in [rounds/ROUND-3.md §6](rounds/ROUND-3.md#6-extensions-ex
 ## 15. Export formats
 
 - **`static` and `html`.** Hash routing, the runtime's static transport, and no credentials or secrets.
-- **`bundle`.** A directory or `.tar.zst` with `mostra-bundle.json`, which records schema version, artifact metadata, `versionId`, digests, the lockfile, and the client and server builds. `mostra run <bundle> [--home]` imports it into a home as a version of the same artifact ID, so a share can push versions between homes (RM-01, WP-29).
+- **`bundle`.** A directory or `.tar.zst` with `mostra-bundle.json`, which records schema version, artifact metadata, `versionId`, digests, the lockfile, and the client and server builds. `mostra run <bundle> [--home]` imports it into a home as a version of the same artifact ID, so a share can push versions between homes (RM-01, WP-29). As built (WP-29, D166): a bundle is `mostra-bundle.json` (`{ schemaVersion: 1, kind: "mostra-bundle", artifactId, versionId, number, title, sourceDigest, envDigest, outputDigest, lockDigest, server, mostraVersion, exportedAt }`), `version/` (the version directory as the home stores it: `manifest.json`, `client/`, `server/`, `registry.json`, `lock.yaml`) and `source.tar.zst` (the source snapshot), as a directory or one zstd-compressed tar. `mostra export <artifact> --out <path> [--version <n|id>]` writes one (`artifact/export`, `as: "bundle"`; an existing path is `MOSTRA_ARTIFACT_DIR_NOT_EMPTY`); `mostra run <bundle>` imports it (`artifact/import`), which checks, before it keeps anything, that `mostra-bundle.json` and `manifest.json` agree, that the lockfile, environment, source snapshot and builds have the digests they record, that the version holds only a version's own files, that the artifact manifest `manifest.json` records is the one its source's entry declares (the copy no digest covers), and that the version ID is the one the artifact ID and digests give (D89); anything else is `MOSTRA_ARTIFACT_BUNDLE_INVALID`. The version keeps its number when the importing home has no version of that number, binds no source path, and records no verdict (another home's verify isn't this one's); an import repeated answers `reused: true`. Its server code runs in the importing home's workers, whose launcher installs the bundle's lockfile into its own layout (D135). The bundle carries no secret.
 - **`snapshot`.** The `static` build, plus a frozen `snapshot.json` (field values, live values and choices at a cursor). Actions render as unavailable.
 - **`mcp-app`.** One HTML file plus `mcp-app.json`, carrying the `_meta.ui` CSP declaration and resource URI.
 

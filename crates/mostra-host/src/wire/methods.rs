@@ -13,6 +13,16 @@ impl super::Method for ArtifactCreate {
     type Params = super::generated::ArtifactCreateParams;
     type Result = super::generated::ArtifactCreateResult;
 }
+///`artifact/export`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactExport;
+impl super::Method for ArtifactExport {
+    const NAME: &'static str = "artifact/export";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ArtifactExportParams;
+    type Result = super::generated::ArtifactExportResult;
+}
 ///`artifact/get`.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtifactGet;
@@ -22,6 +32,16 @@ impl super::Method for ArtifactGet {
     const MUTATING: bool = false;
     type Params = super::generated::ArtifactGetParams;
     type Result = super::generated::ArtifactDetail;
+}
+///`artifact/import`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactImport;
+impl super::Method for ArtifactImport {
+    const NAME: &'static str = "artifact/import";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ArtifactImportParams;
+    type Result = super::generated::PublishReceipt;
 }
 ///`artifact/list`.
 #[derive(Clone, Copy, Debug)]
@@ -432,9 +452,19 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: true,
     },
     super::MethodInfo {
+        name: "artifact/export",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "artifact/get",
         direction: super::Direction::ClientToInstance,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "artifact/import",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
     },
     super::MethodInfo {
         name: "artifact/list",

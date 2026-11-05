@@ -7,6 +7,7 @@
 - The three setups: local, tailnet share, public share
 - Behind a public quick tunnel
 - Managing links and shares
+- Moving a version to another machine
 - Asking people well
 
 ## The link
@@ -60,6 +61,17 @@ mostra open ./x --revoke <tokenId>   # stop a link
 ```
 
 `--json` output carries each link's `tokenId`.
+
+## Moving a version to another machine
+
+A published version can move whole to another Mostra home, where it is the same version with the same IDs, and its actions run there:
+
+```sh
+mostra export ./x --out ./x.tar.zst       # the latest version; --version 2 for another
+mostra run ./x.tar.zst                    # on the other machine: imports it and prints its link
+```
+
+The bundle holds the version's builds, manifest, lockfile and source, never secrets: set the secrets its actions read on the other machine with `mostra secret set`. Answers stay in the home where people gave them.
 
 ## Asking people well
 

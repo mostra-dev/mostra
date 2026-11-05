@@ -61,6 +61,30 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-01",
+    name: "an imported bundle's builds aren't checked against its output digest",
+    file: "src/publish/bundle.ts",
+    from: "    if ((await outputDigestOf(versionDir)) !== version.outputDigest) {",
+    to: "    if ((await outputDigestOf(versionDir)) !== version.outputDigest && false) {",
+    check: integration("bundle.test.ts", "refuses a bundle"),
+  },
+  {
+    requirement: "RM-01",
+    name: "an imported bundle's manifest.json is believed over its source (hosted settings unchecked)",
+    file: "src/publish/bundle.ts",
+    from: "    if (!matches) {",
+    to: "    if (!matches && false) {",
+    check: integration("bundle.test.ts", "refuses a bundle"),
+  },
+  {
+    requirement: "RM-01",
+    name: "an imported version takes the next number instead of its own",
+    file: "src/registry/index.ts",
+    from: "            free && input.number !== undefined",
+    to: "            false && input.number !== undefined",
+    check: integration("bundle.test.ts", "directory bundle"),
+  },
+  {
     requirement: "RM-07",
     name: "a submission counts nothing (the tally isn't grown in the submit transaction)",
     file: "src/interaction/submissions.ts",

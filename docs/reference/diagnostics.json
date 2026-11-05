@@ -100,6 +100,15 @@
       "fix": "Convert the value to the supported types before the call or the return: `{ ...instance }` or a mapping for class instances, `error.message` for errors and `regexp.source` for regular expressions."
     },
     {
+      "code": "MOSTRA_ARTIFACT_BUNDLE_INVALID",
+      "severity": "error",
+      "phase": "host",
+      "title": "Not a bundle this version can import",
+      "hint": "Export the bundle again with `mostra export <artifact> --as bundle`, and import the files it wrote unchanged.",
+      "explanation": "Importing a bundle checks it before it keeps anything: its `mostra-bundle.json`, that its version ID is the one its artifact ID and digests give, and that its builds and source snapshot have the digests it records. This bundle failed one of those checks, so a file was changed, lost or added after it was exported, or it isn't a bundle Mostra wrote.",
+      "fix": "Export the version again from the home that published it, and copy the bundle's directory or archive whole."
+    },
+    {
       "code": "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
       "severity": "error",
       "phase": "host",

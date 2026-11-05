@@ -56,8 +56,16 @@ const VERSION_ROWS =
 export interface VersionCommit {
   /** The artifact the publish resolved before building. */
   readonly artifactId: string;
-  /** The real path of the source (D51). */
-  readonly bindingPath: string;
+  /**
+   * The real path of the source (D51); absent for a version imported from a bundle (RM-01),
+   * which binds no path in this home.
+   */
+  readonly bindingPath: string | undefined;
+  /**
+   * The number a new version takes when the artifact has no version of that number yet: an
+   * imported bundle keeps its number (RM-01, D165 item 3). Absent: the next number.
+   */
+  readonly number?: number;
   /** The manifest's `id`, when it has one. */
   readonly manifestId: string | undefined;
   readonly versionId: string;
@@ -229,7 +237,7 @@ export async function openRegistry(options: {
         const now = new Date().toISOString();
         // Identity (D51): the manifest's id wins; a path bound elsewhere follows it; a moved source
         // rebinds; a copy that still claims the id is a conflict.
-        if (input.manifestId !== undefined) {
+        if (input.manifestId !== undefined && input.bindingPath !== undefined) {
           const others = db.all<{ path: string }>(
             "SELECT path FROM source_binding WHERE artifact_id = ? AND path != ?",
             input.manifestId,
@@ -245,7 +253,9 @@ export async function openRegistry(options: {
           }
         }
         const resolved =
-          input.manifestId ?? boundArtifact(db, input.bindingPath) ?? input.artifactId;
+          input.manifestId ??
+          (input.bindingPath === undefined ? undefined : boundArtifact(db, input.bindingPath)) ??
+          input.artifactId;
         if (resolved !== input.artifactId) {
           throw new RpcError(
             createDiagnostic("MOSTRA_PUBLISH_SOURCE_CHANGED", {
@@ -295,11 +305,20 @@ export async function openRegistry(options: {
         } else {
           if (input.outputDigest === undefined)
             throw new Error("A new version needs its output digest.");
-          number =
-            db.get<{ next: number }>(
-              "SELECT COALESCE(MAX(number), 0) + 1 AS next FROM version WHERE artifact_id = ?",
+          const free =
+            input.number !== undefined &&
+            db.get(
+              "SELECT 1 FROM version WHERE artifact_id = ? AND number = ?",
               input.artifactId,
-            )?.next ?? 1;
+              input.number,
+            ) === undefined;
+          number =
+            free && input.number !== undefined
+              ? input.number
+              : (db.get<{ next: number }>(
+                  "SELECT COALESCE(MAX(number), 0) + 1 AS next FROM version WHERE artifact_id = ?",
+                  input.artifactId,
+                )?.next ?? 1);
           db.run(
             "INSERT INTO version (id, artifact_id, number, source_digest, env_digest, output_digest, manifest_json, forced_codes_json, published_at, verify_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             input.versionId,
@@ -348,12 +367,14 @@ export async function openRegistry(options: {
           input.versionId,
           input.artifactId,
         );
-        db.run(
-          "INSERT INTO source_binding (path, artifact_id, bound_at) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET artifact_id = excluded.artifact_id, bound_at = excluded.bound_at",
-          input.bindingPath,
-          input.artifactId,
-          now,
-        );
+        if (input.bindingPath !== undefined) {
+          db.run(
+            "INSERT INTO source_binding (path, artifact_id, bound_at) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET artifact_id = excluded.artifact_id, bound_at = excluded.bound_at",
+            input.bindingPath,
+            input.artifactId,
+            now,
+          );
+        }
         input.inTransaction?.(db);
         const committed = { version: number, cursor, reused: existing !== undefined };
         if (input.request !== undefined) {

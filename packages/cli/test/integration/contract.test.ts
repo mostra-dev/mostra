@@ -141,6 +141,37 @@ describe("every command, with --json and no terminal", () => {
     link = shown.url;
   });
 
+  it("export writes a bundle and run makes it the same version in another home (RM-01)", async () => {
+    const bundle = join(home.root, "review.tar.zst");
+    const exported = await run(["export", artifactId, "--out", bundle], { code: 0, ok: true });
+    expect(exported.result).toMatchObject({ files: [bundle] });
+    const { versionId } = exported.result as { versionId: string };
+    // Writing over it again is refused, and it keeps the first bundle.
+    await run(["export", artifactId, "--out", bundle], {
+      code: 1,
+      ok: false,
+      error: "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
+    });
+    const other = testHome({ MOSTRA_OFFLINE: "1" });
+    try {
+      const imported = await cli(["run", bundle, "--json"], { env: other.env });
+      const value = envelope(imported);
+      expect({ code: imported.code, ok: value.ok }, imported.stderr).toEqual({ code: 0, ok: true });
+      const receipt = PublishReceipt.parse(value.result);
+      expect(receipt).toMatchObject({ artifactId, versionId, version: 1, reused: false });
+      covered.add("run");
+      // A file that isn't a bundle is refused with its own code, exit 1.
+      const notBundle = join(other.root, "x.tar.zst");
+      writeFileSync(notBundle, "not a bundle");
+      const refused = await cli(["run", notBundle, "--json"], { env: other.env });
+      expect(refused.code).toBe(1);
+      expect(envelope(refused).error?.code).toBe("MOSTRA_ARTIFACT_BUNDLE_INVALID");
+    } finally {
+      await cli(["daemon", "stop", "--json"], { env: other.env });
+      await other.cleanup();
+    }
+  }, 120_000);
+
   it("wait ends still_waiting with exit 5, then returns the viewer's submission; results reads it", async () => {
     const waiting = await run(["wait", artifactId, "--until", "submitted", "--timeout", "1s"], {
       code: 5,

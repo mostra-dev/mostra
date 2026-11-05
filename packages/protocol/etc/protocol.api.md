@@ -113,7 +113,24 @@ export const ArtifactDetail: z.ZodType<ArtifactDetail>;
 export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
 
 // @public
-export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED", "MOSTRA_ARTIFACT_PATH_INVALID", "MOSTRA_ARTIFACT_PATCH_REJECTED", "MOSTRA_ARTIFACT_ID_DROPPED"];
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED", "MOSTRA_ARTIFACT_PATH_INVALID", "MOSTRA_ARTIFACT_PATCH_REJECTED", "MOSTRA_ARTIFACT_ID_DROPPED", "MOSTRA_ARTIFACT_BUNDLE_INVALID"];
+
+// @public
+export const artifactExportMethod: MethodDefinition<ArtifactExportParams, ArtifactExportResult>;
+
+// @public
+export interface ArtifactExportParams {
+    readonly artifact: ArtifactRef;
+    readonly as: ExportClass;
+    readonly out: string;
+    readonly version?: number | string;
+}
+
+// @public
+export interface ArtifactExportResult {
+    readonly files: readonly string[];
+    readonly versionId: string;
+}
 
 // @public
 export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
@@ -134,6 +151,18 @@ export type ArtifactId = Id<"art">;
 
 // @public
 export const ArtifactId: GeneratedIdKind<"art">;
+
+// @public
+export const artifactImportMethod: MethodDefinition<ArtifactImportParams, ArtifactImportResult>;
+
+// @public
+export interface ArtifactImportParams {
+    readonly bundle: string;
+    readonly requestId?: string;
+}
+
+// @public
+export type ArtifactImportResult = PublishReceipt;
 
 // @public
 export interface ArtifactLink {
@@ -1123,6 +1152,12 @@ export type EventTypePattern = string;
 
 // @public
 export const EventTypePattern: z.ZodType<EventTypePattern>;
+
+// @public
+export type ExportClass = "bundle";
+
+// @public
+export const ExportClass: z.ZodType<ExportClass>;
 
 // @public
 export interface ExternalBase {

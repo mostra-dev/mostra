@@ -315,10 +315,21 @@ export {
   artifactCreateMethod,
 } from "./methods/artifact/create.ts";
 export {
+  type ArtifactExportParams,
+  type ArtifactExportResult,
+  artifactExportMethod,
+  ExportClass,
+} from "./methods/artifact/export.ts";
+export {
   type ArtifactGetParams,
   type ArtifactGetResult,
   artifactGetMethod,
 } from "./methods/artifact/get.ts";
+export {
+  type ArtifactImportParams,
+  type ArtifactImportResult,
+  artifactImportMethod,
+} from "./methods/artifact/import.ts";
 export {
   type ArtifactListFilter,
   type ArtifactListParams,

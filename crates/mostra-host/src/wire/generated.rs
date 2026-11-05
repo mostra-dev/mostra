@@ -509,6 +509,192 @@ impl<'de> ::serde::Deserialize<'de> for ArtifactDetailCreatedAt {
             })
     }
 }
+///`ArtifactExportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactExportParams {
+    pub artifact: ArtifactRef,
+    #[serde(rename = "as")]
+    pub as_: ExportClass,
+    pub out: ArtifactExportParamsOut,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub version: ::std::option::Option<ArtifactExportParamsVersion>,
+}
+///`ArtifactExportParamsOut`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsOut(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsOut {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsOut> for ::std::string::String {
+    fn from(value: ArtifactExportParamsOut) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsOut {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsOut {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactExportParamsVersion`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ArtifactExportParamsVersion {
+    Integer(::std::num::NonZeroU64),
+    String(ArtifactExportParamsVersionString),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::fmt::Display for ArtifactExportParamsVersion {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::Integer(x) => x.fmt(f),
+            Self::String(x) => x.fmt(f),
+            Self::Unknown(value) => value.fmt(f),
+        }
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if let Ok(v) = value.parse() {
+            Ok(Self::Integer(v))
+        } else if let Ok(v) = value.parse() {
+            Ok(Self::String(v))
+        } else {
+            Err("string conversion failed for all variants".into())
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::From<::std::num::NonZeroU64> for ArtifactExportParamsVersion {
+    fn from(value: ::std::num::NonZeroU64) -> Self {
+        Self::Integer(value)
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsVersionString>
+for ArtifactExportParamsVersion {
+    fn from(value: ArtifactExportParamsVersionString) -> Self {
+        Self::String(value)
+    }
+}
+///`ArtifactExportParamsVersionString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsVersionString(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsVersionString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsVersionString> for ::std::string::String {
+    fn from(value: ArtifactExportParamsVersionString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsVersionString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsVersionString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactExportResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactExportResult {
+    pub files: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "versionId")]
+    pub version_id: ::std::string::String,
+}
 ///`ArtifactGetParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ArtifactGetParams {
@@ -561,6 +747,124 @@ impl ::std::convert::TryFrom<::std::string::String> for ArtifactId {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactImportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactImportParams {
+    pub bundle: ArtifactImportParamsBundle,
+    #[serde(
+        rename = "requestId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub request_id: ::std::option::Option<ArtifactImportParamsRequestId>,
+}
+///`ArtifactImportParamsBundle`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactImportParamsBundle(::std::string::String);
+impl ::std::ops::Deref for ArtifactImportParamsBundle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactImportParamsBundle> for ::std::string::String {
+    fn from(value: ArtifactImportParamsBundle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactImportParamsBundle {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactImportParamsBundle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactImportParamsBundle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactImportParamsBundle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactImportParamsRequestId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactImportParamsRequestId(::std::string::String);
+impl ::std::ops::Deref for ArtifactImportParamsRequestId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactImportParamsRequestId> for ::std::string::String {
+    fn from(value: ArtifactImportParamsRequestId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactImportParamsRequestId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactImportParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactImportParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactImportParamsRequestId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -5296,6 +5600,42 @@ for EventsUnsubscribeResult {
         value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     ) -> Self {
         Self(value)
+    }
+}
+///An export class (VR-07).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ExportClass {
+    #[serde(rename = "bundle")]
+    Bundle,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ExportClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExportClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///The origin browsers use for a listener, and how its frame authenticates there.
@@ -13825,6 +14165,34 @@ impl ::std::str::FromStr for DiagnosticSeverity {
                 "error" => Self::Error,
                 "warning" => Self::Warning,
                 "hint" => Self::Hint,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ExportClass {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Bundle => "bundle",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ExportClass {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ExportClass {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "bundle" => Self::Bundle,
                 other => Self::Unknown(other.to_string()),
             },
         )

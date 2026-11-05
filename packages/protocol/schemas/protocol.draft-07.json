@@ -15,6 +15,16 @@
         "$ref": "#/definitions/ArtifactCreateResult"
       }
     },
+    "artifact/export": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/ArtifactExportParams"
+      },
+      "result": {
+        "$ref": "#/definitions/ArtifactExportResult"
+      }
+    },
     "artifact/get": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -23,6 +33,16 @@
       },
       "result": {
         "$ref": "#/definitions/ArtifactDetail"
+      }
+    },
+    "artifact/import": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/ArtifactImportParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PublishReceipt"
       }
     },
     "artifact/list": {
@@ -601,6 +621,58 @@
       ],
       "description": "One artifact in full: its summary, the latest manifest and every version."
     },
+    "ArtifactExportParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "as": {
+          "$ref": "#/definitions/ExportClass"
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "as",
+        "out"
+      ]
+    },
+    "ArtifactExportResult": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "versionId"
+      ]
+    },
     "ArtifactGetParams": {
       "type": "object",
       "properties": {
@@ -616,6 +688,22 @@
       "type": "string",
       "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
+    },
+    "ArtifactImportParams": {
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "bundle"
+      ]
     },
     "ArtifactLink": {
       "type": "object",
@@ -2392,6 +2480,13 @@
     "EventsUnsubscribeResult": {
       "type": "object",
       "properties": {}
+    },
+    "ExportClass": {
+      "type": "string",
+      "enum": [
+        "bundle"
+      ],
+      "description": "An export class (VR-07)."
     },
     "ExternalBase": {
       "type": "object",

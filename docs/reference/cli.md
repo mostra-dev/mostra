@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `gc`, `host`, `list`, `mcp`, `new`, `open`, `publish`, `push`, `results`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `mcp`, `new`, `open`, `publish`, `push`, `results`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -548,6 +548,76 @@ Exit codes:
 
 Example:
   mostra add recharts@3 --artifact ./dashboard
+```
+
+## mostra export
+
+```text
+Write a published version out of the home, as a portable bundle another home can run.
+
+Usage:
+  mostra export <artifact> [flags]
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+
+Flags:
+  --as <class>                 What to write: `bundle`, the version's builds, manifest, lockfile and source. (bundle) Default: bundle.
+  --out <path>                 Where: a new directory, or one archive when it ends in .tar.zst.
+  --version <number|id>        The version. Default: the latest.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ArtifactExportResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra export ./sidebar-review --out ./sidebar-review.tar.zst
+```
+
+## mostra run
+
+```text
+Make a bundle `mostra export` wrote a version of this home, with the same IDs, and print its link.
+
+Usage:
+  mostra run <bundle> [flags]
+
+Arguments:
+  <bundle>                     The bundle: its directory or its .tar.zst archive.
+
+Flags:
+  --request-id <id>            Make a retry return the first attempt's receipt.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: PublishReceipt (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra run ./sidebar-review.tar.zst
 ```
 
 ## mostra secret set

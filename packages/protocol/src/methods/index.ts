@@ -5,7 +5,9 @@
 import type { AnyMethod, AnyNotification } from "../method.ts";
 import { ARTIFACT_PROGRESS, ArtifactProgressParams } from "../verify.ts";
 import { artifactCreateMethod } from "./artifact/create.ts";
+import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
+import { artifactImportMethod } from "./artifact/import.ts";
 import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
@@ -88,6 +90,8 @@ export const hostMethods: readonly AnyMethod[] = [
   shareStopMethod,
   shareListMethod,
   portAddressingExternalBaseMethod,
+  artifactExportMethod,
+  artifactImportMethod,
   // gen:methods
 ];
 

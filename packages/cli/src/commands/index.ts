@@ -1,7 +1,8 @@
 /**
  * Every command of `mostra` (D60, D140 item 13), in the order help lists them. Commands later
- * packages own (`review export`, `export`, `plugin`, `term`, `run`) join this list with their
- * packages, never as placeholders; `share` joined with WP-13 and `mcp` with WP-15.
+ * packages own (`review export`, `plugin`, `term`) join this list with their
+ * packages, never as placeholders; `share` joined with WP-13, `mcp` with WP-15, and `export` (its `bundle` class) and `run`
+ * with WP-29.
  */
 import type { CommandDef } from "../command.ts";
 import {
@@ -24,7 +25,14 @@ import {
   telemetryOnCommand,
   telemetryStatusCommand,
 } from "./admin.ts";
-import { addCommand, newCommand, publishCommand, verifyCommand } from "./authoring.ts";
+import {
+  addCommand,
+  exportCommand,
+  newCommand,
+  publishCommand,
+  runCommand,
+  verifyCommand,
+} from "./authoring.ts";
 import { devCommand } from "./dev.ts";
 import {
   pushCommand,
@@ -55,6 +63,8 @@ export const COMMANDS: readonly CommandDef[] = [
   statePatchCommand,
   pushCommand,
   addCommand,
+  exportCommand,
+  runCommand,
   secretSetCommand,
   secretListCommand,
   secretRmCommand,
