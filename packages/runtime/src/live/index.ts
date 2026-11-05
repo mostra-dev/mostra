@@ -22,9 +22,16 @@ import {
   RpcError,
   ServerLiveValueParams,
   serializeAll,
+  TALLY_LIVE_PREFIX,
   type WireError,
 } from "@mostra/protocol";
-import type { EphemeralBus, Interaction, PageIdentity } from "../interaction/index.ts";
+import {
+  type EphemeralBus,
+  type Interaction,
+  type PageIdentity,
+  tallyField,
+  tallyState,
+} from "../interaction/index.ts";
 import type { Ledger, LedgerDb, RequestKey } from "../ledger/index.ts";
 import { recordedResult, recordResult, requestKey } from "../ledger/index.ts";
 import { type Log, redactFrames, redactValue } from "../log.ts";
@@ -47,7 +54,7 @@ export interface LiveOptions {
   readonly log: Log;
   readonly bus: EphemeralBus;
   readonly pool: WorkerPool;
-  readonly interaction: Pick<Interaction, "subscribedArtifacts" | "checkView">;
+  readonly interaction: Pick<Interaction, "subscribedArtifacts" | "checkView" | "onTallied">;
   /** The latest version of an artifact with live sources, or `undefined`. */
   readonly latest: (artifactId: string) => LatestLive | undefined;
   /** Every artifact whose latest version defines live sources. */
@@ -154,6 +161,7 @@ export function createLive(options: LiveOptions): Live {
     message: `The artifact's server code keeps crashing, so its live sources stopped (${cause}).`,
   });
   let timer: ReturnType<typeof setInterval> | undefined;
+  let stopTallies: (() => void) | undefined;
   let scheduled = false;
   let stopped = false;
   /** A worker is starting only to say which of its version's sources are `always`. */
@@ -379,6 +387,12 @@ export function createLive(options: LiveOptions): Live {
   };
 
   const stateOf = (db: LedgerDb, artifactId: string, key: string, window?: number): LiveState => {
+    // A tally's key reads its counts (D165 item 12): no producer, no push, no relay.
+    const field = tallyField(key);
+    if (field !== undefined) {
+      const tally = tallyState(db, artifactId, field);
+      return tally ? { key, revision: tally.revision, value: tally.batches } : { key };
+    }
     const row = db.get<LiveRow>(
       "SELECT revision, value_json, at FROM live_value WHERE artifact_id = ? AND key = ?",
       artifactId,
@@ -443,6 +457,14 @@ export function createLive(options: LiveOptions): Live {
     },
 
     async push(artifactId, input, requestKey) {
+      // A tally's key is the submit transaction's alone (D165 item 12): nothing pushes to it.
+      if (tallyField(input.key) !== undefined) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `${input.key} is a tally's key: only accepted submissions count it.`,
+          }),
+        );
+      }
       let batches: Batches;
       try {
         batches = await serializeAll(input.value, { mode: "argument" });
@@ -571,6 +593,28 @@ export function createLive(options: LiveOptions): Live {
 
     start() {
       stopped = false;
+      // A submission that counted a tallied field sends its viewers the new counts, on the live
+      // channel like any live value (D165 item 12).
+      stopTallies ??= options.interaction.onTallied((artifactId, fields) => {
+        for (const field of fields) {
+          const key = `${TALLY_LIVE_PREFIX}${field}`;
+          try {
+            const tally = ledger.read((db) => tallyState(db, artifactId, field));
+            if (!tally) continue;
+            bus.publishLive(artifactId, {
+              kind: "live",
+              live: {
+                key,
+                revision: tally.revision,
+                at: new Date().toISOString(),
+                value: tally.batches,
+              },
+            });
+          } catch (error) {
+            log.error("live.tally_failed", { key, error });
+          }
+        }
+      });
       bus.onLiveInterest(schedule);
       timer = setInterval(schedule, options.reconcileMs ?? 5_000);
       timer.unref?.();
@@ -580,6 +624,8 @@ export function createLive(options: LiveOptions): Live {
     stop() {
       stopped = true;
       if (timer !== undefined) clearInterval(timer);
+      stopTallies?.();
+      stopTallies = undefined;
     },
   };
 }

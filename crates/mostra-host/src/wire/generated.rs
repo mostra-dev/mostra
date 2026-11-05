@@ -773,6 +773,8 @@ pub struct ArtifactManifest {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub family: ::std::option::Option<ArtifactManifestFamily>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hosted: ::std::option::Option<HostedSettings>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub id: ::std::option::Option<ArtifactId>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub kit: ::std::option::Option<ArtifactManifestKit>,
@@ -784,6 +786,8 @@ pub struct ArtifactManifest {
     pub mode: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub submission: ::std::option::Option<SubmissionPolicy>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub tally: ::std::vec::Vec<TallySpec>,
     #[serde(
         default,
         skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
@@ -6309,6 +6313,178 @@ impl<'de> ::serde::Deserialize<'de> for HomeConfigPath {
             })
     }
 }
+///How an artifact behaves on a remote server: offline actions, who may act and submit, previews.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct HostedSettings {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub actions: ::std::option::Option<HostedSettingsActions>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub offline: ::std::option::Option<HostedSettingsOffline>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub preview: ::std::option::Option<HostedSettingsPreview>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submissions: ::std::option::Option<HostedSettingsSubmissions>,
+}
+///`HostedSettingsActions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsActions {
+    #[serde(rename = "signed-in")]
+    SignedIn,
+    #[serde(rename = "link")]
+    Link,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsOffline`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct HostedSettingsOffline {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub actions: ::std::option::Option<HostedSettingsOfflineActions>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub limit: ::std::option::Option<Duration>,
+}
+///`HostedSettingsOfflineActions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsOfflineActions {
+    #[serde(rename = "queue")]
+    Queue,
+    #[serde(rename = "fail")]
+    Fail,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsOfflineActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsOfflineActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsPreview`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsPreview {
+    #[serde(rename = "generic")]
+    Generic,
+    #[serde(rename = "title")]
+    Title,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsSubmissions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsSubmissions {
+    #[serde(rename = "link")]
+    Link,
+    #[serde(rename = "signed-in")]
+    SignedIn,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsSubmissions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsSubmissions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///What the instance offers: methods, notifications and supported ports.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct InstanceCapabilities {
@@ -6948,10 +7124,16 @@ impl ::std::str::FromStr for LiveRequestKeysItemKey {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\\$tally\\/[^\\u0000-\\u001f\\u007f]{1,256}$)",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+                "doesn't match pattern \"^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\\$tally\\/[^\\u0000-\\u001f\\u007f]{1,256}$)\""
+                    .into(),
             );
         }
         Ok(Self(value.to_string()))
@@ -11578,6 +11760,128 @@ pub struct SubmitRequest {
     #[serde(rename = "viewId")]
     pub view_id: ViewId,
 }
+///A count by choice of a viewer-scoped field: its field, 2 to 50 distinct choices and minTotal.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct TallySpec {
+    pub choices: ::std::vec::Vec<TallySpecChoicesItem>,
+    pub field: TallySpecField,
+    #[serde(rename = "minTotal", skip_serializing_if = "::std::option::Option::is_none")]
+    pub min_total: ::std::option::Option<i64>,
+}
+///`TallySpecChoicesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct TallySpecChoicesItem(::std::string::String);
+impl ::std::ops::Deref for TallySpecChoicesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TallySpecChoicesItem> for ::std::string::String {
+    fn from(value: TallySpecChoicesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for TallySpecChoicesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for TallySpecChoicesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TallySpecChoicesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for TallySpecChoicesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`TallySpecField`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct TallySpecField(::std::string::String);
+impl ::std::ops::Deref for TallySpecField {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TallySpecField> for ::std::string::String {
+    fn from(value: TallySpecField) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for TallySpecField {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for TallySpecField {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TallySpecField {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for TallySpecField {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///Thread ID: "thr_" followed by a 26-character ULID.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
@@ -13675,6 +13979,126 @@ impl ::std::str::FromStr for GatewayStatusFacesItemListener {
             match value {
                 "shell" => Self::Shell,
                 "artifact" => Self::Artifact,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsActions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::SignedIn => "signed-in",
+            Self::Link => "link",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsActions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsActions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "signed-in" => Self::SignedIn,
+                "link" => Self::Link,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsOfflineActions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Queue => "queue",
+            Self::Fail => "fail",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsOfflineActions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsOfflineActions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "queue" => Self::Queue,
+                "fail" => Self::Fail,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsPreview {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Generic => "generic",
+            Self::Title => "title",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsPreview {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsPreview {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "generic" => Self::Generic,
+                "title" => Self::Title,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsSubmissions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Link => "link",
+            Self::SignedIn => "signed-in",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsSubmissions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsSubmissions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "link" => Self::Link,
+                "signed-in" => Self::SignedIn,
                 other => Self::Unknown(other.to_string()),
             },
         )

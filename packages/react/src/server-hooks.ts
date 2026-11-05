@@ -6,7 +6,12 @@
  * share the page's runtime, its view and its event stream, so a run started in one tab or before a
  * reload is followed the same way, and every component showing one source shares one value.
  */
-import { isFinalRunStatus, type RunProgress, type RunStatus } from "@mostra/protocol";
+import {
+  isFinalRunStatus,
+  type RunProgress,
+  type RunStatus,
+  type TallyValue,
+} from "@mostra/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useStore } from "./hooks.ts";
 import { MostraError } from "./runtime/errors.ts";
@@ -210,11 +215,26 @@ export type LiveValuesOf<M> = {
     : never;
 };
 
-/** A live source's key: one of `LiveSources`, or any string before the declaration exists. */
-export type LiveKey = [keyof LiveSources] extends [never] ? string : keyof LiveSources & string;
+/**
+ * A tally's key, `$tally/<field>` (D165 item 12): the counts of a fixed-choice field the manifest's
+ * `tally` names, which Mostra keeps and pushes itself.
+ */
+export type TallyKey = `$tally/${string}`;
 
-/** A live source's value type. */
-export type LiveValue<K extends string> = K extends keyof LiveSources ? LiveSources[K] : unknown;
+/**
+ * A live source's key: one of `LiveSources`, or any string before the declaration exists, or a
+ * tally's key.
+ */
+export type LiveKey =
+  | ([keyof LiveSources] extends [never] ? string : keyof LiveSources & string)
+  | TallyKey;
+
+/** A live source's value type; a tally's is `TallyValue`. */
+export type LiveValue<K extends string> = K extends TallyKey
+  ? TallyValue
+  : K extends keyof LiveSources
+    ? LiveSources[K]
+    : unknown;
 
 /** What `useLive` shows (INTERFACES §2.3). */
 export interface LiveResult<T> {

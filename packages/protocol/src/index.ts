@@ -22,6 +22,7 @@ export {
   LiveRequest,
   type LiveState,
   type LiveUpdate,
+  READABLE_LIVE_KEY_PATTERN,
   RUN_KEY_MAX,
   RUN_LOG_MAX,
   RUN_LOG_TRUNCATED,
@@ -36,6 +37,8 @@ export {
   type RunStatus,
   SECRET_NAME_PATTERN,
   SECRET_VALUE_MAX,
+  TALLY_LIVE_PREFIX,
+  type TallyValue,
 } from "./actions.ts";
 export {
   ArtifactDetail,
@@ -288,7 +291,14 @@ export {
   ArtifactLink,
   ArtifactManifest,
   type DemoSpec,
+  HOSTED_OFFLINE_LIMIT_DEFAULT,
+  HOSTED_OFFLINE_LIMIT_MAX_MS,
+  HostedSettings,
+  manifestProblem,
   SubmissionPolicy,
+  TALLY_CHOICES_MAX,
+  TALLY_CHOICES_MIN,
+  TallySpec,
   type TerminalSpec,
 } from "./manifest.ts";
 export {

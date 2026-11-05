@@ -376,6 +376,26 @@ export const RunCancelRequest: z.ZodType<RunCancelRequest> = z
 /** The keys of live sources: like JavaScript export names, which is what `live.ts` declares. */
 export const LIVE_KEY_PATTERN: RegExp = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
 
+/**
+ * The reserved live keys of tallies (D165 item 12, INTERFACES §18.4): `$tally/<field>` reads the
+ * count by choice of a manifest `tally` entry. No producer or push writes one (their keys follow
+ * {@link LIVE_KEY_PATTERN}); only a page reads them.
+ */
+export const TALLY_LIVE_PREFIX = "$tally/";
+
+/** The value of a tally's live key: the counts by choice, or only the total below `minTotal`. */
+export interface TallyValue {
+  /** Each listed choice's count, absent while fewer than `minTotal` answers were counted. */
+  readonly counts?: Readonly<Record<string, number>>;
+  /** How many answers were counted: answers, never people. */
+  readonly total: number;
+}
+
+/** The keys a page may read: a source's ({@link LIVE_KEY_PATTERN}) or a tally's (`$tally/<field>`). */
+export const READABLE_LIVE_KEY_PATTERN: RegExp =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses.
+  /^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\$tally\/[^\u0000-\u001f\u007f]{1,256}$)/;
+
 /** The largest live value, in characters of serialized JSON (DATA_MODEL §5's 4 MiB). */
 export const LIVE_VALUE_MAX: number = 4 * 1024 * 1024;
 
@@ -410,7 +430,7 @@ export const LiveRequest: z.ZodType<LiveRequest> = z
     keys: z
       .array(
         z.object({
-          key: z.string().regex(LIVE_KEY_PATTERN),
+          key: z.string().regex(READABLE_LIVE_KEY_PATTERN),
           window: z.int().min(1).max(LIVE_RING_MAX).exactOptional(),
           refresh: z.boolean().exactOptional(),
         }),

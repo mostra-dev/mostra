@@ -167,6 +167,7 @@ export interface ArtifactManifest {
     readonly demos?: Readonly<Record<string, DemoSpec>>;
     readonly description?: string;
     readonly family?: ArtifactFamily;
+    readonly hosted?: HostedSettings;
     readonly id?: string;
     readonly kit?: {
         readonly base?: "base" | "radix";
@@ -180,6 +181,7 @@ export interface ArtifactManifest {
     readonly links?: readonly ArtifactLink[];
     readonly mode?: "spa";
     readonly submission?: SubmissionPolicy;
+    readonly tally?: readonly TallySpec[];
     readonly terminals?: Readonly<Record<string, TerminalSpec>>;
     readonly title: string;
     readonly verify?: {
@@ -1400,6 +1402,26 @@ export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED", "MOSTRA_HOST_MESSAGE_TOO_LARGE", "MOSTRA_HOST_IDENTITY_UNAVAILABLE"];
 
 // @public
+export const HOSTED_OFFLINE_LIMIT_DEFAULT: Duration;
+
+// @public
+export const HOSTED_OFFLINE_LIMIT_MAX_MS: number;
+
+// @public
+export interface HostedSettings {
+    readonly actions?: "signed-in" | "link";
+    readonly offline?: {
+        readonly actions?: "queue" | "fail";
+        readonly limit?: Duration;
+    };
+    readonly preview?: "generic" | "title";
+    readonly submissions?: "link" | "signed-in";
+}
+
+// @public
+export const HostedSettings: z.ZodType<HostedSettings>;
+
+// @public
 export const hostMethods: readonly AnyMethod[];
 
 // @public
@@ -1684,6 +1706,12 @@ export type ManifestDiagnosticCode = (typeof manifestDiagnosticCodes)[number];
 export const manifestDiagnosticCodes: readonly ["MOSTRA_MANIFEST_NOT_LITERAL", "MOSTRA_MANIFEST_INVALID", "MOSTRA_MANIFEST_UNKNOWN_KEY"];
 
 // @public
+export function manifestProblem(manifest: ArtifactManifest): {
+    readonly path: string;
+    readonly message: string;
+} | undefined;
+
+// @public
 export const MAX_LINE_LENGTH: number;
 
 // @public
@@ -1949,6 +1977,9 @@ export interface PublishReceipt {
 
 // @public
 export const PublishReceipt: z.ZodType<PublishReceipt>;
+
+// @public
+export const READABLE_LIVE_KEY_PATTERN: RegExp;
 
 // @public
 export function readViewContext(wire: ViewContextWire): ViewContext;
@@ -2799,6 +2830,31 @@ export interface SubmitRequest {
 
 // @public
 export const SubmitRequest: z.ZodType<SubmitRequest>;
+
+// @public
+export const TALLY_CHOICES_MAX = 50;
+
+// @public
+export const TALLY_CHOICES_MIN = 2;
+
+// @public
+export const TALLY_LIVE_PREFIX = "$tally/";
+
+// @public
+export interface TallySpec {
+    readonly choices: readonly string[];
+    readonly field: string;
+    readonly minTotal?: number;
+}
+
+// @public
+export const TallySpec: z.ZodType<TallySpec>;
+
+// @public
+export interface TallyValue {
+    readonly counts?: Readonly<Record<string, number>>;
+    readonly total: number;
+}
 
 // @public
 export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];

@@ -26,6 +26,7 @@ import { appendEvent } from "./events.ts";
 import { documentFor, type FieldRow } from "./fields.ts";
 import { storedPolicy } from "./policy.ts";
 import { raiseSubmitSignal, SUBMIT_SIGNAL } from "./signals.ts";
+import { countSubmission } from "./tally.ts";
 import { type ViewRow, viewControls, viewer as viewerById, viewFor } from "./viewers.ts";
 
 /** The most signals a snapshot keeps: the view's newest. */
@@ -310,6 +311,8 @@ export interface SubmitOutcome {
   readonly submission: SubmissionSummary;
   /** `false` when it returned an earlier submission of the same view and revision (D22). */
   readonly created: boolean;
+  /** The tallied fields whose counts this submission grew (D165 item 12). */
+  readonly tallied?: readonly string[];
 }
 
 /**
@@ -552,6 +555,13 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     staleView ? 1 : 0,
     at,
   );
+  // Counts by choice grow in the same transaction, so a count is never ahead of, or behind, the
+  // submissions it counts (D165 item 12).
+  const tallied = countSubmission(db, {
+    artifactId: input.artifactId,
+    versionId: view.version_id,
+    fields: snapshot.draft.fields,
+  });
   // The next round starts with the same values (D103).
   if (policy.policy === "epochs") {
     db.run("UPDATE document SET epoch = ? WHERE id = ?", epoch + 1, draft.id);
@@ -581,5 +591,9 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     "SELECT * FROM submission WHERE id = ?",
     submissionId,
   ) as SubmissionRow;
-  return { submission: submissionSummary(db, row), created: true };
+  return {
+    submission: submissionSummary(db, row),
+    created: true,
+    ...(tallied.length > 0 ? { tallied } : {}),
+  };
 }

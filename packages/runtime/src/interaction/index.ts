@@ -104,6 +104,7 @@ export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
 export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
+export { tallyField, tallyState } from "./tally.ts";
 
 /** How the interaction core finds an artifact a host names. */
 export interface InteractionArtifacts {
@@ -341,6 +342,11 @@ export interface Interaction {
    * session reports what its preview's submits would deliver (D140 item 12). Returns the stop.
    */
   onSubmission(listener: (results: Results) => void): () => void;
+  /**
+   * Hears, once a submission commits, which of its artifact's tallied fields it counted (D165
+   * item 12), so their viewers are sent the new counts. Returns the stop.
+   */
+  onTallied(listener: (artifactId: string, fields: readonly string[]) => void): () => void;
   /** How many host subscriptions are open. */
   subscriptionCount(): number;
 }
@@ -449,6 +455,7 @@ function runVisible(row: RunRow, page: PageIdentity): boolean {
 /** Creates the interaction core. */
 
 export function createInteraction(options: InteractionOptions): Interaction {
+  const tallyListeners = new Set<(artifactId: string, fields: readonly string[]) => void>();
   const { ledger, log, hosts } = options;
   const outbox = new Outbox({
     ledger,
@@ -583,6 +590,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
           covers: options.coverage,
         }),
       );
+      if (outcome.tallied) {
+        for (const listener of tallyListeners) {
+          try {
+            listener(page.artifactId, outcome.tallied);
+          } catch (error) {
+            log.error("interaction.tally_listener_failed", { error });
+          }
+        }
+      }
       if (outcome.created) {
         log.info("interaction.submitted", {
           artifactId: page.artifactId,
@@ -1015,6 +1031,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
           listener(row.artifact_id, versionId);
         }
       });
+    },
+    onTallied(listener) {
+      tallyListeners.add(listener);
+      return () => tallyListeners.delete(listener);
     },
     subscriptionCount: () => subscriptions.size,
   };

@@ -9,6 +9,7 @@
  * ```
  */
 import * as z from "zod";
+import { Duration, durationMs } from "./capability.ts";
 import { ArtifactId } from "./ids.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
@@ -68,6 +69,47 @@ export type DemoSpec =
     }
   | { readonly attach: number; readonly bridge?: boolean };
 
+/**
+ * A count by choice the artifact opts into (D165 item 12, RM-07): every accepted submission adds
+ * one to the choice its viewer-scoped `field` holds, counted in the submit transaction, and viewers
+ * read the counts with `useLive("$tally/<field>")`. A value outside `choices`, or none, counts
+ * nothing, so free text is never shown.
+ */
+export interface TallySpec {
+  /** The viewer-scoped field whose value is counted. */
+  readonly field: string;
+  /** The values counted: 2 to 50 distinct strings. */
+  readonly choices: readonly string[];
+  /** Below this many answers (default 0), viewers see only the total, never the counts. */
+  readonly minTotal?: number;
+}
+
+/** How the artifact behaves on a remote server (D165, INTERFACES §18). */
+export interface HostedSettings {
+  /**
+   * Relayed action runs while the owner instance is away (D165 item 4): `queue` (the default)
+   * waits up to `limit` (default `24h`, at most `7d`), `fail` ends a run at once.
+   */
+  readonly offline?: { readonly actions?: "queue" | "fail"; readonly limit?: Duration };
+  /** Who may trigger relayed actions (D159): `signed-in` (the default) or anyone with the `link`. */
+  readonly actions?: "signed-in" | "link";
+  /** Who may submit (D165 item 13): anyone with the `link` (the default), or `signed-in` viewers. */
+  readonly submissions?: "link" | "signed-in";
+  /** Link previews (D161): `generic` (the default) or the artifact's `title`. */
+  readonly preview?: "generic" | "title";
+}
+
+/** The longest offline limit a hosted artifact may set: 7 days (D165 item 4). */
+export const HOSTED_OFFLINE_LIMIT_MAX_MS: number = 7 * 24 * 60 * 60 * 1000;
+
+/** The offline limit of a hosted artifact that sets none: 24 hours (D165 item 4). */
+export const HOSTED_OFFLINE_LIMIT_DEFAULT: Duration = "24h";
+
+/** The fewest and most choices a tally counts (INTERFACES §18.4). */
+export const TALLY_CHOICES_MIN = 2;
+/** The most choices a tally counts. */
+export const TALLY_CHOICES_MAX = 50;
+
 /** The artifact manifest (INTERFACES §2.2). Every field except `title` is optional. */
 export interface ArtifactManifest {
   /** The artifact's ID. Written by `mostra new`; without one, the artifact is bound to its source path at first publish (D51). */
@@ -103,6 +145,10 @@ export interface ArtifactManifest {
     readonly extraChecks?: readonly string[];
     readonly smoke?: boolean;
   };
+  /** Counts by choice of fixed-choice fields (D165 item 12). */
+  readonly tally?: readonly TallySpec[];
+  /** How the artifact behaves on a remote server (D165). */
+  readonly hosted?: HostedSettings;
 }
 
 /** The keys of the artifact manifest, in INTERFACES §2.2 order. Other keys are warnings (FAILURE_MODEL §10). */
@@ -119,6 +165,8 @@ export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[] = [
   "demos",
   "limits",
   "verify",
+  "tally",
+  "hosted",
 ];
 
 const strings = z.array(z.string()).readonly();
@@ -165,6 +213,42 @@ const DemoSpec: z.ZodType<DemoSpec> = z.union([
   z.object({ attach: z.int().min(1).max(65535), bridge: z.boolean().exactOptional() }),
 ]);
 
+/** The Zod schema of the `TallySpec` type. */
+export const TallySpec: z.ZodType<TallySpec> = z
+  .object({
+    field: z.string().min(1).max(256),
+    choices: z
+      .array(z.string().min(1).max(256))
+      .min(TALLY_CHOICES_MIN)
+      .max(TALLY_CHOICES_MAX)
+      .readonly(),
+    minTotal: z.int().min(0).exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "TallySpec",
+    description:
+      "A count by choice of a viewer-scoped field: its field, 2 to 50 distinct choices and minTotal.",
+  });
+
+/** The Zod schema of the `HostedSettings` type. */
+export const HostedSettings: z.ZodType<HostedSettings> = z
+  .object({
+    offline: z
+      .object({
+        actions: z.enum(["queue", "fail"]).exactOptional(),
+        limit: Duration.exactOptional(),
+      })
+      .exactOptional(),
+    actions: z.enum(["signed-in", "link"]).exactOptional(),
+    submissions: z.enum(["link", "signed-in"]).exactOptional(),
+    preview: z.enum(["generic", "title"]).exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "HostedSettings",
+    description:
+      "How an artifact behaves on a remote server: offline actions, who may act and submit, previews.",
+  });
+
 /** The Zod schema of the `ArtifactManifest` type. Objects stay open, so newer keys pass through. */
 export const ArtifactManifest: z.ZodType<ArtifactManifest> = z
   .object({
@@ -198,9 +282,36 @@ export const ArtifactManifest: z.ZodType<ArtifactManifest> = z
         smoke: z.boolean().exactOptional(),
       })
       .exactOptional(),
+    tally: z.array(TallySpec).readonly().exactOptional(),
+    hosted: HostedSettings.exactOptional(),
   })
   .register(wireRegistry, {
     id: "ArtifactManifest",
     description:
       "The artifact manifest (INTERFACES §2.2): literal metadata from the entry's defineArtifact call or MDX frontmatter.",
   });
+
+/**
+ * The rules of a manifest that JSON Schema can't state, checked after its schema by everything
+ * that reads a manifest (D165 items 4, 12): a tally's choices are distinct, each field is tallied
+ * once, and an offline limit is at most 7 days. Answers the first problem, with its field's path.
+ */
+export function manifestProblem(
+  manifest: ArtifactManifest,
+): { readonly path: string; readonly message: string } | undefined {
+  const fields = new Set<string>();
+  for (const [index, tally] of (manifest.tally ?? []).entries()) {
+    if (new Set(tally.choices).size !== tally.choices.length) {
+      return { path: `tally.${index}.choices`, message: "a tally's choices must be distinct" };
+    }
+    if (fields.has(tally.field)) {
+      return { path: `tally.${index}.field`, message: `\`${tally.field}\` is tallied twice` };
+    }
+    fields.add(tally.field);
+  }
+  const limit = manifest.hosted?.offline?.limit;
+  if (limit !== undefined && durationMs(limit) > HOSTED_OFFLINE_LIMIT_MAX_MS) {
+    return { path: "hosted.offline.limit", message: "an offline limit is at most 7d" };
+  }
+  return undefined;
+}

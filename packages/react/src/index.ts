@@ -23,7 +23,12 @@
  */
 import type { ArtifactManifest } from "@mostra/protocol";
 
-export type { ArtifactManifest, SubmissionSummary, SubmitBlocker } from "@mostra/protocol";
+export type {
+  ArtifactManifest,
+  SubmissionSummary,
+  SubmitBlocker,
+  TallyValue,
+} from "@mostra/protocol";
 export {
   type ArtifactMode,
   type ChoiceCandidate,
@@ -49,6 +54,7 @@ export {
   type LiveSources,
   type LiveValue,
   type LiveValuesOf,
+  type TallyKey,
   useAction,
   useLive,
 } from "./server-hooks.ts";

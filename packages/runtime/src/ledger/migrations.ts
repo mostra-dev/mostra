@@ -654,4 +654,38 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 12,
+    name: "tallies",
+    up(db) {
+      // D165 item 12, RM-07 (DATA_MODEL §7.4). A count by choice of a fixed-choice field, written
+      // only inside the submit transaction, one more for the choice the new submission holds. A
+      // count never goes down and a row is never deleted, so what viewers were shown stays true.
+      db.exec(`
+        CREATE TABLE tally (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          field_id TEXT NOT NULL,
+          choice TEXT NOT NULL,
+          count INTEGER NOT NULL CHECK (count >= 0),
+          PRIMARY KEY (artifact_id, field_id, choice)
+        );
+        CREATE TRIGGER tally_only_grows BEFORE UPDATE ON tally
+          WHEN NEW.count < OLD.count OR NEW.artifact_id IS NOT OLD.artifact_id
+            OR NEW.field_id IS NOT OLD.field_id OR NEW.choice IS NOT OLD.choice
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally only grows');
+        END;
+        CREATE TRIGGER tally_kept BEFORE DELETE ON tally
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally is kept with its artifact');
+        END;
+        CREATE TRIGGER tally_not_replaced BEFORE INSERT ON tally
+        WHEN EXISTS (SELECT 1 FROM tally WHERE artifact_id = NEW.artifact_id
+          AND field_id = NEW.field_id AND choice = NEW.choice)
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally row is counted, never replaced');
+        END;
+      `);
+    },
+  },
 ];
