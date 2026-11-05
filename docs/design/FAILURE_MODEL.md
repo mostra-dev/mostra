@@ -193,7 +193,59 @@
 
 ## 11. Remote server, relay and teams
 
-The plan update of 2026-10-16 adds failure cases that later packages define. Each is a *Deferred decision* for the package named, which adds its rows here; the rules of §1 hold for all of them.
-- **WP-28** (D116, D117): the owner offline (pages, drafts, submissions and comments keep working; action runs wait or fail per the artifact's offline policy; live sources show their last value with its time), relay loss mid-run, a remote server restart, sync gaps between an owner's instance and a remote server, and exhaustion of an operator's limits.
+The plan update of 2026-10-16 added failure cases for the remote server and teams. WP-28's are designed below (D165), and the rules of §1 hold for all of them. The others are a *Deferred decision* for the package named, which adds its rows here.
 - **WP-31** (D121): roster changes while a wait is pending, and presence traffic over its rate.
 - **WP-W1 to WP-W3** (D146): the cases of §2, §3 and §10 on Windows (Job Objects in place of process groups, sharing violations on rename and delete, the transport's access list), each re-derived rather than ported. WP-W1's rows are in §2, §3 and §10 (D150), WP-W2's in §2 and §10 (D151), WP-W3's (the bundles') in §10 (D153).
+
+### 11.1 The owner offline, and the relay (D165 item 4)
+
+| Case | Behavior |
+|---|---|
+| The owner's machine sleeps while hosted links are used | Pages, drafts, submissions, comments, artifact state and links keep working on the hosted home. A respondent sees "Your answer was sent." once the hosted home commits (D165 item 1a); the owner later sees each delivery's state. Deliveries to the owner instance wait, in order (D105). Live sources show their last value with its time and `ownerOffline` |
+| An action is pressed while the owner is offline | The run is recorded `waiting` and the page says it waits for the owner. Under `hosted.offline.actions: "queue"` it starts when the owner returns, unless its limit (24 h by default, 7 d at most) passes first, which ends it `failed` with reason `owner-offline`. Under `"fail"` it ends so at once. A plain call answers `MOSTRA_REMOTE_OWNER_OFFLINE` at once |
+| Waiting runs reach the cap (`relay.waitingRunsPerArtifact`, or a `limits` refusal of `run.wait`) | A new run is refused with 503 `MOSTRA_REMOTE_QUEUE_FULL` before anything is recorded; the page says so and nothing is half-made. Runs already waiting keep their place |
+| The owner returns after a day of queued runs | Waiting runs go out in the order they were recorded, at most `relay.drainPerSecond` a second per artifact, so the owner's machine isn't flooded; each runs once (its run ID) |
+| The relay is lost while a run runs (the owner's network drops, the server or an edge restarts) | The owner instance finishes the run and keeps its updates; on reconnect it sends what the hosted home hasn't acknowledged, by `(runId, seq)`, then the end. Meanwhile the hosted run shows `running` with `ownerUnreachable`. A cancel pressed meanwhile is delivered on reconnect and reaches the run's `abortSignal` if it still runs |
+| The owner never reports the run's end within the offline limit | The run becomes `unknown` (outcome unknown, `action.unknown`): never `failed`, because the action may have taken effect. Waits and the page stop treating it as running. If the owner reports later, the reported end replaces `unknown` once and appends its own event |
+| The owner instance crashes or is killed during a relayed run | Its run ends `failed` with reason `interrupted` in its own ledger (§6), never retried (D24), and the end is sent on reconnect |
+| A relay message arrives twice (a retry after a reconnect, an edge replaying a request) | `port/relay.run` with a known run ID answers as before and starts nothing; updates are idempotent by `(runId, seq)`; a `key` keeps D130's at-most-once rule. Exactly once in effect holds across both homes |
+| A relayed run's server code reads a secret | The owner's supervisor answers it (D129); no relay message carries it, and every update passes the owner's redactor (AC-06) |
+| A viewer who isn't signed in presses a relayed action under the default `hosted.actions: "signed-in"` | 403 `MOSTRA_REMOTE_SIGN_IN_REQUIRED`; the shell offers sign-in, and nothing is recorded (D159) |
+| Flooding a link's relayed actions | Past `rateLimits.perLink.relayedRuns`, 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`, before anything is recorded or relayed |
+| Authoring from a chat host with no connected default instance | `artifact_create`, `artifact_verify` and `artifact_publish` answer `MOSTRA_REMOTE_NO_INSTANCE`, saying to start Mostra on the linked machine; reading tools keep working (D165 item 5) |
+| A message for an artifact whose owner instance is another one | The hosted home never sends it to this instance: only the artifact's owner instance receives its deliveries, relayed runs and authoring calls. A `hosted/push` or `share/start` from another instance of the account for an artifact it doesn't own is refused with `MOSTRA_REMOTE_NOT_OWNER_INSTANCE` (D165 item 1b) |
+
+### 11.2 The link, sync and the server
+
+| Case | Behavior |
+|---|---|
+| The binding's connection goes silent | Each side pings every 20 s; after 45 s with nothing received it closes and dials again with backoff (1 s doubling to 60 s, with jitter). Ordinary reconnect: the session is opened afresh, ports registered again, pending deliveries and relay messages resume (D165 item 2) |
+| The server, its edge or a proxy restarts | The same reconnect. Hosted homes are reopened on their next request; every acknowledged write was committed (§1 rule 1). Viewers' streams reconnect with their cursors (§8) |
+| A message longer than the line limit, or a binary frame | The receiver closes the connection (1009 or 1003) and logs `MOSTRA_HOST_MESSAGE_TOO_LARGE`; the sender never sends one, since submissions are bounded (DATA_MODEL §3) and bulk bytes go over HTTPS |
+| A version push is interrupted | Files are content-addressed and the push is idempotent by version ID: the next attempt sends only what `hosted/push` still names as missing. Publishes made while the server is unreachable wait in `version_push` and go in order when it returns; hosted viewers keep the version they have |
+| A pushed file's bytes don't match its name, or the listing doesn't match `outputDigest` | Refused (`MOSTRA_HOME_INTEGRITY`); nothing of the version is visible until a push completes |
+| A delivery to the owner instance is repeated (the owner committed it but the acknowledgement was lost) | The owner finds the submission by its ID and answers `accepted`; its own hosts got one delivery (D105) |
+| The sync cursor falls behind a compaction on the hosted home | The follow receives `artifact.compacted` with `MOSTRA_HOST_CURSOR_COMPACTED` (DATA_MODEL §4) and continues after it; submissions are never lost, since they arrive by delivery, not by the follow. Local waits on events inside the range answer the same code |
+| The owner's home is restored from a backup, or a second machine links | A restored home resumes from its stored `follow_cursor` and the server's acknowledged cursor, whichever is lower, so events repeat rather than go missing, and their `origin` makes each appear once; a submission it had accepted after the backup is missing locally, so the follow's `submission.created` makes it import that submission again from the hosted home, which keeps every one, and deliver it to its hosts again under the same submission ID. A second instance of the account reads and waits but receives nothing (D165 item 1b) |
+| The owner instance is gone for good (the machine is lost) | Its hosted artifacts keep serving pages, drafts and submissions; their runs wait or fail by their policy, and deliveries stay pending. Moving an artifact to another owner instance is additive later (D165 item 1b) |
+| The account's sign-in is revoked, or the refresh token expires | The binding is refused (401); `remote/status` says `signed-out` and `mostra login` links again. Hosted pages keep working; deliveries and runs wait for the owner as when it is offline |
+| A write to a hosted artifact's state or live value while the server can't be reached | Refused with `MOSTRA_REMOTE_UNREACHABLE`, never applied locally alone (D165 item 1); a local view's field shows `offline` and its journal keeps the edit (§5) |
+| Two server processes on one data directory, or a hosted home | The second can't take `server.lock` or the home's `home.lock` and refuses (`MOSTRA_HOME_LOCKED`); the operating system releases a lock when its process dies, so a crashed server never blocks the next |
+| A data directory on a network filesystem | The server refuses to start (`MOSTRA_HOME_NETWORK_FILESYSTEM`), since its locks and WAL need a local disk (D165 item 0b) |
+| A home is opened while closing for idleness | The registry serializes it: the request waits for the close to finish, then opens the home; a home never has two writers in one process |
+| A hosted domain is flagged, and the operator moves the active domain | New links use the new active domain; links already issued keep resolving on theirs (D137). No release is needed |
+
+### 11.3 Viewers, sessions and limits
+
+| Case | Behavior |
+|---|---|
+| A tenant page tosses a cookie onto the parent domain, names one like a session, or fills the jar past 180 cookies | Nothing changes: hosted sessions use no cookies, and the server drops every `Cookie` header unread (D165 item 8). WP-30 seeds all three |
+| Safari deletes the shell's storage after 7 days without a visit (VERIFIED_FACTS, WP-28) | An anonymous viewer who returns starts afresh: their earlier draft and their `once` marker are no longer theirs (best effort, D165 item 13). A signed-in viewer signs in again and finds their drafts, which belong to the account. A frame's worker registration is made again at its next entry |
+| A burst of anonymous submissions while the owner is offline | Accepted durably at the targets (D165 item 13). Past a per-IP or per-link rate limit, 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`: the shell says "try again shortly" and keeps the draft; nothing is dropped silently. The queue of deliveries to the owner drains in order when it returns, and its agent reads every new submission since its cursor in one result |
+| `once` for an anonymous viewer, from a second browser or after storage was cleared | A second submission is accepted as another viewer's: `once` per anonymous viewer is per browser, best effort, and the submission is recorded unverified |
+| An operator's `limits` refuses an operation | A share, push, link or authoring call answers the operator's code (`MOSTRA_REMOTE_LIMIT_REACHED` with its message); a refused submission keeps the draft and the shell says the page isn't accepting answers right now. A view the operator refuses shows the operator's message from the shell |
+| The operator module doesn't answer in time (2 s for `limits`, `policy` and `routing`, 5 s for `accounts`) | Operations that create fail closed with 503 `MOSTRA_REMOTE_OPERATOR_UNAVAILABLE`; views, drafts and submissions proceed, so nothing a person typed is lost (D165 item 9). Sign-in fails with the same code and existing sessions keep working. An unknown host with no routing answer gets 421 |
+| Metering or outbound events can't be delivered | Kept in `outbound` and retried with backoff across restarts, idempotent by `batchId` and `eventId`; nothing waits for them. A gap the server had to drop is logged |
+| An artifact is paused | Views keep working and the shell shows it paused; submissions answer 423 `MOSTRA_SUBMIT_PAUSED` and relayed actions are refused, each keeping the draft; links stay valid. The owner resumes an owner's pause; only the operator resumes its own (`MOSTRA_REMOTE_PAUSED_BY_OPERATOR`) |
+| The operator quarantines a version or artifact | Its links show a neutral "under review" page from the shell; data is kept, and `release` restores it |
+| An MCP client's token is invalid, expired or for another resource | 401 with `WWW-Authenticate: Bearer resource_metadata="…"`; the client refreshes or signs in again. A reused refresh token revokes its grant (D165 item 10) |
