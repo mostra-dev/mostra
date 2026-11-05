@@ -36,7 +36,9 @@ import {
   refusal,
   resultsGetMethod,
   type StreamSnapshot,
+  type SubmissionEnvelope,
   type SubmissionSummary,
+  type SubmissionsDeliverResult,
   type SubmitChannel,
   scopeAllows,
   stateGetMethod,
@@ -57,6 +59,7 @@ import {
   liveFields,
   replayedMutation,
 } from "./fields.ts";
+import { type ImportSource, importSubmission } from "./imports.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
 import {
@@ -100,6 +103,7 @@ import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
 export { appendEvent, compactEvents, redactEvents } from "./events.ts";
+export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
 export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
@@ -139,6 +143,8 @@ export interface InteractionOptions {
    * review). `undefined` keeps D105's rule.
    */
   readonly deliveryOwners?: (artifactId: string) => readonly string[] | undefined;
+  /** Whether deliveries carry the stored snapshot: a hosted home's do (D165 item 1). */
+  readonly deliverSnapshots?: boolean;
 }
 
 /** A browser session as the interaction core sees it: who it acts as. */
@@ -192,6 +198,11 @@ export interface Interaction {
       readonly ops: readonly FieldOp[];
     },
   ): MutationResult;
+  /**
+   * Stores a submission its hosted home delivered to this owner instance, with its local
+   * deliveries, in one transaction (D165 item 1), and answers as a host answers a delivery.
+   */
+  importSubmission(envelope: SubmissionEnvelope, source: ImportSource): SubmissionsDeliverResult;
   /** A viewer's submit (IN-05); `SubmitConflict` under a closed `once`. */
   submit(
     page: PageIdentity,
@@ -470,6 +481,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     expected: options.expectedHosts,
     faults: options.faults,
     ...(options.portTimeoutMs !== undefined ? { portTimeoutMs: options.portTimeoutMs } : {}),
+    ...(options.deliverSnapshots ? { snapshots: true } : {}),
   });
   const subscriptions = new Subscriptions({
     ledger,
@@ -581,6 +593,28 @@ export function createInteraction(options: InteractionOptions): Interaction {
       if (outcome.changed && input.scope === "viewer")
         outbox.mirror(page.artifactId, page.viewerId);
       return result;
+    },
+    importSubmission(envelope, source) {
+      const owners = options.deliveryOwners?.(envelope.artifactId) ?? outbox.owners();
+      const answer = ledger.write((db) =>
+        importSubmission(db, {
+          envelope,
+          source,
+          owners,
+          owned: (inner, artifactId) =>
+            inner.get(
+              "SELECT 1 FROM hosted_artifact WHERE artifact_id = ? AND server = ?",
+              artifactId,
+              source.server,
+            ) !== undefined,
+        }),
+      );
+      log.info("interaction.imported", {
+        artifactId: envelope.artifactId,
+        submissionId: envelope.submissionId,
+        accepted: answer.accepted,
+      });
+      return answer;
     },
     submit(page, input) {
       const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();

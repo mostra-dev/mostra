@@ -5056,6 +5056,176 @@ pub struct EventFilter {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub types: ::std::vec::Vec<EventTypePattern>,
 }
+///Where an owner's copy of a hosted record came from: server, home, incarnation, cursor.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct EventOrigin {
+    pub cursor: Cursor,
+    pub home: EventOriginHome,
+    pub incarnation: EventOriginIncarnation,
+    pub server: EventOriginServer,
+}
+///`EventOriginHome`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginHome(::std::string::String);
+impl ::std::ops::Deref for EventOriginHome {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginHome> for ::std::string::String {
+    fn from(value: EventOriginHome) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginHome {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginHome {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`EventOriginIncarnation`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginIncarnation(::std::string::String);
+impl ::std::ops::Deref for EventOriginIncarnation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginIncarnation> for ::std::string::String {
+    fn from(value: EventOriginIncarnation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginIncarnation {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginIncarnation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`EventOriginServer`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginServer(::std::string::String);
+impl ::std::ops::Deref for EventOriginServer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginServer> for ::std::string::String {
+    fn from(value: EventOriginServer) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginServer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginServer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///One durable event: cursor, artifact, per-artifact sequence, type, time, actor, payload.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct EventRecord {
@@ -5075,6 +5245,8 @@ pub struct EventRecord {
         ::std::string::String,
     >,
     pub cursor: Cursor,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub origin: ::std::option::Option<EventOrigin>,
     pub payload: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(deserialize_with = "::std::option::Option::deserialize")]
     pub seq: ::std::option::Option<::std::num::NonZeroU64>,
@@ -9466,6 +9638,8 @@ pub struct ResultsSubmission {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub latest_version: ::std::option::Option<::std::num::NonZeroU64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub origin: ::std::option::Option<EventOrigin>,
     pub policy: SubmissionPolicy,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub previous: ::std::option::Option<SubmissionId>,
@@ -12685,12 +12859,70 @@ pub struct SubmissionEnvelope {
     #[serde(rename = "artifactId")]
     pub artifact_id: ArtifactId,
     pub attempt: ::std::num::NonZeroU64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub cursor: ::std::option::Option<Cursor>,
     #[serde(rename = "deliveryId")]
     pub delivery_id: DeliveryId,
     pub kind: ::std::string::String,
     pub results: Results,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub snapshot: ::std::option::Option<SubmissionEnvelopeSnapshot>,
     #[serde(rename = "submissionId")]
     pub submission_id: SubmissionId,
+}
+///`SubmissionEnvelopeSnapshot`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SubmissionEnvelopeSnapshot(::std::string::String);
+impl ::std::ops::Deref for SubmissionEnvelopeSnapshot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SubmissionEnvelopeSnapshot> for ::std::string::String {
+    fn from(value: SubmissionEnvelopeSnapshot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for SubmissionEnvelopeSnapshot {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 41943040usize {
+            return Err("longer than 41943040 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SubmissionEnvelopeSnapshot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SubmissionEnvelopeSnapshot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SubmissionEnvelopeSnapshot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///Submission ID: "sub_" followed by a 26-character ULID.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -15009,6 +15241,10 @@ pub enum ViewerKind {
     Token,
     #[serde(rename = "host")]
     Host,
+    #[serde(rename = "account")]
+    Account,
+    #[serde(rename = "anonymous")]
+    Anonymous,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -16784,6 +17020,8 @@ impl ViewerKind {
             Self::Tailnet => "tailnet",
             Self::Token => "token",
             Self::Host => "host",
+            Self::Account => "account",
+            Self::Anonymous => "anonymous",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -16804,6 +17042,8 @@ impl ::std::str::FromStr for ViewerKind {
                 "tailnet" => Self::Tailnet,
                 "token" => Self::Token,
                 "host" => Self::Host,
+                "account" => Self::Account,
+                "anonymous" => Self::Anonymous,
                 other => Self::Unknown(other.to_string()),
             },
         )

@@ -701,6 +701,92 @@ export const MIGRATIONS: readonly Migration[] = [
           created_at TEXT NOT NULL
         );
       `);
+      // Hosted homes have viewers of kind `account` and `anonymous` (D165 item 8), and an owner
+      // instance imports its hosted submissions' viewers with their kinds (DATA_MODEL §7.3).
+      db.widenCheck(
+        "viewer",
+        "CHECK (kind IN ('local', 'tailnet', 'token', 'host'))",
+        "CHECK (kind IN ('local', 'tailnet', 'token', 'host', 'account', 'anonymous'))",
+      );
+      // A relayed run whose end its owner never reported is `unknown` (D165 item 4): a state of
+      // its own, never final, replaced once by the end the owner reports, never by anything else.
+      db.widenCheck(
+        "action_run",
+        "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'))",
+        "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled', 'unknown'))",
+      );
+      db.exec(`
+        CREATE TRIGGER action_run_unknown_once BEFORE UPDATE ON action_run
+          WHEN OLD.status = 'unknown' AND NEW.status NOT IN ('succeeded', 'failed', 'cancelled')
+        BEGIN
+          SELECT RAISE(ABORT, 'an unknown run is replaced only by the end its owner reports');
+        END;
+      `);
+      // The owner's side (DATA_MODEL §7.3): its link to each server, its hosted artifacts, the
+      // publishes waiting to reach a server, and the relayed runs it accepted. Imported submissions
+      // and followed events carry where they came from, and a followed event is appended once.
+      db.exec(`
+        CREATE TABLE remote_link (
+          server TEXT PRIMARY KEY,
+          account_id TEXT,
+          account_name TEXT,
+          instance_id TEXT,
+          is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+          linked_at TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('signed-in', 'signed-out')),
+          incarnation TEXT,
+          follow_cursor TEXT,
+          relay_mark INTEGER NOT NULL DEFAULT 0 CHECK (relay_mark >= 0)
+        );
+        CREATE TABLE hosted_artifact (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          hosted_home TEXT NOT NULL,
+          route_id TEXT NOT NULL,
+          label TEXT NOT NULL,
+          token_id TEXT,
+          url_secret_hint TEXT,
+          shared_at TEXT NOT NULL,
+          stopped_at TEXT,
+          PRIMARY KEY (artifact_id, server)
+        );
+        CREATE TABLE version_push (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          state TEXT NOT NULL CHECK (state IN ('pending', 'complete')),
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, version_id, server)
+        );
+        CREATE TABLE relayed_run (
+          run_id TEXT PRIMARY KEY REFERENCES action_run(id),
+          server TEXT NOT NULL,
+          relay_seq INTEGER NOT NULL,
+          artifact_id TEXT NOT NULL,
+          version_id TEXT NOT NULL,
+          fn_id TEXT NOT NULL,
+          seq_sent INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT NOT NULL,
+          finished_at TEXT
+        );
+        CREATE TABLE relay_run (
+          run_id TEXT PRIMARY KEY REFERENCES action_run(id),
+          owner_link_id TEXT NOT NULL,
+          relay_seq INTEGER NOT NULL,
+          attempt INTEGER NOT NULL DEFAULT 0,
+          sent_at TEXT,
+          accepted_at TEXT,
+          owner_heard_at TEXT,
+          offline_limit_at TEXT NOT NULL,
+          last_seq INTEGER NOT NULL DEFAULT 0,
+          UNIQUE (owner_link_id, relay_seq)
+        );
+        ALTER TABLE submission ADD COLUMN origin_json TEXT;
+        ALTER TABLE event ADD COLUMN origin_json TEXT;
+        CREATE UNIQUE INDEX event_origin ON event (origin_json) WHERE origin_json IS NOT NULL;
+      `);
     },
   },
 ];

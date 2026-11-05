@@ -263,6 +263,7 @@ export {
   DeliveryStatus,
   DocumentRevision,
   EventFilter,
+  EventOrigin,
   EventRecord,
   EventTypePattern,
   FIELD_ID_MAX_LENGTH,

@@ -58,6 +58,10 @@ export interface TokenAnswer {
   readonly scope: string;
   readonly mostra_account: { readonly id: string; readonly name?: string };
   readonly mostra_instance: string;
+  /** Whether this instance is the account's default instance (D165 item 1b). */
+  readonly mostra_default: boolean;
+  /** The account's hosted home. */
+  readonly mostra_home: string;
 }
 
 /** The SHA-256 of a secret, as the directory stores it. */
@@ -270,8 +274,16 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
     grantId: string,
     tokens: { access: string; refresh: string },
   ): TokenAnswer => {
-    const row = db.get<{ account_id: string; link_id: string | null; name: string | null }>(
-      'SELECT g.account_id, g.link_id, a.name FROM "grant" g JOIN account a ON a.id = g.account_id WHERE g.id = ?',
+    const row = db.get<{
+      account_id: string;
+      link_id: string | null;
+      name: string | null;
+      is_default: number | null;
+      home_id: string | null;
+    }>(
+      `SELECT g.account_id, g.link_id, a.name, l.is_default, l.home_id
+         FROM "grant" g JOIN account a ON a.id = g.account_id
+         LEFT JOIN instance_link l ON l.id = g.link_id WHERE g.id = ?`,
       grantId,
     );
     if (!row) throw new Error("grant vanished");
@@ -283,6 +295,8 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       scope: "mostra",
       mostra_account: { id: row.account_id, ...(row.name !== null ? { name: row.name } : {}) },
       mostra_instance: row.link_id ?? "",
+      mostra_default: row.is_default === 1,
+      mostra_home: row.home_id ?? "",
     };
   };
 

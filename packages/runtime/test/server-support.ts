@@ -213,3 +213,49 @@ export async function deviceSignIn(
     instanceId: answer.mostra_instance,
   };
 }
+
+/** The environment an owner instance needs to reach a test server on loopback (D166). */
+export function ownerEnv(port: number): NodeJS.ProcessEnv {
+  return { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` };
+}
+
+/** A client that answers host-protocol calls, as `GatewayHome.client` does. */
+interface Caller {
+  call(
+    method: string,
+    params: unknown,
+    timeoutMs?: number,
+  ): Promise<{ result?: unknown; error?: unknown }>;
+}
+
+/**
+ * Signs an owner instance in to a test server as a person would with `mostra login`: the instance
+ * starts the device grant, the person approves the code on the server's page through the
+ * development provider, and the instance's wait ends.
+ */
+export async function ownerSignIn(
+  client: Caller,
+  port: number,
+  name = "Ada",
+): Promise<{ instanceId: string; account: { id: string; name?: string } }> {
+  const server = `http://api.localhost:${port}`;
+  const started = await client.call("remote/login", { server });
+  if (!started.result) throw new Error(`remote/login: ${JSON.stringify(started.error)}`);
+  const { loginId, userCode } = started.result as { loginId: string; userCode: string };
+  const approved = await postForm(
+    port,
+    "/device",
+    { user_code: userCode, name, provider: "dev", decision: "approve" },
+    { origin: server },
+  );
+  if (approved.status !== 200) throw new Error(`approve: ${approved.status} ${approved.body}`);
+  const waited = await client.call("remote/login.wait", { loginId, timeoutMs: 30_000 }, 40_000);
+  const result = waited.result as {
+    status: string;
+    instanceId: string;
+    account: { id: string; name?: string };
+  };
+  if (result?.status !== "signed-in")
+    throw new Error(`remote/login.wait: ${JSON.stringify(waited)}`);
+  return result;
+}

@@ -309,3 +309,65 @@ describe("write-once rows (invariant 3, IN-08)", () => {
     ledger.close();
   });
 });
+
+describe("migration 13: the remote server and the owner link (WP-29, D165)", () => {
+  it("widens the viewer kinds and run states of a ledger that already holds rows", () => {
+    const dir = storeDir();
+    const before = open(
+      dir,
+      MIGRATIONS.filter((migration) => migration.version < 13),
+    );
+    before.write((db) =>
+      db.run(
+        "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES ('vwr_1', 'local', 'local', NULL, 'now')",
+      ),
+    );
+    expect(() =>
+      before.write((db) =>
+        db.run(
+          "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES ('vwr_2', 'account', 'acct_1', NULL, 'now')",
+        ),
+      ),
+    ).toThrow(/CHECK/);
+    before.close();
+
+    const after = open(dir);
+    expect(after.schemaVersion).toBe(LATEST);
+    after.write((db) =>
+      db.run(
+        "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES ('vwr_2', 'account', 'acct_1', NULL, 'now')",
+      ),
+    );
+    expect(() =>
+      after.write((db) =>
+        db.run(
+          "INSERT INTO viewer (id, kind, external_ref, name, created_at) VALUES ('vwr_3', 'nobody', 'x', NULL, 'now')",
+        ),
+      ),
+    ).toThrow(/CHECK/);
+    expect(after.read((db) => db.all<{ id: string }>("SELECT id FROM viewer ORDER BY id"))).toEqual(
+      [{ id: "vwr_1" }, { id: "vwr_2" }],
+    );
+    after.close();
+
+    // A run's `unknown` is replaced only by the end its owner reports, then never again.
+    const raw = new Database(join(dir, LEDGER_FILE));
+    raw.pragma("foreign_keys = OFF");
+    expect(raw.pragma("integrity_check", { simple: true })).toBe("ok");
+    const insert = (id: string, status: string) =>
+      raw
+        .prepare(
+          "INSERT INTO action_run (id, artifact_id, version_id, action, args_json, client_key, status, started_at) VALUES (?, 'art_1', 'ver_1', 'a#b', '[]', ?, ?, 'now')",
+        )
+        .run(id, `ck-${id}`, status);
+    insert("run_1", "unknown");
+    const set = (id: string, status: string) =>
+      raw.prepare("UPDATE action_run SET status = ? WHERE id = ?").run(status, id);
+    expect(() => set("run_1", "running")).toThrow(/unknown run/);
+    expect(() => set("run_1", "waiting")).toThrow(/unknown run/);
+    set("run_1", "succeeded");
+    expect(() => set("run_1", "unknown")).toThrow(/never changes/);
+    expect(() => insert("run_2", "lost")).toThrow(/CHECK/);
+    raw.close();
+  });
+});

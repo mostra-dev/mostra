@@ -2310,6 +2310,33 @@
       },
       "description": "Which events a reader wants: these artifacts' and these types (patterns allowed)."
     },
+    "EventOrigin": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "minLength": 1
+        },
+        "home": {
+          "type": "string",
+          "minLength": 1
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        }
+      },
+      "required": [
+        "server",
+        "home",
+        "incarnation",
+        "cursor"
+      ],
+      "description": "Where an owner's copy of a hosted record came from: server, home, incarnation, cursor."
+    },
     "EventRecord": {
       "type": "object",
       "properties": {
@@ -2364,6 +2391,13 @@
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "origin": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EventOrigin"
+            }
+          ]
         }
       },
       "required": [
@@ -4742,6 +4776,13 @@
               "items": {
                 "$ref": "#/definitions/DeliveryStatus"
               }
+            },
+            "origin": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/EventOrigin"
+                }
+              ]
             }
           },
           "required": [
@@ -5870,6 +5911,17 @@
         },
         "results": {
           "$ref": "#/definitions/Results"
+        },
+        "snapshot": {
+          "type": "string",
+          "maxLength": 41943040
+        },
+        "cursor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Cursor"
+            }
+          ]
         }
       },
       "required": [
@@ -6657,7 +6709,9 @@
             "local",
             "tailnet",
             "token",
-            "host"
+            "host",
+            "account",
+            "anonymous"
           ]
         },
         "name": {

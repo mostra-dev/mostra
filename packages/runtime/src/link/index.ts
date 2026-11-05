@@ -4,3 +4,11 @@
  * (REPO_STANDARDS §3).
  */
 export { type Binding, ownerInitialize, startBinding } from "./binding.ts";
+export {
+  createLink,
+  type Link,
+  type LinkOptions,
+  type Pushed,
+  serverKey,
+  serverOrigin,
+} from "./manager.ts";

@@ -125,6 +125,8 @@ export interface SubmissionRow {
   readonly digest: string;
   readonly stale_view: number;
   readonly created_at: string;
+  /** For a submission imported from a hosted home: where it came from (DATA_MODEL §7.3). */
+  readonly origin_json?: string | null;
 }
 
 interface DeliveryRow {

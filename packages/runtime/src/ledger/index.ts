@@ -208,7 +208,8 @@ function processExists(pid: number): boolean {
   }
 }
 
-function queries(db: Database): MigrationDb {
+/** A migration's queries over a connection; exported for the schema tests, which migrate in memory. */
+export function queries(db: Database): MigrationDb {
   const cache = new Map<string, BetterSqlite3.Statement>();
   const prepare = (sql: string): BetterSqlite3.Statement => {
     let statement = cache.get(sql);
@@ -231,6 +232,29 @@ function queries(db: Database): MigrationDb {
     },
     exec(sql: string): void {
       db.exec(sql);
+    },
+    widenCheck(table: string, from: string, to: string): void {
+      const row = db
+        .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get(table) as { sql: string } | undefined;
+      if (!row || row.sql.split(from).length !== 2) {
+        throw new Error(`widenCheck: ${table}'s definition doesn't hold ${from} exactly once.`);
+      }
+      const version = db.pragma("schema_version", { simple: true }) as number;
+      db.unsafeMode(true);
+      try {
+        db.pragma("writable_schema = ON");
+        db.prepare("UPDATE sqlite_schema SET sql = ? WHERE type = 'table' AND name = ?").run(
+          row.sql.replace(from, to),
+          table,
+        );
+        db.pragma(`schema_version = ${version + 1}`);
+      } finally {
+        db.pragma("writable_schema = OFF");
+        db.unsafeMode(false);
+      }
+      const problems = db.pragma("integrity_check", { simple: true });
+      if (problems !== "ok") throw new Error(`widenCheck: ${table}: ${String(problems)}`);
     },
   };
 }

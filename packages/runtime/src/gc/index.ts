@@ -113,6 +113,20 @@ export const REFERENCE_SOURCES: readonly ReferenceSource[] = [
     keep: (db) => column<string>(db, "SELECT version_id AS value FROM view"),
   },
   {
+    // A publish waiting to reach a remote server needs its files until it gets there; a relayed
+    // run's version is its action run's (WP-29, DATA_MODEL §7.3).
+    name: "pushes and relayed runs",
+    covers: ["version_push.version_id", "relayed_run.version_id"],
+    keep: function* (db) {
+      if (!tableExists(db, "version_push")) return;
+      yield* column<string>(
+        db,
+        "SELECT version_id AS value FROM version_push WHERE state = 'pending'",
+      );
+      yield* column<string>(db, "SELECT version_id AS value FROM relayed_run");
+    },
+  },
+  {
     name: "comment threads",
     covers: ["thread.version_id", "thread.anchor_json"],
     keep: function* (db) {

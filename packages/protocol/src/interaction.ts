@@ -23,7 +23,11 @@ export { ControlsPolicy, SubmitChannel, TrustedControl } from "./view.ts";
 // ── Viewers and actors ────────────────────────────────────────────────────────────────────
 
 /** How Mostra knows a viewer (DATA_MODEL §3 `viewer.kind`). */
-export type ViewerKind = "local" | "tailnet" | "token" | "host";
+/**
+ * How Mostra knows a viewer: `account` and `anonymous` are hosted links' (a signed-in person, and
+ * one per browser who isn't signed in, D165 item 8).
+ */
+export type ViewerKind = "local" | "tailnet" | "token" | "host" | "account" | "anonymous";
 
 /**
  * A person who views an artifact (PRODUCT vocabulary). The home's local user is one viewer of kind
@@ -44,7 +48,7 @@ export interface Viewer {
 export const Viewer: z.ZodType<Viewer> = z
   .object({
     id: ViewerId.schema,
-    kind: z.enum(["local", "tailnet", "token", "host"]),
+    kind: z.enum(["local", "tailnet", "token", "host", "account", "anonymous"]),
     name: z.string().exactOptional(),
     ref: z.string().exactOptional(),
   })
@@ -267,6 +271,36 @@ export const MutationResult: z.ZodType<MutationResult> = z
  * One durable event (DATA_MODEL §4). Its cursor is its stable ID and its place in the home-wide
  * order; `seq` orders an artifact's own events without gaps.
  */
+/**
+ * Where an owner instance's copy of a hosted record came from (INTERFACES §18.2, D165 item 1): the
+ * server, the hosted home, its incarnation and the record's cursor there (a submission's is the
+ * cursor of its `submission.created`).
+ */
+export interface EventOrigin {
+  /** The server's API origin. */
+  readonly server: string;
+  /** The hosted home's `hom_` ID. */
+  readonly home: string;
+  /** The hosted home's incarnation when the record was copied. */
+  readonly incarnation: string;
+  /** The record's cursor in the hosted home. */
+  readonly cursor: Cursor;
+}
+
+/** The Zod schema of the `EventOrigin` type. */
+export const EventOrigin: z.ZodType<EventOrigin> = z
+  .object({
+    server: z.string().min(1),
+    home: z.string().min(1),
+    incarnation: z.string().min(1),
+    cursor: Cursor.schema,
+  })
+  .register(wireRegistry, {
+    id: "EventOrigin",
+    description:
+      "Where an owner's copy of a hosted record came from: server, home, incarnation, cursor.",
+  }) as z.ZodType<EventOrigin>;
+
 export interface EventRecord {
   /** The event's stable ID and home-wide position. */
   readonly cursor: Cursor;
@@ -284,6 +318,8 @@ export interface EventRecord {
   readonly causation?: Readonly<Record<string, string>>;
   /** The event's data; sensitive field values are redacted (D52). */
   readonly payload: Readonly<Record<string, unknown>>;
+  /** For an event an owner instance copied from its hosted home: where it came from. */
+  readonly origin?: EventOrigin;
 }
 
 /** The Zod schema of the `EventRecord` type. */
@@ -297,6 +333,7 @@ export const EventRecord: z.ZodType<EventRecord> = z
     actor: Actor,
     causation: z.record(z.string(), z.string()).exactOptional(),
     payload: z.record(z.string(), z.unknown()),
+    origin: EventOrigin.exactOptional(),
   })
   .register(wireRegistry, {
     id: "EventRecord",
@@ -553,6 +590,8 @@ export interface Results {
     readonly digest: string;
     readonly delivery: DeliveryState;
     readonly deliveries: readonly DeliveryStatus[];
+    /** For a submission imported from a hosted home: where it came from (D165 item 1). */
+    readonly origin?: EventOrigin;
   };
   /** The draft's fields by ID, dotted IDs nested (D52). */
   readonly answers: Readonly<Record<string, unknown>>;
@@ -669,6 +708,7 @@ export const Results: z.ZodType<Results> = z
       digest: z.string().regex(/^[0-9a-f]{64}$/),
       delivery: z.enum(["pending", "delivered", "rejected", "undeliverable"]),
       deliveries: z.array(DeliveryStatus).readonly(),
+      origin: EventOrigin.exactOptional(),
     }),
     answers: z.record(z.string(), z.unknown()),
     fields: z

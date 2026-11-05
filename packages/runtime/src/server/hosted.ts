@@ -137,6 +137,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     coverage,
     // A submission's one delivery owner is its artifact's owner link, connected or not, so it
     // waits for that instance and no other instance of the account receives it (D165 item 1b).
+    deliverSnapshots: true,
     deliveryOwners: (artifactId) => {
       const owner = ownerLinkOf(artifactId);
       return owner === undefined ? undefined : [owner];

@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { ArtifactId, DeliveryId, SubmissionId } from "../../ids.ts";
+import { ArtifactId, Cursor, DeliveryId, SubmissionId } from "../../ids.ts";
 import { Results } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
@@ -18,6 +18,13 @@ export interface SubmissionEnvelope {
   readonly attempt: number;
   /** The complete submission (INTERFACES §8), built from the immutable submission alone. */
   readonly results: Results;
+  /**
+   * The submission's stored snapshot, its canonical text, whose SHA-256 is `results.submission.digest`.
+   * A hosted home sends it to its owner instance, which keeps the same submission (D165 item 1).
+   */
+  readonly snapshot?: string;
+  /** With `snapshot`: the cursor of the submission's `submission.created` in the hosted home. */
+  readonly cursor?: Cursor;
 }
 
 /** What a host answers a delivery. */
@@ -40,6 +47,11 @@ export const SubmissionEnvelope: z.ZodType<SubmissionEnvelope> = z
     artifactId: ArtifactId.schema,
     attempt: z.int().min(1),
     results: Results,
+    snapshot: z
+      .string()
+      .max(40 * 1024 * 1024)
+      .exactOptional(),
+    cursor: Cursor.schema.exactOptional(),
   })
   .register(wireRegistry, {
     id: "SubmissionEnvelope",

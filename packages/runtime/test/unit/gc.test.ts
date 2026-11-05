@@ -13,7 +13,7 @@ import {
   keptVersions,
   REFERENCE_SOURCES,
 } from "../../src/gc/index.ts";
-import { MIGRATIONS } from "../../src/ledger/index.ts";
+import { MIGRATIONS, queries } from "../../src/ledger/index.ts";
 import type { LedgerDb, MigrationDb } from "../../src/ledger/types.ts";
 
 const Database = createRequire(import.meta.url)(
@@ -24,14 +24,7 @@ const Database = createRequire(import.meta.url)(
 function migrated(): { db: LedgerDb; raw: import("better-sqlite3").Database } {
   const raw = new Database(":memory:");
   raw.pragma("foreign_keys = OFF");
-  const db: MigrationDb = {
-    run: (sql, ...params) => raw.prepare(sql).run(...params),
-    get: (sql, ...params) => raw.prepare(sql).get(...params) as never,
-    all: (sql, ...params) => raw.prepare(sql).all(...params) as never,
-    exec: (sql) => {
-      raw.exec(sql);
-    },
-  };
+  const db: MigrationDb = queries(raw);
   raw.exec(
     "CREATE TABLE IF NOT EXISTS schema_migration (version INTEGER PRIMARY KEY, name TEXT, runtime_version TEXT, applied_at TEXT)",
   );

@@ -2262,6 +2262,33 @@
       },
       "description": "Which events a reader wants: these artifacts' and these types (patterns allowed)."
     },
+    "EventOrigin": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "minLength": 1
+        },
+        "home": {
+          "type": "string",
+          "minLength": 1
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        }
+      },
+      "required": [
+        "server",
+        "home",
+        "incarnation",
+        "cursor"
+      ],
+      "description": "Where an owner's copy of a hosted record came from: server, home, incarnation, cursor."
+    },
     "EventRecord": {
       "type": "object",
       "properties": {
@@ -2316,6 +2343,9 @@
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "origin": {
+          "$ref": "#/$defs/EventOrigin"
         }
       },
       "required": [
@@ -4602,6 +4632,9 @@
               "items": {
                 "$ref": "#/$defs/DeliveryStatus"
               }
+            },
+            "origin": {
+              "$ref": "#/$defs/EventOrigin"
             }
           },
           "required": [
@@ -5678,6 +5711,13 @@
         },
         "results": {
           "$ref": "#/$defs/Results"
+        },
+        "snapshot": {
+          "type": "string",
+          "maxLength": 41943040
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
         }
       },
       "required": [
@@ -6457,7 +6497,9 @@
             "local",
             "tailnet",
             "token",
-            "host"
+            "host",
+            "account",
+            "anonymous"
           ]
         },
         "name": {
