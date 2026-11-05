@@ -123,7 +123,7 @@ v1 requirements: 151. v1.1 requirements: 7. Owned exactly once: 158. Neither v1 
 | RM-02 | WP-29 | I, X | Two instances on one machine, one as a remote server: share, open from a browser, submit, `wait` returns and the local host receives the delivery exactly once in effect; external: the same against a deployed server | unverified |
 | RM-03 | WP-30 | I, X | Container image serves two accounts' homes; cross-tenant reads, writes and frame entries are refused (seeded attempts); a grep and dependency audit shows no operator-layer code in the core | unverified |
 | RM-04 | WP-29 | I | A counting fake mail action pressed on the hosted page runs once on the owner; owner offline: the run waits or fails per policy and resumes or reports on reconnect; relay cut mid-run ends per FAILURE_MODEL; a grep shows no secret in relay traffic | unverified |
-| RM-05 | WP-28 | R | Mirza accepts the design; generators pass with the refined specifications | unverified |
+| RM-05 | WP-28 | R | Mirza accepts the design; generators pass with the refined specifications | unverified ([WP-28](../progress/PROGRESS-WP-28.md)) |
 | EN-01 | WP-01 | M | LICENSE, NOTICE and DCO check present; CI rejects an unsigned commit | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-02 | WP-01 | M | Tooling baseline in place and pinned through catalogs; `pnpm check` equals CI | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-03 | WP-26 | B | CI job verifies every example and template with committed visual and ARIA baselines | unverified |
