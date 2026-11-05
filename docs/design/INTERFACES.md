@@ -535,6 +535,8 @@ interface VerifyVerdict {
 
 Images are returned only when `status` is `fail` or on request, at DPR 1 (AX-05).
 
+What WP-28 reserved (D165), for WP-29 and WP-30 to add with their pages: the area `REMOTE` with `MOSTRA_REMOTE_CONFIG_INVALID`, `_LOGIN_FAILED`, `_UNREACHABLE`, `_OWNER_OFFLINE`, `_QUEUE_FULL`, `_NO_INSTANCE`, `_NOT_OWNER_INSTANCE`, `_SIGN_IN_REQUIRED`, `_RATE_LIMITED`, `_LIMIT_REACHED`, `_OPERATOR_UNAVAILABLE` and `_PAUSED_BY_OPERATOR`; and `MOSTRA_SUBMIT_PAUSED` and `MOSTRA_HOME_NETWORK_FILESYSTEM` (INTERFACES §18, FAILURE_MODEL §11). A package may rename one before it ships, recording it here.
+
 What WP-10 added (D140): the area `CLI` with `MOSTRA_CLI_USAGE` and `MOSTRA_CLI_UNKNOWN_COMMAND` (exit 2), `MOSTRA_ARTIFACT_VERSION_COLLECTED` (a version gc collected), `MOSTRA_ENV_RUNTIME_MISSING` (the CLI can't find `mostra-runtime`) and `MOSTRA_HOME_NOT_ALWAYS_ON` (a warning of `mostra doctor`, LL-05).
 
 What WP-09 fixed (D138):
