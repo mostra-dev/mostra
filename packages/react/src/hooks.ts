@@ -14,6 +14,7 @@ import {
   mostraControlsRequest,
   type SubmissionSummary,
   type SubmitBlocker,
+  type ViewerKind,
 } from "@mostra/protocol";
 import {
   createContext,
@@ -492,11 +493,14 @@ export function useChoice(
 
 // ── useViewer and useArtifact ───────────────────────────────────────────────────────────
 
-/** Who the page acts as (D104): the home's local user, a tailnet user, or a link's person. */
+/**
+ * Who the page acts as (D104): the home's local user, a tailnet user, or a link's person; on a
+ * hosted link, a signed-in account or an anonymous visitor (D165 item 8).
+ */
 export function useViewer(): {
   readonly id: string;
   readonly name?: string;
-  readonly source: "local" | "tailnet" | "token" | "host";
+  readonly source: ViewerKind;
 } {
   const { store } = useRuntime();
   useStoreVersion(store);

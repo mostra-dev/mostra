@@ -15,6 +15,7 @@ import { SubmitBlocker } from '@mostra/protocol';
 import { TallyValue } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
 import { Viewer } from '@mostra/protocol';
+import { ViewerKind } from '@mostra/protocol';
 
 // @public
 export interface ActionHandle<A extends unknown[], R> {
@@ -279,7 +280,7 @@ export function useSubmitControl(options: {
 export function useViewer(): {
     readonly id: string;
     readonly name?: string;
-    readonly source: "local" | "tailnet" | "token" | "host";
+    readonly source: ViewerKind;
 };
 
 // (No @packageDocumentation comment for this package)

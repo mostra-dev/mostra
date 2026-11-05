@@ -268,10 +268,6 @@ export const MutationResult: z.ZodType<MutationResult> = z
 // ── Events ────────────────────────────────────────────────────────────────────────────────
 
 /**
- * One durable event (DATA_MODEL §4). Its cursor is its stable ID and its place in the home-wide
- * order; `seq` orders an artifact's own events without gaps.
- */
-/**
  * Where an owner instance's copy of a hosted record came from (INTERFACES §18.2, D165 item 1): the
  * server, the hosted home, its incarnation and the record's cursor there (a submission's is the
  * cursor of its `submission.created`).
@@ -301,6 +297,10 @@ export const EventOrigin: z.ZodType<EventOrigin> = z
       "Where an owner's copy of a hosted record came from: server, home, incarnation, cursor.",
   }) as z.ZodType<EventOrigin>;
 
+/**
+ * One durable event (DATA_MODEL §4). Its cursor is its stable ID and its place in the home-wide
+ * order; `seq` orders an artifact's own events without gaps.
+ */
 export interface EventRecord {
   /** The event's stable ID and home-wide position. */
   readonly cursor: Cursor;

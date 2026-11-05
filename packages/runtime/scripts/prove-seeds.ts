@@ -62,6 +62,38 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "an imported submission's snapshot isn't checked against its digest",
+    file: "src/interaction/imports.ts",
+    from: "  if (digest !== envelope.results.submission.digest) {",
+    to: "  if (digest !== envelope.results.submission.digest && false) {",
+    check: unit("imports.test.ts", "never hold"),
+  },
+  {
+    requirement: "RM-02",
+    name: "an imported submission's local delivery gets a new ID each time",
+    file: "src/interaction/imports.ts",
+    from: "      importedDeliveryId(snapshot.submissionId, owner),",
+    to: "      `dlv_${Date.now()}${owner}`,",
+    check: unit("imports.test.ts", "once, in order"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a followed event is copied again when it arrives again",
+    file: "src/interaction/imports.ts",
+    from: '    if (db.get("SELECT 1 FROM event WHERE origin_json = ?", originJson(origin))) continue;',
+    to: "",
+    check: unit("imports.test.ts", "copies each followed event once"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a followed submission record is appended without its submission",
+    file: "src/interaction/imports.ts",
+    from: "        missing.push(id);\n      continue;",
+    to: "        missing.push(id);",
+    check: unit("imports.test.ts", "copies each followed event once"),
+  },
+  {
+    requirement: "RM-02",
     name: "a second server opens a data directory another server holds",
     file: "src/server/data.ts",
     from: "  if (!serverLock) {",

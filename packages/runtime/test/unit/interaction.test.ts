@@ -1285,7 +1285,14 @@ describe("no path delivers a draft as a submission (IN-06)", () => {
         readFileSync(join(root, file), "utf8"),
       ),
     );
-    expect(callers).toEqual(["interaction/outbox.ts"]);
+    // The outbox is the one caller. The owner instance's link answers the deliveries its hosted
+    // homes make (D165 item 1) and never calls the port itself.
+    expect(callers).toEqual(["interaction/outbox.ts", "link/manager.ts"]);
+    const link = readFileSync(join(root, "link/manager.ts"), "utf8");
+    expect(link).not.toMatch(
+      /call\(\s*portSubmissionsDeliverMethod|call\(\s*["']port\/submissions/,
+    );
+    expect(link).toMatch(/method === portSubmissionsDeliverMethod\.method/);
     const outbox = readFileSync(join(root, "interaction/outbox.ts"), "utf8");
     // The envelope's results come from the immutable submission row, never a document.
     expect(outbox).toMatch(/kind: "submission",[\s\S]*results: buildResults\(db, submission\)/);

@@ -92,7 +92,11 @@ export function appendEvent(db: LedgerDb, event: NewEvent): string {
           event.artifactId,
         )?.next ?? 1);
   const result = db.run(
-    "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at, origin_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    // `origin_json` (migration 13) is named only for a followed event, so a ledger still at an older
+    // schema (a migration's own tests) appends as before.
+    event.origin === undefined
+      ? "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      : "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at, origin_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     event.artifactId,
     seq,
     event.type,
@@ -100,7 +104,7 @@ export function appendEvent(db: LedgerDb, event: NewEvent): string {
     event.causation === undefined ? null : JSON.stringify(event.causation),
     JSON.stringify(redacted(event.payload)),
     new Date().toISOString(),
-    event.origin === undefined ? null : originJson(event.origin),
+    ...(event.origin === undefined ? [] : [originJson(event.origin)]),
   );
   return String(result.lastInsertRowid);
 }

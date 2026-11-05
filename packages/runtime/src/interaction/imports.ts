@@ -242,13 +242,12 @@ export function importSubmission(db: LedgerDb, input: SubmissionImport): Submiss
 
 /**
  * Types a follow never copies: the owner publishes its versions itself, and its own deliveries
- * record their own outcomes; a hosted `submission.created` arrives as a delivery and is imported,
- * never appended (DATA_MODEL §7.3).
+ * record their own outcomes. (A hosted `submission.created` is never appended either: its
+ * submission arrives as a delivery, below.)
  */
 const NOT_FOLLOWED = new Set([
   "artifact.created",
   "version.published",
-  "submission.created",
   "submission.retrying",
   "submission.delivered",
   "submission.rejected",

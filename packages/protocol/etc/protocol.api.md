@@ -1064,12 +1064,24 @@ export interface EventFilter {
 export const EventFilter: z.ZodType<EventFilter>;
 
 // @public
+export interface EventOrigin {
+    readonly cursor: Cursor;
+    readonly home: string;
+    readonly incarnation: string;
+    readonly server: string;
+}
+
+// @public
+export const EventOrigin: z.ZodType<EventOrigin>;
+
+// @public
 export interface EventRecord {
     readonly actor: Actor;
     readonly artifactId: string | null;
     readonly at: string;
     readonly causation?: Readonly<Record<string, string>>;
     readonly cursor: Cursor;
+    readonly origin?: EventOrigin;
     readonly payload: Readonly<Record<string, unknown>>;
     readonly seq: number | null;
     readonly type: string;
@@ -2386,6 +2398,7 @@ export interface Results {
         readonly digest: string;
         readonly delivery: DeliveryState;
         readonly deliveries: readonly DeliveryStatus[];
+        readonly origin?: EventOrigin;
     };
 }
 
@@ -2968,9 +2981,11 @@ export const StreamTicketRequest: z.ZodType<StreamTicketRequest>;
 export interface SubmissionEnvelope {
     readonly artifactId: string;
     readonly attempt: number;
+    readonly cursor?: Cursor;
     readonly deliveryId: string;
     readonly kind: "submission";
     readonly results: Results;
+    readonly snapshot?: string;
     readonly submissionId: string;
 }
 
@@ -3398,7 +3413,7 @@ export type ViewerId = Id<"vwr">;
 export const ViewerId: GeneratedIdKind<"vwr">;
 
 // @public
-export type ViewerKind = "local" | "tailnet" | "token" | "host";
+export type ViewerKind = "local" | "tailnet" | "token" | "host" | "account" | "anonymous";
 
 // @public
 export interface ViewerSpec {
