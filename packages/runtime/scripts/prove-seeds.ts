@@ -61,6 +61,30 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "a second server opens a data directory another server holds",
+    file: "src/server/data.ts",
+    from: "  if (!serverLock) {",
+    to: "  if (!serverLock && false) {",
+    check: integration("server.test.ts", "refuses a second server"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a data directory on a network filesystem is served",
+    file: "src/server/data.ts",
+    from: "  if (found !== undefined) {",
+    to: "  if (found !== undefined && false) {",
+    check: integration("server.test.ts", "network filesystem before"),
+  },
+  {
+    requirement: "RM-02",
+    name: "the lock is let go once taken, as a marker file would be",
+    file: "src/ledger/index.ts",
+    from: "    // The transaction stays open: its lock is the lock.",
+    to: '    db.prepare("COMMIT").run();\n    db.close();',
+    check: integration("server.test.ts", "refuses a second server"),
+  },
+  {
     requirement: "IN-13",
     name: "#118: under epochs a new round's view shows the last round's Submitted card",
     file: "../shell/src/model.ts",

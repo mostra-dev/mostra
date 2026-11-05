@@ -899,7 +899,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1425,7 +1425,7 @@ export const HomeConfig: z.ZodType<HomeConfig>;
 export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 
 // @public
-export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE"];
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE", "MOSTRA_HOME_NETWORK_FILESYSTEM"];
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
@@ -1641,7 +1641,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -2044,6 +2044,12 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 
 // @public
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
+
+// @public
+export type RemoteDiagnosticCode = (typeof remoteDiagnosticCodes)[number];
+
+// @public
+export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID"];
 
 // @public
 export class RemoteError extends Error {

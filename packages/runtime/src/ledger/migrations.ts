@@ -688,4 +688,19 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    name: "remote server and owner link",
+    up(db) {
+      // D165 (DATA_MODEL §7.2, §7.3). A hosted home's incarnation, rotated in one transaction when
+      // the home is restored from a backup. A local home keeps the table empty.
+      db.exec(`
+        CREATE TABLE home_meta (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          incarnation TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];

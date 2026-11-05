@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
  * `mostra-runtime`, the runtime bundle's entry point (D85).
@@ -33,7 +34,10 @@ import {
 } from "@mostra/protocol";
 import { checkPlatform, resolveHomePath } from "./home/index.ts";
 import { type Instance, runtimeVersion, startInstance } from "./instance/index.ts";
-import { realPath } from "./platform/index.ts";
+import { openFileLog } from "./log.ts";
+import { readProcess, realPath } from "./platform/index.ts";
+
+import { readServerConfig, startServer } from "./server/index.ts";
 import { installService, serviceStatus, uninstallService } from "./service/index.ts";
 
 /** Exit codes, as INTERFACES §9 defines them for the CLI. */
@@ -42,6 +46,7 @@ const EXIT = { ok: 0, failure: 1, usage: 2, environment: 3 } as const;
 const USAGE = [
   "usage: mostra-runtime <host|daemon> [--home <dir>] [--bind <address> [--url-host <name>]] [--always-on]",
   "       mostra-runtime service <install|uninstall|status> [--home <dir>] [--no-start]",
+  "       mostra-runtime server --data <dir> [--config <file>] [--listen <host:port>] [--restored <homeId|all>]",
 ].join("\n");
 
 // A closed stdout or stderr (a starter that read the ready line and left) must not crash the
@@ -135,6 +140,14 @@ async function main(argv: readonly string[]): Promise<number> {
   const [mode, ...rest] = positionals;
   if (mode === "service" && !values.help)
     return await service(rest, values.home, values["no-start"] === true);
+  if (mode === "server" && !values.help && rest.length === 0) {
+    return await remoteServer({
+      data: values.data,
+      config: values.config,
+      listen: values.listen,
+      restored: values.restored ?? [],
+    });
+  }
   if (values.help || (mode !== "host" && mode !== "daemon") || rest.length > 0) {
     (values.help ? process.stdout : process.stderr).write(`${USAGE}\n`);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -187,6 +200,66 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify({ status: "failed", diagnostic })}\n`);
     mirror(`${JSON.stringify({ level: "error", diagnostic })}\n`);
     return exitCode;
+  }
+}
+
+/**
+ * `mostra-runtime server`: the remote server (INTERFACES §18.1). Prints one JSON line on stdout
+ * (`{"status":"started","address",…}` or `{"status":"failed","diagnostic"}` with exit 3), then
+ * serves until SIGTERM, SIGINT or Ctrl+Break, and stops cleanly: every hosted home is closed and
+ * every lock released. Logs go to the data directory's `logs/`.
+ */
+async function remoteServer(args: {
+  readonly data: string | undefined;
+  readonly config: string | undefined;
+  readonly listen: string | undefined;
+  readonly restored: readonly string[];
+}): Promise<number> {
+  if (args.data === undefined) {
+    process.stderr.write(`mostra-runtime server needs --data <dir>.\n${USAGE}\n`);
+    return EXIT.usage;
+  }
+  try {
+    checkPlatform();
+    mkdirSync(args.data, { recursive: true, mode: 0o700 });
+    const data = realPath(args.data);
+    const config = readServerConfig(args.config, process.env);
+    const me = await readProcess(process.pid);
+    if (!me) throw new Error("Couldn't read this process's own start time.");
+    const log = openFileLog({ dir: join(data, "logs"), mirror });
+    const server = await startServer({
+      data,
+      config,
+      ...(args.listen !== undefined ? { listen: args.listen } : {}),
+      restored: args.restored,
+      runtimeVersion: runtimeVersion(),
+      owner: { pid: me.pid, startTime: me.startTime },
+      log,
+      env: process.env,
+    });
+    process.stdout.write(
+      `${JSON.stringify({ status: "started", pid: process.pid, address: server.address, data })}\n`,
+    );
+    return await new Promise<number>((resolve) => {
+      let stopping = false;
+      const stop = (): void => {
+        if (stopping) return;
+        stopping = true;
+        void server.close().then(
+          () => resolve(EXIT.ok),
+          (error: unknown) => {
+            log.error("server.stop_failed", { error });
+            resolve(EXIT.failure);
+          },
+        );
+      };
+      for (const signal of ["SIGTERM", "SIGINT", "SIGBREAK"] as const) process.on(signal, stop);
+    });
+  } catch (error) {
+    const diagnostic = diagnosticOf(error);
+    process.stdout.write(`${JSON.stringify({ status: "failed", diagnostic })}\n`);
+    mirror(`${JSON.stringify({ level: "error", diagnostic })}\n`);
+    return error instanceof RpcError ? EXIT.environment : EXIT.failure;
   }
 }
 
@@ -244,6 +317,10 @@ function parse(argv: readonly string[]) {
       "no-start": { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean" },
+      data: { type: "string" },
+      config: { type: "string" },
+      listen: { type: "string" },
+      restored: { type: "string", multiple: true },
     },
   });
 }

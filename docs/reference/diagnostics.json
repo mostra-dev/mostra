@@ -622,6 +622,15 @@
       "fix": "Start the instance with `--home` set to the home the client expects, or connect to the socket of the instance that serves it. Leave `home.path` out to accept whichever home the instance serves."
     },
     {
+      "code": "MOSTRA_HOME_NETWORK_FILESYSTEM",
+      "severity": "error",
+      "phase": "host",
+      "title": "Data directory on a network filesystem",
+      "hint": "Put the server's data directory on a local disk.",
+      "explanation": "A remote server's data directory holds its hosted homes' ledgers and locks, which need a local disk: on a network filesystem a lock can seem held by two machines at once, and SQLite's WAL can't share memory across them (D165 item 0b). The server refuses a data directory it detects on NFS, SMB, AFP, WebDAV or a FUSE mount, before it opens anything.",
+      "fix": "Pass `--data` a directory on a local disk. To keep a copy elsewhere, replicate the homes with a backup tool instead."
+    },
+    {
       "code": "MOSTRA_HOME_NOT_ALWAYS_ON",
       "severity": "warning",
       "phase": "host",
@@ -1079,6 +1088,15 @@
       "hint": "Observed only: this share of the viewport's pixels differs from the last passing version; an intended visual change shows here too and needs nothing more.",
       "explanation": "Verify rendered the newest version whose verdict passed and this source at the same viewport, clock and data, and the share of pixels the message gives differs between them. Any intended visual change shows here too.",
       "fix": "If the change is one you made on purpose, nothing needs to change. To see where it is, read the ARIA snapshots, or look at the diff image the message names if you can view images."
+    },
+    {
+      "code": "MOSTRA_REMOTE_CONFIG_INVALID",
+      "severity": "error",
+      "phase": "host",
+      "title": "Remote server configuration can't be used",
+      "hint": "Fix the configuration key the message names, then start mostra-runtime server again.",
+      "explanation": "`mostra-runtime server` reads its configuration (the file `--config` names and `MOSTRA_SERVER_*` variables) before it serves anything, and stops when a key is missing, of the wrong type or out of range, naming the key. Nothing was served.",
+      "fix": "Correct the key the message names: `apiOrigin` must be an `https:` origin (or `http:` on loopback), and `domains.active` a host name."
     },
     {
       "code": "MOSTRA_RUNTIME_BLANK",
