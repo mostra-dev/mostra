@@ -59,6 +59,55 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // WP-29 (D165): counts by choice, and run updates over long polls (#119).
+  {
+    requirement: "RM-07",
+    name: "a submission counts nothing (the tally isn't grown in the submit transaction)",
+    file: "src/interaction/submissions.ts",
+    from: "  const tallied = countSubmission(db, {",
+    to: "  const tallied: string[] = [];\n  void countSubmission;\n  void ({",
+    check: unit("tally.test.ts", "three hundred"),
+  },
+  {
+    requirement: "RM-07",
+    name: "a value outside the listed choices is counted (free text would reach viewers)",
+    file: "src/interaction/tally.ts",
+    from: 'if (typeof value !== "string" || !spec.choices.includes(value)) continue;',
+    to: 'if (typeof value !== "string") continue;',
+    check: unit("tally.test.ts", "outside the listed choices"),
+  },
+  {
+    requirement: "RM-07",
+    name: "minTotal is ignored (each early answer would show one person's choice)",
+    file: "src/interaction/tally.ts",
+    from: "total < (spec.minTotal ?? 0) ? { total } : { counts, total }",
+    to: "{ counts, total }",
+    check: unit("tally.test.ts", "minTotal"),
+  },
+  {
+    requirement: "RM-07",
+    name: "a count may go down (the trigger is gone)",
+    file: "src/ledger/migrations.ts",
+    from: "          WHEN NEW.count < OLD.count OR NEW.artifact_id IS NOT OLD.artifact_id",
+    to: "          WHEN 0 AND NEW.artifact_id IS NOT OLD.artifact_id",
+    check: unit("tally.test.ts", "never lets a count go down"),
+  },
+  {
+    requirement: "RM-07",
+    name: "a tally isn't pushed to its viewers on the live channel",
+    file: "src/live/index.ts",
+    from: "            if (!tally) continue;\n            bus.publishLive(artifactId, {",
+    to: "            if (!tally || tally) continue;\n            bus.publishLive(artifactId, {",
+    check: unit("tally.test.ts", "pushes the new counts"),
+  },
+  {
+    requirement: "AC-02",
+    name: "#119: the shell's poll takes its frame's run updates",
+    file: "src/gateway/index.ts",
+    from: "        handler: served.shellPoll,",
+    to: "        handler: served.poll,",
+    check: integration("actions.test.ts", "119"),
+  },
   // WP-15 (D164): the MCP server. Its package's suites run in packages/mcp, the CLI's in
   // packages/cli; HY-01's are item 13 on the MCP endpoint, which runs the gateway's checks.
   {
@@ -2708,13 +2757,13 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp06-gpt-1",
     name: "a long poll answers with what it read after its link died",
     file: "src/gateway/browser.ts",
-    from: "      if (ended || !live(context)) return revoked();\n",
+    from: "        if (ended || !live(context)) return revoked();\n",
     to: "",
     also: [
       {
         file: "src/gateway/browser.ts",
-        from: "            if (!live(context)) {\n              ended = true;",
-        to: "            if (false) {\n              ended = true;",
+        from: "              if (!live(context)) {\n                ended = true;",
+        to: "              if (false) {\n                ended = true;",
       },
     ],
     check: integration("interaction.test.ts", "after the link was revoked"),
@@ -3547,8 +3596,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp08-opus-12",
     name: "a slow reader's queue keeps every value of a source in latest mode",
     file: "src/interaction/ephemeral.ts",
-    from: "      coalesceInto(view, view.queue, message);",
-    to: "      view.queue.push(message);",
+    from: "    coalesceInto(view, poll.messages, message);",
+    to: "    poll.messages.push(message);",
     check: unit("ephemeral.test.ts", "keeps only the newest value"),
   },
   {

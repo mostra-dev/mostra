@@ -1344,7 +1344,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         path: "/a/:artifactId/_mostra/v/:rev/events/poll",
         intent: "stream",
         auth: "session",
-        handler: served.poll,
+        handler: served.shellPoll,
       },
       {
         method: "POST",
