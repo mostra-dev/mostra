@@ -236,7 +236,7 @@ The shell origin has its own endpoints for capability exchange, trusted-control 
 |---|---|---|
 | `GET /a/{artifactId}` and `/a/{artifactId}/v/{number}` | The shell page; the link's token is in the fragment (`#t=…`), which the page sends to the exchange and removes | none |
 | `GET /_mostra/shell/assets/*` | The shell's built files | none |
-| `POST /a/{artifactId}/_mostra/session` | Exchange `{ token, replace?, browser? }` for the shell session (`browser`: the shell's random key in its origin's storage, so two exchanges of one browser that overlap, such as while a host's identity port answers, still meet D98 item 8's conflict; WP-12) → `{ csrf, artifact: { id, title }, scopes, expiresAt?, version? }`. While a live session from another link exists, 409 `MOSTRA_HYGIENE_SESSION_CONFLICT` with `current` and `offered` (`{ scopes, expiresAt?, version? }` each) unless `replace` is `true`; the same link again reuses its session (D98 item 8) | token, Origin |
+| `POST /a/{artifactId}/_mostra/session` | Exchange `{ token, replace?, browser? }` for the shell session (`browser`: the shell's random key in its origin's storage, so two exchanges of one browser that overlap, such as while a host's identity port answers, still meet D98 item 8's conflict; WP-12; on a hosted shell it is the route's derived key, `HMAC-SHA-256(secret, routeId)`, and the raw secret never leaves the shell's storage, D165) → `{ csrf, artifact: { id, title }, scopes, expiresAt?, version? }`. While a live session from another link exists, 409 `MOSTRA_HYGIENE_SESSION_CONFLICT` with `current` and `offered` (`{ scopes, expiresAt?, version? }` each) unless `replace` is `true`; the same link again reuses its session (D98 item 8) | token, Origin |
 | `GET /a/{artifactId}/_mostra/session` | The same facts for an existing session | shell session |
 | `POST /a/{artifactId}/_mostra/ticket` | `{ version? }` → `FrameTicket`: `{ viewId, src, artifactOrigin, version: { id, number }, latest: { id, number } }` and, since WP-07, the view's context (`artifactId`, `policy`, `submitChannels`, `controls`, `target`, `follow`, `pinned`; D108): a single-use frame ticket, and the view this frame load is (D104, WP-06) (60 s, valid while this shell session exists) for the link's version, the asked one or the latest; a link that names a version gets 403 for any other (D97 item 9); a damaged version is 500 `MOSTRA_HOME_INTEGRITY` | shell session, CSRF |
 
@@ -669,10 +669,11 @@ The names, types and semantics of the remote server (ARCHITECTURE §15, D165). W
 ### 18.1 The server and its configuration
 
 ```text
-mostra-runtime server --data <dir> [--config <file>] [--listen <address:port>]
+mostra-runtime server --data <dir> [--config <file>] [--listen <address:port>] [--restored <homeId|all>]…
 ```
 
 - `--data` holds the server's directory ledger, its hosted homes and the version files (DATA_MODEL §7). A directory on a network filesystem is refused (`MOSTRA_HOME_NETWORK_FILESYSTEM`, D165 item 0b).
+- `--restored` names homes (or `all`) restored from a backup by hand: the server rotates their incarnations before serving anything (§18.2), as an operator's `ServerHandle.restored` does.
 - The server speaks plain HTTP on `--listen` (default `127.0.0.1:8080`; the container image listens on every address) behind a TLS terminator, and routes every request by its exact `Host` (§18.4). It believes `X-Forwarded-For` only from `trustedProxies`, reading it from the right and taking the first address that isn't a trusted proxy.
 - `server.lock` in the data directory, and `home.lock` in each hosted home, are one-row SQLite databases the server holds in `locking_mode=EXCLUSIVE` with a transaction open: advisory locks the operating system releases when the process dies, needing no native addon, which nothing else ever opens (DATA_MODEL §7).
 
@@ -705,7 +706,7 @@ Every key can also come from an environment variable (`MOSTRA_SERVER_<KEY>`). A 
 - **Framing:** one JSON-RPC 2.0 message per text frame, at most `MAX_LINE_LENGTH` characters, checked on both sides. A binary frame or a longer message closes the connection (1003 or 1009). No batches (D83).
 - **Liveness:** each side sends a WebSocket ping and the notification `mostra/ping` every 20 s (some proxies don't count control frames as activity). A connection with nothing received for 45 s is closed and dialled again with backoff (1 s doubling to 60 s, with jitter). A restart of an edge or of the server is the same reconnect (D165 item 2).
 - **Tokens on an open connection.** The server closes a binding when its access token expires, unless the client sent a fresh one in band (`remote/token { accessToken } → { expiresAt }`), and within 60 s of the grant's revocation or the account's suspension. An operator-issued credential (`accounts.authenticate`, §18.6) is accepted here as on `/mcp` and `/files`, so a program can run an always-on owner instance for an account.
-- **Session:** `mostra/initialize` as in §6. The token names the account, and the session acts on that account's hosted home (`InstanceInfo.mode: "hosted"`, with `incarnation`, the home's current incarnation, and `cursor`, its head). An owner instance's session sends `link: { instanceId, relayMark }` (its `lnk_` ID, and the highest relayed run sequence its ledger has accepted) and registers the ports `submissions` and `relay`. On a hosted home `HomeConfig.ports` is kept per link, never per client name, and a submission's one delivery owner is its artifact's owner link, so deliveries and relayed runs wait for that instance while it is away, and another instance of the account gets none (D105, D165 item 1b).
+- **Session:** `mostra/initialize` as in §6. The token names the account, and the session acts on that account's hosted home (`InstanceInfo.mode: "hosted"`, with `incarnation`, the home's current incarnation, and `cursor`, its head). An owner instance's session sends `link: { instanceId, relayMark, followed? }` (its `lnk_` ID, the highest relayed run sequence its ledger has accepted, and `followed: { incarnation, cursor }`, the hosted home's position it last committed) and registers the ports `submissions` and `relay`. On a hosted home `HomeConfig.ports` is kept per link, never per client name, and a submission's one delivery owner is its artifact's owner link, so deliveries and relayed runs wait for that instance while it is away, and another instance of the account gets none (D105, D165 item 1b).
 - **Methods on a hosted home:** §6's viewing, interaction and events methods (`view/*`, `results/get`, `wait`, `state/*`, `live/push`, `events/*`), `artifact/list`, `artifact/get`, and:
 
   ```text
@@ -732,7 +733,7 @@ Every key can also come from an environment variable (`MOSTRA_SERVER_<KEY>`). A 
   - `RemoteLink` is `{ server, account: { id, name? }, instanceId, name, default, state: "connected" | "connecting" | "offline" | "signed-out", since, pendingPushes, lastError? }`. `default` marks the account's default instance for chat-host authoring (D165 item 1b; WP-29 names the command that changes it).
   - A `remote` share pushes the artifact's latest version, mints a link on the hosted home (its `url`, `https://usercontent.example/a/<routeId>#t=…`, and `tokenId`, with the hosted shell's address as `hostname`), and keeps pushing later publishes while it is active. `share/stop` revokes the hosted link. `share.done`'s `kind` is `remote` (D140 item 8).
 - **Hosted artifacts on the owner's instance** (D165 item 1): `wait`, `results/get` and `events/*` read the owner's own ledger, which the hosted home's deliveries and the sync cursor fill. `state/get`, `state/patch` and `live/push` on a hosted artifact act on the hosted home through the link, refused with `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached. Imported submissions and events carry `origin: { server, home, incarnation, cursor }`, additive to `EventRecord` and `Results.submission`. The follow copies only the events of artifacts this instance owns. An instance that doesn't own an artifact reads and waits on it through a session with the hosted home (the SDK, or remote MCP), never through its own ledger.
-- **A restored hosted home.** When `mostra/initialize` reports an incarnation the instance hasn't seen, it continues after the lower of its committed cursor and the home's head, under the new incarnation, keeps everything it imported, and appends `remote.regressed { server, home, from, to }`, so the owner knows events in that window were lost on the server (FAILURE_MODEL §11.2).
+- **A restored hosted home.** The owner instance is the witness a restore can't roll back, since it lives on another machine. Before answering an owner's `mostra/initialize`, the hosted home rotates its incarnation when the owner's `followed` cursor is above its head under the current incarnation, or when `relayMark` is above the highest relay sequence it recorded for the link: either means the home was restored to an earlier copy. It also rotates on `ServerHandle.restored`, on `mostra-runtime server --restored <homeId>` (for a self-hoster restoring by hand), and when it opens below `home_cursor.high_cursor` (DATA_MODEL §7.1). After a rotation its relay sequences continue above the owner's `relayMark`, so none is reused. When `mostra/initialize` reports an incarnation the instance hasn't seen, it continues after the lower of its committed cursor and the home's head, under the new incarnation, keeps everything it imported, and appends `remote.regressed { server, home, from, to }`, so the owner knows events in that window were lost on the server (FAILURE_MODEL §11.2). A viewer's stream or poll that resumes above the home's head gets a fresh snapshot (§4), never an empty tail.
 
 ### 18.3 Relay messages
 
@@ -755,8 +756,8 @@ Owner instance → hosted home (methods)
   state/patch        { …, as: "agent", causation: { runId } }   (server code's `state`, §2.4)
 ```
 
-- **Runs.** `port/relay.run` carries the run's relay sequence (per owner link) and is answered once the owner has recorded the run under `runId` in its own ledger (DATA_MODEL §7); the hosted home records the answer (`accepted_at`). A repeat answers the same and starts nothing. `relay/run.update` messages are idempotent by `(runId, seq)` and applied in order; the one with `end` is the run's end. A run started with a `key` keeps D130's rule, checked by the hosted home.
-- **Reconnects.** After every reconnect the hosted home sends `port/relay.reconcile` with the link's accepted, unfinished runs; the owner answers each with its state, and a run it answers `unknown-to-owner` becomes `unknown` at once and is never sent again. A session whose `relayMark` is below the highest sequence the owner had accepted means the owner's home was restored to before those runs: every accepted, unfinished run, and every run sent but not acknowledged, becomes `unknown` and is never sent again. A run sent but not acknowledged otherwise is sent again, which joins it if the owner recorded it.
+- **Runs.** `port/relay.run` carries the run's relay sequence (per owner link) and is answered once the owner has recorded the run under `runId` in its own ledger (DATA_MODEL §7); the hosted home records the answer (`accepted_at`). A repeat answers the same and starts nothing. `relay/run.update` messages are idempotent by `(runId, seq)` and applied in order; the one with `end` is the run's end. A run started with a `key` keeps D130's rule, checked by the hosted home. An owner's `relay/run.update` for a run the hosted home doesn't know (a home restored to before it) is dropped and logged; the owner keeps the run and finishes it locally.
+- **Reconnects.** After every reconnect, and before any waiting run drains to the owner, the hosted home sends `port/relay.reconcile` with the link's accepted, unfinished runs; the owner answers each with its state, and a run it answers `unknown-to-owner` becomes `unknown` at once and is never sent again. A session whose `relayMark` is below the highest sequence the owner had accepted means the owner's home was restored to before those runs: every accepted, unfinished run, and every run sent but not acknowledged, becomes `unknown` and is never sent again. A run sent but not acknowledged otherwise is sent again, which joins it if the owner recorded it.
 - **Offline** (D165 item 4). While the owner is away a run is `waiting`.
   - The manifest's `hosted.offline.actions` is `queue` (default) or `fail`, and `hosted.offline.limit` is a duration (default `24h`, at most `7d`, else `MOSTRA_MANIFEST_INVALID`). The limit has two clocks: a run never sent counts from when it was recorded, and a run the owner accepted (or that was sent) counts from when the owner was last heard from. Under `queue`, a run never sent that is still waiting at its limit ends `failed` with reason `owner-offline`; under `fail` it ends that way at once. A run sent and not acknowledged is never `failed` for the owner's absence: at its limit it is `unknown`.
   - Cancelling a run never sent ends it `cancelled` on the hosted home without contacting the owner.
@@ -780,7 +781,7 @@ Owner instance → hosted home (methods)
 - **The shell rules** of ARCHITECTURE §15.6 hold on every hosted response: only the shell on the apex, `Origin-Agent-Cluster: ?1`, no credential on the user-content domain, `Cross-Origin-Resource-Policy: same-origin`, `frame-ancestors 'none'` and `X-Frame-Options: DENY` on the shell, `frame-ancestors` naming only the domain's shell on every document of a label origin (the worker-mode bootstrap included), D98 item 6's headers everywhere, and `noindex` (D161). The shell's own policy is `script-src 'self'` with no inline script, `require-trusted-types-for 'script'`, and every string a tenant or operator supplies rendered as text.
 - **Sessions without cookies** (D165 item 8). The shell's exchange (`POST /a/{routeId}/_mostra/session`) answers `session`, a 26-character secret the shell keeps in its origin's storage under the route and sends as `X-Mostra-Shell` on every later request for that route; a session sent with another route's path is refused (401). The ledger keeps its SHA-256, as for a cookie (D98). Frames use worker mode (`X-Mostra-Frame`, D158 item 5). The server drops every `Cookie` header on hosted hosts before routing.
 - **When storage fails.** Tenant pages share the apex's storage group in Firefox and the disk everywhere (VERIFIED_FACTS, WP-28). A shell whose storage write fails keeps the session in memory, keeps the link's fragment in place until the secret is stored, and tells the viewer that reloading will need the link again.
-- **Viewers.** A link with a viewer acts as it (D104). Without one, a signed-in person acts as their account (kind `account`, `ref` the account ID, `verified: true`), and anyone else as an anonymous viewer per browser (kind `anonymous`, with an optional name and `verified: false`). The shell keeps one random browser secret and sends each route `HMAC-SHA-256(secret, routeId)` as the anonymous key, so two routes, and two owners, never see one key for the same browser. `useViewer()` reports `source` and `verified`.
+- **Viewers.** A link with a viewer acts as it (D104). Without one, a signed-in person acts as their account (kind `account`, `ref` the account ID, `verified: true`), and anyone else as an anonymous viewer per browser (kind `anonymous`, with an optional name and `verified: false`). The shell keeps one random browser secret and sends each route `HMAC-SHA-256(secret, routeId)` as the anonymous key, in the session exchange's `browser` field (§4) as everywhere else; the raw secret never leaves the shell's storage, in no body and no header, so two routes, and two owners, never see one key for the same browser. `useViewer()` reports `source` and `verified`.
 - **Viewer sign-in.** It starts only from a click on the shell's "Sign in" in the trusted chrome, never at an artifact's request. It goes to the API origin's authorization server (`/oauth/authorize`, the shell as a public client with PKCE, §18.5), which names the page's sender before continuing ("Continue as Ada to answer Grace Hopper's page"), once per account and home, and returns to `https://usercontent.example/_mostra/signin` on the apex. `state` is bound to the route and the shell session and checked there. The shell then exchanges the code through `POST /a/{routeId}/_mostra/session/signin { code, verifier }` → `{ viewer }`. No token, password or WebAuthn credential is ever kept for the user-content domain (ARCHITECTURE §15.6).
 - **Submissions** (D165 items 1a, 13). After a commit the shell says "Your answer was sent." and shows a respondent no delivery state: `SubmissionSummary.deliveries` is present only when the viewer is the owner's account. Each refusal below keeps the draft:
   - with `hosted.submissions` `"signed-in"`, anonymous viewers get 403 `MOSTRA_REMOTE_SIGN_IN_REQUIRED`;
@@ -828,37 +829,39 @@ interface OperatorPorts {
     status?(account: string): Promise<"active" | "suspended">;
   };
   abuse?: {
-    report(r: { artifactId: string; home: string; versionId?: string; reason: string; detail?: string; at: string }): Promise<void>;
-    pushed?(v: { artifactId: string; home: string; versionId: string; manifest: unknown; read(path: string): Promise<Uint8Array> }):
+    report(r: { routeId: string; artifactId: string; home: string; versionId?: string; reason: string; detail?: string; at: string }): Promise<void>;
+    pushed?(v: { routeId: string; artifactId: string; home: string; versionId: string; manifest: unknown; read(path: string): Promise<Uint8Array> }):
       Promise<{ quarantine?: { reason: string } } | void>;
   };
   policy?: {
-    link(q: { account: string; home: string; artifactId: string; tokenId?: string }): Promise<{
+    link(q: { account: string; home: string; routeId: string; artifactId: string; tokenId?: string }): Promise<{
       interstitial?: { kind: string; message?: string }; maxTtl?: string; idleExpiry?: string;
       afterSubmit?: string; footer?: string; madeWith?: { show: boolean; href?: string } }>;
     chatHost?(client: { name: string; redirectHost?: string }): Promise<ChatHostPolicy | null>;   // D160, over config's chatHosts
   };
   routing?: { resolve(host: string): Promise<{ shell: { domain: string } } | { route: { home: string; routeId: string } } | null> };
   events?: { deliver(e: { eventId: string; kind: "submission.accepted" | "version.pushed" | "run.ended" | "roster.completed" | (string & {});
-      account: string; home: string; artifactId: string; at: string; payload: unknown }): Promise<void> };
+      account: string; home: string; routeId: string; artifactId: string; at: string; payload: unknown }): Promise<void> };
       // payload: submission.accepted carries the submission's Results (§8); version.pushed { versionId, number };
       // run.ended { runId, action, status }; roster.completed is WP-31's
   invitations?: unknown;   // reserved for WP-31 (D121, D165 item 16); no mailer ships
 }
 type LimitOperation = "share" | "version.push" | "link" | "view" | "submit" | "run" | "run.wait" | "call" | "mcp.call" | "storage";
 interface ServerHandle {
-  quarantine(target: { artifactId: string } | { versionId: string }, reason: string): Promise<void>;
-  release(target: { artifactId: string } | { versionId: string }): Promise<void>;
-  pause(artifactId: string, reason: string): Promise<void>;
-  resume(artifactId: string): Promise<void>;
+  // Every target names a hosted route: an artifact ID, and a version ID (derived from it, D89), can repeat across
+  // homes when a project is copied, so a bare ID would reach every tenant hosting it.
+  quarantine(target: { routeId: string } | { routeId: string; versionId: string }, reason: string): Promise<void>;
+  release(target: { routeId: string } | { routeId: string; versionId: string }): Promise<void>;
+  pause(routeId: string, reason: string): Promise<void>;
+  resume(routeId: string): Promise<void>;
   suspendHome(home: string, reason: string): Promise<void>;
   resumeHome(home: string): Promise<void>;
-  revokeLinks(artifactId: string): Promise<number>;
+  revokeLinks(routeId: string): Promise<number>;
   revokeLink(tokenId: string): Promise<void>;
   drainHome(home: string): Promise<void>;       // close it and refuse to reopen it, to move it between data directories
   releaseHome(home: string): Promise<void>;     // serve it again
   restored(home: string): Promise<void>;        // a restore from a backup: rotate its incarnation (§18.2)
-  remove(artifactId: string): Promise<void>;   // deletion: explicit, never part of another action
+  remove(routeId: string): Promise<void>;      // deletion: explicit, never part of another action
 }
 ```
 
@@ -871,7 +874,7 @@ interface ServerHandle {
 ### 18.7 CLI
 
 Additive to §9 (D165 item 15). Help text is drafted with Mirza (D149).
-- `mostra login [<server>]` prints the verification address and code (on stderr, or one `--json` event), waits for the person, and links this home. `mostra logout [<server>]` revokes the grant and removes the token.
+- `mostra login [<server>]` prints the verification address and code (on stderr, or one `--json` event), waits for the person, and links this home, rebinding its instance link when the home already has one for that server. `mostra logout [<server>] [--forget]` revokes the grant and removes the token, and keeps the instance link, so the artifacts it owns stay its own at the next sign-in; `--forget` also drops the link ID, after which this home owns none of the artifacts it shared there.
 - `mostra share <artifact> --cloud [<server>] [--scope …] [--viewer <ref>] [--ttl <d>]` hosts the artifact and prints the hosted link. `mostra share list` and `share stop` include cloud shares.
 - `mostra pause <artifact> [--reason <text>]` and `mostra resume <artifact>` (WP-30).
 - `mostra status` reports each linked server (`remote/status`).

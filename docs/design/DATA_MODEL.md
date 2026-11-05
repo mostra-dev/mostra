@@ -267,9 +267,13 @@ instance_link(id PK (lnk_), account_id FK, home_id FK, name, is_default, relay_h
                                                                -- an owner instance; one default per account (D165 item 1b);
                                                                -- a new grant for the same instance rebinds this row;
                                                                -- relay_high: the highest relay sequence it accepted
-home_cursor(home_id PK FK, incarnation, high_cursor, updated_at)
-                                                               -- the highest cursor the server saw each home reach; a
-                                                               -- home opened below it was restored: its incarnation rotates
+home_cursor(home_id PK FK, incarnation, high_cursor, relay_high, updated_at)
+                                                               -- the highest cursor and relay sequence the server saw each
+                                                               -- home reach, written when the home closes and at least every
+                                                               -- 10 s while it is open; a home opened below it was restored.
+                                                               -- It shares the data directory, so a whole-directory restore
+                                                               -- rolls it back too: the owner instance is the witness that
+                                                               -- catches that case (§7.2, INTERFACES §18.2)
 artifact_route(id PK (rte_), home_id FK, artifact_id, owner_link_id FK, label UNIQUE, created_at,
                UNIQUE(home_id, artifact_id))                    -- a hosted route: one artifact on one home, its owner
                                                                -- instance and its random label (INTERFACES §18.4); an
@@ -277,8 +281,10 @@ artifact_route(id PK (rte_), home_id FK, artifact_id, owner_link_id FK, label UN
 label_issued(label PK, home_id, route_id NULL, kind CHECK(kind IN ('server','operator')), issued_at)
                                                                -- every label ever issued, never deleted: a label is
                                                                -- never issued twice nor moved to another home
-home_file(home_id, sha256, PRIMARY KEY(home_id, sha256))       -- the files a home uploaded or a version of it names;
-                                                               -- written in the push's transaction
+home_file(home_id, sha256, PRIMARY KEY(home_id, sha256))       -- a row exists only once this home uploaded the file, or
+                                                               -- once a complete version of this home names it; the listing
+                                                               -- of a pending push confers nothing, and a push completes only
+                                                               -- when every client file it names has such a row
 file_ref(sha256 PK, homes INTEGER, unreferenced_at NULL)       -- how many homes hold a file; one held by none is swept
                                                                -- after a grace period, never inside a push or a removal
 oauth_client(id PK, kind CHECK(kind IN ('metadata','registered','shell','cli')), metadata_json, created_at, last_used_at)
@@ -301,20 +307,23 @@ outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempt
 A hosted home is a home (§1) with these differences:
 - **No** `sources/`, `deps/`, `cache/builds/`, `cache/verify/`, `secrets/` or `versions/<id>/server/`. Each version keeps `manifest.json`, `registry.json`, `lock.yaml` and its output listing, and names its client files in `<data>/files/` by SHA-256, checked against `outputDigest` through the listing when pushed (D165 item 3).
 - **Locking** (D165 item 0b, amending D81 for hosted homes). The ledger opens in WAL with normal locking, `synchronous=FULL` and the configured `wal_autocheckpoint`, so a backup replicator may read it from its own process. Its one writer is the server process that holds `homes/<homeId>/home.lock`, a one-row SQLite database held in `locking_mode=EXCLUSIVE` with a transaction open (an advisory lock the operating system releases when the process dies, which nothing else opens), together with the server's in-process registry of open homes. A process that can't take the lock refuses to serve the home (`MOSTRA_HOME_LOCKED`).
-- **Incarnation.** `home_meta(id PK CHECK(id = 1), incarnation, created_at)` holds a random incarnation, rotated in one transaction when the home is restored from a backup (`ServerHandle.restored`, or a head below `home_cursor.high_cursor`). The binding reports it with every cursor it hands out (INTERFACES §18.2).
-- **Viewers** of kind `account` (`external_ref` the account ID) and `anonymous` (`external_ref` a random browser key the hosted shell keeps; `name` chosen by the person and never verified).
+- **Incarnation.** `home_meta(id PK CHECK(id = 1), incarnation, created_at)` holds a random incarnation, rotated in one transaction when the home is restored from a backup: on `ServerHandle.restored` or `mostra-runtime server --restored`, when it opens below `home_cursor.high_cursor`, or when its owner instance's committed cursor or relay mark is above what the home holds (INTERFACES §18.2). After a rotation the home's relay sequences continue above the owner's relay mark. The binding reports it with every cursor it hands out (INTERFACES §18.2).
+- **Viewers** of kind `account` (`external_ref` the account ID) and `anonymous` (`external_ref` the route's derived key, `HMAC-SHA-256(browser secret, routeId)`, never the shell's raw secret; `name` chosen by the person and never verified).
 - **Sessions** keep `mode` `header` for the hosted shell's session secret (sent as `X-Mostra-Shell`), beside `worker` for frames; the ledger keeps only hashes (§3).
 - **Tables of its own:**
 
 ```sql
-relay_run(run_id PK FK, owner_link_id, relay_seq UNIQUE, attempt, sent_at NULL, accepted_at NULL, owner_heard_at NULL,
-          offline_limit_at, last_seq)               -- a relayed run through the relay: never sent (may end failed,
+relay_run(run_id PK FK, owner_link_id, relay_seq, attempt, sent_at NULL, accepted_at NULL, owner_heard_at NULL,
+          offline_limit_at, last_seq, UNIQUE(owner_link_id, relay_seq))
+                                                    -- a relayed run through the relay: never sent (may end failed,
                                                     -- owner-offline), sent (resent; `unknown` at its limit), accepted
                                                     -- (reconciled after each reconnect; `unknown` at its limit or when
                                                     -- the owner no longer knows it); D165 item 4
 artifact_pause(artifact_id PK, by CHECK(by IN ('owner','operator')), reason, paused_at)   -- D165 item 14; a row exists
                                                     -- only while paused; an operator's row is removed only by the operator
-quarantine(target PK, reason, at)                  -- an artifact or version the operator quarantined (D165 item 9)
+quarantine(route_id, version_id NULL, reason, at, UNIQUE(route_id, version_id))
+                                                    -- a route, or one version of a route, the operator quarantined
+                                                    -- (D165 item 9); an identical version in another home is untouched
 link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137)
 ```
 
@@ -334,7 +343,8 @@ remote_link(server PK, account_id, instance_id, is_default, linked_at, state, in
                                                     -- again rebinds the same link; follow_cursor and incarnation: the
                                                     -- hosted home's position this instance has committed (the sync
                                                     -- cursor); the server also keeps the named subscriber `owner:<lnk_…>`
-hosted_artifact(artifact_id PK FK, server FK, hosted_home, route_id, label, shared_at, stopped_at NULL)
+hosted_artifact(artifact_id FK, server FK, hosted_home, route_id, label, shared_at, stopped_at NULL,
+                PRIMARY KEY(artifact_id, server))   -- one artifact may be shared to several servers
 version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','complete')), attempts, next_attempt_at,
              PRIMARY KEY(artifact_id, version_id, server))   -- publishes waiting to reach the server (D165 item 3)
 relayed_run(run_id PK, server, relay_seq, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
