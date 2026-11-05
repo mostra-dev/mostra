@@ -1,6 +1,6 @@
 # WP-28 progress: the remote design pass
 
-**Status:** In progress. Owns RM-05 ([specification](../design/work-packages/WP-28.md)). This package writes design, not code.
+**Status:** Accepted by Mirza on 2026-11-05 (M57); closing out. Owns RM-05 ([specification](../design/work-packages/WP-28.md)). This package writes design, not code.
 
 ## Baseline
 
@@ -44,4 +44,4 @@
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
-| RM-05 | unverified | Mirza accepts the design; the generators pass with the refined WP-29 and WP-30 specifications | `python3 tools/design/wp_specs.py`, `python3 tools/design/evidence_matrix.py --check` | pending |
+| RM-05 | verified | Mirza accepts the design; the generators pass with the refined WP-29 and WP-30 specifications. The design is D165 in ARCHITECTURE §15, INTERFACES §18 (with its pointers in §1 to §13), DATA_MODEL §3, §4 and §7 and FAILURE_MODEL §11; WP-29's and WP-30's entries and specifications are refined from it, with RM-07 to RM-09; two Claude Opus reviews (27 and 9 findings) were fixed in the documents | `python3 tools/design/wp_specs.py`; `python3 tools/design/evidence_matrix.py --check`; `pnpm check --affected`; CI on #126 | Mirza accepted at M57 (2026-11-05T04:29:33Z: "absolutely. you have my acceptance on all points and WP-28 itself."); `wrote 34 specifications`; `ok 154 v1 and 7 v1.1 requirements`, WP-29 owning 4 and WP-30 7; `pnpm check --affected` green (format-lint, types, unit, build, boundaries, api, docs, commits); CI `ci-ok` green on `a04fd6c` |
