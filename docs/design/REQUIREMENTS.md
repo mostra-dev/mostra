@@ -81,7 +81,7 @@
 | IN-10 | `wait` (CLI, MCP, SDK, protocol) blocks on a submission, signal or timeout; a timeout returns a resumable status and loses nothing | v1 | D11 | I, C |
 | IN-11 | `results` returns the complete submission (snapshot, choices, comments with anchors and crops, version IDs, action-run references) as JSON and agent-readable Markdown | v1 | D11 | I |
 | IN-12 | **Invariant.** A submission is durable before any delivery attempt; when a host's storage is unreachable, Mostra keeps it in an outbox and replays idempotently | v1 | D11, §7 | I, C |
-| IN-13 | The viewer sees distinct states for submitted, delivered to host and pending delivery | v1 | §7 | B, R |
+| IN-13 | The viewer sees distinct states for submitted, delivered to host and pending delivery (on hosted links only the owner sees delivery states; a respondent sees that the answer was sent, D165 item 1a) | v1 | §7, D165 | B, R |
 
 ## Actions and live data (AC)
 
@@ -224,9 +224,12 @@
 | RM-01 | v1 seams: portable artifact packages, ports for identity, storage and addressing, a worker-isolation interface, a stateless MCP design | v1 | D12 | M, R |
 | RM-02 | Remote transport: the host protocol over an authenticated network transport, sign-in from the CLI, sharing a published version to a remote server, and reading waits, results and events back, with remote submissions delivered through the local outbox | v1 | D12, D116 | I, X |
 | RM-03 | A self-hostable remote server hosts many homes behind one gateway with per-artifact origins on a separate user-content domain; the managed service's operating layer lives outside this repository and reaches the server only through operator ports | v1 | D12, D116, D118 | I, X |
-| RM-04 | Relay: a remote server forwards hosted artifacts' action calls and live producers (and authoring operations, if WP-28 so decides under D117) to the owning instance over its outbound connection; secrets never leave the owner; offline behavior follows the artifact's policy | v1 | D117 | I |
+| RM-04 | Relay: a remote server forwards hosted artifacts' action calls and live producers to the owning instance over its outbound connection; secrets never leave the owner; offline behavior follows the artifact's policy, with a capped queue that drains in order and an outcome-unknown end for a run the owner never reported (D165 item 4); authoring operations are relayed for remote MCP (D165 item 5, MC-04) | v1 | D117, D165 | I |
 | RM-05 | The remote design is recorded in ARCHITECTURE, INTERFACES, DATA_MODEL and FAILURE_MODEL, and WP-29 and WP-30 specifications are refined from it | v1 | D116, D123 | R |
 | RM-06 | Sandboxed remote execution of actions and builds through `SandboxPort` | v1.x | D12, D116 | I, X |
+| RM-07 | Counts by choice: an artifact that opts in through its manifest gets a built-in tally of a fixed-choice field, counted in the submit transaction and pushed to viewers on the live channel with no artifact code and no relay, on hosted and local homes alike | v1 | D165 | I, B |
+| RM-08 | Hosted links accept submissions from viewers who aren't signed in when the artifact allows it, at about 1 a second sustained and 10 a second in bursts per artifact, accepted under 0.5 s at the 95th percentile with the owner offline; per-IP and per-link limits answer "try again shortly" and never drop a submission | v1 | D165 | I, B |
+| RM-09 | An artifact can be paused by its owner from the CLI and by an operator: views keep working, submissions and relayed actions are refused with the draft kept, links stay valid, and the pause is reversible (an operator's only by the operator) | v1 | D165 | I, B |
 
 ## Engineering and release (EN)
 

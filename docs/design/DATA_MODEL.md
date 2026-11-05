@@ -49,7 +49,7 @@
 
 **The CLI's own directory** (D140 item 5) is per operating-system user, not per home: `MOSTRA_CONFIG_DIR`, else `${XDG_CONFIG_HOME:-~/.config}/mostra` (on Windows `%APPDATA%\mostra`, D151), mode 0700, holding `telemetry.json` (0600, written by rename: the telemetry choice, when the notice of what is sent was shown where sending follows, when the ask-first notice was shown (a separate record, so it never stands for the other), when a flush last started), `telemetry-id` (0600: the random install ID, made by D140's exclusive create, a hard link that fails when the file exists, so processes on a first run agree on one ID without the lock), `telemetry-queue.ndjson` (0600, at most 1,000 events, none older than 7 days) and, while a change is made, `telemetry.lock` (its owner's PID and a token; released only by its owner, taken over when it is older than 10 s and its owner no longer runs, or older than 60 s whoever it names, since a dead owner's PID can name an unrelated live process), and, while one process takes a crashed owner's lock away, `telemetry.lock.break.<n>` (#98): the highest number holds the right to break, a crashed breaker's is superseded by creating the next number exclusively and never removed by another, and its holder removes the lower ones and then its own. Only `@mostra/cli` reads or writes it.
 
-**Who owns the home** (D81). The supervisor holding the ledger's exclusive SQLite lock owns the home. The operating system releases the lock when the process dies. The socket and `instance.json` are only how clients find that owner. Because the lock excludes every other connection, any other ledger reader (including `mostra doctor`'s integrity check) goes through the supervisor, or runs only when no supervisor holds the lock. Within the supervisor, nothing but SQLite opens the ledger file: POSIX releases a process's locks on a file when any descriptor for it closes.
+**Who owns the home** (D81). The supervisor holding the ledger's exclusive SQLite lock owns the home. The operating system releases the lock when the process dies. The socket and `instance.json` are only how clients find that owner. Because the lock excludes every other connection, any other ledger reader (including `mostra doctor`'s integrity check) goes through the supervisor, or runs only when no supervisor holds the lock. Within the supervisor, nothing but SQLite opens the ledger file: POSIX releases a process's locks on a file when any descriptor for it closes. A hosted home on a remote server is the exception: its writer holds an advisory lock on a lock file instead, so a backup replicator can read its ledger (§7.2, D165 item 0b).
 
 **Why sources are snapshotted.** Artifacts, versions and submissions must stay readable after the authoring directory disappears (HO-08, H-11). A version's source snapshot also makes `verify` regression baselines and `export bundle` independent of the working tree.
 
@@ -73,10 +73,11 @@ version(id PK, artifact_id FK, number, source_digest, env_digest, output_digest,
                                                     -- verify_json: { status, verifyRevision } of the verdict the
                                                     -- version was published on (migration 8, D138 item 4); NULL
                                                     -- before verify; only 'pass' makes a regression baseline
-viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host')), external_ref, name, created_at, UNIQUE(kind, external_ref))
+viewer(id PK, kind CHECK(kind IN ('local','tailnet','token','host','account','anonymous')), external_ref, name, created_at, UNIQUE(kind, external_ref))
                                                     -- one 'local' viewer; 'token' viewers keyed by view/url's viewer.ref (D104),
                                                     -- and a link's own viewer over a tunnel as 'link:<tokenId>';
-                                                    -- 'tailnet' viewers keyed by the Tailscale login (D158 item 2)
+                                                    -- 'tailnet' viewers keyed by the Tailscale login (D158 item 2);
+                                                    -- 'account' and 'anonymous' only in hosted homes (§7, D165 item 8)
 view(id PK, artifact_id, version_id FK, viewer_id FK, token_id NULL, opened_cursor, opened_at, closed_at, live_cursor_json,
      controls_json NULL)                                  -- the submit channels and controls in force for this view (D108);
                                                           -- NULL (views before WP-07): both channels
@@ -120,10 +121,11 @@ comment(id PK, thread_id FK, author_viewer_id, text, at, edited_at NULL)
 
 -- Actions and live data
 action_run(id PK, artifact_id, version_id, view_id NULL, viewer_id NULL, action, args_json, key NULL, client_key,
-           status CHECK(status IN ('queued','running','waiting','succeeded','failed','cancelled')), reason NULL,
+           status CHECK(status IN ('queued','running','waiting','succeeded','failed','cancelled','unknown')), reason NULL,
            error_json NULL, progress_json NULL, log_text, log_lines, log_truncated BOOLEAN, batches, result_size,
            started_at, finished_at NULL, UNIQUE(artifact_id, action, key), UNIQUE(artifact_id, client_key))
-                                                    -- migration 7 (WP-08, D130): `waiting` is reserved for WP-28's relay;
+                                                    -- migration 7 (WP-08, D130); `waiting` and `unknown` are the relay's
+                                                    -- (§7, D165 item 4): `unknown` may be replaced once by a reported end;
                                                     -- a final run never changes, is never deleted, and no
                                                     -- insert replaces a run (triggers, D136)
 action_run_batch(run_id FK, seq, batch_json, PRIMARY KEY(run_id, seq))   -- the result, as serializer batches;
@@ -141,8 +143,8 @@ port_lease(port PK, purpose CHECK(purpose IN ('shell','artifact','demo','face'))
 token(id PK, secret_hash UNIQUE, artifact_id FK, scopes_json, viewer_id NULL, expires_at NULL, revoked_at NULL, created_at,
       is_default, pinned_version NULL, shell_origin, replaced_by NULL)  -- one default per artifact; a revoked row never changes;
                                                                        -- a link works only at shell_origin (D97 items 9, 10)
-session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker')), csrf, version_id NULL, created_at, last_seen_at,
-        viewer_id NULL FK)                                       -- id: SHA-256 of the cookie; csrf: SHA-256 of the CSRF token (D98);
+session(id PK, token_id FK, origin, mode CHECK(mode IN ('cookie','worker','header')), csrf, version_id NULL, created_at, last_seen_at,
+        viewer_id NULL FK)                                       -- id: SHA-256 of the cookie, or of a hosted shell's header secret (§7.2); csrf: SHA-256 of the CSRF token (D98);
                                                                  -- viewer_id: the person a host's identity port named for a link
                                                                  -- without a viewer (migration 10, D143 item 2)
 share(id PK (shr_), artifact_id FK, via CHECK(via IN ('tailnet','funnel','cloudflare')), hostname, token_id FK, mode,
@@ -208,6 +210,8 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106); from server code, the `viewerId` whose call raised it instead of a view, and a page sees it only when that is its own viewer (D136) |
 | `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
+| `action.waiting` / `action.unknown` | runId, action: a relayed run waiting for its owner, and one whose owner never reported its end within the offline limit (D165 item 4); a later end appends its own event |
+| `artifact.paused` / `artifact.resumed` | by (`owner` or `operator`), reason (D165 item 14) |
 | `host.<name>` | `data`, the payload server code emitted (AC-05), and the `viewerId` whose call emitted it; for hosts, never shown to pages (D136) |
 | `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133); pages get it without `cause`, which quotes the server code's output (D136) |
 | `share.started` / `share.stopped` | shareId, via, hostname; `share.started` the artifact's external origin, `share.stopped` its reason (`stopped`, `expired`, `revoked`, `tunnel`, `restart`) (D158) |
@@ -232,7 +236,136 @@ The ledger carries `schema_migration`. A new ledger is built in a temporary file
 
 ## 7. Remote server and team data
 
-The plan update of 2026-10-16 adds stored data that later packages design. Each is a *Deferred decision* for the package named, which adds its tables, columns and events here additively, without weakening a constraint above.
-- **WP-28** (D116, D117): hosted homes on a remote server, the mapping from remote accounts to homes as the runtime sees it, the relay's run states (additive to `action_run`, D124), sync cursors between an owner's instance and a remote server, and retention on the server. The operating layer's own data (accounts, billing, metering storage) lives outside this repository (D116).
+The plan update of 2026-10-16 added stored data for the remote server and teams. WP-28's is designed below (D165); the others are a *Deferred decision* for the package named, which adds its tables, columns and events here additively, without weakening a constraint above.
+- **WP-28** (D116, D117) designed the remote server's data below (D165); WP-29 and WP-30 add its tables and migrations.
 - **WP-31** (D121): expected respondents and their roster per artifact or share, the roster-complete event, and the attribution of artifact-scoped fields. Presence, cursors and selections stay ephemeral and are never stored (§4, D47).
 - **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).
+
+### 7.1 A remote server's data directory
+
+```text
+<data>/                         the server's --data (INTERFACES §18.1); never on a network filesystem: the server
+                                refuses one it can detect (NFS, SMB, network FUSE), since its locks and WAL need a local disk
+  server.sqlite                 the server's directory (WAL, normal locking, synchronous=FULL)
+  server.lock                   the server's lock: a one-row SQLite database held in locking_mode=EXCLUSIVE with a
+                                transaction open, an advisory lock the operating system releases when the process dies,
+                                so it never goes stale (no PID file); nothing else opens it; a second server refuses
+  homes/<homeId>/               one hosted home (§7.2)
+  files/<sha256>                version files, content-addressed and stored once for the directory; a file counts as present
+                                for a home only through home_file (below), so a home moves with its ledger and its files
+  keys/                         the authorization server's token keys and the monthly metering key (mode 0700)
+```
+
+`server.sqlite` holds what spans homes, and only that:
+
+```sql
+account(id PK (acct_), name NULL, status, created_at)          -- the server's own accounts; an operator's accounts port
+                                                               -- may map identities to its own IDs instead (D165 item 9)
+identity(provider, subject, account_id FK, email NULL, name NULL, linked_at, PRIMARY KEY(provider, subject))
+home(id PK (hom_), owner_account_id FK, data_path, created_at, suspended_at NULL)   -- one home per owner per server
+instance_link(id PK (lnk_), account_id FK, home_id FK, name, is_default, relay_high INTEGER, linked_at, revoked_at NULL)
+                                                               -- an owner instance; one default per account (D165 item 1b);
+                                                               -- a new grant for the same instance rebinds this row;
+                                                               -- relay_high: the highest relay sequence it accepted
+home_cursor(home_id PK FK, incarnation, high_cursor, relay_high, updated_at)
+                                                               -- the highest cursor and relay sequence the server saw each
+                                                               -- home reach, written when the home closes and at least every
+                                                               -- 10 s while it is open; a home opened below it was restored.
+                                                               -- It shares the data directory, so a whole-directory restore
+                                                               -- rolls it back too: the owner instance is the witness that
+                                                               -- catches that case (§7.2, INTERFACES §18.2)
+artifact_route(id PK (rte_), home_id FK, artifact_id, owner_link_id FK, label UNIQUE, created_at,
+               UNIQUE(home_id, artifact_id))                    -- a hosted route: one artifact on one home, its owner
+                                                               -- instance and its random label (INTERFACES §18.4); an
+                                                               -- owner link is never removed by a revoked grant
+label_issued(label PK, home_id, route_id NULL, kind CHECK(kind IN ('server','operator')), issued_at)
+                                                               -- every label ever issued, never deleted: a label is
+                                                               -- never issued twice nor moved to another home
+home_file(home_id, sha256, PRIMARY KEY(home_id, sha256))       -- a row exists only once this home uploaded the file, or
+                                                               -- once a complete version of this home names it; the listing
+                                                               -- of a pending push confers nothing, and a push completes only
+                                                               -- when every client file it names has such a row
+file_ref(sha256 PK, homes INTEGER, unreferenced_at NULL)       -- how many homes hold a file; one held by none is swept
+                                                               -- after a grace period, never inside a push or a removal
+oauth_client(id PK, kind CHECK(kind IN ('metadata','registered','shell','cli')), metadata_json, created_at, last_used_at)
+                                                               -- registered clients unused for 30 days are removed
+consent(account_id, client_id, granted_at, revoked_at NULL, PRIMARY KEY(account_id, client_id))
+                                                               -- the authorization server's own consent (INTERFACES §18.5)
+sender_shown(account_id, home_id, at, PRIMARY KEY(account_id, home_id))
+                                                               -- a viewer was told whose page they sign in to (once)
+grant(id PK, account_id FK, client_id FK, scope, resource, created_at, revoked_at NULL)
+token(hash PK, grant_id FK, kind CHECK(kind IN ('access','refresh','device','code')), expires_at, used_at NULL,
+      successor_hash NULL)                                     -- tokens only as SHA-256 hashes; a refresh token rotates:
+                                                               -- for 30 s after use it returns the same successor, and a
+                                                               -- reuse after that revokes its grant
+outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempts, next_attempt_at)
+                                                               -- what an operator hasn't acknowledged yet (at least once)
+```
+
+### 7.2 A hosted home
+
+A hosted home is a home (§1) with these differences:
+- **No** `sources/`, `deps/`, `cache/builds/`, `cache/verify/`, `secrets/` or `versions/<id>/server/`. Each version keeps `manifest.json`, `registry.json`, `lock.yaml` and its output listing, and names its client files in `<data>/files/` by SHA-256, checked against `outputDigest` through the listing when pushed (D165 item 3).
+- **Locking** (D165 item 0b, amending D81 for hosted homes). The ledger opens in WAL with normal locking, `synchronous=FULL` and the configured `wal_autocheckpoint`, so a backup replicator may read it from its own process. Its one writer is the server process that holds `homes/<homeId>/home.lock`, a one-row SQLite database held in `locking_mode=EXCLUSIVE` with a transaction open (an advisory lock the operating system releases when the process dies, which nothing else opens), together with the server's in-process registry of open homes. A process that can't take the lock refuses to serve the home (`MOSTRA_HOME_LOCKED`).
+- **Incarnation.** `home_meta(id PK CHECK(id = 1), incarnation, created_at)` holds a random incarnation, rotated in one transaction when the home is restored from a backup: on `ServerHandle.restored` or `mostra-runtime server --restored`, when it opens below `home_cursor.high_cursor`, or when its owner instance's committed cursor or relay mark is above what the home holds (INTERFACES §18.2). After a rotation the home's relay sequences continue above the owner's relay mark. The binding reports it with every cursor it hands out (INTERFACES §18.2).
+- **Viewers** of kind `account` (`external_ref` the account ID) and `anonymous` (`external_ref` the route's derived key, `HMAC-SHA-256(browser secret, routeId)`, never the shell's raw secret; `name` chosen by the person and never verified).
+- **Sessions** keep `mode` `header` for the hosted shell's session secret (sent as `X-Mostra-Shell`), beside `worker` for frames; the ledger keeps only hashes (§3).
+- **Tables of its own:**
+
+```sql
+relay_run(run_id PK FK, owner_link_id, relay_seq, attempt, sent_at NULL, accepted_at NULL, owner_heard_at NULL,
+          offline_limit_at, last_seq, UNIQUE(owner_link_id, relay_seq))
+                                                    -- a relayed run through the relay: never sent (may end failed,
+                                                    -- owner-offline), sent (resent; `unknown` at its limit), accepted
+                                                    -- (reconciled after each reconnect; `unknown` at its limit or when
+                                                    -- the owner no longer knows it); D165 item 4
+artifact_pause(artifact_id PK, by CHECK(by IN ('owner','operator')), reason, paused_at)   -- D165 item 14; a row exists
+                                                    -- only while paused; an operator's row is removed only by the operator
+quarantine(route_id, version_id NULL, reason, at, UNIQUE(route_id, version_id))
+                                                    -- a route, or one version of a route, the operator quarantined
+                                                    -- (D165 item 9); an identical version in another home is untouched
+link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137)
+```
+
+### 7.3 The owner's instance
+
+A local home that shares to a server adds:
+
+```text
+<home>/keys/remote/<server hash>.json   the link's refresh token and instance ID (mode 0600, like secrets/, D44);
+                                        never in the ledger, never logged
+```
+
+```sql
+remote_link(server PK, account_id, instance_id, is_default, linked_at, state, incarnation NULL, follow_cursor NULL,
+            relay_mark INTEGER NOT NULL DEFAULT 0)
+                                                    -- instance_id is kept on logout (unless --forget), so signing in
+                                                    -- again rebinds the same link; follow_cursor and incarnation: the
+                                                    -- hosted home's position this instance has committed (the sync
+                                                    -- cursor); the server also keeps the named subscriber `owner:<lnk_…>`
+hosted_artifact(artifact_id FK, server FK, hosted_home, route_id, label, shared_at, stopped_at NULL,
+                PRIMARY KEY(artifact_id, server))   -- one artifact may be shared to several servers
+version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','complete')), attempts, next_attempt_at,
+             PRIMARY KEY(artifact_id, version_id, server))   -- publishes waiting to reach the server (D165 item 3)
+relayed_run(run_id PK, server, relay_seq, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
+                                                    -- the hosted run's ID recorded before its worker starts, so a
+                                                    -- repeated relay.run joins it; a crash mid-run ends it failed,
+                                                    -- reason interrupted, reported on reconnect (D165 item 4)
+```
+
+- **`relay_mark`** (in `remote_link`'s row, beside `follow_cursor`): the highest relay sequence this home ever accepted, which `mostra/initialize` reports (INTERFACES §18.3), so a home restored to before runs it accepted is found.
+- **Imported submissions** keep their hosted IDs, digest and snapshot, with `origin_json` (`{ server, home, incarnation, position }`, additive to `submission`); a delivery of the same submission again finds it and answers accepted. Only submissions of artifacts this instance owns (its `hosted_artifact` rows) are imported. Their viewers are imported as rows of their kind (`account`, `anonymous`, `token`) with `external_ref` prefixed by the server's hash. A local delivery of an imported submission has the ID `dlv_` plus 26 Crockford base32 characters of SHA-256(submission ID ‖ 0x00 ‖ host owner), so a re-import repeats it (D105's identity).
+- **Followed events** of owned artifacts are appended with local cursors and `origin_json` (`{ server, home, incarnation, cursor }`, additive to `event`, unique when present), so a page of followed events committed twice appends nothing. A followed hosted `submission.created` is never appended itself: it imports the submission when it is missing (the import appends the local `submission.created`), so each appears once.
+- **A hosted artifact's artifact state and live values** are not kept locally; reads and writes go to the hosted home (D165 item 1).
+
+### 7.4 Tallies
+
+```sql
+tally(artifact_id, field_id, choice, count INTEGER NOT NULL, PRIMARY KEY(artifact_id, field_id, choice))
+```
+
+Written only inside the submit transaction, one more for the choice the new submission's snapshot holds (D165 item 12), in hosted and local homes alike. A trigger refuses a count that goes down. The live key `$tally/<field>` reads it; nothing else of a submission reaches viewers through it.
+
+### 7.5 Retention
+
+The open server deletes nothing on its own (D165 item 13): hosted homes keep every version, submission and event as local homes do (D47), and `files/` keeps every file a kept version names. An operator removes an artifact through its server handle (`remove`, INTERFACES §18.6), which deletes the artifact's rows and links and its home's `home_file` rows no other version of the home names, in one transaction with `file_ref`'s counts; a file no home holds is swept after a grace period, so a push that names it meanwhile keeps it. The route's label stays in `label_issued`, never to be issued again. Retention policies (automatic removal after a time) are `ee/` or operator features (D165 item 11), never the core's. A submission still pending delivery to its owner is never removed by anything but an explicit `remove`.

@@ -1,6 +1,6 @@
 # Mostra architecture
 
-**Status:** Settled architecture for v1, written by the C03-A phase design from the approved decisions in [DECISIONS.md](DECISIONS.md). It replaces the seed's architecture direction (commit `e1a5683`), whose approved content it keeps. Interfaces are specified in [INTERFACES.md](INTERFACES.md), stored data in [DATA_MODEL.md](DATA_MODEL.md), and failure, recovery and concurrency behavior in [FAILURE_MODEL.md](FAILURE_MODEL.md). Third-party facts are in [VERIFIED_FACTS.md](VERIFIED_FACTS.md). Every "Open for C03-A" question from the seed is resolved in [§15](#15-resolution-of-the-seeds-open-questions).
+**Status:** Settled architecture for v1, written by the C03-A phase design from the approved decisions in [DECISIONS.md](DECISIONS.md). It replaces the seed's architecture direction (commit `e1a5683`), whose approved content it keeps. Interfaces are specified in [INTERFACES.md](INTERFACES.md), stored data in [DATA_MODEL.md](DATA_MODEL.md), and failure, recovery and concurrency behavior in [FAILURE_MODEL.md](FAILURE_MODEL.md). Third-party facts are in [VERIFIED_FACTS.md](VERIFIED_FACTS.md). Every "Open for C03-A" question from the seed is resolved in [§16](#16-resolution-of-the-seeds-open-questions). The remote server, the relay and the operator boundary are [§15](#15-the-remote-server-the-relay-and-the-operator-boundary) (D165).
 
 ## 1. The shape in one page
 
@@ -277,7 +277,7 @@ The gateway strips Mostra's cookies before proxying to workers, demos or termina
 - A share mints its own link at its tunnel's shell address, ends at its TTL (public: 1 hour by default, 7 days at most), on `share/stop`, or when its tunnel can't continue, and tailnet and Funnel shares are set up again after a restart. Active shares keep a daemon from its idle exit.
 - A host's `addressing` port (HO-10) gives its own tunnel's address for an artifact's links in the same way: each answer becomes a face on a leased loopback port the host forwards to.
 - When a tool is missing, Mostra explains how to install it.
-- **A remote server** (D116) is the last rung: the agent shares a published version to a self-hostable remote server, or to the managed service that runs the same open server, and the link works without a tunnel and while the author's machine sleeps. Hosted artifacts are served only from a separate user-content domain, behind the same capability URLs and scopes (D06, D97). Their action calls and live producers run on the owner's instance through the relay (D117). The design is WP-28's (§14).
+- **A remote server** (D116) is the last rung: the agent shares a published version to a self-hostable remote server, or to the managed service that runs the same open server, and the link works without a tunnel and while the author's machine sleeps. Hosted artifacts are served only from a separate user-content domain, behind the same capability URLs and scopes (D06, D97). Their action calls and live producers run on the owner's instance through the relay (D117). [§15](#15-the-remote-server-the-relay-and-the-operator-boundary) is the design (D165).
 
 ## 11. Host integration
 
@@ -295,7 +295,7 @@ Hosts integrate through the **host protocol** (D59, INTERFACES §6) and **option
 | `secrets` | home store | its credential store |
 | `pty` | PTY host | default or its own PTYs |
 
-**Operator ports** (D116, HO-09) are the remote server's counterpart for whoever operates it: limits, metering, account resolution and abuse actions, each with a no-op default, so a self-hoster needs nothing more. The managed service's operating layer, which lives outside this repository (D118), reaches the remote server only through them, as hosts reach an instance only through the host protocol and its ports (invariant 11). Their shape is WP-28's to design.
+**Operator ports** (D116, HO-09) are the remote server's counterpart for whoever operates it: limits, metering, account resolution and abuse actions, each with a no-op default, so a self-hoster needs nothing more. The managed service's operating layer, which lives outside this repository (D118), reaches the remote server only through them, as hosts reach an instance only through the host protocol and its ports (invariant 11). Their shape is [§15.10](#1510-the-operator-boundary) (D165).
 
 The **Rust crate** `mostra-host` has wire types generated from the schema, a hand-written tokio client, spawn and attach, runtime-bundle download and cache, and port traits (HO-03). The **TypeScript SDK** has `createMostra({ home, ports })` (HO-04). The **conformance kit** (HO-05) runs scenarios against a host through a harness shim the host ships, with expected-failure baselines, and the TypeScript and Rust reference hosts pass it (D143, INTERFACES §17). JCODE_HOST's H-01 to H-16 map to generic mechanisms only (HO-06, [JCODE_HOST.md](JCODE_HOST.md#how-mostra-meets-each-need)).
 
@@ -333,11 +333,148 @@ A later `rsc` mode adds rsc, ssr and client builder environments (`@vitejs/plugi
 - the `WorkerLauncher` interface that becomes `SandboxPort`, taking a version reference rather than a directory (INTERFACES §7, D124);
 - a stateless MCP server with explicit handles (D61).
 
-**The remote server** is in v1 (D116): a remote transport for the host protocol, the relay (D117), many homes behind one gateway on a separate user-content domain, viewer sign-in, operator ports (§11) and a remote MCP server over Streamable HTTP with OAuth. *Deferred decision* for WP-28, which records the design in a new section of this document, with INTERFACES, DATA_MODEL and FAILURE_MODEL (RM-05): where a hosted artifact's ledger is canonical, the transport, what a share pushes, relay semantics and the offline policy, authoring from chat hosts, hosting many homes, addressing, identity, the operator ports, the remote MCP surface and self-hosting. Sandboxed remote execution through `SandboxPort` stays v1.x (RM-06).
+**The remote server** is in v1 (D116): a remote transport for the host protocol, the relay (D117), many homes behind one gateway on a separate user-content domain, viewer sign-in, operator ports (§11) and a remote MCP server over Streamable HTTP with OAuth. Its design is [§15](#15-the-remote-server-the-relay-and-the-operator-boundary) (D165). Sandboxed remote execution through `SandboxPort` stays v1.x (RM-06).
 
 **Layers stay usable on their own** (D01, D30): the kit without the runtime, the runtime with any components, and any host through the ports.
 
-## 15. Resolution of the seed's open questions
+## 15. The remote server, the relay and the operator boundary
+
+The remote server (D116) gives a shared link that works without a tunnel and while the author's machine sleeps, and gives cloud chat hosts a remote MCP server. Its design is D165; interfaces are INTERFACES §18, stored data DATA_MODEL §7, failure behavior FAILURE_MODEL §11. Domains below are examples (`usercontent.example` for a user-content domain, `api.example` for an API origin).
+
+### 15.1 The shape
+
+```mermaid
+flowchart LR
+  subgraph Owner["The owner's machine"]
+    INST["Owner instance<br/>(the local supervisor)<br/>source · versions · secrets · workers"]
+    HOST["Local hosts, CLI, agent"]
+  end
+  subgraph Server["Remote server (one process, many homes)"]
+    FRONT["Front: exact-Host routing<br/>hosted shell · artifact faces"]
+    API["API origin: network binding (WSS),<br/>version files (HTTPS), OAuth, /mcp"]
+    HOMES["Hosted homes<br/>(one ledger each, opened on demand)"]
+    OPS["Operator ports (no-op defaults)"]
+  end
+  OPL["Operating layer (outside this repository)"]
+  VIEW["Viewers' browsers"]
+  CHAT["Chat hosts (MCP clients)"]
+  HOST <-->|host protocol| INST
+  INST <-->|"network binding: dials out,<br/>submissions port, sync cursor, relay"| API
+  VIEW <-->|"HTTPS: shell on the apex,<br/>frames on per-artifact labels"| FRONT
+  CHAT <-->|"Streamable HTTP + OAuth"| API
+  FRONT --- HOMES
+  API --- HOMES
+  HOMES --- OPS
+  OPS <-->|in-process module| OPL
+```
+
+- **The owner instance** is an ordinary local Mostra instance that shares artifacts to a server. It stays canonical for source, versions, secrets and server code, and it runs every relayed run, call, live producer and authoring operation.
+- **The remote server** is one process holding many **hosted homes**. Each hosted home is a Mostra home without builds, verify, workers or secrets: its ledger, interaction core, events, outbox, links and gateway routes are the same modules the local runtime has (§6, §10), serving an account's hosted artifacts. It runs no artifact code (D117).
+- **The operating layer** of a managed service reaches the server only through operator ports (§15.10), as hosts reach an instance only through the host protocol (invariant 11).
+
+### 15.2 Hosted homes
+
+- **Canonical data** (D165 item 1). A hosted home is canonical for everything viewers of its hosted links create: drafts, artifact state, submissions, comments, action runs, live values, links and views.
+- **One owner per home.** A hosted home belongs to one owner, an account, and later an organization (WP-31 and the operating layer), and holds every artifact that owner hosts on the server, whichever of its linked instances shared it (§15.3).
+- **One writer per home** (D165 item 0b). A hosted ledger opens in WAL with normal locking and `synchronous=FULL`, so a backup replicator may read it. Its one writer is the process that holds the home's lock (a one-row SQLite database held in exclusive locking, which the operating system releases when the process dies), together with the server's in-process registry of open homes. A data directory on a network filesystem is refused.
+- **Incarnations.** Each hosted home carries a random incarnation, rotated when it is restored from a backup, so an owner that follows it never mistakes a reused cursor for one it already copied (FAILURE_MODEL §11.2). The owner instance, on another machine, is the witness a restore can't roll back: a home whose owner has committed more than it holds rotates before answering it.
+- **Opened on demand** (D165 item 6). A home opens on its first request (under 250 ms at the 95th percentile) and closes after 10 idle minutes: no connection, stream, poll, pending delivery or waiting run. Several server processes can serve several data directories; which one serves a home is the operator's routing.
+- **What a hosted home lacks:** sources, builds, verify, the dependency store, workers, secrets and terminals. Versions arrive from the owner (§15.4), and server code runs on the owner (§15.5).
+
+### 15.3 The owner's link
+
+- **The network binding** (D165 item 2) is the host protocol as JSON-RPC 2.0 over WebSocket on the API origin, with the methods, revisions and diagnostics of stdio and the socket. The owner instance dials out and keeps one connection per linked server, with heartbeats every 20 s each way, a 45 s silence limit, and reconnection with backoff. Messages are at most the protocol's line limit, and bulk bytes go over HTTPS.
+- **Sign-in.** `mostra login` runs the OAuth device authorization grant against the server's authorization server; the instance keeps its refresh token in the home, owner-only, and each linked instance is a revocable grant of its own. An instance's link ID belongs to its home on that server: signing out and in again rebinds the same link, so the artifacts it owns stay its own.
+- **The owner instance is a host of its hosted home** (D165 item 1):
+  - it registers the `submissions` port, and on a hosted home a submission's one delivery owner is its artifact's owner link (`lnk_`), so the hosted outbox delivers each submission once, to that instance, in order and idempotently, waiting while it is away; it stores the submission (same IDs and digest) and enqueues its own outbox to its local hosts in one transaction, so local hosts receive hosted submissions through the local outbox (RM-02);
+  - a named event subscription on the hosted home is the sync cursor: the instance copies the durable events of the artifacts it owns into its own log, so `wait`, `results` and `events` work locally unchanged;
+  - it registers the `relay` port (§15.5).
+- **One copy of shared state.** A hosted artifact's artifact state and live values live in the hosted home. Writes from the owner's side go there, refused with a code when it can't be reached, never applied locally alone. The owner's own local links keep their drafts and submissions locally, as a separate audience.
+- **One owner instance per hosted artifact** (D165 item 1b): the instance that shared it receives its deliveries, relayed runs and authoring calls. Other instances of the account read and wait through the hosted home. Chat-host authoring goes to the account's default instance, the first one linked unless changed.
+
+### 15.4 Sharing and versions
+
+`mostra share <artifact> --cloud [<server>]` (D165 item 15) pushes the latest version and mints a hosted link:
+- **What is pushed** (D165 item 3): the client build, `manifest.json`, `registry.json`, `lock.yaml` and the full output listing (every built file's path and SHA-256, server files included). The server checks the client files against `outputDigest` without receiving server code. Files go to content-addressed URLs on the API origin, only those the server lacks. Never sources.
+- **Identity.** The version keeps its ID (D89) and number, so a submission names the same version in both homes.
+- **Later publishes follow.** While an artifact is shared, each publish of it is pushed too, queued while the server can't be reached. Hosted viewers see the version banner as local ones do (VR-04).
+- **Links** are the hosted home's own capability links (D97), minted at the share's hosted address, with scopes, expiry and a viewer as locally.
+
+### 15.5 The relay
+
+The relay (D117, D165 item 4) runs a hosted artifact's server code on its owner instance, over the owner's binding connection:
+- **Runs.** The hosted home records each run as a local instance does (`queued`, D130), then sends it to the owner instance, which records it under the hosted run's ID, answers that it accepted it, runs it in its own worker pool with its own watchdog and secrets, and streams progress, log, result batches and its end back. A repeated relay message joins the recorded run, so a run happens at most once across both homes. On every reconnect the hosted home reconciles the runs the owner accepted and hasn't finished; a run the owner no longer knows (its home restored to before it) becomes `unknown` and is never sent again.
+- **Plain calls** are relayed while the owner is connected, and answer "owner offline" at once otherwise, since they aren't durable.
+- **Owner offline.** A run waits in `waiting`, and the page says it waits for the owner. The artifact's offline policy (manifest `hosted.offline`) is `queue` with a time limit (24 hours by default, 7 days at most) or `fail`. Waiting runs per artifact are capped (a server setting and a limits operation): past the cap a run is refused before it is recorded. When the owner returns, waiting runs start in the order they were made, at a bounded rate.
+- **Relay lost mid-run.** The owner finishes the run and reports its end when it reconnects. Until then the hosted home shows the run running with its owner unreachable. Once the offline limit passes, a run with no reported end becomes `unknown` (outcome unknown), never `failed`: waits and pages stop treating it as running, and the owner's later report replaces it once, with both events kept. Only a run never sent can end `failed` for its owner's absence; one sent but never acknowledged is sent again, and at the limit it is `unknown` too.
+- **Live producers** run on the owner while there is interest (a viewer, or `always`) and push their values to the hosted home, which keeps the latest value and the ring and serves them to viewers. While the owner is offline, viewers see the last value with its time and an "owner offline" flag.
+- **Server code's other effects** (`state`, `signal`, `emit`) are sent to the hosted home with the run's causation. `secret()` is answered on the owner instance, and no secret ever crosses the relay.
+- **Who may trigger** (D159): on hosted links, relayed runs and calls need a signed-in viewer or an expected respondent unless the manifest opts into "anyone with the link"; a rate limit applies per link.
+- **Authoring** (D165 item 5): remote MCP's authoring tools (create, write, patch, verify, publish) are relayed to the owner instance's workspace, builder and `verify`; a publish through them also hosts the version.
+
+### 15.6 Addressing and the hosted shell
+
+- **Origins** (D165 item 7). Each hosted artifact has a **hosted route** the server mints per home and artifact: a random `rte_` ID and a random DNS label, never issued twice nor moved between homes. Its pages are served from `https://<label>.usercontent.example`, so one wildcard certificate covers every artifact, and no origin (with the browser storage it holds) ever passes to another tenant. The hosted shell lives on the apex, `https://usercontent.example/a/<routeId>[/v/<number>]#t=<secret>`. Hosted frames always use worker mode (D70), so nothing depends on the shell and its frames being cross-site.
+- **Rules of the hosted shell:**
+  - the apex serves only the shell, never an artifact's files;
+  - every hosted response sends `Origin-Agent-Cluster: ?1`, and the shell never sets `document.domain`;
+  - no credential is ever bound to the user-content domain: no passwords and no WebAuthn whose relying-party ID is the domain or a name under it; sign-in happens only on the API origin;
+  - the shell's resources send `Cross-Origin-Resource-Policy: same-origin`, and no check treats `Sec-Fetch-Site: same-site` as trust;
+  - the shell runs under a strict Content Security Policy with no inline script and Trusted Types, and renders every string a tenant or an operator supplies (names, titles, reasons, messages) only as text;
+  - the shell keeps a session per route and refuses a session sent for another route, so one route's session is never another's;
+  - the shell's framing policy is an operator setting whose only v1 value is `frame-ancestors 'none'` (D145), and every document on a label origin, the worker-mode bootstrap included, names only the shell of the domain it is served on in `frame-ancestors`, so no hosted artifact shows without the trusted chrome;
+  - the trusted chrome of D161 and the report control render in the shell, never in the artifact (invariant 7).
+- **Domains** (D137). The active user-content domain and its spares are configuration. Each link records the domain it was minted on and keeps working there, and new links use the active one, so a domain move needs no release.
+- **Hostnames an operator supplies.** Through the operator port `routing.resolve(host)`, an operator can serve an artifact, or all of an account's links, on a hostname it supplies: a chosen label, or an organization's own domain whose TLS the operator's edge terminates. A page there keeps its own origin, worker-mode frames and no cookies; an unknown `Host` gets nothing.
+- **The API origin** (`api.example`) carries the network binding, version files, the OAuth authorization server and `/mcp`. It is never on the user-content domain.
+- **TLS** is terminated in front of the server (an edge, or Caddy for a self-hoster). The server routes by the exact `Host` and believes forwarded headers only from configured proxies.
+
+### 15.7 Identity and sessions
+
+- **No cookies on hosted origins** (D165 item 8). The hosted shell keeps its session secret in its own origin's storage (and in memory when a storage write fails, keeping the link's fragment until the secret is stored) and sends it in a header; frames send `X-Mostra-Frame` (D158 item 5); the server ignores and drops every `Cookie` header on hosted hosts. A tenant page can therefore neither plant, overwrite, shadow nor crowd out another origin's session, with or without a public-suffix entry. Exact Host and Origin checks, CSRF tokens, scopes and origin-bound sessions are D98's, unchanged.
+- **Sign-in** happens only on the API origin, through the server's OAuth 2.1 authorization server, which shows its own consent page for every client an account hasn't approved and never skips it because an identity provider skipped its own. Its identity providers sit behind a port: an operator configures GitHub, Google, any OpenID Connect provider or its own, and a self-hoster its own or none. An account is separate from its sign-in identities. The same authorization server issues the CLI's device-grant tokens, MCP clients' tokens and viewers' sign-in. Enterprise identity (SAML, SCIM) plugs into the same port from `ee/` or an operator.
+- **Viewers.** A hosted link minted with a viewer acts as that viewer (D104). One minted without a viewer acts as the signed-in person's account (viewer kind `account`, its name verified by its provider), or, for a person not signed in, as an anonymous viewer per browser (kind `anonymous`, an optional self-chosen name recorded unverified). The shell sends each route a different anonymous key, derived from one browser secret, so two owners can't recognize one visitor. Naming oneself to a page's owner takes a click in the trusted chrome, and the authorization server names the sender before it continues. The capability URL stays the authorization (D06, D97); sign-in only names the person.
+
+### 15.8 What a respondent meets
+
+- **After Submit** the shell says "Your answer was sent." (D161) as soon as the hosted home commits the submission, and nothing about delivery. Delivery states are shown to the owner, the owner's agent and hosts, and in the shell only when the signed-in viewer is the owner (D165 item 1a, amending IN-13 for hosted links).
+- **The trusted chrome** (D161): the sender line, "Never enter passwords", generic link previews, `noindex`, and the report control.
+- **Anonymous answers at volume** (D165 item 13): hosted links accept submissions from viewers who aren't signed in when the artifact's policy allows it, at about 1 a second sustained and 10 a second in bursts per artifact, accepted under 0.5 s at the 95th percentile with the owner offline. Per-IP and per-link limits are server settings; past them the shell says "try again shortly" and keeps the draft.
+- **Counts by choice** (D165 item 12): an artifact that opts in through its manifest gets a built-in tally of a fixed-choice field, counted in the submit transaction and pushed to viewers on the live channel, with no artifact code and no relay. The same works locally.
+- **Pause** (D165 item 14): a paused artifact stays viewable and shows that it is paused; it takes no submissions and runs no relayed actions until resumed.
+
+### 15.9 Remote MCP
+
+The remote MCP server (D116, MC-04, D165 item 10) serves `@mostra/mcp`'s factory (D164) at `https://api.example/mcp` over Streamable HTTP, statelessly, for the `2026-07-28` revision and the 2025 revisions. OAuth follows that revision's authorization specification (Client ID Metadata Documents and Dynamic Client Registration, PKCE, resource indicators, `iss`, rotating refresh tokens). Its ports:
+- **the instance:** reading tools act on the account's hosted home; authoring tools are relayed to the account's default owner instance, and without one connected they answer `MOSTRA_REMOTE_NO_INSTANCE`;
+- **the workspace** is the owner instance's own, reached through the relay;
+- **the docs** are bundled.
+
+The tools and their schemas are the local server's (D32). How a page renders and what a quota message may say inside a chat host is a policy per host (D160).
+
+### 15.10 The operator boundary
+
+**The open server is complete for one operator serving its own people's homes** (D165 item 11): hosting, the relay, sign-in through providers it configures, remote MCP, the tally, rate limits and pause. Everything an operating layer adds comes through **operator ports**: TypeScript interfaces in a module the server loads in process, each call async and time-limited, each with a no-op default (D165 item 9):
+
+| Port | What it does | No-op default |
+|---|---|---|
+| `limits` | Allows or refuses an operation (share, version push, link, view, submit, relayed call or run, waiting run, MCP call, storage) for an account | allow |
+| `metering` | Receives counters in batches, at least once, with idempotency keys (views with a monthly pseudonymous viewer key, submissions, requests, bytes, relay messages, MCP calls by client, active seconds) | discard |
+| `accounts` | Resolves a sign-in identity to an account (or a first sign-in step on the operator's origin); authenticates credentials the operator issued | the server's own accounts; no outside credential |
+| `abuse` | Receives reports and a hook after each version push (with read access to its client files); acts through the server handle: quarantine, pause, suspend, revoke links, and deletion as a separate call | nothing |
+| `policy` | Per link and artifact: interstitial, longest link lifetime, after-submit line, footer wording, the made-with mark | none of them |
+| `routing` | Resolves an exact `Host` to the shell, a home and an artifact | the server's own labels |
+| `events` | Receives submission accepted, version pushed, run ended, roster complete (WP-31), at least once with stable IDs | discard |
+
+When `limits` doesn't answer in time, operations that create fail closed and viewer input proceeds, so nothing a person typed is lost.
+
+**Not in the open server:** plans, entitlements and organization administration; quotas, cost and billing; abuse scoring, scanning and takedown tooling; placing homes across machines, backup and restore automation, and moving domains; service keys, webhooks and outside domains' provisioning; sending email; sandboxed execution (v1.x, `SandboxPort`). Enterprise identity and administration belong to `ee/` (D118).
+
+### 15.11 Self-hosting
+
+One multi-architecture Linux container image (D165 item 11) runs `mostra-runtime server` as a non-root user with one data volume (hosted homes, version files, the server's directory and keys) and configuration from environment variables or a file: the user-content domains, the API origin, identity providers, trusted proxies, rate limits and an optional operator module. A TLS terminator with a wildcard certificate sits in front (the docs show Caddy). One small machine serves a public anonymous page at §15.8's targets.
+
+## 16. Resolution of the seed's open questions
 
 | Seed section | Question | Resolution |
 |---|---|---|
