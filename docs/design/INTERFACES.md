@@ -18,6 +18,9 @@
   | `thr_`, `cmt_` | thread, comment | ULID |
   | `tok_` | capability token | ULID (the secret is separate) |
   | `mut_` | mutation | client-generated ULID |
+  | `acct_` | account on a remote server (D165 item 8) | ULID |
+  | `hom_` | hosted home on a remote server (D165 item 1) | ULID |
+  | `lnk_` | an instance linked to a remote server (D165 item 2) | ULID |
 
   Event cursors are decimal strings of a home-wide integer.
 - **Time.** RFC 3339 UTC strings with milliseconds. Durations in flags and manifests are strings like `30m`, `2h` or `24h`.
@@ -61,6 +64,13 @@ export const artifact = defineArtifact({
   demos?: Record<string, { command: string[]; cwd?: string; ready?: string; bridge?: boolean } | { attach: number; bridge?: boolean }>;
   limits?: { heapMb?: number; watchdogMs?: number; idleMinutes?: number };
   verify?: { viewports?: string[]; frames?: string[]; extraChecks?: string[]; smoke?: boolean };
+  tally?: { field: string; choices: string[] }[];   // D165 item 12: counts by choice, shown to viewers (§18.4)
+  hosted?: {                                       // D165: how the artifact behaves on a remote server (§18)
+    offline?: { actions?: "queue" | "fail"; limit?: string };   // item 4: default queue, "24h", at most "7d"
+    actions?: "signed-in" | "link";             // D159: who may trigger relayed actions; default "signed-in"
+    submissions?: "link" | "signed-in";         // item 13: who may submit; default "link" (anonymous viewers too)
+    preview?: "generic" | "title";              // D161: link previews; default "generic"
+  };
 });
 ```
 
@@ -100,7 +110,8 @@ function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>, optio
   progress?: { fraction?: number; message?: string }; log: string[];
   partial: unknown[];                // items an AsyncIterable result yielded so far (D130)
   cancel(): void; runId?: string;
-};                                   // status also has "waiting", reserved for WP-28's relay (D130)
+};                                   // status also has "waiting" (a relayed run waiting for its owner) and
+                                     // "unknown" (its owner never reported its end within the offline limit), D165 item 4
 
 function useLive<K extends keyof LiveSources>(key: K, options?: { mode?: "latest" | "append"; window?: number }): {
   data: LiveSources[K] | undefined; isLoading: boolean; error?: Error; refresh(): void; revision?: string; at?: string;
@@ -108,7 +119,7 @@ function useLive<K extends keyof LiveSources>(key: K, options?: { mode?: "latest
 
 function useChoice(reviewSetId: string, options?: { candidates?: { id: string; label?: string }[]; current?: string }):
   { choice?: string; choose(candidateId: string): Promise<void> }; // channel rules as useSubmit; candidates ask for the trusted Choose (D113)
-function useViewer(): { id: string; name?: string; source: "local" | "tailnet" | "token" | "host" };
+function useViewer(): { id: string; name?: string; source: "local" | "tailnet" | "token" | "host" | "account" | "anonymous"; verified?: boolean }; // account and anonymous: hosted links (D165 item 8)
 function useArtifact(): { id: string; versionId: string; version: number; viewId: string; mode: "live" | "static" | "mcp-app" | "verify" };
 
 declare global { interface Window { storage: ClaudeCompatibleStorage } } // D53
@@ -135,7 +146,7 @@ What WP-08 fixed (D129, D130):
 - **Server references** call through the page's runtime (`setServerCallback`, which `mountArtifact` installs): a plain call, its result streamed back (D54); outside a live page they reject with `MOSTRA_TARGET_UNAVAILABLE`.
 - **`"use client"`** heads every entry and module of `@mostra/react` that renders or holds page state (D19 seam 4).
 
-**Team hooks** (D121). *Deferred decision* for WP-31, which names and specifies them (WP-28 reserves their place): a respondent-status hook (each expected respondent's state: not opened, drafting, submitted; options include `useRespondents()`), a presence hook with opt-in cursor and selection sharing as ephemeral traffic (options include `usePresence()`), and the attribution of artifact-scoped fields (who last changed each and when), for which `FieldMeta.updatedBy` is the starting point. Every addition is additive to this section.
+**Team hooks** (D121). *Deferred decision* for WP-31, which names and specifies them (WP-28 reserves their place): a respondent-status hook (each expected respondent's state: not opened, drafting, submitted; options include `useRespondents()`), a presence hook with opt-in cursor and selection sharing as ephemeral traffic (options include `usePresence()`), and the attribution of artifact-scoped fields (who last changed each and when), for which `FieldMeta.updatedBy` is the starting point. Every addition is additive to this section. D165 item 16 reserves the same places for hosted links; the remote server's outbound invitation port is reserved in §18.6.
 
 ### 2.4 `@mostra/server` (worker side)
 
@@ -215,6 +226,7 @@ Internal to Mostra, but immutable versions embed the client runtime, so this is 
 - **What WP-08 added to `2026-10-15`**, additively (D130): the `call`, `runs`, `runs/attach`, `runs/{id}/cancel` and `live` payloads (`CallRequest` and NDJSON `CallLine`s, `RunRequest`, `RunAttachRequest`, `RunCancelRequest`, `RunState`, `LiveRequest`, `LiveState`); ephemeral messages on the stream (`event: run` with a `RunDelta`, `event: live` with a `LiveUpdate`, neither with an `id`) and in `PollResult.ephemeral`, never stored; and `FrameTicket.serverParked`. A `call` answers 200 with NDJSON once its worker has started, then one `{ batch }` line per serialized batch and a final `{ end: { status: "succeeded" | "failed", error? } }`; refusals before that are the diagnostics as JSON: 400 for malformed arguments or `MOSTRA_ACTION_UNSERIALIZABLE`, 404 `MOSTRA_ACTION_UNKNOWN_FUNCTION`, 413 `MOSTRA_ACTION_TOO_LARGE`, 503 `MOSTRA_RUNTIME_WORKER_PARKED` or `MOSTRA_RUNTIME_WORKER_CRASHED`. Every route checks the view, the action scope of the function it names (D97 item 4), the arguments' frames (`checkArgumentFrames`) and that the function exists in the view's version, before a run is recorded or a worker starts; `runs/attach` answers only runs whose function the link may run. A page's stream carries `action.*` events only for runs it may see, a signal from server code only to the viewer whose call raised it, no `host.*` event, and `worker.crashed` without its `cause` (D136).
 - **What WP-13 added to `2026-10-15`**, additively (D158): worker-mode frame sessions (`FrameTicket.mode: "worker"` with `src` at `/_mostra/enter#t=<ticket>`, the bootstrap page, `POST /_mostra/enter`, `/_mostra/sw.js`, the `X-Mostra-Frame` header in place of the cookie); stream tickets (`POST /_mostra/v/{rev}/ticket`, and `?ticket=` on `events` and `events/poll`, which a ticket authenticates instead of the session; single-use, 60 s, good only for the purpose, origin and artifact they were minted for, at most eight outstanding per session, the oldest dropped); `/_mostra/session` reports `mode` (`cookie` or `worker`) and `streams` (`false` behind a quick tunnel, where the page long-polls from the start); every event stream opens with `event: ready` before anything else, so a page that hears nothing within 6 s long-polls instead (a proxy or tunnel holds the stream back); an event stream in worker mode without a ticket, or on a face streams don't pass, is refused (503 `MOSTRA_HYGIENE_NOT_SERVED`), so every client, published versions included, falls back to long polling at once.
 - **What WP-14 added to `2026-10-15`**, additively (D162 item 8): `LiveState.awaiting` is `true` while a source has no value and no failure and the artifact's latest version has a producer whose first `load` is on its way, and a `live` update with `awaiting: false` says a source read that way only streams. `useLive` is loading, and verify waits for it, only while that holds; a key only `mostra push` writes, or a source that only streams, is never waited for.
+- **What the remote server adds** (D165; WP-29 and WP-30 build it, additively): on a hosted host the shell's exchange sets no cookie and answers the session secret, which the shell sends as `X-Mostra-Shell`, and frames always use worker mode; every `Cookie` header is dropped unread. `RunState.status` gains `waiting` (a relayed run waiting for its owner) and `unknown` (no end reported within the artifact's offline limit), `RunState.ownerUnreachable` marks a running run whose owner is out of reach, and `reason` gains `owner-offline`. `LiveState.ownerOffline` marks a value its producer can't refresh while the owner is offline. The reserved live key `$tally/<fieldId>` carries a tally (§18.4). `SubmissionSummary.deliveries` is absent for a respondent on a hosted link (D165 item 1a). New refusals: 423 `MOSTRA_SUBMIT_PAUSED`, 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`, 403 `MOSTRA_REMOTE_LIMIT_REACHED`, 503 `MOSTRA_REMOTE_OWNER_OFFLINE` and `MOSTRA_REMOTE_QUEUE_FULL`, 403 `MOSTRA_REMOTE_SIGN_IN_REQUIRED` (§18.4).
 - Refusals are the diagnostics as JSON: 400 for a malformed body or an invalid field ID or signal, 403 `MOSTRA_SUBMIT_VIEW_INVALID` for a view of another viewer or artifact, 409 as above and for `MOSTRA_FIELD_MUTATION_ID_REUSED`, 413 `MOSTRA_FIELD_TOO_LARGE`.
 
 The shell origin has its own endpoints for capability exchange, trusted-control activation, the banner, follow preferences and review, all with the same checks. Mutations require JSON content types and the CSRF header (seed hygiene items 5 and 11). WP-05 serves these on the shell origin, each artifact under `/a/{artifactId}`, so each has its own shell session (D97, D98):
@@ -244,7 +256,7 @@ JSON-RPC 2.0 over `postMessage`, with exact origin checks and schema validation.
 
 ## 6. Host protocol (clients ↔ supervisor)
 
-JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the runtime bundle's `mostra-runtime host`, D85) or the home's Unix socket (attached to `mostra-runtime daemon`); on Windows the home's control endpoint is an owner-only named pipe, `\\.\pipe\mostra-<home hash>-<16 random hex>`, fresh on every bind, which clients read from `instance.json` and open like a socket (D150). A third binding, over an authenticated network transport to a remote server (D116, RM-02), is a *Deferred decision* for WP-28: its transport, authentication, sign-in and sharing methods, relay messages (D117) and how remote waits, results and events read back. Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03): a retry with the same parameters returns the recorded result, and the same `requestId` with other parameters is `MOSTRA_HOST_REQUEST_ID_REUSED` (D100).
+JSON-RPC 2.0 over newline-delimited stdio (spawned: `mostra host`, which is the runtime bundle's `mostra-runtime host`, D85) or the home's Unix socket (attached to `mostra-runtime daemon`); on Windows the home's control endpoint is an owner-only named pipe, `\\.\pipe\mostra-<home hash>-<16 random hex>`, fresh on every bind, which clients read from `instance.json` and open like a socket (D150). A third binding, over an authenticated network transport to a remote server (D116, RM-02), is JSON-RPC 2.0 over WebSocket on the server's API origin, with the same methods and rules (§18.2, D165 item 2). Schemas are Zod 4 in `@mostra/protocol`, published as JSON Schema 2020-12, with draft-07 output for typify (D59). Methods are grouped by caller need. Every mutating method takes an optional `requestId` for idempotent retries (H-03): a retry with the same parameters returns the recorded result, and the same `requestId` with other parameters is `MOSTRA_HOST_REQUEST_ID_REUSED` (D100).
 
 **Framing and errors.** Each message is one line of JSON (JSON never contains a raw newline). Revision `2026-10-10` has no batches: a JSON array is answered with an Invalid Request error (D83). Every error's `data` is the diagnostic, and `error.code` is the JSON-RPC code: -32700 for unparseable JSON and -32600 for a message that isn't a valid request (`MOSTRA_HOST_MALFORMED`), -32601 for an unknown method (`MOSTRA_HOST_METHOD_UNKNOWN`), -32602 for params that fail the method's schema (`MOSTRA_HOST_INVALID_PARAMS`), -32603 for an unexpected failure (`MOSTRA_HOST_INTERNAL_ERROR`), and -32000 for every other diagnostic. Clients switch on `data.code`, never on the message.
 
@@ -272,7 +284,7 @@ Viewing and sharing
   view/revoke     { tokenId, requestId? }            → {}   (revoking a revoked token succeeds; an unknown one is MOSTRA_HYGIENE_TOKEN_INVALID)
   view/default    { artifact }                       → CapabilityLink   (D140 item 15; the artifact's default link, a new default when it was revoked)
   view/launch     { tokenId }                        → { url, expiresAt }   (D140 item 15; a one-time launch URL for a browser, `…#l=<ticket>`)
-  share/start     { artifact, via: "tailnet" | "funnel" | "cloudflare", ttl?, scopes?, viewer?, requestId? } → Share & { url }   (D158 item 3)
+  share/start     { artifact, via: "tailnet" | "funnel" | "cloudflare" | "remote", server?, ttl?, scopes?, viewer?, requestId? } → Share & { url }   (D158 item 3; "remote": D165, §18.2)
   share/stop      { shareId } | { artifact }         → { stopped: Share[] }
   share/list      { artifact?, all? }                → { shares: Share[] }
 
@@ -379,7 +391,8 @@ interface Ports {
 - **The published schema bundles list the methods** (D143 item 3): `x-mostra-methods` names each method with its `direction`, `mutating`, and `params` and `result` (a reference to a definition, or `{}` for a result whose content is ignored); `x-mostra-notifications` names each notification with its `params`. Removing one, or changing any of these, is a breaking change (HO-07).
 - **`secrets`** (D131): `port/secrets.get { artifactId, name }` → `string | null`, asked first for every `secret()`; `null` falls back to the artifact's, then the home's store; a call that fails or takes over 30 s makes `secret()` throw `MOSTRA_SECRET_MISSING`, never falling back. Every value it returns is redacted wherever Mostra keeps or shows text.
 - **`WorkerLauncher`** (internal in v1, the seam for v1.x `SandboxPort`) is `{ launch(spec: { version: VersionRef, env, limits }): Promise<WorkerChannel> }` (D124). `VersionRef` names the version by its digest and a locator for its portable bundle (§15), never by a directory path; the local implementation resolves it to the version's directory in the home and forks a child process. `WorkerChannel` carries only serializable messages, so a launcher whose worker is a separate process over a socket, or on another machine, fits without a change. `env` holds no secrets: a worker reads secrets only through the secrets port (`secret()`, D44), never from an inherited environment. WP-08 lands it, with a second fixture launcher that proves the seam. As built (D129): `launch({ artifactId, version: { versionId, outputDigest, locator }, env, limits, sourceDir? })`, where the local locator is `home:versions/<versionId>` and only the local launcher passes `sourceDir`; the channel is newline-delimited JSON-RPC 2.0 (`WORKER_METHODS`, revision `WORKER_CHANNEL_REVISION` in `@mostra/protocol`): `worker/start`, `worker/call` with its streamed `worker/batch`, `worker/cancel`, `worker/ping`, `worker/live.start`, `.stop` and `.refresh`, `worker/stop` from the supervisor, and `server/progress`, `server/log`, `server/secret`, `server/signal`, `server/emit`, `server/state.get`, `server/state.patch` and `server/live.value` from the worker, each validated by the supervisor. `worker-host.mjs` in `@mostra/runtime`'s tests is the second launcher: a process started on its own that takes `{ launch }` over a Unix socket and relays the channel (`MOSTRA_TEST_WORKER_HOST`).
-- **Operator ports** (D116, HO-09) belong to a remote server, not to an instance's hosts: limits, metering, account resolution and abuse actions, each with a no-op default. *Deferred decision* for WP-28 (their shape) and WP-30 (their build).
+- **`relay`** (D117, D165 item 4) is the port an owner instance registers on its connection to a hosted home, so the home runs the artifact's server code, live producers and authoring on the owner (§18.3).
+- **Operator ports** (D116, HO-09) belong to a remote server, not to an instance's hosts: `limits`, `metering`, `accounts`, `abuse`, `policy`, `routing` and `events`, each with a no-op default (§18.6, D165 item 9). WP-30 builds them.
 
 ## 8. Results
 
@@ -412,7 +425,7 @@ The Markdown rendering follows ROUND-2 §1.1: a header with IDs, then answers by
 
 ## 9. CLI
 
-The command set is D60 plus `mostra run <bundle>` (runs a portable `bundle` export) and `mostra state get|set|patch`. Sign-in, sign-out and sharing to a remote server join it with WP-29 (D116), and the standalone CLI's telemetry setting with WP-10 (D119); both are additive. `mostra add <package…> [--artifact <path|id>]` is the client of `deps/add` (D95), defaulting to the artifact in the current directory; `MOSTRA_DEP_MISSING` carries that exact command. Rules (AX-01):
+The command set is D60 plus `mostra run <bundle>` (runs a portable `bundle` export) and `mostra state get|set|patch`. Sign-in, sign-out and sharing to a remote server join it with WP-29 (`mostra login`, `logout`, `share --cloud`), and pausing with WP-30 (`mostra pause`, `resume`), §18.7 (D165 item 15), and the standalone CLI's telemetry setting with WP-10 (D119); both are additive. `mostra add <package…> [--artifact <path|id>]` is the client of `deps/add` (D95), defaulting to the artifact in the current directory; `MOSTRA_DEP_MISSING` carries that exact command. Rules (AX-01):
 - `--json` on every command, NDJSON for streaming commands;
 - `--home`, `--cwd`, `--timeout`;
 - no prompts when not on a TTY or in JSON mode;
@@ -460,7 +473,7 @@ The `text` format is exact cells with wide tails omitted, followed by a lint sec
 
 ## 12. MCP server
 
-`mostra mcp` runs over stdio, or over Streamable HTTP with `--http`, applying the full hygiene checklist (HY-01 item 13). It is stateless: every tool takes explicit handles (D61). Its tool handlers are independent of the transport, so the remote MCP server (D116, MC-04, WP-30) serves the same tools over Streamable HTTP with OAuth, and MCP Apps in cloud chat hosts persist through it; its authorization, revisions and any tools of its own are a *Deferred decision* for WP-28.
+`mostra mcp` runs over stdio, or over Streamable HTTP with `--http`, applying the full hygiene checklist (HY-01 item 13). It is stateless: every tool takes explicit handles (D61). Its tool handlers are independent of the transport, so the remote MCP server (D116, MC-04, WP-30) serves the same tools over Streamable HTTP with OAuth, and MCP Apps in cloud chat hosts persist through it; its authorization, revisions and ports are §18.8 (D165 item 10).
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -497,6 +510,7 @@ interface Diagnostic {
   code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
   //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM ARTIFACT (D92) CLI (D140)
+  //       REMOTE (D165)
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong
@@ -644,3 +658,211 @@ mostra.close().await?;                               // &self: a shared handle c
 - **A baseline** is `{ "schemaVersion": 1, "expectedFailures": { "<scenario id>": "<why>" } }`.
 - **Scenario IDs** are stable surface, since baselines name them: `session.negotiation`, `session.process-models`, `home.authoring-removed`, `home.privacy`, `delivery.submission`, `delivery.exactly-once`, `delivery.retry`, `delivery.outbox-replay`, `drafts.mirror`, `interaction.policies`, `events.subscription`, `events.signals`, `interaction.wait`, `interaction.long-lived-state`, `interaction.results`, `interaction.request-ids`, `interaction.durability`, `ports.identity`, `ports.trusted-controls`, `ports.secrets`, `ports.server-events`, `viewing.links`, `viewing.hygiene`, `viewing.shell-bridge`, and from WP-13 `ports.addressing` (`ports.identity` also opens a tailnet and a Cloudflare share through the kit's stand-ins for `tailscale` and `cloudflared`, `MOSTRA_TEST_TUNNELS`). WP-20, WP-29 and WP-31 add theirs.
 - **The library** exports `runConformance`, `readBaseline`, `serveHarness`, the scenarios and the viewer the kit plays. `mostra-conformance-reference-host` is the TypeScript reference host (`--standalone`, `--break`); `crates/mostra-host-reference` is the Rust one.
+
+## 18. The remote server
+
+The names, types and semantics of the remote server (ARCHITECTURE §15, D165). WP-29 builds the network binding, sharing and the relay; WP-30 builds the public server, its sign-in, operator ports and remote MCP. Each may settle finer shapes under D123 and records them here, additively. Domains are examples: `usercontent.example` is a user-content domain (its apex is the hosted shell, D165 item 7) and `api.example` an API origin.
+
+### 18.1 The server and its configuration
+
+```text
+mostra-runtime server --data <dir> [--config <file>] [--listen <address:port>]
+```
+
+- `--data` holds the server's directory ledger, its hosted homes and the version files (DATA_MODEL §7). A directory on a network filesystem is refused (`MOSTRA_HOME_NETWORK_FILESYSTEM`, D165 item 0b).
+- The server speaks plain HTTP on `--listen` (default `127.0.0.1:8080`; the container image listens on every address) behind a TLS terminator, and routes every request by its exact `Host` (§18.4).
+
+```ts
+interface RemoteServerConfig {
+  apiOrigin: string;                                  // "https://api.example": binding, version files, OAuth, /mcp
+  domains: { active: string; spares?: string[] };     // user-content domains (D137); each apex is a hosted shell
+  trustedProxies?: string[];                          // addresses whose X-Forwarded-For and -Proto are believed
+  identityProviders?: IdentityProviderConfig[];       // §18.5
+  rateLimits?: {                                      // D165 item 13: server settings, never operator policy
+    perIp?: { submissions?: Rate; requests?: Rate };
+    perLink?: { submissions?: Rate; relayedRuns?: Rate };
+  };
+  relay?: { waitingRunsPerArtifact?: number; drainPerSecond?: number };   // D165 item 4
+  homes?: { idleCloseMinutes?: number };              // default 10 (D165 item 6)
+  framing?: { frameAncestors: "'none'" };             // D145: the only v1 value
+  operator?: string;                                  // path of an operator module (§18.6)
+}
+type Rate = { count: number; per: string };           // per: a duration such as "1m"
+```
+
+Every key can also come from an environment variable (`MOSTRA_SERVER_<KEY>`). A configuration the server can't use stops it before it serves anything, naming the key (`MOSTRA_REMOTE_CONFIG_INVALID`).
+
+### 18.2 The network binding
+
+- **Endpoint:** `wss://api.example/host`, opened with `Authorization: Bearer <access token>` (§18.5) and `Sec-WebSocket-Protocol: mostra.host`. Without a valid token the upgrade answers `401` with a `WWW-Authenticate` naming the server's protected-resource metadata.
+- **Framing:** one JSON-RPC 2.0 message per text frame, at most `MAX_LINE_LENGTH` characters, checked on both sides. A binary frame or a longer message closes the connection (1003 or 1009). No batches (D83).
+- **Liveness:** each side sends a WebSocket ping every 20 s. A connection with nothing received for 45 s is closed and dialled again with backoff (1 s doubling to 60 s, with jitter). A restart of an edge or of the server is the same reconnect (D165 item 2).
+- **Session:** `mostra/initialize` as in §6. The token names the account, and the session acts on that account's hosted home (`InstanceInfo.mode: "hosted"`). An owner instance's session sends `link: { instanceId }` (an `lnk_` ID issued at sign-in), registers the ports `submissions` and `relay`, and names them in `HomeConfig.ports`, so deliveries and relayed runs wait for it while it is away (D105, D165 item 1).
+- **Methods on a hosted home:** §6's viewing, interaction and events methods (`view/*`, `results/get`, `wait`, `state/*`, `live/push`, `events/*`), `artifact/list`, `artifact/get`, and:
+
+  ```text
+  hosted/push    { artifactId, version: VersionPush, requestId? }
+                   → { status: "complete", versionId, number } | { status: "missing", files: string[] }   (SHA-256s)
+  artifact/pause { artifact, paused: boolean, reason?, requestId? } → { paused, by?: "owner" | "operator" }
+  ```
+
+  `VersionPush` is `{ versionId, number, sourceDigest, envDigest, outputDigest, manifest, registry, lock, listing }`: the version's identity, its `manifest.json`, `registry.json` and `lock.yaml`, and `listing`, the canonical output listing of every built file (`[path, executable, sha256, size]`, server files included) whose digest is `outputDigest` (DATA_MODEL §2). The server stores the client files the listing names, never the server files (D165 item 3). A push answers `missing` with the SHA-256s it lacks until every client file is there, then `complete`. It is idempotent by `versionId`.
+- **Version files** go over HTTPS: `PUT https://api.example/files/<sha256>` with the same bearer token and the bytes as the body (refused unless they hash to the name, or past the operator's storage limit), and `HEAD` to ask whether the server has one.
+- **Methods on the owner's own instance**, for its CLI and SDK, additive to §6:
+
+  ```text
+  remote/login       { server?, requestId? } → { loginId, verificationUri, verificationUriComplete?, userCode, expiresAt }
+  remote/login.wait  { loginId, timeoutMs } → { status: "signed-in", server, account: { id, name? }, instanceId } | { status: "pending" }
+  remote/logout      { server? } → { servers: string[] }
+  remote/status      {} → { links: RemoteLink[] }
+  share/start        { artifact, via: "remote", server?, ttl?, scopes?, viewer?, requestId? } → Share & { url }
+  artifact/pause     { artifact, paused, reason?, requestId? } → { paused, by? }   (forwarded for a hosted artifact)
+  ```
+
+  - `remote/login` starts the OAuth device authorization grant (RFC 8628) against `server` (default: the configured default server) and polls for the token in the background; `remote/login.wait` waits for its end, and a refused or expired code is `MOSTRA_REMOTE_LOGIN_FAILED`. The instance keeps the refresh token in the home (DATA_MODEL §7).
+  - `RemoteLink` is `{ server, account: { id, name? }, instanceId, default, state: "connected" | "connecting" | "offline" | "signed-out", since, pendingPushes, lastError? }`. `default` marks the account's default instance for chat-host authoring (D165 item 1b; WP-29 names the command that changes it).
+  - A `remote` share pushes the artifact's latest version, mints a link on the hosted home (its `url` and `tokenId`, with the hosted shell's address as `hostname`), and keeps pushing later publishes while it is active. `share/stop` revokes the hosted link. `share.done`'s `kind` is `remote` (D140 item 8).
+- **Hosted artifacts on the owner's instance** (D165 item 1): `wait`, `results/get` and `events/*` read the owner's own ledger, which the hosted home's deliveries and the sync cursor fill. `state/get`, `state/patch` and `live/push` on a hosted artifact act on the hosted home through the link, refused with `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached. Imported submissions and events carry `origin: { server, home, cursor }`, additive to `EventRecord` and `Results.submission`.
+
+### 18.3 Relay messages
+
+An owner instance registers the port `relay` (§7) on its binding session, and the hosted home calls it only for artifacts whose owner instance that session is (D165 item 1b). IDs are the hosted home's, so a repeated message joins what it started (FAILURE_MODEL §1 rule 3).
+
+```text
+Hosted home → owner instance (port calls, each answered within 30 s)
+  port/relay.run     { runId, artifactId, versionId, fnId, args, key?, viewer, viewId? } → { accepted: true }
+  port/relay.cancel  { runId } → {}
+  port/relay.call    { callId, artifactId, versionId, fnId, args, viewer, viewId? } → { accepted: true }
+  port/relay.live    { artifactId, versionId, interest: "start" | "renew" | "stop" | "refresh", keys: string[] } → {}
+  port/relay.author  { method, params } → result              (remote MCP's authoring, §18.8)
+
+Owner instance → hosted home (methods)
+  relay/run.update   { runId, seq, progress?, log?, batches?, end?: { status: "succeeded" | "failed" | "cancelled", reason?, error? } } → {}
+  relay/call.batch   { callId, seq, batch?, end?: { status, error? } } → {}
+  relay/live.value   { artifactId, versionId, key, value? | error?, at } → { revision }
+  relay/effect       { runId? | callId?, kind: "signal" | "emit", name, payload? } → { cursor }
+  state/patch        { …, as: "agent", causation: { runId } }   (server code's `state`, §2.4)
+```
+
+- **Runs.** `port/relay.run` is answered once the owner has recorded the run under `runId` in its own ledger (DATA_MODEL §7). A repeat answers the same and starts nothing. `relay/run.update` messages are idempotent by `(runId, seq)` and applied in order; the one with `end` is the run's end. A run started with a `key` keeps D130's rule, checked by the hosted home.
+- **Offline** (D165 item 4). While the owner is away a run is `waiting`.
+  - The manifest's `hosted.offline.actions` is `queue` (default) or `fail`, and `hosted.offline.limit` is a duration (default `24h`, at most `7d`, else `MOSTRA_MANIFEST_INVALID`). Under `queue`, a run still waiting at its limit ends `failed` with reason `owner-offline`; under `fail` it ends that way at once.
+  - Past `relay.waitingRunsPerArtifact` waiting runs, or when `limits` refuses the operation `run.wait`, a new run is refused with 503 `MOSTRA_REMOTE_QUEUE_FULL` before anything is recorded.
+  - When the owner returns, waiting runs go out in the order they were recorded, at most `relay.drainPerSecond` a second per artifact.
+- **Owner unreachable mid-run.** The run stays `running` with `ownerUnreachable: true`. When the offline limit passes after the owner was last heard from, the run becomes `unknown`, with the event `action.unknown`. A later `end` from the owner replaces it once, with its own event (DATA_MODEL §3, §4).
+- **Plain calls** go out only while the owner is connected, and otherwise answer 503 `MOSTRA_REMOTE_OWNER_OFFLINE` at once.
+- **Live.** Interest follows views as locally (D130): the hosted home sends `start` when a view or an `always` source needs a producer, `renew` every 20 s, and `stop` when none does. Values arrive as `relay/live.value` and are stored and sent like local live values. While the owner is offline, `LiveState.ownerOffline` is `true` and the last value stays, with its `at`.
+- **Who may trigger** (D159). With `hosted.actions` `"signed-in"` (the default), `relay.run` and `relay.call` are sent only for a viewer of kind `account` or an expected respondent; anyone else gets 403 `MOSTRA_REMOTE_SIGN_IN_REQUIRED`. `"link"` lets any holder of a link with the action's scope trigger them. Either way `rateLimits.perLink.relayedRuns` applies.
+- **Secrets.** `secret()` is answered by the owner's supervisor (D129). No relay message carries a secret, and the owner's redactor runs over every update it sends (AC-06).
+
+### 18.4 Hosted pages
+
+- **Routing.** A request's exact `Host` decides:
+  - an active or spare user-content domain's apex is the hosted shell;
+  - `<label>.<domain>` is the artifact whose derived label it is, served only through links minted on that domain;
+  - any other host goes to `routing.resolve` (§18.6), and with no answer it is refused (421).
+- **The derived label** is the artifact ID's 26 ULID characters in lower case, so `art_01JC…` is served at `01jc….usercontent.example`.
+- **Links:** `https://usercontent.example/a/<artifactId>[/v/<number>]#t=<secret>`. D97's rules hold, the shell address being the domain the link was minted on.
+- **The shell rules** of ARCHITECTURE §15.6 hold on every hosted response: only the shell on the apex, `Origin-Agent-Cluster: ?1`, no credential on the user-content domain, `Cross-Origin-Resource-Policy: same-origin`, `frame-ancestors 'none'` and `X-Frame-Options: DENY` on the shell, D98 item 6's headers everywhere, and `noindex` (D161).
+- **Sessions without cookies** (D165 item 8). The shell's exchange (`POST /a/{artifactId}/_mostra/session`) answers `session`, a 26-character secret the shell keeps in its origin's storage and sends as `X-Mostra-Shell` on every later request. The ledger keeps its SHA-256, as for a cookie (D98). Frames use worker mode (`X-Mostra-Frame`, D158 item 5). The server drops every `Cookie` header on hosted hosts before routing.
+- **Viewers.** A link with a viewer acts as it (D104). Without one, a signed-in person acts as their account (kind `account`, `ref` the account ID, `verified: true`), and anyone else as an anonymous viewer per browser (kind `anonymous`, keyed by the shell's random browser key, with an optional name and `verified: false`). `useViewer()` reports `source` and `verified`.
+- **Viewer sign-in.** The shell's "Sign in" goes to the API origin's authorization server (`/oauth/authorize`, the shell as a public client with PKCE, §18.5) and returns to `https://usercontent.example/_mostra/signin` on the apex. There the shell exchanges the code through `POST /a/{artifactId}/_mostra/session/signin { code, verifier }` → `{ viewer }`. No token, password or WebAuthn credential is ever kept for the user-content domain (ARCHITECTURE §15.6).
+- **Submissions** (D165 items 1a, 13). After a commit the shell says "Your answer was sent." and shows a respondent no delivery state: `SubmissionSummary.deliveries` is present only when the viewer is the owner's account. Each refusal below keeps the draft:
+  - with `hosted.submissions` `"signed-in"`, anonymous viewers get 403 `MOSTRA_REMOTE_SIGN_IN_REQUIRED`;
+  - past `rateLimits`, 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`;
+  - a `limits` refusal of `submit`, 403 `MOSTRA_REMOTE_LIMIT_REACHED` ("This page isn't accepting answers right now");
+  - a paused artifact, 423 `MOSTRA_SUBMIT_PAUSED`.
+- **Counts by choice** (D165 item 12). For each manifest `tally` entry `{ field, choices }` (a viewer-scoped field; `choices` 2 to 50 distinct strings, else `MOSTRA_MANIFEST_INVALID`), the submit transaction adds one to the count of the choice the submission's snapshot holds for that field (a value outside `choices`, or none, counts nothing). Viewers read it with `useLive("$tally/<field>")`, whose value is `{ counts: Record<choice, number>, total }`, pushed on the live channel whenever it changes, with no artifact code and no relay. It counts answers, never people, and shows no answer or who gave it. A local instance keeps the same tally.
+- **The trusted chrome** (D161) and the report control render in the shell only. The report control posts `POST /a/{artifactId}/_mostra/report { reason, detail? }`, which reaches `abuse.report`. `policy.link` may add an interstitial and an expiry (HY-09).
+
+### 18.5 Sign-in and the authorization server
+
+On the API origin (D165 items 8, 10; VERIFIED_FACTS, WP-28):
+
+```text
+/.well-known/oauth-authorization-server        RFC 8414 metadata
+/.well-known/oauth-protected-resource/host     RFC 9728, resource "https://api.example/host"
+/.well-known/oauth-protected-resource/mcp      RFC 9728, resource "https://api.example/mcp"
+/oauth/authorize   /oauth/token   /oauth/device   /oauth/register   /oauth/revoke
+/signin/<provider>/callback                    an identity provider's return
+```
+
+- **Metadata** advertises `issuer`, `code_challenge_methods_supported: ["S256"]`, the grants `authorization_code`, `refresh_token` and `urn:ietf:params:oauth:grant-type:device_code`, `token_endpoint_auth_methods_supported` with `none`, `client_id_metadata_document_supported: true`, a `registration_endpoint` (Dynamic Client Registration), `authorization_response_iss_parameter_supported: true` and `scopes_supported: ["mostra", "offline_access"]`.
+- **Tokens** are opaque, stored as SHA-256 hashes, and bound to their resource (audience) and account. Access tokens last an hour. Refresh tokens rotate on every use, and a reused one revokes its grant. Every endpoint answers within 10 s.
+- **Identity providers** sit behind a port: `IdentityProvider` is `{ id, label, authorize(state, pkce) → URL, callback(params) → SignInIdentity }`. Built-in adapters for OpenID Connect and GitHub are configured in `identityProviders` (`{ id, kind: "oidc" | "github", issuer?, clientId, clientSecretFile, label }`); others come from the operator module. A `SignInIdentity` is `{ provider, subject, email?, name?, facts? }`, where `facts` carries what a provider tells (an account's age, for an operator's policy). `accounts.resolve` maps it to an account (§18.6).
+- **Clients:** the CLI (the device grant, a public client), MCP clients (Client ID Metadata Documents or registration, authorization code with PKCE), and each hosted shell (a first-party public client per user-content domain).
+
+### 18.6 Operator ports
+
+An operator module is an ES module whose default export receives the server's handle and returns the ports it implements. Its types are exported by `@mostra/protocol` (`@mostra/protocol/operator`), so an operating layer imports nothing else of Mostra (invariant 11, D165 items 9, 11).
+
+```ts
+type OperatorModule = (server: ServerHandle) => OperatorPorts | Promise<OperatorPorts>;
+interface OperatorPorts {
+  limits?: { check(q: { account: string; home: string; artifact?: string; operation: LimitOperation; quantity?: number }):
+      Promise<{ allowed: true } | { allowed: false; code: string; message: string; retryAfterMs?: number }> };
+  metering?: { record(batch: { batchId: string; from: string; to: string; counters: MeterCounter[] }): Promise<void> };
+  accounts?: {
+    resolve(identity: SignInIdentity): Promise<{ account: string; name?: string; status: "active" | "suspended" }
+      | { step: { url: string } } | { refused: { message: string } }>;
+    authenticate?(bearer: string): Promise<{ account: string; scope: string[] } | null>;
+    status?(account: string): Promise<"active" | "suspended">;
+  };
+  abuse?: {
+    report(r: { artifactId: string; home: string; versionId?: string; reason: string; detail?: string; at: string }): Promise<void>;
+    pushed?(v: { artifactId: string; home: string; versionId: string; manifest: unknown; read(path: string): Promise<Uint8Array> }):
+      Promise<{ quarantine?: { reason: string } } | void>;
+  };
+  policy?: { link(q: { account: string; home: string; artifactId: string; tokenId?: string }): Promise<{
+      interstitial?: { kind: string; message?: string }; maxTtl?: string; afterSubmit?: string;
+      footer?: string; madeWith?: { show: boolean; href?: string } }> };
+  routing?: { resolve(host: string): Promise<{ shell: { domain: string } } | { artifact: { home: string; artifactId: string } } | null> };
+  events?: { deliver(e: { eventId: string; kind: "submission.accepted" | "version.pushed" | "run.ended" | "roster.completed" | (string & {});
+      account: string; home: string; artifactId: string; at: string; payload: unknown }): Promise<void> };
+  invitations?: unknown;   // reserved for WP-31 (D121, D165 item 16); no mailer ships
+}
+type LimitOperation = "share" | "version.push" | "link" | "view" | "submit" | "run" | "run.wait" | "call" | "mcp.call" | "storage";
+interface ServerHandle {
+  quarantine(target: { artifactId: string } | { versionId: string }, reason: string): Promise<void>;
+  release(target: { artifactId: string } | { versionId: string }): Promise<void>;
+  pause(artifactId: string, reason: string): Promise<void>;
+  resume(artifactId: string): Promise<void>;
+  suspendHome(home: string, reason: string): Promise<void>;
+  resumeHome(home: string): Promise<void>;
+  revokeLinks(artifactId: string): Promise<number>;
+  remove(artifactId: string): Promise<void>;   // deletion: explicit, never part of another action
+}
+```
+
+- **Time limits and failures.** `limits.check`, `policy.link` and `routing.resolve` answer within 2 s, and the server may cache an answer as long as the operator says. When `limits` doesn't answer, `share`, `version.push`, `link` and authoring fail closed with 503 `MOSTRA_REMOTE_OPERATOR_UNAVAILABLE`, while `view`, `submit` and draft writes proceed (D165 item 9). `accounts.resolve` has 5 s; past it, sign-in fails with the same code and existing sessions keep working. `abuse.pushed` has 30 s and never blocks serving: its answer can quarantine the version afterwards.
+- **At least once.** `metering.record` and `events.deliver` are retried with backoff until they succeed, idempotent by `batchId` and `eventId`. The server keeps what it hasn't delivered across restarts, and logs any gap it had to drop.
+- **Counters** (`MeterCounter`, `{ name, account, home?, artifactId?, value, dimensions? }`): `views` (with a monthly pseudonymous `viewerKey`, an HMAC under a key rotated each month, never an identity), `submissions`, `requests`, `bytes.stored`, `bytes.egress`, `relay.messages`, `mcp.calls` (with the client's `clientInfo` name, D148) and `home.activeSeconds`.
+- **An operator's pause** can't be resumed by the owner: `artifact/pause` from the owner answers 403 `MOSTRA_REMOTE_PAUSED_BY_OPERATOR` for it.
+- **No-op defaults:** `limits` allows; `metering` and `events` discard; `accounts` uses the server's own account table with no step and accepts no outside credential; `abuse` does nothing; `policy` adds nothing; `routing` serves only derived labels.
+
+### 18.7 CLI
+
+Additive to §9 (D165 item 15). Help text is drafted with Mirza (D149).
+- `mostra login [<server>]` prints the verification address and code (on stderr, or one `--json` event), waits for the person, and links this home. `mostra logout [<server>]` revokes the grant and removes the token.
+- `mostra share <artifact> --cloud [<server>] [--scope …] [--viewer <ref>] [--ttl <d>]` hosts the artifact and prints the hosted link. `mostra share list` and `share stop` include cloud shares.
+- `mostra pause <artifact> [--reason <text>]` and `mostra resume <artifact>` (WP-30).
+- `mostra status` reports each linked server (`remote/status`).
+- `mostra-runtime server` (§18.1) is the remote server's entry, in the runtime bundle and the container image.
+
+### 18.8 Remote MCP
+
+`https://api.example/mcp` serves `@mostra/mcp`'s `createMcpServerFactory` (D164) over Streamable HTTP, statelessly, for `2026-07-28` and the 2025 revisions, behind the authorization server (§18.5). A request without a valid token for the resource `https://api.example/mcp` answers `401` with `WWW-Authenticate: Bearer resource_metadata="…"`; a token missing a scope answers `403` with `error="insufficient_scope"`. The server's ports for the factory:
+- **`McpInstance`:** the account's hosted home for `artifact_list`, `artifact_wait`, `artifact_results`, `artifact_open`, `state_get`, `state_patch` and `live_push`; the account's default owner instance, through `port/relay.author`, for `artifact_create`, `artifact_verify` and `artifact_publish` (a publish there also pushes the version and shares it to this server). With no default instance connected these answer `MOSTRA_REMOTE_NO_INSTANCE`.
+- **`McpWorkspace`:** the default owner instance's own workspace (`MOSTRA_MCP_WORKSPACE`), through `port/relay.author`.
+- **`McpDocs`:** the bundled reference. There is no `McpBrowser`.
+- **`artifact_open`** returns the hosted link.
+
+The tool set and its schemas are the `mcp-tools` bundle (D32); a remote tool of its own would join the bundle additively. `onClient` reports each client's `clientInfo` to `metering` (D148). How a page renders and what a quota message may say in a chat host is a policy per host (D160).
+
+### 18.9 Reserved for WP-31
+
+*Deferred decision* for WP-31 (D121, D165 item 16), reserved so the remote binding is designed with them in view:
+- the hooks `useRespondents()` and `usePresence()` (§2.3), and `FieldMeta.updatedBy`;
+- the wait conditions `submitted:all` and `submitted:<N>`, with a roster-complete event (§6);
+- expected respondents on `share/start` (`respondents: { ref, name?, email? }[]`), each with a personal link;
+- the operator port `invitations` (§18.6), which a server uses to send invitations where it sends them, and which ships with no mailer.
