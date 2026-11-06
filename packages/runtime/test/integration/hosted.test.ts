@@ -510,3 +510,107 @@ describe("hosted links across a domain move (D137)", () => {
     }
   }, 180_000);
 });
+
+describe("one artifact shared to two servers (D165, after the second Opus review)", () => {
+  it("hosts it on each, imports each server's answers with their origin, and pushes later publishes to both", async () => {
+    const ports = [await freePort(), await freePort()];
+    const servers = await Promise.all(
+      ports.map((port) => startServer({ data: tempDir("server-data"), port })),
+    );
+    const owner = new GatewayHome();
+    try {
+      // A bare address: every server URL keeps its own port.
+      await owner.start({ env: { MOSTRA_TEST_SERVER_ADDRESS: "127.0.0.1" } });
+      for (const port of ports) await ownerSignIn(owner.client, port, "Ada");
+      const receipt = await owner.publish("single-tsx", "page.tsx");
+      const urls: string[] = [];
+      for (const port of ports) {
+        const shared = ok<{ url: string }>(
+          await owner.client.call("share/start", {
+            artifact: { artifactId: receipt.artifactId },
+            via: "remote",
+            server: `http://api.localhost:${port}`,
+          }),
+        );
+        urls.push(shared.url);
+      }
+      expect(urls.map((url) => new URL(url).host)).toEqual(
+        ports.map((port) => `content.localhost:${port}`),
+      );
+      const ids: string[] = [];
+      for (const [index, url] of urls.entries()) {
+        const browser = new Browser();
+        const opened = await openLink(browser, url);
+        const fields = await browser.fetchJson(
+          opened.frameOrigin,
+          `/_mostra/v/${REVISION}/fields`,
+          {
+            body: {
+              mutationId: MutationId.create(),
+              scope: "viewer",
+              baseRevision: "0",
+              viewId: opened.viewId,
+              ops: [{ id: "answer", value: `server ${index}` }],
+            },
+            csrf: opened.frameCsrf,
+          },
+        );
+        expect(fields.status, fields.body).toBe(200);
+        const submitted = await browser.fetchJson(
+          opened.link.shell,
+          `${new URL(url).pathname}/_mostra/v/${REVISION}/submit`,
+          {
+            body: {
+              viewId: opened.viewId,
+              expectedRevision: fields.json<{ revision: string }>().revision,
+            },
+            csrf: opened.shellCsrf,
+          },
+        );
+        expect(submitted.status, submitted.body).toBe(200);
+        ids.push(submitted.json<{ id: string }>().id);
+      }
+      for (const [index, id] of ids.entries()) {
+        let results: { answers: unknown; submission: { origin?: { server: string } } } | undefined;
+        await eventually(async () => {
+          const read = (await owner.client.call("results/get", {
+            artifact: { artifactId: receipt.artifactId },
+            submission: id,
+          })) as {
+            result?: { answers: unknown; submission: { origin?: { server: string } } };
+          };
+          results = read.result;
+          return results !== undefined;
+        }, 30_000);
+        if (!results) throw new Error(`${id} never reached the owner`);
+        expect(results.answers).toEqual({ answer: `server ${index}` });
+        expect(results.submission.origin?.server).toBe(`http://api.localhost:${ports[index]}`);
+      }
+      // A later publish reaches both servers: each hosted shell now names version 2 as latest.
+      const page = join(receipt.dir, "page.tsx");
+      writeFileSync(
+        page,
+        readFileSync(page, "utf8").replace("Sidebar density", "Sidebar density, again"),
+      );
+      const republished = ok<{ artifactId: string; version: number }>(
+        await owner.client.call("artifact/publish", { source: { path: page } }, 120_000),
+      );
+      expect(republished).toMatchObject({ artifactId: receipt.artifactId, version: 2 });
+      for (const url of urls) {
+        await eventually(async () => {
+          const browser = new Browser();
+          const opened = await openLink(browser, url);
+          const ticket = await browser.fetchJson(
+            opened.link.shell,
+            `${new URL(url).pathname}/_mostra/ticket`,
+            { body: {}, csrf: opened.shellCsrf },
+          );
+          return ticket.json<{ latest?: { number: number } }>().latest?.number === 2;
+        }, 30_000);
+      }
+    } finally {
+      await owner.stop();
+      for (const server of servers) await stopServer(server);
+    }
+  }, 240_000);
+});

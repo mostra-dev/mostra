@@ -323,6 +323,9 @@ export function createLink(options: LinkOptions): Link {
       return Promise.resolve(connection.access.token);
     }
     connection.refreshing ??= (async () => {
+      // Its `finally` clears the registration, so it must run after `??=` made it (a refresh that
+      // fails before its first await would otherwise stay registered, refused, for good).
+      await Promise.resolve();
       try {
         const credentials = readCredentials(connection.server);
         if (!credentials) throw loginFailed(`This home isn't signed in to ${connection.server}.`);
@@ -754,7 +757,12 @@ export function createLink(options: LinkOptions): Link {
 
   /** Sends every pending push of a server, oldest first, retrying with backoff while it fails. */
   const drainPushes = (connection: Connection, attempt = 0): Promise<void> => {
-    connection.pushing ??= (async () => {
+    if (connection.pushing) return connection.pushing;
+    // One drain at a time per server. The drain is registered before its body runs, and only it
+    // clears itself: a drain that found nothing to push ends before its first await, and the
+    // registration must never outlive it, or every later publish would wait for nothing.
+    const drain = (async () => {
+      await Promise.resolve();
       try {
         for (;;) {
           if (stopped || !connection.binding.session) return;
@@ -787,11 +795,13 @@ export function createLink(options: LinkOptions): Link {
           Math.min(PUSH_RETRY_MAX_MS, PUSH_RETRY_MS * 2 ** attempt),
         );
         connection.pushTimer.unref?.();
-      } finally {
-        connection.pushing = undefined;
       }
     })();
-    return connection.pushing;
+    connection.pushing = drain;
+    void drain.finally(() => {
+      if (connection.pushing === drain) connection.pushing = undefined;
+    });
+    return drain;
   };
 
   const queuePush = (db: LedgerDb, artifactId: string, versionId: string, server: string): void => {

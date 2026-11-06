@@ -61,6 +61,14 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "a drain that found nothing keeps later publishes from being pushed",
+    file: "src/link/manager.ts",
+    from: "      if (connection.pushing === drain) connection.pushing = undefined;",
+    to: "      void drain;",
+    check: integration("hosted.test.ts", "two servers"),
+  },
+  {
     requirement: "RM-04",
     name: "a page never learns its hosted source's owner is offline",
     file: "../react/src/runtime/server-client.ts",

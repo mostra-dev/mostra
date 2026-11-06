@@ -17,12 +17,15 @@ const MAX_ANSWER_BYTES = 4 * 1024 * 1024;
 /** Where requests for `server` actually go: the test override, or the server's own host. */
 export interface RemoteAddress {
   readonly host: string;
-  readonly port: number;
+  /** Absent: the server URL's own port. */
+  readonly port?: number | undefined;
 }
 
 /** Reads the test override, `host:port`, or nothing. */
 export function testServerAddress(value: string | undefined): RemoteAddress | undefined {
   if (!value) return undefined;
+  // A bare address keeps every server URL's own port (tests with several servers).
+  if (/^[\d.]+$/.test(value)) return { host: value };
   const at = value.lastIndexOf(":");
   const port = Number(value.slice(at + 1));
   if (at <= 0 || !Number.isInteger(port) || port <= 0 || port > 65535) return undefined;

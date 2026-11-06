@@ -57,7 +57,7 @@ export interface BindingOptions {
   readonly log: Log;
   readonly heartbeat?: HeartbeatOptions;
   /** The `Host` to send, for tests that dial a loopback address under a name. */
-  readonly connectTo?: { readonly host: string; readonly port: number };
+  readonly connectTo?: { readonly host: string; readonly port?: number | undefined };
   /**
    * Sees every message the binding sends and receives, as its text (tests: the relay's secrets
    * grep, `MOSTRA_TEST_BINDING_TRACE`).
@@ -100,8 +100,11 @@ export function startBinding(options: BindingOptions): Binding {
   const url = (): string => {
     const origin = new URL(options.server);
     const scheme = origin.protocol === "https:" ? "wss:" : "ws:";
-    if (options.connectTo)
-      return `${scheme}//${options.connectTo.host}:${options.connectTo.port}/host`;
+    if (options.connectTo) {
+      const port =
+        options.connectTo.port ?? (Number(origin.port) || (scheme === "wss:" ? 443 : 80));
+      return `${scheme}//${options.connectTo.host}:${port}/host`;
+    }
     return `${scheme}//${origin.host}/host`;
   };
 
