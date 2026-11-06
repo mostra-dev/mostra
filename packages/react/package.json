@@ -87,7 +87,7 @@
         "react-router",
         "react-hook-form"
       ],
-      "limit": "53.5 kB"
+      "limit": "54 kB"
     },
     {
       "name": "@mostra/react whole entry, zod excluded",

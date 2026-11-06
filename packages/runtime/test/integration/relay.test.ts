@@ -388,8 +388,20 @@ describe("the relay (§18.3)", () => {
     for (const id of ids) expect((await page.settled(id, 30_000)).status).toBe("succeeded");
     const sent = mail.received.slice(before);
     expect(sent.map((entry) => entry.body)).toEqual(["queued-a", "queued-b", "queued-e"]);
-    // At most one a second: the third goes out two seconds after the first.
-    expect((sent[2]?.at ?? 0) - (sent[0]?.at ?? 0)).toBeGreaterThanOrEqual(1500);
+    // At most one a second: the third goes out two seconds after the first. Measured where the
+    // owner records each run as it arrives (its `action.started`), so a worker the owner starts
+    // cold for the first run doesn't shorten the gap the mails show.
+    const arrived = ok<{
+      events: { at: string; payload: { runId?: string; relayed?: boolean } }[];
+    }>(
+      await owner.client.call("events/read", { filter: { types: ["action.started"] } }),
+    ).events.filter(
+      (event) => event.payload.relayed === true && ids.includes(event.payload.runId as string),
+    );
+    const times = ids.map((id) =>
+      Date.parse(arrived.find((event) => event.payload.runId === id)?.at ?? ""),
+    );
+    expect((times[2] ?? 0) - (times[0] ?? 0)).toBeGreaterThanOrEqual(1500);
     expect(mail.received.some((entry) => entry.body === "never" || entry.body === "queued-c")).toBe(
       false,
     );
