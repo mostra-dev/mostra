@@ -12,7 +12,8 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { linkSync, mkdirSync, writeFileSync } from "node:fs";
-import { copyFile, rm } from "node:fs/promises";
+import { copyFile, readFile, rm } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import {
   ArtifactManifest,
@@ -28,10 +29,18 @@ import {
   RpcError,
   remoteTokenMethod,
 } from "@mostra/protocol";
+import type { Addressing } from "../addressing/index.ts";
 import { coverageMatcher, readFieldCoverage } from "../builder/index.ts";
 import { noFaults } from "../faults.ts";
+import {
+  Capabilities,
+  capabilityKey,
+  createGateway,
+  type FaceSpec,
+  type Gateway,
+} from "../gateway/index.ts";
 import { platformName } from "../home/index.ts";
-import { createInteraction, type Interaction } from "../interaction/index.ts";
+import { createEphemeralBus, createInteraction, type Interaction } from "../interaction/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { handler, ProtocolServer, type Session } from "../protocol-server/index.ts";
@@ -67,8 +76,18 @@ export interface HostedHome {
   uploaded(sha256: string): void;
   /** Whether a binding is open, a stream or poll is served, or a delivery waits. */
   busy(): boolean;
+  /**
+   * Serves a request the server's front routed here by its exact `Host` (INTERFACES §18.4): the
+   * shell on a user-content domain's apex (`/a/<routeId>…`), or a route's frames on its label.
+   */
+  serve(request: IncomingMessage, response: ServerResponse, at: HostedAddress): Promise<void>;
   stop(): Promise<void>;
 }
+
+/** Where a hosted request came in: a domain's apex, or a route's label on it. */
+export type HostedAddress =
+  | { readonly kind: "shell"; readonly domain: string; readonly routeId: string }
+  | { readonly kind: "frame"; readonly domain: string; readonly routeId: string };
 
 /** Options for {@link openHostedHome}. */
 export interface HostedHomeOptions {
@@ -83,6 +102,12 @@ export interface HostedHomeOptions {
   readonly auth: Authorization;
   readonly runtimeVersion: string;
   readonly log: Log;
+  /** `https` behind a TLS terminator; `http` only for loopback tests (§18.1). */
+  readonly scheme: "https" | "http";
+  /** The user-content domains: new links on `active`, issued ones keep theirs (D137). */
+  readonly domains: { readonly active: string; readonly spares: readonly string[] };
+  /** The shell's built files. */
+  readonly shellDir: string | undefined;
 }
 
 function refuse(code: Parameters<typeof createDiagnostic>[0], message: string): RpcError {
@@ -122,6 +147,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
 
   let protocol: ProtocolServer;
   const interaction = createInteraction({
+    // A respondent on a hosted link learns only that the answer was sent (D165 item 1a).
+    sentOnly: true,
     ledger,
     log,
     faults: noFaults,
@@ -189,6 +216,148 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       log.info("server.route_minted", { home: id, artifactId, routeId });
       return { routeId, label };
     });
+
+  // ── Hosted pages (INTERFACES §18.4) ────────────────────────────────────────────────────
+
+  const routeOf = (artifactId: string): { id: string; label: string } | undefined =>
+    directory.read((db) =>
+      db.get<{ id: string; label: string }>(
+        "SELECT id, label FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
+        id,
+        artifactId,
+      ),
+    );
+  const artifactOfRoute = (routeId: string): string | undefined =>
+    directory.read(
+      (db) =>
+        db.get<{ artifact_id: string }>(
+          "SELECT artifact_id FROM artifact_route WHERE id = ? AND home_id = ?",
+          routeId,
+          id,
+        )?.artifact_id,
+    );
+  const domains = [options.domains.active, ...options.domains.spares];
+  const originOf = (host: string): string => `${options.scheme}://${host}`;
+  const capabilities: Capabilities = new Capabilities({
+    ledger,
+    log,
+    key: capabilityKey(dir, log),
+    now: () => Date.now(),
+    shellOrigin: () => originOf(options.domains.active),
+    servesShell: (origin) => domains.some((domain) => originOf(domain) === origin),
+  });
+  // A hosted home binds nothing: its faces are served through the front. These answer the few
+  // questions the gateway asks of loopback addressing, none of which a hosted face reaches.
+  const addressing: Addressing = {
+    bindAddress: "",
+    urlHost: options.domains.active,
+    origin: () => originOf(options.domains.active),
+    hosts: () => [],
+    leased: () => undefined,
+    leases: () => [],
+    listen: () => Promise.reject(new Error("A hosted home binds no listener.")),
+    frameMode: () => "worker",
+    listenFace: () => Promise.reject(new Error("A hosted home binds no listener.")),
+    releaseFace: () => undefined,
+    faceLocal: () => "",
+  };
+  const bus = createEphemeralBus();
+  const gateway: Gateway = createGateway({
+    ledger,
+    log,
+    addressing,
+    capabilities,
+    artifacts: {
+      get: (ref) => registry.get(canonicalRef(ref)),
+      versionDir: (versionId) => registry.store.versionDir(versionId),
+      damage: (versionId) => hostedDamage(registry.store.versionDir(versionId)),
+    },
+    shellDir: options.shellDir,
+    interaction,
+    bus,
+    // Both channels: a hosted home has no host to narrow them (its owner is a host of it, D165).
+    controls: async () => ({ submitChannels: ["shell", "artifact"] }),
+    activated: () => undefined,
+    hosted: {
+      shellOrigin: () => originOf(options.domains.active),
+      servesShell: (origin) => domains.some((domain) => originOf(domain) === origin),
+      shellPath: (artifactId) => `/a/${routeOf(artifactId)?.id ?? artifactId}`,
+      artifactOrigin: (artifactId, shellOrigin) => {
+        const route = routeOf(artifactId);
+        const domain = domains.find((candidate) => originOf(candidate) === shellOrigin);
+        return route && domain ? originOf(`${route.label}.${domain}`) : undefined;
+      },
+    },
+  });
+  /** The faces of a domain: its shell, and a route's frames, opened when first asked for. */
+  const shellSpec = (domain: string): FaceSpec => ({
+    by: "hosted",
+    group: `hosted:${domain}`,
+    listener: "shell",
+    via: "token",
+    lease: false,
+  });
+  const ensureShell = async (domain: string): Promise<string> => {
+    const spec = shellSpec(domain);
+    const handle = await gateway.openFace(spec);
+    handle.setOrigin(originOf(domain));
+    return handle.key;
+  };
+  const ensureFrame = async (
+    domain: string,
+    artifactId: string,
+    label: string,
+  ): Promise<string> => {
+    await ensureShell(domain);
+    const handle = await gateway.openFace({
+      by: "hosted",
+      group: `hosted:${domain}`,
+      listener: "artifact",
+      artifactId,
+      via: "token",
+      lease: false,
+      mode: "worker",
+    });
+    handle.setOrigin(originOf(`${label}.${domain}`));
+    return handle.key;
+  };
+  const notServed = (response: ServerResponse): void => {
+    response.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
+    response.end(
+      JSON.stringify(
+        createDiagnostic("MOSTRA_HYGIENE_NOT_SERVED", {
+          message: "Nothing is served at this path.",
+        }),
+      ),
+    );
+  };
+  const serve = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+    at: HostedAddress,
+  ): Promise<void> => {
+    const artifactId = artifactOfRoute(at.routeId);
+    const route = artifactId === undefined ? undefined : routeOf(artifactId);
+    if (artifactId === undefined || !route) {
+      notServed(response);
+      return;
+    }
+    if (at.kind === "shell") {
+      // The shell's paths name the route; the gateway's routes name the artifact (§18.4).
+      const url = request.url ?? "/";
+      const prefix = `/a/${at.routeId}`;
+      if (!url.startsWith(prefix)) {
+        notServed(response);
+        return;
+      }
+      request.url = `/a/${artifactId}${url.slice(prefix.length)}`;
+      const key = await ensureShell(at.domain);
+      if (!gateway.dispatch(key, request, response)) notServed(response);
+      return;
+    }
+    const key = await ensureFrame(at.domain, artifactId, route.label);
+    if (!gateway.dispatch(key, request, response)) notServed(response);
+  };
 
   /** The client files of a listing this home doesn't hold yet. */
   const missingOf = (files: readonly string[]): string[] =>
@@ -312,7 +481,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       envDigest: version.envDigest,
       outputDigest: version.outputDigest,
       manifest: manifest.data,
-      policy: undefined,
+      // The owner's policy in force, as the owner's host decided it (D102): it sticks here.
+      policy: version.policy,
       forcedCodes: [],
       stillClaims: () => false,
     });
@@ -377,6 +547,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
       handler(artifactGetMethod, (params) => registry.get(canonicalRef(params.artifact))),
       handler(hostedPushMethod, (params, session) => push(params, session)),
+      ...gateway.methods(),
       handler(remoteTokenMethod, (params, session) => {
         const found = options.auth.authenticate(params.accessToken);
         if (!found || found.grantId !== session.attributes["grantId"]) {
@@ -420,12 +591,45 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       });
       for (const files of pending.values()) files.delete(sha);
     },
-    busy: () => protocol.connections > 0,
+    busy: () => protocol.connections > 0 || bus.activeViews() > 0,
+    serve,
     async stop() {
       interaction.stop();
+      await gateway.close();
       await protocol.close();
+      bus.close?.();
     },
   };
+}
+
+/**
+ * What is wrong with a hosted version's stored files (FAILURE_MODEL §3): its listing must be the
+ * one its output digest names, and every client file it lists present with its bytes. Server files
+ * are listed but never stored (D165 item 3).
+ */
+async function hostedDamage(versionDir: string): Promise<string | undefined> {
+  try {
+    const manifest = JSON.parse(await readFile(join(versionDir, "manifest.json"), "utf8")) as {
+      outputDigest?: string;
+    };
+    const listing = JSON.parse(await readFile(join(versionDir, "listing.json"), "utf8")) as [
+      string,
+      boolean,
+      string,
+      number,
+    ][];
+    const listed = listing.map(([path, executable, sha256]) => ({ path, executable, sha256 }));
+    if (listingDigest(listed) !== manifest.outputDigest)
+      return "its listing doesn't match its digest";
+    for (const [path, , sha256] of listing) {
+      if (!path.startsWith("client/") && path !== "registry.json") continue;
+      const bytes = await readFile(join(versionDir, ...path.split("/")));
+      if (createHash("sha256").update(bytes).digest("hex") !== sha256) return `${path} was changed`;
+    }
+    return undefined;
+  } catch (error) {
+    return `a file is missing (${(error as NodeJS.ErrnoException).code ?? "unreadable"})`;
+  }
 }
 
 /** The SHA-256 of a text's UTF-8 bytes, lowercase hex. */

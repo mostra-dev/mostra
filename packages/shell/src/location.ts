@@ -12,19 +12,25 @@ export interface ShellTarget {
   readonly version?: number;
   /** The shell's API base for this artifact, where its session cookie applies. */
   readonly apiBase: string;
+  /**
+   * On a remote server, the hosted route the path names (`/a/<routeId>`, INTERFACES §18.4): the
+   * session travels in a header and the receipt says only that the answer was sent (D165).
+   */
+  readonly routeId?: string;
 }
 
-const PATH = /^\/a\/(art_[0-9A-HJKMNP-TV-Z]{26})(?:\/v\/([1-9][0-9]{0,8}))?\/?$/;
+const PATH = /^\/a\/((?:art|rte)_[0-9A-HJKMNP-TV-Z]{26})(?:\/v\/([1-9][0-9]{0,8}))?\/?$/;
 
 /** Reads the target from a path, or `undefined` when the path names no artifact. */
 export function parseTarget(pathname: string): ShellTarget | undefined {
   const match = PATH.exec(pathname);
   if (!match?.[1]) return undefined;
-  const artifactId = match[1];
+  const id = match[1];
   return {
-    artifactId,
+    artifactId: id,
     ...(match[2] !== undefined ? { version: Number(match[2]) } : {}),
-    apiBase: `/a/${artifactId}/_mostra`,
+    apiBase: `/a/${id}/_mostra`,
+    ...(id.startsWith("rte_") ? { routeId: id } : {}),
   };
 }
 

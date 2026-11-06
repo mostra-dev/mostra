@@ -50,6 +50,7 @@ import {
   submit,
 } from "./api.ts";
 import { frameEntries } from "./entries.ts";
+import { hosted } from "./hosted.ts";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
@@ -403,6 +404,21 @@ function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactEl
 function Receipt(props: { readonly state: ViewState }): ReactElement | null {
   const submission = receiptOf(props.state);
   if (!submission) return null;
+  const time = new Date(submission.at).toLocaleTimeString(undefined, { timeStyle: "medium" });
+  // On a hosted link the respondent learns that the answer was sent, and nothing about its
+  // delivery, which only the owner sees (D165 item 1a, IN-13 for hosted links).
+  if (hosted()) {
+    return (
+      <aside className="mostra-receipt" data-mostra-receipt="sent" aria-live="polite">
+        <h2>{RECEIPT_WORDS.sent}</h2>
+        <ul>
+          <li className="mostra-ok">
+            <time dateTime={submission.at}>{time}</time>
+          </li>
+        </ul>
+      </aside>
+    );
+  }
   const view = deliveryView(submission);
   const title =
     view.kind === "delivered"
@@ -412,7 +428,6 @@ function Receipt(props: { readonly state: ViewState }): ReactElement | null {
         : view.kind === "undeliverable"
           ? RECEIPT_WORDS.undeliverable
           : RECEIPT_WORDS.submitted;
-  const time = new Date(submission.at).toLocaleTimeString(undefined, { timeStyle: "medium" });
   return (
     <aside className="mostra-receipt" data-mostra-receipt={view.kind} aria-live="polite">
       <h2>{title}</h2>

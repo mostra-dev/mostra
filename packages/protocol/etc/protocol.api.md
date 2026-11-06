@@ -2877,6 +2877,9 @@ export type ShareVia = "tailnet" | "funnel" | "cloudflare" | "remote";
 export const ShareVia: z.ZodType<ShareVia>;
 
 // @public
+export const SHELL_SESSION_HEADER = "x-mostra-shell";
+
+// @public
 export interface ShellSubmitRequest {
     readonly expectedRevision: DocumentRevision;
     readonly viewId: string;
@@ -3319,6 +3322,7 @@ export interface VersionPush {
     readonly manifest: string;
     readonly number: number;
     readonly outputDigest: string;
+    readonly policy?: SubmissionPolicy;
     readonly registry: string;
     readonly sourceDigest: string;
     readonly versionId: string;

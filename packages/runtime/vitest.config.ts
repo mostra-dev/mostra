@@ -45,6 +45,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/server.test.ts",
       "test/integration/binding.test.ts",
       "test/integration/link.test.ts",
+      "test/integration/hosted.test.ts",
       "test/integration/heartbeat.test.ts",
     ],
     exclude: [],

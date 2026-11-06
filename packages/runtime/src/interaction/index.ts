@@ -84,6 +84,7 @@ import {
   orphansOf,
   type Snapshot,
   type SubmissionRow,
+  SubmitConflict,
   submissionSummary,
   submit,
 } from "./submissions.ts";
@@ -145,7 +146,21 @@ export interface InteractionOptions {
   readonly deliveryOwners?: (artifactId: string) => readonly string[] | undefined;
   /** Whether deliveries carry the stored snapshot: a hosted home's do (D165 item 1). */
   readonly deliverSnapshots?: boolean;
+  /**
+   * Whether pages see only that an answer was sent (D165 item 1a, IN-13 for hosted links): a
+   * submission's `delivery` reads `delivered` once it committed, without `deliveries`, and pages
+   * get no delivery events. The owner, its agent and hosts keep every delivery state.
+   */
+  readonly sentOnly?: boolean;
 }
+
+/** The delivery events only the owner, its agent and hosts see on a hosted home (D165 item 1a). */
+const DELIVERY_EVENTS = new Set([
+  "submission.retrying",
+  "submission.delivered",
+  "submission.rejected",
+  "submission.undeliverable",
+]);
 
 /** A browser session as the interaction core sees it: who it acts as. */
 export interface PageIdentity {
@@ -472,6 +487,23 @@ function runVisible(row: RunRow, page: PageIdentity): boolean {
 /** Creates the interaction core. */
 
 export function createInteraction(options: InteractionOptions): Interaction {
+  /** A submission as a page gets it: on a hosted home, sent and nothing about its delivery. */
+  const forPage = (summary: SubmissionSummary): SubmissionSummary => {
+    if (!options.sentOnly) return summary;
+    const { deliveries: _deliveries, ...sent } = summary;
+    return { ...sent, delivery: "delivered" };
+  };
+  /** Runs a page's write, giving a conflict's submission as the page gets it. */
+  const asPage = <T>(write: () => T): T => {
+    try {
+      return write();
+    } catch (error) {
+      if (options.sentOnly && error instanceof SubmitConflict) {
+        throw new SubmitConflict(error.diagnostic.message, forPage(error.submission));
+      }
+      throw error;
+    }
+  };
   const tallyListeners = new Set<(artifactId: string, fields: readonly string[]) => void>();
   const { ledger, log, hosts } = options;
   const outbox = new Outbox({
@@ -566,7 +598,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         const replay = replayedMutation(db, mutation);
         if (replay) return { result: replay, changed: false, replayed: true };
         if (input.scope === "viewer") {
-          assertDraftOpen(db, page.artifactId, page.viewerId);
+          asPage(() => assertDraftOpen(db, page.artifactId, page.viewerId));
           if (input.ops.some((op) => CHOICE.test(op.id))) {
             // A choice needs the `review` scope however it is written, as the trusted Choose
             // does (D97; Claude review finding 7)…
@@ -618,17 +650,19 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     submit(page, input) {
       const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
-      const outcome = ledger.write((db) =>
-        submit(db, {
-          artifactId: page.artifactId,
-          viewerId: page.viewerId,
-          ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
-          viewId: input.viewId,
-          expectedRevision: input.expectedRevision,
-          channel: input.channel,
-          owners,
-          covers: options.coverage,
-        }),
+      const outcome = asPage(() =>
+        ledger.write((db) =>
+          submit(db, {
+            artifactId: page.artifactId,
+            viewerId: page.viewerId,
+            ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
+            viewId: input.viewId,
+            expectedRevision: input.expectedRevision,
+            channel: input.channel,
+            owners,
+            covers: options.coverage,
+          }),
+        ),
       );
       if (outcome.tallied) {
         for (const listener of tallyListeners) {
@@ -655,8 +689,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
         );
         return row ? submissionSummary(db, row) : undefined;
       });
-      if (!fresh) return outcome.submission;
-      return outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh;
+      if (!fresh) return forPage(outcome.submission);
+      return forPage(outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh);
     },
     choose(page, input) {
       const actor = pageActor(page);
@@ -683,7 +717,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         };
         const replay = replayedMutation(db, mutation);
         if (replay) return { result: replay, changed: false, replayed: true };
-        assertDraftOpen(db, page.artifactId, page.viewerId);
+        asPage(() => assertDraftOpen(db, page.artifactId, page.viewerId));
         return applyMutation(db, mutation);
       });
       if (outcome.changed) outbox.mirror(page.artifactId, page.viewerId);
@@ -766,7 +800,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
             const state = documentSnapshot(db, page.artifactId, null);
             return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
           })(),
-          ...(latestOwn ? { submission: submissionSummary(db, latestOwn) } : {}),
+          ...(latestOwn ? { submission: forPage(submissionSummary(db, latestOwn)) } : {}),
           ...(() => {
             // The latest version, so a page that missed its `version.published` learns of it.
             const latest = db.get<{ id: string; number: number }>(
@@ -799,6 +833,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           for (const event of read.events) {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
+            if (options.sentOnly && DELIVERY_EVENTS.has(event.type)) continue;
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));

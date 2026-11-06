@@ -48,6 +48,11 @@ export class Browser {
    * request of that origin as `X-Mostra-Frame`, except the ticketed streams it lets bypass it.
    */
   readonly frames = new Map<string, string>();
+  /**
+   * A hosted shell's sessions (INTERFACES §18.4, D165 item 8), by the route path's prefix
+   * (`<origin>/a/<routeId>`): what the shell keeps in its storage and sends as `X-Mostra-Shell`.
+   */
+  readonly shells = new Map<string, string>();
 
   /** The cookies the jar sends to `url`: every cookie of the host whose path matches. */
   cookiesFor(url: string): string {
@@ -93,6 +98,9 @@ export class Browser {
     const frame =
       ask.noCookies || url.searchParams.has("ticket") ? undefined : this.frames.get(url.origin);
     const navigation = ask.headers?.["sec-fetch-mode"] === "navigate";
+    const shell = ask.noCookies
+      ? undefined
+      : [...this.shells].find(([prefix]) => ask.url.startsWith(prefix))?.[1];
     const answer = await send({
       ...ask,
       headers: {
@@ -100,6 +108,7 @@ export class Browser {
         ...(frame
           ? { "x-mostra-frame": frame, ...(navigation ? { "x-mostra-navigation": "1" } : {}) }
           : {}),
+        ...(shell ? { "x-mostra-shell": shell } : {}),
         ...ask.headers,
       },
     });
@@ -257,7 +266,8 @@ export interface Link {
 
 export function parseLink(url: string): Link {
   const parsed = new URL(url);
-  const match = /^\/a\/(art_[0-9A-Z]{26})(?:\/v\/(\d+))?$/.exec(parsed.pathname);
+  // `rte_` on a remote server: the hosted route the shell's path names (INTERFACES §18.4).
+  const match = /^\/a\/((?:art|rte)_[0-9A-Z]{26})(?:\/v\/(\d+))?$/.exec(parsed.pathname);
   if (!match?.[1]) throw new Error(`not a link: ${url}`);
   return {
     shell: parsed.origin,
@@ -291,6 +301,10 @@ export async function openLink(browser: Browser, url: string, version?: number):
   });
   if (exchange.status !== 200) throw new Error(`exchange: ${exchange.status} ${exchange.body}`);
   const shellCsrf = exchange.json<{ csrf: string }>().csrf;
+  // A hosted shell keeps the session's secret itself and sends it in a header from now on.
+  const hostedSession = exchange.json<{ session?: string }>().session;
+  if (hostedSession !== undefined)
+    browser.shells.set(`${link.shell}${api.slice(0, -"/_mostra".length)}`, hostedSession);
   const ticket = await browser.fetchJson(link.shell, `${api}/ticket`, {
     body: version === undefined ? {} : { version },
     csrf: shellCsrf,

@@ -15,7 +15,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
-import { createDiagnostic, type Diagnostic, RpcError } from "@mostra/protocol";
+import { getRequestListener } from "@hono/node-server";
+import { createDiagnostic, type Diagnostic, RouteId, RpcError } from "@mostra/protocol";
+import { locateShell, shellAssetResponse } from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
 import type { LedgerOwner } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
@@ -87,6 +89,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   const { config, log } = options;
   // The authorization server is made once the directory is open; homes open only after that.
   let auth: Authorization | undefined;
+  const shellDir = locateShell(options.env);
   const assembler: HomeAssembler<HostedHome> = {
     assemble: (home) =>
       openHostedHome({
@@ -99,6 +102,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         auth: auth as Authorization,
         runtimeVersion: options.runtimeVersion,
         log,
+        scheme: config.scheme ?? "https",
+        domains: { active: config.domains.active, spares: config.domains.spares ?? [] },
+        shellDir,
       }),
     disassemble: (home) => home.stop(),
     busy: (home) => home.busy(),
@@ -185,11 +191,95 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       );
       return;
     }
+    // Every hosted answer keeps its page in an agent cluster of its own and out of indexes
+    // (ARCHITECTURE §15.6, D161).
+    response.setHeader("origin-agent-cluster", "?1");
+    response.setHeader("x-robots-tag", "noindex");
+    hosted(request, response, host, domain, path).catch((error: unknown) => {
+      log.error("server.hosted_failed", { error });
+      if (!response.headersSent) {
+        refusal(
+          response,
+          500,
+          createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+            message: "The server failed to answer.",
+          }),
+        );
+      } else response.destroy();
+    });
+  };
+
+  const notServed = (response: ServerResponse): void =>
     refusal(
       response,
       404,
       createDiagnostic("MOSTRA_HYGIENE_NOT_SERVED", { message: "Nothing is served at this path." }),
     );
+
+  /** The shell's own files, the same on every domain's apex. */
+  const assets = getRequestListener(
+    async (request: Request) =>
+      (shellDir === undefined ? undefined : await shellAssetResponse(shellDir, request)) ??
+      new Response(
+        JSON.stringify(
+          createDiagnostic("MOSTRA_HYGIENE_NOT_SERVED", { message: "No shell file at this path." }),
+        ),
+        {
+          status: 404,
+          headers: { "content-type": "application/json", "cache-control": "no-store" },
+        },
+      ),
+    { overrideGlobalObjects: false },
+  );
+
+  /** A route of the directory: its home and ID, by ID or by label. */
+  const routeBy = (column: "id" | "label", value: string) =>
+    data.directory.read((db) =>
+      db.get<{ id: string; home_id: string }>(
+        `SELECT id, home_id FROM artifact_route WHERE ${column} = ?`,
+        value,
+      ),
+    );
+
+  /** A request on a user-content domain: the shell on its apex, a route's frames on its label. */
+  const hosted = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+    host: string,
+    domain: string,
+    path: string,
+  ): Promise<void> => {
+    if (host === domain) {
+      if (path.startsWith("/_mostra/shell/assets/")) {
+        await assets(request, response);
+        return;
+      }
+      const match = /^\/a\/(rte_[0-9A-HJKMNP-TV-Z]{26})(?:\/|$)/.exec(path);
+      const route =
+        match?.[1] !== undefined && RouteId.is(match[1]) ? routeBy("id", match[1]) : undefined;
+      if (!route) {
+        notServed(response);
+        return;
+      }
+      const home = await data.home(route.home_id);
+      await home.assembled.serve(request, response, { kind: "shell", domain, routeId: route.id });
+      return;
+    }
+    // One DNS label under the domain: a route's label, never issued twice (§18.4).
+    const label = host.slice(0, host.length - domain.length - 1);
+    const route = /^[0-9a-hjkmnp-tv-z]{26}$/.test(label) ? routeBy("label", label) : undefined;
+    if (!route) {
+      refusal(
+        response,
+        421,
+        createDiagnostic("MOSTRA_HYGIENE_HOST_REFUSED", {
+          message: "This server serves no pages at this host.",
+        }),
+      );
+      return;
+    }
+    const home = await data.home(route.home_id);
+    await home.assembled.serve(request, response, { kind: "frame", domain, routeId: route.id });
   };
 
   const listener: Server = createServer({ maxHeaderSize: 64 * 1024 }, onRequest);

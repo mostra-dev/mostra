@@ -28,8 +28,11 @@ import {
   remoteStatusMethod,
   remoteTokenMethod,
   SubmissionEnvelope,
+  type SubmissionPolicy,
   type SubmissionsDeliverResult,
   type VersionPush,
+  viewRevokeMethod,
+  viewUrlMethod,
 } from "@mostra/protocol";
 import { followEvents, type ImportSource } from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
@@ -37,6 +40,7 @@ import type { Environment, Log } from "../log.ts";
 import { renamePathSync } from "../platform/index.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import { listingDigest } from "../publish/index.ts";
+import type { RemoteShares } from "../share/index.ts";
 import { type Binding, type BindingSession, ownerInitialize, startBinding } from "./binding.ts";
 import { postForm, type RemoteAddress, remoteRequest, testServerAddress } from "./http.ts";
 
@@ -169,6 +173,8 @@ export interface Link {
   session(server: string, timeoutMs?: number): Promise<BindingSession>;
   /** Whether a server's binding is open now. */
   connected(server: string): boolean;
+  /** `remote` shares (INTERFACES §18.2): hosted links minted on this home's hosted homes. */
+  shares(): RemoteShares;
 }
 
 /** One server's link at run time. */
@@ -234,6 +240,33 @@ export function createLink(options: LinkOptions): Link {
   };
   const forgetCredentials = (server: string): void => {
     rmSync(credentialsFile(server), { force: true });
+  };
+  /**
+   * The hosted links this home's remote shares minted, kept beside its credentials (mode 0600,
+   * never in the ledger, D44), so `share/list` shows them again: their secrets are the hosted
+   * home's, which this home can't derive.
+   */
+  const linksFile = (server: string): string => join(keysDir, `${serverKey(server)}.links.json`);
+  const readLinks = (server: string): Record<string, string> => {
+    try {
+      const parsed = JSON.parse(readFileSync(linksFile(server), "utf8")) as Record<string, string>;
+      for (const url of Object.values(parsed)) protectLink(url);
+      return parsed;
+    } catch {
+      return {};
+    }
+  };
+  const writeLinks = (server: string, links: Record<string, string>): void => {
+    mkdirSync(keysDir, { recursive: true, mode: 0o700 });
+    const target = linksFile(server);
+    const temporary = `${target}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify(links), { mode: 0o600 });
+    renamePathSync(temporary, target);
+  };
+  /** A link's secret is in its fragment: it never reaches a log. */
+  const protectLink = (url: string): void => {
+    const secret = /#t=([^&]+)/.exec(url)?.[1];
+    if (secret !== undefined) options.protect(secret);
   };
 
   const linkRow = (db: LedgerDb, server: string): LinkRow | undefined =>
@@ -521,6 +554,17 @@ export function createLink(options: LinkOptions): Link {
       registry: readFileSync(join(dir, "registry.json"), "utf8"),
       lock: readFileSync(join(dir, "lock.yaml"), "utf8"),
       listing,
+      // The policy in force here (D102): the hosted home follows the owner's host's choice.
+      ...(() => {
+        const found = ledger.read(
+          (db) =>
+            db.get<{ policy_json: string | null }>(
+              "SELECT policy_json FROM artifact WHERE id = ?",
+              artifactId,
+            )?.policy_json,
+        );
+        return found ? { policy: JSON.parse(found) as SubmissionPolicy } : {};
+      })(),
     };
     const session = await connection.binding.ready();
     let answer: HostedPushResult = await session.call(hostedPushMethod, { artifactId, version });
@@ -802,7 +846,7 @@ export function createLink(options: LinkOptions): Link {
       });
     });
 
-  return {
+  const self: Link = {
     methods() {
       return [
         handler(remoteLoginMethod, (params) => login(params.server)),
@@ -969,5 +1013,36 @@ export function createLink(options: LinkOptions): Link {
     connected(server) {
       return connections.get(server)?.binding.session !== undefined;
     },
+    shares: () => ({
+      mint: async (input) => {
+        const server = resolveServer(input.server);
+        await self.host(input.artifactId, server);
+        const session = await self.session(server);
+        const minted = await session.call(viewUrlMethod, {
+          artifact: { artifactId: input.artifactId },
+          ...(input.scopes !== undefined ? { scopes: input.scopes } : {}),
+          ...(input.ttl !== undefined ? { ttl: input.ttl } : {}),
+          ...(input.viewer !== undefined ? { viewer: input.viewer } : {}),
+        });
+        protectLink(minted.url);
+        writeLinks(server, { ...readLinks(server), [minted.tokenId]: minted.url });
+        return {
+          server,
+          url: minted.url,
+          tokenId: minted.tokenId,
+          hostname: new URL(minted.url).host,
+          ...(minted.expiresAt !== undefined ? { expiresAt: minted.expiresAt } : {}),
+        };
+      },
+      url: (server, tokenId) => readLinks(server)[tokenId],
+      revoke: async (server, tokenId) => {
+        const session = await self.session(server);
+        await session.call(viewRevokeMethod, { tokenId });
+        const links = readLinks(server);
+        delete links[tokenId];
+        writeLinks(server, links);
+      },
+    }),
   };
+  return self;
 }

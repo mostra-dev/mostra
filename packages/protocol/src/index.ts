@@ -109,6 +109,7 @@ export {
   PollResult,
   REVIEW_SET_ID_PATTERN,
   readViewContext,
+  SHELL_SESSION_HEADER,
   ShellSubmitRequest,
   SIGNAL_PAYLOAD_MAX_BYTES,
   SignalRequest,

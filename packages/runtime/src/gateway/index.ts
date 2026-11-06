@@ -25,7 +25,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
 import type { Duplex } from "node:stream";
 import {
@@ -49,6 +49,7 @@ import {
   type Refusal,
   RpcError,
   refusal,
+  SHELL_SESSION_HEADER,
   StreamTicketRequest,
   safePath,
   scopeAllows,
@@ -116,7 +117,7 @@ export interface GatewayArtifacts {
 }
 
 /** Who keeps a face (D158 item 1): a share's tunnel, or a host's addressing port. */
-export type FaceBy = "tailnet" | "funnel" | "cloudflare" | "host";
+export type FaceBy = "tailnet" | "funnel" | "cloudflare" | "host" | "hosted";
 
 /** What a share asks the gateway to open: one external address of the shell or an artifact. */
 export interface FaceSpec {
@@ -235,6 +236,25 @@ export interface GatewayOptions {
    * development preview. `upstream` is where that server listens now.
    */
   readonly dev?: { readonly upstream: () => DevUpstream | undefined };
+  /**
+   * A hosted home's gateway on a remote server (ARCHITECTURE §15.6, INTERFACES §18.4): it binds
+   * nothing (the server's front hands it each request by exact `Host`, {@link Gateway.dispatch}),
+   * its shell lives on each user-content domain's apex at `/a/<routeId>` with its session in a
+   * header, and its frames on the route's label, always in worker mode.
+   */
+  readonly hosted?: HostedAddressing;
+}
+
+/** Where a hosted home's pages live (INTERFACES §18.4). */
+export interface HostedAddressing {
+  /** The active domain's shell origin, where new links are minted (D137). */
+  readonly shellOrigin: () => string;
+  /** Whether an origin is a domain's shell the server serves (the active domain or a spare). */
+  readonly servesShell: (origin: string) => boolean;
+  /** The shell's path of an artifact: `/a/<routeId>`. */
+  readonly shellPath: (artifactId: string) => string;
+  /** The origin of an artifact's frames beside a domain's shell: its route's label there. */
+  readonly artifactOrigin: (artifactId: string, shellOrigin: string) => string | undefined;
 }
 
 /** The gateway of one instance. */
@@ -283,6 +303,11 @@ export interface Gateway {
   methods(): MethodHandler[];
   /** The origins of the artifact listeners that are bound, by artifact ID. */
   artifactOrigins(): ReadonlyMap<string, string>;
+  /**
+   * Hands a request to an open face's listener without binding it (a hosted home's faces, served
+   * by the server's front): `false` when no such face is open.
+   */
+  dispatch(key: string, request: IncomingMessage, response: ServerResponse): boolean;
   /** Stops every listener. */
   close(): Promise<void>;
 }
@@ -478,7 +503,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         })
       : undefined;
   let shellPort: number | undefined;
+  const hosted = options.hosted;
   const shellOrigin = (): string => {
+    if (hosted) return hosted.shellOrigin();
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
     return addressing.origin(shellPort);
   };
@@ -550,7 +577,7 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   /** Whether the gateway serves a shell at this origin now: launch tickets go only there. */
   const servesShell = (origin: string): boolean =>
-    origin === shellOrigin() ||
+    (hosted ? hosted.servesShell(origin) : origin === shellOrigin()) ||
     [...faces.values()].some((entry) => entry.spec.listener === "shell" && entry.origin === origin);
 
   /** The answer for a damaged version: a plain page for a navigation, else the diagnostic. */
@@ -571,7 +598,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     );
 
   const link = (token: MintedToken): CapabilityLink => ({
-    url: `${token.shellOrigin}/a/${token.artifactId}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
+    url: `${token.shellOrigin}${hosted ? hosted.shellPath(token.artifactId) : `/a/${token.artifactId}`}${token.pinnedVersion !== undefined ? `/v/${token.pinnedVersion}` : ""}#t=${token.secret}`,
     tokenId: token.tokenId,
     scopes: token.scopes,
     ...(token.expiresAt !== undefined ? { expiresAt: token.expiresAt } : {}),
@@ -637,9 +664,13 @@ export function createGateway(options: GatewayOptions): Gateway {
           : {}),
         ...(options.traceRequests ? { traceRequests: true } : {}),
       });
-      // A withdrawn face of this key may still hold its leased port for a moment.
+      // A withdrawn face of this key may still hold its leased port for a moment. A hosted face
+      // binds nothing: the server's front hands it its requests (`dispatch`).
       await endLingering(key);
-      const port = await addressing.listenFace(listener.server, { key, lease: spec.lease });
+      const port =
+        spec.by === "hosted"
+          ? 0
+          : await addressing.listenFace(listener.server, { key, lease: spec.lease });
       entry = { key, spec, listener, port, origin };
       faces.set(key, entry);
       log.info("gateway.face_open", {
@@ -871,6 +902,26 @@ export function createGateway(options: GatewayOptions): Gateway {
       const port = await openArtifact(artifactId);
       return { way: loopbackArtifact(artifactId, () => port), group: undefined };
     }
+    if (shell.by === "hosted") {
+      const origin = hosted?.artifactOrigin(artifactId, shell.origin() ?? "");
+      if (origin === undefined) {
+        return refusal("MOSTRA_HYGIENE_NOT_SERVED", "This artifact isn't hosted here.");
+      }
+      const entry = await openFace(
+        {
+          by: "hosted",
+          group,
+          listener: "artifact",
+          artifactId,
+          via: "token",
+          lease: false,
+          mode: "worker",
+        },
+        origin,
+      );
+      entry.origin = origin;
+      return { way: faceWay(entry), group };
+    }
     if (shell.by === "host") {
       const entry = await hostFace(artifactId, "artifact");
       if (entry?.origin === undefined) {
@@ -901,6 +952,8 @@ export function createGateway(options: GatewayOptions): Gateway {
     capabilities,
     log,
     cookieName: () => `mostra-${way().port()}`,
+    // A hosted shell's session travels in a header, never a cookie (D165 item 8).
+    mode: () => (way().by === "hosted" ? "header" : "cookie"),
     frameAncestors: () => "'none'",
     artifactOf: (params) => {
       const id = params["artifactId"];
@@ -1050,11 +1103,19 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (isRefusal(grant)) return refuse(checks, grant, meta);
       // A live session from another link is never replaced silently (D98 item 8): a page elsewhere
       // could send the viewer to its own, narrower link and take over their tabs.
-      const existing = capabilities.session(
-        cookieValues(context.request.headers.get("cookie"), checks.cookieName()),
-        origin,
-        artifactId,
-      );
+      const inHeader = way.by === "hosted";
+      const existing = inHeader
+        ? capabilities.session(
+            [context.request.headers.get(SHELL_SESSION_HEADER) ?? ""],
+            origin,
+            artifactId,
+            "header",
+          )
+        : capabilities.session(
+            cookieValues(context.request.headers.get("cookie"), checks.cookieName()),
+            origin,
+            artifactId,
+          );
       if (!isRefusal(existing)) {
         if (existing.grant.tokenId === grant.tokenId) {
           if (launch) capabilities.spendLaunch(body["launch"]);
@@ -1120,7 +1181,12 @@ export function createGateway(options: GatewayOptions): Gateway {
           { status: 409 },
         );
       }
-      const session = capabilities.createSession({ tokenId: grant.tokenId, origin, viewerId });
+      const session = capabilities.createSession({
+        tokenId: grant.tokenId,
+        origin,
+        viewerId,
+        ...(inHeader ? { mode: "header" as const } : {}),
+      });
       if (browser !== undefined) {
         exchangeOrder += 1;
         madeSessions.delete(browser);
@@ -1129,6 +1195,15 @@ export function createGateway(options: GatewayOptions): Gateway {
           madeSessions.delete(madeSessions.keys().next().value as string);
       }
       log.info("gateway.session_started", { origin, artifactId, tokenId: grant.tokenId });
+      // A hosted shell keeps its session's secret itself and sends it as a header (§18.4).
+      if (inHeader) {
+        return jsonResponse({
+          csrf: session.csrf,
+          session: session.cookie,
+          hosted: true,
+          ...sessionFacts(artifactId, grant),
+        });
+      }
       return jsonResponse(
         { csrf: session.csrf, ...sessionFacts(artifactId, grant) },
         {
@@ -1948,6 +2023,12 @@ export function createGateway(options: GatewayOptions): Gateway {
     async openFace(spec) {
       return handleOf(await openFace(spec));
     },
+    dispatch(key, request, response) {
+      const entry = faces.get(key);
+      if (!entry) return false;
+      entry.listener.server.emit("request", request, response);
+      return true;
+    },
     face(key) {
       const entry = faces.get(key);
       return entry ? handleOf(entry) : undefined;
@@ -2117,6 +2198,22 @@ async function verifyDocument(
  * instance still starts, artifact frames are still served, and the shell's pages answer
  * `MOSTRA_ENV_SHELL_MISSING`.
  */
+/**
+ * Answers a request for one of the shell's own built files (`/_mostra/shell/assets/*`): a remote
+ * server's front serves them on every user-content domain's apex before any hosted home is
+ * known, since they are the same for every route (INTERFACES §18.4).
+ */
+export async function shellAssetResponse(
+  shellDir: string,
+  request: Request,
+): Promise<Response | undefined> {
+  const path = safePath(new URL(request.url).pathname);
+  if (path === undefined || !path.startsWith("/_mostra/shell/assets/")) return undefined;
+  const file = await findFile(shellDir, path.slice("/_mostra/shell".length));
+  if (!file) return undefined;
+  return fileResponse(file, request, { "cache-control": "public, max-age=31536000, immutable" });
+}
+
 export function locateShell(env: Environment): string | undefined {
   const dir = env["MOSTRA_SHELL_DIR"] ?? resolve(runtimeRoot(), "..", "shell", "dist");
   return existsSync(join(dir, "index.html")) ? dir : undefined;

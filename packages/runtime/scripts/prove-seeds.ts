@@ -62,6 +62,30 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "a respondent on a hosted link is shown the owner's delivery states",
+    file: "src/server/hosted.ts",
+    from: "    sentOnly: true,",
+    to: "    sentOnly: false,",
+    check: integration("hosted.test.ts", "takes an answer and hands it to the owner"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a hosted shell's session is a cookie",
+    file: "src/gateway/index.ts",
+    from: '      const inHeader = way.by === "hosted";',
+    to: '      const inHeader = way.by === "hosted" && false;',
+    check: integration("hosted.test.ts", "takes an answer and hands it to the owner"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a stopped remote share leaves its hosted link live",
+    file: "src/share/index.ts",
+    from: "      await options.remote?.revoke(server, found.token_id);",
+    to: "      void server;",
+    check: integration("hosted.test.ts", "revoking its hosted link"),
+  },
+  {
+    requirement: "RM-02",
     name: "an imported submission's snapshot isn't checked against its digest",
     file: "src/interaction/imports.ts",
     from: "  if (digest !== envelope.results.submission.digest) {",
@@ -4675,7 +4699,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-05",
     name: "a share ends when its link is rotated",
     file: "src/share/index.ts",
-    from: "    const tokenId = capabilities.current(found.token_id);",
+    from: "    const tokenId = server === undefined ? capabilities.current(found.token_id) : found.token_id;",
     to: "    const tokenId = found.token_id;",
     also: [
       {

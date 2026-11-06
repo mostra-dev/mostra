@@ -6223,6 +6223,9 @@
             "minItems": 4,
             "maxItems": 4
           }
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
         }
       },
       "required": [

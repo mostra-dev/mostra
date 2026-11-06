@@ -13790,6 +13790,8 @@ pub struct VersionPush {
     pub number: ::std::num::NonZeroU64,
     #[serde(rename = "outputDigest")]
     pub output_digest: VersionPushOutputDigest,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub policy: ::std::option::Option<SubmissionPolicy>,
     pub registry: VersionPushRegistry,
     #[serde(rename = "sourceDigest")]
     pub source_digest: VersionPushSourceDigest,

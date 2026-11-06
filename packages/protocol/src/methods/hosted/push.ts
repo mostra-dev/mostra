@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { ArtifactId } from "../../ids.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
+import { SubmissionPolicy } from "../../policy.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 
 /** One built file of a version: `[path, executable, sha256, size]` (DATA_MODEL §2). */
@@ -35,6 +36,11 @@ export interface VersionPush {
   readonly lock: string;
   /** Every built file, server files included, as `[path, executable, sha256, size]`. */
   readonly listing: readonly ListingEntry[];
+  /**
+   * The submission policy in force for the artifact in the owner's home (D102), which its hosted
+   * home follows: the owner's host decides it, never the server (D165 item 1).
+   */
+  readonly policy?: SubmissionPolicy;
 }
 
 /** The params of `hosted/push`. */
@@ -82,6 +88,7 @@ export const VersionPush: z.ZodType<VersionPush> = z
       .array(z.tuple([z.string().min(1), z.boolean(), Sha256, z.int().min(0)]).readonly())
       .max(100_000)
       .readonly(),
+    policy: SubmissionPolicy.exactOptional(),
   })
   .register(wireRegistry, {
     id: "VersionPush",

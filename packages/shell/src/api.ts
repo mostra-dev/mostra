@@ -13,6 +13,7 @@ import {
   type MutationResult,
   type SubmissionSummary,
 } from "@mostra/protocol";
+import { hosted, routeBrowserKey, sessionHeaders } from "./hosted.ts";
 import type { Credential } from "./location.ts";
 
 export type { FrameTicket } from "@mostra/protocol";
@@ -33,6 +34,8 @@ export interface ShellSession extends Access {
   readonly csrf: string;
   /** The artifact the session's link opens. */
   readonly artifact: { readonly id: string; readonly title: string };
+  /** A hosted shell's session secret, from its exchange: kept by the shell, sent as a header. */
+  readonly session?: string;
 }
 
 /** A refusal from the gateway, with its diagnostic code. */
@@ -57,7 +60,13 @@ const STATUS_CODES: Readonly<Record<number, string>> = {
 async function call<T>(url: string, init: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(url, { credentials: "same-origin", cache: "no-store", ...init });
+    response = await fetch(url, {
+      credentials: "same-origin",
+      cache: "no-store",
+      ...init,
+      // A hosted shell's session is a header, never a cookie (D165 item 8).
+      headers: { ...(init.headers as Record<string, string> | undefined), ...sessionHeaders() },
+    });
   } catch (error) {
     throw new ShellError(0, "NETWORK", (error as Error).message);
   }
@@ -107,12 +116,14 @@ export interface Conflict {
  * session from another link, the gateway answers `MOSTRA_HYGIENE_SESSION_CONFLICT` (a
  * {@link ShellError} whose body is a {@link Conflict}) unless `replace` is set (D98 item 8).
  */
-export function exchange(
+export async function exchange(
   apiBase: string,
   credential: Credential,
   replace = false,
+  routeId?: string,
 ): Promise<ShellSession> {
-  const browser = browserKey();
+  // A hosted shell sends each route a key of its own, derived from one browser secret (§18.4).
+  const browser = routeId !== undefined ? await routeBrowserKey(routeId) : browserKey();
   return call(`${apiBase}/session`, {
     method: "POST",
     headers: JSON_HEADERS,
@@ -133,6 +144,7 @@ const BROWSER_KEY = "mostra.browser";
  * review of WP-12, finding 2). No other origin can read it; it grants nothing.
  */
 export function browserKey(): string | undefined {
+  if (hosted()) return undefined;
   try {
     const stored = globalThis.localStorage?.getItem(BROWSER_KEY);
     if (stored && /^[A-Za-z0-9_-]{16,64}$/.test(stored)) return stored;

@@ -715,7 +715,32 @@ export const MIGRATIONS: readonly Migration[] = [
         "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'))",
         "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled', 'unknown'))",
       );
+      // A hosted shell's session travels in a header (`X-Mostra-Shell`, D165 item 8): no cookie
+      // is ever set or read on a hosted host.
+      db.widenCheck(
+        "session",
+        "CHECK (mode IN ('cookie', 'worker'))",
+        "CHECK (mode IN ('cookie', 'worker', 'header'))",
+      );
+      // A share to a remote server (`via = 'remote'`, D165): its link is a token of the hosted
+      // home, never of this ledger, so the share names it without a foreign key; a trigger keeps
+      // every other share's token one of this home's.
+      db.widenCheck(
+        "share",
+        "via TEXT NOT NULL CHECK (via IN ('tailnet', 'funnel', 'cloudflare'))",
+        "via TEXT NOT NULL CHECK (via IN ('tailnet', 'funnel', 'cloudflare', 'remote'))",
+      );
+      db.widenCheck(
+        "share",
+        "token_id TEXT NOT NULL REFERENCES token(id)",
+        "token_id TEXT NOT NULL",
+      );
       db.exec(`
+        CREATE TRIGGER share_local_token BEFORE INSERT ON share
+          WHEN NEW.via != 'remote' AND NOT EXISTS (SELECT 1 FROM token WHERE id = NEW.token_id)
+        BEGIN
+          SELECT RAISE(ABORT, 'a share through a tunnel names one of this home''s tokens');
+        END;
         CREATE TRIGGER action_run_unknown_once BEFORE UPDATE ON action_run
           WHEN OLD.status = 'unknown' AND NEW.status NOT IN ('succeeded', 'failed', 'cancelled')
         BEGIN

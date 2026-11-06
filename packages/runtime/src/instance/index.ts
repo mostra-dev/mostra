@@ -768,6 +768,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     toolEnvironment: artifactEnvironment(environment),
     cacheDir: shareCacheDir(home.path),
     now: () => Date.now() + clockOffset,
+    // Shares to a remote server go through the owner's link (D165, INTERFACES §18.2).
+    remote: link.shares(),
     ...(environment["MOSTRA_TEST_SHARE_PROBE_MS"] !== undefined
       ? { probeMs: Number(environment["MOSTRA_TEST_SHARE_PROBE_MS"]) }
       : {}),

@@ -6427,6 +6427,13 @@
             "minItems": 4,
             "maxItems": 4
           }
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SubmissionPolicy"
+            }
+          ]
         }
       },
       "required": [

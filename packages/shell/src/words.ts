@@ -80,6 +80,8 @@ export const BLOCKER_WORDS = {
 
 /** The submission receipt (IN-13): Mostra's record and each host's delivery, kept apart. */
 export const RECEIPT_WORDS = {
+  /** On a hosted link a respondent sees only this, once the hosted home has the answer (D165). */
+  sent: "Your answer was sent.",
   submitted: "Submitted",
   delivered: "Delivered",
   pending: "Pending delivery",
