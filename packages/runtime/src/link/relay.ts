@@ -20,9 +20,10 @@ import {
   type RelayRunUpdateParams,
   RpcError,
   relayCallBatchMethod,
+  relayEffectMethod,
   relayRunUpdateMethod,
 } from "@mostra/protocol";
-import type { Actions, RunObserver } from "../actions/index.ts";
+import type { Actions, RelayedEffect, RunObserver } from "../actions/index.ts";
 import { appendEvent, type RunRow, runState } from "../interaction/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
@@ -95,6 +96,32 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
     );
     return seq;
   };
+
+  /** A relayed run's or call's signals and host events, appended on its hosted home. */
+  const effectOf =
+    (
+      session: () => BindingSession | undefined | Promise<BindingSession | undefined>,
+      artifactId: string,
+      of: { readonly runId: string } | { readonly callId: string },
+    ): RelayedEffect =>
+    async (kind, name, payload) => {
+      const open = await session();
+      if (!open) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_REMOTE_UNREACHABLE", {
+            message: "The page's server can't be reached now, so the signal wasn't raised there.",
+          }),
+        );
+      }
+      const answer = await open.call(relayEffectMethod, {
+        artifactId,
+        ...of,
+        kind,
+        name,
+        ...(payload !== undefined ? { payload } : {}),
+      });
+      return answer.cursor;
+    };
 
   /** Sends one update of a run, after the ones before it; one the binding loses is reconciled. */
   const update = (
@@ -262,6 +289,7 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
       viewer: params.viewer,
       viewId: params.viewId,
       observer: observer(params.runId, session),
+      effect: effectOf(session, params.artifactId, { runId: params.runId }),
     });
     if (loseAcks > 0) {
       loseAcks -= 1;
@@ -326,6 +354,7 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
         args: params.args,
         viewer: params.viewer,
         viewId: params.viewId,
+        effect: effectOf(session, params.artifactId, { callId: params.callId }),
       },
       abort.signal,
     );

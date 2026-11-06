@@ -331,6 +331,16 @@
         "$ref": "#/definitions/RelayCallBatchResult"
       }
     },
+    "relay/effect": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RelayEffectParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RelayEffectResult"
+      }
+    },
     "relay/run.update": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -4500,6 +4510,50 @@
       "type": "object",
       "properties": {}
     },
+    "RelayEffectParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string"
+        },
+        "callId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "signal",
+            "emit"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "payload": {}
+      },
+      "required": [
+        "artifactId",
+        "kind",
+        "name"
+      ]
+    },
+    "RelayEffectResult": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        }
+      },
+      "required": [
+        "cursor"
+      ]
+    },
     "RelayHeld": {
       "type": "object",
       "properties": {
@@ -6277,6 +6331,18 @@
           "enum": [
             "agent",
             "host"
+          ]
+        },
+        "causation": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "runId"
           ]
         }
       },

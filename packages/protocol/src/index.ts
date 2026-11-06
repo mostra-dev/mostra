@@ -506,6 +506,11 @@ export {
   relayCallBatchMethod,
 } from "./methods/relay/call-batch.ts";
 export {
+  type RelayEffectParams,
+  type RelayEffectResult,
+  relayEffectMethod,
+} from "./methods/relay/effect.ts";
+export {
   type RelayRunEnd,
   type RelayRunUpdateParams,
   type RelayRunUpdateResult,

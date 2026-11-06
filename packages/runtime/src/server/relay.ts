@@ -31,6 +31,7 @@ import {
   RpcError,
   type RunState,
   relayCallBatchMethod,
+  relayEffectMethod,
   relayRunUpdateMethod,
 } from "@mostra/protocol";
 import type { Actions } from "../actions/index.ts";
@@ -761,6 +762,42 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           );
           apply(params.runId, params);
           return {};
+        }),
+        handler(relayEffectMethod, (params, session) => {
+          // Only the artifact's owner instance speaks for its runs (D165 item 1b).
+          if (options.ownerOf(params.artifactId) !== session.link?.instanceId) {
+            throw failed(
+              "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
+              "This instance doesn't own that artifact here.",
+            );
+          }
+          const row =
+            params.runId !== undefined
+              ? ledger.read((db) => runRow(db, params.runId as string))
+              : undefined;
+          if (params.runId !== undefined && row?.artifact_id !== params.artifactId) {
+            throw failed("MOSTRA_ACTION_RUN_NOT_FOUND", "This home has no such run.");
+          }
+          const viewerId = row?.viewer_id ?? undefined;
+          const common = {
+            ...(params.payload !== undefined ? { payload: params.payload } : {}),
+            ...(params.runId !== undefined ? { runId: params.runId } : {}),
+            ...(viewerId !== undefined ? { viewerId } : {}),
+          };
+          if (params.kind === "signal") {
+            return {
+              cursor: interaction.serverSignal(params.artifactId, { name: params.name, ...common }),
+            };
+          }
+          if (!/^host\.[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(params.name)) {
+            throw failed(
+              "MOSTRA_ACTION_EVENT_INVALID",
+              `${params.name.slice(0, 80)} isn't a host event type.`,
+            );
+          }
+          return {
+            cursor: interaction.serverEmit(params.artifactId, { type: params.name, ...common }),
+          };
         }),
         handler(relayCallBatchMethod, (params, session) => {
           const pending = calls.get(params.callId);

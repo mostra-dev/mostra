@@ -26,6 +26,7 @@ import {
   type HostedRoute,
   hostedPushMethod,
   type ListingEntry,
+  type MethodDefinition,
   portSubmissionsDeliverMethod,
   type RemoteLink,
   type RemoteLoginResult,
@@ -188,6 +189,17 @@ export interface Link {
   shares(): RemoteShares;
   /** This home's links, as `remote/status` answers them. */
   status(): RemoteLink[];
+  /**
+   * The server an artifact is hosted on, whose hosted home holds its shared state and live values
+   * (D165 item 1); `undefined` for an artifact that isn't hosted. Shared to several servers, the
+   * first it was shared to.
+   */
+  hostedOn(artifactId: string): string | undefined;
+  /**
+   * Calls a method on a server's hosted home for this home's client: a hosted artifact's
+   * `state/*` and `live/push` (D165 item 1). `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached.
+   */
+  forward<P, R>(server: string, definition: MethodDefinition<P, R>, params: P): Promise<R>;
 }
 
 /** One server's link at run time. */
@@ -1071,6 +1083,28 @@ export function createLink(options: LinkOptions): Link {
       return connections.get(server)?.binding.session !== undefined;
     },
     status: () => status(),
+    hostedOn: (artifactId) =>
+      ledger.read(
+        (db) =>
+          db.get<{ server: string }>(
+            "SELECT server FROM hosted_artifact WHERE artifact_id = ? AND stopped_at IS NULL AND route_id != '' ORDER BY shared_at LIMIT 1",
+            artifactId,
+          )?.server,
+      ),
+    forward: async (server, definition, params) => {
+      let session: BindingSession;
+      try {
+        session = await self.session(server, 3000);
+      } catch (error) {
+        if (error instanceof RpcError) throw error;
+        throw new RpcError(
+          createDiagnostic("MOSTRA_REMOTE_UNREACHABLE", {
+            message: `${server} can't be reached now; the hosted artifact's state lives there, so nothing was written.`,
+          }),
+        );
+      }
+      return session.call(definition, params, { timeoutMs: 30_000 });
+    },
     shares: () => ({
       mint: async (input) => {
         const server = resolveServer(input.server);

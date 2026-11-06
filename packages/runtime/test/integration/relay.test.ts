@@ -258,6 +258,62 @@ describe("the relay (§18.3)", () => {
     expect((await respondent.settled(runId(allowed))).status).toBe("succeeded");
   }, 60_000);
 
+  it("puts a relayed run's state, signals and host events on the hosted home, and the owner's own writes there", async () => {
+    const artifactId = hosted["queue"]?.artifactId as string;
+    const page = await openPage(hosted["queue"]?.url as string);
+    const added = runId(await page.run("actions.ts#addTask", ["from the page"]));
+    expect((await page.settled(added)).status).toBe("succeeded");
+    const raised = runId(await page.run("actions.ts#raise", []));
+    expect((await page.settled(raised)).status).toBe("succeeded");
+    // The owner reads the hosted home's state, not a local copy: one copy of shared state.
+    const state = ok<{ fields: Record<string, { value: unknown }> }>(
+      await owner.client.call("state/get", { artifact: { artifactId } }),
+    );
+    expect(state.fields["tasks"]?.value).toEqual(["from the page"]);
+    // The owner's own write goes there too, and the hosted page reads it.
+    ok(
+      await owner.client.call("state/patch", {
+        artifact: { artifactId },
+        ops: [{ id: "tasks", value: ["from the page", "from the agent"] }],
+        mutationId: "mut_01JB8Z3QF6S7W3N8D5K2C4V9XJ",
+      }),
+    );
+    const again = await page.run("actions.ts#addTask", ["third"]);
+    expect((await page.settled(runId(again))).status).toBe("succeeded");
+    const after = ok<{ fields: Record<string, { value: unknown }> }>(
+      await owner.client.call("state/get", { artifact: { artifactId } }),
+    );
+    expect(after.fields["tasks"]?.value).toEqual(["from the page", "from the agent", "third"]);
+    // The signal and the host event were appended on the hosted home with the run's causation,
+    // and reached the owner's own log through the follow.
+    await eventually(async () => {
+      // Followed from the hosted home (`origin`), never raised here first.
+      const events = ok<{
+        events: { type: string; causation?: { runId?: string }; origin?: unknown }[];
+      }>(
+        await owner.client.call("events/read", {
+          filter: { artifacts: [artifactId], types: ["signal.raised", "host.*"] },
+        }),
+      ).events.filter((event) => event.causation?.runId === raised);
+      expect(events.every((event) => event.origin !== undefined)).toBe(true);
+      return (
+        events.some((event) => event.type === "signal.raised") &&
+        events.some((event) => event.type === "host.mail.sent")
+      );
+    }, 15_000);
+    // A live value the owner pushes is the hosted page's.
+    ok(
+      await owner.client.call("live/push", {
+        artifact: { artifactId },
+        key: "headline",
+        value: "from the owner",
+      }),
+    );
+    const live = await page.live([{ key: "headline" }]);
+    expect(live.status, live.body).toBe(200);
+    expect(live.json<{ sources: { revision?: string }[] }>().sources[0]?.revision).toBeDefined();
+  }, 60_000);
+
   it("waits while the owner is offline, refuses past the cap, and drains in order at the rate", async () => {
     await owner.stop();
     const page = await openPage(hosted["queue"]?.url as string);
@@ -270,6 +326,8 @@ describe("the relay (§18.3)", () => {
     const offlineCall = await page.call("actions.ts#echo", []);
     expect(offlineCall.status).toBe(503);
     expect(offlineCall.body).toContain("MOSTRA_REMOTE_OWNER_OFFLINE");
+    // A hosted artifact's state is never written here alone while its server can't be reached.
+    // (The owner itself is stopped here; its refusal is checked once it is back, below.)
     // Under `queue` runs wait, up to the cap.
     const ids: string[] = [];
     for (const to of ["a", "b", "c"]) {
@@ -304,6 +362,17 @@ describe("the relay (§18.3)", () => {
     await until(page, slow, "running", 15_000);
     proxy.cut(true);
     await eventually(async () => (await stateOf(page, slow)).ownerUnreachable === true, 10_000);
+    // While the server can't be reached, a hosted artifact's state is refused, never written here.
+    const refused = await owner.client.call(
+      "state/patch",
+      {
+        artifact: { artifactId: hosted["short"]?.artifactId },
+        ops: [{ id: "tasks", value: ["offline"] }],
+        mutationId: "mut_01JB8Z3QF6S7W3N8D5K2C4V9XK",
+      },
+      20_000,
+    );
+    expect(JSON.stringify(refused)).toContain("MOSTRA_REMOTE_UNREACHABLE");
     const unknown = await until(page, slow, "unknown", 10_000);
     expect(unknown.error?.code).toBe("MOSTRA_REMOTE_OWNER_OFFLINE");
     // A run pressed now is never sent: at its limit it failed, and never happened.

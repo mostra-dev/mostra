@@ -333,6 +333,16 @@ impl super::Method for RelayCallBatch {
     type Params = super::generated::RelayCallBatchParams;
     type Result = super::generated::RelayCallBatchResult;
 }
+///`relay/effect`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayEffect;
+impl super::Method for RelayEffect {
+    const NAME: &'static str = "relay/effect";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RelayEffectParams;
+    type Result = super::generated::RelayEffectResult;
+}
 ///`relay/run.update`.
 #[derive(Clone, Copy, Debug)]
 pub struct RelayRunUpdate;
@@ -730,6 +740,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "relay/call.batch",
         direction: super::Direction::ClientToInstance,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "relay/effect",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
     },
     super::MethodInfo {
         name: "relay/run.update",

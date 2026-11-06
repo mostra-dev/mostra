@@ -61,6 +61,30 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "a relayed run's state is written in the owner's home",
+    file: "src/link/hosted.ts",
+    from: "  if (server === undefined) return undefined;\n  const artifact",
+    to: "  if (server === undefined || server) return undefined;\n  const artifact",
+    check: integration("relay.test.ts", "state, signals and host events"),
+  },
+  {
+    requirement: "RM-04",
+    name: "a relayed run's signal is raised in the owner's home",
+    file: "src/actions/index.ts",
+    from: '          if (relayedEffect) {\n            return {\n              cursor: await relayedEffect(\n                "signal",',
+    to: '          if (relayedEffect && false) {\n            return {\n              cursor: await relayedEffect(\n                "signal",',
+    check: integration("relay.test.ts", "state, signals and host events"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a hosted artifact's state is written here while its server is away",
+    file: "src/link/hosted.ts",
+    from: "        if (server === undefined) return entry.handle(params, session);",
+    to: "        if (server === undefined || true) return entry.handle(params, session);",
+    check: integration("relay.test.ts", "cut-off run unknown"),
+  },
+  {
     requirement: "RM-07",
     name: "a hosted home counts but serves no tally",
     file: "src/server/hosted.ts",

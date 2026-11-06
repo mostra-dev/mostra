@@ -80,7 +80,7 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
-import { createLink, type Link } from "../link/index.ts";
+import { createLink, forwardHosted, hostedState, type Link } from "../link/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
@@ -564,6 +564,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       : {}),
   });
   const actions = createActions({
+    // Server code's `state` of a hosted artifact acts on its hosted home (D165 item 1); the link
+    // is made below, and asked only once runs start.
+    hostedState: (artifactId) => hostedState(link, artifactId),
     interaction,
     pool,
     bus,
@@ -871,7 +874,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ...gateway.methods(),
       ...shares.methods(),
       ...link.methods(),
-      ...interaction.methods(),
+      // A hosted artifact's state and live values act on its hosted home (D165 item 1).
+      ...forwardHosted(link, (ref) => registry.get(canonicalRef(ref)).id, interaction.methods()),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
       ...gcMethods(
         createGc({
@@ -889,7 +893,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           faults,
         }),
       ),
-      ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
+      ...forwardHosted(
+        link,
+        (ref) => registry.get(canonicalRef(ref)).id,
+        liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
+      ),
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,

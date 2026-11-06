@@ -884,7 +884,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
                 ? { baseRevision: Number(params.baseRevision) }
                 : {}),
               ops: params.ops,
-              actor: clientActor(session, params.as),
+              actor:
+                params.causation !== undefined
+                  ? { kind: "agent", id: params.causation.runId }
+                  : clientActor(session, params.as),
             }).result,
         );
       }),

@@ -62,7 +62,31 @@ export interface ActionsOptions {
     /** Told about each refused function, for the verdict's `skippedActions`. */
     readonly skipped: (fnId: string) => void;
   };
+  /**
+   * A hosted artifact's shared state, which lives on its hosted home (D165 item 1): server code's
+   * `state` reads and writes it there, refused with `MOSTRA_REMOTE_UNREACHABLE` when it can't be
+   * reached, never applied here alone. `undefined` for an artifact that isn't hosted.
+   */
+  readonly hostedState?: (artifactId: string) => HostedState | undefined;
 }
+
+/** A hosted artifact's shared state on its hosted home. */
+export interface HostedState {
+  get(ids: readonly string[] | undefined): Promise<unknown>;
+  patch(input: {
+    readonly ops: unknown;
+    readonly mutationId?: string | undefined;
+    readonly baseRevision?: string | undefined;
+    readonly runId?: string | undefined;
+  }): Promise<unknown>;
+}
+
+/** Where a relayed run's or call's signals and host events go: its hosted home (D165 item 4). */
+export type RelayedEffect = (
+  kind: "signal" | "emit",
+  name: string,
+  payload: unknown,
+) => Promise<string>;
 
 /** Plain calls and action runs, and the bridge workers ask through. */
 export interface Actions {
@@ -121,6 +145,7 @@ export interface Actions {
       readonly args: Batches;
       readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
       readonly viewId?: string | undefined;
+      readonly effect?: RelayedEffect | undefined;
     },
     signal: AbortSignal,
   ): Promise<AsyncIterable<CallLine>>;
@@ -147,6 +172,8 @@ export interface RelayedRun {
   readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
   readonly viewId?: string | undefined;
   readonly observer: RunObserver;
+  /** Where its signals and host events go. */
+  readonly effect?: RelayedEffect;
 }
 
 /** A run this instance is executing. */
@@ -171,6 +198,9 @@ export function createActions(options: ActionsOptions): Actions {
   const callRuns = new Map<string, string>();
   /** Why a run's worker stopped under it, until its `execute` ends it. */
   const crashCauses = new Map<string, string>();
+  /** Where relayed runs' and calls' effects go: by run ID, and by worker call ID. */
+  const runEffects = new Map<string, RelayedEffect>();
+  const callEffects = new Map<string, RelayedEffect>();
   let calls = 0;
 
   const redact = (text: string): string => options.redactor.redact(text);
@@ -235,6 +265,7 @@ export function createActions(options: ActionsOptions): Actions {
   /** Runs a recorded run in its version's worker, writing its output as it comes. */
   const execute = async (row: RunRow, relayed?: RelayedRun): Promise<void> => {
     const observer = relayed?.observer;
+    if (relayed?.effect) runEffects.set(row.id, relayed.effect);
     const entry: Executing = { cancelled: false };
     executing.set(row.id, entry);
     let pendingLines: string[] = [];
@@ -431,6 +462,7 @@ export function createActions(options: ActionsOptions): Actions {
       });
     } finally {
       executing.delete(row.id);
+      runEffects.delete(row.id);
     }
   };
 
@@ -440,6 +472,8 @@ export function createActions(options: ActionsOptions): Actions {
       readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
       /** The local viewer whose call raises its signals, if it is one of this home's. */
       readonly viewerId?: string | undefined;
+      /** A relayed call's effects go to its hosted home. */
+      readonly effect?: RelayedEffect | undefined;
     },
     input: { readonly viewId?: string | undefined; readonly fnId: string; readonly args: Batches },
     signal: AbortSignal,
@@ -480,6 +514,7 @@ export function createActions(options: ActionsOptions): Actions {
       },
     );
     calls += 1;
+    if (caller.effect) callEffects.set(callId, caller.effect);
     const abort = (): void => handle.cancel(callId, "The page went away.");
     signal.addEventListener("abort", abort, { once: true });
     let ended: CallLine | undefined;
@@ -546,6 +581,7 @@ export function createActions(options: ActionsOptions): Actions {
       }
     } finally {
       calls -= 1;
+      callEffects.delete(callId);
       signal.removeEventListener("abort", abort);
       // A reader that stopped early (the response failed) leaves nothing running.
       if (!ended) handle.cancel(callId, "The page went away.");
@@ -555,6 +591,10 @@ export function createActions(options: ActionsOptions): Actions {
   const bridge: Actions["bridge"] = {
     async request(worker, method, params, call) {
       const runId = call?.context.runId;
+      const relayedEffect =
+        (runId !== undefined ? runEffects.get(runId) : undefined) ??
+        (call ? callEffects.get(call.callId) : undefined);
+      const hosted = options.hostedState?.(worker.artifactId);
       switch (method) {
         case WORKER_METHODS.secret: {
           const { name } = ServerSecretParams.parse(params);
@@ -562,6 +602,16 @@ export function createActions(options: ActionsOptions): Actions {
         }
         case WORKER_METHODS.signal: {
           const parsed = ServerSignalParams.parse(params);
+          // A relayed run's signal goes to its hosted home, without a secret (AC-06).
+          if (relayedEffect) {
+            return {
+              cursor: await relayedEffect(
+                "signal",
+                parsed.name,
+                redactValue(parsed.payload, options.redactor),
+              ),
+            };
+          }
           return {
             cursor: interaction.serverSignal(worker.artifactId, {
               name: parsed.name,
@@ -579,6 +629,15 @@ export function createActions(options: ActionsOptions): Actions {
               `${parsed.type.slice(0, 80)} isn't a host event type.`,
             );
           }
+          if (relayedEffect) {
+            return {
+              cursor: await relayedEffect(
+                "emit",
+                parsed.type,
+                redactValue(parsed.payload, options.redactor),
+              ),
+            };
+          }
           return {
             cursor: interaction.serverEmit(worker.artifactId, {
               type: parsed.type,
@@ -590,10 +649,19 @@ export function createActions(options: ActionsOptions): Actions {
         }
         case WORKER_METHODS.stateGet: {
           const parsed = ServerStateGetParams.parse(params);
+          if (hosted) return hosted.get(parsed.ids);
           return interaction.serverState(worker.artifactId, parsed.ids);
         }
         case WORKER_METHODS.statePatch: {
           const parsed = ServerStatePatchParams.parse(params);
+          if (hosted) {
+            return hosted.patch({
+              ops: redactValue(parsed.ops, options.redactor),
+              mutationId: parsed.mutationId,
+              baseRevision: parsed.baseRevision,
+              runId,
+            });
+          }
           return interaction.serverPatch(worker.artifactId, {
             ops: redactValue(parsed.ops, options.redactor),
             ...(parsed.mutationId !== undefined ? { mutationId: parsed.mutationId } : {}),
@@ -701,7 +769,7 @@ export function createActions(options: ActionsOptions): Actions {
     async callRelayed(input, signal) {
       checkArgs(input.args);
       const handle = await pool.acquire(functionOf(input.versionId, input.fnId));
-      return stream({ viewer: input.viewer }, input, signal, handle);
+      return stream({ viewer: input.viewer, effect: input.effect }, input, signal, handle);
     },
   };
 }

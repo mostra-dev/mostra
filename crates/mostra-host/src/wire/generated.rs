@@ -9656,6 +9656,174 @@ for RelayCallBatchResult {
         Self(value)
     }
 }
+///`RelayEffectParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayEffectParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: RelayEffectParamsArtifactId,
+    #[serde(rename = "callId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub call_id: ::std::option::Option<::std::string::String>,
+    pub kind: RelayEffectParamsKind,
+    pub name: RelayEffectParamsName,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub payload: ::std::option::Option<::serde_json::Value>,
+    #[serde(rename = "runId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub run_id: ::std::option::Option<::std::string::String>,
+}
+///`RelayEffectParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayEffectParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for RelayEffectParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayEffectParamsArtifactId> for ::std::string::String {
+    fn from(value: RelayEffectParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayEffectParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayEffectParamsKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RelayEffectParamsKind {
+    #[serde(rename = "signal")]
+    Signal,
+    #[serde(rename = "emit")]
+    Emit,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`RelayEffectParamsName`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayEffectParamsName(::std::string::String);
+impl ::std::ops::Deref for RelayEffectParamsName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayEffectParamsName> for ::std::string::String {
+    fn from(value: RelayEffectParamsName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayEffectParamsName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayEffectResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayEffectResult {
+    pub cursor: Cursor,
+}
 ///`RelayHeld`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct RelayHeld {
@@ -13994,6 +14162,8 @@ pub struct StatePatchParams {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub base_revision: ::std::option::Option<DocumentRevision>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub causation: ::std::option::Option<StatePatchParamsCausation>,
     #[serde(rename = "mutationId")]
     pub mutation_id: MutationId,
     pub ops: ::std::vec::Vec<FieldOp>,
@@ -14034,6 +14204,66 @@ impl ::std::convert::TryFrom<::std::string::String> for StatePatchParamsAs {
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`StatePatchParamsCausation`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct StatePatchParamsCausation {
+    #[serde(rename = "runId")]
+    pub run_id: StatePatchParamsCausationRunId,
+}
+///`StatePatchParamsCausationRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct StatePatchParamsCausationRunId(::std::string::String);
+impl ::std::ops::Deref for StatePatchParamsCausationRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<StatePatchParamsCausationRunId> for ::std::string::String {
+    fn from(value: StatePatchParamsCausationRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for StatePatchParamsCausationRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for StatePatchParamsCausationRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for StatePatchParamsCausationRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for StatePatchParamsCausationRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///Where a page stands: cursor, viewer, draft, artifact state and its submission.
@@ -17712,6 +17942,36 @@ impl ::std::str::FromStr for RelayCallBatchParamsEndStatus {
             match value {
                 "succeeded" => Self::Succeeded,
                 "failed" => Self::Failed,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl RelayEffectParamsKind {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Signal => "signal",
+            Self::Emit => "emit",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for RelayEffectParamsKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "signal" => Self::Signal,
+                "emit" => Self::Emit,
                 other => Self::Unknown(other.to_string()),
             },
         )

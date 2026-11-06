@@ -37,6 +37,7 @@ import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
 import { relayCallBatchMethod } from "./relay/call-batch.ts";
+import { relayEffectMethod } from "./relay/effect.ts";
 import { relayRunUpdateMethod } from "./relay/run-update.ts";
 import { remoteLoginMethod } from "./remote/login.ts";
 import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
@@ -116,6 +117,7 @@ export const hostMethods: readonly AnyMethod[] = [
   portRelayCallMethod,
   relayRunUpdateMethod,
   relayCallBatchMethod,
+  relayEffectMethod,
   // gen:methods
 ];
 

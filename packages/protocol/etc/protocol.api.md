@@ -2212,6 +2212,24 @@ export interface RelayCallBatchParams {
 export type RelayCallBatchResult = Record<string, never>;
 
 // @public
+export const relayEffectMethod: MethodDefinition<RelayEffectParams, RelayEffectResult>;
+
+// @public
+export interface RelayEffectParams {
+    readonly artifactId: string;
+    readonly callId?: string;
+    readonly kind: "signal" | "emit";
+    readonly name: string;
+    readonly payload?: unknown;
+    readonly runId?: string;
+}
+
+// @public
+export interface RelayEffectResult {
+    readonly cursor: Cursor;
+}
+
+// @public
 export interface RelayHeld {
     readonly batches: number;
     readonly log: number;
@@ -3082,6 +3100,9 @@ export interface StatePatchParams {
     readonly artifact: ArtifactRef;
     readonly as?: "agent" | "host";
     readonly baseRevision?: DocumentRevision;
+    readonly causation?: {
+        readonly runId: string;
+    };
     readonly mutationId: string;
     readonly ops: readonly FieldOp[];
 }
