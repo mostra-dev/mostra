@@ -36,7 +36,7 @@ export const remoteDiagnostics: AreaCatalog<RemoteDiagnosticCode> = {
     severity: "error",
     phase: "host",
     title: "Signing in to a remote server failed",
-    hint: "Sign in to the server again, and approve the code on its page within ten minutes.",
+    hint: "Run mostra login again, and approve the code on the server's page within ten minutes.",
     docs: {
       explanation:
         "Signing this home in to a remote server didn't finish: the code expired, the person refused it, the server refused the client, or the binding's access token was refused (revoked, expired, or for another server). Nothing of the home changed; artifacts it owns on that server stay its own.",

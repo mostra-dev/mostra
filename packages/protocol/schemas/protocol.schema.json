@@ -3410,6 +3410,13 @@
           "items": {
             "$ref": "#/$defs/Share"
           }
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RemoteLink"
+          }
         }
       },
       "required": [
@@ -4141,6 +4148,9 @@
       "properties": {
         "server": {
           "$ref": "#/$defs/ServerOrigin"
+        },
+        "default": {
+          "type": "boolean"
         },
         "requestId": {
           "type": "string",

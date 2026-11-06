@@ -908,6 +908,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
               }
             : undefined,
         shares: () => shares.active(),
+        links: () => link.status(),
         deliveries: () => interaction.deliveries(),
         workers: () => pool.status(),
         idleExitAt: () => idle?.exitAt(),

@@ -175,6 +175,8 @@ export interface Link {
   connected(server: string): boolean;
   /** `remote` shares (INTERFACES §18.2): hosted links minted on this home's hosted homes. */
   shares(): RemoteShares;
+  /** This home's links, as `remote/status` answers them. */
+  status(): RemoteLink[];
 }
 
 /** One server's link at run time. */
@@ -693,7 +695,10 @@ export function createLink(options: LinkOptions): Link {
   };
 
   /** Starts a sign-in: the device grant's code, then polls for the token in the background. */
-  const login = async (requested: string | undefined): Promise<RemoteLoginResult> => {
+  const login = async (
+    requested: string | undefined,
+    makeDefault = false,
+  ): Promise<RemoteLoginResult> => {
     const server = resolveServer(requested);
     const existing = ledger.read((db) => linkRow(db, server));
     const started = await postForm(
@@ -703,6 +708,7 @@ export function createLink(options: LinkOptions): Link {
         client_id: CLIENT_ID,
         mostra_name: hostname().slice(0, 128) || "Mostra instance",
         ...(existing?.instance_id ? { mostra_instance: existing.instance_id } : {}),
+        ...(makeDefault ? { mostra_default: "1" } : {}),
       },
       connectTo,
     );
@@ -849,7 +855,7 @@ export function createLink(options: LinkOptions): Link {
   const self: Link = {
     methods() {
       return [
-        handler(remoteLoginMethod, (params) => login(params.server)),
+        handler(remoteLoginMethod, (params) => login(params.server, params.default === true)),
         handler(remoteLoginWaitMethod, async (params) => {
           const pending = logins.get(params.loginId);
           if (!pending) throw invalid(`No sign-in ${params.loginId} is in progress.`);
@@ -1013,6 +1019,7 @@ export function createLink(options: LinkOptions): Link {
     connected(server) {
       return connections.get(server)?.binding.session !== undefined;
     },
+    status: () => status(),
     shares: () => ({
       mint: async (input) => {
         const server = resolveServer(input.server);

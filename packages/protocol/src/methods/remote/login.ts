@@ -7,6 +7,11 @@ import { wireRegistry } from "../../wire-registry.ts";
 export interface RemoteLoginParams {
   /** The server's API origin. Default: the home's default server. */
   readonly server?: ServerOrigin;
+  /**
+   * Makes this instance the account's default: the one chat-host authoring goes to (D165 item
+   * 1b). Without it, an account's first linked instance is its default.
+   */
+  readonly default?: boolean;
   /** Makes a retry return the same sign-in. */
   readonly requestId?: string;
 }
@@ -31,7 +36,11 @@ export interface RemoteLoginResult {
 }
 
 const params: z.ZodType<RemoteLoginParams> = z
-  .object({ server: ServerOrigin.exactOptional(), requestId: z.string().min(1).exactOptional() })
+  .object({
+    server: ServerOrigin.exactOptional(),
+    default: z.boolean().exactOptional(),
+    requestId: z.string().min(1).exactOptional(),
+  })
   .register(wireRegistry, { id: "RemoteLoginParams" });
 
 const result: z.ZodType<RemoteLoginResult> = z

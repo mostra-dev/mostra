@@ -13,6 +13,7 @@ import {
   instanceCheckMethod,
   instanceStatusMethod,
   mostraShutdownMethod,
+  type RemoteLink,
   RpcError,
   type Share,
   type WorkerStatus,
@@ -53,6 +54,8 @@ export interface SessionMethodsOptions {
   idleExitAt?(): string | undefined;
   /** The active shares (WP-13, D158). */
   shares?(): readonly Share[];
+  /** The home's links to remote servers (WP-29). */
+  links?(): readonly RemoteLink[];
   /**
    * The supervisor's own checks of its home (`instance/check`, D140 item 18), in order; `deep`
    * also hashes every version against its output digest.
@@ -79,6 +82,7 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         ...(options.deliveries ? { deliveries: [...options.deliveries()] } : {}),
         ...(options.workers ? { workers: [...options.workers()] } : {}),
         ...(options.shares ? { shares: [...options.shares()] } : {}),
+        ...(options.links ? { links: [...options.links()] } : {}),
         ...(() => {
           const at = options.idleExitAt?.();
           return at === undefined ? {} : { idleExitAt: at };

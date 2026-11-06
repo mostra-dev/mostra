@@ -3522,6 +3522,13 @@
           "items": {
             "$ref": "#/definitions/Share"
           }
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteLink"
+          }
         }
       },
       "required": [
@@ -4273,6 +4280,9 @@
               "$ref": "#/definitions/ServerOrigin"
             }
           ]
+        },
+        "default": {
+          "type": "boolean"
         },
         "requestId": {
           "type": "string",

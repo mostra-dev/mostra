@@ -163,7 +163,17 @@ export const statusCommand: CommandDef = defineCommand({
       return { result: detail, human: `${detail.id}  ${detail.title}\n${versions}` };
     }
     const status = await context.call(instanceStatusMethod, {});
-    return { result: status, human: pretty(status) };
+    // Each remote server this home is linked to, by its state (INTERFACES §18.7).
+    const links = (status.links ?? [])
+      .map(
+        (link) =>
+          `${link.server}  ${link.state}${link.default ? "  default" : ""}${link.pendingPushes > 0 ? `  ${link.pendingPushes} pushes waiting` : ""}${link.lastError ? `  (${link.lastError})` : ""}\n`,
+      )
+      .join("");
+    return {
+      result: status,
+      human: `${pretty(status)}${links ? `\nRemote servers:\n${links}` : ""}`,
+    };
   },
 });
 

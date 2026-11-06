@@ -1605,6 +1605,7 @@ export interface InstanceStatusResult {
     readonly gateway?: GatewayStatus;
     readonly idleExitAt?: string;
     readonly instance: InstanceInfo;
+    readonly links?: readonly RemoteLink[];
     readonly processes: readonly ChildProcessStatus[];
     readonly shares?: readonly Share[];
     readonly socket: string;
@@ -2164,6 +2165,7 @@ export const remoteLoginMethod: MethodDefinition<RemoteLoginParams, RemoteLoginR
 
 // @public
 export interface RemoteLoginParams {
+    readonly default?: boolean;
     readonly requestId?: string;
     readonly server?: ServerOrigin;
 }

@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `mcp`, `new`, `open`, `publish`, `push`, `results`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `publish`, `push`, `results`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -192,15 +192,17 @@ Example:
 ## mostra share
 
 ```text
-Open an artifact to people beyond this machine: inside your tailnet, or publicly with a link that expires.
+Open an artifact to people beyond this machine: inside your tailnet, publicly with a link that expires, or hosted on a server.
 
 Usage:
-  mostra share <artifact> [flags]
+  mostra share <artifact> [<server>] [flags]
 
 Arguments:
   <artifact>                   The artifact: its source path or its ID.
+  <server>                     With --cloud: the server's address. Default: the server signed in to last.
 
 Flags:
+  --cloud                      Host it on a remote server you signed in to with mostra login: the link keeps working while this machine sleeps.
   --tailnet                    Share inside your tailnet through Tailscale Serve; each viewer is their tailnet identity.
   --public                     Share publicly: anyone with the link can open it until it expires.
   --via <tunnel>               The public tunnel: a Cloudflare quick tunnel (no account), or Tailscale Funnel (shows your device's tailnet name). (cloudflare, funnel) Default: cloudflare.
@@ -227,7 +229,7 @@ Exit codes:
   4  timeout (--timeout passed)
 
 Example:
-  mostra share ./sidebar-review --public --ttl 2h
+  mostra share ./sidebar-review --cloud
 ```
 
 ## mostra share stop
@@ -293,6 +295,74 @@ Exit codes:
 
 Example:
   mostra share list --all
+```
+
+## mostra login
+
+```text
+Sign this machine's Mostra in to a remote server, so mostra share --cloud can host pages there.
+
+Usage:
+  mostra login [<server>] [flags]
+
+Arguments:
+  <server>                     The server's address, such as https://api.example.com. Default: the server signed in to last.
+
+Flags:
+  --default                    Make this machine the account's default, the one chat apps create pages on. Default: the first machine linked.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: RemoteLoginWaitResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra login https://api.example.com
+```
+
+## mostra logout
+
+```text
+Sign this machine's Mostra out of a remote server; its hosted pages keep working, and their answers wait for the next sign-in.
+
+Usage:
+  mostra logout [<server>] [flags]
+
+Arguments:
+  <server>                     The server's address. Default: the server signed in to last.
+
+Flags:
+  --forget                     Also forget this machine's link to the server: the pages it shared there are no longer its own.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: RemoteLogoutResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra logout
 ```
 
 ## mostra wait

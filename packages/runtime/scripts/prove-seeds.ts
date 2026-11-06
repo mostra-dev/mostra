@@ -62,6 +62,24 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "share --cloud shares through a tunnel instead",
+    file: "../cli/src/commands/sharing.ts",
+    from: '    const via: ShareVia = cloud\n      ? "remote"',
+    to: '    const via: ShareVia = cloud\n      ? "tailnet"',
+    check: integration("contract.test.ts", "share --cloud"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RM-02",
+    name: "mostra status leaves the remote links out",
+    file: "src/instance/index.ts",
+    from: "        links: () => link.status(),\n",
+    to: "",
+    check: integration("contract.test.ts", "share --cloud"),
+    cwd: "../cli",
+  },
+  {
+    requirement: "RM-02",
     name: "a respondent on a hosted link is shown the owner's delivery states",
     file: "src/server/hosted.ts",
     from: "    sentOnly: true,",

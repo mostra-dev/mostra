@@ -20,4 +20,4 @@ Sign in to the server again and approve the code on the page it names. A refusal
 
 ## Hint
 
-Sign in to the server again, and approve the code on its page within ten minutes.
+Run mostra login again, and approve the code on the server's page within ten minutes.

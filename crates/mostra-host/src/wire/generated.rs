@@ -7475,6 +7475,8 @@ pub struct InstanceStatusResult {
     )]
     pub idle_exit_at: ::std::option::Option<::std::string::String>,
     pub instance: InstanceInfo,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub links: ::std::vec::Vec<RemoteLink>,
     pub processes: ::std::vec::Vec<ChildProcessStatus>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub shares: ::std::vec::Vec<Share>,
@@ -8839,6 +8841,8 @@ impl ::std::convert::TryFrom<::std::string::String> for RemoteLinkState {
 ///`RemoteLoginParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 pub struct RemoteLoginParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub default: ::std::option::Option<bool>,
     #[serde(
         rename = "requestId",
         skip_serializing_if = "::std::option::Option::is_none"

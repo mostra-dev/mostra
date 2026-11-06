@@ -93,6 +93,8 @@ interface DeviceState {
   readonly instance?: string;
   readonly name?: string;
   readonly lastPollAt?: number;
+  /** The instance asked to become the account's default (`mostra login --default`). */
+  readonly makeDefault?: boolean;
 }
 
 /** Options for {@link createAuthorization}. */
@@ -342,6 +344,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         status: "pending",
         name,
         ...(instance !== undefined ? { instance } : {}),
+        ...(form.get("mostra_default") === "1" ? { makeDefault: true } : {}),
       };
       directory.write((db) =>
         db.run(
@@ -398,6 +401,16 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           const account = state.accountId as string;
           const home = homeFor(db, account);
           const link = linkFor(db, account, home, state.instance, state.name ?? "Mostra instance");
+          // `mostra login --default` makes this instance the account's default (D165 item 1b):
+          // chat-host authoring goes to it. One default per account (a unique index).
+          if (state.makeDefault === true) {
+            db.run(
+              "UPDATE instance_link SET is_default = 0 WHERE account_id = ? AND id != ?",
+              account,
+              link,
+            );
+            db.run("UPDATE instance_link SET is_default = 1 WHERE id = ?", link);
+          }
           const grantId = `grt_${randomBytes(16).toString("hex")}`;
           db.run(
             'INSERT INTO "grant" (id, account_id, client_id, scope, resource, link_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
