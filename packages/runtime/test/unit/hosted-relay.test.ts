@@ -5,7 +5,7 @@
  * before those runs, which become `unknown` with every run sent but never acknowledged, and none is
  * sent again; and relay sequences continue above the owner's mark.
  */
-import { ArtifactId, serializeAll, VersionId } from "@mostra/protocol";
+import { ArtifactId, createDiagnostic, RpcError, serializeAll, VersionId } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
 import { appendEvent } from "../../src/interaction/events.ts";
@@ -25,7 +25,7 @@ interface Call {
   readonly params: Record<string, unknown>;
 }
 
-function setup() {
+function setup(options: { sweepMs?: number; now?: () => number } = {}) {
   const { ledger } = freshLedger();
   const artifactId = ArtifactId.create();
   const versionId = ledger.write((db) => {
@@ -78,7 +78,8 @@ function setup() {
       return answer(call);
     },
     functions: () => new Set([FN]),
-    sweepMs: 60_000,
+    sweepMs: options.sweepMs ?? 60_000,
+    ...(options.now ? { now: options.now } : {}),
   });
   const viewerId = ledger.write((db) => viewerForSpec(db, { ref: "grace@example.com" }));
   const page = { artifactId, viewerId };
@@ -194,6 +195,34 @@ describe("the hosted relay against a scripted owner (§18.3)", () => {
     await t.start();
     await until(() => t.calls.length === 1);
     expect(t.calls[0]?.params["seq"]).toBe(51);
+    t.relay.stop();
+  });
+
+  it("ends a run its owner refused before recording it failed, and sends one it never acknowledged again", async () => {
+    let clock = Date.now();
+    const t = setup({ sweepMs: 20, now: () => clock });
+    t.connect(1, 0);
+    await until(() => true);
+    // The owner answers with a refusal: it never recorded the run, so the run never happened.
+    t.answering(() => {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_REMOTE_NOT_OWNER_INSTANCE", { message: "not this instance's" }),
+      );
+    });
+    const refused = await t.start();
+    await until(() => t.status(refused.runId) === "failed");
+    // The owner's answer timed out: the run may be recorded there, so it is sent again later,
+    // which joins it, and never ends here meanwhile.
+    t.answering(() => {
+      throw new RpcError(createDiagnostic("MOSTRA_HOST_TIMEOUT", { message: "no answer" }));
+    });
+    const silent = await t.start();
+    await until(() => t.calls.filter((call) => call.params["runId"] === silent.runId).length === 1);
+    expect(t.status(silent.runId)).toBe("queued");
+    t.answering(() => ({ accepted: true }));
+    clock += 40_000;
+    await until(() => t.calls.filter((call) => call.params["runId"] === silent.runId).length === 2);
+    expect(t.status(silent.runId)).toBe("queued");
     t.relay.stop();
   });
 });

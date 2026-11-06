@@ -56,6 +56,13 @@ import { handler, type MethodHandler, type Session } from "../protocol-server/in
 
 /** How long a relay port call may take: the owner answers once it recorded the run. */
 const PORT_CALL_MS = 30_000;
+/** How long a run its connected owner never acknowledged waits before it is sent again. */
+const RESEND_MS = PORT_CALL_MS + 5_000;
+/** Failures of the connection rather than answers of the owner: the run may yet be recorded. */
+const TRANSPORT_FAILURES: ReadonlySet<string> = new Set([
+  "MOSTRA_HOST_CONNECTION_CLOSED",
+  "MOSTRA_HOST_TIMEOUT",
+]);
 /** The most waiting runs per artifact, by default (a server setting, D165 item 4). */
 export const WAITING_RUNS_DEFAULT = 100;
 /** How many waiting runs go out per second per artifact when the owner returns, by default. */
@@ -168,6 +175,8 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   const ready = new Map<string, number>();
   /** Runs being sent now, so a sweep or a second drain never sends one twice at once. */
   const sending = new Set<string>();
+  /** When each run was last sent, for the sweep's resend while the owner stays connected. */
+  const lastTry = new Map<string, number>();
   const draining = new Set<string>();
   const versions = new Map<string, RelayVersion>();
   /**
@@ -388,12 +397,36 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       // A cancel pressed before the owner had it reaches the run now.
       if (relay.cancel_requested_at !== null) void cancelOnOwner(runId, session);
     } catch (error) {
-      // Sent and not acknowledged: it is sent again after the next reconnect, which joins it if
-      // the owner recorded it (FAILURE_MODEL §11.1).
-      log.warn("relay.send_failed", { runId, error });
+      const code = error instanceof RpcError ? error.diagnostic.code : undefined;
+      if (code !== undefined && !TRANSPORT_FAILURES.has(code)) {
+        // The owner answered and refused the run: it records a run before it answers, so a
+        // refusal means the run never started there, and it ends failed with the owner's reason.
+        refused(runId, (error as RpcError).diagnostic);
+      } else {
+        // Sent and not acknowledged: it is sent again (after the next reconnect, or by the sweep
+        // while the owner stays connected), which joins it if the owner recorded it (§11.1).
+        log.warn("relay.send_failed", { runId, error });
+      }
     } finally {
+      lastTry.set(runId, now());
       sending.delete(runId);
     }
+  };
+
+  /** A run its owner refused before recording it ends failed, with the owner's diagnostic. */
+  const refused = (runId: string, diagnostic: { code: string; message: string }): void => {
+    log.warn("relay.run_refused", { runId, code: diagnostic.code });
+    const ended = ledger.write((db) => {
+      const row = runRow(db, runId);
+      if (!row || isFinalRunStatus(row.status) || row.status === "unknown") return undefined;
+      const done = finishRun(db, runId, {
+        status: "failed",
+        reason: "owner-refused",
+        error: { code: diagnostic.code, message: diagnostic.message },
+      });
+      return done ? { state: runState(db, done), artifactId: done.artifact_id } : undefined;
+    });
+    if (ended) publish(ended.state, ended.artifactId);
   };
 
   const cancelOnOwner = async (runId: string, session: number): Promise<void> => {
@@ -630,6 +663,8 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
          JOIN action_run a ON a.id = r.run_id WHERE a.status IN ('queued', 'running', 'waiting')`,
       ),
     );
+    const open = new Set(rows.map((row) => row.run_id));
+    for (const id of lastTry.keys()) if (!open.has(id)) lastTry.delete(id);
     for (const row of rows) {
       if (sending.has(row.run_id)) continue;
       if (row.sent_at === null) {
@@ -637,8 +672,15 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         if (Date.parse(row.offline_limit_at) <= now()) endOffline(row.run_id);
         continue;
       }
-      // Sent: counted from when the owner was last heard from, and only while it is away.
-      if (sessionFor(row.owner_link_id) !== undefined) continue;
+      // Sent: counted from when the owner was last heard from, and only while it is away. While
+      // it stays connected, a run it never acknowledged (its answer timed out) is sent again.
+      const session = sessionFor(row.owner_link_id);
+      if (session !== undefined) {
+        if (row.accepted_at === null && now() - (lastTry.get(row.run_id) ?? 0) >= RESEND_MS) {
+          void send(row.run_id, session);
+        }
+        continue;
+      }
       const heard = Date.parse(row.owner_heard_at ?? row.sent_at);
       if (heard + versionOf(row.version_id).limitMs <= now()) unknown(row.run_id);
     }

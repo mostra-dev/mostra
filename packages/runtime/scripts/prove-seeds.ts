@@ -62,6 +62,22 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-04",
+    name: "a run its owner refused waits forever",
+    file: "src/server/relay.ts",
+    from: "      if (code !== undefined && !TRANSPORT_FAILURES.has(code)) {",
+    to: "      if (code !== undefined && !TRANSPORT_FAILURES.has(code) && false) {",
+    check: unit("hosted-relay.test.ts", "never acknowledged again"),
+  },
+  {
+    requirement: "RM-04",
+    name: "a run its connected owner never acknowledged is never sent again",
+    file: "src/server/relay.ts",
+    from: "        if (row.accepted_at === null && now() - (lastTry.get(row.run_id) ?? 0) >= RESEND_MS) {",
+    to: "        if (row.accepted_at === null && false) {",
+    check: unit("hosted-relay.test.ts", "never acknowledged again"),
+  },
+  {
+    requirement: "RM-04",
     name: "a link floods its relayed actions",
     file: "src/server/relay.ts",
     from: "    if (!limit || tokenId === undefined) return;",
