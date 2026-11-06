@@ -61,6 +61,14 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "an issued link's frames move to the active domain",
+    file: "src/server/hosted.ts",
+    from: "        const domain = domains.find((candidate) => originOf(candidate) === shellOrigin);",
+    to: "        const domain = shellOrigin ? options.domains.active : undefined;",
+    check: integration("hosted.test.ts", "domain move"),
+  },
+  {
     requirement: "RM-04",
     name: "a run its owner crashed during is never reported",
     file: "src/link/relay.ts",

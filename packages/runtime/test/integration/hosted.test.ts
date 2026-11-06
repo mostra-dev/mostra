@@ -20,6 +20,7 @@ import {
   type RunningServer,
   startServer,
   stopServer,
+  testConfig,
 } from "../server-support.ts";
 import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
@@ -454,6 +455,58 @@ export default function Page() {
       listening = false;
       host.close();
       await other.stop();
+    }
+  }, 180_000);
+});
+
+describe("hosted links across a domain move (D137)", () => {
+  it("keeps issued links on their domain and mints new ones on the active one", async () => {
+    const port = await freePort();
+    const data = tempDir("server-data");
+    let server = await startServer({ data, port });
+    const owner = new GatewayHome();
+    try {
+      await owner.start({ env: ownerEnv(port) });
+      await ownerSignIn(owner.client, port, "Ada");
+      const receipt = await owner.publish("single-tsx", "page.tsx");
+      const share = (): Promise<string> =>
+        owner.client
+          .call("share/start", { artifact: { artifactId: receipt.artifactId }, via: "remote" })
+          .then((answer) => ok<{ url: string }>(answer).url);
+      const before = await share();
+      expect(new URL(before).host).toBe(`content.localhost:${port}`);
+
+      // The operator moves new links to another domain: no release, the old one a spare.
+      await stopServer(server);
+      server = await startServer({
+        data,
+        port,
+        config: testConfig(port, {
+          domains: { active: `fresh.localhost:${port}`, spares: [`content.localhost:${port}`] },
+        }),
+      });
+      await eventually(async () => {
+        const links = ok<{ links: { state: string }[] }>(
+          await owner.client.call("remote/status", {}),
+        ).links;
+        return links[0]?.state === "connected";
+      }, 30_000);
+      // The issued link still opens, on the domain it was minted on.
+      const old = await openLink(new Browser(), before);
+      expect(old.page.status).toBe(200);
+      expect(new URL(old.frameOrigin).host).toMatch(new RegExp(`\\.content\\.localhost:${port}$`));
+      // A new link is on the active domain, and opens there.
+      const after = await share();
+      expect(new URL(after).host).toBe(`fresh.localhost:${port}`);
+      const fresh = await openLink(new Browser(), after);
+      expect(fresh.page.status).toBe(200);
+      expect(new URL(fresh.frameOrigin).host).toMatch(new RegExp(`\\.fresh\\.localhost:${port}$`));
+      // A link works only on the domain it was minted on.
+      const moved = before.replace(`content.localhost:${port}`, `fresh.localhost:${port}`);
+      await expect(openLink(new Browser(), moved)).rejects.toThrow();
+    } finally {
+      await owner.stop();
+      await stopServer(server);
     }
   }, 180_000);
 });

@@ -324,7 +324,9 @@ artifact_pause(artifact_id PK, by CHECK(by IN ('owner','operator')), reason, pau
 quarantine(route_id, version_id NULL, reason, at, UNIQUE(route_id, version_id))
                                                     -- a route, or one version of a route, the operator quarantined
                                                     -- (D165 item 9); an identical version in another home is untouched
-link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137)
+link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137);
+                                                    -- as built (WP-29, D166 item 15) the token's own
+                                                    -- shell_origin records it, so no table is added
 ```
 
 ### 7.3 The owner's instance
