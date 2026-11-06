@@ -243,6 +243,46 @@
         "$ref": "#/definitions/PortIdentityResolveResult"
       }
     },
+    "port/relay.call": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PortRelayCallParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayCallResult"
+      }
+    },
+    "port/relay.cancel": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PortRelayCancelParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayCancelResult"
+      }
+    },
+    "port/relay.reconcile": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PortRelayReconcileParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayReconcileResult"
+      }
+    },
+    "port/relay.run": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PortRelayRunParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayRunResult"
+      }
+    },
     "port/secrets.get": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -279,6 +319,26 @@
       },
       "result": {
         "$ref": "#/definitions/ControlsPolicy"
+      }
+    },
+    "relay/call.batch": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RelayCallBatchParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RelayCallBatchResult"
+      }
+    },
+    "relay/run.update": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RelayRunUpdateParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RelayRunUpdateResult"
       }
     },
     "remote/login": {
@@ -4057,6 +4117,177 @@
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
     },
+    "PortRelayCallParams": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/definitions/Batches"
+        },
+        "viewer": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RelayViewer"
+            }
+          ]
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "artifactId",
+        "versionId",
+        "fnId",
+        "args"
+      ]
+    },
+    "PortRelayCallResult": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "accepted"
+      ]
+    },
+    "PortRelayCancelParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "runId"
+      ]
+    },
+    "PortRelayCancelResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "PortRelayReconcileParams": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "readOnly": true,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "held": {
+          "readOnly": true,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RelayHeld"
+          }
+        }
+      },
+      "required": [
+        "runs"
+      ]
+    },
+    "PortRelayReconcileResult": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RelayReconciled"
+          }
+        }
+      },
+      "required": [
+        "runs"
+      ]
+    },
+    "PortRelayRunParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/definitions/Batches"
+        },
+        "key": {
+          "type": "string"
+        },
+        "viewer": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RelayViewer"
+            }
+          ]
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "seq",
+        "artifactId",
+        "versionId",
+        "fnId",
+        "args"
+      ]
+    },
+    "PortRelayRunResult": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "accepted"
+      ]
+    },
     "PortSecretsGetParams": {
       "type": "object",
       "properties": {
@@ -4208,6 +4439,228 @@
         "reused"
       ],
       "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
+    },
+    "RelayCallBatchParams": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Batches"
+            }
+          ]
+        },
+        "end": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed"
+              ]
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "maxLength": 10000
+                },
+                "code": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      },
+      "required": [
+        "callId",
+        "seq"
+      ]
+    },
+    "RelayCallBatchResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "RelayHeld": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "log": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "runId",
+        "log",
+        "batches"
+      ]
+    },
+    "RelayReconciled": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RunState"
+            },
+            {
+              "type": "string",
+              "const": "unknown-to-owner"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "state"
+      ]
+    },
+    "RelayRunEnd": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string",
+              "maxLength": 10000
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "RelayRunUpdateParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "progress": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RunProgress"
+            }
+          ]
+        },
+        "log": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "logFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Batches"
+            }
+          ]
+        },
+        "batchFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RelayRunEnd"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "seq"
+      ]
+    },
+    "RelayRunUpdateResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "RelayViewer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "The viewer a relayed run or call acts for: the hosted home's viewer ID and name."
     },
     "RemoteLink": {
       "type": "object",
@@ -5208,7 +5661,8 @@
             "waiting",
             "succeeded",
             "failed",
-            "cancelled"
+            "cancelled",
+            "unknown"
           ]
         },
         "reason": {
@@ -5263,6 +5717,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "ownerUnreachable": {
+          "type": "boolean"
         }
       },
       "required": [

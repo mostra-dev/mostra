@@ -406,6 +406,11 @@ export class ServerClient {
     };
     if (fresh.length > 0 && !tracked.rootDecoded) this.#decodeRoot(tracked);
     if (isFinalRunStatus(delta.status)) this.#settle(tracked);
+    // A relayed run whose owner never said how it ended (D165 item 4): `run()` rejects, and the
+    // run stays followed, since the owner's later report replaces `unknown` once.
+    else if (delta.status === "unknown") {
+      tracked.reject(failure(tracked.view.error, "MOSTRA_REMOTE_OWNER_OFFLINE"));
+    }
     this.#changed();
     return true;
   }

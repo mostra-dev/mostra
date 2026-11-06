@@ -2017,6 +2017,71 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 export const PortName: z.ZodType<PortName, string>;
 
 // @public
+export const portRelayCallMethod: MethodDefinition<PortRelayCallParams, PortRelayCallResult>;
+
+// @public
+export interface PortRelayCallParams {
+    readonly args: Batches;
+    readonly artifactId: string;
+    readonly callId: string;
+    readonly fnId: string;
+    readonly versionId: string;
+    readonly viewer?: RelayViewer;
+    readonly viewId?: string;
+}
+
+// @public
+export interface PortRelayCallResult {
+    readonly accepted: true;
+}
+
+// @public
+export const portRelayCancelMethod: MethodDefinition<PortRelayCancelParams, PortRelayCancelResult>;
+
+// @public
+export interface PortRelayCancelParams {
+    readonly runId: string;
+}
+
+// @public
+export type PortRelayCancelResult = Record<string, never>;
+
+// @public
+export const portRelayReconcileMethod: MethodDefinition<PortRelayReconcileParams, PortRelayReconcileResult>;
+
+// @public
+export interface PortRelayReconcileParams {
+    readonly held?: readonly RelayHeld[];
+    readonly runs: readonly string[];
+}
+
+// @public
+export interface PortRelayReconcileResult {
+    readonly runs: readonly RelayReconciled[];
+}
+
+// @public
+export const portRelayRunMethod: MethodDefinition<PortRelayRunParams, PortRelayRunResult>;
+
+// @public
+export interface PortRelayRunParams {
+    readonly args: Batches;
+    readonly artifactId: string;
+    readonly fnId: string;
+    readonly key?: string;
+    readonly runId: string;
+    readonly seq: number;
+    readonly versionId: string;
+    readonly viewer?: RelayViewer;
+    readonly viewId?: string;
+}
+
+// @public
+export interface PortRelayRunResult {
+    readonly accepted: true;
+}
+
+// @public
 export const portSecretsGetMethod: MethodDefinition<PortSecretsGetParams, PortSecretsGetResult>;
 
 // @public
@@ -2125,6 +2190,77 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 
 // @public
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
+
+// @public
+export const relayCallBatchMethod: MethodDefinition<RelayCallBatchParams, RelayCallBatchResult>;
+
+// @public
+export interface RelayCallBatchParams {
+    readonly batches?: Batches;
+    readonly callId: string;
+    readonly end?: {
+        readonly status: "succeeded" | "failed";
+        readonly error?: {
+            readonly message: string;
+            readonly code?: string;
+        };
+    };
+    readonly seq: number;
+}
+
+// @public
+export type RelayCallBatchResult = Record<string, never>;
+
+// @public
+export interface RelayHeld {
+    readonly batches: number;
+    readonly log: number;
+    readonly runId: string;
+}
+
+// @public
+export interface RelayReconciled {
+    readonly runId: string;
+    readonly state: RunState | "unknown-to-owner";
+}
+
+// @public
+export interface RelayRunEnd {
+    readonly error?: {
+        readonly message: string;
+        readonly code?: string;
+    };
+    readonly reason?: string;
+    readonly status: "succeeded" | "failed" | "cancelled";
+}
+
+// @public
+export const relayRunUpdateMethod: MethodDefinition<RelayRunUpdateParams, RelayRunUpdateResult>;
+
+// @public
+export interface RelayRunUpdateParams {
+    readonly batches?: Batches;
+    readonly batchFrom?: number;
+    readonly end?: RelayRunEnd;
+    readonly log?: readonly string[];
+    readonly logFrom?: number;
+    readonly progress?: RunProgress;
+    readonly runId: string;
+    readonly running?: boolean;
+    readonly seq: number;
+}
+
+// @public
+export type RelayRunUpdateResult = Record<string, never>;
+
+// @public
+export interface RelayViewer {
+    readonly id: string;
+    readonly name?: string;
+}
+
+// @public
+export const RelayViewer: z.ZodType<RelayViewer>;
 
 // @public
 export type RemoteDiagnosticCode = (typeof remoteDiagnosticCodes)[number];
@@ -2596,6 +2732,7 @@ export interface RunState {
     readonly key?: string;
     readonly log: readonly string[];
     readonly logFrom?: number;
+    readonly ownerUnreachable?: boolean;
     readonly progress?: RunProgress;
     readonly reason?: RunReason;
     readonly runId: string;
@@ -2607,7 +2744,7 @@ export interface RunState {
 export const RunState: z.ZodType<RunState>;
 
 // @public
-export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
+export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "unknown";
 
 // @public
 export type RuntimeDiagnosticCode = (typeof runtimeDiagnosticCodes)[number];

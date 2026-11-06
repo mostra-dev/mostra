@@ -107,7 +107,18 @@ export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
-export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
+export {
+  appendRunOutput,
+  finishRun,
+  markRunning,
+  markUnknown,
+  markWaiting,
+  type RunEnd,
+  type RunFlush,
+  type RunOutput,
+  type RunRow,
+  runState,
+} from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
 export { tallyField, tallyState } from "./tally.ts";
 
@@ -321,6 +332,8 @@ export interface Interaction {
   openRuns(versionId?: string): RunRow[];
   /** A run's state now. */
   runState(runId: string): RunState | undefined;
+  /** A run's row, for the actions module (a relayed run, D165 item 4). */
+  runRow(runId: string): RunRow | undefined;
   /** `signal()` from server code: `signal.raised`, source `action`, the run as cause (AC-05). */
   serverSignal(
     artifactId: string,
@@ -990,6 +1003,9 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     openRuns(versionId) {
       return ledger.read((db) => openRuns(db, versionId));
+    },
+    runRow(runId) {
+      return ledger.read((db) => db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId));
     },
     runState(runId) {
       return ledger.read((db) => {

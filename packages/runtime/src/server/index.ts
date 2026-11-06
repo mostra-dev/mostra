@@ -105,6 +105,13 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         scheme: config.scheme ?? "https",
         domains: { active: config.domains.active, spares: config.domains.spares ?? [] },
         shellDir,
+        relay: {
+          waitingRunsPerArtifact: config.relay?.waitingRunsPerArtifact,
+          drainPerSecond: config.relay?.drainPerSecond,
+          ...(options.env["MOSTRA_TEST_RELAY_SWEEP_MS"] !== undefined
+            ? { sweepMs: Number(options.env["MOSTRA_TEST_RELAY_SWEEP_MS"]) }
+            : {}),
+        },
       }),
     disassemble: (home) => home.stop(),
     busy: (home) => home.busy(),

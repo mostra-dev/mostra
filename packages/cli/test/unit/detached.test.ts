@@ -46,6 +46,9 @@ describe("what the CLI's detached processes get", () => {
     const notPaths = [
       "MOSTRA_TEST_GRANT_RECHECK_MS",
       "MOSTRA_TEST_SERVER_ADDRESS",
+      "MOSTRA_TEST_RELAY_LOSE_ACK",
+      "MOSTRA_TEST_RELAY_READY_MS",
+      "MOSTRA_TEST_RELAY_SWEEP_MS",
       "MOSTRA_BUNDLE_MIRROR",
       "MOSTRA_MCP_TOKEN",
       "MOSTRA_OFFLINE",

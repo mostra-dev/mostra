@@ -6,7 +6,15 @@
  * events copied once each), and version pushes, queued while a server can't be reached.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import {
@@ -43,6 +51,7 @@ import { listingDigest } from "../publish/index.ts";
 import type { RemoteShares } from "../share/index.ts";
 import { type Binding, type BindingSession, ownerInitialize, startBinding } from "./binding.ts";
 import { postForm, type RemoteAddress, remoteRequest, testServerAddress } from "./http.ts";
+import { createOwnerRelay, type OwnerRelayOptions } from "./relay.ts";
 
 /** The CLI's client ID at every server's authorization server (D166 item 5). */
 const CLIENT_ID = "mostra-cli";
@@ -140,6 +149,8 @@ export interface LinkOptions {
   ) => SubmissionsDeliverResult;
   /** A version's sealed directory. */
   readonly versionDir: (versionId: string) => string;
+  /** Runs what hosted homes relay here (D165 item 4). */
+  readonly actions: OwnerRelayOptions["actions"];
   /** The clock (tests move it). */
   readonly now?: () => number;
 }
@@ -402,9 +413,47 @@ export function createLink(options: LinkOptions): Link {
     });
   };
 
+  /** Every binding message, appended to a file (tests: the relay's secrets grep). */
+  const traceFile = options.env["MOSTRA_TEST_BINDING_TRACE"];
+  const trace =
+    traceFile === undefined || traceFile === ""
+      ? undefined
+      : (direction: "out" | "in", text: string): void =>
+          appendFileSync(traceFile, `${direction} ${text}\n`);
+  /**
+   * The binding's session, or the one opening now: a relay message can arrive while the session's
+   * own start (its subscription) is still under way, and an update sent then mustn't be lost.
+   */
+  const readyMs = Number(options.env["MOSTRA_TEST_RELAY_READY_MS"] ?? "") || 10_000;
+  const readySoon = (connection: Connection): Promise<BindingSession | undefined> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      connection.binding.ready(),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), readyMs);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+  const relay = createOwnerRelay({
+    ledger,
+    log,
+    actions: options.actions,
+    now,
+    loseAcks: Number(options.env["MOSTRA_TEST_RELAY_LOSE_ACK"] ?? "0") || 0,
+  });
+
   const onRequest =
     (connection: Connection) =>
     (method: string, params: unknown): unknown => {
+      if (relay.handles(method)) {
+        return relay.request(
+          connection.server,
+          () => connection.binding.session ?? readySoon(connection),
+          method,
+          params,
+          () => connection.binding.reconnect(),
+        );
+      }
       if (method === portSubmissionsDeliverMethod.method) {
         const parsed = SubmissionEnvelope.safeParse(
           (params as { envelope?: unknown })?.envelope ?? params,
@@ -439,6 +488,7 @@ export function createLink(options: LinkOptions): Link {
     };
     connections.set(server, connection);
     connection.binding = startBinding({
+      ...(trace ? { trace } : {}),
       server,
       ...(connectTo ? { connectTo } : {}),
       accessToken: () => accessToken(connection),
@@ -475,6 +525,7 @@ export function createLink(options: LinkOptions): Link {
         void drainPushes(connection);
       },
       onClose: (why) => {
+        relay.closed(server);
         if (connection.state === "signed-out") return;
         if (connection.state === "connected") connection.since = new Date(now()).toISOString();
         connection.state = "offline";

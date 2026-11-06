@@ -105,6 +105,48 @@ export interface Actions {
   recover(): void;
   /** How many runs and calls are in flight: the daemon stays while any are (D62). */
   activity(): number;
+  /**
+   * Runs a relayed run a hosted home recorded and this instance recorded under the same ID
+   * (D165 item 4), in this instance's pool with its secrets, telling `observer` what it does so
+   * the owner's link reports it back. Starts nothing for a run that is running or has ended.
+   */
+  runRelayed(runId: string, extra: RelayedRun): void;
+  /** Cancels a relayed run: its `abortSignal` fires if it runs (AC-04). */
+  cancelRelayed(runId: string): void;
+  /** A relayed plain call (D165 item 4): no record, its lines as they come. */
+  callRelayed(
+    input: {
+      readonly versionId: string;
+      readonly fnId: string;
+      readonly args: Batches;
+      readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
+      readonly viewId?: string | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<AsyncIterable<CallLine>>;
+}
+
+/** What a relayed run's execution tells the owner's link (D165 item 4). */
+export interface RunObserver {
+  /** Its worker has it. */
+  running(): void;
+  /** What it produced since the last flush, as kept. */
+  output(flush: {
+    readonly logFrom: number;
+    readonly log: readonly string[];
+    readonly batchFrom: number;
+    readonly batches: Batches;
+    readonly progress?: RunProgress;
+  }): void;
+  /** How it ended. */
+  ended(state: RunState): void;
+}
+
+/** A relayed run's context: the hosted viewer server code sees, and who hears of its output. */
+export interface RelayedRun {
+  readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
+  readonly viewId?: string | undefined;
+  readonly observer: RunObserver;
 }
 
 /** A run this instance is executing. */
@@ -191,7 +233,8 @@ export function createActions(options: ActionsOptions): Actions {
     bus.publishRun(artifactId, { kind: "run", run });
 
   /** Runs a recorded run in its version's worker, writing its output as it comes. */
-  const execute = async (row: RunRow): Promise<void> => {
+  const execute = async (row: RunRow, relayed?: RelayedRun): Promise<void> => {
+    const observer = relayed?.observer;
     const entry: Executing = { cancelled: false };
     executing.set(row.id, entry);
     let pendingLines: string[] = [];
@@ -217,6 +260,13 @@ export function createActions(options: ActionsOptions): Actions {
       pendingProgress = undefined;
       const written = interaction.runOutput(row.id, output);
       if (!written) return;
+      observer?.output({
+        logFrom: written.logFrom,
+        log: written.log,
+        batchFrom: written.batchFrom,
+        batches: written.batches,
+        ...(progress ? { progress } : {}),
+      });
       publish(row.artifact_id, {
         runId: row.id,
         status: "running",
@@ -242,6 +292,7 @@ export function createActions(options: ActionsOptions): Actions {
         ...(error ? { error: redactError(error) } : {}),
       });
       if (state) {
+        observer?.ended(state);
         publish(row.artifact_id, {
           runId: row.id,
           status: state.status,
@@ -283,6 +334,7 @@ export function createActions(options: ActionsOptions): Actions {
         return;
       }
       interaction.runRunning(row.id);
+      observer?.running();
       publish(row.artifact_id, {
         runId: row.id,
         status: "running",
@@ -291,7 +343,10 @@ export function createActions(options: ActionsOptions): Actions {
         batchFrom: 0,
         batches: [],
       });
-      const viewer = row.viewer_id ? interaction.viewer(row.viewer_id) : undefined;
+      // A relayed run acts for the hosted home's viewer, who has no row here (D165 item 4).
+      const viewer =
+        relayed?.viewer ?? (row.viewer_id ? interaction.viewer(row.viewer_id) : undefined);
+      const viewId = relayed?.viewId ?? row.view_id ?? undefined;
       const { callId, outcome } = handle.call(
         {
           fnId: row.action,
@@ -299,7 +354,7 @@ export function createActions(options: ActionsOptions): Actions {
           context: {
             kind: "run",
             runId: row.id,
-            ...(row.view_id ? { viewId: row.view_id } : {}),
+            ...(viewId ? { viewId } : {}),
             ...(viewer
               ? { viewer: { id: viewer.id, ...(viewer.name ? { name: viewer.name } : {}) } }
               : {}),
@@ -381,12 +436,16 @@ export function createActions(options: ActionsOptions): Actions {
 
   /** A plain call's lines, from a worker that has it. */
   async function* stream(
-    page: PageIdentity,
-    input: { readonly viewId: string; readonly fnId: string; readonly args: Batches },
+    caller: {
+      readonly viewer?: { readonly id: string; readonly name?: string } | undefined;
+      /** The local viewer whose call raises its signals, if it is one of this home's. */
+      readonly viewerId?: string | undefined;
+    },
+    input: { readonly viewId?: string | undefined; readonly fnId: string; readonly args: Batches },
     signal: AbortSignal,
     handle: WorkerHandle,
   ): AsyncGenerator<CallLine> {
-    const viewer = interaction.viewer(page.viewerId);
+    const viewer = caller.viewer;
     const queue: CallLine[] = [];
     let wake: (() => void) | undefined;
     let size = 0;
@@ -397,11 +456,13 @@ export function createActions(options: ActionsOptions): Actions {
         args: input.args,
         context: {
           kind: "call",
-          viewId: input.viewId,
-          viewer: { id: viewer.id, ...(viewer.name ? { name: viewer.name } : {}) },
+          ...(input.viewId !== undefined ? { viewId: input.viewId } : {}),
+          ...(viewer
+            ? { viewer: { id: viewer.id, ...(viewer.name ? { name: viewer.name } : {}) } }
+            : {}),
           dryRun: options.dryRun !== undefined,
         },
-        viewerId: page.viewerId,
+        ...(caller.viewerId !== undefined ? { viewerId: caller.viewerId } : {}),
       },
       {
         onBatch(batch) {
@@ -554,7 +615,8 @@ export function createActions(options: ActionsOptions): Actions {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
       const handle = await pool.acquire(functionOf(versionId, input.fnId));
-      return stream(page, input, signal, handle);
+      const viewer = interaction.viewer(page.viewerId);
+      return stream({ viewer, viewerId: page.viewerId }, input, signal, handle);
     },
 
     startRun(page, input) {
@@ -617,6 +679,29 @@ export function createActions(options: ActionsOptions): Actions {
 
     activity() {
       return executing.size + calls;
+    },
+
+    runRelayed(runId, relayed) {
+      if (executing.has(runId)) return;
+      const state = interaction.runState(runId);
+      if (!state || (state.status !== "queued" && state.status !== "waiting")) return;
+      const row = interaction.runRow(runId);
+      if (row) void execute(row, relayed);
+    },
+
+    cancelRelayed(runId) {
+      const running = executing.get(runId);
+      if (!running) return;
+      running.cancelled = true;
+      if (running.handle && running.callId) {
+        running.handle.cancel(running.callId, "Cancelled from a hosted page.");
+      } else running.endNow?.();
+    },
+
+    async callRelayed(input, signal) {
+      checkArgs(input.args);
+      const handle = await pool.acquire(functionOf(input.versionId, input.fnId));
+      return stream({ viewer: input.viewer }, input, signal, handle);
     },
   };
 }

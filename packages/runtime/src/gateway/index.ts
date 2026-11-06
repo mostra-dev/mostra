@@ -217,8 +217,8 @@ export interface GatewayOptions {
    * Server functions and live data (WP-08): plain calls, action runs and live sources. Absent,
    * their routes answer 501 behind their checks, as before WP-08.
    */
-  readonly actions?: Actions;
-  readonly live?: Live;
+  readonly actions?: Pick<Actions, "call" | "startRun" | "attach" | "cancel">;
+  readonly live?: Pick<Live, "read">;
   /** Run and live updates for page streams and polls (WP-08). */
   readonly bus?: EphemeralBus;
   /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */

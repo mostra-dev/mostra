@@ -28,10 +28,16 @@ import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
+import { portRelayCallMethod } from "./port/relay-call.ts";
+import { portRelayCancelMethod } from "./port/relay-cancel.ts";
+import { portRelayReconcileMethod } from "./port/relay-reconcile.ts";
+import { portRelayRunMethod } from "./port/relay-run.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
+import { relayCallBatchMethod } from "./relay/call-batch.ts";
+import { relayRunUpdateMethod } from "./relay/run-update.ts";
 import { remoteLoginMethod } from "./remote/login.ts";
 import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
 import { remoteLogoutMethod } from "./remote/logout.ts";
@@ -104,6 +110,12 @@ export const hostMethods: readonly AnyMethod[] = [
   remoteStatusMethod,
   remoteTokenMethod,
   hostedPushMethod,
+  portRelayRunMethod,
+  portRelayCancelMethod,
+  portRelayReconcileMethod,
+  portRelayCallMethod,
+  relayRunUpdateMethod,
+  relayCallBatchMethod,
   // gen:methods
 ];
 

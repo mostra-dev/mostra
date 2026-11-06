@@ -630,6 +630,22 @@ fn collect_enums(items: &mut [syn::Item], shapes: &mut Vec<EnumShape>) {
     for item in items {
         match item {
             syn::Item::Enum(definition) => {
+                // A wire value spelled `unknown` (a run's `unknown` status, D165) would take the
+                // name of the variant every open enum gains: it is `UnknownValue` here instead,
+                // its wire value unchanged.
+                for variant in &mut definition.variants {
+                    if variant.ident == "Unknown" && matches!(variant.fields, syn::Fields::Unit) {
+                        let wire = wire_name(variant);
+                        variant.attrs.retain(|attribute| {
+                            !(attribute.path().is_ident("serde")
+                                && quote!(#attribute).to_string().contains("rename"))
+                        });
+                        variant
+                            .attrs
+                            .push(syn::parse_quote!(#[serde(rename = #wire)]));
+                        variant.ident = format_ident!("UnknownValue");
+                    }
+                }
                 let untagged = definition.attrs.iter().any(|attribute| {
                     attribute.path().is_ident("serde")
                         && quote!(#attribute).to_string().contains("untagged")

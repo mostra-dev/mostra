@@ -30,7 +30,7 @@ import {
   remoteTokenMethod,
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
-import { coverageMatcher, readFieldCoverage } from "../builder/index.ts";
+import { coverageMatcher, readFieldCoverage, readServerFunctions } from "../builder/index.ts";
 import { noFaults } from "../faults.ts";
 import {
   Capabilities,
@@ -42,11 +42,13 @@ import {
 import { platformName } from "../home/index.ts";
 import { createEphemeralBus, createInteraction, type Interaction } from "../interaction/index.ts";
 import type { Ledger } from "../ledger/index.ts";
+import { createLive, liveMethods } from "../live/index.ts";
 import type { Log } from "../log.ts";
 import { handler, ProtocolServer, type Session } from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
 import type { Authorization } from "./auth.ts";
+import { createHostedRelay } from "./relay.ts";
 
 /** Lower-case Crockford base32, for route labels (one DNS label, 130 bits). */
 const LABEL_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -108,6 +110,13 @@ export interface HostedHomeOptions {
   readonly domains: { readonly active: string; readonly spares: readonly string[] };
   /** The shell's built files. */
   readonly shellDir: string | undefined;
+  /** The relay's server settings (`relay` in the configuration, D165 item 4). */
+  readonly relay?: {
+    readonly waitingRunsPerArtifact?: number | undefined;
+    readonly drainPerSecond?: number | undefined;
+    /** How often waiting and unacknowledged runs meet their limits (tests shorten it). */
+    readonly sweepMs?: number | undefined;
+  };
 }
 
 function refuse(code: Parameters<typeof createDiagnostic>[0], message: string): RpcError {
@@ -262,6 +271,46 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     faceLocal: () => "",
   };
   const bus = createEphemeralBus();
+  // Live values a hosted page reads: tallies (counted here, RM-07) and the values its owner's
+  // producers push through the relay. No producer runs here: the home runs no artifact code.
+  const noPool = new Proxy(
+    {},
+    {
+      get: () => {
+        throw new Error("A hosted home runs no workers.");
+      },
+    },
+  ) as Parameters<typeof createLive>[0]["pool"];
+  const live = createLive({
+    ledger,
+    log,
+    bus,
+    pool: noPool,
+    interaction,
+    latest: () => undefined,
+    artifactsWithLive: () => [],
+    version: () => undefined,
+  });
+  // The relay: a hosted page's runs and calls run on its owner instance (D165 item 4).
+  const relay = createHostedRelay({
+    ledger,
+    interaction,
+    bus,
+    log,
+    ownerOf: (artifactId) => ownerLinkOf(artifactId),
+    sessionOf: (linkId) =>
+      protocol.registrants("relay").find((entry) => entry.owner === linkId)?.session,
+    call: (session, method, params, timeoutMs) =>
+      protocol.callSession(session, method, params, timeoutMs),
+    functions: (versionId) => readServerFunctions(registry.store.versionDir(versionId)),
+    ...(options.relay?.waitingRunsPerArtifact !== undefined
+      ? { waitingRunsPerArtifact: options.relay.waitingRunsPerArtifact }
+      : {}),
+    ...(options.relay?.drainPerSecond !== undefined
+      ? { drainPerSecond: options.relay.drainPerSecond }
+      : {}),
+    ...(options.relay?.sweepMs !== undefined ? { sweepMs: options.relay.sweepMs } : {}),
+  });
   const gateway: Gateway = createGateway({
     ledger,
     log,
@@ -275,6 +324,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     shellDir: options.shellDir,
     interaction,
     bus,
+    actions: relay,
+    live,
     // Both channels: a hosted home has no host to narrow them (its owner is a host of it, D165).
     controls: async () => ({ submitChannels: ["shell", "artifact"] }),
     activated: () => undefined,
@@ -540,14 +591,22 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         );
       }
     },
-    onInitialized: (session) => interaction.connected(session),
-    onClosed: (session) => interaction.disconnected(session),
+    onInitialized: (session) => {
+      interaction.connected(session);
+      relay.connected(session);
+    },
+    onClosed: (session) => {
+      interaction.disconnected(session);
+      relay.disconnected(session);
+    },
     handlers: [
       ...interaction.methods(),
       handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
       handler(artifactGetMethod, (params) => registry.get(canonicalRef(params.artifact))),
       handler(hostedPushMethod, (params, session) => push(params, session)),
       ...gateway.methods(),
+      ...relay.methods(),
+      ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
       handler(remoteTokenMethod, (params, session) => {
         const found = options.auth.authenticate(params.accessToken);
         if (!found || found.grantId !== session.attributes["grantId"]) {
@@ -565,6 +624,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     ],
   });
   interaction.start();
+  live.start();
 
   return {
     id,
@@ -591,9 +651,11 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       });
       for (const files of pending.values()) files.delete(sha);
     },
-    busy: () => protocol.connections > 0 || bus.activeViews() > 0,
+    busy: () => protocol.connections > 0 || bus.activeViews() > 0 || relay.busy(),
     serve,
     async stop() {
+      relay.stop();
+      live.stop();
       interaction.stop();
       await gateway.close();
       await protocol.close();

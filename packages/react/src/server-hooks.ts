@@ -169,7 +169,8 @@ export function useAction<A extends unknown[], R>(
   return useMemo(() => {
     const status: ActionHandle<A, Awaited<R>>["status"] = view?.status ?? "idle";
     const error =
-      view?.error && (view.status === "failed" || view.status === "cancelled")
+      view?.error &&
+      (view.status === "failed" || view.status === "cancelled" || view.status === "unknown")
         ? { code: view.error.code ?? "MOSTRA_ACTION_THREW", message: view.error.message }
         : view?.status === "cancelled"
           ? { code: "MOSTRA_ACTION_CANCELLED", message: "The run was cancelled." }

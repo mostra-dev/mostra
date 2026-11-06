@@ -63,11 +63,19 @@ export const RUN_KEY_MAX = 256;
 
 /**
  * A run's state (D24, ARCHITECTURE §7). `queued`: recorded, not yet started in a worker.
- * `running`: started. `waiting` is reserved for a remote server's run that waits for its owner's
- * instance (WP-28, D117); a page that doesn't know it treats it like `queued`. The others are
- * final.
+ * `running`: started. `waiting`: a remote server's run that waits for its owner's instance (D165
+ * item 4); a page that doesn't know it treats it like `queued`. `unknown`: a relayed run whose
+ * owner never reported its end within the artifact's offline limit, which may have taken effect;
+ * the owner's later report replaces it once. The others are final.
  */
-export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "waiting"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "unknown";
 
 /** Every run status. */
 export const RUN_STATUSES: readonly RunStatus[] = [
@@ -77,6 +85,7 @@ export const RUN_STATUSES: readonly RunStatus[] = [
   "succeeded",
   "failed",
   "cancelled",
+  "unknown",
 ];
 
 /** Whether a run in `status` has ended. */
@@ -147,6 +156,11 @@ export interface RunState {
   readonly logFrom?: number;
   /** The index of the first batch in `batches`, as `logFrom`; absent: 0. */
   readonly batchFrom?: number;
+  /**
+   * On a remote server: the run is `running` on its owner's instance, which can't be reached now
+   * (D165 item 4); it ends when the owner reports, or becomes `unknown` past the offline limit.
+   */
+  readonly ownerUnreachable?: boolean;
 }
 
 /** The Zod schema of the `RunState` type. */
@@ -166,6 +180,7 @@ export const RunState: z.ZodType<RunState> = z
     joined: z.boolean().exactOptional(),
     logFrom: z.number().int().nonnegative().exactOptional(),
     batchFrom: z.number().int().nonnegative().exactOptional(),
+    ownerUnreachable: z.boolean().exactOptional(),
   })
   .register(wireRegistry, {
     id: "RunState",

@@ -750,6 +750,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     protect: (value) => home.redactor.protect(value),
     importSubmission: (envelope, source) => interaction.importSubmission(envelope, source),
     versionDir: (versionId) => registry.store.versionDir(versionId),
+    actions,
     now: () => Date.now() + clockOffset,
   });
   const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>

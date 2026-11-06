@@ -742,7 +742,7 @@ export const MIGRATIONS: readonly Migration[] = [
           SELECT RAISE(ABORT, 'a share through a tunnel names one of this home''s tokens');
         END;
         CREATE TRIGGER action_run_unknown_once BEFORE UPDATE ON action_run
-          WHEN OLD.status = 'unknown' AND NEW.status NOT IN ('succeeded', 'failed', 'cancelled')
+          WHEN OLD.status = 'unknown' AND NEW.status NOT IN ('unknown', 'succeeded', 'failed', 'cancelled')
         BEGIN
           SELECT RAISE(ABORT, 'an unknown run is replaced only by the end its owner reports');
         END;
@@ -806,6 +806,7 @@ export const MIGRATIONS: readonly Migration[] = [
           owner_heard_at TEXT,
           offline_limit_at TEXT NOT NULL,
           last_seq INTEGER NOT NULL DEFAULT 0,
+          cancel_requested_at TEXT,
           UNIQUE (owner_link_id, relay_seq)
         );
         ALTER TABLE submission ADD COLUMN origin_json TEXT;

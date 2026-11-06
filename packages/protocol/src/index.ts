@@ -458,6 +458,29 @@ export {
   portIdentityResolveMethod,
 } from "./methods/port/identity-resolve.ts";
 export {
+  type PortRelayCallParams,
+  type PortRelayCallResult,
+  portRelayCallMethod,
+} from "./methods/port/relay-call.ts";
+export {
+  type PortRelayCancelParams,
+  type PortRelayCancelResult,
+  portRelayCancelMethod,
+} from "./methods/port/relay-cancel.ts";
+export {
+  type PortRelayReconcileParams,
+  type PortRelayReconcileResult,
+  portRelayReconcileMethod,
+  type RelayHeld,
+  type RelayReconciled,
+} from "./methods/port/relay-reconcile.ts";
+export {
+  type PortRelayRunParams,
+  type PortRelayRunResult,
+  portRelayRunMethod,
+  RelayViewer,
+} from "./methods/port/relay-run.ts";
+export {
   type PortSecretsGetParams,
   type PortSecretsGetResult,
   portSecretsGetMethod,
@@ -477,6 +500,17 @@ export {
   type PortTrustedControlsPolicyResult,
   portTrustedControlsPolicyMethod,
 } from "./methods/port/trusted-controls-policy.ts";
+export {
+  type RelayCallBatchParams,
+  type RelayCallBatchResult,
+  relayCallBatchMethod,
+} from "./methods/relay/call-batch.ts";
+export {
+  type RelayRunEnd,
+  type RelayRunUpdateParams,
+  type RelayRunUpdateResult,
+  relayRunUpdateMethod,
+} from "./methods/relay/run-update.ts";
 export {
   type RemoteLoginParams,
   type RemoteLoginResult,

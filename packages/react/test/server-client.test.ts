@@ -269,6 +269,27 @@ describe("action runs (AC-02, AC-03, AC-04)", () => {
     });
   });
 
+  it("rejects a relayed run whose outcome is unknown, and shows the end its owner reports later (D165)", async () => {
+    const server = new FakeServer();
+    const page = client(server);
+    const { runId } = await page.startRun("actions.ts#send", ["ada"]);
+    const settled = page.settled(runId);
+    page.receive({
+      kind: "run",
+      run: await server.advance(runId, {
+        status: "unknown",
+        error: { code: "MOSTRA_REMOTE_OWNER_OFFLINE", message: "It may have taken effect." },
+      }),
+    });
+    await expect(settled).rejects.toMatchObject({ code: "MOSTRA_REMOTE_OWNER_OFFLINE" });
+    expect(page.run(runId)).toMatchObject({ status: "unknown" });
+    page.receive({
+      kind: "run",
+      run: await server.advance(runId, { status: "succeeded", result: { sent: true } }),
+    });
+    expect(page.run(runId)).toMatchObject({ status: "succeeded" });
+  });
+
   it("keeps a run's end that arrives before the answer that starts it (WP-09's Opus review)", async () => {
     const server = new FakeServer();
     const page = client(server);

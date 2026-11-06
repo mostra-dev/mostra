@@ -58,6 +58,11 @@ export interface BindingOptions {
   readonly heartbeat?: HeartbeatOptions;
   /** The `Host` to send, for tests that dial a loopback address under a name. */
   readonly connectTo?: { readonly host: string; readonly port: number };
+  /**
+   * Sees every message the binding sends and receives, as its text (tests: the relay's secrets
+   * grep, `MOSTRA_TEST_BINDING_TRACE`).
+   */
+  readonly trace?: (direction: "out" | "in", text: string) => void;
 }
 
 /** One open session on a binding. */
@@ -133,7 +138,10 @@ export function startBinding(options: BindingOptions): Binding {
     let opened = false;
     const peer = new RpcPeer({
       send: (message) => {
-        if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+        if (socket.readyState !== socket.OPEN) return;
+        const text = JSON.stringify(message);
+        options.trace?.("out", text);
+        socket.send(text);
       },
       onRequest: (method, params) => options.onRequest(method, params),
       onNotification: (method, params) => {
@@ -151,7 +159,9 @@ export function startBinding(options: BindingOptions): Binding {
     });
     socket.on("message", (data, isBinary) => {
       const text = readFrame(socket, data as Buffer, isBinary, log);
-      if (text !== undefined) peer.receiveLine(text);
+      if (text === undefined) return;
+      options.trace?.("in", text);
+      peer.receiveLine(text);
     });
     socket.on("error", (error) =>
       log.warn("link.socket_error", { server: options.server, error: error.message }),
