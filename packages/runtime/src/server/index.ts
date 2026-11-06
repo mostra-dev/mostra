@@ -16,7 +16,14 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { getRequestListener } from "@hono/node-server";
-import { createDiagnostic, type Diagnostic, RouteId, RpcError } from "@mostra/protocol";
+import {
+  createDiagnostic,
+  type Diagnostic,
+  type Duration,
+  durationMs,
+  RouteId,
+  RpcError,
+} from "@mostra/protocol";
 import { locateShell, shellAssetResponse } from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
 import type { LedgerOwner } from "../ledger/index.ts";
@@ -108,6 +115,14 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         relay: {
           waitingRunsPerArtifact: config.relay?.waitingRunsPerArtifact,
           drainPerSecond: config.relay?.drainPerSecond,
+          ...(config.rateLimits?.perLink?.relayedRuns
+            ? {
+                perLink: {
+                  count: config.rateLimits.perLink.relayedRuns.count,
+                  perMs: durationMs(config.rateLimits.perLink.relayedRuns.per as Duration),
+                },
+              }
+            : {}),
           ...(options.env["MOSTRA_TEST_RELAY_LIVE_MS"] !== undefined
             ? { liveRenewMs: Number(options.env["MOSTRA_TEST_RELAY_LIVE_MS"]) }
             : {}),

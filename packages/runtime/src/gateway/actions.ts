@@ -79,8 +79,18 @@ function answer(diagnostic: Diagnostic, status: number): Response {
 }
 
 function failure(error: unknown): Response {
-  if (error instanceof RpcError)
-    return answer(error.diagnostic, STATUS[error.diagnostic.code] ?? 500);
+  if (error instanceof RpcError) {
+    const status = STATUS[error.diagnostic.code] ?? 500;
+    // A refusal that says when to try again (a rate limit) says so in `Retry-After` too.
+    const retryAfter = (error as { retryAfter?: unknown }).retryAfter;
+    if (typeof retryAfter === "number") {
+      return jsonResponse(
+        { ...error.diagnostic },
+        { status, headers: { "retry-after": String(retryAfter) } },
+      );
+    }
+    return answer(error.diagnostic, status);
+  }
   throw error;
 }
 

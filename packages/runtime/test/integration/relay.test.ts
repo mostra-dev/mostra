@@ -166,7 +166,12 @@ describe("the relay (§18.3)", () => {
     server = await startServer({
       data: tempDir("relay-server"),
       port,
-      config: { ...testConfig(port), relay: { waitingRunsPerArtifact: 3, drainPerSecond: 1 } },
+      config: {
+        ...testConfig(port),
+        relay: { waitingRunsPerArtifact: 3, drainPerSecond: 1 },
+        // Far above what any other case here sends through one link in a minute.
+        rateLimits: { perLink: { relayedRuns: { count: 40, per: "1m" } } },
+      },
       env: { MOSTRA_TEST_RELAY_SWEEP_MS: "200", MOSTRA_TEST_RELAY_LIVE_MS: "500" },
     });
     proxy = await cuttableProxy(port);
@@ -238,6 +243,30 @@ describe("the relay (§18.3)", () => {
     expect(echoed.end).toEqual({ status: "succeeded" });
     expect(echoed.value).toMatchObject({ args: [1, "two"] });
   }, 60_000);
+
+  it("refuses a link's relayed actions past its rate, before anything is recorded or relayed (D159)", async () => {
+    // A link of its own, so no other case's runs count against it.
+    const flood = ok<{ url: string }>(
+      await owner.client.call("share/start", {
+        artifact: { artifactId: hosted["queue"]?.artifactId },
+        via: "remote",
+      }),
+    );
+    const page = await openPage(flood.url);
+    const before = mail.received.length;
+    for (let index = 0; index < 40; index += 1) {
+      const call = await page.call("actions.ts#echo", [index]);
+      expect(call.status, call.body).toBe(200);
+    }
+    const refused = await page.run("actions.ts#send", ["flood@example.com", "flood"]);
+    expect(refused.status).toBe(429);
+    expect(refused.json<{ code: string }>().code).toBe("MOSTRA_REMOTE_RATE_LIMITED");
+    expect(Number(refused.header("retry-after"))).toBeGreaterThan(0);
+    const call = await page.call("actions.ts#echo", []);
+    expect(call.status).toBe(429);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(mail.received.slice(before).some((entry) => entry.body === "flood")).toBe(false);
+  }, 120_000);
 
   it("refuses a relayed action to a viewer who isn't signed in, unless the artifact opts in (D159)", async () => {
     const page = await openPage(hosted["default"]?.url as string);

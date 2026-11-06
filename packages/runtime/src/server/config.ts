@@ -5,14 +5,14 @@
  * never code (D137, D165 item 0a): the dossier and this code name only `example` hosts.
  */
 import { readFileSync } from "node:fs";
-import { createDiagnostic, RpcError } from "@mostra/protocol";
+import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
 import * as z from "zod";
 import type { Environment } from "../log.ts";
 
-/** A rate: `count` per `per` (a duration such as `1m`). */
+/** A rate: `count` per `per` (a duration such as `1m`, as links' lifetimes are written). */
 const RateSchema: z.ZodType<Rate> = z.object({
   count: z.int().min(1),
-  per: z.string().regex(/^\d+(ms|s|m|h|d)$/),
+  per: Duration,
 });
 
 /** A host name a link can use: lower-case labels of letters, digits and hyphens. */

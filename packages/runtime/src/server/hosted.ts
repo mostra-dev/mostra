@@ -120,6 +120,8 @@ export interface HostedHomeOptions {
     readonly sweepMs?: number | undefined;
     /** How often viewers' live interest is renewed with the owner (tests shorten it). */
     readonly liveRenewMs?: number | undefined;
+    /** `rateLimits.perLink.relayedRuns`, in milliseconds. */
+    readonly perLink?: { readonly count: number; readonly perMs: number } | undefined;
   };
 }
 
@@ -315,6 +317,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       : {}),
     ...(options.relay?.sweepMs !== undefined ? { sweepMs: options.relay.sweepMs } : {}),
     ...(options.relay?.liveRenewMs !== undefined ? { liveRenewMs: options.relay.liveRenewMs } : {}),
+    ...(options.relay?.perLink !== undefined ? { perLink: options.relay.perLink } : {}),
     latestVersion: (artifactId) =>
       ledger.read(
         (db) =>

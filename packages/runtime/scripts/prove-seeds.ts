@@ -61,6 +61,14 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "a link floods its relayed actions",
+    file: "src/server/relay.ts",
+    from: "    if (!limit || tokenId === undefined) return;",
+    to: "    if (!limit || tokenId === undefined || limit) return;",
+    check: integration("relay.test.ts", "past its rate"),
+  },
+  {
     requirement: "RM-02",
     name: "a drain that found nothing keeps later publishes from being pushed",
     file: "src/link/manager.ts",

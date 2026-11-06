@@ -91,6 +91,11 @@ export interface HostedRelayOptions {
   readonly functions: (versionId: string) => ReadonlySet<string>;
   readonly waitingRunsPerArtifact?: number;
   readonly drainPerSecond?: number;
+  /**
+   * Relayed runs and calls per link (`rateLimits.perLink.relayedRuns`, D159): past it a page is
+   * refused before anything is recorded or relayed.
+   */
+  readonly perLink?: { readonly count: number; readonly perMs: number } | undefined;
   /** How often waiting and unacknowledged runs are checked against their limits; default 1 s. */
   readonly sweepMs?: number;
   /** An artifact's latest version here, whose producers its viewers want. */
@@ -223,6 +228,53 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       "MOSTRA_REMOTE_SIGN_IN_REQUIRED",
       "Only signed-in viewers can run this page's actions; sign in, or ask its owner for a link of your own.",
     );
+  };
+
+  /** Each link's recent relayed runs and calls, for the per-link limit. */
+  const linkUses = new Map<string, number[]>();
+  /**
+   * Counts a relayed run or call against its link (D159), refusing it past the limit with
+   * `MOSTRA_REMOTE_RATE_LIMITED` and when to try again. A request that joins a run already
+   * recorded (its client key, or its key) starts nothing, so it is never counted.
+   */
+  const limitLink = (
+    tokenId: string | undefined,
+    artifactId?: string,
+    input?: {
+      readonly clientKey: string;
+      readonly key?: string | undefined;
+      readonly fnId: string;
+    },
+  ): void => {
+    const limit = options.perLink;
+    if (!limit || tokenId === undefined) return;
+    if (artifactId !== undefined && input !== undefined) {
+      const joins = ledger.read(
+        (db) =>
+          db.get(
+            "SELECT 1 FROM action_run WHERE artifact_id = ? AND (client_key = ? OR (key IS NOT NULL AND key = ? AND action = ?))",
+            artifactId,
+            input.clientKey,
+            input.key ?? null,
+            input.fnId,
+          ) !== undefined,
+      );
+      if (joins) return;
+    }
+    const at = now();
+    const recent = (linkUses.get(tokenId) ?? []).filter((used) => at - used < limit.perMs);
+    if (recent.length >= limit.count) {
+      const retryAfter = Math.max(1, Math.ceil(((recent[0] as number) + limit.perMs - at) / 1000));
+      const error = failed(
+        "MOSTRA_REMOTE_RATE_LIMITED",
+        `This link ran ${limit.count} actions recently; try again in ${retryAfter} s.`,
+      ) as RpcError & { retryAfter?: number };
+      error.retryAfter = retryAfter;
+      linkUses.set(tokenId, recent);
+      throw error;
+    }
+    recent.push(at);
+    linkUses.set(tokenId, recent);
   };
 
   const checkArgs = (args: Batches): void => {
@@ -648,6 +700,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
       mayTrigger(page.viewerId, functionOf(versionId, input.fnId));
+      limitLink(page.tokenId);
       const owner = options.ownerOf(page.artifactId);
       const session = owner === undefined ? undefined : sessionFor(owner);
       if (session === undefined) {
@@ -710,6 +763,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       const versionId = interaction.viewVersion(page, input.viewId);
       const version = functionOf(versionId, input.fnId);
       mayTrigger(page.viewerId, version);
+      limitLink(page.tokenId, page.artifactId, input);
       const owner = options.ownerOf(page.artifactId);
       if (owner === undefined) {
         throw failed("MOSTRA_REMOTE_OWNER_OFFLINE", "This page has no owner instance to run it.");
