@@ -61,6 +61,22 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-07",
+    name: "a hosted home counts but serves no tally",
+    file: "src/server/hosted.ts",
+    from: "    actions: relay,\n    live,\n",
+    to: "    actions: relay,\n    live: { read: () => [] },\n",
+    check: integration("hosted.test.ts", "hosted tally"),
+  },
+  {
+    requirement: "RM-02",
+    name: "the owner follows none of its hosted artifacts' events",
+    file: "src/link/manager.ts",
+    from: "        if (session) follow(connection, params as EventsNotifyParams, session);",
+    to: "        void session;",
+    check: integration("hosted.test.ts", "sync cursor"),
+  },
+  {
     requirement: "RM-04",
     name: "waiting runs drain before the reconcile",
     file: "src/server/relay.ts",

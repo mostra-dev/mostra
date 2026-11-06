@@ -7,6 +7,9 @@
  * the owner instance receives the submission through its outbox, its `wait` returns and its
  * `results` hold the answer with where it came from.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { deserializeAll, type Frame, MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, seen } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
@@ -167,4 +170,168 @@ describe("hosted pages (§18.4)", () => {
     const browser = new Browser();
     await expect(openLink(browser, share.url)).rejects.toThrow(/exchange: 410/);
   }, 120_000);
+  it("brings a hosted page's signals and state to the owner's local waits (the sync cursor)", async () => {
+    const receipt = await owner.publish("single-tsx", "page.tsx");
+    const url = ok<{ url: string }>(
+      await owner.client.call("share/start", {
+        artifact: { artifactId: receipt.artifactId },
+        via: "remote",
+      }),
+    ).url;
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const waiting = owner.client.call(
+      "wait",
+      { artifact: { artifactId: receipt.artifactId }, until: "signal:ping", timeoutMs: 20_000 },
+      30_000,
+    );
+    const raised = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/signal`, {
+      body: { viewId: opened.viewId, name: "ping", payload: { n: 1 } },
+      csrf: opened.frameCsrf,
+    });
+    expect(raised.status, raised.body).toBe(200);
+    const satisfied = ok<{ status: string; event: { type: string; payload: { name: string } } }>(
+      await waiting,
+    );
+    expect(satisfied).toMatchObject({ status: "satisfied", event: { type: "signal.raised" } });
+    // Artifact state a hosted viewer writes reaches the owner's `wait` the same way.
+    const stateWait = owner.client.call(
+      "wait",
+      { artifact: { artifactId: receipt.artifactId }, until: "state:board", timeoutMs: 20_000 },
+      30_000,
+    );
+    const wrote = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+      body: {
+        mutationId: "mut_01JB8Z3QF6S7W3N8D5K2C4V9XH",
+        scope: "artifact",
+        baseRevision: "0",
+        viewId: opened.viewId,
+        ops: [{ id: "board", value: ["one task"] }],
+      },
+      csrf: opened.frameCsrf,
+    });
+    expect(wrote.status, wrote.body).toBe(200);
+    expect(ok<{ status: string }>(await stateWait).status).toBe("satisfied");
+  }, 120_000);
+
+  it("counts a hosted tally in the submit transaction and serves it with the owner offline (RM-07)", async () => {
+    const dir = join(tempDir("hosted-tally"), "poll");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "index.tsx"),
+      `import { defineArtifact, useField } from "@mostra/react";
+
+export const artifact = defineArtifact({
+  title: "Hosted poll",
+  submission: { policy: "epochs" },
+  tally: [{ field: "decision", choices: ["ship", "wait", "drop"] }],
+});
+
+export default function Page() {
+  const [decision, setDecision] = useField("decision", "ship");
+  return <input value={decision} onChange={(event) => setDecision(event.target.value)} />;
+}
+`,
+    );
+    const receipt = ok<{ artifactId: string }>(
+      await owner.client.call("artifact/publish", { source: { path: dir } }, 120_000),
+    );
+    const url = ok<{ url: string }>(
+      await owner.client.call("share/start", {
+        artifact: { artifactId: receipt.artifactId },
+        via: "remote",
+      }),
+    ).url;
+    // The owner goes away: the hosted home counts and serves the tally alone, with no worker.
+    await owner.stop();
+    try {
+      const browser = new Browser();
+      const opened = await openLink(browser, url);
+      const api = `${new URL(url).pathname}/_mostra/v/${REVISION}`;
+      const choices = ["ship", "wait", "drop"];
+      const expected: Record<string, number> = { ship: 0, wait: 0, drop: 0 };
+      let revision = "0";
+      for (let n = 0; n < 300; n += 1) {
+        const choice = choices[n % 3] as string;
+        expected[choice] = (expected[choice] ?? 0) + 1;
+        const fields = await browser.fetchJson(
+          opened.frameOrigin,
+          `/_mostra/v/${REVISION}/fields`,
+          {
+            body: {
+              mutationId: MutationId.create(),
+              scope: "viewer",
+              baseRevision: revision,
+              viewId: opened.viewId,
+              ops: [{ id: "decision", value: choice }],
+            },
+            csrf: opened.frameCsrf,
+          },
+        );
+        expect(fields.status, fields.body).toBe(200);
+        revision = fields.json<{ revision: string }>().revision;
+        const submitted = await browser.fetchJson(opened.link.shell, `${api}/submit`, {
+          body: { viewId: opened.viewId, expectedRevision: revision },
+          csrf: opened.shellCsrf,
+        });
+        expect(submitted.status, submitted.body).toBe(200);
+      }
+      // A value outside the choices counts nothing.
+      const outside = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+        body: {
+          mutationId: MutationId.create(),
+          scope: "viewer",
+          baseRevision: revision,
+          viewId: opened.viewId,
+          ops: [{ id: "decision", value: "free text" }],
+        },
+        csrf: opened.frameCsrf,
+      });
+      revision = outside.json<{ revision: string }>().revision;
+      await browser.fetchJson(opened.link.shell, `${api}/submit`, {
+        body: { viewId: opened.viewId, expectedRevision: revision },
+        csrf: opened.shellCsrf,
+      });
+      const read = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/live`, {
+        body: { viewId: opened.viewId, keys: [{ key: "$tally/decision" }] },
+        csrf: opened.frameCsrf,
+      });
+      expect(read.status, read.body).toBe(200);
+      const [source] = read.json<{ sources: { revision?: string; value?: Frame[][] }[] }>().sources;
+      expect(source?.revision).toBe("300");
+      expect(await deserializeAll(source?.value ?? [])).toEqual({ counts: expected, total: 300 });
+      expect(JSON.stringify(source)).not.toContain("free text");
+      // A page that reads the tally hears each new count on its live channel, with no worker.
+      const first = await browser.fetchJson(
+        opened.frameOrigin,
+        `/_mostra/v/${REVISION}/events/poll?view=${opened.viewId}&wait=0`,
+      );
+      const cursor = first.json<{ cursor: string }>().cursor;
+      const more = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+        body: {
+          mutationId: MutationId.create(),
+          scope: "viewer",
+          baseRevision: revision,
+          viewId: opened.viewId,
+          ops: [{ id: "decision", value: "drop" }],
+        },
+        csrf: opened.frameCsrf,
+      });
+      revision = more.json<{ revision: string }>().revision;
+      await browser.fetchJson(opened.link.shell, `${api}/submit`, {
+        body: { viewId: opened.viewId, expectedRevision: revision },
+        csrf: opened.shellCsrf,
+      });
+      const poll = await browser.fetchJson(
+        opened.frameOrigin,
+        `/_mostra/v/${REVISION}/events/poll?view=${opened.viewId}&cursor=${cursor}&wait=2`,
+      );
+      const pushed = poll
+        .json<{ ephemeral?: { kind: string; live?: { key: string; revision: string } }[] }>()
+        .ephemeral?.find((message) => message.live?.key === "$tally/decision");
+      expect(pushed?.live?.revision).toBe("301");
+    } finally {
+      await owner.start({ env: ownerEnv(port) });
+    }
+  }, 240_000);
 });
