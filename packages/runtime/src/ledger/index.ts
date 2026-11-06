@@ -237,7 +237,7 @@ export function queries(db: Database): MigrationDb {
       const row = db
         .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get(table) as { sql: string } | undefined;
-      if (!row || row.sql.split(from).length !== 2) {
+      if (row?.sql.split(from).length !== 2) {
         throw new Error(`widenCheck: ${table}'s definition doesn't hold ${from} exactly once.`);
       }
       const version = db.pragma("schema_version", { simple: true }) as number;

@@ -942,7 +942,7 @@ export function createLink(options: LinkOptions): Link {
     async host(artifactId, server) {
       const latest = ledger.write((db) => {
         const link = linkRow(db, server);
-        if (!link || link.state !== "signed-in") {
+        if (link?.state !== "signed-in") {
           throw loginFailed(
             `This home isn't signed in to ${server}: run mostra login ${server} first.`,
           );

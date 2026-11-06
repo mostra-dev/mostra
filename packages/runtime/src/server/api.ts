@@ -53,6 +53,9 @@ function page(response: ServerResponse, status: number, html: string): void {
     "content-security-policy":
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
     "x-frame-options": "DENY",
+    // The device page posts its own form, whose `Origin` the server checks: under `no-referrer`
+    // browsers send `Origin: null` for a form's POST, so this page sends origins to itself only.
+    "referrer-policy": "same-origin",
   });
   response.end(html);
 }
