@@ -327,6 +327,50 @@ describe("the network binding (§18.2)", () => {
     }
     expect(closes.some((why) => why.includes("4403"))).toBe(true);
   });
+  it("closes a binding at its token's expiry unless the token was refreshed in band", async () => {
+    const port = await freePort();
+    const server = await startServer({
+      data: tempDir("server-data"),
+      port,
+      env: { MOSTRA_TEST_GRANT_RECHECK_MS: "200", MOSTRA_TEST_ACCESS_TTL_MS: "3000" },
+    });
+    running.push(server);
+    const ada = await deviceSignIn(port, "Ada");
+    const closes: string[] = [];
+    // Never refreshed: closed at the expiry, with 4401.
+    const stale = bind(port, ada, { onClose: (why) => closes.push(why) });
+    await stale.ready();
+    const opened = Date.now();
+    while (!closes.some((why) => why.includes("4401")) && Date.now() - opened < 8_000) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    stale.stop();
+    expect(closes.some((why) => why.includes("4401"))).toBe(true);
+    expect(Date.now() - opened).toBeGreaterThan(1_500);
+    // Refreshed in band before each expiry: it stays open past several.
+    const fresh = await deviceSignIn(port, "Grace");
+    const kept: string[] = [];
+    const live = bind(port, fresh, { onClose: (why) => kept.push(why) });
+    const session = await live.ready();
+    let refresh = fresh.refreshToken;
+    for (let round = 0; round < 4; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const answer = JSON.parse(
+        (
+          await postForm(port, "/oauth/token", {
+            client_id: "mostra-cli",
+            grant_type: "refresh_token",
+            refresh_token: refresh,
+          })
+        ).body,
+      );
+      refresh = answer.refresh_token;
+      await session.call(remoteTokenMethod, { accessToken: answer.access_token });
+    }
+    expect(kept).toEqual([]);
+    live.stop();
+  }, 60_000);
+
   it("rotates a hosted home's incarnation when restored by hand, and when it opens below its marks", async () => {
     const { port, data, server } = await serve();
     const ada = await deviceSignIn(port, "Ada");

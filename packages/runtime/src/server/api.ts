@@ -85,6 +85,8 @@ export interface ApiOptions {
   readonly home: (homeId: string) => Promise<HostedHome>;
   /** Notes a home was used, so it isn't closed while used. */
   readonly touch: (homeId: string) => void;
+  /** How often an open binding's token and grant are checked; tests shorten it. */
+  readonly recheckMs?: number;
 }
 
 /** The API origin's request and upgrade handlers. */
@@ -410,10 +412,7 @@ export function createApi(options: ApiOptions): Api {
                   ws.close(4403, "grant revoked");
                 }
               },
-              Math.min(
-                GRANT_RECHECK_MS,
-                Number(process.env["MOSTRA_TEST_GRANT_RECHECK_MS"]) || GRANT_RECHECK_MS,
-              ),
+              Math.min(GRANT_RECHECK_MS, options.recheckMs ?? GRANT_RECHECK_MS),
             );
             watch.unref();
             ws.once("close", () => {

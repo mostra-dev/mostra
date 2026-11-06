@@ -139,6 +139,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     directory: data.directory,
     config,
     log,
+    ...(Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) > 0
+      ? { accessTtlMs: Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) }
+      : {}),
     // A new instance link is a hosted event the account's instances see (§18.5).
     linked: ({ homeId, linkId, name }) => {
       void data.home(homeId).then(
@@ -162,6 +165,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     filesDir: join(options.data, "files"),
     home: async (id) => (await data.home(id)).assembled,
     touch: (id) => data.touch(id),
+    ...(Number(options.env["MOSTRA_TEST_GRANT_RECHECK_MS"]) > 0
+      ? { recheckMs: Number(options.env["MOSTRA_TEST_GRANT_RECHECK_MS"]) }
+      : {}),
   });
   const apiHost = new URL(config.apiOrigin).host;
   const domains = new Set([config.domains.active, ...(config.domains.spares ?? [])]);

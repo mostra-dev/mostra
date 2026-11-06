@@ -61,6 +61,30 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "an open binding outlives its token",
+    file: "src/server/api.ts",
+    from: "                if (Date.now() >= expiresAt) {",
+    to: "                if (Date.now() >= expiresAt && false) {",
+    check: integration("binding.test.ts", "token's expiry"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a token refreshed in band doesn't keep the binding",
+    file: "src/server/api.ts",
+    from: "                expiresAt = next;",
+    to: "                void next;",
+    check: integration("binding.test.ts", "token's expiry"),
+  },
+  {
+    requirement: "RM-02",
+    name: "the owner reconnects instead of refreshing in band",
+    file: "src/link/manager.ts",
+    from: "          if (session) await session.call(remoteTokenMethod, { accessToken: token });",
+    to: "          void session;",
+    check: integration("link.test.ts", "expiries"),
+  },
+  {
     // Runs with MOSTRA_TEST_LITESTREAM set to a Litestream binary (a test tool, D165 item 0b).
     requirement: "RM-02",
     name: "a hosted home's ledger keeps a backup replicator out",

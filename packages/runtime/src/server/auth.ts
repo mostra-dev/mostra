@@ -103,6 +103,8 @@ export interface AuthorizationOptions {
   readonly config: RemoteServerConfig;
   readonly log: Log;
   readonly now?: () => number;
+  /** How long an access token lasts; an hour unless tests shorten it. */
+  readonly accessTtlMs?: number;
   /**
    * Called when an instance link was made or bound again (`instance.linked`, §18.5): the server
    * appends the event in the hosted home.
@@ -155,6 +157,7 @@ function oauthError(status: number, error: string, description: string): OAuthEr
 export function createAuthorization(options: AuthorizationOptions): Authorization {
   const { directory, config, log } = options;
   const now = options.now ?? (() => Date.now());
+  const accessTtlMs = options.accessTtlMs ?? ACCESS_TTL_MS;
   const iso = (ms: number): string => new Date(ms).toISOString();
   const verificationUri = `${config.apiOrigin}/device`;
 
@@ -260,7 +263,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       "INSERT INTO token (hash, grant_id, kind, expires_at) VALUES (?, ?, 'access', ?)",
       hashSecret(access),
       grantId,
-      iso(now() + ACCESS_TTL_MS),
+      iso(now() + accessTtlMs),
     );
     db.run(
       "INSERT INTO token (hash, grant_id, kind, expires_at) VALUES (?, ?, 'refresh', ?)",
@@ -292,7 +295,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
     return {
       access_token: tokens.access,
       token_type: "Bearer",
-      expires_in: Math.floor(ACCESS_TTL_MS / 1000),
+      expires_in: Math.max(1, Math.floor(accessTtlMs / 1000)),
       refresh_token: tokens.refresh,
       scope: "mostra",
       mostra_account: { id: row.account_id, ...(row.name !== null ? { name: row.name } : {}) },

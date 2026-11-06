@@ -117,4 +117,34 @@ describe("the owner instance's link (§18.2)", () => {
       await other.stop();
     }
   });
+  it("keeps its binding open across its access tokens' expiries by refreshing them in band", async () => {
+    const port = await freePort();
+    const server = await startServer({
+      data: tempDir("server-data"),
+      port,
+      env: { MOSTRA_TEST_GRANT_RECHECK_MS: "200", MOSTRA_TEST_ACCESS_TTL_MS: "4000" },
+    });
+    const trace = join(tempDir("link-trace"), "binding.ndjson");
+    const home = new GatewayHome();
+    try {
+      await home.start({ env: { ...ownerEnv(port), MOSTRA_TEST_BINDING_TRACE: trace } });
+      await ownerSignIn(home.client, port, "Ada");
+      await new Promise((resolve) => setTimeout(resolve, 12_000));
+      const lines = readFileSync(trace, "utf8").split("\n");
+      // One session, its token replaced in band, never closed for an expiry.
+      expect(
+        lines.filter((line) => line.startsWith("out ") && line.includes('"mostra/initialize"')),
+      ).toHaveLength(1);
+      expect(
+        lines.filter((line) => line.startsWith("out ") && line.includes('"remote/token"')).length,
+      ).toBeGreaterThanOrEqual(2);
+      const links = ok<{ links: { state: string }[] }>(
+        await home.client.call("remote/status", {}),
+      ).links;
+      expect(links[0]?.state).toBe("connected");
+    } finally {
+      await home.stop();
+      await stopServer(server);
+    }
+  }, 90_000);
 });
