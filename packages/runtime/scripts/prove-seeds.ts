@@ -61,6 +61,15 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "a page never learns its hosted source's owner is offline",
+    file: "../react/src/runtime/server-client.ts",
+    from: "      ...(state.ownerOffline ? { ownerOffline: true } : {}),",
+    to: "      ...(state.ownerOffline && false ? { ownerOffline: true } : {}),",
+    check: ["--project", "unit", "test/server-client.test.ts", "-t", "owner is offline"],
+    cwd: "../react",
+  },
+  {
     requirement: "RM-02",
     name: "the kit's remote delivery: an imported submission skips the host's own outbox",
     file: "src/interaction/index.ts",

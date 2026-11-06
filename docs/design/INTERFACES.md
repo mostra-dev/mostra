@@ -116,6 +116,7 @@ function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>, optio
 
 function useLive<K extends keyof LiveSources>(key: K, options?: { mode?: "latest" | "append"; window?: number }): {
   data: LiveSources[K] | undefined; isLoading: boolean; error?: Error; refresh(): void; revision?: string; at?: string;
+  ownerOffline?: boolean;            // hosted: the owner is offline, `data` is the last value, from `at` (WP-29, D165 item 4)
 };
 
 function useChoice(reviewSetId: string, options?: { candidates?: { id: string; label?: string }[]; current?: string }):

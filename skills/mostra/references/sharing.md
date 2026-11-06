@@ -60,6 +60,26 @@ mostra logout                             # sign out; hosted pages keep working,
 - Several machines can sign in to one account. The one that shared a page receives its answers. `mostra login <server> --default` makes this machine the one pages created from a chat app go to.
 - `mostra share stop` and `mostra share list` include hosted shares.
 
+### Actions on a hosted page
+
+A hosted page's actions run on this machine, with its secrets, while it is connected. The manifest's `hosted` key says how they behave on the server:
+
+```tsx
+export const artifact = defineArtifact({
+  title: "Proposal",
+  hosted: {
+    actions: "link",                                 // who may press them: "signed-in" (default) or anyone with the link
+    offline: { actions: "queue", limit: "24h" },     // while this machine is off: wait ("queue", default) or fail at once ("fail")
+  },
+});
+```
+
+- By default only people the link names (`--viewer`) or who signed in may run actions; `actions: "link"` lets anyone with the link run them.
+- While this machine is off, a pressed action waits: `useAction`'s `status` is `"waiting"`, and it runs once, in order, when Mostra runs here again. Past `limit` (at most `7d`) a run that never started fails. Under `"fail"` it fails at once.
+- If the connection drops while an action runs and this machine never reports how it ended within the limit, its `status` becomes `"unknown"`: it may have happened, so show that rather than "failed". `run()` rejects with `MOSTRA_REMOTE_OWNER_OFFLINE`; the real end replaces `unknown` if it arrives later.
+- A plain server function (called directly, not through `useAction`) answers `MOSTRA_REMOTE_OWNER_OFFLINE` while this machine is off.
+- Live values show the last value, with `ownerOffline` set, while this machine is off.
+
 ## Behind a public quick tunnel
 
 Over a Cloudflare quick tunnel the page runs in a slightly different mode, and nothing in your code needs to change for it:

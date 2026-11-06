@@ -578,6 +578,38 @@ describe("live sources (D56)", () => {
     expect(page.liveView("ticks")).toMatchObject({ loading: false, data: 3 });
   });
 
+  it("says a hosted source's owner is offline, keeps its last value, and clears it when a value comes (D165 item 4)", async () => {
+    const server = new FakeServer();
+    server.live.set("prices", {
+      key: "prices",
+      revision: "4",
+      at: "2026-11-06T10:00:00.000Z",
+      value: await serializeAll({ eur: 1.08 }, { mode: "argument" }),
+      ownerOffline: true,
+    });
+    const page = client(server);
+    page.watchLive("prices");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("prices")).toMatchObject({
+      loading: false,
+      data: { eur: 1.08 },
+      at: "2026-11-06T10:00:00.000Z",
+      ownerOffline: true,
+    });
+    // Its owner is back: the next value came from its producer.
+    page.receive({
+      kind: "live",
+      live: {
+        key: "prices",
+        revision: "5",
+        value: await serializeAll({ eur: 1.09 }, { mode: "argument" }),
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(page.liveView("prices")?.data).toEqual({ eur: 1.09 });
+    expect(page.liveView("prices")?.ownerOffline).toBeUndefined();
+  });
+
   it("stays loading, and pending for verify, until the first value or error arrives (WP-14)", async () => {
     // A producer whose first load is on its way (`awaiting`): the page is still loading, and
     // verify must keep waiting for it, or it screenshots an empty dashboard.

@@ -251,6 +251,11 @@ export interface LiveResult<T> {
   readonly revision?: string;
   /** When the value was produced. */
   readonly at?: string;
+  /**
+   * On a hosted page, `true` while the page's owner is offline, so its producer can't refresh the
+   * value: `data` is the last value, from `at` (D165 item 4).
+   */
+  readonly ownerOffline?: boolean;
 }
 
 /** How long append mode keeps values without a `window`. */
@@ -307,6 +312,7 @@ export function useLive<K extends LiveKey>(
       refresh,
       ...(view?.revision !== undefined ? { revision: view.revision } : {}),
       ...(view?.at !== undefined ? { at: view.at } : {}),
+      ...(view?.ownerOffline ? { ownerOffline: true } : {}),
     };
   }, [view, append, window, refresh]);
 }

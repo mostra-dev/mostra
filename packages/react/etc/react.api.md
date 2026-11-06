@@ -114,6 +114,7 @@ export interface LiveResult<T> {
     readonly data: T | undefined;
     readonly error?: Error;
     readonly isLoading: boolean;
+    readonly ownerOffline?: boolean;
     refresh(): void;
     readonly revision?: string;
 }
