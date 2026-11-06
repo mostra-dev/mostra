@@ -61,6 +61,22 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "a hosted submission goes to every instance of the account",
+    file: "src/server/hosted.ts",
+    from: "      return owner === undefined ? undefined : [owner];",
+    to: "      return undefined;",
+    check: integration("hosted.test.ts", "once, to its owner"),
+  },
+  {
+    requirement: "RM-02",
+    name: "signing in again makes the instance a new link",
+    file: "src/link/manager.ts",
+    from: "        ...(existing?.instance_id ? { mostra_instance: existing.instance_id } : {}),",
+    to: "        ...({}),",
+    check: integration("hosted.test.ts", "once, to its owner"),
+  },
+  {
     requirement: "RM-04",
     name: "a relayed producer's failure crosses the relay unredacted",
     file: "src/live/index.ts",

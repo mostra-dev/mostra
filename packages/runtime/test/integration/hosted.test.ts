@@ -7,7 +7,7 @@
  * the owner instance receives the submission through its outbox, its `wait` returns and its
  * `results` hold the answer with where it came from.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deserializeAll, type Frame, MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,7 +21,7 @@ import {
   startServer,
   stopServer,
 } from "../server-support.ts";
-import { tempDir } from "../support.ts";
+import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
 const REVISION = "2026-10-15";
 
@@ -334,4 +334,126 @@ export default function Page() {
       await owner.start({ env: ownerEnv(port) });
     }
   }, 240_000);
+  it("delivers each hosted submission once, to its owner's own host, and nothing to another instance of the account", async () => {
+    // The owner's own host, registered for submissions on the owner instance.
+    const host = await connectTo(owner.daemon.status.socket as string);
+    ok(
+      await host.call(
+        "mostra/initialize",
+        initializeParams({ client: { name: "my-host", version: "1" }, ports: ["submissions"] }),
+      ),
+    );
+    const delivered: { deliveryId: string; submissionId: string }[] = [];
+    let listening = true;
+    void (async () => {
+      while (listening) {
+        const request = await host
+          .next((message) => message.method === "port/submissions.deliver", 1000)
+          .catch(() => undefined);
+        if (!request) continue;
+        const params = (request as { params?: unknown }).params as {
+          deliveryId: string;
+          submissionId: string;
+        };
+        delivered.push({ deliveryId: params.deliveryId, submissionId: params.submissionId });
+        host.sendRaw(
+          JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { accepted: true } }),
+        );
+      }
+    })();
+    // A second instance of the same account.
+    const other = new GatewayHome();
+    const otherTrace = join(tempDir("hosted-other"), "binding.ndjson");
+    await other.start({ env: { ...ownerEnv(port), MOSTRA_TEST_BINDING_TRACE: otherTrace } });
+    try {
+      await ownerSignIn(other.client, port, "Ada");
+      const links = ok<{ links: { default: boolean }[] }>(
+        await other.client.call("remote/status", {}),
+      ).links;
+      expect(links[0]?.default).toBe(false);
+
+      // An artifact of its own, answered in rounds.
+      const dir = join(tempDir("hosted-rounds"), "rounds");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "index.tsx"),
+        `import { defineArtifact, useField } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Rounds", submission: { policy: "epochs" } });
+
+export default function Page() {
+  const [answer, setAnswer] = useField("answer", "");
+  return <input value={answer} onChange={(event) => setAnswer(event.target.value)} />;
+}
+`,
+      );
+      const receipt = ok<{ artifactId: string }>(
+        await owner.client.call("artifact/publish", { source: { path: dir } }, 120_000),
+      );
+      const url = ok<{ url: string }>(
+        await owner.client.call("share/start", {
+          artifact: { artifactId: receipt.artifactId },
+          via: "remote",
+        }),
+      ).url;
+      const answer = async (value: string): Promise<string> => {
+        const browser = new Browser();
+        const opened = await openLink(browser, url);
+        const fields = await browser.fetchJson(
+          opened.frameOrigin,
+          `/_mostra/v/${REVISION}/fields`,
+          {
+            body: {
+              mutationId: MutationId.create(),
+              scope: "viewer",
+              baseRevision: "0",
+              viewId: opened.viewId,
+              ops: [{ id: "answer", value }],
+            },
+            csrf: opened.frameCsrf,
+          },
+        );
+        const revision = fields.json<{ revision: string }>().revision;
+        const submitted = await browser.fetchJson(
+          opened.link.shell,
+          `${new URL(url).pathname}/_mostra/v/${REVISION}/submit`,
+          { body: { viewId: opened.viewId, expectedRevision: revision }, csrf: opened.shellCsrf },
+        );
+        expect(submitted.status, submitted.body).toBe(200);
+        return submitted.json<{ id: string }>().id;
+      };
+      const first = await answer("first");
+      await eventually(() => delivered.some((entry) => entry.submissionId === first), 20_000);
+
+      // Signing out and in again keeps the instance's link and the artifacts it owns.
+      const before = ok<{ links: { instanceId: string }[] }>(
+        await owner.client.call("remote/status", {}),
+      ).links[0]?.instanceId;
+      ok(await owner.client.call("remote/logout", {}));
+      const back = await ownerSignIn(owner.client, port, "Ada");
+      expect(back.instanceId).toBe(before);
+      const second = await answer("second");
+      await eventually(() => delivered.some((entry) => entry.submissionId === second), 30_000);
+
+      // Once each, however often the hosted home delivered it.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      for (const id of [first, second]) {
+        expect(
+          new Set(delivered.filter((entry) => entry.submissionId === id).map((e) => e.deliveryId))
+            .size,
+        ).toBe(1);
+      }
+      // The other instance of the account received nothing and imported nothing.
+      const events = ok<{ events: unknown[] }>(
+        await other.client.call("events/read", { filter: { types: ["submission.*"] } }),
+      ).events;
+      expect(events).toEqual([]);
+      // Nor did the hosted home send it one: an artifact's deliveries go to its owner link only.
+      expect(readFileSync(otherTrace, "utf8")).not.toContain("port/submissions.deliver");
+    } finally {
+      listening = false;
+      host.close();
+      await other.stop();
+    }
+  }, 180_000);
 });
