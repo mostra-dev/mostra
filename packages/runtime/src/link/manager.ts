@@ -44,7 +44,7 @@ import {
   viewRevokeMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
-import { followEvents, type ImportSource } from "../interaction/index.ts";
+import { appendEvent, followEvents, type ImportSource } from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { renamePathSync } from "../platform/index.ts";
@@ -538,9 +538,46 @@ export function createLink(options: LinkOptions): Link {
         connection.incarnation = session.result.instance.incarnation ?? "";
         const row = ledger.read((db) => linkRow(db, server));
         const sameIncarnation = row?.incarnation === connection.incarnation;
+        // A new incarnation is a hosted home restored from a backup (FAILURE_MODEL §11.2): this
+        // instance keeps what it imported, continues after the lower of what it committed and the
+        // restored head, and records the window the server lost (`remote.regressed`).
+        const head = session.result.instance.cursor ?? "0";
+        const regressed =
+          row?.incarnation !== null &&
+          row?.incarnation !== undefined &&
+          !sameIncarnation &&
+          row.follow_cursor !== null;
+        const after = sameIncarnation
+          ? (row?.follow_cursor ?? undefined)
+          : regressed
+            ? String(Math.min(Number(row?.follow_cursor ?? "0"), Number(head)))
+            : undefined;
+        if (regressed) {
+          ledger.write((db) => {
+            appendEvent(db, {
+              artifactId: null,
+              type: "remote.regressed",
+              actor: { kind: "mostra" },
+              payload: {
+                server,
+                home: connection.home,
+                from: row?.follow_cursor,
+                to: head,
+                incarnation: { from: row?.incarnation, to: connection.incarnation },
+              },
+            });
+            db.run(
+              "UPDATE remote_link SET follow_cursor = ?, incarnation = ? WHERE server = ?",
+              after ?? null,
+              connection.incarnation ?? null,
+              server,
+            );
+          });
+          log.warn("link.home_regressed", { server, from: row?.follow_cursor, to: head });
+        }
         await session.call(eventsSubscribeMethod, {
           name: `owner:${row?.instance_id ?? ""}`,
-          ...(sameIncarnation && row?.follow_cursor ? { after: row.follow_cursor } : {}),
+          ...(after !== undefined ? { after } : {}),
         });
         connection.state = "connected";
         connection.since = new Date(now()).toISOString();

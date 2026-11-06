@@ -48,6 +48,7 @@ import { handler, ProtocolServer, type Session } from "../protocol-server/index.
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
 import type { Authorization } from "./auth.ts";
+import { rotateIncarnation } from "./data.ts";
 import { createHostedRelay } from "./relay.ts";
 
 /** Lower-case Crockford base32, for route labels (one DNS label, 130 bits). */
@@ -131,7 +132,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   const registry = await openRegistry({ home: dir, ledger });
   /** Pending pushes: version ID → the client files still missing. */
   const pending = new Map<string, Set<string>>();
-  const incarnation = options.incarnation;
+  let incarnation = options.incarnation;
 
   const ownerLinkOf = (artifactId: string): string | undefined =>
     directory.read(
@@ -606,6 +607,32 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     supportedPorts: ["submissions", "relay"],
     notifications: ["events/notify"],
     admit: (session, params) => {
+      // The owner instance is the witness a restore can't roll back: a home that holds less than
+      // its owner committed, or saw less of its relay, was restored to an earlier copy, and rotates
+      // its incarnation before it answers (INTERFACES §18.2).
+      const link = params.link;
+      if (link !== undefined && link.instanceId === session.attributes["linkId"]) {
+        const marks = ledger.read((db) => ({
+          head: db.get<{ head: number | null }>("SELECT MAX(cursor) AS head FROM event")?.head ?? 0,
+          relayHigh:
+            db.get<{ high: number | null }>(
+              "SELECT MAX(relay_seq) AS high FROM relay_run WHERE owner_link_id = ?",
+              link.instanceId,
+            )?.high ?? 0,
+        }));
+        const followedAhead =
+          link.followed !== undefined &&
+          link.followed.incarnation === incarnation &&
+          Number(link.followed.cursor) > marks.head;
+        const relayAhead = link.relayMark > marks.relayHigh;
+        if (followedAhead || relayAhead) {
+          incarnation = rotateIncarnation(ledger);
+          log.warn("server.home_rotated", {
+            home: id,
+            why: followedAhead ? "owner-cursor" : "owner-relay-mark",
+          });
+        }
+      }
       // An owner link is its own grant's: a session can't speak for another instance's link.
       if (params.link !== undefined && params.link.instanceId !== session.attributes["linkId"]) {
         throw refuse(

@@ -117,6 +117,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         },
       }),
     disassemble: (home) => home.stop(),
+    incarnation: (home) => home.incarnation(),
     busy: (home) => home.busy(),
   };
   const data: DataDirectory<HostedHome> = await openDataDirectory({
@@ -126,6 +127,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     log,
     env: options.env,
     assembler,
+    ...(options.restored !== undefined ? { restored: options.restored } : {}),
     ...(config.homes?.idleCloseMinutes !== undefined
       ? { idleCloseMs: config.homes.idleCloseMinutes * 60_000 }
       : {}),

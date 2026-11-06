@@ -45,6 +45,8 @@ export interface HomeAssembler<T> {
   disassemble(assembled: T): Promise<void>;
   /** Whether a home is in use now: a connection, a stream, a poll, a pending delivery, a waiting run. */
   busy(assembled: T): boolean;
+  /** The home's incarnation now: a hosted home rotates it when its owner shows it was restored. */
+  incarnation?(assembled: T): string;
 }
 
 /** The data directory, held. */
@@ -72,6 +74,27 @@ export interface DataDirectoryOptions<T> {
   /** Close a home this long after it was last used and nothing is busy. Default 10 minutes. */
   readonly idleCloseMs?: number;
   readonly walAutocheckpoint?: number;
+  /**
+   * Homes restored from a backup by hand (`--restored <homeId|all>`): each rotates its incarnation
+   * when it first opens (INTERFACES §18.2).
+   */
+  readonly restored?: readonly string[];
+}
+
+/** A home's head and relay high-water mark, as `home_cursor` records them (DATA_MODEL §7.1). */
+function marksOf(ledger: Ledger): { readonly head: number; readonly relayHigh: number } {
+  return ledger.read((db) => ({
+    head: db.get<{ head: number | null }>("SELECT MAX(cursor) AS head FROM event")?.head ?? 0,
+    relayHigh:
+      db.get<{ high: number | null }>("SELECT MAX(relay_seq) AS high FROM relay_run")?.high ?? 0,
+  }));
+}
+
+/** A fresh incarnation, written in the one transaction that rotates it (DATA_MODEL §7.2). */
+export function rotateIncarnation(ledger: Ledger): string {
+  const fresh = randomBytes(16).toString("hex");
+  ledger.write((db) => db.run("UPDATE home_meta SET incarnation = ? WHERE id = 1", fresh));
+  return fresh;
 }
 
 function locked(message: string): RpcError {
@@ -137,10 +160,33 @@ export async function openDataDirectory<T>(
   interface Entry {
     opening: Promise<OpenedHome<T>>;
     lock?: HeldLock;
+    ledger?: Ledger;
+    incarnation?: () => string;
     lastUsed: number;
     closing?: Promise<void>;
   }
   const entries = new Map<string, Entry>();
+  /** `--restored`'s homes not opened since this server started. */
+  const restores = new Set(options.restored ?? []);
+
+  /** Writes a home's high-water marks, which a home opened below them was restored. */
+  const recordCursor = (id: string, ledger: Ledger, incarnation: string): void => {
+    const { head, relayHigh } = marksOf(ledger);
+    directory.write((db) =>
+      db.run(
+        `INSERT INTO home_cursor (home_id, incarnation, high_cursor, relay_high, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(home_id) DO UPDATE SET incarnation = excluded.incarnation,
+           high_cursor = excluded.high_cursor, relay_high = excluded.relay_high,
+           updated_at = excluded.updated_at`,
+        id,
+        incarnation,
+        head,
+        relayHigh,
+        new Date().toISOString(),
+      ),
+    );
+  };
   const idleCloseMs = options.idleCloseMs ?? 10 * 60_000;
   let closed = false;
 
@@ -170,7 +216,7 @@ export async function openDataDirectory<T>(
       });
       if (!opening.ok) throw locked(`The hosted home ${id}'s ledger is locked by another process.`);
       const ledger = opening.ledger;
-      const incarnation = ledger.write((db) => {
+      const stored = ledger.write((db) => {
         const meta = db.get<{ incarnation: string }>(
           "SELECT incarnation FROM home_meta WHERE id = 1",
         );
@@ -183,6 +229,26 @@ export async function openDataDirectory<T>(
         );
         return fresh;
       });
+      // A home restored from a backup reuses cursors its owner may have copied: it rotates its
+      // incarnation before it answers anyone, when restored by hand or when it opens below the
+      // marks it reached (INTERFACES §18.2, FAILURE_MODEL §11.2).
+      const recorded = directory.read((db) =>
+        db.get<{ high_cursor: number; relay_high: number }>(
+          "SELECT high_cursor, relay_high FROM home_cursor WHERE home_id = ?",
+          id,
+        ),
+      );
+      const marks = marksOf(ledger);
+      const byHand = restores.has(id) || restores.has("all");
+      restores.delete(id);
+      const below =
+        recorded !== undefined &&
+        (marks.head < recorded.high_cursor || marks.relayHigh < recorded.relay_high);
+      const incarnation = byHand || below ? rotateIncarnation(ledger) : stored;
+      if (incarnation !== stored) {
+        log.warn("server.home_rotated", { home: id, why: byHand ? "restored" : "below-mark" });
+      }
+      recordCursor(id, ledger, incarnation);
       try {
         const assembled = await options.assembler.assemble({
           id,
@@ -191,7 +257,11 @@ export async function openDataDirectory<T>(
           incarnation,
         });
         const entry = entries.get(id);
-        if (entry) entry.lock = lock;
+        if (entry) {
+          entry.lock = lock;
+          entry.ledger = ledger;
+          entry.incarnation = () => options.assembler.incarnation?.(assembled) ?? incarnation;
+        }
         log.info("server.home_opened", { home: id });
         return { id, dir: homeDir, ledger, incarnation, assembled };
       } catch (error) {
@@ -207,6 +277,11 @@ export async function openDataDirectory<T>(
   const closeHome = async (id: string, entry: Entry): Promise<void> => {
     const opened = await entry.opening.catch(() => undefined);
     if (opened) {
+      try {
+        recordCursor(id, opened.ledger, entry.incarnation?.() ?? opened.incarnation);
+      } catch (error) {
+        log.warn("server.home_cursor_failed", { home: id, error });
+      }
       await options.assembler
         .disassemble(opened.assembled)
         .catch((error: unknown) => log.warn("server.home_disassemble_failed", { home: id, error }));
@@ -237,6 +312,18 @@ export async function openDataDirectory<T>(
     Math.min(30_000, Math.max(50, idleCloseMs / 4)),
   );
   sweep.unref();
+  // At least every 10 s while a home is open (DATA_MODEL §7.1).
+  const marker = setInterval(() => {
+    for (const [id, entry] of entries) {
+      if (!entry.ledger || entry.closing) continue;
+      try {
+        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "");
+      } catch (error) {
+        log.warn("server.home_cursor_failed", { home: id, error });
+      }
+    }
+  }, 10_000);
+  marker.unref();
 
   return {
     dir,
@@ -270,6 +357,7 @@ export async function openDataDirectory<T>(
       if (closed) return;
       closed = true;
       clearInterval(sweep);
+      clearInterval(marker);
       for (const [id, entry] of [...entries]) {
         entry.closing ??= closeHome(id, entry);
         await entry.closing;

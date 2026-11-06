@@ -830,6 +830,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
       // Read in pages until enough visible events or the end, so other viewers' events never
       // stall a page.
       return ledger.read((db) => {
+        // A cursor above the head was read from a home since restored to an earlier copy (§18.2):
+        // the page starts again from a fresh snapshot, never from an empty tail.
+        if (after > latestCursor(db)) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_HOST_CURSOR_COMPACTED", {
+              message: "The page's cursor is past this home's head; it reads a fresh snapshot.",
+            }),
+          );
+        }
         const events: EventRecord[] = [];
         let cursor = after;
         const runs = new Map<string, RunRow | undefined>();

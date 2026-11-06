@@ -14,6 +14,7 @@ import {
   remoteTokenMethod,
   type VersionPush,
 } from "@mostra/protocol";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { type Binding, ownerInitialize, startBinding } from "../../src/link/index.ts";
@@ -326,4 +327,36 @@ describe("the network binding (§18.2)", () => {
     }
     expect(closes.some((why) => why.includes("4403"))).toBe(true);
   });
+  it("rotates a hosted home's incarnation when restored by hand, and when it opens below its marks", async () => {
+    const { port, data, server } = await serve();
+    const ada = await deviceSignIn(port, "Ada");
+    const incarnationNow = async (): Promise<string> => {
+      const binding = bind(port, ada);
+      try {
+        return (await binding.ready()).result.instance.incarnation as string;
+      } finally {
+        binding.stop();
+      }
+    };
+    const first = await incarnationNow();
+    // A restart alone keeps it.
+    await stopServer(server);
+    const again = await startServer({ data, port });
+    running.push(again);
+    expect(await incarnationNow()).toBe(first);
+    // `--restored all`: a self-hoster restored the directory by hand.
+    await stopServer(again);
+    const restored = await startServer({ data, port, args: ["--restored", "all"] });
+    running.push(restored);
+    const second = await incarnationNow();
+    expect(second).not.toBe(first);
+    // A home whose head is below what the directory recorded for it was restored too.
+    await stopServer(restored);
+    const directory = new Database(join(data, "server.sqlite"));
+    directory.prepare("UPDATE home_cursor SET high_cursor = high_cursor + 1000").run();
+    directory.close();
+    const below = await startServer({ data, port });
+    running.push(below);
+    expect(await incarnationNow()).not.toBe(second);
+  }, 120_000);
 });
