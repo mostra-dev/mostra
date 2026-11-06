@@ -24,6 +24,7 @@ import {
   type HostedPushResult,
   type HostedRoute,
   hostedPushMethod,
+  hostedSubmissionMethod,
   type InstanceInfo,
   RouteId,
   RpcError,
@@ -654,6 +655,20 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
       handler(artifactGetMethod, (params) => registry.get(canonicalRef(params.artifact))),
       handler(hostedPushMethod, (params, session) => push(params, session)),
+      handler(hostedSubmissionMethod, (params, session) => {
+        // Only the owner instance of its artifact reads a submission this way (D165 item 1b),
+        // and only one it was, or is, delivered.
+        const link = session.link?.instanceId;
+        const envelope =
+          link === undefined ? undefined : interaction.envelopeFor(params.submissionId, link);
+        if (!envelope) {
+          throw refuse(
+            "MOSTRA_HOST_INVALID_PARAMS",
+            `This home delivers no submission ${params.submissionId} to this instance.`,
+          );
+        }
+        return envelope;
+      }),
       ...gateway.methods(),
       ...relay.methods(),
       ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),

@@ -62,6 +62,22 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "another instance reads a submission it doesn't own",
+    file: "src/interaction/index.ts",
+    from: '          "SELECT id, attempts FROM delivery WHERE submission_id = ? AND port_owner = ?",',
+    to: '          "SELECT id, attempts FROM delivery WHERE submission_id = ? AND ? IS NOT NULL",',
+    check: unit("imports.test.ts", "once, in order"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a submission the owner lost to a restore is never read again",
+    file: "src/link/manager.ts",
+    from: "    for (const submissionId of outcome.missing) {",
+    to: "    for (const submissionId of [] as string[]) {",
+    check: integration("restore.test.ts", "lost to a restore"),
+  },
+  {
+    requirement: "RM-02",
     name: "an issued link's frames move to the active domain",
     file: "src/server/hosted.ts",
     from: "        const domain = domains.find((candidate) => originOf(candidate) === shellOrigin);",

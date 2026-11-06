@@ -20,6 +20,7 @@ import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./even
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
 import { hostedPushMethod } from "./hosted/push.ts";
+import { hostedSubmissionMethod } from "./hosted/submission.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
@@ -122,6 +123,7 @@ export const hostMethods: readonly AnyMethod[] = [
   relayEffectMethod,
   portRelayLiveMethod,
   relayLiveValueMethod,
+  hostedSubmissionMethod,
   // gen:methods
 ];
 

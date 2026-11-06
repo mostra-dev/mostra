@@ -403,6 +403,11 @@ export {
   type ListingEntry,
   VersionPush,
 } from "./methods/hosted/push.ts";
+export {
+  type HostedSubmissionParams,
+  type HostedSubmissionResult,
+  hostedSubmissionMethod,
+} from "./methods/hosted/submission.ts";
 export { hostMethods, hostNotifications } from "./methods/index.ts";
 export {
   type InstanceCheck,

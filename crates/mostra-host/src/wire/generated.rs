@@ -7260,6 +7260,12 @@ impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsSubmission
         value.parse()
     }
 }
+///`HostedSubmissionParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct HostedSubmissionParams {
+    #[serde(rename = "submissionId")]
+    pub submission_id: SubmissionId,
+}
 ///What the instance offers: methods, notifications and supported ports.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct InstanceCapabilities {

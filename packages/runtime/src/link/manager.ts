@@ -25,6 +25,7 @@ import {
   type HostedPushResult,
   type HostedRoute,
   hostedPushMethod,
+  hostedSubmissionMethod,
   type ListingEntry,
   type MethodDefinition,
   portSubmissionsDeliverMethod,
@@ -423,11 +424,23 @@ export function createLink(options: LinkOptions): Link {
       );
       return followed;
     });
-    if (outcome.missing.length > 0) {
-      log.warn("link.follow_missing_submissions", {
-        server: connection.server,
-        submissions: outcome.missing,
-      });
+    // A followed submission this home doesn't hold (restored from a backup taken before it, or
+    // a delivery the owner committed and then lost): read it again and import it as a delivery
+    // would, keeping its IDs; its local deliveries repeat their derived IDs (FAILURE_MODEL §11.2).
+    for (const submissionId of outcome.missing) {
+      void session
+        .call(hostedSubmissionMethod, { submissionId }, { timeoutMs: 30_000 })
+        .then((envelope) => {
+          const answer = options.importSubmission(envelope, source);
+          log.info("link.submission_reimported", {
+            server: connection.server,
+            submissionId,
+            accepted: answer.accepted,
+          });
+        })
+        .catch((error: unknown) =>
+          log.warn("link.reimport_failed", { server: connection.server, submissionId, error }),
+        );
     }
     session.notify(eventsAckMethod.method, {
       subscriptionId: page.subscriptionId,

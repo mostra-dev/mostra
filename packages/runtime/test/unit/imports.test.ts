@@ -174,6 +174,20 @@ describe("hosted submissions through the owner's outbox (RM-02, D165 item 1)", (
       );
       expect(delivered.map((envelope) => envelope.submissionId)).toEqual([first.id, second.id]);
       // The same submission: its ID, digest and answers, and where it came from.
+      // Read again as `hosted/submission` reads it: the owner's delivery, with its snapshot; another
+      // link of the account has none (D165 item 1b, FAILURE_MODEL §11.2).
+      const again = s.hosted.envelopeFor(s.envelopes[0]?.submissionId as string, OWNER_LINK);
+      expect(again).toMatchObject({
+        deliveryId: s.envelopes[0]?.deliveryId,
+        snapshot: s.envelopes[0]?.snapshot,
+        cursor: s.envelopes[0]?.cursor,
+      });
+      expect(
+        s.hosted.envelopeFor(
+          s.envelopes[0]?.submissionId as string,
+          "lnk_01JB8Z3QF6S7W3N8D5K2C4V9XH",
+        ),
+      ).toBeUndefined();
       const hostedResults = s.envelopes.map((envelope) => envelope.results);
       expect(delivered.map((envelope) => envelope.results.submission.digest)).toEqual(
         hostedResults.map((results) => results.submission.digest),

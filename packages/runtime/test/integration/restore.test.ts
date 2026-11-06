@@ -204,4 +204,40 @@ export default function Page() {
       );
     }, 30_000);
   }, 240_000);
+
+  it("reads a submission its owner lost to a restore again, and imports it once", async () => {
+    // The owner's home is backed up, takes an answer, then is restored to the backup: the
+    // hosted home already counts that delivery done, so the owner finds the answer by
+    // following it and reads it again (FAILURE_MODEL §11.2).
+    const store = join(owner.home.home, "store");
+    const saved = join(tempDir("owner-backup"), "store");
+    await owner.stop();
+    cpSync(store, saved, { recursive: true });
+    await owner.start({ env: ownerEnv(port) });
+    const lost = await answer("lost to the restore");
+    await imported(lost.id);
+    const first = ok<{ submission: { digest: string } }>(
+      await owner.client.call("results/get", { artifact: { artifactId }, submission: lost.id }),
+    );
+    await owner.stop();
+    removeAll(store);
+    cpSync(saved, store, { recursive: true });
+    await owner.start({ env: ownerEnv(port) });
+    await imported(lost.id);
+    const results = ok<{ submission: { digest: string; origin?: unknown } }>(
+      await owner.client.call("results/get", { artifact: { artifactId }, submission: lost.id }),
+    );
+    // The same immutable submission: its digest is its snapshot's.
+    expect(results.submission.digest).toBe(first.submission.digest);
+    expect(results.submission.origin).toBeDefined();
+    // Once: a repeated follow imports nothing more.
+    const events = ok<{ events: { payload: { submissionId?: string } }[] }>(
+      await owner.client.call("events/read", { filter: { types: ["submission.created"] } }),
+    ).events;
+    expect(events.filter((event) => event.payload.submissionId === lost.id)).toHaveLength(1);
+    const log = readdirSync(join(owner.home.home, "logs"))
+      .map((name) => readFileSync(join(owner.home.home, "logs", name), "utf8"))
+      .join("");
+    expect(log).toContain("link.submission_reimported");
+  }, 180_000);
 });

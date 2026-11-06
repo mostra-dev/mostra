@@ -1512,6 +1512,17 @@ export interface HostedSettings {
 export const HostedSettings: z.ZodType<HostedSettings>;
 
 // @public
+export const hostedSubmissionMethod: MethodDefinition<HostedSubmissionParams, HostedSubmissionResult>;
+
+// @public
+export interface HostedSubmissionParams {
+    readonly submissionId: string;
+}
+
+// @public
+export type HostedSubmissionResult = SubmissionEnvelope;
+
+// @public
 export const hostMethods: readonly AnyMethod[];
 
 // @public

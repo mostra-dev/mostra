@@ -163,6 +163,16 @@ impl super::Method for HostedPush {
     type Params = super::generated::HostedPushParams;
     type Result = super::generated::HostedPushResult;
 }
+///`hosted/submission`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostedSubmission;
+impl super::Method for HostedSubmission {
+    const NAME: &'static str = "hosted/submission";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::HostedSubmissionParams;
+    type Result = super::generated::SubmissionEnvelope;
+}
 ///`instance/check`.
 #[derive(Clone, Copy, Debug)]
 pub struct InstanceCheck;
@@ -675,6 +685,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "hosted/push",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "hosted/submission",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "instance/check",

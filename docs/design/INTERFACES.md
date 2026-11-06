@@ -714,6 +714,8 @@ Every key can also come from an environment variable (`MOSTRA_SERVER_<KEY>`). A 
   hosted/push    { artifactId, version: VersionPush, requestId? }
                    → { status: "complete", versionId, number } | { status: "missing", files: string[] }   (SHA-256s)
   artifact/pause { artifact, paused: boolean, reason?, requestId? } → { paused, by?: "owner" | "operator" }
+  hosted/submission { submissionId } → SubmissionEnvelope   (WP-29, D166 item 16: an owner reads a
+                   submission it lost to a restore again; only the instance it was delivered to)
   ```
 
   `hosted/push` answers with the artifact's hosted route too (`route: { routeId, label }`), minted on the first push. `VersionPush` is `{ versionId, number, sourceDigest, envDigest, outputDigest, manifest, registry, lock, listing }`: the version's identity, its `manifest.json`, `registry.json` and `lock.yaml`, and `listing`, the canonical output listing of every built file (`[path, executable, sha256, size]`, server files included) whose digest is `outputDigest` (DATA_MODEL §2). The server stores the client files the listing names, never the server files (D165 item 3). A push answers `missing` with the SHA-256s it lacks until every client file is there, then `complete`. It is idempotent by `versionId`.

@@ -17,6 +17,7 @@ import {
   type CapabilityScope,
   type CarryOver,
   type ControlsPolicy,
+  type Cursor,
   createDiagnostic,
   type DeliveryCounts,
   type EventFilter,
@@ -229,6 +230,11 @@ export interface Interaction {
    * deliveries, in one transaction (D165 item 1), and answers as a host answers a delivery.
    */
   importSubmission(envelope: SubmissionEnvelope, source: ImportSource): SubmissionsDeliverResult;
+  /**
+   * A submission as its delivery to `owner` carries it, with its snapshot (a hosted home's
+   * `hosted/submission`, FAILURE_MODEL §11.2); `undefined` when `owner` has no delivery of it.
+   */
+  envelopeFor(submissionId: string, owner: string): SubmissionEnvelope | undefined;
   /** A viewer's submit (IN-05); `SubmitConflict` under a closed `once`. */
   submit(
     page: PageIdentity,
@@ -660,6 +666,30 @@ export function createInteraction(options: InteractionOptions): Interaction {
         accepted: answer.accepted,
       });
       return answer;
+    },
+    envelopeFor(submissionId, owner) {
+      return ledger.read((db) => {
+        const delivery = db.get<{ id: string; attempts: number }>(
+          "SELECT id, attempts FROM delivery WHERE submission_id = ? AND port_owner = ?",
+          submissionId,
+          owner,
+        );
+        const submission = db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          submissionId,
+        );
+        if (!delivery || !submission) return undefined;
+        return {
+          kind: "submission",
+          deliveryId: delivery.id,
+          submissionId: submission.id,
+          artifactId: submission.artifact_id,
+          attempt: Math.max(1, delivery.attempts),
+          results: buildResults(db, submission),
+          snapshot: submission.snapshot_json,
+          cursor: String(submission.position) as Cursor,
+        };
+      });
     },
     submit(page, input) {
       const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
