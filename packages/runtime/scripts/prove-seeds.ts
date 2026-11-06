@@ -61,6 +61,15 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    // Runs with MOSTRA_TEST_LITESTREAM set to a Litestream binary (a test tool, D165 item 0b).
+    requirement: "RM-02",
+    name: "a hosted home's ledger keeps a backup replicator out",
+    file: "src/server/data.ts",
+    from: '        locking: "normal",\n        ...(options.walAutocheckpoint !== undefined',
+    to: '        locking: "exclusive",\n        ...(options.walAutocheckpoint !== undefined',
+    check: integration("replicator.test.ts", "backup replicator"),
+  },
+  {
     requirement: "RM-02",
     name: "a restored home believes its own head over its owner's",
     file: "src/server/hosted.ts",
