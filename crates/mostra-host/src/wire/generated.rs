@@ -8951,6 +8951,250 @@ for PortRelayCancelResult {
         Self(value)
     }
 }
+///`PortRelayLiveParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayLiveParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: PortRelayLiveParamsArtifactId,
+    pub interest: PortRelayLiveParamsInterest,
+    pub keys: ::std::vec::Vec<PortRelayLiveParamsKeysItem>,
+    #[serde(rename = "versionId")]
+    pub version_id: PortRelayLiveParamsVersionId,
+}
+///`PortRelayLiveParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsArtifactId> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveParamsInterest`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PortRelayLiveParamsInterest {
+    #[serde(rename = "start")]
+    Start,
+    #[serde(rename = "renew")]
+    Renew,
+    #[serde(rename = "stop")]
+    Stop,
+    #[serde(rename = "refresh")]
+    Refresh,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsInterest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsInterest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`PortRelayLiveParamsKeysItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsKeysItem(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsKeysItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsKeysItem> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsKeysItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsKeysItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsKeysItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsKeysItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsKeysItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsVersionId> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct PortRelayLiveResult(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for PortRelayLiveResult {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveResult>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: PortRelayLiveResult) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for PortRelayLiveResult {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
 ///`PortRelayReconcileParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PortRelayReconcileParams {
@@ -9885,6 +10129,199 @@ impl<'de> ::serde::Deserialize<'de> for RelayHeldRunId {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
     }
+}
+///`RelayLiveValueParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayLiveValueParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: RelayLiveValueParamsArtifactId,
+    pub at: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<RelayLiveValueParamsError>,
+    pub key: RelayLiveValueParamsKey,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<Batches>,
+    #[serde(rename = "versionId")]
+    pub version_id: RelayLiveValueParamsVersionId,
+}
+///`RelayLiveValueParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsArtifactId> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueParamsError`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayLiveValueParamsError {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub code: ::std::option::Option<::std::string::String>,
+    pub message: ::std::string::String,
+}
+///`RelayLiveValueParamsKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsKey(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsKey> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsVersionId> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct RelayLiveValueResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub revision: ::std::option::Option<::std::string::String>,
 }
 ///`RelayReconciled`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -17912,6 +18349,40 @@ impl ::std::str::FromStr for PortAddressingExternalBaseParamsListener {
             match value {
                 "shell" => Self::Shell,
                 "artifact" => Self::Artifact,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl PortRelayLiveParamsInterest {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Start => "start",
+            Self::Renew => "renew",
+            Self::Stop => "stop",
+            Self::Refresh => "refresh",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for PortRelayLiveParamsInterest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsInterest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "start" => Self::Start,
+                "renew" => Self::Renew,
+                "stop" => Self::Stop,
+                "refresh" => Self::Refresh,
                 other => Self::Unknown(other.to_string()),
             },
         )

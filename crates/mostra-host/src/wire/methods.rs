@@ -263,6 +263,16 @@ impl super::Method for PortRelayCancel {
     type Params = super::generated::PortRelayCancelParams;
     type Result = super::generated::PortRelayCancelResult;
 }
+///`port/relay.live`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayLive;
+impl super::Method for PortRelayLive {
+    const NAME: &'static str = "port/relay.live";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayLiveParams;
+    type Result = super::generated::PortRelayLiveResult;
+}
 ///`port/relay.reconcile`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortRelayReconcile;
@@ -342,6 +352,16 @@ impl super::Method for RelayEffect {
     const MUTATING: bool = true;
     type Params = super::generated::RelayEffectParams;
     type Result = super::generated::RelayEffectResult;
+}
+///`relay/live.value`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayLiveValue;
+impl super::Method for RelayLiveValue {
+    const NAME: &'static str = "relay/live.value";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RelayLiveValueParams;
+    type Result = super::generated::RelayLiveValueResult;
 }
 ///`relay/run.update`.
 #[derive(Clone, Copy, Debug)]
@@ -707,6 +727,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "port/relay.live",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "port/relay.reconcile",
         direction: super::Direction::InstanceToHost,
         mutating: false,
@@ -743,6 +768,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "relay/effect",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "relay/live.value",
         direction: super::Direction::ClientToInstance,
         mutating: true,
     },

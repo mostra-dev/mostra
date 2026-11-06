@@ -26,13 +26,17 @@ import {
   type PortRelayReconcileResult,
   portRelayCallMethod,
   portRelayCancelMethod,
+  portRelayLiveMethod,
   portRelayReconcileMethod,
   portRelayRunMethod,
   RpcError,
   type RunState,
   relayCallBatchMethod,
   relayEffectMethod,
+  relayLiveValueMethod,
   relayRunUpdateMethod,
+  type ServerLiveValueParams,
+  TALLY_LIVE_PREFIX,
 } from "@mostra/protocol";
 import type { Actions } from "../actions/index.ts";
 import {
@@ -89,6 +93,16 @@ export interface HostedRelayOptions {
   readonly drainPerSecond?: number;
   /** How often waiting and unacknowledged runs are checked against their limits; default 1 s. */
   readonly sweepMs?: number;
+  /** An artifact's latest version here, whose producers its viewers want. */
+  readonly latestVersion?: (artifactId: string) => string | undefined;
+  /** Keeps a value an owner's producer made (`relay/live.value`). */
+  readonly storeLive?: (
+    artifactId: string,
+    versionId: string,
+    produced: ServerLiveValueParams,
+  ) => { readonly revision?: string };
+  /** How often viewers' interest in live sources is renewed with the owner; default 20 s. */
+  readonly liveRenewMs?: number;
   readonly now?: () => number;
 }
 
@@ -102,6 +116,10 @@ export interface HostedRelay extends Pick<Actions, "call" | "startRun" | "attach
   disconnected(session: Session): void;
   /** Whether runs wait or calls run: the home stays open while they do. */
   busy(): boolean;
+  /** A page read live sources: their producers are asked for on the owner now. */
+  liveWanted(artifactId: string): void;
+  /** Whether an artifact's owner is out of reach, so its live values can't be refreshed. */
+  ownerOffline(artifactId: string): boolean;
   stop(): void;
 }
 
@@ -496,6 +514,9 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       }
       if (options.sessionOf(linkId) !== session) return;
       ready.set(linkId, session);
+      // The sources its viewers want start again on the owner that came back.
+      asked.clear();
+      renewLive();
       // Sent and never acknowledged: sent again, which joins the owner's record if it has one.
       const unacknowledged = ledger.read((db) =>
         db
@@ -572,6 +593,47 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   };
   const sweeper = setInterval(sweep, options.sweepMs ?? 1000);
   sweeper.unref();
+
+  /** What each artifact's owner was last asked to produce, so a source no one wants is stopped. */
+  const asked = new Map<string, ReadonlySet<string>>();
+  /** Asks owners for the live sources viewers want now, and stops the ones no one does (§18.3). */
+  const renewLive = (only?: string): void => {
+    const wanted = new Map<string, Set<string>>();
+    for (const entry of bus.liveInterest()) {
+      if (entry.key.startsWith(TALLY_LIVE_PREFIX)) continue;
+      const keys = wanted.get(entry.artifactId) ?? new Set<string>();
+      keys.add(entry.key);
+      wanted.set(entry.artifactId, keys);
+    }
+    const artifacts = new Set([...wanted.keys(), ...asked.keys()]);
+    for (const artifactId of artifacts) {
+      if (only !== undefined && artifactId !== only) continue;
+      const owner = options.ownerOf(artifactId);
+      const session = owner === undefined ? undefined : sessionFor(owner);
+      const versionId = options.latestVersion?.(artifactId);
+      if (session === undefined || versionId === undefined) continue;
+      const keys = wanted.get(artifactId) ?? new Set<string>();
+      const before = asked.get(artifactId) ?? new Set<string>();
+      const stopped = [...before].filter((key) => !keys.has(key));
+      const send = (interest: "start" | "renew" | "stop", list: readonly string[]): void => {
+        if (list.length === 0) return;
+        void options
+          .call(
+            session,
+            portRelayLiveMethod.method,
+            { artifactId, versionId, interest, keys: list },
+            PORT_CALL_MS,
+          )
+          .catch((error: unknown) => log.warn("relay.live_interest_failed", { artifactId, error }));
+      };
+      send("renew", [...keys]);
+      send("stop", stopped);
+      if (keys.size > 0) asked.set(artifactId, keys);
+      else asked.delete(artifactId);
+    }
+  };
+  const liveRenewer = setInterval(() => renewLive(), options.liveRenewMs ?? 20_000);
+  liveRenewer.unref();
 
   const decorate = (state: RunState, artifactId: string): RunState => {
     if (state.status !== "running") return state;
@@ -763,6 +825,21 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           apply(params.runId, params);
           return {};
         }),
+        handler(relayLiveValueMethod, (params, session) => {
+          if (options.ownerOf(params.artifactId) !== session.link?.instanceId) {
+            throw failed(
+              "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
+              "This instance doesn't own that artifact here.",
+            );
+          }
+          return (
+            options.storeLive?.(params.artifactId, params.versionId, {
+              key: params.key,
+              ...(params.value !== undefined ? { value: params.value } : {}),
+              ...(params.error !== undefined ? { error: params.error } : {}),
+            }) ?? {}
+          );
+        }),
         handler(relayEffectMethod, (params, session) => {
           // Only the artifact's owner instance speaks for its runs (D165 item 1b).
           if (options.ownerOf(params.artifactId) !== session.link?.instanceId) {
@@ -864,9 +941,28 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       );
     },
 
+    liveWanted(artifactId) {
+      const known = asked.get(artifactId);
+      const fresh = bus
+        .liveInterest()
+        .some(
+          (entry) =>
+            entry.artifactId === artifactId &&
+            !entry.key.startsWith(TALLY_LIVE_PREFIX) &&
+            !(known?.has(entry.key) ?? false),
+        );
+      if (fresh) renewLive(artifactId);
+    },
+
+    ownerOffline(artifactId) {
+      const owner = options.ownerOf(artifactId);
+      return owner === undefined || sessionFor(owner) === undefined;
+    },
+
     stop() {
       stopped = true;
       clearInterval(sweeper);
+      clearInterval(liveRenewer);
     },
   };
 }

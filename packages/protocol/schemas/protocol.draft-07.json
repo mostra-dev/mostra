@@ -263,6 +263,16 @@
         "$ref": "#/definitions/PortRelayCancelResult"
       }
     },
+    "port/relay.live": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PortRelayLiveParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayLiveResult"
+      }
+    },
     "port/relay.reconcile": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -339,6 +349,16 @@
       },
       "result": {
         "$ref": "#/definitions/RelayEffectResult"
+      }
+    },
+    "relay/live.value": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RelayLiveValueParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RelayLiveValueResult"
       }
     },
     "relay/run.update": {
@@ -4196,6 +4216,47 @@
       "type": "object",
       "properties": {}
     },
+    "PortRelayLiveParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interest": {
+          "type": "string",
+          "enum": [
+            "start",
+            "renew",
+            "stop",
+            "refresh"
+          ]
+        },
+        "keys": {
+          "readOnly": true,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "interest",
+        "keys"
+      ]
+    },
+    "PortRelayLiveResult": {
+      "type": "object",
+      "properties": {}
+    },
     "PortRelayReconcileParams": {
       "type": "object",
       "properties": {
@@ -4577,6 +4638,61 @@
         "log",
         "batches"
       ]
+    },
+    "RelayLiveValueParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+        },
+        "value": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Batches"
+            }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ]
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "key",
+        "at"
+      ]
+    },
+    "RelayLiveValueResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string"
+        }
+      }
     },
     "RelayReconciled": {
       "type": "object",

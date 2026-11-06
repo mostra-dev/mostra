@@ -601,6 +601,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     return versionId ? { versionId, sources: sourcesOf(versionId) } : undefined;
   };
   const live = createLive({
+    // A hosted artifact's live sources: produced here while its hosted pages want them, their
+    // values kept on its hosted home (D165 items 1 and 4). The link is made below.
+    extraInterest: () => link.liveInterest(),
+    forward: (artifactId, versionId, produced) => link.forwardLive(artifactId, versionId, produced),
     ledger: home.ledger,
     log,
     bus,
@@ -754,6 +758,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     importSubmission: (envelope, source) => interaction.importSubmission(envelope, source),
     versionDir: (versionId) => registry.store.versionDir(versionId),
     actions,
+    liveChanged: () => live.reconcile(),
     now: () => Date.now() + clockOffset,
   });
   const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>

@@ -36,6 +36,7 @@ import {
   remoteLogoutMethod,
   remoteStatusMethod,
   remoteTokenMethod,
+  type ServerLiveValueParams,
   SubmissionEnvelope,
   type SubmissionPolicy,
   type SubmissionsDeliverResult,
@@ -152,6 +153,8 @@ export interface LinkOptions {
   readonly versionDir: (versionId: string) => string;
   /** Runs what hosted homes relay here (D165 item 4). */
   readonly actions: OwnerRelayOptions["actions"];
+  /** Hosted pages' live interest changed. */
+  readonly liveChanged?: () => void;
   /** The clock (tests move it). */
   readonly now?: () => number;
 }
@@ -200,6 +203,13 @@ export interface Link {
    * `state/*` and `live/push` (D165 item 1). `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached.
    */
   forward<P, R>(server: string, definition: MethodDefinition<P, R>, params: P): Promise<R>;
+  /** The live sources hosted pages want of this instance's producers (D165 item 4). */
+  liveInterest(): Iterable<{ readonly artifactId: string; readonly key: string }>;
+  /**
+   * A produced value of a hosted artifact goes to its hosted home, its one copy (D165 item 1):
+   * `true` when the artifact is hosted, and nothing is kept here.
+   */
+  forwardLive(artifactId: string, versionId: string, produced: ServerLiveValueParams): boolean;
 }
 
 /** One server's link at run time. */
@@ -452,6 +462,7 @@ export function createLink(options: LinkOptions): Link {
     actions: options.actions,
     now,
     loseAcks: Number(options.env["MOSTRA_TEST_RELAY_LOSE_ACK"] ?? "0") || 0,
+    ...(options.liveChanged ? { liveChanged: options.liveChanged } : {}),
   });
 
   const onRequest =
@@ -1083,6 +1094,20 @@ export function createLink(options: LinkOptions): Link {
       return connections.get(server)?.binding.session !== undefined;
     },
     status: () => status(),
+    liveInterest: () => relay.liveInterest(),
+    forwardLive: (artifactId, versionId, produced) => {
+      const server = self.hostedOn(artifactId);
+      if (server === undefined) return false;
+      const connection = connections.get(server);
+      relay.sendLive(
+        server,
+        () => (connection ? (connection.binding.session ?? readySoon(connection)) : undefined),
+        artifactId,
+        versionId,
+        produced,
+      );
+      return true;
+    },
     hostedOn: (artifactId) =>
       ledger.read(
         (db) =>

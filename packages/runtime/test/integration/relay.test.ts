@@ -12,6 +12,7 @@
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
+import { deserializeAll, type Frame } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type ActionPage, FakeMail, openPage, type RunState, resultOf } from "../action-page.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
@@ -166,7 +167,7 @@ describe("the relay (§18.3)", () => {
       data: tempDir("relay-server"),
       port,
       config: { ...testConfig(port), relay: { waitingRunsPerArtifact: 3, drainPerSecond: 1 } },
-      env: { MOSTRA_TEST_RELAY_SWEEP_MS: "200" },
+      env: { MOSTRA_TEST_RELAY_SWEEP_MS: "200", MOSTRA_TEST_RELAY_LIVE_MS: "500" },
     });
     proxy = await cuttableProxy(port);
     await owner.start({ env: ownerEnv() });
@@ -313,6 +314,45 @@ describe("the relay (§18.3)", () => {
     expect(live.status, live.body).toBe(200);
     expect(live.json<{ sources: { revision?: string }[] }>().sources[0]?.revision).toBeDefined();
   }, 60_000);
+
+  it("runs a hosted page's live producers on the owner while it views, and keeps their values there", async () => {
+    const page = await openPage(hosted["queue"]?.url as string);
+    type Source = {
+      key: string;
+      revision?: string;
+      value?: Frame[][];
+      error?: { message: string };
+      ownerOffline?: boolean;
+    };
+    const read = async (key: string): Promise<Source> => {
+      const answer = await page.live([{ key }]);
+      expect(answer.status, answer.body).toBe(200);
+      return answer.json<{ sources: Source[] }>().sources[0] as Source;
+    };
+    let counter: Source | undefined;
+    await eventually(async () => {
+      counter = await read("counter");
+      return counter.revision !== undefined;
+    }, 20_000);
+    expect(await deserializeAll(counter?.value ?? [])).toMatchObject({ loads: expect.any(Number) });
+    expect(counter?.ownerOffline).toBeUndefined();
+    // A producer's failure reaches the page redacted: the secret stayed on the owner.
+    let failing: Source | undefined;
+    await eventually(async () => {
+      failing = await read("failing");
+      return failing.error !== undefined;
+    }, 20_000);
+    expect(failing?.error?.message).not.toContain(MAIL_TOKEN);
+    // With the owner away, the last value stays, marked.
+    await owner.stop();
+    try {
+      await eventually(async () => (await read("counter")).ownerOffline === true, 10_000);
+      expect((await read("counter")).revision).toBeDefined();
+    } finally {
+      await owner.start({ env: ownerEnv() });
+      await ownerOnline();
+    }
+  }, 120_000);
 
   it("waits while the owner is offline, refuses past the cap, and drains in order at the rate", async () => {
     await owner.stop();

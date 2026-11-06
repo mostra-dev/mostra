@@ -62,6 +62,30 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-04",
+    name: "a relayed producer's failure crosses the relay unredacted",
+    file: "src/live/index.ts",
+    from: "              error: options.redactor\n                ? redactValue(parsed.data.error, options.redactor)\n                : parsed.data.error,",
+    to: "              error: parsed.data.error,",
+    check: integration("relay.test.ts", "live producers"),
+  },
+  {
+    requirement: "RM-04",
+    name: "a hosted page's live sources are never asked of the owner",
+    file: "src/server/relay.ts",
+    from: '      send("renew", [...keys]);',
+    to: "      void keys;",
+    check: integration("relay.test.ts", "live producers"),
+  },
+  {
+    requirement: "RM-04",
+    name: "a hosted live value never says its owner is offline",
+    file: "src/server/hosted.ts",
+    from: "      if (!relay.ownerOffline(page.artifactId)) return states;",
+    to: "      if (!relay.ownerOffline(page.artifactId) || true) return states;",
+    check: integration("relay.test.ts", "live producers"),
+  },
+  {
+    requirement: "RM-04",
     name: "a relayed run's state is written in the owner's home",
     file: "src/link/hosted.ts",
     from: "  if (server === undefined) return undefined;\n  const artifact",
@@ -88,8 +112,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-07",
     name: "a hosted home counts but serves no tally",
     file: "src/server/hosted.ts",
-    from: "    actions: relay,\n    live,\n",
-    to: "    actions: relay,\n    live: { read: () => [] },\n",
+    from: "    live: hostedLive,\n",
+    to: "    live: { read: () => [] },\n",
     check: integration("hosted.test.ts", "hosted tally"),
   },
   {

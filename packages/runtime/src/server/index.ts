@@ -108,6 +108,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         relay: {
           waitingRunsPerArtifact: config.relay?.waitingRunsPerArtifact,
           drainPerSecond: config.relay?.drainPerSecond,
+          ...(options.env["MOSTRA_TEST_RELAY_LIVE_MS"] !== undefined
+            ? { liveRenewMs: Number(options.env["MOSTRA_TEST_RELAY_LIVE_MS"]) }
+            : {}),
           ...(options.env["MOSTRA_TEST_RELAY_SWEEP_MS"] !== undefined
             ? { sweepMs: Number(options.env["MOSTRA_TEST_RELAY_SWEEP_MS"]) }
             : {}),

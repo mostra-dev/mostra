@@ -1782,6 +1782,7 @@ export interface LiveState {
     readonly awaiting?: boolean;
     readonly error?: WireError;
     readonly key: string;
+    readonly ownerOffline?: boolean;
     readonly revision?: string;
     readonly ring?: readonly {
         readonly revision: string;
@@ -2047,6 +2048,20 @@ export interface PortRelayCancelParams {
 export type PortRelayCancelResult = Record<string, never>;
 
 // @public
+export const portRelayLiveMethod: MethodDefinition<PortRelayLiveParams, PortRelayLiveResult>;
+
+// @public
+export interface PortRelayLiveParams {
+    readonly artifactId: string;
+    readonly interest: "start" | "renew" | "stop" | "refresh";
+    readonly keys: readonly string[];
+    readonly versionId: string;
+}
+
+// @public
+export type PortRelayLiveResult = Record<string, never>;
+
+// @public
 export const portRelayReconcileMethod: MethodDefinition<PortRelayReconcileParams, PortRelayReconcileResult>;
 
 // @public
@@ -2234,6 +2249,27 @@ export interface RelayHeld {
     readonly batches: number;
     readonly log: number;
     readonly runId: string;
+}
+
+// @public
+export const relayLiveValueMethod: MethodDefinition<RelayLiveValueParams, RelayLiveValueResult>;
+
+// @public
+export interface RelayLiveValueParams {
+    readonly artifactId: string;
+    readonly at: string;
+    readonly error?: {
+        readonly message: string;
+        readonly code?: string;
+    };
+    readonly key: string;
+    readonly value?: Batches;
+    readonly versionId: string;
+}
+
+// @public
+export interface RelayLiveValueResult {
+    readonly revision?: string;
 }
 
 // @public

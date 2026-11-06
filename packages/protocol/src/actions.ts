@@ -243,6 +243,11 @@ export interface LiveState {
    * streams, whose first value may never come (WP-14's Opus review).
    */
   readonly awaiting?: boolean;
+  /**
+   * `true` on a hosted page while the artifact's owner instance is offline, so its producers
+   * can't refresh the value: the last value stays, with its `at` (D165 item 4).
+   */
+  readonly ownerOffline?: boolean;
 }
 
 /** One live update on the event stream: never stored as an event (D63, LL-04). */

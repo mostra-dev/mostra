@@ -116,6 +116,8 @@ export interface HostedHomeOptions {
     readonly drainPerSecond?: number | undefined;
     /** How often waiting and unacknowledged runs meet their limits (tests shorten it). */
     readonly sweepMs?: number | undefined;
+    /** How often viewers' live interest is renewed with the owner (tests shorten it). */
+    readonly liveRenewMs?: number | undefined;
   };
 }
 
@@ -310,7 +312,28 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       ? { drainPerSecond: options.relay.drainPerSecond }
       : {}),
     ...(options.relay?.sweepMs !== undefined ? { sweepMs: options.relay.sweepMs } : {}),
+    ...(options.relay?.liveRenewMs !== undefined ? { liveRenewMs: options.relay.liveRenewMs } : {}),
+    latestVersion: (artifactId) =>
+      ledger.read(
+        (db) =>
+          db.get<{ latest_version_id: string | null }>(
+            "SELECT latest_version_id FROM artifact WHERE id = ?",
+            artifactId,
+          )?.latest_version_id ?? undefined,
+      ),
+    storeLive: (artifactId, versionId, produced) => live.relayed(artifactId, versionId, produced),
   });
+  /** A page's live reads: they ask the owner for producers, and say when it is away. */
+  const hostedLive: Pick<typeof live, "read"> = {
+    read(page, input) {
+      const states = live.read(page, input);
+      relay.liveWanted(page.artifactId);
+      if (!relay.ownerOffline(page.artifactId)) return states;
+      return states.map((state) =>
+        state.key.startsWith("$tally/") ? state : { ...state, ownerOffline: true },
+      );
+    },
+  };
   const gateway: Gateway = createGateway({
     ledger,
     log,
@@ -325,7 +348,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     interaction,
     bus,
     actions: relay,
-    live,
+    live: hostedLive,
     // Both channels: a hosted home has no host to narrow them (its owner is a host of it, D165).
     controls: async () => ({ submitChannels: ["shell", "artifact"] }),
     activated: () => undefined,

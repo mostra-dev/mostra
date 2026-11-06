@@ -65,6 +65,20 @@ export interface LiveOptions {
   readonly reconcileMs?: number;
   /** Removes secrets from every value stored (AC-06). */
   readonly redactor?: { redact(text: string): string };
+  /**
+   * More sources wanted than this home's views and hosts want: a hosted page's, which its hosted
+   * home relays (`port/relay.live`, D165 item 4).
+   */
+  readonly extraInterest?: () => Iterable<{ readonly artifactId: string; readonly key: string }>;
+  /**
+   * A produced value or failure of a hosted artifact, which lives on its hosted home (D165 item 1):
+   * `true` when it was sent there, and nothing is kept here.
+   */
+  readonly forward?: (
+    artifactId: string,
+    versionId: string,
+    produced: ServerLiveValueParams,
+  ) => boolean;
 }
 
 /** The live module. */
@@ -87,6 +101,15 @@ export interface Live {
     input: { readonly key: string; readonly value: unknown; readonly mode?: "replace" | "append" },
     requestKey?: RequestKey,
   ): Promise<{ revision: string }>;
+  /**
+   * A value or failure its owner's producer made for a hosted artifact (`relay/live.value`):
+   * stored and sent to viewers as a producer's own, with no producer here.
+   */
+  relayed(
+    artifactId: string,
+    versionId: string,
+    produced: ServerLiveValueParams,
+  ): { readonly revision?: string };
   /** A worker's `server/live.value`. */
   produced(
     worker: { readonly artifactId: string; readonly versionId: string },
@@ -258,6 +281,7 @@ export function createLive(options: LiveOptions): Live {
       out.set(keyOf(artifactId, key), { artifactId, key });
     };
     for (const entry of bus.liveInterest()) add(entry.artifactId, entry.key);
+    for (const entry of options.extraInterest?.() ?? []) add(entry.artifactId, entry.key);
     const subscribed = options.interaction.subscribedArtifacts();
     for (const artifactId of options.artifactsWithLive()) {
       const latest = options.latest(artifactId);
@@ -501,6 +525,29 @@ export function createLive(options: LiveOptions): Live {
       return answer;
     },
 
+    relayed(artifactId, versionId, produced) {
+      if (produced.error) {
+        fail(artifactId, produced.key, produced.error);
+        return {};
+      }
+      const value = produced.value as Batches | undefined;
+      if (!value) return {};
+      if (JSON.stringify(value).length > LIVE_VALUE_MAX) throw tooLarge(produced.key);
+      const stored = ledger.write((db) =>
+        store(
+          db,
+          artifactId,
+          produced.key,
+          value as Frame[][],
+          versionId,
+          ringOf(produced.key, versionId),
+        ),
+      );
+      failures.delete(keyOf(artifactId, produced.key));
+      publishValue(artifactId, produced.key, stored.revision, stored.at, value);
+      return { revision: String(stored.revision) };
+    },
+
     produced(worker, params) {
       const parsed = ServerLiveValueParams.safeParse(params);
       if (!parsed.success) return;
@@ -508,6 +555,22 @@ export function createLive(options: LiveOptions): Live {
       const producer = running.get(keyOf(worker.artifactId, key));
       // Only the producer of the latest version writes the source; a stale one is ignored.
       if (!producer || producer.versionId !== worker.versionId) return;
+      // A hosted artifact's value goes to its hosted home as this home would keep it: its value and a
+      // failure's message redacted (AC-06), so no secret ever crosses the relay.
+      const outgoing = {
+        key,
+        ...(parsed.data.value !== undefined
+          ? { value: redactBatches(parsed.data.value as Batches) }
+          : {}),
+        ...(parsed.data.error !== undefined
+          ? {
+              error: options.redactor
+                ? redactValue(parsed.data.error, options.redactor)
+                : parsed.data.error,
+            }
+          : {}),
+      };
+      if (options.forward?.(worker.artifactId, worker.versionId, outgoing)) return;
       if (parsed.data.error) {
         fail(worker.artifactId, key, parsed.data.error);
         return;

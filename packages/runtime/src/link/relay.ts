@@ -15,13 +15,16 @@ import {
   type PortRelayRunParams,
   portRelayCallMethod,
   portRelayCancelMethod,
+  portRelayLiveMethod,
   portRelayReconcileMethod,
   portRelayRunMethod,
   type RelayRunUpdateParams,
   RpcError,
   relayCallBatchMethod,
   relayEffectMethod,
+  relayLiveValueMethod,
   relayRunUpdateMethod,
+  type ServerLiveValueParams,
 } from "@mostra/protocol";
 import type { Actions, RelayedEffect, RunObserver } from "../actions/index.ts";
 import { appendEvent, type RunRow, runState } from "../interaction/index.ts";
@@ -40,7 +43,12 @@ export interface OwnerRelayOptions {
    * answer), so the hosted home sends them again (`MOSTRA_TEST_RELAY_LOSE_ACK`).
    */
   readonly loseAcks?: number;
+  /** The live sources hosted pages want changed: producers start or stop. */
+  readonly liveChanged?: () => void;
 }
+
+/** How long a hosted page's interest in a live source lasts unless renewed (as a view's, D130). */
+const LIVE_INTEREST_MS = 60_000;
 
 /** The owner's relay, for one link manager. */
 export interface OwnerRelay {
@@ -57,6 +65,16 @@ export interface OwnerRelay {
   ): Promise<unknown>;
   /** The binding of `server` closed: its relayed calls stop. */
   closed(server: string): void;
+  /** The live sources hosted pages want now. */
+  liveInterest(): Iterable<{ readonly artifactId: string; readonly key: string }>;
+  /** Sends a hosted artifact's produced value to its hosted home on `server`. */
+  sendLive(
+    server: string,
+    session: () => BindingSession | undefined | Promise<BindingSession | undefined>,
+    artifactId: string,
+    versionId: string,
+    produced: ServerLiveValueParams,
+  ): void;
 }
 
 function invalid(message: string): RpcError {
@@ -64,6 +82,7 @@ function invalid(message: string): RpcError {
 }
 
 const RELAY_METHODS = new Set([
+  portRelayLiveMethod.method,
   portRelayRunMethod.method,
   portRelayCancelMethod.method,
   portRelayReconcileMethod.method,
@@ -74,6 +93,19 @@ const RELAY_METHODS = new Set([
 export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
   const { ledger, log } = options;
   let loseAcks = options.loseAcks ?? 0;
+  /** Hosted pages' interest in live sources: `<server> <artifact> <key>` → until when. */
+  const interest = new Map<string, { artifactId: string; key: string; until: number }>();
+  const interestSweep = setInterval(() => {
+    let changed = false;
+    for (const [id, entry] of interest) {
+      if (entry.until <= options.now()) {
+        interest.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) options.liveChanged?.();
+  }, 5_000);
+  interestSweep.unref();
   /** Relayed calls in flight per server, so a lost binding stops them. */
   const calls = new Map<string, Map<string, AbortController>>();
   /** Each relayed run's last update sequence, from `relayed_run.seq_sent`. */
@@ -394,6 +426,29 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
       switch (method) {
         case portRelayRunMethod.method:
           return run(server, session, portRelayRunMethod.params.parse(params), drop);
+        case portRelayLiveMethod.method: {
+          const parsed = portRelayLiveMethod.params.parse(params);
+          const owned = ledger.read((db) =>
+            db.get<{ artifact_id: string }>(
+              "SELECT artifact_id FROM hosted_artifact WHERE artifact_id = ? AND server = ?",
+              parsed.artifactId,
+              server,
+            ),
+          );
+          if (!owned) return {};
+          for (const key of parsed.keys) {
+            const id = `${server} ${parsed.artifactId} ${key}`;
+            if (parsed.interest === "stop") interest.delete(id);
+            else
+              interest.set(id, {
+                artifactId: parsed.artifactId,
+                key,
+                until: options.now() + LIVE_INTEREST_MS,
+              });
+          }
+          options.liveChanged?.();
+          return {};
+        }
         case portRelayCancelMethod.method: {
           const { runId } = portRelayCancelMethod.params.parse(params);
           options.actions.cancelRelayed(runId);
@@ -410,6 +465,25 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
     closed(server) {
       for (const abort of calls.get(server)?.values() ?? []) abort.abort();
       calls.delete(server);
+    },
+    liveInterest: () => interest.values(),
+    sendLive(server, session, artifactId, versionId, produced) {
+      void (async () => {
+        const open = await session();
+        if (!open) return;
+        try {
+          await open.call(relayLiveValueMethod, {
+            artifactId,
+            versionId,
+            key: produced.key,
+            ...(produced.value !== undefined ? { value: produced.value } : {}),
+            ...(produced.error !== undefined ? { error: produced.error } : {}),
+            at: new Date(options.now()).toISOString(),
+          });
+        } catch (error) {
+          log.warn("relay.live_failed", { server, key: produced.key, error });
+        }
+      })();
     },
   };
 }

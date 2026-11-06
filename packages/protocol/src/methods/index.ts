@@ -30,6 +30,7 @@ import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
 import { portRelayCallMethod } from "./port/relay-call.ts";
 import { portRelayCancelMethod } from "./port/relay-cancel.ts";
+import { portRelayLiveMethod } from "./port/relay-live.ts";
 import { portRelayReconcileMethod } from "./port/relay-reconcile.ts";
 import { portRelayRunMethod } from "./port/relay-run.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
@@ -38,6 +39,7 @@ import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-acti
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
 import { relayCallBatchMethod } from "./relay/call-batch.ts";
 import { relayEffectMethod } from "./relay/effect.ts";
+import { relayLiveValueMethod } from "./relay/live-value.ts";
 import { relayRunUpdateMethod } from "./relay/run-update.ts";
 import { remoteLoginMethod } from "./remote/login.ts";
 import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
@@ -118,6 +120,8 @@ export const hostMethods: readonly AnyMethod[] = [
   relayRunUpdateMethod,
   relayCallBatchMethod,
   relayEffectMethod,
+  portRelayLiveMethod,
+  relayLiveValueMethod,
   // gen:methods
 ];
 

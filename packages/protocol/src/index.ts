@@ -468,6 +468,11 @@ export {
   portRelayCancelMethod,
 } from "./methods/port/relay-cancel.ts";
 export {
+  type PortRelayLiveParams,
+  type PortRelayLiveResult,
+  portRelayLiveMethod,
+} from "./methods/port/relay-live.ts";
+export {
   type PortRelayReconcileParams,
   type PortRelayReconcileResult,
   portRelayReconcileMethod,
@@ -510,6 +515,11 @@ export {
   type RelayEffectResult,
   relayEffectMethod,
 } from "./methods/relay/effect.ts";
+export {
+  type RelayLiveValueParams,
+  type RelayLiveValueResult,
+  relayLiveValueMethod,
+} from "./methods/relay/live-value.ts";
 export {
   type RelayRunEnd,
   type RelayRunUpdateParams,
