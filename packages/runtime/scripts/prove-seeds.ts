@@ -62,6 +62,24 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "the kit's remote delivery: an imported submission skips the host's own outbox",
+    file: "src/interaction/index.ts",
+    from: "    importSubmission(envelope, source) {\n      const owners = options.deliveryOwners?.(envelope.artifactId) ?? outbox.owners();",
+    to: "    importSubmission(envelope, source) {\n      const owners: string[] = [];",
+    check: integration("kit.test.ts", "shares to a server the kit runs"),
+    cwd: "../conformance",
+  },
+  {
+    requirement: "RM-04",
+    name: "the kit's relay: what a relayed run raises never reaches the hosted home",
+    file: "src/link/relay.ts",
+    from: "      const answer = await open.call(relayEffectMethod, {",
+    to: '      const answer = { cursor: "0" } ?? await open.call(relayEffectMethod, {',
+    check: integration("kit.test.ts", "shares to a server the kit runs"),
+    cwd: "../conformance",
+  },
+  {
+    requirement: "RM-02",
     name: "another instance reads a submission it doesn't own",
     file: "src/interaction/index.ts",
     from: '          "SELECT id, attempts FROM delivery WHERE submission_id = ? AND port_owner = ?",',
