@@ -451,6 +451,20 @@ describe("the relay (§18.3)", () => {
     await ownerOnline();
   }, 120_000);
 
+  it("ends a run its owner crashed during failed, interrupted, and reports it on reconnect", async () => {
+    const page = await openPage(hosted["queue"]?.url as string);
+    const id = runId(await page.run("actions.ts#slow", [60_000]));
+    await until(page, id, "running", 15_000);
+    // The owner's machine dies with the run in flight.
+    owner.daemon.child.kill("SIGKILL");
+    await owner.daemon.exited;
+    owner.client.close();
+    await owner.start({ env: ownerEnv() });
+    await until(page, id, "failed", 30_000);
+    const state = await stateOf(page, id);
+    expect(state).toMatchObject({ status: "failed", reason: "interrupted" });
+  }, 120_000);
+
   it("makes runs an owner restored to before it accepted them unknown, and never sends them again", async () => {
     const store = join(owner.home.home, "store");
     const backup = join(tempDir("relay-backup"), "store");

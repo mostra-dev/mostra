@@ -61,6 +61,14 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "a run its owner crashed during is never reported",
+    file: "src/link/relay.ts",
+    from: '          if (!row) return { runId, state: "unknown-to-owner" as const };',
+    to: '          if (!row || row.reason === "interrupted") return { runId, state: "unknown-to-owner" as const };',
+    check: integration("relay.test.ts", "crashed during"),
+  },
+  {
     requirement: "RM-02",
     name: "an open binding outlives its token",
     file: "src/server/api.ts",
