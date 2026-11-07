@@ -235,11 +235,17 @@ describe("the relay (§18.3)", () => {
     ).toBe(keyed);
     await page.settled(keyed);
     expect(mail.received.filter((entry) => entry.body === "once")).toHaveLength(1);
-    // The owner recorded each under the hosted run's ID.
-    const events = ok<{
-      events: { type: string; payload: { runId?: string; relayed?: boolean } }[];
-    }>(await owner.client.call("events/read", { filter: { types: ["action.*"] } })).events;
-    expect(events.some((event) => event.payload.runId === id && event.payload.relayed)).toBe(true);
+    // The owner recorded each under the hosted run's ID, and its log says each of the run's steps
+    // once, though the hosted home's events are followed too (Opus review of WP-29).
+    const steps = async (): Promise<string[]> =>
+      ok<{ events: { type: string; payload: { runId?: string } }[] }>(
+        await owner.client.call("events/read", { filter: { types: ["action.*"] } }),
+      )
+        .events.filter((event) => event.payload.runId === id)
+        .map((event) => event.type);
+    await eventually(async () => (await steps()).includes("action.succeeded"), 15_000);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect((await steps()).sort()).toEqual(["action.started", "action.succeeded"]);
   }, 60_000);
 
   it("relays a plain call while the owner is connected", async () => {
@@ -423,19 +429,16 @@ describe("the relay (§18.3)", () => {
     for (const id of ids) expect((await page.settled(id, 30_000)).status).toBe("succeeded");
     const sent = mail.received.slice(before);
     expect(sent.map((entry) => entry.body)).toEqual(["queued-a", "queued-b", "queued-e"]);
-    // At most one a second: the third goes out two seconds after the first. Measured where the
-    // owner records each run as it arrives (its `action.started`), so a worker the owner starts
-    // cold for the first run doesn't shorten the gap the mails show.
-    const arrived = ok<{
-      events: { at: string; payload: { runId?: string; relayed?: boolean } }[];
-    }>(
-      await owner.client.call("events/read", { filter: { types: ["action.started"] } }),
-    ).events.filter(
-      (event) => event.payload.relayed === true && ids.includes(event.payload.runId as string),
-    );
-    const times = ids.map((id) =>
-      Date.parse(arrived.find((event) => event.payload.runId === id)?.at ?? ""),
-    );
+    // At most one a second: the third goes out two seconds after the first. Measured where each
+    // run reaches the owner (its first `port/relay.run` in the binding's trace, `in <ms> <json>`),
+    // so a worker the owner starts cold for the first run doesn't shorten the gap the mails show.
+    const arrivals = readFileSync(trace, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("in ") && line.includes('"port/relay.run"'));
+    const times = ids.map((id) => {
+      const line = arrivals.find((entry) => entry.includes(id));
+      return Number(line?.split(" ")[1] ?? Number.NaN);
+    });
     expect((times[2] ?? 0) - (times[0] ?? 0)).toBeGreaterThanOrEqual(1500);
     expect(mail.received.some((entry) => entry.body === "never" || entry.body === "queued-c")).toBe(
       false,

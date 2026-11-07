@@ -299,13 +299,20 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
         `relay:${params.runId}`,
         startedAt,
       );
-      appendEvent(db, {
-        artifactId: params.artifactId,
-        type: "action.started",
-        actor: { kind: "mostra" },
-        causation: { runId: params.runId },
-        payload: { runId: params.runId, action: params.fnId, relayed: true, server },
-      });
+      // Its start was copied from the hosted home already (the follow can outrun the run): said
+      // once. From here on the run's events are this home's own (the follow skips them).
+      const copied = db.get(
+        "SELECT 1 FROM event WHERE type = 'action.started' AND origin_json IS NOT NULL AND json_extract(payload_json, '$.runId') = ?",
+        params.runId,
+      );
+      if (!copied)
+        appendEvent(db, {
+          artifactId: params.artifactId,
+          type: "action.started",
+          actor: { kind: "mostra" },
+          causation: { runId: params.runId },
+          payload: { runId: params.runId, action: params.fnId, relayed: true, server },
+        });
       db.run(
         `INSERT INTO relayed_run (run_id, server, relay_seq, artifact_id, version_id, fn_id, started_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,

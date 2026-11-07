@@ -528,7 +528,7 @@ export function createLink(options: LinkOptions): Link {
     traceFile === undefined || traceFile === ""
       ? undefined
       : (direction: "out" | "in", text: string): void =>
-          appendFileSync(traceFile, `${direction} ${text}\n`);
+          appendFileSync(traceFile, `${direction} ${Date.now()} ${text}\n`);
   /**
    * The binding's session, or the one opening now: a relay message can arrive while the session's
    * own start (its subscription) is still under way, and an update sent then mustn't be lost.
@@ -1304,16 +1304,28 @@ export function createLink(options: LinkOptions): Link {
     status: () => status(),
     liveInterest: () => relay.liveInterest(),
     forwardLive: (artifactId, versionId, produced) => {
-      const server = self.hostedOn(artifactId);
-      if (server === undefined) return false;
-      const connection = connections.get(server);
-      relay.sendLive(
-        server,
-        () => (connection ? (connection.binding.session ?? readySoon(connection)) : undefined),
-        artifactId,
-        versionId,
-        produced(),
+      // Every server the artifact is hosted on keeps its own copy for its viewers (Opus review of
+      // WP-29): one artifact may be shared to several servers (D165).
+      const servers = ledger.read((db) =>
+        db
+          .all<{ server: string }>(
+            "SELECT server FROM hosted_artifact WHERE artifact_id = ? AND stopped_at IS NULL AND route_id != '' ORDER BY shared_at",
+            artifactId,
+          )
+          .map((row) => row.server),
       );
+      if (servers.length === 0) return false;
+      const value = produced();
+      for (const server of servers) {
+        const connection = connections.get(server);
+        relay.sendLive(
+          server,
+          () => (connection ? (connection.binding.session ?? readySoon(connection)) : undefined),
+          artifactId,
+          versionId,
+          value,
+        );
+      }
       return true;
     },
     hostedOn: (artifactId) =>

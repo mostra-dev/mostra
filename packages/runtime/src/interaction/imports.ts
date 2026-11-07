@@ -287,6 +287,15 @@ export function followEvents(
       continue;
     }
     if (NOT_FOLLOWED.has(event.type)) continue;
+    // A run this home ran for the hosted home records its own events (relayed); the hosted copy
+    // of them would say each twice (Opus review of WP-29). Events of a run that never reached this
+    // home (it waited, failed while the owner was offline, was cancelled unsent) are copied.
+    if (event.type.startsWith("action.")) {
+      const runId = (event.payload as { runId?: unknown } | undefined)?.runId;
+      if (typeof runId === "string" && db.get("SELECT 1 FROM action_run WHERE id = ?", runId)) {
+        continue;
+      }
+    }
     const origin: EventOrigin = {
       server: input.source.server,
       home: input.source.home,

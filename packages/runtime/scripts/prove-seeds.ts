@@ -61,6 +61,22 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "a live value reaches only the first server its artifact is hosted on (Opus review of WP-29)",
+    file: "src/link/manager.ts",
+    from: "      for (const server of servers) {\n        const connection = connections.get(server);\n        relay.sendLive(",
+    to: "      for (const server of servers.slice(0, 1)) {\n        const connection = connections.get(server);\n        relay.sendLive(",
+    check: integration("hosted.test.ts", "hosts it on each"),
+  },
+  {
+    requirement: "RM-04",
+    name: "the owner's log says each relayed run's steps twice (Opus review of WP-29)",
+    file: "src/interaction/imports.ts",
+    from: 'if (typeof runId === "string" && db.get("SELECT 1 FROM action_run WHERE id = ?", runId)) {',
+    to: 'if (typeof runId === "string" && db.get("SELECT 1 FROM action_run WHERE id = ? AND 0", runId)) {',
+    check: integration("relay.test.ts", "once, on the owner"),
+  },
+  {
     requirement: "RM-02",
     name: "one refused push blocks every later publish to its server (Opus review of WP-29, 10)",
     file: "src/link/manager.ts",

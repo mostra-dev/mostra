@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ArtifactId, deserializeAll, type Frame, MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { openPage } from "../action-page.ts";
 import { Browser, openLink, seen } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
 import {
@@ -675,6 +676,24 @@ describe("one artifact shared to two servers (D165, after the second Opus review
             { body: {}, csrf: opened.shellCsrf },
           );
           return ticket.json<{ latest?: { number: number } }>().latest?.number === 2;
+        }, 30_000);
+      }
+      // A live source's values reach the viewers of each server (Opus review of WP-29).
+      const live = await owner.publish("actions");
+      for (const port of ports) {
+        const shared = ok<{ url: string }>(
+          await owner.client.call("share/start", {
+            artifact: { artifactId: live.artifactId },
+            via: "remote",
+            server: `http://api.localhost:${port}`,
+          }),
+        );
+        const viewer = await openPage(shared.url);
+        await eventually(async () => {
+          const answer = await viewer.live([{ key: "counter" }]);
+          return (
+            answer.json<{ sources: { revision?: string }[] }>().sources[0]?.revision !== undefined
+          );
         }, 30_000);
       }
     } finally {
