@@ -492,6 +492,30 @@ describe("the relay (§18.3)", () => {
     await ownerOnline();
   }, 120_000);
 
+  it("never ends a run without the output its owner sent while the relay was cut (Opus review of WP-29, 4)", async () => {
+    await owner.stop();
+    await owner.start({ env: { ...ownerEnv(), MOSTRA_TEST_RELAY_LOSE_ACK: "1" } });
+    await ownerOnline();
+    const page = await openPage(hosted["queue"]?.url as string);
+    // The acknowledgement is lost with the connection, and the run's first lines go with it; the
+    // run is still running when the owner dials again.
+    const id = runId(await page.run("actions.ts#slow", [3000]));
+    const state = await page.settled(id, 60_000);
+    expect(state.status).toBe("succeeded");
+    expect(state.log).toContain("slow started");
+    expect(state.batches.length).toBeGreaterThan(0);
+    // The owner made up what it lost itself, answering the repeated run with the run's whole
+    // state: the hosted home never had to ask for it again.
+    const asked = readFileSync(trace, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("in ") && line.includes("port/relay.reconcile"))
+      .filter((line) => line.includes(id));
+    expect(asked).toEqual([]);
+    await owner.stop();
+    await owner.start({ env: ownerEnv() });
+    await ownerOnline();
+  }, 120_000);
+
   it("ends a run its owner crashed during failed, interrupted, and reports it on reconnect", async () => {
     const page = await openPage(hosted["queue"]?.url as string);
     const id = runId(await page.run("actions.ts#slow", [60_000]));

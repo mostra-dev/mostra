@@ -61,6 +61,22 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-04",
+    name: "an update past what the hosted home holds ends the run without its result (Opus review of WP-29, 4)",
+    file: "src/server/relay.ts",
+    from: '        return "gap" as const;',
+    to: "        void 0;",
+    check: unit("hosted-relay.test.ts", "past what it holds"),
+  },
+  {
+    requirement: "RM-04",
+    name: "a repeated run still running reports nothing of what the relay lost (Opus review of WP-29, 4)",
+    file: "src/link/relay.ts",
+    from: "      if (state) update(params.runId, session, state);",
+    to: "      void state;",
+    check: integration("relay.test.ts", "while the relay was cut"),
+  },
+  {
     requirement: "RM-02",
     name: "a page of followed events sent during the session's start is dropped (Opus review of WP-29, 2)",
     file: "src/link/binding.ts",

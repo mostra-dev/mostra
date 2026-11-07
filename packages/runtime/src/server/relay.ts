@@ -478,6 +478,15 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       const row = runRow(db, runId);
       if (!row || isFinalRunStatus(row.status)) return undefined;
       db.run("UPDATE relay_run SET owner_heard_at = ? WHERE run_id = ?", iso(now()), runId);
+      // An update from past what this home holds means one before it was lost: nothing of it is
+      // kept, its end least of all, and the owner is asked for the run from what is held, so a
+      // run never ends without its result (Opus review of WP-29, 4).
+      if (
+        (report.logFrom !== undefined && report.logFrom > row.log_lines) ||
+        (report.batchFrom !== undefined && report.batchFrom > row.batches)
+      ) {
+        return "gap" as const;
+      }
       if (
         (report.running || report.log || report.batches || report.end) &&
         row.status !== "unknown"
@@ -509,7 +518,71 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       const after = runRow(db, runId);
       return after ? { state: runState(db, after), artifactId: after.artifact_id } : undefined;
     });
+    if (state === "gap") {
+      log.warn("relay.update_gap", { runId });
+      void catchUp(runId);
+      return;
+    }
     if (state) publish(state.state, state.artifactId);
+  };
+
+  /** Runs being asked for again after a gap, so one gap asks once. */
+  const catchingUp = new Set<string>();
+  /** Asks the owner for one run's state from what this home holds (a reconcile of that run). */
+  const catchUp = async (runId: string): Promise<void> => {
+    if (catchingUp.has(runId)) return;
+    catchingUp.add(runId);
+    try {
+      const entry = ledger.read((db) => {
+        const relay = relayRow(db, runId);
+        const run = runRow(db, runId);
+        return relay && run ? { relay, run } : undefined;
+      });
+      if (!entry) return;
+      const session = sessionFor(entry.relay.owner_link_id);
+      if (session === undefined) return;
+      const answer = (await options.call(
+        session,
+        portRelayReconcileMethod.method,
+        {
+          runs: [runId],
+          held: [{ runId, log: entry.run.log_lines, batches: entry.run.batches }],
+        },
+        PORT_CALL_MS,
+      )) as PortRelayReconcileResult;
+      for (const reconciled of answer.runs) applyReconciled(reconciled);
+    } catch (error) {
+      // The next reconnect's reconcile asks again.
+      log.warn("relay.catch_up_failed", { runId, error });
+    } finally {
+      catchingUp.delete(runId);
+    }
+  };
+
+  /** Applies the owner's answer for one run of a reconcile. */
+  const applyReconciled = (entry: PortRelayReconcileResult["runs"][number]): void => {
+    if (entry.state === "unknown-to-owner") {
+      unknown(entry.runId);
+      return;
+    }
+    const state = entry.state;
+    apply(entry.runId, {
+      running: state.status !== "queued",
+      ...(state.progress ? { progress: state.progress } : {}),
+      log: state.log,
+      logFrom: state.logFrom ?? 0,
+      batches: state.batches,
+      batchFrom: state.batchFrom ?? 0,
+      ...(state.status === "succeeded" || state.status === "failed" || state.status === "cancelled"
+        ? {
+            end: {
+              status: state.status,
+              ...(state.reason !== undefined ? { reason: state.reason } : {}),
+              ...(state.error ? { error: state.error } : {}),
+            },
+          }
+        : {}),
+    });
   };
 
   /** Moves a run to `unknown`, and tells its views. */
@@ -582,32 +655,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
             },
             PORT_CALL_MS,
           )) as PortRelayReconcileResult;
-          for (const entry of answer.runs) {
-            if (entry.state === "unknown-to-owner") {
-              unknown(entry.runId);
-              continue;
-            }
-            const state = entry.state;
-            apply(entry.runId, {
-              running: state.status !== "queued",
-              ...(state.progress ? { progress: state.progress } : {}),
-              log: state.log,
-              logFrom: state.logFrom ?? 0,
-              batches: state.batches,
-              batchFrom: state.batchFrom ?? 0,
-              ...(state.status === "succeeded" ||
-              state.status === "failed" ||
-              state.status === "cancelled"
-                ? {
-                    end: {
-                      status: state.status,
-                      ...(state.reason !== undefined ? { reason: state.reason } : {}),
-                      ...(state.error ? { error: state.error } : {}),
-                    },
-                  }
-                : {}),
-            });
-          }
+          for (const entry of answer.runs) applyReconciled(entry);
           // A cancel made while the owner was away reaches it now.
           for (const entry of open) {
             if (entry.relay.cancel_requested_at !== null) void cancelOnOwner(entry.run.id, session);

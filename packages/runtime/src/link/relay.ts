@@ -203,16 +203,51 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
         state.status === "failed" ||
         state.status === "cancelled"
       ) {
-        update(runId, session, {
-          end: {
-            status: state.status,
-            ...(state.reason !== undefined ? { reason: state.reason } : {}),
-            ...(state.error ? { error: state.error } : {}),
+        // The end carries the run's whole output from this ledger, so a hosted home that lost an
+        // update on the way (a dropped connection, a timed-out call) never ends a run without its
+        // result; it keeps only what it lacks (Opus review of WP-29, 4).
+        update(
+          runId,
+          session,
+          fullState(runId) ?? {
+            end: {
+              status: state.status,
+              ...(state.reason !== undefined ? { reason: state.reason } : {}),
+              ...(state.error ? { error: state.error } : {}),
+            },
           },
-        });
+        );
       }
     },
   });
+
+  /** A run's whole state from this ledger, as one update (its end too, once it ended). */
+  const fullState = (runId: string): Omit<RelayRunUpdateParams, "runId" | "seq"> | undefined => {
+    const state = ledger.read((db) => {
+      const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId);
+      return row ? runState(db, row) : undefined;
+    });
+    if (!state) return undefined;
+    const ended =
+      state.status === "succeeded" || state.status === "failed" || state.status === "cancelled";
+    return {
+      running: state.status !== "queued",
+      log: state.log,
+      logFrom: 0,
+      batches: state.batches,
+      batchFrom: 0,
+      ...(state.progress ? { progress: state.progress } : {}),
+      ...(ended
+        ? {
+            end: {
+              status: state.status as "succeeded" | "failed" | "cancelled",
+              ...(state.reason !== undefined ? { reason: state.reason } : {}),
+              ...(state.error ? { error: state.error } : {}),
+            },
+          }
+        : {}),
+    };
+  };
 
   /** Records a relayed run under the hosted run's ID, once; then runs it. */
   const run = (
@@ -291,30 +326,11 @@ export function createOwnerRelay(options: OwnerRelayOptions): OwnerRelay {
       return false;
     });
     if (repeated) {
-      // A repeat joins the run: nothing starts again. One that ended while its acknowledgement was
-      // lost reports its end now, from this ledger.
-      const ended = ledger.read((db) => {
-        const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", params.runId);
-        return row ? runState(db, row) : undefined;
-      });
-      if (
-        ended &&
-        (ended.status === "succeeded" || ended.status === "failed" || ended.status === "cancelled")
-      ) {
-        update(params.runId, session, {
-          running: true,
-          log: ended.log,
-          logFrom: 0,
-          batches: ended.batches,
-          batchFrom: 0,
-          ...(ended.progress ? { progress: ended.progress } : {}),
-          end: {
-            status: ended.status,
-            ...(ended.reason !== undefined ? { reason: ended.reason } : {}),
-            ...(ended.error ? { error: ended.error } : {}),
-          },
-        });
-      }
+      // A repeat joins the run: nothing starts again. It reports the run's whole state now, from
+      // this ledger, its end too if it ended, so updates lost with the acknowledgement are made up
+      // (Opus review of WP-29, 4).
+      const state = fullState(params.runId);
+      if (state) update(params.runId, session, state);
       return { accepted: true };
     }
     options.actions.runRelayed(params.runId, {

@@ -127,6 +127,7 @@ function setup(options: { sweepMs?: number; now?: () => number } = {}) {
     viewId,
     session,
     reason: (runId: string) => interaction.runState(runId)?.reason,
+    state: (runId: string) => interaction.runState(runId),
     /** Which session the link's is now, as the server's registrants would say. */
     linkSession: (id: number | undefined) => {
       open = id;
@@ -370,6 +371,56 @@ describe("the hosted relay against a scripted owner (§18.3)", () => {
     t.connect(2, 1);
     await until(() => t.status(run.runId) === "succeeded", 5_000);
     expect(asked).toBe(2);
+    t.relay.stop();
+  });
+
+  it("keeps nothing of an update past what it holds, and asks the owner for the run again (Opus review of WP-29, 4)", async () => {
+    const t = setup();
+    t.connect(1, 0);
+    await until(() => true);
+    const run = await t.start();
+    await until(() => t.calls.length === 1);
+    const result = await serializeAll({ sent: true }, { mode: "result" });
+    // The update carrying the result was lost: the next one starts past it, and ends the run.
+    const update = t.relay
+      .methods()
+      .find((method) => method.definition.method === "relay/run.update");
+    t.answering((call) =>
+      call.method === "port/relay.reconcile"
+        ? {
+            runs: [
+              {
+                runId: run.runId,
+                state: {
+                  runId: run.runId,
+                  fnId: FN,
+                  status: "succeeded",
+                  log: ["sent"],
+                  batches: result,
+                  startedAt: new Date().toISOString(),
+                },
+              },
+            ],
+          }
+        : {},
+    );
+    await update?.handle(
+      {
+        runId: run.runId,
+        seq: 2,
+        logFrom: 1,
+        log: [],
+        batchFrom: result.length,
+        batches: [],
+        end: { status: "succeeded" },
+      },
+      t.session(1, 0),
+    );
+    // Never ended without its result: the owner was asked from what is held, and its answer ends it.
+    await until(() => t.status(run.runId) === "succeeded");
+    expect(t.calls.some((call) => call.method === "port/relay.reconcile")).toBe(true);
+    expect(t.state(run.runId)?.batches).toEqual(result);
+    expect(t.state(run.runId)?.log).toEqual(["sent"]);
     t.relay.stop();
   });
 });
