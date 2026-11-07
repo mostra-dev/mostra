@@ -90,6 +90,8 @@ export interface LiveView {
   readonly revision?: string;
   readonly at?: string;
   readonly error?: WireError;
+  /** A hosted page's source whose producer can't refresh it while its owner is offline. */
+  readonly ownerOffline?: boolean;
   /** Append mode: the values kept, oldest first, at most the largest window asked for. */
   readonly ring: readonly unknown[];
 }
@@ -406,6 +408,11 @@ export class ServerClient {
     };
     if (fresh.length > 0 && !tracked.rootDecoded) this.#decodeRoot(tracked);
     if (isFinalRunStatus(delta.status)) this.#settle(tracked);
+    // A relayed run whose owner never said how it ended (D165 item 4): `run()` rejects, and the
+    // run stays followed, since the owner's later report replaces `unknown` once.
+    else if (delta.status === "unknown") {
+      tracked.reject(failure(tracked.view.error, "MOSTRA_REMOTE_OWNER_OFFLINE"));
+    }
     this.#changed();
     return true;
   }
@@ -629,10 +636,13 @@ export class ServerClient {
     // loading, and stays pending for verify, until an update brings its value or its failure. A
     // key nothing produces, or one that only streams, isn't loading (WP-14, its Opus review).
     const settled = tracked.newest > 0 || state.error !== undefined || state.awaiting !== true;
+    const { ownerOffline: _was, ...held } = tracked.view;
     tracked.view = {
-      ...tracked.view,
+      ...held,
       loading: !settled,
       ...(state.error ? { error: state.error } : {}),
+      // Read again at every renewal, so the flag follows the owner (D165 item 4).
+      ...(state.ownerOffline ? { ownerOffline: true } : {}),
     };
     if (!state.error && tracked.view.error) {
       const { error: _cleared, ...rest } = tracked.view;
@@ -666,7 +676,8 @@ export class ServerClient {
       window === undefined ? tracked.view.ring : [...tracked.view.ring, data].slice(-window);
     if (window !== undefined)
       tracked.ringRevisions = [...tracked.ringRevisions, revision].slice(-window);
-    const { error: _cleared, ...rest } = tracked.view;
+    // A new value came from its producer, so its owner is back.
+    const { error: _cleared, ownerOffline: _back, ...rest } = tracked.view;
     tracked.view = {
       ...rest,
       loading: false,

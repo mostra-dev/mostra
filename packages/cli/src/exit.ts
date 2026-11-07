@@ -59,6 +59,8 @@ const BY_AREA: Readonly<Record<DiagnosticArea, ExitCode>> = {
   PLATFORM: EXIT.environment,
   ARTIFACT: EXIT.failure,
   CLI: EXIT.usage,
+  // A remote server or the link to one: the environment, like a share's tunnel (D165).
+  REMOTE: EXIT.environment,
 };
 
 /** Codes whose exit code isn't their area's. */

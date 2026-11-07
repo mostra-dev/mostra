@@ -23,6 +23,11 @@ export interface StatePatchParams {
   readonly mutationId: string;
   /** Who writes: `agent` (the default) or `host`, recorded as each field's last writer. */
   readonly as?: "agent" | "host";
+  /**
+   * The relayed run whose server code writes it (`state` in `@mostra/server`, D165 item 4): the
+   * change is recorded as that run's, as a local run's own write is.
+   */
+  readonly causation?: { readonly runId: string };
 }
 
 /** The result of `state/patch`. */
@@ -35,6 +40,7 @@ const params: z.ZodType<StatePatchParams> = z
     baseRevision: DocumentRevision.exactOptional(),
     mutationId: MutationId.schema,
     as: z.enum(["agent", "host"]).exactOptional(),
+    causation: z.object({ runId: z.string().min(1) }).exactOptional(),
   })
   .register(wireRegistry, { id: "StatePatchParams" });
 

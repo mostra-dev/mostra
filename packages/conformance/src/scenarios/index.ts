@@ -7,6 +7,7 @@ import type { Scenario } from "../scenario.ts";
 import { DELIVERY_SCENARIOS } from "./delivery.ts";
 import { INTERACTION_SCENARIOS } from "./interaction.ts";
 import { PORT_SCENARIOS } from "./ports.ts";
+import { REMOTE_SCENARIOS } from "./remote.ts";
 import { SESSION_SCENARIOS } from "./session.ts";
 import { VIEWING_SCENARIOS } from "./viewing.ts";
 
@@ -17,4 +18,5 @@ export const SCENARIOS: readonly Scenario[] = [
   ...INTERACTION_SCENARIOS,
   ...PORT_SCENARIOS,
   ...VIEWING_SCENARIOS,
+  ...REMOTE_SCENARIOS,
 ];

@@ -25,4 +25,12 @@ export interface LedgerDb {
 export interface MigrationDb extends LedgerDb {
   /** Runs one or more statements without parameters. */
   exec(sql: string): void;
+  /**
+   * Widens a table's CHECK constraint in place: replaces `from`, which must occur exactly once in
+   * the table's definition, with `to`. SQLite can't alter a CHECK, and a table other tables
+   * reference can't be rebuilt inside the migration transaction while foreign keys hold, so this
+   * edits the schema text, which SQLite documents for changes that touch no stored row (allowing
+   * more values does not); `to` must only allow more than `from` did.
+   */
+  widenCheck(table: string, from: string, to: string): void;
 }

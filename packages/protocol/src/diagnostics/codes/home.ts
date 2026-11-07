@@ -17,6 +17,7 @@ export const homeDiagnosticCodes = [
   "MOSTRA_HOME_INTEGRITY",
   "MOSTRA_HOME_NOT_ALWAYS_ON",
   "MOSTRA_HOME_GC_INCOMPLETE",
+  "MOSTRA_HOME_NETWORK_FILESYSTEM",
   // gen:codes
 ] as const;
 
@@ -144,6 +145,17 @@ export const homeDiagnostics: AreaCatalog<HomeDiagnosticCode> = {
       explanation:
         "`mostra gc` removes what nothing references in steps: version files, source snapshots, lock layouts, the package store, verify's caches and, when asked, events. One step failed (the message names it and why), so it left that step's files in place. Everything an earlier step removed is listed in the result, and the versions it collected stay collected. The home is consistent: what gc left is still recorded as there.",
       fix: "Run `mostra gc` again; a failure that repeats names its cause in the message (for example, a file the user can't remove).",
+    },
+  },
+  MOSTRA_HOME_NETWORK_FILESYSTEM: {
+    severity: "error",
+    phase: "host",
+    title: "Data directory on a network filesystem",
+    hint: "Put the server's data directory on a local disk.",
+    docs: {
+      explanation:
+        "A remote server's data directory holds its hosted homes' ledgers and locks, which need a local disk: on a network filesystem a lock can seem held by two machines at once, and SQLite's WAL can't share memory across them (D165 item 0b). The server refuses a data directory it detects on NFS, SMB, AFP, WebDAV or a FUSE mount, before it opens anything.",
+      fix: "Pass `--data` a directory on a local disk. To keep a copy elsewhere, replicate the homes with a backup tool instead.",
     },
   },
   // gen:entries

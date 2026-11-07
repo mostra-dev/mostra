@@ -80,6 +80,7 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
+import { createLink, forwardHosted, hostedState, type Link } from "../link/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
@@ -563,6 +564,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       : {}),
   });
   const actions = createActions({
+    // Server code's `state` of a hosted artifact acts on its hosted home (D165 item 1); the link
+    // is made below, and asked only once runs start.
+    hostedState: (artifactId) => hostedState(link, artifactId),
     interaction,
     pool,
     bus,
@@ -597,6 +601,10 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     return versionId ? { versionId, sources: sourcesOf(versionId) } : undefined;
   };
   const live = createLive({
+    // A hosted artifact's live sources: produced here while its hosted pages want them, their
+    // values kept on its hosted home (D165 items 1 and 4). The link is made below.
+    extraInterest: () => link.liveInterest(),
+    forward: (artifactId, versionId, produced) => link.forwardLive(artifactId, versionId, produced),
     ledger: home.ledger,
     log,
     bus,
@@ -738,6 +746,24 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       }
     },
   });
+  // The owner's side of remote servers (WP-29, D165): sign-in, the bindings, hosted deliveries
+  // imported into this home's outbox, the sync cursor, and version pushes.
+  const link: Link = createLink({
+    home: home.path,
+    ledger: home.ledger,
+    log,
+    env: environment,
+    runtimeVersion: runtimeVersion(),
+    protect: (value) => home.redactor.protect(value),
+    importSubmission: (envelope, source) => interaction.importSubmission(envelope, source),
+    versionDir: (versionId) => registry.store.versionDir(versionId),
+    actions,
+    liveChanged: () => live.reconcile(),
+    now: () => Date.now() + clockOffset,
+  });
+  const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>
+    link.published(artifactId, versionId),
+  );
   // Shares (WP-13, D158): tunnels to the gateway's faces, each with a link of its own.
   const shares: Shares = createShares({
     ledger: home.ledger,
@@ -751,6 +777,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     toolEnvironment: artifactEnvironment(environment),
     cacheDir: shareCacheDir(home.path),
     now: () => Date.now() + clockOffset,
+    // Shares to a remote server go through the owner's link (D165, INTERFACES §18.2).
+    remote: link.shares(),
     ...(environment["MOSTRA_TEST_SHARE_PROBE_MS"] !== undefined
       ? { probeMs: Number(environment["MOSTRA_TEST_SHARE_PROBE_MS"]) }
       : {}),
@@ -850,7 +878,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ...dev.methods(),
       ...gateway.methods(),
       ...shares.methods(),
-      ...interaction.methods(),
+      ...link.methods(),
+      // A hosted artifact's state and live values act on its hosted home (D165 item 1).
+      ...forwardHosted(link, (ref) => registry.get(canonicalRef(ref)).id, interaction.methods()),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
       ...gcMethods(
         createGc({
@@ -868,7 +898,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           faults,
         }),
       ),
-      ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
+      ...forwardHosted(
+        link,
+        (ref) => registry.get(canonicalRef(ref)).id,
+        liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
+      ),
       ...sessionMethods({
         describe: () => info,
         startedAt: home.startedAt,
@@ -888,6 +922,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
               }
             : undefined,
         shares: () => shares.active(),
+        links: () => link.status(),
         deliveries: () => interaction.deliveries(),
         workers: () => pool.status(),
         idleExitAt: () => idle?.exitAt(),
@@ -917,6 +952,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         log.info("instance.stopping", { reason, exitCode, ...(diagnostic ? { diagnostic } : {}) });
         idle?.stop();
         stopWatchingPublishes();
+        stopPushingPublishes();
+        await link.stop();
         live.stop();
         interaction.stop();
         // Before any child stops: on Windows the pipe's helper is a child, and it hands clients
@@ -973,6 +1010,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     interaction.start();
     // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
     live.start();
+    // Every server this home is signed in to is dialled again (D165 item 2).
+    link.start();
     // Tailnet and Funnel shares come back; what can't continue ends, with its reason (D158).
     void shares.recover().catch((error: unknown) => log.error("share.recover_failed", { error }));
     home.publish(options.mode, server.socketPath ?? home.socketPath);

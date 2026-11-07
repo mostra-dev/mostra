@@ -17,6 +17,7 @@ import {
   type CapabilityScope,
   type CarryOver,
   type ControlsPolicy,
+  type Cursor,
   createDiagnostic,
   type DeliveryCounts,
   type EventFilter,
@@ -36,7 +37,9 @@ import {
   refusal,
   resultsGetMethod,
   type StreamSnapshot,
+  type SubmissionEnvelope,
   type SubmissionSummary,
+  type SubmissionsDeliverResult,
   type SubmitChannel,
   scopeAllows,
   stateGetMethod,
@@ -57,6 +60,7 @@ import {
   liveFields,
   replayedMutation,
 } from "./fields.ts";
+import { type ImportSource, importSubmission } from "./imports.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
 import {
@@ -81,6 +85,7 @@ import {
   orphansOf,
   type Snapshot,
   type SubmissionRow,
+  SubmitConflict,
   submissionSummary,
   submit,
 } from "./submissions.ts";
@@ -100,10 +105,23 @@ import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
 export { appendEvent, compactEvents, redactEvents } from "./events.ts";
+export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
-export type { RunEnd, RunFlush, RunOutput, RunRow } from "./runs.ts";
+export {
+  appendRunOutput,
+  finishRun,
+  markRunning,
+  markUnknown,
+  markWaiting,
+  type RunEnd,
+  type RunFlush,
+  type RunOutput,
+  type RunRow,
+  runState,
+} from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
+export { tallyField, tallyState } from "./tally.ts";
 
 /** How the interaction core finds an artifact a host names. */
 export interface InteractionArtifacts {
@@ -132,7 +150,29 @@ export interface InteractionOptions {
   readonly coverage: (versionId: string) => (fieldId: string) => boolean;
   /** How long a host has to answer a port call (30 s; tests shorten it). */
   readonly portTimeoutMs?: number;
+  /**
+   * Who a submission of this artifact is delivered to, instead of every registered or expected
+   * host: on a hosted home, the artifact's owner link alone, connected or not (D165, after the Opus
+   * review). `undefined` keeps D105's rule.
+   */
+  readonly deliveryOwners?: (artifactId: string) => readonly string[] | undefined;
+  /** Whether deliveries carry the stored snapshot: a hosted home's do (D165 item 1). */
+  readonly deliverSnapshots?: boolean;
+  /**
+   * Whether pages see only that an answer was sent (D165 item 1a, IN-13 for hosted links): a
+   * submission's `delivery` reads `delivered` once it committed, without `deliveries`, and pages
+   * get no delivery events. The owner, its agent and hosts keep every delivery state.
+   */
+  readonly sentOnly?: boolean;
 }
+
+/** The delivery events only the owner, its agent and hosts see on a hosted home (D165 item 1a). */
+const DELIVERY_EVENTS = new Set([
+  "submission.retrying",
+  "submission.delivered",
+  "submission.rejected",
+  "submission.undeliverable",
+]);
 
 /** A browser session as the interaction core sees it: who it acts as. */
 export interface PageIdentity {
@@ -185,6 +225,16 @@ export interface Interaction {
       readonly ops: readonly FieldOp[];
     },
   ): MutationResult;
+  /**
+   * Stores a submission its hosted home delivered to this owner instance, with its local
+   * deliveries, in one transaction (D165 item 1), and answers as a host answers a delivery.
+   */
+  importSubmission(envelope: SubmissionEnvelope, source: ImportSource): SubmissionsDeliverResult;
+  /**
+   * A submission as its delivery to `owner` carries it, with its snapshot (a hosted home's
+   * `hosted/submission`, FAILURE_MODEL §11.2); `undefined` when `owner` has no delivery of it.
+   */
+  envelopeFor(submissionId: string, owner: string): SubmissionEnvelope | undefined;
   /** A viewer's submit (IN-05); `SubmitConflict` under a closed `once`. */
   submit(
     page: PageIdentity,
@@ -288,6 +338,8 @@ export interface Interaction {
   openRuns(versionId?: string): RunRow[];
   /** A run's state now. */
   runState(runId: string): RunState | undefined;
+  /** A run's row, for the actions module (a relayed run, D165 item 4). */
+  runRow(runId: string): RunRow | undefined;
   /** `signal()` from server code: `signal.raised`, source `action`, the run as cause (AC-05). */
   serverSignal(
     artifactId: string,
@@ -341,6 +393,11 @@ export interface Interaction {
    * session reports what its preview's submits would deliver (D140 item 12). Returns the stop.
    */
   onSubmission(listener: (results: Results) => void): () => void;
+  /**
+   * Hears, once a submission commits, which of its artifact's tallied fields it counted (D165
+   * item 12), so their viewers are sent the new counts. Returns the stop.
+   */
+  onTallied(listener: (artifactId: string, fields: readonly string[]) => void): () => void;
   /** How many host subscriptions are open. */
   subscriptionCount(): number;
 }
@@ -449,6 +506,24 @@ function runVisible(row: RunRow, page: PageIdentity): boolean {
 /** Creates the interaction core. */
 
 export function createInteraction(options: InteractionOptions): Interaction {
+  /** A submission as a page gets it: on a hosted home, sent and nothing about its delivery. */
+  const forPage = (summary: SubmissionSummary): SubmissionSummary => {
+    if (!options.sentOnly) return summary;
+    const { deliveries: _deliveries, ...sent } = summary;
+    return { ...sent, delivery: "delivered" };
+  };
+  /** Runs a page's write, giving a conflict's submission as the page gets it. */
+  const asPage = <T>(write: () => T): T => {
+    try {
+      return write();
+    } catch (error) {
+      if (options.sentOnly && error instanceof SubmitConflict) {
+        throw new SubmitConflict(error.diagnostic.message, forPage(error.submission));
+      }
+      throw error;
+    }
+  };
+  const tallyListeners = new Set<(artifactId: string, fields: readonly string[]) => void>();
   const { ledger, log, hosts } = options;
   const outbox = new Outbox({
     ledger,
@@ -457,6 +532,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     expected: options.expectedHosts,
     faults: options.faults,
     ...(options.portTimeoutMs !== undefined ? { portTimeoutMs: options.portTimeoutMs } : {}),
+    ...(options.deliverSnapshots ? { snapshots: true } : {}),
   });
   const subscriptions = new Subscriptions({
     ledger,
@@ -541,7 +617,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         const replay = replayedMutation(db, mutation);
         if (replay) return { result: replay, changed: false, replayed: true };
         if (input.scope === "viewer") {
-          assertDraftOpen(db, page.artifactId, page.viewerId);
+          asPage(() => assertDraftOpen(db, page.artifactId, page.viewerId));
           if (input.ops.some((op) => CHOICE.test(op.id))) {
             // A choice needs the `review` scope however it is written, as the trusted Choose
             // does (D97; Claude review finding 7)…
@@ -569,20 +645,77 @@ export function createInteraction(options: InteractionOptions): Interaction {
         outbox.mirror(page.artifactId, page.viewerId);
       return result;
     },
-    submit(page, input) {
-      const owners = outbox.owners();
-      const outcome = ledger.write((db) =>
-        submit(db, {
-          artifactId: page.artifactId,
-          viewerId: page.viewerId,
-          ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
-          viewId: input.viewId,
-          expectedRevision: input.expectedRevision,
-          channel: input.channel,
+    importSubmission(envelope, source) {
+      const owners = options.deliveryOwners?.(envelope.artifactId) ?? outbox.owners();
+      const answer = ledger.write((db) =>
+        importSubmission(db, {
+          envelope,
+          source,
           owners,
-          covers: options.coverage,
+          owned: (inner, artifactId) =>
+            inner.get(
+              "SELECT 1 FROM hosted_artifact WHERE artifact_id = ? AND server = ?",
+              artifactId,
+              source.server,
+            ) !== undefined,
         }),
       );
+      log.info("interaction.imported", {
+        artifactId: envelope.artifactId,
+        submissionId: envelope.submissionId,
+        accepted: answer.accepted,
+      });
+      return answer;
+    },
+    envelopeFor(submissionId, owner) {
+      return ledger.read((db) => {
+        const delivery = db.get<{ id: string; attempts: number }>(
+          "SELECT id, attempts FROM delivery WHERE submission_id = ? AND port_owner = ?",
+          submissionId,
+          owner,
+        );
+        const submission = db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          submissionId,
+        );
+        if (!delivery || !submission) return undefined;
+        return {
+          kind: "submission",
+          deliveryId: delivery.id,
+          submissionId: submission.id,
+          artifactId: submission.artifact_id,
+          attempt: Math.max(1, delivery.attempts),
+          results: buildResults(db, submission),
+          snapshot: submission.snapshot_json,
+          cursor: String(submission.position) as Cursor,
+        };
+      });
+    },
+    submit(page, input) {
+      const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
+      const outcome = asPage(() =>
+        ledger.write((db) =>
+          submit(db, {
+            artifactId: page.artifactId,
+            viewerId: page.viewerId,
+            ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
+            viewId: input.viewId,
+            expectedRevision: input.expectedRevision,
+            channel: input.channel,
+            owners,
+            covers: options.coverage,
+          }),
+        ),
+      );
+      if (outcome.tallied) {
+        for (const listener of tallyListeners) {
+          try {
+            listener(page.artifactId, outcome.tallied);
+          } catch (error) {
+            log.error("interaction.tally_listener_failed", { error });
+          }
+        }
+      }
       if (outcome.created) {
         log.info("interaction.submitted", {
           artifactId: page.artifactId,
@@ -599,8 +732,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
         );
         return row ? submissionSummary(db, row) : undefined;
       });
-      if (!fresh) return outcome.submission;
-      return outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh;
+      if (!fresh) return forPage(outcome.submission);
+      return forPage(outcome.submission.duplicate ? { ...fresh, duplicate: true } : fresh);
     },
     choose(page, input) {
       const actor = pageActor(page);
@@ -627,7 +760,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         };
         const replay = replayedMutation(db, mutation);
         if (replay) return { result: replay, changed: false, replayed: true };
-        assertDraftOpen(db, page.artifactId, page.viewerId);
+        asPage(() => assertDraftOpen(db, page.artifactId, page.viewerId));
         return applyMutation(db, mutation);
       });
       if (outcome.changed) outbox.mirror(page.artifactId, page.viewerId);
@@ -710,7 +843,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
             const state = documentSnapshot(db, page.artifactId, null);
             return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
           })(),
-          ...(latestOwn ? { submission: submissionSummary(db, latestOwn) } : {}),
+          ...(latestOwn ? { submission: forPage(submissionSummary(db, latestOwn)) } : {}),
           ...(() => {
             // The latest version, so a page that missed its `version.published` learns of it.
             const latest = db.get<{ id: string; number: number }>(
@@ -727,6 +860,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
       // Read in pages until enough visible events or the end, so other viewers' events never
       // stall a page.
       return ledger.read((db) => {
+        // A cursor above the head was read from a home since restored to an earlier copy (§18.2):
+        // the page starts again from a fresh snapshot, never from an empty tail.
+        if (after > latestCursor(db)) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_HOST_CURSOR_COMPACTED", {
+              message: "The page's cursor is past this home's head; it reads a fresh snapshot.",
+            }),
+          );
+        }
         const events: EventRecord[] = [];
         let cursor = after;
         const runs = new Map<string, RunRow | undefined>();
@@ -743,6 +885,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           for (const event of read.events) {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
+            if (options.sentOnly && DELIVERY_EVENTS.has(event.type)) continue;
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));
@@ -780,7 +923,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
                 ? { baseRevision: Number(params.baseRevision) }
                 : {}),
               ops: params.ops,
-              actor: clientActor(session, params.as),
+              actor:
+                params.causation !== undefined
+                  ? { kind: "agent", id: params.causation.runId }
+                  : clientActor(session, params.as),
             }).result,
         );
       }),
@@ -828,7 +974,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     ],
     connected(session) {
       if (session.ports.has("submissions") && session.client)
-        outbox.registered(session.client.name);
+        outbox.registered(session.link?.instanceId ?? session.client.name);
     },
     disconnected(session) {
       subscriptions.closed(session.id);
@@ -899,6 +1045,9 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     openRuns(versionId) {
       return ledger.read((db) => openRuns(db, versionId));
+    },
+    runRow(runId) {
+      return ledger.read((db) => db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId));
     },
     runState(runId) {
       return ledger.read((db) => {
@@ -1015,6 +1164,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
           listener(row.artifact_id, versionId);
         }
       });
+    },
+    onTallied(listener) {
+      tallyListeners.add(listener);
+      return () => tallyListeners.delete(listener);
     },
     subscriptionCount: () => subscriptions.size,
   };

@@ -22,9 +22,10 @@ import { type NetworkDiagnosticCode, networkDiagnostics } from "./network.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
 import { type RegressionDiagnosticCode, regressionDiagnostics } from "./regression.ts";
+// gen:area-imports
+import { type RemoteDiagnosticCode, remoteDiagnostics } from "./remote.ts";
 import { type RuntimeDiagnosticCode, runtimeDiagnostics } from "./runtime.ts";
 import { type SecretDiagnosticCode, secretDiagnostics } from "./secret.ts";
-// gen:area-imports
 import { type ShareDiagnosticCode, shareDiagnostics } from "./share.ts";
 import { type SmokeDiagnosticCode, smokeDiagnostics } from "./smoke.ts";
 import { type SubmitDiagnosticCode, submitDiagnostics } from "./submit.ts";
@@ -50,9 +51,10 @@ export { type NetworkDiagnosticCode, networkDiagnosticCodes } from "./network.ts
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
 export { type RegressionDiagnosticCode, regressionDiagnosticCodes } from "./regression.ts";
+// gen:area-exports
+export { type RemoteDiagnosticCode, remoteDiagnosticCodes } from "./remote.ts";
 export { type RuntimeDiagnosticCode, runtimeDiagnosticCodes } from "./runtime.ts";
 export { type SecretDiagnosticCode, secretDiagnosticCodes } from "./secret.ts";
-// gen:area-exports
 export { type ShareDiagnosticCode, shareDiagnosticCodes } from "./share.ts";
 export { type SmokeDiagnosticCode, smokeDiagnosticCodes } from "./smoke.ts";
 export { type SubmitDiagnosticCode, submitDiagnosticCodes } from "./submit.ts";
@@ -63,6 +65,7 @@ export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | RemoteDiagnosticCode
   | ShareDiagnosticCode
   | CliDiagnosticCode
   | RegressionDiagnosticCode
@@ -93,6 +96,7 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...remoteDiagnostics,
   ...shareDiagnostics,
   ...cliDiagnostics,
   ...regressionDiagnostics,

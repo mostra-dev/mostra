@@ -37,6 +37,14 @@ describe("the conformance kit (HO-05)", () => {
     ]);
   });
 
+  it("judges a host whose instance shares to a server the kit runs: delivery and the relay (WP-29)", async () => {
+    const report = await runConformance({ host: REFERENCE, only: ["remote."] });
+    expect(statuses(report.outcomes)).toEqual({
+      "remote.delivery": "passed",
+      "remote.relay": "passed",
+    });
+  });
+
   it("the standalone adapters (a host with no ports) pass, and port scenarios take the default path", async () => {
     const report = await runConformance({ host: `${REFERENCE} --standalone` });
     const failed = report.outcomes.filter((outcome) => outcome.status === "failed");

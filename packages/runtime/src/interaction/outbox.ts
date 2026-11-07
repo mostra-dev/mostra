@@ -8,6 +8,7 @@
  * delivery the host acknowledged but Mostra didn't record goes out again with the same ID.
  */
 import {
+  type Cursor,
   type DeliveryState,
   type DraftMirror,
   MAX_LINE_LENGTH,
@@ -61,6 +62,11 @@ export interface OutboxOptions {
   readonly now?: () => number;
   /** How long a host has to answer a port call; default {@link PORT_CALL_TIMEOUT_MS}. */
   readonly portTimeoutMs?: number;
+  /**
+   * Whether envelopes carry the stored snapshot: a hosted home's do, so its owner instance keeps
+   * the same submission (D165 item 1).
+   */
+  readonly snapshots?: boolean;
 }
 
 interface DeliveryRow {
@@ -260,6 +266,9 @@ export class Outbox {
         artifactId: submission.artifact_id,
         attempt,
         results: buildResults(db, submission),
+        ...(this.#options.snapshots
+          ? { snapshot: submission.snapshot_json, cursor: String(submission.position) as Cursor }
+          : {}),
       };
       return envelope;
     });

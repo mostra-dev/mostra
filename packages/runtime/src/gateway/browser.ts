@@ -177,6 +177,8 @@ export interface BrowserRoutes {
   readonly stream: Handler;
   readonly poll: Handler;
   /** The shell's trusted Submit (the `shell` channel, D40), on the shell origin. */
+  /** `events/poll` on the shell origin: the same, without the frame's run and live updates (#119). */
+  readonly shellPoll: Handler;
   readonly shellSubmit: Handler;
   /** The shell's trusted Choose (D65, D113), on the shell origin. */
   readonly choose: Handler;
@@ -439,107 +441,117 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     });
   };
 
-  const poll = async (context: RouteContext): Promise<Response> => {
-    const refused = knownRevision(context);
-    if (refused) return refused;
-    const page = pageOf(context);
-    const badView = viewOf(context, page);
-    if (badView) return badView;
-    const resume = cursorOf(context.request);
-    if (resume === "invalid") return malformed("`cursor` must be an event cursor.");
-    const waitParam = new URL(context.request.url).searchParams.get("wait");
-    const waitS = waitParam === null ? POLL_MAX_WAIT_S : Number(waitParam);
-    if (!Number.isInteger(waitS) || waitS < 0 || waitS > POLL_MAX_WAIT_S) {
-      return malformed(`\`wait\` must be a whole number of seconds from 0 to ${POLL_MAX_WAIT_S}.`);
-    }
-    const viewId = viewIdOf(context);
-    const bus = options.bus;
-    // Polling views collect their run and live updates between polls (LL-04).
-    // Taking what is queued also starts the queue, so updates during the wait are kept.
-    let early = bus?.drain(page.artifactId, viewId) ?? [];
-    const withEphemeral = <T extends object>(value: T): T & { ephemeral?: unknown[] } => {
-      const ephemeral = [...early, ...(bus?.drain(page.artifactId, viewId) ?? [])];
-      early = [];
-      return ephemeral.length > 0 ? { ...value, ephemeral } : value;
-    };
-    if (resume === undefined) {
-      const snapshot = interaction.pageSnapshot(page);
-      return jsonResponse(withEphemeral({ cursor: snapshot.cursor, events: [], snapshot }));
-    }
-    const revoked = (): Response =>
-      answer(
-        refusal(
-          "MOSTRA_HYGIENE_TOKEN_REVOKED",
-          "The link this page came from was revoked or has expired.",
-          410,
-        ).diagnostic,
-        410,
-      );
-    const once = () => {
-      const read = next(page, resume);
-      return "snapshot" in read
-        ? { cursor: read.snapshot.cursor, events: [], snapshot: read.snapshot }
-        : { cursor: String(read.cursor), events: read.events };
-    };
-    try {
-      const first = once();
-      if (first.events.length > 0 || "snapshot" in first || waitS === 0 || early.length > 0) {
-        return jsonResponse(withEphemeral(first));
+  /**
+   * `events/poll`. The frame's poll also answers with the run and live updates its view collected
+   * (LL-04); the shell's poll of the same view leaves them to the frame, which is the one that shows
+   * them: taking them made a page on a quick tunnel learn of a finished run only at its next renewal,
+   * about 20 s later (#119).
+   */
+  const pollFor =
+    (ephemeral: boolean) =>
+    async (context: RouteContext): Promise<Response> => {
+      const refused = knownRevision(context);
+      if (refused) return refused;
+      const page = pageOf(context);
+      const badView = viewOf(context, page);
+      if (badView) return badView;
+      const resume = cursorOf(context.request);
+      if (resume === "invalid") return malformed("`cursor` must be an event cursor.");
+      const waitParam = new URL(context.request.url).searchParams.get("wait");
+      const waitS = waitParam === null ? POLL_MAX_WAIT_S : Number(waitParam);
+      if (!Number.isInteger(waitS) || waitS < 0 || waitS > POLL_MAX_WAIT_S) {
+        return malformed(
+          `\`wait\` must be a whole number of seconds from 0 to ${POLL_MAX_WAIT_S}.`,
+        );
       }
-      let ended = false;
-      const stopWaiting = new AbortController();
-      const result = await new Promise<ReturnType<typeof once>>((resolve, reject) => {
-        let done = false;
-        const finish = (value?: ReturnType<typeof once>): void => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          unsubscribe();
-          context.request.signal.removeEventListener("abort", aborted);
-          // A failing read here (the ledger closing at shutdown, say) answers this request; it
-          // never escapes the timer as an uncaught exception (Claude review finding 8).
-          try {
-            resolve(value ?? once());
-          } catch (error) {
-            reject(error);
-          }
-        };
-        const aborted = (): void => finish(first);
-        const unsubscribe = interaction.onCommit(() =>
-          setImmediate(() => {
+      const viewId = viewIdOf(context);
+      const bus = ephemeral ? options.bus : undefined;
+      // Polling views collect their run and live updates between polls (LL-04).
+      // Taking what is queued also starts the queue, so updates during the wait are kept.
+      let early = bus?.drain(page.artifactId, viewId) ?? [];
+      const withEphemeral = <T extends object>(value: T): T & { ephemeral?: unknown[] } => {
+        const ephemeral = [...early, ...(bus?.drain(page.artifactId, viewId) ?? [])];
+        early = [];
+        return ephemeral.length > 0 ? { ...value, ephemeral } : value;
+      };
+      if (resume === undefined) {
+        const snapshot = interaction.pageSnapshot(page);
+        return jsonResponse(withEphemeral({ cursor: snapshot.cursor, events: [], snapshot }));
+      }
+      const revoked = (): Response =>
+        answer(
+          refusal(
+            "MOSTRA_HYGIENE_TOKEN_REVOKED",
+            "The link this page came from was revoked or has expired.",
+            410,
+          ).diagnostic,
+          410,
+        );
+      const once = () => {
+        const read = next(page, resume);
+        return "snapshot" in read
+          ? { cursor: read.snapshot.cursor, events: [], snapshot: read.snapshot }
+          : { cursor: String(read.cursor), events: read.events };
+      };
+      try {
+        const first = once();
+        if (first.events.length > 0 || "snapshot" in first || waitS === 0 || early.length > 0) {
+          return jsonResponse(withEphemeral(first));
+        }
+        let ended = false;
+        const stopWaiting = new AbortController();
+        const result = await new Promise<ReturnType<typeof once>>((resolve, reject) => {
+          let done = false;
+          const finish = (value?: ReturnType<typeof once>): void => {
             if (done) return;
-            // A revoked or expired link ends the poll before it reads anything more.
-            if (!live(context)) {
-              ended = true;
-              finish(first);
-              return;
-            }
+            done = true;
+            clearTimeout(timer);
+            unsubscribe();
+            context.request.signal.removeEventListener("abort", aborted);
+            // A failing read here (the ledger closing at shutdown, say) answers this request; it
+            // never escapes the timer as an uncaught exception (Claude review finding 8).
             try {
-              const value = once();
-              if (value.events.length > 0 || "snapshot" in value) finish(value);
+              resolve(value ?? once());
             } catch (error) {
-              done = true;
-              clearTimeout(timer);
-              unsubscribe();
               reject(error);
             }
-          }),
-        );
-        const timer = setTimeout(() => finish(), waitS * 1000);
-        context.request.signal.addEventListener("abort", aborted, { once: true });
-        // A run or live update for this view answers the poll too.
-        void bus?.wait(page.artifactId, viewId, waitS * 1000, stopWaiting.signal).then(() => {
-          if (!done) finish(first);
+          };
+          const aborted = (): void => finish(first);
+          const unsubscribe = interaction.onCommit(() =>
+            setImmediate(() => {
+              if (done) return;
+              // A revoked or expired link ends the poll before it reads anything more.
+              if (!live(context)) {
+                ended = true;
+                finish(first);
+                return;
+              }
+              try {
+                const value = once();
+                if (value.events.length > 0 || "snapshot" in value) finish(value);
+              } catch (error) {
+                done = true;
+                clearTimeout(timer);
+                unsubscribe();
+                reject(error);
+              }
+            }),
+          );
+          const timer = setTimeout(() => finish(), waitS * 1000);
+          context.request.signal.addEventListener("abort", aborted, { once: true });
+          // A run or live update for this view answers the poll too.
+          void bus?.wait(page.artifactId, viewId, waitS * 1000, stopWaiting.signal).then(() => {
+            if (!done) finish(first);
+          });
         });
-      });
-      stopWaiting.abort();
-      // The link is checked again at the end: nothing read after it died leaves (HY-03).
-      if (ended || !live(context)) return revoked();
-      return jsonResponse(withEphemeral(result));
-    } catch (error) {
-      return failure(error);
-    }
-  };
+        stopWaiting.abort();
+        // The link is checked again at the end: nothing read after it died leaves (HY-03).
+        if (ended || !live(context)) return revoked();
+        return jsonResponse(withEphemeral(result));
+      } catch (error) {
+        return failure(error);
+      }
+    };
 
   // ── The shell's own routes (WP-07) ─────────────────────────────────────────────────────
   // They run on the shell origin behind the shell's session, its exact Origin and its CSRF
@@ -648,5 +660,16 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     }
   };
 
-  return { fields, submit, signal, stream, poll, shellSubmit, choose, follow, carry };
+  return {
+    fields,
+    submit,
+    signal,
+    stream,
+    poll: pollFor(true),
+    shellPoll: pollFor(false),
+    shellSubmit,
+    choose,
+    follow,
+    carry,
+  };
 }

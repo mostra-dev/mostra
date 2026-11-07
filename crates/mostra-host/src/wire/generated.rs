@@ -2,6 +2,64 @@
 // Do not edit: run `cargo run -p mostra-host-codegen -- write` after the schema changes.
 // host-protocol revision 2026-10-10
 
+///Account ID: "acct_" followed by a 26-character ULID.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AccountId(::std::string::String);
+impl ::std::ops::Deref for AccountId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AccountId> for ::std::string::String {
+    fn from(value: AccountId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AccountId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^acct_[0-7][0-9A-HJKMNP-TV-Z]{25}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^acct_[0-7][0-9A-HJKMNP-TV-Z]{25}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AccountId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AccountId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AccountId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///An error from server code: its message and diagnostic code.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ActionError {
@@ -509,6 +567,192 @@ impl<'de> ::serde::Deserialize<'de> for ArtifactDetailCreatedAt {
             })
     }
 }
+///`ArtifactExportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactExportParams {
+    pub artifact: ArtifactRef,
+    #[serde(rename = "as")]
+    pub as_: ExportClass,
+    pub out: ArtifactExportParamsOut,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub version: ::std::option::Option<ArtifactExportParamsVersion>,
+}
+///`ArtifactExportParamsOut`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsOut(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsOut {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsOut> for ::std::string::String {
+    fn from(value: ArtifactExportParamsOut) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsOut {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsOut {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactExportParamsVersion`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ArtifactExportParamsVersion {
+    Integer(::std::num::NonZeroU64),
+    String(ArtifactExportParamsVersionString),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::fmt::Display for ArtifactExportParamsVersion {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::Integer(x) => x.fmt(f),
+            Self::String(x) => x.fmt(f),
+            Self::Unknown(value) => value.fmt(f),
+        }
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if let Ok(v) = value.parse() {
+            Ok(Self::Integer(v))
+        } else if let Ok(v) = value.parse() {
+            Ok(Self::String(v))
+        } else {
+            Err("string conversion failed for all variants".into())
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::From<::std::num::NonZeroU64> for ArtifactExportParamsVersion {
+    fn from(value: ::std::num::NonZeroU64) -> Self {
+        Self::Integer(value)
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsVersionString>
+for ArtifactExportParamsVersion {
+    fn from(value: ArtifactExportParamsVersionString) -> Self {
+        Self::String(value)
+    }
+}
+///`ArtifactExportParamsVersionString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsVersionString(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsVersionString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsVersionString> for ::std::string::String {
+    fn from(value: ArtifactExportParamsVersionString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsVersionString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsVersionString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactExportResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactExportResult {
+    pub files: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "versionId")]
+    pub version_id: ::std::string::String,
+}
 ///`ArtifactGetParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ArtifactGetParams {
@@ -561,6 +805,124 @@ impl ::std::convert::TryFrom<::std::string::String> for ArtifactId {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactImportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ArtifactImportParams {
+    pub bundle: ArtifactImportParamsBundle,
+    #[serde(
+        rename = "requestId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub request_id: ::std::option::Option<ArtifactImportParamsRequestId>,
+}
+///`ArtifactImportParamsBundle`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactImportParamsBundle(::std::string::String);
+impl ::std::ops::Deref for ArtifactImportParamsBundle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactImportParamsBundle> for ::std::string::String {
+    fn from(value: ArtifactImportParamsBundle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactImportParamsBundle {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactImportParamsBundle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactImportParamsBundle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactImportParamsBundle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactImportParamsRequestId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactImportParamsRequestId(::std::string::String);
+impl ::std::ops::Deref for ArtifactImportParamsRequestId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactImportParamsRequestId> for ::std::string::String {
+    fn from(value: ArtifactImportParamsRequestId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactImportParamsRequestId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactImportParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactImportParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactImportParamsRequestId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -773,6 +1135,8 @@ pub struct ArtifactManifest {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub family: ::std::option::Option<ArtifactManifestFamily>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hosted: ::std::option::Option<HostedSettings>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub id: ::std::option::Option<ArtifactId>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub kit: ::std::option::Option<ArtifactManifestKit>,
@@ -784,6 +1148,8 @@ pub struct ArtifactManifest {
     pub mode: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub submission: ::std::option::Option<SubmissionPolicy>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub tally: ::std::vec::Vec<TallySpec>,
     #[serde(
         default,
         skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
@@ -4690,6 +5056,176 @@ pub struct EventFilter {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub types: ::std::vec::Vec<EventTypePattern>,
 }
+///Where an owner's copy of a hosted record came from: server, home, incarnation, cursor.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct EventOrigin {
+    pub cursor: Cursor,
+    pub home: EventOriginHome,
+    pub incarnation: EventOriginIncarnation,
+    pub server: EventOriginServer,
+}
+///`EventOriginHome`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginHome(::std::string::String);
+impl ::std::ops::Deref for EventOriginHome {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginHome> for ::std::string::String {
+    fn from(value: EventOriginHome) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginHome {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginHome {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`EventOriginIncarnation`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginIncarnation(::std::string::String);
+impl ::std::ops::Deref for EventOriginIncarnation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginIncarnation> for ::std::string::String {
+    fn from(value: EventOriginIncarnation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginIncarnation {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginIncarnation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`EventOriginServer`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EventOriginServer(::std::string::String);
+impl ::std::ops::Deref for EventOriginServer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EventOriginServer> for ::std::string::String {
+    fn from(value: EventOriginServer) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EventOriginServer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EventOriginServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EventOriginServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EventOriginServer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///One durable event: cursor, artifact, per-artifact sequence, type, time, actor, payload.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct EventRecord {
@@ -4709,6 +5245,8 @@ pub struct EventRecord {
         ::std::string::String,
     >,
     pub cursor: Cursor,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub origin: ::std::option::Option<EventOrigin>,
     pub payload: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(deserialize_with = "::std::option::Option::deserialize")]
     pub seq: ::std::option::Option<::std::num::NonZeroU64>,
@@ -5292,6 +5830,42 @@ for EventsUnsubscribeResult {
         value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     ) -> Self {
         Self(value)
+    }
+}
+///An export class (VR-07).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ExportClass {
+    #[serde(rename = "bundle")]
+    Bundle,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ExportClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExportClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///The origin browsers use for a listener, and how its frame authenticates there.
@@ -6309,6 +6883,389 @@ impl<'de> ::serde::Deserialize<'de> for HomeConfigPath {
             })
     }
 }
+///Hosted home ID: "hom_" followed by a 26-character ULID.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HomeId(::std::string::String);
+impl ::std::ops::Deref for HomeId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HomeId> for ::std::string::String {
+    fn from(value: HomeId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HomeId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HomeId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HomeId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HomeId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`HostedPushParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct HostedPushParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: ArtifactId,
+    #[serde(
+        rename = "requestId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub request_id: ::std::option::Option<HostedPushParamsRequestId>,
+    pub version: VersionPush,
+}
+///`HostedPushParamsRequestId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostedPushParamsRequestId(::std::string::String);
+impl ::std::ops::Deref for HostedPushParamsRequestId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostedPushParamsRequestId> for ::std::string::String {
+    fn from(value: HostedPushParamsRequestId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostedPushParamsRequestId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostedPushParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedPushParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostedPushParamsRequestId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A push's state: the client files the server still lacks, or the hosted version.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(tag = "status")]
+pub enum HostedPushResult {
+    #[serde(rename = "complete")]
+    Complete {
+        number: i64,
+        route: HostedRoute,
+        #[serde(rename = "versionId")]
+        version_id: ::std::string::String,
+    },
+    #[serde(rename = "missing")]
+    Missing { files: ::std::vec::Vec<HostedPushResultFilesItem>, route: HostedRoute },
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::serde_json::Value),
+}
+///`HostedPushResultFilesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostedPushResultFilesItem(::std::string::String);
+impl ::std::ops::Deref for HostedPushResultFilesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostedPushResultFilesItem> for ::std::string::String {
+    fn from(value: HostedPushResultFilesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostedPushResultFilesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostedPushResultFilesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedPushResultFilesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostedPushResultFilesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///An artifact's hosted route: its rte_ ID and random label.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct HostedRoute {
+    pub label: ::std::string::String,
+    #[serde(rename = "routeId")]
+    pub route_id: ::std::string::String,
+}
+///How an artifact behaves on a remote server: offline actions, who may act and submit, previews.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct HostedSettings {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub actions: ::std::option::Option<HostedSettingsActions>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub offline: ::std::option::Option<HostedSettingsOffline>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub preview: ::std::option::Option<HostedSettingsPreview>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submissions: ::std::option::Option<HostedSettingsSubmissions>,
+}
+///`HostedSettingsActions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsActions {
+    #[serde(rename = "signed-in")]
+    SignedIn,
+    #[serde(rename = "link")]
+    Link,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsOffline`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct HostedSettingsOffline {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub actions: ::std::option::Option<HostedSettingsOfflineActions>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub limit: ::std::option::Option<Duration>,
+}
+///`HostedSettingsOfflineActions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsOfflineActions {
+    #[serde(rename = "queue")]
+    Queue,
+    #[serde(rename = "fail")]
+    Fail,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsOfflineActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsOfflineActions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsPreview`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsPreview {
+    #[serde(rename = "generic")]
+    Generic,
+    #[serde(rename = "title")]
+    Title,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSettingsSubmissions`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum HostedSettingsSubmissions {
+    #[serde(rename = "link")]
+    Link,
+    #[serde(rename = "signed-in")]
+    SignedIn,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for HostedSettingsSubmissions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostedSettingsSubmissions {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`HostedSubmissionParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct HostedSubmissionParams {
+    #[serde(rename = "submissionId")]
+    pub submission_id: SubmissionId,
+}
 ///What the instance offers: methods, notifications and supported ports.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct InstanceCapabilities {
@@ -6434,7 +7391,11 @@ for InstanceCheckResultChecksItemStatus {
 ///The instance a client is connected to.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct InstanceInfo {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub cursor: ::std::option::Option<::std::string::String>,
     pub home: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub incarnation: ::std::option::Option<::std::string::String>,
     pub mode: InstanceInfoMode,
     pub pid: ::std::num::NonZeroU64,
     pub platform: ::std::string::String,
@@ -6457,6 +7418,8 @@ pub enum InstanceInfoMode {
     Host,
     #[serde(rename = "daemon")]
     Daemon,
+    #[serde(rename = "hosted")]
+    Hosted,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -6518,6 +7481,8 @@ pub struct InstanceStatusResult {
     )]
     pub idle_exit_at: ::std::option::Option<::std::string::String>,
     pub instance: InstanceInfo,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub links: ::std::vec::Vec<RemoteLink>,
     pub processes: ::std::vec::Vec<ChildProcessStatus>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub shares: ::std::vec::Vec<Share>,
@@ -6742,6 +7707,64 @@ impl ::std::convert::From<f64> for JsonRpcSuccessId {
         Self::Number(value)
     }
 }
+///Instance link ID: "lnk_" followed by a 26-character ULID.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LinkId(::std::string::String);
+impl ::std::ops::Deref for LinkId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LinkId> for ::std::string::String {
+    fn from(value: LinkId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LinkId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^lnk_[0-7][0-9A-HJKMNP-TV-Z]{25}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^lnk_[0-7][0-9A-HJKMNP-TV-Z]{25}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LinkId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LinkId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LinkId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///A value pushed into an artifact's live source.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct LivePushParams {
@@ -6948,10 +7971,16 @@ impl ::std::str::FromStr for LiveRequestKeysItemKey {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\\$tally\\/[^\\u0000-\\u001f\\u007f]{1,256}$)",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+                "doesn't match pattern \"^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\\$tally\\/[^\\u0000-\\u001f\\u007f]{1,256}$)\""
+                    .into(),
             );
         }
         Ok(Self(value.to_string()))
@@ -6992,6 +8021,8 @@ pub struct MostraInitializeParams {
     pub client: ClientInfo,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub home: ::std::option::Option<HomeConfig>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub link: ::std::option::Option<OwnerLinkInfo>,
     pub ports: ::std::vec::Vec<PortName>,
     pub revisions: ::std::vec::Vec<::std::string::String>,
 }
@@ -7196,6 +8227,131 @@ pub struct OrphanedField {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub label: ::std::option::Option<::std::string::String>,
     pub value: ::serde_json::Value,
+}
+///An owner instance's link on its binding session: its link ID, its relay mark and the hosted home's position it committed.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct OwnerLinkInfo {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub followed: ::std::option::Option<OwnerLinkInfoFollowed>,
+    #[serde(rename = "instanceId")]
+    pub instance_id: OwnerLinkInfoInstanceId,
+    #[serde(rename = "relayMark")]
+    pub relay_mark: i64,
+}
+///`OwnerLinkInfoFollowed`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct OwnerLinkInfoFollowed {
+    pub cursor: Cursor,
+    pub incarnation: OwnerLinkInfoFollowedIncarnation,
+}
+///`OwnerLinkInfoFollowedIncarnation`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OwnerLinkInfoFollowedIncarnation(::std::string::String);
+impl ::std::ops::Deref for OwnerLinkInfoFollowedIncarnation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OwnerLinkInfoFollowedIncarnation> for ::std::string::String {
+    fn from(value: OwnerLinkInfoFollowedIncarnation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OwnerLinkInfoFollowedIncarnation {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OwnerLinkInfoFollowedIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for OwnerLinkInfoFollowedIncarnation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OwnerLinkInfoFollowedIncarnation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`OwnerLinkInfoInstanceId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OwnerLinkInfoInstanceId(::std::string::String);
+impl ::std::ops::Deref for OwnerLinkInfoInstanceId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OwnerLinkInfoInstanceId> for ::std::string::String {
+    fn from(value: OwnerLinkInfoInstanceId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OwnerLinkInfoInstanceId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OwnerLinkInfoInstanceId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OwnerLinkInfoInstanceId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OwnerLinkInfoInstanceId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///A long-poll answer: the cursor, the events after the asked one, and a snapshot.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -7477,6 +8633,882 @@ impl<'de> ::serde::Deserialize<'de> for PortName {
             })
     }
 }
+///`PortRelayCallParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayCallParams {
+    pub args: Batches,
+    #[serde(rename = "artifactId")]
+    pub artifact_id: PortRelayCallParamsArtifactId,
+    #[serde(rename = "callId")]
+    pub call_id: PortRelayCallParamsCallId,
+    #[serde(rename = "fnId")]
+    pub fn_id: PortRelayCallParamsFnId,
+    #[serde(rename = "versionId")]
+    pub version_id: PortRelayCallParamsVersionId,
+    #[serde(rename = "viewId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub view_id: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewer: ::std::option::Option<RelayViewer>,
+}
+///`PortRelayCallParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayCallParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for PortRelayCallParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCallParamsArtifactId> for ::std::string::String {
+    fn from(value: PortRelayCallParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayCallParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayCallParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayCallParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayCallParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayCallParamsCallId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayCallParamsCallId(::std::string::String);
+impl ::std::ops::Deref for PortRelayCallParamsCallId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCallParamsCallId> for ::std::string::String {
+    fn from(value: PortRelayCallParamsCallId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayCallParamsCallId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayCallParamsCallId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayCallParamsCallId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayCallParamsCallId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayCallParamsFnId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayCallParamsFnId(::std::string::String);
+impl ::std::ops::Deref for PortRelayCallParamsFnId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCallParamsFnId> for ::std::string::String {
+    fn from(value: PortRelayCallParamsFnId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayCallParamsFnId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayCallParamsFnId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayCallParamsFnId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayCallParamsFnId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayCallParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayCallParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for PortRelayCallParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCallParamsVersionId> for ::std::string::String {
+    fn from(value: PortRelayCallParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayCallParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayCallParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayCallParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayCallParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayCallResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayCallResult {
+    pub accepted: crate::wire::ConstTrue,
+}
+///`PortRelayCancelParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayCancelParams {
+    #[serde(rename = "runId")]
+    pub run_id: PortRelayCancelParamsRunId,
+}
+///`PortRelayCancelParamsRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayCancelParamsRunId(::std::string::String);
+impl ::std::ops::Deref for PortRelayCancelParamsRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCancelParamsRunId> for ::std::string::String {
+    fn from(value: PortRelayCancelParamsRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayCancelParamsRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayCancelParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayCancelParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayCancelParamsRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayCancelResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct PortRelayCancelResult(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for PortRelayCancelResult {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayCancelResult>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: PortRelayCancelResult) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for PortRelayCancelResult {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
+///`PortRelayLiveParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayLiveParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: PortRelayLiveParamsArtifactId,
+    pub interest: PortRelayLiveParamsInterest,
+    pub keys: ::std::vec::Vec<PortRelayLiveParamsKeysItem>,
+    #[serde(rename = "versionId")]
+    pub version_id: PortRelayLiveParamsVersionId,
+}
+///`PortRelayLiveParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsArtifactId> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveParamsInterest`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PortRelayLiveParamsInterest {
+    #[serde(rename = "start")]
+    Start,
+    #[serde(rename = "renew")]
+    Renew,
+    #[serde(rename = "stop")]
+    Stop,
+    #[serde(rename = "refresh")]
+    Refresh,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsInterest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsInterest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`PortRelayLiveParamsKeysItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsKeysItem(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsKeysItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsKeysItem> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsKeysItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsKeysItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsKeysItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsKeysItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsKeysItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayLiveParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for PortRelayLiveParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveParamsVersionId> for ::std::string::String {
+    fn from(value: PortRelayLiveParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayLiveParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayLiveParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayLiveParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayLiveResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct PortRelayLiveResult(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for PortRelayLiveResult {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayLiveResult>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: PortRelayLiveResult) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for PortRelayLiveResult {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
+///`PortRelayReconcileParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayReconcileParams {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub held: ::std::vec::Vec<RelayHeld>,
+    pub runs: ::std::vec::Vec<PortRelayReconcileParamsRunsItem>,
+}
+///`PortRelayReconcileParamsRunsItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayReconcileParamsRunsItem(::std::string::String);
+impl ::std::ops::Deref for PortRelayReconcileParamsRunsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayReconcileParamsRunsItem> for ::std::string::String {
+    fn from(value: PortRelayReconcileParamsRunsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayReconcileParamsRunsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayReconcileParamsRunsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for PortRelayReconcileParamsRunsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayReconcileParamsRunsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayReconcileResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayReconcileResult {
+    pub runs: ::std::vec::Vec<RelayReconciled>,
+}
+///`PortRelayRunParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayRunParams {
+    pub args: Batches,
+    #[serde(rename = "artifactId")]
+    pub artifact_id: PortRelayRunParamsArtifactId,
+    #[serde(rename = "fnId")]
+    pub fn_id: PortRelayRunParamsFnId,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub key: ::std::option::Option<::std::string::String>,
+    #[serde(rename = "runId")]
+    pub run_id: PortRelayRunParamsRunId,
+    pub seq: ::std::num::NonZeroU64,
+    #[serde(rename = "versionId")]
+    pub version_id: PortRelayRunParamsVersionId,
+    #[serde(rename = "viewId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub view_id: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewer: ::std::option::Option<RelayViewer>,
+}
+///`PortRelayRunParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayRunParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for PortRelayRunParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayRunParamsArtifactId> for ::std::string::String {
+    fn from(value: PortRelayRunParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayRunParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayRunParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayRunParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayRunParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayRunParamsFnId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayRunParamsFnId(::std::string::String);
+impl ::std::ops::Deref for PortRelayRunParamsFnId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayRunParamsFnId> for ::std::string::String {
+    fn from(value: PortRelayRunParamsFnId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayRunParamsFnId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayRunParamsFnId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayRunParamsFnId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayRunParamsFnId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayRunParamsRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayRunParamsRunId(::std::string::String);
+impl ::std::ops::Deref for PortRelayRunParamsRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayRunParamsRunId> for ::std::string::String {
+    fn from(value: PortRelayRunParamsRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayRunParamsRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayRunParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayRunParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayRunParamsRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayRunParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortRelayRunParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for PortRelayRunParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortRelayRunParamsVersionId> for ::std::string::String {
+    fn from(value: PortRelayRunParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortRelayRunParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortRelayRunParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortRelayRunParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortRelayRunParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PortRelayRunResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortRelayRunResult {
+    pub accepted: crate::wire::ConstTrue,
+}
 ///The artifact and the name of the secret its server code asks for.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PortSecretsGetParams {
@@ -7619,6 +9651,1438 @@ pub struct PublishReceipt {
     pub version: ::std::num::NonZeroU64,
     #[serde(rename = "versionId")]
     pub version_id: VersionId,
+}
+///`RelayCallBatchParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayCallBatchParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub batches: ::std::option::Option<Batches>,
+    #[serde(rename = "callId")]
+    pub call_id: RelayCallBatchParamsCallId,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub end: ::std::option::Option<RelayCallBatchParamsEnd>,
+    pub seq: ::std::num::NonZeroU64,
+}
+///`RelayCallBatchParamsCallId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayCallBatchParamsCallId(::std::string::String);
+impl ::std::ops::Deref for RelayCallBatchParamsCallId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayCallBatchParamsCallId> for ::std::string::String {
+    fn from(value: RelayCallBatchParamsCallId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayCallBatchParamsCallId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayCallBatchParamsCallId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayCallBatchParamsCallId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayCallBatchParamsCallId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayCallBatchParamsEnd`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayCallBatchParamsEnd {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<RelayCallBatchParamsEndError>,
+    pub status: RelayCallBatchParamsEndStatus,
+}
+///`RelayCallBatchParamsEndError`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayCallBatchParamsEndError {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub code: ::std::option::Option<RelayCallBatchParamsEndErrorCode>,
+    pub message: RelayCallBatchParamsEndErrorMessage,
+}
+///`RelayCallBatchParamsEndErrorCode`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayCallBatchParamsEndErrorCode(::std::string::String);
+impl ::std::ops::Deref for RelayCallBatchParamsEndErrorCode {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayCallBatchParamsEndErrorCode> for ::std::string::String {
+    fn from(value: RelayCallBatchParamsEndErrorCode) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayCallBatchParamsEndErrorCode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayCallBatchParamsEndErrorCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for RelayCallBatchParamsEndErrorCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayCallBatchParamsEndErrorCode {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayCallBatchParamsEndErrorMessage`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayCallBatchParamsEndErrorMessage(::std::string::String);
+impl ::std::ops::Deref for RelayCallBatchParamsEndErrorMessage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayCallBatchParamsEndErrorMessage>
+for ::std::string::String {
+    fn from(value: RelayCallBatchParamsEndErrorMessage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayCallBatchParamsEndErrorMessage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayCallBatchParamsEndErrorMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for RelayCallBatchParamsEndErrorMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayCallBatchParamsEndErrorMessage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayCallBatchParamsEndStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RelayCallBatchParamsEndStatus {
+    #[serde(rename = "succeeded")]
+    Succeeded,
+    #[serde(rename = "failed")]
+    Failed,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for RelayCallBatchParamsEndStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayCallBatchParamsEndStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`RelayCallBatchResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct RelayCallBatchResult(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for RelayCallBatchResult {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayCallBatchResult>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: RelayCallBatchResult) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for RelayCallBatchResult {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
+///`RelayEffectParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayEffectParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: RelayEffectParamsArtifactId,
+    #[serde(rename = "callId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub call_id: ::std::option::Option<::std::string::String>,
+    pub kind: RelayEffectParamsKind,
+    pub name: RelayEffectParamsName,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub payload: ::std::option::Option<::serde_json::Value>,
+    #[serde(rename = "runId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub run_id: ::std::option::Option<::std::string::String>,
+}
+///`RelayEffectParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayEffectParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for RelayEffectParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayEffectParamsArtifactId> for ::std::string::String {
+    fn from(value: RelayEffectParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayEffectParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayEffectParamsKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RelayEffectParamsKind {
+    #[serde(rename = "signal")]
+    Signal,
+    #[serde(rename = "emit")]
+    Emit,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`RelayEffectParamsName`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayEffectParamsName(::std::string::String);
+impl ::std::ops::Deref for RelayEffectParamsName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayEffectParamsName> for ::std::string::String {
+    fn from(value: RelayEffectParamsName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayEffectParamsName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayEffectParamsName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayEffectParamsName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayEffectResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayEffectResult {
+    pub cursor: Cursor,
+}
+///`RelayHeld`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayHeld {
+    pub batches: i64,
+    pub log: i64,
+    #[serde(rename = "runId")]
+    pub run_id: RelayHeldRunId,
+}
+///`RelayHeldRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayHeldRunId(::std::string::String);
+impl ::std::ops::Deref for RelayHeldRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayHeldRunId> for ::std::string::String {
+    fn from(value: RelayHeldRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayHeldRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayHeldRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayHeldRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayHeldRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayLiveValueParams {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: RelayLiveValueParamsArtifactId,
+    pub at: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<RelayLiveValueParamsError>,
+    pub key: RelayLiveValueParamsKey,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<Batches>,
+    #[serde(rename = "versionId")]
+    pub version_id: RelayLiveValueParamsVersionId,
+}
+///`RelayLiveValueParamsArtifactId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsArtifactId(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsArtifactId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsArtifactId> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsArtifactId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsArtifactId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsArtifactId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsArtifactId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueParamsError`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayLiveValueParamsError {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub code: ::std::option::Option<::std::string::String>,
+    pub message: ::std::string::String,
+}
+///`RelayLiveValueParamsKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsKey(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsKey> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z_$][A-Za-z0-9_$]{0,127}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^[A-Za-z_$][A-Za-z0-9_$]{0,127}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueParamsVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayLiveValueParamsVersionId(::std::string::String);
+impl ::std::ops::Deref for RelayLiveValueParamsVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayLiveValueParamsVersionId> for ::std::string::String {
+    fn from(value: RelayLiveValueParamsVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayLiveValueParamsVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayLiveValueParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayLiveValueParamsVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayLiveValueParamsVersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayLiveValueResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct RelayLiveValueResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub revision: ::std::option::Option<::std::string::String>,
+}
+///`RelayReconciled`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayReconciled {
+    #[serde(rename = "runId")]
+    pub run_id: ::std::string::String,
+    pub state: RelayReconciledState,
+}
+///`RelayReconciledState`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum RelayReconciledState {
+    RunState(RunState),
+    String(::std::string::String),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::convert::From<RunState> for RelayReconciledState {
+    fn from(value: RunState) -> Self {
+        Self::RunState(value)
+    }
+}
+///`RelayRunEnd`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayRunEnd {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<RelayRunEndError>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<RelayRunEndReason>,
+    pub status: RelayRunEndStatus,
+}
+///`RelayRunEndError`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayRunEndError {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub code: ::std::option::Option<RelayRunEndErrorCode>,
+    pub message: RelayRunEndErrorMessage,
+}
+///`RelayRunEndErrorCode`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayRunEndErrorCode(::std::string::String);
+impl ::std::ops::Deref for RelayRunEndErrorCode {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayRunEndErrorCode> for ::std::string::String {
+    fn from(value: RelayRunEndErrorCode) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayRunEndErrorCode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayRunEndErrorCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayRunEndErrorCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayRunEndErrorCode {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayRunEndErrorMessage`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayRunEndErrorMessage(::std::string::String);
+impl ::std::ops::Deref for RelayRunEndErrorMessage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayRunEndErrorMessage> for ::std::string::String {
+    fn from(value: RelayRunEndErrorMessage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayRunEndErrorMessage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayRunEndErrorMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayRunEndErrorMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayRunEndErrorMessage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayRunEndReason`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayRunEndReason(::std::string::String);
+impl ::std::ops::Deref for RelayRunEndReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayRunEndReason> for ::std::string::String {
+    fn from(value: RelayRunEndReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayRunEndReason {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayRunEndReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayRunEndReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayRunEndReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayRunEndStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RelayRunEndStatus {
+    #[serde(rename = "succeeded")]
+    Succeeded,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for RelayRunEndStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayRunEndStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`RelayRunUpdateParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayRunUpdateParams {
+    #[serde(
+        rename = "batchFrom",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub batch_from: ::std::option::Option<i64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub batches: ::std::option::Option<Batches>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub end: ::std::option::Option<RelayRunEnd>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub log: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "logFrom", skip_serializing_if = "::std::option::Option::is_none")]
+    pub log_from: ::std::option::Option<i64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub progress: ::std::option::Option<RunProgress>,
+    #[serde(rename = "runId")]
+    pub run_id: RelayRunUpdateParamsRunId,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub running: ::std::option::Option<bool>,
+    pub seq: ::std::num::NonZeroU64,
+}
+///`RelayRunUpdateParamsRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayRunUpdateParamsRunId(::std::string::String);
+impl ::std::ops::Deref for RelayRunUpdateParamsRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayRunUpdateParamsRunId> for ::std::string::String {
+    fn from(value: RelayRunUpdateParamsRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayRunUpdateParamsRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayRunUpdateParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayRunUpdateParamsRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayRunUpdateParamsRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`RelayRunUpdateResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct RelayRunUpdateResult(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for RelayRunUpdateResult {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayRunUpdateResult>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: RelayRunUpdateResult) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for RelayRunUpdateResult {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
+///The viewer a relayed run or call acts for: the hosted home's viewer ID and name.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RelayViewer {
+    pub id: RelayViewerId,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+}
+///`RelayViewerId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RelayViewerId(::std::string::String);
+impl ::std::ops::Deref for RelayViewerId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RelayViewerId> for ::std::string::String {
+    fn from(value: RelayViewerId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RelayViewerId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelayViewerId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelayViewerId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RelayViewerId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///One remote server this home is linked to, and the state of the link.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLink {
+    pub account: RemoteLinkAccount,
+    pub default: bool,
+    #[serde(rename = "instanceId")]
+    pub instance_id: ::std::string::String,
+    #[serde(
+        rename = "lastError",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub last_error: ::std::option::Option<::std::string::String>,
+    pub name: ::std::string::String,
+    #[serde(rename = "pendingPushes")]
+    pub pending_pushes: i64,
+    pub server: ServerOrigin,
+    pub since: ::std::string::String,
+    pub state: RemoteLinkState,
+}
+///`RemoteLinkAccount`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLinkAccount {
+    pub id: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+}
+///`RemoteLinkState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RemoteLinkState {
+    #[serde(rename = "connected")]
+    Connected,
+    #[serde(rename = "connecting")]
+    Connecting,
+    #[serde(rename = "offline")]
+    Offline,
+    #[serde(rename = "signed-out")]
+    SignedOut,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for RemoteLinkState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemoteLinkState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`RemoteLoginParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct RemoteLoginParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub default: ::std::option::Option<bool>,
+    #[serde(
+        rename = "requestId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub request_id: ::std::option::Option<RemoteLoginParamsRequestId>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub server: ::std::option::Option<ServerOrigin>,
+}
+///`RemoteLoginParamsRequestId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemoteLoginParamsRequestId(::std::string::String);
+impl ::std::ops::Deref for RemoteLoginParamsRequestId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemoteLoginParamsRequestId> for ::std::string::String {
+    fn from(value: RemoteLoginParamsRequestId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemoteLoginParamsRequestId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemoteLoginParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemoteLoginParamsRequestId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemoteLoginParamsRequestId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A device-grant sign-in that started: where to go and the code to enter.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLoginResult {
+    #[serde(rename = "expiresAt")]
+    pub expires_at: ::std::string::String,
+    #[serde(rename = "loginId")]
+    pub login_id: ::std::string::String,
+    pub server: ServerOrigin,
+    #[serde(rename = "userCode")]
+    pub user_code: ::std::string::String,
+    #[serde(rename = "verificationUri")]
+    pub verification_uri: ::std::string::String,
+    #[serde(
+        rename = "verificationUriComplete",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub verification_uri_complete: ::std::option::Option<::std::string::String>,
+}
+///`RemoteLoginWaitParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLoginWaitParams {
+    #[serde(rename = "loginId")]
+    pub login_id: RemoteLoginWaitParamsLoginId,
+    #[serde(rename = "timeoutMs")]
+    pub timeout_ms: i64,
+}
+///`RemoteLoginWaitParamsLoginId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemoteLoginWaitParamsLoginId(::std::string::String);
+impl ::std::ops::Deref for RemoteLoginWaitParamsLoginId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemoteLoginWaitParamsLoginId> for ::std::string::String {
+    fn from(value: RemoteLoginWaitParamsLoginId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemoteLoginWaitParamsLoginId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemoteLoginWaitParamsLoginId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemoteLoginWaitParamsLoginId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemoteLoginWaitParamsLoginId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A sign-in's end: signed in with the account and instance link, or pending.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(tag = "status")]
+pub enum RemoteLoginWaitResult {
+    #[serde(rename = "signed-in")]
+    SignedIn {
+        account: RemoteLoginWaitResultAccount,
+        #[serde(rename = "instanceId")]
+        instance_id: ::std::string::String,
+        server: ServerOrigin,
+    },
+    #[serde(rename = "pending")]
+    Pending,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::serde_json::Value),
+}
+///`RemoteLoginWaitResultAccount`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLoginWaitResultAccount {
+    pub id: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+}
+///`RemoteLogoutParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct RemoteLogoutParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub forget: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub server: ::std::option::Option<ServerOrigin>,
+}
+///The servers signed out of.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLogoutResult {
+    pub servers: ::std::vec::Vec<ServerOrigin>,
+}
+///`RemoteStatusParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct RemoteStatusParams(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for RemoteStatusParams {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemoteStatusParams>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: RemoteStatusParams) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for RemoteStatusParams {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
+}
+///Every remote server this home is linked to.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteStatusResult {
+    pub links: ::std::vec::Vec<RemoteLink>,
+}
+///`RemoteTokenParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteTokenParams {
+    #[serde(rename = "accessToken")]
+    pub access_token: RemoteTokenParamsAccessToken,
+}
+///`RemoteTokenParamsAccessToken`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemoteTokenParamsAccessToken(::std::string::String);
+impl ::std::ops::Deref for RemoteTokenParamsAccessToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemoteTokenParamsAccessToken> for ::std::string::String {
+    fn from(value: RemoteTokenParamsAccessToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemoteTokenParamsAccessToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemoteTokenParamsAccessToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemoteTokenParamsAccessToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemoteTokenParamsAccessToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///When the binding closes unless its token is refreshed again.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteTokenResult {
+    #[serde(rename = "expiresAt")]
+    pub expires_at: ::std::string::String,
 }
 ///One comment thread in results: messages, anchor layers and the screenshot crop.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -8142,6 +11606,8 @@ pub struct ResultsSubmission {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub latest_version: ::std::option::Option<::std::num::NonZeroU64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub origin: ::std::option::Option<EventOrigin>,
     pub policy: SubmissionPolicy,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub previous: ::std::option::Option<SubmissionId>,
@@ -8412,6 +11878,64 @@ impl ::std::convert::TryFrom<::std::string::String> for Revision {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for Revision {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Hosted route ID: "rte_" followed by a 26-character ULID.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RouteId(::std::string::String);
+impl ::std::ops::Deref for RouteId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RouteId> for ::std::string::String {
+    fn from(value: RouteId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RouteId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^rte_[0-7][0-9A-HJKMNP-TV-Z]{25}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^rte_[0-7][0-9A-HJKMNP-TV-Z]{25}$\"".into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RouteId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RouteId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RouteId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -9011,6 +12535,11 @@ pub struct RunState {
     pub log: ::std::vec::Vec<::std::string::String>,
     #[serde(rename = "logFrom", skip_serializing_if = "::std::option::Option::is_none")]
     pub log_from: ::std::option::Option<i64>,
+    #[serde(
+        rename = "ownerUnreachable",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub owner_unreachable: ::std::option::Option<bool>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub progress: ::std::option::Option<RunProgress>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -9053,6 +12582,8 @@ pub enum RunStateStatus {
     Failed,
     #[serde(rename = "cancelled")]
     Cancelled,
+    #[serde(rename = "unknown")]
+    UnknownValue,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -9358,6 +12889,62 @@ impl ::std::convert::TryFrom<::std::string::String> for SecretSetParamsValue {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for SecretSetParamsValue {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A remote server, by its API origin, such as https://api.example.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ServerOrigin(::std::string::String);
+impl ::std::ops::Deref for ServerOrigin {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ServerOrigin> for ::std::string::String {
+    fn from(value: ServerOrigin) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ServerOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^https?:\\/\\/[^/?#\\s]+$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^https?:\\/\\/[^/?#\\s]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ServerOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ServerOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ServerOrigin {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -9756,6 +13343,8 @@ pub struct ShareStartParams {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub scopes: ::std::vec::Vec<CapabilityScope>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub server: ::std::option::Option<ShareStartParamsServer>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub ttl: ::std::option::Option<Duration>,
     pub via: ShareVia,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -9804,6 +13393,62 @@ impl ::std::convert::TryFrom<::std::string::String> for ShareStartParamsRequestI
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ShareStartParamsRequestId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ShareStartParamsServer`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ShareStartParamsServer(::std::string::String);
+impl ::std::ops::Deref for ShareStartParamsServer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ShareStartParamsServer> for ::std::string::String {
+    fn from(value: ShareStartParamsServer) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ShareStartParamsServer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^https?:\\/\\/[^/?#\\s]+$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^https?:\\/\\/[^/?#\\s]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ShareStartParamsServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ShareStartParamsServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ShareStartParamsServer {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -10682,7 +14327,7 @@ impl<'de> ::serde::Deserialize<'de> for ShareUrl {
             })
     }
 }
-///How a share reaches its viewers: tailnet, funnel or cloudflare.
+///How a share reaches its viewers: tailnet, funnel or cloudflare, or remote: hosted on a remote server (D165).
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -10701,6 +14346,8 @@ pub enum ShareVia {
     Funnel,
     #[serde(rename = "cloudflare")]
     Cloudflare,
+    #[serde(rename = "remote")]
+    Remote,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -10958,6 +14605,8 @@ pub struct StatePatchParams {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub base_revision: ::std::option::Option<DocumentRevision>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub causation: ::std::option::Option<StatePatchParamsCausation>,
     #[serde(rename = "mutationId")]
     pub mutation_id: MutationId,
     pub ops: ::std::vec::Vec<FieldOp>,
@@ -10998,6 +14647,66 @@ impl ::std::convert::TryFrom<::std::string::String> for StatePatchParamsAs {
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`StatePatchParamsCausation`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct StatePatchParamsCausation {
+    #[serde(rename = "runId")]
+    pub run_id: StatePatchParamsCausationRunId,
+}
+///`StatePatchParamsCausationRunId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct StatePatchParamsCausationRunId(::std::string::String);
+impl ::std::ops::Deref for StatePatchParamsCausationRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<StatePatchParamsCausationRunId> for ::std::string::String {
+    fn from(value: StatePatchParamsCausationRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for StatePatchParamsCausationRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for StatePatchParamsCausationRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for StatePatchParamsCausationRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for StatePatchParamsCausationRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///Where a page stands: cursor, viewer, draft, artifact state and its submission.
@@ -11187,12 +14896,70 @@ pub struct SubmissionEnvelope {
     #[serde(rename = "artifactId")]
     pub artifact_id: ArtifactId,
     pub attempt: ::std::num::NonZeroU64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub cursor: ::std::option::Option<Cursor>,
     #[serde(rename = "deliveryId")]
     pub delivery_id: DeliveryId,
     pub kind: ::std::string::String,
     pub results: Results,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub snapshot: ::std::option::Option<SubmissionEnvelopeSnapshot>,
     #[serde(rename = "submissionId")]
     pub submission_id: SubmissionId,
+}
+///`SubmissionEnvelopeSnapshot`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SubmissionEnvelopeSnapshot(::std::string::String);
+impl ::std::ops::Deref for SubmissionEnvelopeSnapshot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SubmissionEnvelopeSnapshot> for ::std::string::String {
+    fn from(value: SubmissionEnvelopeSnapshot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for SubmissionEnvelopeSnapshot {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 41943040usize {
+            return Err("longer than 41943040 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SubmissionEnvelopeSnapshot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SubmissionEnvelopeSnapshot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SubmissionEnvelopeSnapshot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///Submission ID: "sub_" followed by a 26-character ULID.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -11578,6 +15345,128 @@ pub struct SubmitRequest {
     #[serde(rename = "viewId")]
     pub view_id: ViewId,
 }
+///A count by choice of a viewer-scoped field: its field, 2 to 50 distinct choices and minTotal.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct TallySpec {
+    pub choices: ::std::vec::Vec<TallySpecChoicesItem>,
+    pub field: TallySpecField,
+    #[serde(rename = "minTotal", skip_serializing_if = "::std::option::Option::is_none")]
+    pub min_total: ::std::option::Option<i64>,
+}
+///`TallySpecChoicesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct TallySpecChoicesItem(::std::string::String);
+impl ::std::ops::Deref for TallySpecChoicesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TallySpecChoicesItem> for ::std::string::String {
+    fn from(value: TallySpecChoicesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for TallySpecChoicesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for TallySpecChoicesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TallySpecChoicesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for TallySpecChoicesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`TallySpecField`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct TallySpecField(::std::string::String);
+impl ::std::ops::Deref for TallySpecField {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TallySpecField> for ::std::string::String {
+    fn from(value: TallySpecField) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for TallySpecField {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for TallySpecField {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TallySpecField {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for TallySpecField {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///Thread ID: "thr_" followed by a 26-character ULID.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
@@ -11914,6 +15803,521 @@ impl ::std::convert::TryFrom<::std::string::String> for VersionId {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for VersionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A version an owner pushes to its hosted home: its identity, manifest, registry, lockfile and output listing.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct VersionPush {
+    #[serde(rename = "envDigest")]
+    pub env_digest: VersionPushEnvDigest,
+    pub listing: ::std::vec::Vec<
+        (VersionPushListingItemItem0, bool, VersionPushListingItemItem2, i64),
+    >,
+    pub lock: VersionPushLock,
+    pub manifest: VersionPushManifest,
+    pub number: ::std::num::NonZeroU64,
+    #[serde(rename = "outputDigest")]
+    pub output_digest: VersionPushOutputDigest,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub policy: ::std::option::Option<SubmissionPolicy>,
+    pub registry: VersionPushRegistry,
+    #[serde(rename = "sourceDigest")]
+    pub source_digest: VersionPushSourceDigest,
+    #[serde(rename = "versionId")]
+    pub version_id: VersionPushVersionId,
+}
+///`VersionPushEnvDigest`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushEnvDigest(::std::string::String);
+impl ::std::ops::Deref for VersionPushEnvDigest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushEnvDigest> for ::std::string::String {
+    fn from(value: VersionPushEnvDigest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushEnvDigest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushEnvDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushEnvDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushEnvDigest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushListingItemItem0`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushListingItemItem0(::std::string::String);
+impl ::std::ops::Deref for VersionPushListingItemItem0 {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushListingItemItem0> for ::std::string::String {
+    fn from(value: VersionPushListingItemItem0) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushListingItemItem0 {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushListingItemItem0 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushListingItemItem0 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushListingItemItem0 {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushListingItemItem2`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushListingItemItem2(::std::string::String);
+impl ::std::ops::Deref for VersionPushListingItemItem2 {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushListingItemItem2> for ::std::string::String {
+    fn from(value: VersionPushListingItemItem2) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushListingItemItem2 {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushListingItemItem2 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushListingItemItem2 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushListingItemItem2 {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushLock`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushLock(::std::string::String);
+impl ::std::ops::Deref for VersionPushLock {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushLock> for ::std::string::String {
+    fn from(value: VersionPushLock) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushLock {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16777216usize {
+            return Err("longer than 16777216 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushLock {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushLock {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushLock {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushManifest`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushManifest(::std::string::String);
+impl ::std::ops::Deref for VersionPushManifest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushManifest> for ::std::string::String {
+    fn from(value: VersionPushManifest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushManifest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4194304usize {
+            return Err("longer than 4194304 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushManifest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushManifest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushManifest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushOutputDigest`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushOutputDigest(::std::string::String);
+impl ::std::ops::Deref for VersionPushOutputDigest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushOutputDigest> for ::std::string::String {
+    fn from(value: VersionPushOutputDigest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushOutputDigest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushOutputDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushOutputDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushOutputDigest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushRegistry`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushRegistry(::std::string::String);
+impl ::std::ops::Deref for VersionPushRegistry {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushRegistry> for ::std::string::String {
+    fn from(value: VersionPushRegistry) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushRegistry {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16777216usize {
+            return Err("longer than 16777216 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushRegistry {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushRegistry {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushRegistry {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushSourceDigest`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushSourceDigest(::std::string::String);
+impl ::std::ops::Deref for VersionPushSourceDigest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushSourceDigest> for ::std::string::String {
+    fn from(value: VersionPushSourceDigest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushSourceDigest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushSourceDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushSourceDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushSourceDigest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`VersionPushVersionId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VersionPushVersionId(::std::string::String);
+impl ::std::ops::Deref for VersionPushVersionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VersionPushVersionId> for ::std::string::String {
+    fn from(value: VersionPushVersionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VersionPushVersionId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VersionPushVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VersionPushVersionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VersionPushVersionId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -12876,6 +17280,10 @@ pub enum ViewerKind {
     Token,
     #[serde(rename = "host")]
     Host,
+    #[serde(rename = "account")]
+    Account,
+    #[serde(rename = "anonymous")]
+    Anonymous,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -13526,6 +17934,34 @@ impl ::std::str::FromStr for DiagnosticSeverity {
         )
     }
 }
+impl ExportClass {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Bundle => "bundle",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ExportClass {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ExportClass {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "bundle" => Self::Bundle,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
 impl ExternalBaseMode {
     /// The value as it travels on the wire.
     #[must_use]
@@ -13680,6 +18116,126 @@ impl ::std::str::FromStr for GatewayStatusFacesItemListener {
         )
     }
 }
+impl HostedSettingsActions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::SignedIn => "signed-in",
+            Self::Link => "link",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsActions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsActions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "signed-in" => Self::SignedIn,
+                "link" => Self::Link,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsOfflineActions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Queue => "queue",
+            Self::Fail => "fail",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsOfflineActions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsOfflineActions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "queue" => Self::Queue,
+                "fail" => Self::Fail,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsPreview {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Generic => "generic",
+            Self::Title => "title",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsPreview {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsPreview {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "generic" => Self::Generic,
+                "title" => Self::Title,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl HostedSettingsSubmissions {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Link => "link",
+            Self::SignedIn => "signed-in",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for HostedSettingsSubmissions {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for HostedSettingsSubmissions {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "link" => Self::Link,
+                "signed-in" => Self::SignedIn,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
 impl InstanceCheckResultChecksItemStatus {
     /// The value as it travels on the wire.
     #[must_use]
@@ -13719,6 +18275,7 @@ impl InstanceInfoMode {
         match self {
             Self::Host => "host",
             Self::Daemon => "daemon",
+            Self::Hosted => "hosted",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -13737,6 +18294,7 @@ impl ::std::str::FromStr for InstanceInfoMode {
             match value {
                 "host" => Self::Host,
                 "daemon" => Self::Daemon,
+                "hosted" => Self::Hosted,
                 other => Self::Unknown(other.to_string()),
             },
         )
@@ -13797,6 +18355,166 @@ impl ::std::str::FromStr for PortAddressingExternalBaseParamsListener {
             match value {
                 "shell" => Self::Shell,
                 "artifact" => Self::Artifact,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl PortRelayLiveParamsInterest {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Start => "start",
+            Self::Renew => "renew",
+            Self::Stop => "stop",
+            Self::Refresh => "refresh",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for PortRelayLiveParamsInterest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for PortRelayLiveParamsInterest {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "start" => Self::Start,
+                "renew" => Self::Renew,
+                "stop" => Self::Stop,
+                "refresh" => Self::Refresh,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl RelayCallBatchParamsEndStatus {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for RelayCallBatchParamsEndStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for RelayCallBatchParamsEndStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "succeeded" => Self::Succeeded,
+                "failed" => Self::Failed,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl RelayEffectParamsKind {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Signal => "signal",
+            Self::Emit => "emit",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for RelayEffectParamsKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for RelayEffectParamsKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "signal" => Self::Signal,
+                "emit" => Self::Emit,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl RelayRunEndStatus {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for RelayRunEndStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for RelayRunEndStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "succeeded" => Self::Succeeded,
+                "failed" => Self::Failed,
+                "cancelled" => Self::Cancelled,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl RemoteLinkState {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Connected => "connected",
+            Self::Connecting => "connecting",
+            Self::Offline => "offline",
+            Self::SignedOut => "signed-out",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for RemoteLinkState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for RemoteLinkState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "connected" => Self::Connected,
+                "connecting" => Self::Connecting,
+                "offline" => Self::Offline,
+                "signed-out" => Self::SignedOut,
                 other => Self::Unknown(other.to_string()),
             },
         )
@@ -13967,6 +18685,7 @@ impl RunStateStatus {
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::UnknownValue => "unknown",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -13989,6 +18708,7 @@ impl ::std::str::FromStr for RunStateStatus {
                 "succeeded" => Self::Succeeded,
                 "failed" => Self::Failed,
                 "cancelled" => Self::Cancelled,
+                "unknown" => Self::UnknownValue,
                 other => Self::Unknown(other.to_string()),
             },
         )
@@ -14184,6 +18904,7 @@ impl ShareVia {
             Self::Tailnet => "tailnet",
             Self::Funnel => "funnel",
             Self::Cloudflare => "cloudflare",
+            Self::Remote => "remote",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -14203,6 +18924,7 @@ impl ::std::str::FromStr for ShareVia {
                 "tailnet" => Self::Tailnet,
                 "funnel" => Self::Funnel,
                 "cloudflare" => Self::Cloudflare,
+                "remote" => Self::Remote,
                 other => Self::Unknown(other.to_string()),
             },
         )
@@ -14465,6 +19187,8 @@ impl ViewerKind {
             Self::Tailnet => "tailnet",
             Self::Token => "token",
             Self::Host => "host",
+            Self::Account => "account",
+            Self::Anonymous => "anonymous",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -14485,6 +19209,8 @@ impl ::std::str::FromStr for ViewerKind {
                 "tailnet" => Self::Tailnet,
                 "token" => Self::Token,
                 "host" => Self::Host,
+                "account" => Self::Account,
+                "anonymous" => Self::Anonymous,
                 other => Self::Unknown(other.to_string()),
             },
         )

@@ -60,6 +60,7 @@
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
+    "ws": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },
@@ -72,6 +73,7 @@
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "@types/semver": "catalog:",
+    "@types/ws": "catalog:",
     "fast-check": "catalog:",
     "playwright": "catalog:",
     "tsdown": "catalog:",

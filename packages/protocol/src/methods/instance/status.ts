@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
+import { RemoteLink } from "../../remote.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 import { InstanceInfo } from "../mostra/initialize.ts";
 import { Share } from "../share/start.ts";
@@ -76,6 +77,8 @@ export interface InstanceStatusResult {
    * out here, since status is printed where a link's secret mustn't appear: `share/list` gives it.
    */
   readonly shares?: readonly Share[];
+  /** This home's links to remote servers (WP-29, `remote/status`), for `mostra status`. */
+  readonly links?: readonly RemoteLink[];
 }
 
 /** One artifact version's worker (RT-03, D62). */
@@ -196,6 +199,7 @@ const result: z.ZodType<InstanceStatusResult> = z
     workers: z.array(WorkerStatus).readonly().exactOptional(),
     idleExitAt: z.string().exactOptional(),
     shares: z.array(Share).readonly().exactOptional(),
+    links: z.array(RemoteLink).readonly().exactOptional(),
   })
   .register(wireRegistry, { id: "InstanceStatusResult" });
 

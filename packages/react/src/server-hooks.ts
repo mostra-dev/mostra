@@ -6,7 +6,12 @@
  * share the page's runtime, its view and its event stream, so a run started in one tab or before a
  * reload is followed the same way, and every component showing one source shares one value.
  */
-import { isFinalRunStatus, type RunProgress, type RunStatus } from "@mostra/protocol";
+import {
+  isFinalRunStatus,
+  type RunProgress,
+  type RunStatus,
+  type TallyValue,
+} from "@mostra/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useStore } from "./hooks.ts";
 import { MostraError } from "./runtime/errors.ts";
@@ -164,7 +169,8 @@ export function useAction<A extends unknown[], R>(
   return useMemo(() => {
     const status: ActionHandle<A, Awaited<R>>["status"] = view?.status ?? "idle";
     const error =
-      view?.error && (view.status === "failed" || view.status === "cancelled")
+      view?.error &&
+      (view.status === "failed" || view.status === "cancelled" || view.status === "unknown")
         ? { code: view.error.code ?? "MOSTRA_ACTION_THREW", message: view.error.message }
         : view?.status === "cancelled"
           ? { code: "MOSTRA_ACTION_CANCELLED", message: "The run was cancelled." }
@@ -210,11 +216,26 @@ export type LiveValuesOf<M> = {
     : never;
 };
 
-/** A live source's key: one of `LiveSources`, or any string before the declaration exists. */
-export type LiveKey = [keyof LiveSources] extends [never] ? string : keyof LiveSources & string;
+/**
+ * A tally's key, `$tally/<field>` (D165 item 12): the counts of a fixed-choice field the manifest's
+ * `tally` names, which Mostra keeps and pushes itself.
+ */
+export type TallyKey = `$tally/${string}`;
 
-/** A live source's value type. */
-export type LiveValue<K extends string> = K extends keyof LiveSources ? LiveSources[K] : unknown;
+/**
+ * A live source's key: one of `LiveSources`, or any string before the declaration exists, or a
+ * tally's key.
+ */
+export type LiveKey =
+  | ([keyof LiveSources] extends [never] ? string : keyof LiveSources & string)
+  | TallyKey;
+
+/** A live source's value type; a tally's is `TallyValue`. */
+export type LiveValue<K extends string> = K extends TallyKey
+  ? TallyValue
+  : K extends keyof LiveSources
+    ? LiveSources[K]
+    : unknown;
 
 /** What `useLive` shows (INTERFACES §2.3). */
 export interface LiveResult<T> {
@@ -230,6 +251,11 @@ export interface LiveResult<T> {
   readonly revision?: string;
   /** When the value was produced. */
   readonly at?: string;
+  /**
+   * On a hosted page, `true` while the page's owner is offline, so its producer can't refresh the
+   * value: `data` is the last value, from `at` (D165 item 4).
+   */
+  readonly ownerOffline?: boolean;
 }
 
 /** How long append mode keeps values without a `window`. */
@@ -286,6 +312,7 @@ export function useLive<K extends LiveKey>(
       refresh,
       ...(view?.revision !== undefined ? { revision: view.revision } : {}),
       ...(view?.at !== undefined ? { at: view.at } : {}),
+      ...(view?.ownerOffline ? { ownerOffline: true } : {}),
     };
   }, [view, append, window, refresh]);
 }

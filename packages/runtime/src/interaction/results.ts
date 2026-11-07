@@ -3,7 +3,13 @@
  * Everything comes from the immutable submission row, its snapshot and the version it names, plus
  * the deliveries' current states; never from the live draft (IN-06).
  */
-import type { ArtifactLink, ArtifactManifest, DeliveryStatus, Results } from "@mostra/protocol";
+import type {
+  ArtifactLink,
+  ArtifactManifest,
+  DeliveryStatus,
+  EventOrigin,
+  Results,
+} from "@mostra/protocol";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { LedgerDb } from "../ledger/index.ts";
 import { storedPolicy } from "./policy.ts";
@@ -164,6 +170,7 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
       digest: row.digest,
       delivery: overallDelivery(deliveries),
       deliveries,
+      ...(row.origin_json ? { origin: JSON.parse(row.origin_json) as EventOrigin } : {}),
     },
     answers: nestFields(draftFields),
     fields: [

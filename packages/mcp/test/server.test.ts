@@ -50,6 +50,43 @@ function base(answers: Parameters<typeof fakeInstance>[0] = {}) {
 }
 
 describe("the MCP server", () => {
+  it("is stateless: every tool names what it acts on, so another server continues by handles alone (RM-01)", async () => {
+    const { options, instance } = base({
+      "artifact/publish": () => ({
+        artifactId: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG",
+        versionId: "ver_0123456789ABCDEFGHJKMNPQRS",
+        version: 1,
+        cursor: "3",
+        reused: false,
+      }),
+      "results/get": () => ({ submissionId: "sub_x", markdown: "# Results" }),
+    });
+    const first = await connect(options);
+    const { tools } = await first.listTools();
+    // The tools that need no handle: they list, search, or make a new artifact of their own.
+    const unhandled = new Set(["artifact_list", "docs_search", "artifact_create"]);
+    for (const tool of tools) {
+      if (unhandled.has(tool.name)) continue;
+      const required = tool.inputSchema.required ?? [];
+      expect(
+        required.some((name) => name === "artifact" || name === "dir"),
+        tool.name,
+      ).toBe(true);
+    }
+    await first.callTool({ name: "artifact_publish", arguments: { dir: "/work/page" } });
+    // A second server, which saw nothing of the first (a remote endpoint answers each request with
+    // a fresh one, D164), reads the same artifact by its ID alone.
+    const second = await connect(options);
+    const read = await second.callTool({
+      name: "artifact_results",
+      arguments: { artifact: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG" },
+    });
+    expect(text(read)).toBe("# Results");
+    expect(instance.calls.map((call) => call.params)).toEqual([
+      { source: { path: "/work/page" } },
+      { artifact: { artifactId: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG" }, format: "md" },
+    ]);
+  });
   it("lists thirteen tools with short names, descriptions and input schemas, on both eras", async () => {
     for (const era of ["modern", "legacy"] as const) {
       const client = await connect(base().options, era);

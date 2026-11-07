@@ -45,6 +45,12 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_VERIFY_ACTION_SKIPPED: 409,
   MOSTRA_HOME_DISK_FULL: 507,
   MOSTRA_HOME_GONE: 503,
+  // A hosted page's relay (D165 item 4, INTERFACES §4).
+  MOSTRA_REMOTE_OWNER_OFFLINE: 503,
+  MOSTRA_REMOTE_QUEUE_FULL: 503,
+  MOSTRA_REMOTE_SIGN_IN_REQUIRED: 403,
+  MOSTRA_REMOTE_RATE_LIMITED: 429,
+  MOSTRA_ACTION_PAUSED: 423,
 };
 
 type Handler = (context: RouteContext) => Response | Promise<Response>;
@@ -61,8 +67,8 @@ export interface ActionRoutes {
 /** Options for {@link actionRoutes}. */
 export interface ActionRoutesOptions {
   readonly interaction: Interaction;
-  readonly actions: Actions;
-  readonly live: Live;
+  readonly actions: Pick<Actions, "call" | "startRun" | "attach" | "cancel">;
+  readonly live: Pick<Live, "read">;
   readonly log: Log;
   /** The browser-protocol revisions served. */
   readonly revisions: readonly string[];
@@ -73,8 +79,18 @@ function answer(diagnostic: Diagnostic, status: number): Response {
 }
 
 function failure(error: unknown): Response {
-  if (error instanceof RpcError)
-    return answer(error.diagnostic, STATUS[error.diagnostic.code] ?? 500);
+  if (error instanceof RpcError) {
+    const status = STATUS[error.diagnostic.code] ?? 500;
+    // A refusal that says when to try again (a rate limit) says so in `Retry-After` too.
+    const retryAfter = (error as { retryAfter?: unknown }).retryAfter;
+    if (typeof retryAfter === "number") {
+      return jsonResponse(
+        { ...error.diagnostic },
+        { status, headers: { "retry-after": String(retryAfter) } },
+      );
+    }
+    return answer(error.diagnostic, status);
+  }
   throw error;
 }
 

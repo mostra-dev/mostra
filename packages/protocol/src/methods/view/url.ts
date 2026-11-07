@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { ArtifactRef } from "../../artifact.ts";
-import { CapabilityScope, Duration } from "../../capability.ts";
+import { CapabilityScope } from "../../capability.ts";
+import { Duration } from "../../duration.ts";
 import { TokenId, VersionId } from "../../ids.ts";
 import { Viewer, ViewerSpec } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";

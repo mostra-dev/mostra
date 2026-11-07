@@ -19,6 +19,7 @@ import {
   createDiagnostic,
   type Diagnostic,
   type EventFilter,
+  type EventOrigin,
   type EventRecord,
   RpcError,
 } from "@mostra/protocol";
@@ -39,6 +40,8 @@ export interface NewEvent {
   readonly causation?: Readonly<Record<string, string>>;
   /** The event's data, JSON. Never a sensitive field's value (D52). */
   readonly payload: Readonly<Record<string, unknown>>;
+  /** For an event an owner instance copies from its hosted home: where it came from (§18.2). */
+  readonly origin?: EventOrigin;
 }
 
 /** Redactors whose secrets no event may carry (D44, AC-06): the instances of this process. */
@@ -89,7 +92,11 @@ export function appendEvent(db: LedgerDb, event: NewEvent): string {
           event.artifactId,
         )?.next ?? 1);
   const result = db.run(
-    "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    // `origin_json` (migration 13) is named only for a followed event, so a ledger still at an older
+    // schema (a migration's own tests) appends as before.
+    event.origin === undefined
+      ? "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      : "INSERT INTO event (artifact_id, seq, type, actor_json, causation_json, payload_json, at, origin_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     event.artifactId,
     seq,
     event.type,
@@ -97,6 +104,7 @@ export function appendEvent(db: LedgerDb, event: NewEvent): string {
     event.causation === undefined ? null : JSON.stringify(event.causation),
     JSON.stringify(redacted(event.payload)),
     new Date().toISOString(),
+    ...(event.origin === undefined ? [] : [originJson(event.origin)]),
   );
   return String(result.lastInsertRowid);
 }
@@ -111,6 +119,17 @@ export interface EventRow {
   readonly causation_json: string | null;
   readonly payload_json: string;
   readonly at: string;
+  readonly origin_json?: string | null;
+}
+
+/** An origin's stored form: its keys in one order, so one origin is one text (the unique index). */
+export function originJson(origin: EventOrigin): string {
+  return JSON.stringify({
+    server: origin.server,
+    home: origin.home,
+    incarnation: origin.incarnation,
+    cursor: origin.cursor,
+  });
 }
 
 /** An event row as the wire carries it. */
@@ -126,6 +145,7 @@ export function eventRecord(row: EventRow): EventRecord {
       ? { causation: JSON.parse(row.causation_json) as Record<string, string> }
       : {}),
     payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+    ...(row.origin_json ? { origin: JSON.parse(row.origin_json) as EventOrigin } : {}),
   };
 }
 

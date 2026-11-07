@@ -513,6 +513,8 @@ export class Store {
   /** Loads a fresh snapshot, once at a time; a failure leaves it to the next event or submit. */
   #resync(): Promise<void> {
     this.#resyncing ??= (async () => {
+      // After `??=` made the registration its `finally` clears.
+      await Promise.resolve();
       try {
         this.#applySnapshot(await this.#transport().snapshot());
       } catch {

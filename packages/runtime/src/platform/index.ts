@@ -42,6 +42,7 @@ export {
   sealPlaced,
   sealTree,
 } from "./files.ts";
+export { networkFilesystem } from "./filesystems.ts";
 export {
   currentUserSid,
   helperPath,

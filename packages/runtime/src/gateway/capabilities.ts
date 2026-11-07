@@ -178,8 +178,11 @@ export interface ResolvedSession {
   readonly csrf: string;
   /** The version a frame session entered (D98 item 5). */
   readonly versionId?: string;
-  /** How the session authenticates: a cookie, or the frame header of worker mode (D70). */
-  readonly mode: "cookie" | "worker";
+  /**
+   * How the session authenticates: a cookie, the frame header of worker mode (D70), or a hosted
+   * shell's header (`X-Mostra-Shell`, D165 item 8).
+   */
+  readonly mode: SessionMode;
   readonly grant: Grant;
   /**
    * The viewer the session acts as: its link's viewer (D104), else the one the host's identity
@@ -216,11 +219,14 @@ interface TokenRow {
   viewer_id: string | null;
 }
 
+/** How a session authenticates (DATA_MODEL §3 `session.mode`). */
+export type SessionMode = "cookie" | "worker" | "header";
+
 interface SessionRow {
   id: string;
   token_id: string;
   origin: string;
-  mode: "cookie" | "worker";
+  mode: SessionMode;
   csrf: string;
   version_id: string | null;
   viewer_id: string | null;
@@ -618,8 +624,11 @@ export class Capabilities {
     readonly versionId?: string;
     /** The person the host's identity port named, for a link without a viewer (D143 item 2). */
     readonly viewerId?: string | undefined;
-    /** `worker` for a worker-mode frame (D70), whose secret travels in a header; default `cookie`. */
-    readonly mode?: "cookie" | "worker";
+    /**
+     * `worker` for a worker-mode frame (D70) and `header` for a hosted shell (D165 item 8), whose
+     * secrets travel in headers; default `cookie`.
+     */
+    readonly mode?: SessionMode;
   }): {
     readonly cookie: string;
     readonly csrf: string;
@@ -655,7 +664,7 @@ export class Capabilities {
     cookies: readonly string[],
     origin: string,
     artifactId: string,
-    mode: "cookie" | "worker" = "cookie",
+    mode: SessionMode = "cookie",
   ): ResolvedSession | Refusal {
     let revoked = false;
     for (const value of cookies) {

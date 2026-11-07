@@ -1,12 +1,15 @@
 /**
- * Authoring: `new`, `verify`, `publish` and `add`, thin clients of `artifact/create`,
- * `artifact/verify`, `artifact/publish` and `deps/add` (INTERFACES §6).
+ * Authoring: `new`, `verify`, `publish`, `export`, `run` and `add`, thin clients of
+ * `artifact/create`, `artifact/verify`, `artifact/publish`, `artifact/export`, `artifact/import`
+ * and `deps/add` (INTERFACES §6, §15).
  */
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import {
   ARTIFACT_PROGRESS,
   artifactCreateMethod,
+  artifactExportMethod,
+  artifactImportMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
   depsAddMethod,
@@ -16,7 +19,7 @@ import {
 import { type CommandDef, defineCommand } from "../command.ts";
 import { EXIT } from "../exit.ts";
 import { usage } from "../parse.ts";
-import { arg, flag, sourceRef } from "./shared.ts";
+import { arg, artifactRef, flag, sourceRef } from "./shared.ts";
 
 /** `mostra new <dir>`. */
 export const newCommand: CommandDef = defineCommand({
@@ -193,6 +196,85 @@ export const publishCommand: CommandDef = defineCommand({
     return {
       result: receipt,
       human: `${receipt.reused ? "Already published" : "Published"} version ${receipt.version} (${receipt.versionId}) of ${receipt.artifactId}\n${forced}${receipt.url ?? ""}\n`,
+    };
+  },
+});
+
+/** `mostra export <artifact> --as bundle --out <path>`. */
+export const exportCommand: CommandDef = defineCommand({
+  path: ["export"],
+  summary: "Write a published version out of the home, as a portable bundle another home can run.",
+  args: [{ name: "artifact", summary: "The artifact: its source path or its ID." }],
+  flags: [
+    {
+      name: "as",
+      kind: "string",
+      value: "<class>",
+      choices: ["bundle"],
+      default: "bundle",
+      summary: "What to write: `bundle`, the version's builds, manifest, lockfile and source.",
+    },
+    {
+      name: "out",
+      kind: "string",
+      value: "<path>",
+      summary: "Where: a new directory, or one archive when it ends in .tar.zst.",
+    },
+    {
+      name: "version",
+      kind: "string",
+      value: "<number|id>",
+      summary: "The version. Default: the latest.",
+    },
+  ],
+  output: { type: "ArtifactExportResult", topic: "cli" },
+  exits: [EXIT.failure],
+  example: "export ./sidebar-review --out ./sidebar-review.tar.zst",
+  async run(context) {
+    const out = flag(context, "out");
+    if (out === undefined) throw usage('"mostra export" needs --out <path>.');
+    const version = flag(context, "version");
+    const result = await context.call(artifactExportMethod, {
+      artifact: artifactRef(arg(context, "artifact"), context.cwd),
+      as: "bundle",
+      out: resolve(context.cwd, out),
+      ...(version !== undefined
+        ? { version: /^\d+$/.test(version) ? Number(version) : version }
+        : {}),
+    });
+    return {
+      result,
+      human: `Exported ${result.versionId} to ${result.files.join(", ")}\n`,
+    };
+  },
+});
+
+/** `mostra run <bundle>`. */
+export const runCommand: CommandDef = defineCommand({
+  path: ["run"],
+  summary:
+    "Make a bundle `mostra export` wrote a version of this home, with the same IDs, and print its link.",
+  args: [{ name: "bundle", summary: "The bundle: its directory or its .tar.zst archive." }],
+  flags: [
+    {
+      name: "request-id",
+      kind: "string",
+      value: "<id>",
+      summary: "Make a retry return the first attempt's receipt.",
+    },
+  ],
+  output: { type: "PublishReceipt", topic: "cli" },
+  exits: [EXIT.failure],
+  example: "run ./sidebar-review.tar.zst",
+  async run(context) {
+    const requestId = flag(context, "request-id");
+    const receipt = await context.call(artifactImportMethod, {
+      bundle: resolve(context.cwd, arg(context, "bundle")),
+      ...(requestId !== undefined ? { requestId } : {}),
+    });
+    return {
+      result: receipt,
+      human: `${receipt.reused ? "Already here" : "Imported"}: version ${receipt.version} (${receipt.versionId}) of ${receipt.artifactId}\n${receipt.url ?? ""}\n`,
     };
   },
 });

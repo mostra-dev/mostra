@@ -12,6 +12,7 @@ import {
   ArtifactManifest,
   createDiagnostic,
   type Diagnostic,
+  manifestProblem,
   RpcError,
 } from "@mostra/protocol";
 import type * as Oxc from "oxc-parser";
@@ -313,6 +314,14 @@ function validate(
     return x.fail(
       "MOSTRA_MANIFEST_INVALID",
       `The manifest field \`${path}\` is invalid: ${issue?.message ?? "unexpected value"}.`,
+      at,
+    );
+  }
+  const problem = manifestProblem(checked.data);
+  if (problem) {
+    return x.fail(
+      "MOSTRA_MANIFEST_INVALID",
+      `The manifest field \`${problem.path}\` is invalid: ${problem.message}.`,
       at,
     );
   }

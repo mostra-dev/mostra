@@ -96,6 +96,36 @@ export interface SharesOptions {
   readonly probeMs?: number;
   /** How often active shares are checked for an expired or revoked link (tests shorten it). */
   readonly sweepMs?: number;
+  /**
+   * Shares to a remote server (`via: "remote"`, D165, INTERFACES §18.2): the owner's link hosts
+   * the artifact and mints the link on its hosted home. Absent, `remote` shares are refused.
+   */
+  readonly remote?: RemoteShares;
+}
+
+/** What a `remote` share needs of the owner's link to a server (INTERFACES §18.2). */
+export interface RemoteShares {
+  /**
+   * Pushes the artifact's latest version to the server (`server`, else the default) and mints a
+   * link on its hosted home, keeping the link's secret where only this home can read it.
+   */
+  mint(input: {
+    readonly artifactId: string;
+    readonly server?: string | undefined;
+    readonly scopes?: ShareStartParams["scopes"];
+    readonly ttl?: ShareStartParams["ttl"];
+    readonly viewer?: ShareStartParams["viewer"];
+  }): Promise<{
+    readonly server: string;
+    readonly url: string;
+    readonly tokenId: string;
+    readonly hostname: string;
+    readonly expiresAt?: string | undefined;
+  }>;
+  /** A minted link again, from what this home kept; `undefined` once it can't be. */
+  url(server: string, tokenId: string): string | undefined;
+  /** Revokes a link on the server's hosted home; fails with `MOSTRA_REMOTE_UNREACHABLE`. */
+  revoke(server: string, tokenId: string): Promise<void>;
 }
 
 /** The shares of one instance. */
@@ -136,6 +166,8 @@ interface PlannedFace {
 
 interface Plan {
   readonly faces: readonly PlannedFace[];
+  /** A `remote` share's server: it has no faces of its own (its pages are the server's). */
+  readonly server?: string;
 }
 
 /** A running tunnel and the shares that use it. */
@@ -172,9 +204,16 @@ export function createShares(options: SharesOptions): Shares {
     ledger.read((db) => db.get<ShareRow>("SELECT * FROM share WHERE id = ?", shareId));
 
   const toShare = (found: ShareRow): Share => {
-    // A share follows its link through rotations (`view/rotate`): its token now.
-    const tokenId = capabilities.current(found.token_id);
-    const url = found.stopped_at === null ? gateway.reveal(tokenId) : undefined;
+    const server = (JSON.parse(found.plan_json) as Plan).server;
+    // A share follows its link through rotations (`view/rotate`): its token now. A remote share's
+    // link is its hosted home's.
+    const tokenId = server === undefined ? capabilities.current(found.token_id) : found.token_id;
+    const url =
+      found.stopped_at !== null
+        ? undefined
+        : server === undefined
+          ? gateway.reveal(tokenId)
+          : options.remote?.url(server, tokenId);
     const artifactKey = (JSON.parse(found.plan_json) as Plan).faces.find(
       (face) => face.listener === "artifact",
     )?.key;
@@ -520,6 +559,53 @@ export function createShares(options: SharesOptions): Shares {
     }
   };
 
+  /** A share to a remote server: hosted there, its link minted there (INTERFACES §18.2). */
+  const startRemote = async (
+    params: ShareStartParams,
+    detail: { readonly id: string },
+    key: ReturnType<typeof requestKey>,
+  ): Promise<ShareStartResult> => {
+    const remote = options.remote;
+    if (!remote) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+          message: "This instance shares to no remote server.",
+        }),
+        -32602,
+      );
+    }
+    const minted = await remote.mint({
+      artifactId: detail.id,
+      server: params.server,
+      scopes: params.scopes,
+      ttl: params.ttl,
+      viewer: params.viewer,
+    });
+    const shareId = ShareId.create();
+    const startedAt = options.now();
+    ledger.write((db) => {
+      db.run(
+        "INSERT INTO share (id, artifact_id, via, hostname, token_id, mode, plan_json, started_at, expires_at, stopped_at, stop_reason) VALUES (?, ?, 'remote', ?, ?, 'worker', ?, ?, ?, NULL, NULL)",
+        shareId,
+        detail.id,
+        minted.hostname,
+        minted.tokenId,
+        JSON.stringify({ faces: [], server: minted.server } satisfies Plan),
+        iso(startedAt),
+        minted.expiresAt ?? null,
+      );
+      appendEvent(db, {
+        artifactId: detail.id,
+        type: "share.started",
+        payload: { shareId, via: "remote", hostname: minted.hostname, server: minted.server },
+      });
+      if (key !== undefined) recordResult(db, key, { shareId });
+    });
+    schedule(shareId, minted.expiresAt);
+    log.info("share.started", { shareId, artifactId: detail.id, via: "remote" });
+    return { ...toShare(row(shareId) as ShareRow), url: minted.url };
+  };
+
   const start = async (params: ShareStartParams): Promise<ShareStartResult> => {
     const detail = options.artifacts.get(params.artifact);
     if (!detail.latestVersion && detail.versions.length === 0) {
@@ -535,6 +621,7 @@ export function createShares(options: SharesOptions): Shares {
       const found = replay ? row(replay.shareId) : undefined;
       if (found) return withUrl(toShare(found));
     }
+    if (params.via === "remote") return startRemote(params, detail, key);
     const ttlMs = lifetime(params.via, params.ttl);
     const shareId = ShareId.create();
     const { shell, artifact, plan, hostname } = await setUp(
@@ -616,6 +703,12 @@ export function createShares(options: SharesOptions): Shares {
   const stop = async (shareId: string, reason: string): Promise<Share | undefined> => {
     const found = row(shareId);
     if (!found || found.stopped_at !== null) return undefined;
+    const server = (JSON.parse(found.plan_json) as Plan).server;
+    // A remote share's link lives on its hosted home: revoked there first, so a share listed as
+    // stopped never leaves a live link behind (`MOSTRA_REMOTE_UNREACHABLE` keeps it active).
+    if (server !== undefined && reason !== "expired" && reason !== "revoked") {
+      await options.remote?.revoke(server, found.token_id);
+    }
     const at = options.now();
     ledger.write((db: LedgerDb) => {
       db.run(
@@ -624,7 +717,7 @@ export function createShares(options: SharesOptions): Shares {
         reason,
         shareId,
       );
-      if (reason !== "expired" && reason !== "revoked") {
+      if (server === undefined && reason !== "expired" && reason !== "revoked") {
         capabilities.revoke(capabilities.current(found.token_id), db);
       }
       appendEvent(db, {
@@ -645,9 +738,14 @@ export function createShares(options: SharesOptions): Shares {
   /** Ends shares whose link expired or was revoked since (`view/revoke` of a share's link). */
   const sweep = async (): Promise<void> => {
     for (const found of activeRows()) {
+      const expired = found.expires_at !== null && Date.parse(found.expires_at) <= options.now();
+      // A remote share's link is its hosted home's: only its lifetime is known here.
+      if (found.via === "remote") {
+        if (expired) await serial(() => stop(found.id, "expired"));
+        continue;
+      }
       const grant = capabilities.grant(capabilities.current(found.token_id));
       if (grant?.live) continue;
-      const expired = found.expires_at !== null && Date.parse(found.expires_at) <= options.now();
       await serial(() => stop(found.id, expired ? "expired" : "revoked"));
     }
   };
@@ -764,8 +862,14 @@ export function createShares(options: SharesOptions): Shares {
     async recover() {
       const pending: Promise<void>[] = [];
       for (const found of activeRows()) {
-        const grant = capabilities.grant(capabilities.current(found.token_id));
         const expired = found.expires_at !== null && Date.parse(found.expires_at) <= options.now();
+        // A remote share needs nothing set up again: its pages are the server's.
+        if (found.via === "remote") {
+          if (expired) await serial(() => stop(found.id, "expired"));
+          else schedule(found.id, found.expires_at ?? undefined);
+          continue;
+        }
+        const grant = capabilities.grant(capabilities.current(found.token_id));
         if (expired || !grant?.live) {
           await serial(() => stop(found.id, expired ? "expired" : "revoked"));
         } else if (found.via === "cloudflare") {

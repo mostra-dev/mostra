@@ -52,6 +52,17 @@ export interface OpenLedgerOptions {
   readonly log: Log;
   /** The migrations to apply. Default: this runtime's {@link MIGRATIONS}. */
   readonly migrations?: readonly Migration[];
+  /**
+   * `exclusive` (the default) holds SQLite's exclusive lock for as long as the ledger is open:
+   * the lock decides who owns a local home (D81). `normal` is a hosted home's (D165 item 0b): the
+   * one writer is whoever holds the home's own lock ({@link holdLock}), and a backup replicator
+   * may read the ledger from its own process.
+   */
+  readonly locking?: "exclusive" | "normal";
+  /** SQLite's `wal_autocheckpoint` for a `normal` ledger (a replicator may ask for 0). */
+  readonly walAutocheckpoint?: number;
+  /** The file's name in `storeDir`. Default: `ledger.sqlite`; a server's directory: `server.sqlite`. */
+  readonly fileName?: string;
 }
 
 /** The open ledger. Holding this object holds the home's lock. */
@@ -146,9 +157,9 @@ function unreadable(file: string, why: string): RpcError {
 }
 
 /** Builds a new ledger file at `file` without ever replacing an existing one (DATA_MODEL §6). */
-function createLedgerFile(storeDir: string, file: string, log: Log): void {
+function createLedgerFile(storeDir: string, file: string, log: Log, fileName = LEDGER_FILE): void {
   const Driver = loadDriver();
-  const temp = join(storeDir, `${LEDGER_FILE}.${process.pid}.${Date.now()}.creating`);
+  const temp = join(storeDir, `${fileName}.${process.pid}.${Date.now()}.creating`);
   const db = new Driver(temp);
   try {
     db.pragma("journal_mode = WAL");
@@ -181,7 +192,9 @@ function syncDirectory(dir: string): void {
  */
 function removeAbandonedFiles(storeDir: string): void {
   for (const name of readdirSync(storeDir)) {
-    const match = /^ledger\.sqlite\.(\d+)\.\d+\.creating(-wal|-shm|-journal)?$/.exec(name);
+    const match = /^(?:ledger|server)\.sqlite\.(\d+)\.\d+\.creating(-wal|-shm|-journal)?$/.exec(
+      name,
+    );
     if (match && !processExists(Number(match[1]))) rmSync(join(storeDir, name), { force: true });
   }
 }
@@ -195,7 +208,8 @@ function processExists(pid: number): boolean {
   }
 }
 
-function queries(db: Database): MigrationDb {
+/** A migration's queries over a connection; exported for the schema tests, which migrate in memory. */
+export function queries(db: Database): MigrationDb {
   const cache = new Map<string, BetterSqlite3.Statement>();
   const prepare = (sql: string): BetterSqlite3.Statement => {
     let statement = cache.get(sql);
@@ -219,6 +233,29 @@ function queries(db: Database): MigrationDb {
     exec(sql: string): void {
       db.exec(sql);
     },
+    widenCheck(table: string, from: string, to: string): void {
+      const row = db
+        .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get(table) as { sql: string } | undefined;
+      if (row?.sql.split(from).length !== 2) {
+        throw new Error(`widenCheck: ${table}'s definition doesn't hold ${from} exactly once.`);
+      }
+      const version = db.pragma("schema_version", { simple: true }) as number;
+      db.unsafeMode(true);
+      try {
+        db.pragma("writable_schema = ON");
+        db.prepare("UPDATE sqlite_schema SET sql = ? WHERE type = 'table' AND name = ?").run(
+          row.sql.replace(from, to),
+          table,
+        );
+        db.pragma(`schema_version = ${version + 1}`);
+      } finally {
+        db.pragma("writable_schema = OFF");
+        db.unsafeMode(false);
+      }
+      const problems = db.pragma("integrity_check", { simple: true });
+      if (problems !== "ok") throw new Error(`widenCheck: ${table}: ${String(problems)}`);
+    },
   };
 }
 
@@ -236,20 +273,28 @@ export function openLedger(options: OpenLedgerOptions): LedgerOpening {
   const migrations = options.migrations ?? MIGRATIONS;
   const latest = migrations.at(-1)?.version ?? 0;
   mkdirSync(storeDir, { recursive: true, mode: 0o700 });
-  const file = join(storeDir, LEDGER_FILE);
-  if (!existsSync(file)) createLedgerFile(storeDir, file, log);
+  const fileName = options.fileName ?? LEDGER_FILE;
+  const file = join(storeDir, fileName);
+  if (!existsSync(file)) createLedgerFile(storeDir, file, log, fileName);
 
   const Driver = loadDriver();
   let db: Database;
   try {
-    db = new Driver(file, { timeout: 0, fileMustExist: true });
+    // A normal-locking ledger waits a moment for a replicator's short checkpoint locks.
+    db = new Driver(file, {
+      timeout: options.locking === "normal" ? 5_000 : 0,
+      fileMustExist: true,
+    });
   } catch (error) {
     throw diagnose(error, file) ?? error;
   }
 
   try {
     // EXCLUSIVE before the first WAL access: no shared-memory index, and no other connection.
-    db.pragma("locking_mode = EXCLUSIVE");
+    if (options.locking !== "normal") db.pragma("locking_mode = EXCLUSIVE");
+    else if (options.walAutocheckpoint !== undefined) {
+      db.pragma(`wal_autocheckpoint = ${Math.max(0, Math.trunc(options.walAutocheckpoint))}`);
+    }
     const mode = db.pragma("journal_mode = WAL", { simple: true });
     if (mode !== "wal") throw unreadable(file, `its journal mode is ${String(mode)}, not WAL`);
     db.pragma("synchronous = FULL");
@@ -316,7 +361,7 @@ function migrate(
         `SQLite's integrity check failed (${problems.slice(0, 3).join("; ")})`,
       );
     }
-    backup = join(storeDir, `${LEDGER_FILE}.bak-${from}-${latest}`);
+    backup = join(storeDir, `${options.fileName ?? LEDGER_FILE}.bak-${from}-${latest}`);
     rmSync(backup, { force: true });
     // VACUUM INTO writes a consistent copy through SQLite, fsynced under synchronous=FULL;
     // copying the file with fs would drop this process's lock (DATA_MODEL §1).
@@ -415,6 +460,56 @@ function wrap(
       if (!open) return;
       open = false;
       db.close();
+    },
+  };
+}
+
+/** A lock held by {@link holdLock}. */
+export interface HeldLock {
+  readonly file: string;
+  /** Releases it. Idempotent. */
+  release(): void;
+}
+
+/**
+ * Takes an advisory lock that the operating system releases when this process dies (DATA_MODEL
+ * §7.1, D165): `file` is a one-row SQLite database held in `locking_mode=EXCLUSIVE` with a write
+ * transaction open, so no other process can open it, and no stale PID file can outlive its
+ * owner. Needs no native addon beyond the ledger's own driver. Answers `undefined` when another
+ * process holds it.
+ */
+export function holdLock(file: string, owner: LedgerOwner): HeldLock | undefined {
+  const Driver = loadDriver();
+  const db = new Driver(file, { timeout: 0 });
+  try {
+    db.pragma("locking_mode = EXCLUSIVE");
+    db.pragma("journal_mode = DELETE");
+    db.prepare("BEGIN EXCLUSIVE").run();
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS holder (id INTEGER PRIMARY KEY CHECK (id = 1), pid, start_time, at)",
+    );
+    db.prepare("INSERT OR REPLACE INTO holder (id, pid, start_time, at) VALUES (1, ?, ?, ?)").run(
+      owner.pid,
+      owner.startTime,
+      new Date().toISOString(),
+    );
+    // The transaction stays open: its lock is the lock.
+  } catch (error) {
+    db.close();
+    if (sqliteCode(error) === "SQLITE_BUSY") return undefined;
+    throw diagnose(error, file) ?? error;
+  }
+  let held = true;
+  return {
+    file,
+    release() {
+      if (!held) return;
+      held = false;
+      try {
+        db.prepare("ROLLBACK").run();
+      } finally {
+        db.close();
+      }
     },
   };
 }

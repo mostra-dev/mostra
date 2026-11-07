@@ -12,8 +12,10 @@ import { RunProgress } from '@mostra/protocol';
 import { RunStatus } from '@mostra/protocol';
 import { SubmissionSummary } from '@mostra/protocol';
 import { SubmitBlocker } from '@mostra/protocol';
+import { TallyValue } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
 import { Viewer } from '@mostra/protocol';
+import { ViewerKind } from '@mostra/protocol';
 
 // @public
 export interface ActionHandle<A extends unknown[], R> {
@@ -104,7 +106,7 @@ export interface FieldOptions<T> {
 }
 
 // @public
-export type LiveKey = [keyof LiveSources] extends [never] ? string : keyof LiveSources & string;
+export type LiveKey = ([keyof LiveSources] extends [never] ? string : keyof LiveSources & string) | TallyKey;
 
 // @public
 export interface LiveResult<T> {
@@ -112,6 +114,7 @@ export interface LiveResult<T> {
     readonly data: T | undefined;
     readonly error?: Error;
     readonly isLoading: boolean;
+    readonly ownerOffline?: boolean;
     refresh(): void;
     readonly revision?: string;
 }
@@ -120,7 +123,7 @@ export interface LiveResult<T> {
 export interface LiveSources {}
 
 // @public
-export type LiveValue<K extends string> = K extends keyof LiveSources ? LiveSources[K] : unknown;
+export type LiveValue<K extends string> = K extends TallyKey ? TallyValue : K extends keyof LiveSources ? LiveSources[K] : unknown;
 
 // @public
 export type LiveValuesOf<M> = { [K in keyof M as M[K] extends {
@@ -218,6 +221,11 @@ export interface SubmitHandle {
 export type SubmitState = "open" | "submitting" | "submitted" | "delivered" | "pending-delivery" | "undeliverable" | "closed";
 
 // @public
+export type TallyKey = `$tally/${string}`;
+
+export { TallyValue }
+
+// @public
 export function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>, options?: {
     readonly key?: string;
 }): ActionHandle<A, Awaited<R>>;
@@ -273,7 +281,7 @@ export function useSubmitControl(options: {
 export function useViewer(): {
     readonly id: string;
     readonly name?: string;
-    readonly source: "local" | "tailnet" | "token" | "host";
+    readonly source: ViewerKind;
 };
 
 // (No @packageDocumentation comment for this package)

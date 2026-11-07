@@ -22,9 +22,16 @@ import {
   RpcError,
   ServerLiveValueParams,
   serializeAll,
+  TALLY_LIVE_PREFIX,
   type WireError,
 } from "@mostra/protocol";
-import type { EphemeralBus, Interaction, PageIdentity } from "../interaction/index.ts";
+import {
+  type EphemeralBus,
+  type Interaction,
+  type PageIdentity,
+  tallyField,
+  tallyState,
+} from "../interaction/index.ts";
 import type { Ledger, LedgerDb, RequestKey } from "../ledger/index.ts";
 import { recordedResult, recordResult, requestKey } from "../ledger/index.ts";
 import { type Log, redactFrames, redactValue } from "../log.ts";
@@ -47,7 +54,7 @@ export interface LiveOptions {
   readonly log: Log;
   readonly bus: EphemeralBus;
   readonly pool: WorkerPool;
-  readonly interaction: Pick<Interaction, "subscribedArtifacts" | "checkView">;
+  readonly interaction: Pick<Interaction, "subscribedArtifacts" | "checkView" | "onTallied">;
   /** The latest version of an artifact with live sources, or `undefined`. */
   readonly latest: (artifactId: string) => LatestLive | undefined;
   /** Every artifact whose latest version defines live sources. */
@@ -58,6 +65,20 @@ export interface LiveOptions {
   readonly reconcileMs?: number;
   /** Removes secrets from every value stored (AC-06). */
   readonly redactor?: { redact(text: string): string };
+  /**
+   * More sources wanted than this home's views and hosts want: a hosted page's, which its hosted
+   * home relays (`port/relay.live`, D165 item 4).
+   */
+  readonly extraInterest?: () => Iterable<{ readonly artifactId: string; readonly key: string }>;
+  /**
+   * A produced value or failure of a hosted artifact, which lives on its hosted home (D165 item 1):
+   * `true` when it was sent there, and nothing is kept here.
+   */
+  readonly forward?: (
+    artifactId: string,
+    versionId: string,
+    produced: () => ServerLiveValueParams,
+  ) => boolean;
 }
 
 /** The live module. */
@@ -80,6 +101,15 @@ export interface Live {
     input: { readonly key: string; readonly value: unknown; readonly mode?: "replace" | "append" },
     requestKey?: RequestKey,
   ): Promise<{ revision: string }>;
+  /**
+   * A value or failure its owner's producer made for a hosted artifact (`relay/live.value`):
+   * stored and sent to viewers as a producer's own, with no producer here.
+   */
+  relayed(
+    artifactId: string,
+    versionId: string,
+    produced: ServerLiveValueParams,
+  ): { readonly revision?: string };
   /** A worker's `server/live.value`. */
   produced(
     worker: { readonly artifactId: string; readonly versionId: string },
@@ -154,6 +184,7 @@ export function createLive(options: LiveOptions): Live {
     message: `The artifact's server code keeps crashing, so its live sources stopped (${cause}).`,
   });
   let timer: ReturnType<typeof setInterval> | undefined;
+  let stopTallies: (() => void) | undefined;
   let scheduled = false;
   let stopped = false;
   /** A worker is starting only to say which of its version's sources are `always`. */
@@ -250,6 +281,7 @@ export function createLive(options: LiveOptions): Live {
       out.set(keyOf(artifactId, key), { artifactId, key });
     };
     for (const entry of bus.liveInterest()) add(entry.artifactId, entry.key);
+    for (const entry of options.extraInterest?.() ?? []) add(entry.artifactId, entry.key);
     const subscribed = options.interaction.subscribedArtifacts();
     for (const artifactId of options.artifactsWithLive()) {
       const latest = options.latest(artifactId);
@@ -379,6 +411,12 @@ export function createLive(options: LiveOptions): Live {
   };
 
   const stateOf = (db: LedgerDb, artifactId: string, key: string, window?: number): LiveState => {
+    // A tally's key reads its counts (D165 item 12): no producer, no push, no relay.
+    const field = tallyField(key);
+    if (field !== undefined) {
+      const tally = tallyState(db, artifactId, field);
+      return tally ? { key, revision: tally.revision, value: tally.batches } : { key };
+    }
     const row = db.get<LiveRow>(
       "SELECT revision, value_json, at FROM live_value WHERE artifact_id = ? AND key = ?",
       artifactId,
@@ -443,6 +481,14 @@ export function createLive(options: LiveOptions): Live {
     },
 
     async push(artifactId, input, requestKey) {
+      // A tally's key is the submit transaction's alone (D165 item 12): nothing pushes to it.
+      if (tallyField(input.key) !== undefined) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `${input.key} is a tally's key: only accepted submissions count it.`,
+          }),
+        );
+      }
       let batches: Batches;
       try {
         batches = await serializeAll(input.value, { mode: "argument" });
@@ -479,6 +525,29 @@ export function createLive(options: LiveOptions): Live {
       return answer;
     },
 
+    relayed(artifactId, versionId, produced) {
+      if (produced.error) {
+        fail(artifactId, produced.key, produced.error);
+        return {};
+      }
+      const value = produced.value as Batches | undefined;
+      if (!value) return {};
+      if (JSON.stringify(value).length > LIVE_VALUE_MAX) throw tooLarge(produced.key);
+      const stored = ledger.write((db) =>
+        store(
+          db,
+          artifactId,
+          produced.key,
+          value as Frame[][],
+          versionId,
+          ringOf(produced.key, versionId),
+        ),
+      );
+      failures.delete(keyOf(artifactId, produced.key));
+      publishValue(artifactId, produced.key, stored.revision, stored.at, value);
+      return { revision: String(stored.revision) };
+    },
+
     produced(worker, params) {
       const parsed = ServerLiveValueParams.safeParse(params);
       if (!parsed.success) return;
@@ -486,6 +555,23 @@ export function createLive(options: LiveOptions): Live {
       const producer = running.get(keyOf(worker.artifactId, key));
       // Only the producer of the latest version writes the source; a stale one is ignored.
       if (!producer || producer.versionId !== worker.versionId) return;
+      // A hosted artifact's value goes to its hosted home as this home would keep it: its value and a
+      // failure's message redacted (AC-06), so no secret ever crosses the relay.
+      const outgoing = (): ServerLiveValueParams => ({
+        key,
+        ...(parsed.data.value !== undefined
+          ? { value: redactBatches(parsed.data.value as Batches) }
+          : {}),
+        ...(parsed.data.error !== undefined
+          ? {
+              error: options.redactor
+                ? redactValue(parsed.data.error, options.redactor)
+                : parsed.data.error,
+            }
+          : {}),
+      });
+      // Built only for a hosted artifact's value, so a local producer pays nothing for it.
+      if (options.forward?.(worker.artifactId, worker.versionId, outgoing)) return;
       if (parsed.data.error) {
         fail(worker.artifactId, key, parsed.data.error);
         return;
@@ -571,6 +657,28 @@ export function createLive(options: LiveOptions): Live {
 
     start() {
       stopped = false;
+      // A submission that counted a tallied field sends its viewers the new counts, on the live
+      // channel like any live value (D165 item 12).
+      stopTallies ??= options.interaction.onTallied((artifactId, fields) => {
+        for (const field of fields) {
+          const key = `${TALLY_LIVE_PREFIX}${field}`;
+          try {
+            const tally = ledger.read((db) => tallyState(db, artifactId, field));
+            if (!tally) continue;
+            bus.publishLive(artifactId, {
+              kind: "live",
+              live: {
+                key,
+                revision: tally.revision,
+                at: new Date().toISOString(),
+                value: tally.batches,
+              },
+            });
+          } catch (error) {
+            log.error("live.tally_failed", { key, error });
+          }
+        }
+      });
       bus.onLiveInterest(schedule);
       timer = setInterval(schedule, options.reconcileMs ?? 5_000);
       timer.unref?.();
@@ -580,6 +688,8 @@ export function createLive(options: LiveOptions): Live {
     stop() {
       stopped = true;
       if (timer !== undefined) clearInterval(timer);
+      stopTallies?.();
+      stopTallies = undefined;
     },
   };
 }

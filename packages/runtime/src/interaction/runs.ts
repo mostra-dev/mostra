@@ -144,9 +144,58 @@ export function createOrJoinRun(db: LedgerDb, input: NewRun): { row: RunRow; joi
   };
 }
 
-/** Moves a queued run to `running`, when its worker has it. */
+/** Moves a queued (or, on a remote server, waiting) run to `running`, when its worker has it. */
 export function markRunning(db: LedgerDb, runId: string): void {
-  db.run("UPDATE action_run SET status = 'running' WHERE id = ? AND status = 'queued'", runId);
+  db.run(
+    "UPDATE action_run SET status = 'running' WHERE id = ? AND status IN ('queued', 'waiting')",
+    runId,
+  );
+}
+
+/**
+ * A relayed run waits for its owner's instance (D165 item 4): `waiting`, with `action.waiting`.
+ * Returns whether it moved (a queued run only).
+ */
+export function markWaiting(db: LedgerDb, runId: string): boolean {
+  const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId);
+  if (row?.status !== "queued") return false;
+  db.run("UPDATE action_run SET status = 'waiting' WHERE id = ?", runId);
+  appendEvent(db, {
+    artifactId: row.artifact_id,
+    type: "action.waiting",
+    actor: { kind: "mostra" },
+    causation: { runId },
+    payload: { runId, action: row.action },
+  });
+  return true;
+}
+
+/**
+ * A relayed run whose owner never reported its end within the offline limit, or no longer knows
+ * it (D165 item 4): `unknown`, with `action.unknown`. It may have taken effect, so it is never
+ * `failed`; the owner's later report replaces it once (a trigger). Returns whether it moved.
+ */
+export function markUnknown(db: LedgerDb, runId: string): boolean {
+  const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId);
+  if (!row || (row.status !== "queued" && row.status !== "running" && row.status !== "waiting"))
+    return false;
+  db.run(
+    "UPDATE action_run SET status = 'unknown', reason = 'owner-unreachable', error_json = ? WHERE id = ?",
+    JSON.stringify({
+      code: "MOSTRA_REMOTE_OWNER_OFFLINE",
+      message:
+        "Its owner's machine never said how it ended, so it may have taken effect; it shows here if the owner reports.",
+    }),
+    runId,
+  );
+  appendEvent(db, {
+    artifactId: row.artifact_id,
+    type: "action.unknown",
+    actor: { kind: "mostra" },
+    causation: { runId },
+    payload: { runId, action: row.action },
+  });
+  return true;
 }
 
 /** What a running run produced since the last flush. */
@@ -238,6 +287,7 @@ export function finishRun(db: LedgerDb, runId: string, end: RunEnd): RunRow | un
   const row = db.get<RunRow>("SELECT * FROM action_run WHERE id = ?", runId);
   if (!row || isFinalRunStatus(row.status)) return row;
   const finishedAt = new Date().toISOString();
+  // An `unknown` run's reported end replaces its reason and error too (D165 item 4).
   db.run(
     "UPDATE action_run SET status = ?, reason = ?, error_json = ?, finished_at = ? WHERE id = ?",
     end.status,
