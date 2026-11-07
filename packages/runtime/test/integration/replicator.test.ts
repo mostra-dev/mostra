@@ -5,7 +5,7 @@
  *   own process while the server keeps taking answers, and the replica restores with them all.
  *   It runs where `MOSTRA_TEST_LITESTREAM` names the binary; elsewhere it is skipped, saying so.
  * - A home closed for idleness opens on its next request in under 250 ms at the 95th percentile
- *   (measured and printed; CI's slower runners are held to 500 ms).
+ *   (measured and printed; CI's slower runners are held to 500 ms, its Windows runners to 1.5 s).
  */
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, readdirSync, writeFileSync } from "node:fs";
@@ -25,7 +25,7 @@ import {
   stopServer,
   testConfig,
 } from "../server-support.ts";
-import { eventually, tempDir } from "../support.ts";
+import { eventually, tempDir, WINDOWS } from "../support.ts";
 
 const REVISION = "2026-10-15";
 const LITESTREAM = process.env["MOSTRA_TEST_LITESTREAM"];
@@ -167,7 +167,9 @@ export default function Page() {
     console.log(
       `hosted home open time: p50 ${times[9]?.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, max ${times.at(-1)?.toFixed(1)} ms`,
     );
-    expect(p95).toBeLessThan(process.env["CI"] ? 500 : 250);
+    // The target is the server's (a Linux machine): CI's Linux and macOS runners are held to 500 ms,
+    // its Windows runners, whose synchronous commits are several times slower, to 1.5 s.
+    expect(p95).toBeLessThan(WINDOWS ? 1500 : process.env["CI"] ? 500 : 250);
     await owner.start({ env: ownerEnv(port) });
   }, 120_000);
 });

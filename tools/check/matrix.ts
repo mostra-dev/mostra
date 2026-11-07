@@ -152,7 +152,7 @@ const STATIC_JOBS: readonly JobName[] = [
 ];
 
 /** Integration groups per platform (packages/runtime/vitest.config.ts, D151 item 8). */
-const POSIX_GROUPS = ["core", "verify", "verify-failures", "clients"] as const;
+const POSIX_GROUPS = ["core", "remote", "verify", "verify-failures", "clients"] as const;
 const WINDOWS_GROUPS = [
   "windows",
   "windows-publish",
@@ -160,6 +160,7 @@ const WINDOWS_GROUPS = [
   "windows-workers",
   "windows-verify",
   "windows-verify-failures",
+  "windows-remote",
   "windows-clients",
 ] as const;
 
@@ -310,10 +311,13 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const rust = has("rust") ? [...posix, ...windowsOs] : [];
   const conformance = has("conformance") ? [...posix, ...windowsOs] : [];
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
-  // then the Rust crate and the conformance kit (POSIX like Linux, where they still run).
+  // then the remote server's suites (platform-neutral network code Linux and Windows still run,
+  // WP-29), the Rust crate and the conformance kit (POSIX like Linux, where they still run).
+  const remoteGroup = (leg: Leg): boolean => leg["group"] === "remote";
   const macos: { readonly list: string; readonly leg: Leg }[] = [
-    ...integration.map((leg) => ({ list: "integration", leg })),
+    ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),
+    ...integration.filter(remoteGroup).map((leg) => ({ list: "integration", leg })),
     ...rust.map((leg) => ({ list: "rust", leg })),
     ...conformance.map((leg) => ({ list: "conformance", leg })),
   ].filter(({ leg }) => leg["os"] === "macos");

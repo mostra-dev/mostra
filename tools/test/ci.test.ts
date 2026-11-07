@@ -122,7 +122,7 @@ describe("what runs when (D152)", () => {
     const matrix = ciMatrix(pr, everything, github);
     expect(matrix.windows.map((leg) => leg["os"])).not.toContain("windows-arm64");
     expect(matrix.e2e.map((leg) => leg["os"])).not.toContain("windows-arm64");
-    expect(matrix.windows.length).toBe(9);
+    expect(matrix.windows.length).toBe(10);
     expect(matrix.e2e.filter((leg) => leg["os"] === "macos").map((leg) => leg["browser"])).toEqual([
       "webkit",
     ]);
@@ -136,13 +136,17 @@ describe("what runs when (D152)", () => {
       [matrix.integration, matrix.e2e, matrix.rust, matrix.conformance]
         .flat()
         .filter((leg) => leg["os"] === "macos");
-    // A runtime change: four integration groups, WebKit, the crate and the kit would be seven.
+    // A runtime change: five integration groups, WebKit, the crate and the kit would be eight.
     const runtime = change(["packages/runtime/src/a.ts"], ["@mostra/runtime"]);
     const ordinary = ciMatrix(pr, runtime, github);
     expect(onMacos(ordinary)).toHaveLength(MACOS_PULL_REQUEST_LEGS);
     expect(ordinary.integration.filter((leg) => leg["os"] === "macos")).toHaveLength(4);
     expect(ordinary.e2e.filter((leg) => leg["os"] === "macos")).toHaveLength(1);
-    expect(ordinary.deferred).toEqual(["rust (macos)", "conformance (macos)"]);
+    expect(ordinary.deferred).toEqual([
+      "integration (macos, remote)",
+      "rust (macos)",
+      "conformance (macos)",
+    ]);
     // Linux and Windows x64 keep every leg (WP-W3), and the queue runs them all on macOS and
     // Windows arm64 too.
     expect(ordinary.rust.map((leg) => leg["os"])).toEqual(["linux", "windows-x64"]);
@@ -198,7 +202,7 @@ describe("what runs when (D152)", () => {
     ]) {
       const matrix = ciMatrix(scope, everything, github);
       expect(matrix.legs).toBe("all");
-      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(9);
+      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(10);
       // Windows' slowest engines run in two parts each, together every test once.
       const parts = (os: string, browser: string): (string | undefined)[] =>
         matrix.e2e

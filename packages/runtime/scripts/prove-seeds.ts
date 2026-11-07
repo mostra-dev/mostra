@@ -2428,8 +2428,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "a POSIX integration suite runs in two groups",
     file: "vitest.config.ts",
-    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS],",
-    to: "    exclude: [VERIFY_SUITES, ...FAULTS],",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE],",
+    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
   {

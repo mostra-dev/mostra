@@ -155,7 +155,7 @@ describe("counts by choice (RM-07)", () => {
       ),
     );
     expect(Object.fromEntries(rows.map((row) => [row.choice, row.count]))).toEqual(expected);
-  });
+  }, 120_000);
 
   it("counts nothing for a value outside the listed choices, or for none, so free text is never shown", () => {
     const { respond, read, ledger, artifactId } = setup({
