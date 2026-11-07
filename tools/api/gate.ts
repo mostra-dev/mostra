@@ -20,6 +20,23 @@ export function reportPath(pkg: WorkspacePackage): string {
   return `${pkg.dir}/etc/${unscoped}.api.md`;
 }
 
+/**
+ * Every committed API report of a package: the main entry's, and one per subpath the package
+ * lists in `mostra.apiReports` (`./operator` gives `etc/<name>-operator.api.md`).
+ */
+export function reportPaths(pkg: WorkspacePackage, root: string = fromRoot()): string[] {
+  const unscoped = pkg.name.replace(/^@[^/]+\//, "");
+  const manifest = JSON.parse(readFileSync(join(root, pkg.dir, "package.json"), "utf8")) as {
+    mostra?: { apiReports?: string[] };
+  };
+  return [
+    reportPath(pkg),
+    ...(manifest.mostra?.apiReports ?? []).map(
+      (subpath) => `${pkg.dir}/etc/${unscoped}-${subpath.replace(/^\.\//, "")}.api.md`,
+    ),
+  ];
+}
+
 /** Whether a changeset added or edited since `base` releases `packageName`. */
 export function hasChangeset(packageName: string, files: readonly string[], root: string): boolean {
   for (const file of files) {
@@ -45,10 +62,13 @@ export function changesetProblem(
   root: string = fromRoot(),
 ): string | undefined {
   if (base === undefined) return undefined;
-  const path = reportPath(pkg);
-  const current = existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : undefined;
-  const before = readAtRevision(base, path);
-  if (current === before) return undefined;
+  const path = reportPaths(pkg, root).find((candidate) => {
+    const current = existsSync(join(root, candidate))
+      ? readFileSync(join(root, candidate), "utf8")
+      : undefined;
+    return current !== readAtRevision(base, candidate);
+  });
+  if (path === undefined) return undefined;
   if (hasChangeset(pkg.name, changedFiles(base), root)) return undefined;
   return `${path} changed since ${base.slice(0, 10)} without a changeset for ${pkg.name}. Run \`pnpm changeset\` and describe the change.`;
 }
