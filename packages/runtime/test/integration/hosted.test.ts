@@ -9,7 +9,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { deserializeAll, type Frame, MutationId } from "@mostra/protocol";
+import { ArtifactId, deserializeAll, type Frame, MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink, seen } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
@@ -335,6 +335,75 @@ export default function Page() {
       await owner.start({ env: ownerEnv(port) });
     }
   }, 240_000);
+  it("refuses another instance's push for good, and its later publishes still go out (Opus review of WP-29, 10)", async () => {
+    const source = (name: string, id: string, text: string): string => {
+      const dir = join(tempDir(`hosted-${name}`), name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "index.tsx"),
+        `import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ id: "${id}", title: "${name}" });
+
+export default function Page() {
+  return <p>${text}</p>;
+}
+`,
+      );
+      return dir;
+    };
+    // The owner instance hosts an artifact.
+    const owned = ArtifactId.create();
+    ok(
+      await owner.client.call(
+        "artifact/publish",
+        { source: { path: source("owned", owned, "Ada's") } },
+        120_000,
+      ),
+    );
+    ok(await owner.client.call("share/start", { artifact: { artifactId: owned }, via: "remote" }));
+    const other = new GatewayHome();
+    await other.start({ env: ownerEnv(port) });
+    try {
+      await ownerSignIn(other.client, port, "Ada");
+      // A copy of the project on another machine of the account: the server refuses its push.
+      ok(
+        await other.client.call(
+          "artifact/publish",
+          { source: { path: source("copy", owned, "a copy") } },
+          120_000,
+        ),
+      );
+      const refused = (await other.client.call("share/start", {
+        artifact: { artifactId: owned },
+        via: "remote",
+      })) as { error?: { data?: { code?: string } } };
+      expect(refused.error?.data?.code).toBe("MOSTRA_REMOTE_NOT_OWNER_INSTANCE");
+      // Its own artifact is hosted, and a later publish of it still reaches the server.
+      const mine = ArtifactId.create();
+      const dir = source("mine", mine, "first");
+      ok(await other.client.call("artifact/publish", { source: { path: dir } }, 120_000));
+      ok(await other.client.call("share/start", { artifact: { artifactId: mine }, via: "remote" }));
+      writeFileSync(
+        join(dir, "index.tsx"),
+        readFileSync(join(dir, "index.tsx"), "utf8").replace("first", "second"),
+      );
+      ok(await other.client.call("artifact/publish", { source: { path: dir } }, 120_000));
+      await eventually(async () => {
+        const link = ok<{ links: { pendingPushes: number }[] }>(
+          await other.client.call("remote/status", {}),
+        ).links[0];
+        return link?.pendingPushes === 0;
+      }, 30_000);
+      const link = ok<{ links: { lastError?: string }[] }>(
+        await other.client.call("remote/status", {}),
+      ).links[0];
+      expect(link?.lastError).toMatch(/MOSTRA_REMOTE_NOT_OWNER_INSTANCE/);
+    } finally {
+      await other.stop();
+    }
+  }, 240_000);
+
   it("delivers each hosted submission once, to its owner's own host, and nothing to another instance of the account", async () => {
     // The owner's own host, registered for submissions on the owner instance.
     const host = await connectTo(owner.daemon.status.socket as string);

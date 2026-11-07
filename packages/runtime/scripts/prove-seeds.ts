@@ -62,6 +62,14 @@ const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
     requirement: "RM-02",
+    name: "one refused push blocks every later publish to its server (Opus review of WP-29, 10)",
+    file: "src/link/manager.ts",
+    from: "    error instanceof RpcError && !PUSH_TRANSPORT_FAILURES.has(error.diagnostic.code);",
+    to: "    false && error instanceof RpcError;",
+    check: integration("hosted.test.ts", "refuses another instance's push"),
+  },
+  {
+    requirement: "RM-02",
     name: "a hosted home keeps no floor of its owner's mark, so a restore is told again at every reconnect (Opus review of WP-29, 9)",
     file: "src/server/hosted.ts",
     from: "               ON CONFLICT (link_id) DO UPDATE SET floor = MAX(floor, excluded.floor)`,\n            link.instanceId,\n            link.relayMark,",

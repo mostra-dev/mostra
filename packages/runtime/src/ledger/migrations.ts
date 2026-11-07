@@ -798,10 +798,13 @@ export const MIGRATIONS: readonly Migration[] = [
           artifact_id TEXT NOT NULL REFERENCES artifact(id),
           version_id TEXT NOT NULL REFERENCES version(id),
           server TEXT NOT NULL REFERENCES remote_link(server),
-          state TEXT NOT NULL CHECK (state IN ('pending', 'complete')),
+          state TEXT NOT NULL CHECK (state IN ('pending', 'complete', 'refused')),
           attempts INTEGER NOT NULL DEFAULT 0,
           next_attempt_at TEXT,
           created_at TEXT NOT NULL,
+          -- Why the server refused the push for good (Opus review of WP-29, 10): it waits no
+          -- longer, and no later push waits behind it.
+          refusal TEXT,
           PRIMARY KEY (artifact_id, version_id, server)
         );
         CREATE TABLE relayed_run (

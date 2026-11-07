@@ -68,6 +68,16 @@ const PUSH_RETRY_MAX_MS = 5 * 60_000;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /** A server's short, stable key: 16 Crockford base32 characters of the SHA-256 of its origin. */
+/** Failures a push is tried again after: the connection, not the server's answer (§11.2). */
+const PUSH_TRANSPORT_FAILURES: ReadonlySet<string> = new Set([
+  "MOSTRA_HOST_CONNECTION_CLOSED",
+  "MOSTRA_HOST_TIMEOUT",
+  "MOSTRA_REMOTE_UNREACHABLE",
+  "MOSTRA_REMOTE_LOGIN_FAILED",
+  "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+  "MOSTRA_REMOTE_RATE_LIMITED",
+]);
+
 export function serverKey(server: string): string {
   const digest = createHash("sha256").update(server, "utf8").digest();
   let out = "";
@@ -833,6 +843,46 @@ export function createLink(options: LinkOptions): Link {
   };
 
   /** Sends every pending push of a server, oldest first, retrying with backoff while it fails. */
+  /**
+   * Whether a push failed for good: the server (or this home, for a damaged version) answered it
+   * with a refusal, not a connection that closed or a call that timed out. Such a push is never
+   * tried again, and nothing waits behind it (Opus review of WP-29, 10).
+   */
+  const refusedForGood = (error: unknown): error is RpcError =>
+    error instanceof RpcError && !PUSH_TRANSPORT_FAILURES.has(error.diagnostic.code);
+
+  /** Records a push the server refused for good, and says so in `remote/status`. */
+  const refusePush = (
+    connection: Connection,
+    artifactId: string,
+    versionId: string,
+    error: RpcError,
+  ): void => {
+    const why = `${error.diagnostic.code}: ${error.diagnostic.message}`;
+    ledger.write((db) => {
+      db.run(
+        "UPDATE version_push SET state = 'refused', refusal = ? WHERE artifact_id = ? AND version_id = ? AND server = ? AND state = 'pending'",
+        why,
+        artifactId,
+        versionId,
+        connection.server,
+      );
+      // A first share the server refused hosts nothing: the artifact isn't shared there.
+      db.run(
+        "DELETE FROM hosted_artifact WHERE artifact_id = ? AND server = ? AND route_id = ''",
+        artifactId,
+        connection.server,
+      );
+    });
+    connection.lastError = `The server refused ${artifactId}'s version ${versionId}: ${why}`;
+    log.warn("link.push_refused", {
+      server: connection.server,
+      artifactId,
+      versionId,
+      code: error.diagnostic.code,
+    });
+  };
+
   const drainPushes = (connection: Connection, attempt = 0): Promise<void> => {
     if (connection.pushing) return connection.pushing;
     // One drain at a time per server. The drain is registered before its body runs, and only it
@@ -850,7 +900,12 @@ export function createLink(options: LinkOptions): Link {
             ),
           );
           if (!next) return;
-          await pushVersion(connection, next.artifact_id, next.version_id);
+          try {
+            await pushVersion(connection, next.artifact_id, next.version_id);
+          } catch (error) {
+            if (!refusedForGood(error)) throw error;
+            refusePush(connection, next.artifact_id, next.version_id, error);
+          }
         }
       } catch (error) {
         log.warn("link.push_failed", {
@@ -1191,7 +1246,13 @@ export function createLink(options: LinkOptions): Link {
         return artifact.latest_version_id;
       });
       const connection = connections.get(server) ?? connect(server);
-      const pushed = await pushVersion(connection, artifactId, latest);
+      let pushed: Pushed;
+      try {
+        pushed = await pushVersion(connection, artifactId, latest);
+      } catch (error) {
+        if (refusedForGood(error)) refusePush(connection, artifactId, latest, error);
+        throw error;
+      }
       void drainPushes(connection);
       return pushed;
     },
