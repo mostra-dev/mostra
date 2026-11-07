@@ -1,6 +1,6 @@
 # WP-29 progress: remote transport and relay
 
-**Status:** In progress. Owns RM-01, RM-02, RM-04 and RM-07 ([specification](../design/work-packages/WP-29.md)), and the issues on the `WP-29` milestone (#114, #116, #118, #119).
+**Status:** Done. Accepted by Mirza on 2026-11-07 (M59: "absolutely incredible. 100% accepted & approved -- let's go ahead and meticulously close out this WP in the best, most robust way.") with D166, the package's agent-facing prose (D149) and RM-02's external check left to WP-30; merged to `main` through the merge queue as `1ad9def` (#128) and released as Mostra 0.10.0 (#131). Owns RM-01, RM-02, RM-04 and RM-07 ([specification](../design/work-packages/WP-29.md)), and the issues on the `WP-29` milestone (#114, #116, #118, #119).
 
 ## Baseline
 
@@ -62,3 +62,41 @@ Every check runs through the real interface: a real `mostra-runtime server` on t
 | RM-07 | verified | An artifact with a manifest tally: 300 submissions across three choices give exactly those counts in a hosted home (with the owner offline and no worker running) and in a local one; viewers receive the counts on the live channel; a value outside the listed choices, or any free text, counts nothing; `minTotal` shows only the total below it; a count never goes down, is never deleted or replaced (triggers); `live/push` can't write a tally key | `vitest --project unit test/unit/tally.test.ts`; `vitest --project integration test/integration/hosted.test.ts -t "tally"`; `prove-seeds.ts --only RM-07` | 6 + 1 tests pass; 6 seeds red, then green |
 
 Issues on the milestone, each fixed at its root with a test as strict as before: #114 (`mostra open` says on stderr why no browser opened; the Skill says `--browser`; AX-01 seed), #116 (the Skill's "Approvals that do something"), #118 (a new `epochs` round shows no earlier "Submitted" card; e2e and an IN-13 seed), #119 (the shell's poll leaves its frame's ephemeral messages alone; an integration test under both launchers and an AC-02 seed).
+
+## Untested boundaries
+
+- **RM-02's external check** (the same flow against a deployed server) waits for WP-30's test deployment (D166 item 9, accepted at M59). Every other RM-02 check ran against a real `mostra-runtime server` on the same machine.
+- **Litestream** replicating a live hosted ledger was run on macOS only (`MOSTRA_TEST_LITESTREAM`); CI has no Litestream binary and skips that case. WP-30 runs it where the container image runs.
+- **A bundle whose lockfile names on-demand packages** a fresh home's store lacks: the importing home installs them from the lockfile before its worker starts (D135, WP-08's path), untested with a bundle here.
+- **Version files' sweep after a removal**, pause, the operator ports and viewers of kind `account` and `anonymous` are WP-30's; WP-29 maps each hosted link to its own viewer (D166 item 10).
+- **The relay's one accepted boundary** (FAILURE_MODEL §11.1): a run the owner recorded and started, whose acknowledgement was lost just before the owner's home was restored to an earlier backup, can run a second time when sent again.
+- **Windows Firefox:** one CI run timed out filling a field of the hosted frame (passed on every later run), and IN-02's journaled edit and a Chromium `ERR_NO_BUFFER_SPACE` met #39 and #132 once each; none touched WP-29's code.
+
+## Deviations
+
+- **No `link_domain` table** (DATA_MODEL §7.2): a token's own `shell_origin` records the domain a link was minted on (D166 item 15).
+- **Size budgets:** `@mostra/protocol`'s whole entry 54 to 60 kB and `@mostra/react`'s 53.5 to 54 kB, for the remote methods and the tally's types (D166 item 18).
+- **Reviews:** GPT's D80 review was skipped (GPT-6.1-Sol isn't offered to this Codex account, as at WP-28; M59); Claude Opus reviewed once (D144).
+- **The release playbook** (`docs/agents/release.md` step 3) now runs repository lint and the docs job on a version pull request instead of `pnpm check --affected`, at Mirza's suggestion: a version touches every package, so the local run repeated the pull request's own CI and its merge-queue run for half an hour.
+
+## Commits and publication
+
+- **Range:** `a6f974f..1ad9def` on `main`: the signed-off commits of `wp/29-remote-relay` (last `7288026`) and the merge commit `1ad9def` ([#128](https://github.com/mostra-dev/mostra/pull/128)), then the version pull request [#131](https://github.com/mostra-dev/mostra/pull/131) (`chore(release): Mostra 0.10.0`).
+- **CI:** #128's last pull-request run (42398722244) and its merge-queue run green on every leg; #131's run (42405316779) green after one re-run of a Windows Chromium job (#132).
+- **Publication:** Mostra 0.10.0 by the `Release` workflow (run 42410998541): the GitHub release `v0.10.0` with the six bundles, `SHA256SUMS` and attestations, every package of the release group on npm with provenance, the `mostra-host` crate on crates.io and the harness plugin's `v0.10.0`. The docs site doesn't exist yet (WP-26), so nothing deploys.
+- **Remaining dirty paths:** none in the repository. Outside it: the baseline worktree `/Volumes/Active/mostra-wp28-baseline` (detached), logs in `/Volumes/Active/wp29-logs/`, scratch in `~/.jcode/scratch/` and `/Volumes/Active/wp29-scratch/`, and the Litestream binary in `/Volumes/Active/tools/litestream/`. The recovery checkpoint of session 1 was removed once this report superseded it. Mostra HQ was not written to: its roadmap and changelog lines for WP-29 wait for Mirza's go (D127).
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #114, #116, #118, #119 | Closed | Each fixed at its root with a test and a seed (Evidence, above); the `WP-29` milestone is closed |
+| #129 | Open, on `WP-30` | A first-run process on Windows x64 read an empty install ID; the read is retried on sharing violations, a hypothesis kept open until the Windows legs have run it more. WP-30 touches the CLI |
+| #132 | Open, on `WP-30` | Filed at the closeout: a shell page's own load failed with `ERR_NO_BUFFER_SPACE` on Windows Chromium (#66's cause at the top level). WP-30 changes the gateway's listeners |
+| #39 | Open, no milestone | Met once more (Windows Firefox, IN-02's journaled edit); recorded on the issue (D155 item 7) |
+| #46, #55, #85, #95, #111, #124 | Open, no milestone (D155 item 7) | Not met |
+| #106 | Open, no milestone | Waits for the package that next touches the bundle cache or `verify` |
+
+## Next
+
+WP-30, remote server and remote MCP (`docs/design/work-packages/WP-30.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-30`. It owns RM-03, MC-04, HY-08, HY-09, HO-09, RM-08 and RM-09, RM-02's external check, #129 and #132.
