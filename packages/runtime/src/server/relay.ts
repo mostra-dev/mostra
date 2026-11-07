@@ -184,6 +184,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
    * (`relayMark`): a home restored from a backup continues above it, so no sequence is reused.
    */
   const marks = new Map<string, number>();
+  /** The relay mark each open owner session reported, for a resume run again for it. */
+  const sessionMarks = new Map<number, number>();
+  /** A resume that failed is tried again for its session, with backoff (Opus review of WP-29, 1). */
+  const retries = new Map<number, { timer: ReturnType<typeof setTimeout>; attempt: number }>();
   let stopped = false;
 
   const versionOf = (versionId: string): RelayVersion => {
@@ -355,6 +359,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       const row = runRow(db, runId);
       if (!relay || !row || isFinalRunStatus(row.status) || row.status === "unknown")
         return undefined;
+      // A run never sent whose offline limit passed never happens, however the owner came back
+      // (a home closed while it waited ran no sweep): it ends `failed`, `owner-offline` (Opus
+      // review of WP-29, 7).
+      if (relay.sent_at === null && Date.parse(relay.offline_limit_at) <= now()) return "expired";
       db.run(
         "UPDATE relay_run SET attempt = attempt + 1, sent_at = COALESCE(sent_at, ?) WHERE run_id = ?",
         iso(now()),
@@ -363,6 +371,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       return { relay, row };
     });
     if (!prepared) return;
+    if (prepared === "expired") {
+      endOffline(runId);
+      return;
+    }
     const { relay, row } = prepared;
     sending.add(runId);
     try {
@@ -386,16 +398,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         PORT_CALL_MS,
       );
       const at = iso(now());
-      ledger.write((db) =>
+      const cancelled = ledger.write((db) => {
         db.run(
           "UPDATE relay_run SET accepted_at = COALESCE(accepted_at, ?), owner_heard_at = ? WHERE run_id = ?",
           at,
           at,
           runId,
-        ),
-      );
-      // A cancel pressed before the owner had it reaches the run now.
-      if (relay.cancel_requested_at !== null) void cancelOnOwner(runId, session);
+        );
+        return relayRow(db, runId)?.cancel_requested_at ?? null;
+      });
+      // A cancel pressed before the owner had it, or while its acknowledgement was on its way,
+      // reaches the run now (Opus review of WP-29).
+      if (cancelled !== null) void cancelOnOwner(runId, session);
     } catch (error) {
       const code = error instanceof RpcError ? error.diagnostic.code : undefined;
       if (code !== undefined && !TRANSPORT_FAILURES.has(code)) {
@@ -509,16 +523,19 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   };
 
   /**
-   * The runs of a link the owner accepted and the hosted home holds no end for, `unknown` ones
-   * included: the owner's report replaces `unknown` once (asking sends nothing again).
+   * The runs of a link the owner accepted and the hosted home holds no end for, and every run sent
+   * that became `unknown` (its acknowledgement may have been lost): the owner's report replaces
+   * `unknown` once, and asking starts nothing (Opus review of WP-29, 8).
    */
   const acceptedOpen = (linkId: string): { relay: RelayRow; run: RunRow }[] =>
     ledger.read((db) =>
       db
         .all<RelayRow & { status: string }>(
           `SELECT r.*, a.status FROM relay_run r JOIN action_run a ON a.id = r.run_id
-           WHERE r.owner_link_id = ? AND r.accepted_at IS NOT NULL
-             AND a.status IN ('queued', 'running', 'waiting', 'unknown') ORDER BY r.relay_seq`,
+           WHERE r.owner_link_id = ?
+             AND ((r.accepted_at IS NOT NULL AND a.status IN ('queued', 'running', 'waiting'))
+               OR (r.sent_at IS NOT NULL AND a.status = 'unknown'))
+           ORDER BY r.relay_seq`,
           linkId,
         )
         .map((relay) => ({ relay, run: runRow(db, relay.run_id) as RunRow })),
@@ -614,9 +631,24 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           .map((row) => row.run_id),
       );
       for (const runId of unacknowledged) await send(runId, session);
+      retries.delete(session);
       void drain(linkId);
     } catch (error) {
       log.warn("relay.resume_failed", { linkId, error });
+      // A reconcile that timed out or failed leaves the owner unready: tried again for the same
+      // session, 1 s doubling to 60 s, while it stays its link's session.
+      if (stopped || options.sessionOf(linkId) !== session) return;
+      const attempt = (retries.get(session)?.attempt ?? 0) + 1;
+      const timer = setTimeout(
+        () => {
+          if (options.sessionOf(linkId) === session && ready.get(linkId) !== session) {
+            void resume(linkId, session, relayMark);
+          }
+        },
+        Math.min(60_000, 1000 * 2 ** (attempt - 1)),
+      );
+      timer.unref();
+      retries.set(session, { timer, attempt });
     }
   };
 
@@ -1002,12 +1034,25 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       if (linkId === undefined || !session.ports.has("relay")) return;
       const mark = session.link?.relayMark ?? 0;
       marks.set(linkId, Math.max(marks.get(linkId) ?? 0, mark));
+      sessionMarks.set(session.id, mark);
       void resume(linkId, session.id, mark);
     },
 
     disconnected(session) {
       const linkId = session.link?.instanceId;
+      sessionMarks.delete(session.id);
+      const retry = retries.get(session.id);
+      if (retry) clearTimeout(retry.timer);
+      retries.delete(session.id);
       if (linkId !== undefined && ready.get(linkId) === session.id) ready.delete(linkId);
+      // The link's session now, if it isn't ready (it opened while this one was still the link's,
+      // so its resume stopped short), is resumed: nothing else would (Opus review of WP-29, 1).
+      if (linkId !== undefined) {
+        const live = options.sessionOf(linkId);
+        if (live !== undefined && live !== session.id && ready.get(linkId) !== live) {
+          void resume(linkId, live, sessionMarks.get(live) ?? marks.get(linkId) ?? 0);
+        }
+      }
       for (const [callId, pending] of calls) {
         if (pending.session !== session.id) continue;
         pending.lines.push({
@@ -1057,6 +1102,8 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
 
     stop() {
       stopped = true;
+      for (const retry of retries.values()) clearTimeout(retry.timer);
+      retries.clear();
       clearInterval(sweeper);
       clearInterval(liveRenewer);
     },

@@ -14,7 +14,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { linkSync, mkdirSync, writeFileSync } from "node:fs";
 import { copyFile, readFile, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import {
   ArtifactManifest,
   artifactGetMethod,
@@ -56,6 +56,24 @@ import { createHostedRelay } from "./relay.ts";
 const LABEL_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
 /** A random route label: 26 lower-case Crockford base32 characters (INTERFACES §18.4). */
+
+/** A character no part of a listing's path may hold: a backslash, a colon, a control character. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+const UNSAFE_PART = /[\\:\u0000-\u001f\u007f]/;
+
+/**
+ * Whether a pushed listing's path is one a version can hold on every system the server runs on: `/`
+ * between non-empty parts, none `.` or `..`, and no backslash, colon or control character, which
+ * Windows reads as separators, drive or stream names, or refuses (Opus review of WP-29, 5); in NFC,
+ * as listings are written (DATA_MODEL §2).
+ */
+function safeListingPath(path: string): boolean {
+  if (path.length > 1024 || path.normalize("NFC") !== path) return false;
+  return path
+    .split("/")
+    .every((part) => part !== "" && part !== "." && part !== ".." && !UNSAFE_PART.test(part));
+}
+
 export function randomLabel(): string {
   const bytes = randomBytes(26);
   let label = "";
@@ -304,8 +322,13 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     bus,
     log,
     ownerOf: (artifactId) => ownerLinkOf(artifactId),
+    // The newest session of a link is its own: an older one is a connection the owner already
+    // left, which the server may hold until its silence limit (Opus review of WP-29, 1).
     sessionOf: (linkId) =>
-      protocol.registrants("relay").find((entry) => entry.owner === linkId)?.session,
+      protocol
+        .registrants("relay")
+        .filter((entry) => entry.owner === linkId)
+        .at(-1)?.session,
     call: (session, method, params, timeoutMs) =>
       protocol.callSession(session, method, params, timeoutMs),
     functions: (versionId) => readServerFunctions(registry.store.versionDir(versionId)),
@@ -481,8 +504,11 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       if (!(path === "registry.json" || path.startsWith("client/") || path.startsWith("server/"))) {
         throw refuse("MOSTRA_HOME_INTEGRITY", `The listing names ${path}, outside a version.`);
       }
-      if (path.split("/").some((part) => part === ".." || part === "" || part === ".")) {
-        throw refuse("MOSTRA_HOME_INTEGRITY", `The listing names an unsafe path, ${path}.`);
+      if (!safeListingPath(path)) {
+        throw refuse(
+          "MOSTRA_HOME_INTEGRITY",
+          `The listing names an unsafe path, ${JSON.stringify(path.slice(0, 300))}.`,
+        );
       }
     }
     let manifestDoc: { manifest?: unknown; artifactId?: unknown; versionId?: unknown };
@@ -537,6 +563,10 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       writeFileSync(join(stage, "listing.json"), JSON.stringify(version.listing));
       for (const [path, , sha] of clientFiles) {
         const target = join(stage, ...path.split("/"));
+        // Checked again where it lands: nothing a tenant names leaves its own staging directory.
+        if (relative(stage, target).startsWith("..") || isAbsolute(relative(stage, target))) {
+          throw refuse("MOSTRA_HOME_INTEGRITY", "The listing names a path outside the version.");
+        }
         mkdirSync(join(target, ".."), { recursive: true, mode: 0o700 });
         const stored = join(options.filesDir, sha);
         try {
@@ -642,6 +672,15 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         throw refuse(
           "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
           "This binding's sign-in is for another instance link.",
+        );
+      }
+      // A session that takes deliveries or relayed runs is an owner instance's, so it names its own
+      // link: one without a link could otherwise be taken for an owner by its client name (Opus
+      // review of WP-29, 6).
+      if (params.link === undefined && params.ports.length > 0) {
+        throw refuse(
+          "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
+          "A binding that registers ports must name its own instance link.",
         );
       }
     },

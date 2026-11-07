@@ -82,7 +82,7 @@ function setup(options: { sweepMs?: number; now?: () => number } = {}) {
     ...(options.now ? { now: options.now } : {}),
   });
   const viewerId = ledger.write((db) => viewerForSpec(db, { ref: "grace@example.com" }));
-  const page = { artifactId, viewerId };
+  const page = { artifactId, viewerId, scopes: ["action:*" as const] };
   const viewId = interaction.openView({ artifactId, versionId, viewerId });
   let keys = 0;
   const start = async () =>
@@ -109,6 +109,13 @@ function setup(options: { sweepMs?: number; now?: () => number } = {}) {
     } as unknown as Session);
   };
   const status = (runId: string) => interaction.runState(runId)?.status;
+  /** A session's open or close as the relay hears it, leaving which session is the link's alone. */
+  const session = (id: number, relayMark: number) =>
+    ({
+      id,
+      ports: new Set(["relay"]),
+      link: { instanceId: LINK, relayMark },
+    }) as unknown as Session;
   return {
     relay,
     calls,
@@ -116,6 +123,14 @@ function setup(options: { sweepMs?: number; now?: () => number } = {}) {
     connect,
     disconnect,
     status,
+    page,
+    viewId,
+    session,
+    reason: (runId: string) => interaction.runState(runId)?.reason,
+    /** Which session the link's is now, as the server's registrants would say. */
+    linkSession: (id: number | undefined) => {
+      open = id;
+    },
     answering: (next: (call: Call) => unknown) => {
       answer = next;
     },
@@ -223,6 +238,138 @@ describe("the hosted relay against a scripted owner (§18.3)", () => {
     clock += 40_000;
     await until(() => t.calls.filter((call) => call.params["runId"] === silent.runId).length === 2);
     expect(t.status(silent.runId)).toBe("queued");
+    t.relay.stop();
+  });
+
+  it("ends a waiting run whose limit passed while its home was closed, and never sends it (Opus review of WP-29, 7)", async () => {
+    let clock = Date.now();
+    const t = setup({ now: () => clock });
+    const stale = await t.start();
+    expect(stale.status).toBe("waiting");
+    // The home was closed for days (no sweep ran), and the owner comes back.
+    clock += 3 * 24 * 3_600_000;
+    t.connect(1, 0);
+    await until(() => t.status(stale.runId) === "failed");
+    expect(t.reason(stale.runId)).toBe("owner-offline");
+    expect(t.calls.filter((call) => call.method === "port/relay.run")).toEqual([]);
+    t.relay.stop();
+  });
+
+  it("asks the owner about a sent run that became unknown, whose end then replaces it (Opus review of WP-29, 8)", async () => {
+    let clock = Date.now();
+    const t = setup({ sweepMs: 20, now: () => clock });
+    t.connect(1, 0);
+    await until(() => true);
+    // The owner records the run, and its acknowledgement is lost.
+    t.answering(() => {
+      throw new Error("the connection closed");
+    });
+    const lost = await t.start();
+    await until(() => t.calls.length === 1);
+    t.disconnect(1);
+    clock += 2 * 3_600_000;
+    await until(() => t.status(lost.runId) === "unknown");
+    t.answering((call) =>
+      call.method === "port/relay.reconcile"
+        ? {
+            runs: [
+              {
+                runId: lost.runId,
+                state: {
+                  runId: lost.runId,
+                  fnId: FN,
+                  status: "succeeded",
+                  log: [],
+                  batches: [],
+                  startedAt: new Date(clock).toISOString(),
+                },
+              },
+            ],
+          }
+        : { accepted: true },
+    );
+    t.connect(2, 1);
+    await until(() => t.status(lost.runId) === "succeeded");
+    expect(t.calls.filter((call) => call.session === 2).map((call) => call.method)).toEqual([
+      "port/relay.reconcile",
+    ]);
+    t.relay.stop();
+  });
+
+  it("passes on a cancel pressed while the run's acknowledgement was on its way (Opus review of WP-29)", async () => {
+    const t = setup();
+    t.connect(1, 0);
+    await until(() => true);
+    let release: (value: unknown) => void = () => {};
+    t.answering((call) =>
+      call.method === "port/relay.run"
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : {},
+    );
+    const run = await t.start();
+    await until(() => t.calls.length === 1);
+    t.relay.cancel(t.page, t.viewId, run.runId);
+    release({ accepted: true });
+    await until(() => t.calls.some((call) => call.method === "port/relay.cancel"));
+    t.relay.stop();
+  });
+
+  it("resumes the link's new session once its old one closes (Opus review of WP-29, 1)", async () => {
+    const t = setup();
+    t.connect(1, 0);
+    await until(() => true);
+    // The owner redials before the server notices the old connection is gone: the old session is
+    // still the link's when the new one opens, so the new one's resume stops short.
+    t.relay.connected(t.session(2, 0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    t.answering(() => {
+      throw new Error("the old connection is gone");
+    });
+    const run = await t.start();
+    await until(() => t.calls.length === 1);
+    // The old session closes; the new one is the link's now, and takes the run.
+    t.answering(() => ({ accepted: true }));
+    t.linkSession(2);
+    t.relay.disconnected(t.session(1, 0));
+    await until(() =>
+      t.calls.some((call) => call.session === 2 && call.params["runId"] === run.runId),
+    );
+    t.relay.stop();
+  });
+
+  it("tries a failed reconcile again while the session lives (Opus review of WP-29, 1)", async () => {
+    const t = setup();
+    t.connect(1, 0);
+    await until(() => true);
+    const run = await t.start();
+    await until(() => t.calls.length === 1);
+    t.disconnect(1);
+    let asked = 0;
+    t.answering((call) => {
+      if (call.method !== "port/relay.reconcile") return { accepted: true };
+      asked += 1;
+      if (asked === 1) throw new Error("the reconcile timed out");
+      return {
+        runs: [
+          {
+            runId: run.runId,
+            state: {
+              runId: run.runId,
+              fnId: FN,
+              status: "succeeded",
+              log: [],
+              batches: [],
+              startedAt: new Date().toISOString(),
+            },
+          },
+        ],
+      };
+    });
+    t.connect(2, 1);
+    await until(() => t.status(run.runId) === "succeeded", 5_000);
+    expect(asked).toBe(2);
     t.relay.stop();
   });
 });

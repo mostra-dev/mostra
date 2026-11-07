@@ -30,7 +30,7 @@ import {
   startServer,
   stopServer,
 } from "../server-support.ts";
-import { tempDir } from "../support.ts";
+import { eventually, tempDir } from "../support.ts";
 
 const running: RunningServer[] = [];
 const bindings: Binding[] = [];
@@ -272,6 +272,74 @@ describe("the network binding (§18.2)", () => {
     ).rejects.toMatchObject({
       diagnostic: { code: "MOSTRA_HOME_INTEGRITY" },
     });
+  });
+
+  it("refuses a listing path that would leave the version on any system (Opus review of WP-29, 5)", async () => {
+    const { port } = await serve();
+    const owner = await deviceSignIn(port, "Ada");
+    const artifactId = "art_01JZ0000000000000000000009";
+    const session = await bind(port, owner).ready();
+    for (const path of [
+      "client/..\\..\\..\\homes\\x",
+      "client/C:\\x",
+      "client/a:stream",
+      "client/tab\tname",
+      "client/cafe\u0301.js",
+      "client/a/../../x",
+    ]) {
+      const { push, files } = version(artifactId, `escape ${path}`);
+      const text = files.get("client/index.html") as string;
+      const listing: ListingEntry[] = [
+        ...push.listing,
+        [path, false, sha(text), Buffer.byteLength(text)],
+      ];
+      const outputDigest = listingDigest(
+        listing.map(([p, executable, hash]) => ({ path: p, executable, sha256: hash })),
+      );
+      await expect(
+        session.call(hostedPushMethod, { artifactId, version: { ...push, listing, outputDigest } }),
+        path,
+      ).rejects.toMatchObject({ diagnostic: { code: "MOSTRA_HOME_INTEGRITY" } });
+    }
+  });
+
+  it("never takes a binding without its own link for an owner (Opus review of WP-29, 6)", async () => {
+    const { port } = await serve();
+    const owner = await deviceSignIn(port, "Ada");
+    const other = await deviceSignIn(port, "Ada");
+    const artifactId = "art_01JZ000000000000000000000A";
+    await (await bind(port, owner).ready()).call(hostedPushMethod, {
+      artifactId,
+      version: version(artifactId, "owned by Ada's first machine").push,
+    });
+    // Another machine of the account says it is the owner by its client name, with no link.
+    const closed: string[] = [];
+    bind(port, other, {
+      initialize: () => {
+        const { link: _link, ...rest } = ownerInitialize({
+          name: owner.instanceId,
+          version: "0.0.0",
+          instanceId: other.instanceId,
+          relayMark: 0,
+        });
+        return rest;
+      },
+      onClose: (why) => closed.push(why),
+    });
+    await eventually(() => /must name its own instance link/.test(closed.join(" ")));
+    // A reader with no ports needs no link.
+    const reader = await bind(port, other, {
+      initialize: () => {
+        const { link: _link, ...rest } = ownerInitialize({
+          name: "a reader",
+          version: "0.0.0",
+          instanceId: other.instanceId,
+          relayMark: 0,
+        });
+        return { ...rest, ports: [] };
+      },
+    }).ready();
+    expect(reader.result.instance.mode).toBe("hosted");
   });
 
   it("refuses a push from another instance of the account, naming the owner", async () => {

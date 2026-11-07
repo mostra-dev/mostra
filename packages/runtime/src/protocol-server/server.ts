@@ -355,7 +355,10 @@ export class ProtocolServer {
         session: connection.session.id,
         // On a hosted home a delivery's owner is the owner instance's link, never a client name
         // (D165, after the Opus review): two instances of one account are two owners.
-        owner: connection.session.link?.instanceId ?? connection.session.client?.name ?? "",
+        // A network binding's owner is only ever its link: its client name is whatever it says.
+        owner:
+          connection.session.link?.instanceId ??
+          (connection.session.kind === "websocket" ? "" : (connection.session.client?.name ?? "")),
       }));
   }
 
