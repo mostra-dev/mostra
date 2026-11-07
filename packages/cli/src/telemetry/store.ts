@@ -175,10 +175,21 @@ export class TelemetryStore {
   /** The install ID in `telemetry-id`: `undefined` when there is none, `null` when it's damaged. */
   #readId(): string | undefined | null {
     let text: string;
-    try {
-      text = readFileSync(this.idFile, "utf8");
-    } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null;
+    // Windows refuses to open a file another process holds for a moment (an antivirus scan of the
+    // new file, or the removal of the temporary name it was linked from) with `EPERM`, `EACCES` or
+    // `EBUSY`: the read is tried again for up to a second, as renames are (#129).
+    const deadline = Date.now() + 1000;
+    for (let pause = 5; ; pause = Math.min(pause * 2, 100)) {
+      try {
+        text = readFileSync(this.idFile, "utf8");
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") return undefined;
+        const shared = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+        if (this.#platform !== "win32" || !shared || Date.now() > deadline) return null;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pause);
+      }
     }
     const id = text.trim();
     return UUID.test(id) ? id : null;

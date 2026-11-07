@@ -210,7 +210,11 @@ export interface Link {
    * A produced value of a hosted artifact goes to its hosted home, its one copy (D165 item 1):
    * `true` when the artifact is hosted, and nothing is kept here.
    */
-  forwardLive(artifactId: string, versionId: string, produced: ServerLiveValueParams): boolean;
+  forwardLive(
+    artifactId: string,
+    versionId: string,
+    produced: () => ServerLiveValueParams,
+  ): boolean;
 }
 
 /** One server's link at run time. */
@@ -1164,7 +1168,7 @@ export function createLink(options: LinkOptions): Link {
         () => (connection ? (connection.binding.session ?? readySoon(connection)) : undefined),
         artifactId,
         versionId,
-        produced,
+        produced(),
       );
       return true;
     },

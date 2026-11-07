@@ -77,7 +77,7 @@ export interface LiveOptions {
   readonly forward?: (
     artifactId: string,
     versionId: string,
-    produced: ServerLiveValueParams,
+    produced: () => ServerLiveValueParams,
   ) => boolean;
 }
 
@@ -557,7 +557,7 @@ export function createLive(options: LiveOptions): Live {
       if (!producer || producer.versionId !== worker.versionId) return;
       // A hosted artifact's value goes to its hosted home as this home would keep it: its value and a
       // failure's message redacted (AC-06), so no secret ever crosses the relay.
-      const outgoing = {
+      const outgoing = (): ServerLiveValueParams => ({
         key,
         ...(parsed.data.value !== undefined
           ? { value: redactBatches(parsed.data.value as Batches) }
@@ -569,7 +569,8 @@ export function createLive(options: LiveOptions): Live {
                 : parsed.data.error,
             }
           : {}),
-      };
+      });
+      // Built only for a hosted artifact's value, so a local producer pays nothing for it.
       if (options.forward?.(worker.artifactId, worker.versionId, outgoing)) return;
       if (parsed.data.error) {
         fail(worker.artifactId, key, parsed.data.error);
