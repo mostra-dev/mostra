@@ -17,7 +17,7 @@
  * ```
  */
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { ArtifactManifest, createDiagnostic, RpcError } from "@mostra/protocol";
@@ -223,23 +223,40 @@ function safeEntry(path: string): boolean {
  * the version ID is the one the artifact ID and those digests give (D89).
  */
 export async function readBundle(path: string, scratchRoot: string): Promise<ReadBundle> {
-  if (!existsSync(path)) throw invalid(`${path} doesn't exist.`);
+  // An archive is read through the one handle it was opened with, so the file sized and the file
+  // read are the same; a directory is read file by file below.
+  let archive: Buffer | undefined;
+  try {
+    const handle = await open(path, "r");
+    try {
+      const info = await handle.stat();
+      if (!info.isDirectory()) {
+        if (info.size > ARCHIVE_MAX) throw invalid(`${path} is larger than a bundle can be.`);
+        archive = await handle.readFile();
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") throw invalid(`${path} doesn't exist.`);
+    // Windows opens no directory as a file: it is read as a directory below.
+    if (code !== "EISDIR" && code !== "EPERM" && code !== "EACCES") throw error;
+  }
   await mkdir(scratchRoot, { recursive: true, mode: 0o700 });
   const scratch = await mkdtemp(join(scratchRoot, "import-"));
   const dispose = (): Promise<void> => removeTree(scratch);
   try {
-    if ((await stat(path)).isDirectory()) {
+    if (archive === undefined) {
       for (const file of await filesUnder(path)) {
         const target = join(scratch, ...file.split("/"));
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, await readFile(join(path, ...file.split("/"))));
       }
     } else {
-      const size = (await stat(path)).size;
-      if (size > ARCHIVE_MAX) throw invalid(`${path} is larger than a bundle can be.`);
       let files: ReturnType<typeof readTar>;
       try {
-        files = readTar(zstdDecompressSync(await readFile(path)));
+        files = readTar(zstdDecompressSync(archive));
       } catch (error) {
         throw invalid(`${path} isn't a bundle archive: ${(error as Error).message}`);
       }

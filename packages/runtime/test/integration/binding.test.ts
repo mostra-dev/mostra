@@ -5,7 +5,7 @@
  * pushes a version, sending only the client files the server lacks and never server code.
  */
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type HostedPushResult,
@@ -262,7 +262,6 @@ describe("the network binding (§18.2)", () => {
     // No server code anywhere in the data directory (D165 item 3).
     const marker = "SERVER-CODE-first";
     for (const file of walk(data)) {
-      if (statSync(file).size > 50 * 1024 * 1024) continue;
       expect(readFileSync(file).includes(marker), file).toBe(false);
     }
 
