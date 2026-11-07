@@ -25,7 +25,12 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    request through GitHub's API), then `node tools/release/versions.ts sync` (the host crate and the
    Agent Skill's `@mostra/cli@<version>` pins take the group's version; Changesets knows nothing of
    Cargo or the Skill, and repo lint refuses a crate or a pin that differs),
-   then `pnpm install` (the lockfile takes the new versions), then `pnpm check --affected`.
+   then `pnpm install` (the lockfile takes the new versions), then
+   `pnpm check --job format-lint --job docs` (repository lint holds every version, the crate and
+   the Skill's pins to one; the docs job rebuilds the references and the plugin that name it), a
+   minute. Don't run `pnpm check --affected` here: a version touches every package, so it reruns
+   every suite for half an hour on code the merge queue already checked, and the pull request's
+   own CI (its release rehearsal included) and its merge-queue run check the same tree on every leg.
    Commit `chore(release): Mostra <version>` with `git commit -s`, push, and open the pull request
    with the version's changelog. Every package of the group, the host crate and the Skill's pins
    move to one version; nothing else changes. Before this pull request, `CI`'s release rehearsal rehearses
