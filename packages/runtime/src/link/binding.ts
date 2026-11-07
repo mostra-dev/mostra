@@ -47,7 +47,12 @@ export interface BindingOptions {
   readonly initialize: () => MostraInitializeParams;
   /** Requests the hosted home sends this instance: its port calls. */
   readonly onRequest: (method: string, params: unknown) => unknown;
-  readonly onNotification?: (method: string, params: unknown) => void;
+  /**
+   * Notifications the hosted home sends, with the session they came on: one can arrive while the
+   * session's own start (`onOpen`) is still under way, before {@link Binding.session} names it
+   * (Opus review of WP-29, 2).
+   */
+  readonly onNotification?: (method: string, params: unknown, session: BindingSession) => void;
   /** Runs once a session is open, before anything else is sent on it. */
   readonly onOpen?: (session: BindingSession) => void | Promise<void>;
   /** Runs when a connection ends, with why. */
@@ -139,6 +144,8 @@ export function startBinding(options: BindingOptions): Binding {
       handshakeTimeout: 20_000,
     });
     let opened = false;
+    /** This connection's session, from its `mostra/initialize` answer on. */
+    let connectionSession: BindingSession | undefined;
     const peer = new RpcPeer({
       send: (message) => {
         if (socket.readyState !== socket.OPEN) return;
@@ -149,7 +156,11 @@ export function startBinding(options: BindingOptions): Binding {
       onRequest: (method, params) => options.onRequest(method, params),
       onNotification: (method, params) => {
         if (method === "mostra/ping") return;
-        options.onNotification?.(method, params);
+        if (!connectionSession) {
+          log.warn("link.notification_before_session", { server: options.server, method });
+          return;
+        }
+        options.onNotification?.(method, params, connectionSession);
       },
       onInternalError: (error, method) => log.error("link.internal_error", { method, error }),
     });
@@ -192,6 +203,7 @@ export function startBinding(options: BindingOptions): Binding {
             call: (definition, params, callOptions) => peer.call(definition, params, callOptions),
             notify: (method, params) => peer.notify(method, params),
           };
+          connectionSession = open;
           attempt = 0;
           await options.onOpen?.(open);
           if (socket.readyState !== socket.OPEN) return;

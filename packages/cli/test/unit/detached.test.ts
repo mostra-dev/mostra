@@ -49,6 +49,7 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_ACCESS_TTL_MS",
       "MOSTRA_TEST_RELAY_LIVE_MS",
       "MOSTRA_TEST_RELAY_LOSE_ACK",
+      "MOSTRA_TEST_REIMPORT_FAIL",
       "MOSTRA_TEST_RELAY_READY_MS",
       "MOSTRA_TEST_RELAY_SWEEP_MS",
       "MOSTRA_BUNDLE_MIRROR",

@@ -735,6 +735,16 @@ export const MIGRATIONS: readonly Migration[] = [
         "token_id TEXT NOT NULL REFERENCES token(id)",
         "token_id TEXT NOT NULL",
       );
+      // A followed submission this home doesn't hold, read again until it is imported (Opus review
+      // of WP-29, 3): written in the transaction that moves the sync cursor past it.
+      db.exec(`
+        CREATE TABLE remote_missing (
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          submission_id TEXT NOT NULL,
+          noted_at TEXT NOT NULL,
+          PRIMARY KEY (server, submission_id)
+        );
+      `);
       db.exec(`
         CREATE TRIGGER share_local_token BEFORE INSERT ON share
           WHEN NEW.via != 'remote' AND NOT EXISTS (SELECT 1 FROM token WHERE id = NEW.token_id)

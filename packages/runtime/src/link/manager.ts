@@ -402,6 +402,72 @@ export function createLink(options: LinkOptions): Link {
     log.warn("link.signed_out", { server: connection.server, why });
   };
 
+  /** Sessions whose follow failed: their later pages are never copied (Opus review of WP-29, 2). */
+  const broken = new WeakSet<BindingSession>();
+
+  /**
+   * Reads again each followed submission this home doesn't hold (restored from a backup taken
+   * before it, or a delivery it committed and then lost) and imports it as a delivery would, keeping
+   * its IDs; its local deliveries repeat their derived IDs (FAILURE_MODEL §11.2). The IDs wait in
+   * `remote_missing`, written with the cursor that passed them, until imported: a read that fails
+   * is tried again on the next page and the next session (Opus review of WP-29, 3).
+   */
+  const reimporting = new Set<string>();
+  /** Tests: the one submission whose first read again fails (`MOSTRA_TEST_REIMPORT_FAIL`). */
+  let failOnce = options.env["MOSTRA_TEST_REIMPORT_FAIL"];
+  const reimport = (
+    connection: Connection,
+    session: BindingSession,
+    source: ImportSource,
+  ): void => {
+    const missing = ledger.read((db) =>
+      db
+        .all<{ submission_id: string }>(
+          "SELECT submission_id FROM remote_missing WHERE server = ? ORDER BY noted_at, submission_id",
+          connection.server,
+        )
+        .map((row) => row.submission_id),
+    );
+    for (const submissionId of missing) {
+      const key = `${connection.server} ${submissionId}`;
+      if (reimporting.has(key)) continue;
+      reimporting.add(key);
+      void (async () => {
+        try {
+          if (failOnce === submissionId) {
+            failOnce = undefined;
+            throw new Error("a test's failed read");
+          }
+          const envelope = await session.call(
+            hostedSubmissionMethod,
+            { submissionId },
+            { timeoutMs: 30_000 },
+          );
+          const answer = options.importSubmission(envelope, source);
+          // Imported, or refused for good (it can never be held here): it waits no longer.
+          if (answer.accepted || !answer.retry) {
+            ledger.write((db) =>
+              db.run(
+                "DELETE FROM remote_missing WHERE server = ? AND submission_id = ?",
+                connection.server,
+                submissionId,
+              ),
+            );
+          }
+          log.info("link.submission_reimported", {
+            server: connection.server,
+            submissionId,
+            accepted: answer.accepted,
+          });
+        } catch (error) {
+          log.warn("link.reimport_failed", { server: connection.server, submissionId, error });
+        } finally {
+          reimporting.delete(key);
+        }
+      })();
+    }
+  };
+
   /** Copies one page of followed events, then acknowledges it (the sync cursor, §18.2). */
   const follow = (
     connection: Connection,
@@ -417,7 +483,7 @@ export function createLink(options: LinkOptions): Link {
       home,
       incarnation,
     };
-    const outcome = ledger.write((db) => {
+    ledger.write((db) => {
       const followed = followEvents(db, {
         events: page.events,
         source,
@@ -429,26 +495,17 @@ export function createLink(options: LinkOptions): Link {
         incarnation,
         connection.server,
       );
+      for (const submissionId of followed.missing) {
+        db.run(
+          "INSERT OR IGNORE INTO remote_missing (server, submission_id, noted_at) VALUES (?, ?, ?)",
+          connection.server,
+          submissionId,
+          new Date(now()).toISOString(),
+        );
+      }
       return followed;
     });
-    // A followed submission this home doesn't hold (restored from a backup taken before it, or
-    // a delivery the owner committed and then lost): read it again and import it as a delivery
-    // would, keeping its IDs; its local deliveries repeat their derived IDs (FAILURE_MODEL §11.2).
-    for (const submissionId of outcome.missing) {
-      void session
-        .call(hostedSubmissionMethod, { submissionId }, { timeoutMs: 30_000 })
-        .then((envelope) => {
-          const answer = options.importSubmission(envelope, source);
-          log.info("link.submission_reimported", {
-            server: connection.server,
-            submissionId,
-            accepted: answer.accepted,
-          });
-        })
-        .catch((error: unknown) =>
-          log.warn("link.reimport_failed", { server: connection.server, submissionId, error }),
-        );
-    }
+    reimport(connection, session, source);
     session.notify(eventsAckMethod.method, {
       subscriptionId: page.subscriptionId,
       cursor: page.cursor,
@@ -548,10 +605,18 @@ export function createLink(options: LinkOptions): Link {
         });
       },
       onRequest: onRequest(connection),
-      onNotification: (method, params) => {
+      onNotification: (method, params, session) => {
         if (method !== "events/notify") return;
-        const session = connection.binding.session;
-        if (session) follow(connection, params as EventsNotifyParams, session);
+        // A page that can't be copied ends the connection: no later page may commit the cursor
+        // past it, and the next session resumes after what was committed (Opus review of WP-29, 2).
+        if (broken.has(session)) return;
+        try {
+          follow(connection, params as EventsNotifyParams, session);
+        } catch (error) {
+          broken.add(session);
+          log.warn("link.follow_failed", { server, error });
+          connection.binding.reconnect();
+        }
       },
       onOpen: async (session) => {
         connection.home = session.result.instance.home;
@@ -602,6 +667,14 @@ export function createLink(options: LinkOptions): Link {
         connection.state = "connected";
         connection.since = new Date(now()).toISOString();
         delete connection.lastError;
+        if (connection.home && connection.incarnation) {
+          reimport(connection, session, {
+            server,
+            serverKey: serverKey(server),
+            home: connection.home,
+            incarnation: connection.incarnation,
+          });
+        }
         void drainPushes(connection);
       },
       onClose: (why) => {

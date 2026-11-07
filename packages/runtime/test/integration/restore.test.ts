@@ -222,6 +222,16 @@ export default function Page() {
     await owner.stop();
     removeAll(store);
     cpSync(saved, store, { recursive: true });
+    // Its first read again fails (the connection drops, the call times out): the cursor has moved
+    // past the answer, which waits in the owner's ledger and is read again at its next session
+    // (Opus review of WP-29, 3).
+    await owner.start({ env: { ...ownerEnv(port), MOSTRA_TEST_REIMPORT_FAIL: lost.id } });
+    const ownerLog = (): string =>
+      readdirSync(join(owner.home.home, "logs"))
+        .map((name) => readFileSync(join(owner.home.home, "logs", name), "utf8"))
+        .join("");
+    await eventually(() => ownerLog().includes("link.reimport_failed"), 30_000);
+    await owner.stop();
     await owner.start({ env: ownerEnv(port) });
     await imported(lost.id);
     const results = ok<{ submission: { digest: string; origin?: unknown } }>(

@@ -61,6 +61,22 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "a page of followed events sent during the session's start is dropped (Opus review of WP-29, 2)",
+    file: "src/link/binding.ts",
+    from: "          connectionSession = open;",
+    to: "          void open;",
+    check: unit("binding.test.ts", "during the session's start"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a lost submission whose read again fails is never read again (Opus review of WP-29, 3)",
+    file: "src/link/manager.ts",
+    from: "      for (const submissionId of followed.missing) {",
+    to: "      for (const submissionId of followed.missing.slice(0, 0)) {",
+    check: integration("restore.test.ts", "lost to a restore"),
+  },
+  {
     requirement: "RM-04",
     name: "a waiting run past its limit is sent when its owner returns (Opus review of WP-29, 7)",
     file: "src/server/relay.ts",
@@ -187,8 +203,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "a submission the owner lost to a restore is never read again",
     file: "src/link/manager.ts",
-    from: "    for (const submissionId of outcome.missing) {",
-    to: "    for (const submissionId of [] as string[]) {",
+    from: "    for (const submissionId of missing) {\n      const key = `${connection.server} ${submissionId}`;",
+    to: "    for (const submissionId of [] as string[]) {\n      const key = `${connection.server} ${submissionId}`;",
     check: integration("restore.test.ts", "lost to a restore"),
   },
   {
@@ -356,8 +372,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "the owner follows none of its hosted artifacts' events",
     file: "src/link/manager.ts",
-    from: "        if (session) follow(connection, params as EventsNotifyParams, session);",
-    to: "        void session;",
+    from: "          follow(connection, params as EventsNotifyParams, session);",
+    to: "          void session;",
     check: integration("hosted.test.ts", "sync cursor"),
   },
   {
