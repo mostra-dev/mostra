@@ -1,5 +1,52 @@
 # @mostra/cli
 
+## 0.10.0
+
+### Minor Changes
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`6dbd51b`](https://github.com/mostra-dev/mostra/commit/6dbd51be267212240fd33a4b109ffeb62c503375) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra login [<server>] [--default]` signs this machine in to a remote server by the device grant, `mostra logout [<server>] [--forget]` signs it out (keeping its instance link unless `--forget`), and `mostra share <artifact> --cloud [<server>]` hosts the artifact there. `mostra status` lists the linked servers (`instance/status` gains `links`), and `remote/login` takes `default` to make this instance the account's default.
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`eec2d62`](https://github.com/mostra-dev/mostra/commit/eec2d6251a6e4b3300745cc2565668e51642d9c3) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Portable bundles: `mostra export <artifact> --out <path>` writes a published version (its builds, manifest, lockfile and source snapshot) as a directory or one `.tar.zst`, and `mostra run <bundle>` makes it the same version in another home, with the same artifact ID, version ID and digests, its server code running there. An import checks every digest, and that the manifest it records is the one its source declares, before it keeps anything (`MOSTRA_ARTIFACT_BUNDLE_INVALID`). New host protocol methods: `artifact/export` and `artifact/import`.
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`09ebb64`](https://github.com/mostra-dev/mostra/commit/09ebb643f70362a4170e6e7b03b2ac5848b11d7b) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra-runtime server --data <dir> [--config <file>] [--listen <host:port>]` starts the remote server's core: it holds its data directory with a lock the operating system releases when the process ends, so a second server refuses it and a crashed one never leaves it locked; it refuses a data directory on a network filesystem (`MOSTRA_HOME_NETWORK_FILESYSTEM`) and a configuration it can't use, naming the key (`MOSTRA_REMOTE_CONFIG_INVALID`); and it routes requests by their exact `Host`. New diagnostic area: `REMOTE`.
+
+### Patch Changes
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`f0b3cdc`](https://github.com/mostra-dev/mostra/commit/f0b3cdc5156956282d628942419b8d500673c4f6) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A remote server serves hosted pages: `mostra share <artifact> --cloud` (the host protocol's `share/start { via: "remote" }`) pushes the latest version and mints a link on the hosted home, `https://<domain>/a/<routeId>#t=…`; the shell lives on the user-content domain's apex with its session in the `X-Mostra-Shell` header (`SHELL_SESSION_HEADER`), never a cookie, and frames on the route's own label in worker mode. A respondent there sees "Your answer was sent." and no delivery state; the owner instance receives the submission through its outbox. `share/list` and `share/stop` include remote shares, and a stopped one's hosted link is revoked. `VersionPush` carries the owner's submission policy in force.
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`99bde6a`](https://github.com/mostra-dev/mostra/commit/99bde6ae87522c4b4b2e68fa9e16c2af8bbc5665) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On Windows, reading the telemetry install ID is tried again for up to a second when another process holds the file for a moment, so racing first runs agree on one ID ([#129](https://github.com/mostra-dev/mostra/issues/129)).
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`a76751c`](https://github.com/mostra-dev/mostra/commit/a76751ce4ee736b45de80ea715cab00b0f7d21b9) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `mostra open` says on stderr when it opened no browser and why, and `--browser` opens one from an agent's shell ([#114](https://github.com/mostra-dev/mostra/issues/114)). Under `epochs`, a new round's page no longer shows the last round's "Submitted" card; only the tab that submitted keeps its receipt ([#118](https://github.com/mostra-dev/mostra/issues/118)).
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`e023f3f`](https://github.com/mostra-dev/mostra/commit/e023f3f651765a201400b4b5b09ef35963619100) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The relay: a hosted page's action runs and plain calls run on the artifact's owner instance, with its own secrets, over its binding (`port/relay.run`, `cancel`, `reconcile`, `call`; `relay/run.update`, `relay/call.batch`). While the owner is offline a run waits (`RunStatus` gains `waiting` in use and `unknown`), as the manifest's `hosted.offline` says: `queue` (up to its limit, then `failed` with reason `owner-offline`) or `fail` (at once), in a queue capped per artifact (`MOSTRA_REMOTE_QUEUE_FULL`) that drains in order at a bounded rate when the owner returns. A run the owner never reported within the limit is `unknown`, and its reported end replaces it once; after every reconnect the owner's accepted runs are reconciled before anything drains, and an owner restored to before runs it accepted makes them `unknown`. `RunState.ownerUnreachable` marks a running run whose owner is out of reach. By default only a signed-in viewer or a link minted for a named person may trigger a relayed action (`hosted.actions`, `MOSTRA_REMOTE_SIGN_IN_REQUIRED`). Hosted pages read their tallies. In `@mostra/react`, `run()` rejects for an `unknown` run, which keeps following for its owner's report.
+  
+  Server code's signals, host events and shared state in a relayed run act on the hosted home (`relay/effect`; `state/patch`'s `causation`), and so do the owner's own `state/*` and `live/push` of a hosted artifact. A hosted page's live sources run on its owner while someone views (`port/relay.live`, `relay/live.value`), redacted before they leave; `LiveState.ownerOffline` marks a value its producer can't refresh while the owner is away.
+  
+  A server's `rateLimits.perLink.relayedRuns` limits each link's relayed actions: past it a page gets 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`, before anything is recorded or relayed.
+  
+  A relayed run its owner refuses before recording it ends `failed` with reason `owner-refused`; one the connected owner never answered is sent again, which joins the owner's record if it has one.
+  
+  After its review: a hosted push's listing paths are checked for every system the server runs on; a binding with ports must name its own instance link; the newest session of a link is its own, and a failed reconcile is tried again; a run never ends without the output the relay lost; an expired waiting run is never sent; an `unknown` run is reconciled until the owner's end replaces it; a cancel pressed during an acknowledgement reaches the owner; followed pages and lost submissions survive a reconnect; a restore is told once; a refused push no longer blocks later ones; live values reach every server hosting an artifact.
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`bb061a2`](https://github.com/mostra-dev/mostra/commit/bb061a2a17239d93bfedb13cba3654503da04f4c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The remote server signs instances in and hosts their versions (WP-29, D165): `mostra-runtime
+  server` gains the device authorization grant (`/oauth/device`, `/oauth/token`, `/oauth/revoke`,
+  a device page that says approving links a machine, and a development identity provider for tests
+  and first runs), with tokens kept only as hashes and refresh tokens that rotate; the network
+  binding, the host protocol as JSON-RPC over WebSocket at `/host` with a bearer token, one message
+  per frame up to the line limit, a ping and `mostra/ping` every 20 s and a 45 s silence limit, an
+  in-band token refresh (`remote/token`) and a close within 60 s of a revoked grant; and
+  `hosted/push` with version files over HTTPS (`PUT /files/<sha256>`), which stores only the client
+  files a pending push names as missing, checks the listing against the output digest and never
+  stores server code. The protocol adds the methods `remote/login`, `remote/login.wait`,
+  `remote/logout`, `remote/status`, `remote/token` and `hosted/push`, `RemoteLink`, the `acct_`,
+  `hom_`, `lnk_` and `rte_` IDs, `mostra/initialize`'s `link` and `InstanceInfo`'s `hosted` mode,
+  `share/start`'s `via: "remote"` and `server`, and the `MOSTRA_REMOTE_*` diagnostics a hosted
+  artifact's owner and viewers meet.
+- Updated dependencies [[`f0b3cdc`](https://github.com/mostra-dev/mostra/commit/f0b3cdc5156956282d628942419b8d500673c4f6), [`6dbd51b`](https://github.com/mostra-dev/mostra/commit/6dbd51be267212240fd33a4b109ffeb62c503375), [`93c04c1`](https://github.com/mostra-dev/mostra/commit/93c04c1890ebeb56d6abc7bcd2d5f2d139ae3ee5), [`eec2d62`](https://github.com/mostra-dev/mostra/commit/eec2d6251a6e4b3300745cc2565668e51642d9c3), [`e023f3f`](https://github.com/mostra-dev/mostra/commit/e023f3f651765a201400b4b5b09ef35963619100), [`bb061a2`](https://github.com/mostra-dev/mostra/commit/bb061a2a17239d93bfedb13cba3654503da04f4c), [`09ebb64`](https://github.com/mostra-dev/mostra/commit/09ebb643f70362a4170e6e7b03b2ac5848b11d7b), [`622ac47`](https://github.com/mostra-dev/mostra/commit/622ac475f0a58e7508925724ed7e51f4b90fe50c), [`b9e6780`](https://github.com/mostra-dev/mostra/commit/b9e67808da7d67cba596d9f1019ed83aa69acfb0)]:
+  - @mostra/protocol@0.10.0
+  - @mostra/mcp@0.10.0
+  - @mostra/sdk@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

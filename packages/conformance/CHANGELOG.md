@@ -1,5 +1,17 @@
 # @mostra/conformance
 
+## 0.10.0
+
+### Minor Changes
+
+- [#128](https://github.com/mostra-dev/mostra/pull/128) [`b119f05`](https://github.com/mostra-dev/mostra/commit/b119f05b57b252fdf9d1edd62ab010229e9890b1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Two remote scenarios, `remote.delivery` and `remote.relay`: the kit runs a remote server, signs the host's instance in through the host's own client, shares to it and answers the hosted page, checking that the answer reaches the host once through its instance's outbox and that a hosted page's actions run on the host's instance with its own secrets. The kit's viewer opens hosted links, keeping the shell's session in a header as the hosted shell does.
+
+### Patch Changes
+
+- Updated dependencies [[`f0b3cdc`](https://github.com/mostra-dev/mostra/commit/f0b3cdc5156956282d628942419b8d500673c4f6), [`6dbd51b`](https://github.com/mostra-dev/mostra/commit/6dbd51be267212240fd33a4b109ffeb62c503375), [`93c04c1`](https://github.com/mostra-dev/mostra/commit/93c04c1890ebeb56d6abc7bcd2d5f2d139ae3ee5), [`eec2d62`](https://github.com/mostra-dev/mostra/commit/eec2d6251a6e4b3300745cc2565668e51642d9c3), [`e023f3f`](https://github.com/mostra-dev/mostra/commit/e023f3f651765a201400b4b5b09ef35963619100), [`bb061a2`](https://github.com/mostra-dev/mostra/commit/bb061a2a17239d93bfedb13cba3654503da04f4c), [`09ebb64`](https://github.com/mostra-dev/mostra/commit/09ebb643f70362a4170e6e7b03b2ac5848b11d7b), [`622ac47`](https://github.com/mostra-dev/mostra/commit/622ac475f0a58e7508925724ed7e51f4b90fe50c), [`b9e6780`](https://github.com/mostra-dev/mostra/commit/b9e67808da7d67cba596d9f1019ed83aa69acfb0)]:
+  - @mostra/protocol@0.10.0
+  - @mostra/sdk@0.10.0
+
 ## 0.9.0
 
 ### Patch Changes
