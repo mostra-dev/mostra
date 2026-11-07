@@ -17,7 +17,10 @@
 ## Candidate checks
 
 - **`pnpm check`** on `b093424` in the detached worktree (fresh `pnpm install --frozen-lockfile`, 32 min): every job passed but `integration`, where one case, `verify.test.ts` "passes a single MDX page", met `MOSTRA_RUNTIME_NOT_READY` at 59.6 s while every job ran at once on this laptop; alone it passed (10 of 10 of its group). Every later commit ran its affected static jobs, unit and the suites it touched.
-- **CI** on the pull request with `ci:full` (every leg, Windows x64 and arm64 included): recorded below once the run ends.
+- **CI** on the pull request with `ci:full` (every leg: Linux, macOS, Windows x64 and arm64, every engine, the six-platform release rehearsal):
+  - run 42325188141 on `99bde6a`: green. Earlier runs found what the suites' grouping and bounds needed (D166 item 21) and #129 (a Windows read of the install ID; retried, kept open until the Windows legs have run it more).
+  - run 42384068943 on `68b5f8c`, after the Opus review's fixes: green. Its first attempt failed one case on Windows x64 Firefox, IN-02's journaled edit, whose shell never reached ready at its first open, before anything of WP-29's runs (#39, recorded there); the re-run passed.
+  - CodeQL: two alerts fixed, four dismissed with reasons (Reviews, below).
 
 ## Decisions
 
