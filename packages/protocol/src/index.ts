@@ -22,6 +22,7 @@ export {
   LiveRequest,
   type LiveState,
   type LiveUpdate,
+  READABLE_LIVE_KEY_PATTERN,
   RUN_KEY_MAX,
   RUN_LOG_MAX,
   RUN_LOG_TRUNCATED,
@@ -36,6 +37,8 @@ export {
   type RunStatus,
   SECRET_NAME_PATTERN,
   SECRET_VALUE_MAX,
+  TALLY_LIVE_PREFIX,
+  type TallyValue,
 } from "./actions.ts";
 export {
   ArtifactDetail,
@@ -106,6 +109,7 @@ export {
   PollResult,
   REVIEW_SET_ID_PATTERN,
   readViewContext,
+  SHELL_SESSION_HEADER,
   ShellSubmitRequest,
   SIGNAL_PAYLOAD_MAX_BYTES,
   SignalRequest,
@@ -135,14 +139,7 @@ export {
   isWindowsBundle,
 } from "./bundle.ts";
 export { canonicalJson } from "./canonical.ts";
-export {
-  ALL_SCOPES,
-  CapabilityScope,
-  Duration,
-  durationMs,
-  normalizeScopes,
-  scopeAllows,
-} from "./capability.ts";
+export { ALL_SCOPES, CapabilityScope, normalizeScopes, scopeAllows } from "./capability.ts";
 export {
   type A11yDiagnosticCode,
   type ActionDiagnosticCode,
@@ -183,8 +180,10 @@ export {
   platformDiagnosticCodes,
   publishDiagnosticCodes,
   type RegressionDiagnosticCode,
+  type RemoteDiagnosticCode,
   type RuntimeDiagnosticCode,
   regressionDiagnosticCodes,
+  remoteDiagnosticCodes,
   runtimeDiagnosticCodes,
   type SecretDiagnosticCode,
   type ShareDiagnosticCode,
@@ -219,6 +218,7 @@ export {
   type DiagnosticSpec,
   docsUrl,
 } from "./diagnostics/spec.ts";
+export { Duration, durationMs } from "./duration.ts";
 export {
   CSRF_HEADER,
   checkRequest,
@@ -233,16 +233,20 @@ export {
   safePath,
 } from "./hygiene.ts";
 export {
+  AccountId,
   ArtifactId,
   CommentId,
   Cursor,
   DeliveryId,
   type GeneratedIdKind,
+  HomeId,
   type Id,
   type IdBody,
   type IdKind,
   type IdPrefix,
+  LinkId,
   MutationId,
+  RouteId,
   RunId,
   ShareId,
   SubmissionId,
@@ -260,6 +264,7 @@ export {
   DeliveryStatus,
   DocumentRevision,
   EventFilter,
+  EventOrigin,
   EventRecord,
   EventTypePattern,
   FIELD_ID_MAX_LENGTH,
@@ -288,7 +293,14 @@ export {
   ArtifactLink,
   ArtifactManifest,
   type DemoSpec,
+  HOSTED_OFFLINE_LIMIT_DEFAULT,
+  HOSTED_OFFLINE_LIMIT_MAX_MS,
+  HostedSettings,
+  manifestProblem,
   SubmissionPolicy,
+  TALLY_CHOICES_MAX,
+  TALLY_CHOICES_MIN,
+  TallySpec,
   type TerminalSpec,
 } from "./manifest.ts";
 export {
@@ -305,10 +317,21 @@ export {
   artifactCreateMethod,
 } from "./methods/artifact/create.ts";
 export {
+  type ArtifactExportParams,
+  type ArtifactExportResult,
+  artifactExportMethod,
+  ExportClass,
+} from "./methods/artifact/export.ts";
+export {
   type ArtifactGetParams,
   type ArtifactGetResult,
   artifactGetMethod,
 } from "./methods/artifact/get.ts";
+export {
+  type ArtifactImportParams,
+  type ArtifactImportResult,
+  artifactImportMethod,
+} from "./methods/artifact/import.ts";
 export {
   type ArtifactListFilter,
   type ArtifactListParams,
@@ -372,6 +395,19 @@ export {
   type GcVersion,
   gcRunMethod,
 } from "./methods/gc/run.ts";
+export {
+  type HostedPushParams,
+  type HostedPushResult,
+  HostedRoute,
+  hostedPushMethod,
+  type ListingEntry,
+  VersionPush,
+} from "./methods/hosted/push.ts";
+export {
+  type HostedSubmissionParams,
+  type HostedSubmissionResult,
+  hostedSubmissionMethod,
+} from "./methods/hosted/submission.ts";
 export { hostMethods, hostNotifications } from "./methods/index.ts";
 export {
   type InstanceCheck,
@@ -427,6 +463,34 @@ export {
   portIdentityResolveMethod,
 } from "./methods/port/identity-resolve.ts";
 export {
+  type PortRelayCallParams,
+  type PortRelayCallResult,
+  portRelayCallMethod,
+} from "./methods/port/relay-call.ts";
+export {
+  type PortRelayCancelParams,
+  type PortRelayCancelResult,
+  portRelayCancelMethod,
+} from "./methods/port/relay-cancel.ts";
+export {
+  type PortRelayLiveParams,
+  type PortRelayLiveResult,
+  portRelayLiveMethod,
+} from "./methods/port/relay-live.ts";
+export {
+  type PortRelayReconcileParams,
+  type PortRelayReconcileResult,
+  portRelayReconcileMethod,
+  type RelayHeld,
+  type RelayReconciled,
+} from "./methods/port/relay-reconcile.ts";
+export {
+  type PortRelayRunParams,
+  type PortRelayRunResult,
+  portRelayRunMethod,
+  RelayViewer,
+} from "./methods/port/relay-run.ts";
+export {
   type PortSecretsGetParams,
   type PortSecretsGetResult,
   portSecretsGetMethod,
@@ -446,6 +510,52 @@ export {
   type PortTrustedControlsPolicyResult,
   portTrustedControlsPolicyMethod,
 } from "./methods/port/trusted-controls-policy.ts";
+export {
+  type RelayCallBatchParams,
+  type RelayCallBatchResult,
+  relayCallBatchMethod,
+} from "./methods/relay/call-batch.ts";
+export {
+  type RelayEffectParams,
+  type RelayEffectResult,
+  relayEffectMethod,
+} from "./methods/relay/effect.ts";
+export {
+  type RelayLiveValueParams,
+  type RelayLiveValueResult,
+  relayLiveValueMethod,
+} from "./methods/relay/live-value.ts";
+export {
+  type RelayRunEnd,
+  type RelayRunUpdateParams,
+  type RelayRunUpdateResult,
+  relayRunUpdateMethod,
+} from "./methods/relay/run-update.ts";
+export {
+  type RemoteLoginParams,
+  type RemoteLoginResult,
+  remoteLoginMethod,
+} from "./methods/remote/login.ts";
+export {
+  type RemoteLoginWaitParams,
+  type RemoteLoginWaitResult,
+  remoteLoginWaitMethod,
+} from "./methods/remote/login-wait.ts";
+export {
+  type RemoteLogoutParams,
+  type RemoteLogoutResult,
+  remoteLogoutMethod,
+} from "./methods/remote/logout.ts";
+export {
+  type RemoteStatusParams,
+  type RemoteStatusResult,
+  remoteStatusMethod,
+} from "./methods/remote/status.ts";
+export {
+  type RemoteTokenParams,
+  type RemoteTokenResult,
+  remoteTokenMethod,
+} from "./methods/remote/token.ts";
 export {
   type ResultsGetParams,
   type ResultsGetResult,
@@ -526,6 +636,12 @@ export {
   waitMethod,
 } from "./methods/wait/wait.ts";
 export { receivable } from "./receive.ts";
+export {
+  OwnerLinkInfo,
+  RemoteLink,
+  type RemoteLinkState,
+  ServerOrigin,
+} from "./remote.ts";
 export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,

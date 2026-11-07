@@ -5,6 +5,7 @@
  * Trusted controls, the version banner and the review overlay join it in WP-07 and WP-20; the
  * frame never renders any of them, and it can't replace this page with one of its own (D98 item 7).
  */
+
 import { type ReactElement, useEffect, useState } from "react";
 import {
   type Access,
@@ -16,6 +17,7 @@ import {
   ShellError,
   type ShellSession,
 } from "./api.ts";
+import { enterRoute, forgetSession, keepSession } from "./hosted.ts";
 import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
 import { describeAccess, explain } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
@@ -64,16 +66,31 @@ async function open(): Promise<State> {
   const target = parseTarget(location.pathname);
   if (!target) return { kind: "error", code: "NO_ARTIFACT" };
   const token = credentialFrom(location.hash);
+  if (target.routeId !== undefined) enterRoute(target.routeId);
   // The token (or launch ticket) leaves the address bar before anything else happens, so it isn't
-  // kept in history, bookmarks or screenshots of this page (D97).
-  if (token !== undefined) history.replaceState(null, "", location.pathname + location.search);
+  // kept in history, bookmarks or screenshots of this page (D97). A hosted shell keeps it until
+  // its session's secret is stored, so a reload still has the link (INTERFACES §18.4).
+  const strip = (): void => history.replaceState(null, "", location.pathname + location.search);
+  if (token !== undefined && target.routeId === undefined) strip();
   try {
     const session =
       token !== undefined
-        ? await exchange(target.apiBase, token)
+        ? await exchange(target.apiBase, token, false, target.routeId)
         : await readSession(target.apiBase);
+    if (target.routeId !== undefined && token !== undefined) {
+      const kept = session.session !== undefined && keepSession(session.session);
+      if (kept) strip();
+    }
     return frame(target, session);
   } catch (error) {
+    // A hosted session whose link was revoked or expired is forgotten: the link opens it again.
+    if (
+      target.routeId !== undefined &&
+      error instanceof ShellError &&
+      (error.status === 401 || error.status === 410)
+    ) {
+      forgetSession();
+    }
     // Another link's session is live: the viewer chooses (D98 item 8).
     if (
       token !== undefined &&
@@ -129,7 +146,13 @@ export function Shell(): ReactElement {
       setState({ kind: "loading" });
       mark("loading");
       void session.then(
-        (next) => frame(target, next).then(show),
+        (next) => {
+          // A hosted shell kept the link's token in the address bar until a session was settled.
+          if (target.routeId !== undefined && next.session === undefined) {
+            history.replaceState(null, "", location.pathname + location.search);
+          }
+          return frame(target, next).then(show);
+        },
         (error: unknown) => show(errorState(error)),
       );
     };
@@ -138,7 +161,16 @@ export function Shell(): ReactElement {
         current={conflict.current}
         offered={conflict.offered}
         onKeep={() => choose(readSession(target.apiBase))}
-        onReplace={() => choose(exchange(target.apiBase, token, true))}
+        onReplace={() =>
+          choose(
+            exchange(target.apiBase, token, true, target.routeId).then((next) => {
+              if (next.session !== undefined && keepSession(next.session)) {
+                history.replaceState(null, "", location.pathname + location.search);
+              }
+              return next;
+            }),
+          )
+        }
       />
     );
   }

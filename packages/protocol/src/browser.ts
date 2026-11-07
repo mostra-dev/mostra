@@ -272,6 +272,12 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
 export const FRAME_SESSION_HEADER = "x-mostra-frame";
 
 /**
+ * The header a hosted shell sends its session's secret in (INTERFACES §18.4, D165 item 8): no
+ * cookie is ever set or read on a hosted host, so no tenant page can toss, shadow or crowd one out.
+ */
+export const SHELL_SESSION_HEADER = "x-mostra-shell";
+
+/**
  * `POST /_mostra/enter` on the artifact's origin: the bootstrap page exchanges the shell's
  * single-use frame ticket, from `/_mostra/enter#t=…`, for a worker-mode frame session.
  */

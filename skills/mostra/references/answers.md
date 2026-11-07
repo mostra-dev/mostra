@@ -6,6 +6,7 @@
 - Forms with react-hook-form
 - The trusted Submit and `useSubmit`
 - Submission policies
+- Counts by choice
 - Signals
 - Choosing between candidates
 - Waiting
@@ -110,6 +111,41 @@ Request one in the manifest's `submission`; the host running Mostra decides (`mo
 | once, per viewer | `{ policy: "once", scope: "per-viewer" }` | A survey: one submission from each person, each with their own link |
 | epochs | `{ policy: "epochs" }` | Rounds: the person submits, you reply with a new version, they submit again. Each round is kept and linked |
 | none | `{ policy: "none" }` | No Submit at all: dashboards, task lists, pages that talk through shared state, actions and signals ([long-lived.md](long-lived.md)) |
+
+### Approvals that do something
+
+When approving should make something happen (place the order, write the config, send the mail), keep the approval a submission: it is the durable record of who approved what, it arrives in `mostra results`, and the person presses one trusted button.
+
+1. Use `once` and name the trusted Submit for the effect: `useSubmitControl({ label: "Approve and place the order", confirm: "Place the order for 3 laptops?" })`.
+2. `mostra wait <dir> --until submitted`, read `mostra results <dir>`, then do the effect yourself.
+3. Publish a new version, or set shared state, that says it's done, so the person sees the outcome.
+
+When the effect must happen the moment they press, even while you aren't waiting, run it from the page with `useAction(fn, { key })` (a key makes it happen once, [server.md](server.md)), and still submit with the trusted Submit: `results` lists the run under `actions`. Choosing `none` with a signal instead leaves no submission and no trusted control, so nothing records the approval.
+
+## Counts by choice
+
+To show everyone how a fixed-choice question is going ("12 for Ship, 4 for Wait"), name the field in the manifest's `tally`. Mostra counts each submission's answer as it is accepted and sends the counts to every open page, with no server code:
+
+```tsx
+import { defineArtifact, useField, useLive } from "@mostra/react";
+
+export const artifact = defineArtifact({
+  title: "Ship the redesign?",
+  submission: { policy: "once", scope: "per-viewer" },
+  tally: [{ field: "decision", choices: ["ship", "wait", "drop"], minTotal: 5 }],
+});
+
+function Decision() {
+  const [decision, setDecision] = useField("decision", "");
+  const tally = useLive("$tally/decision"); // data: { counts?: { ship, wait, drop }, total }
+  // …radio buttons for the three choices…
+  return <p>{tally.data?.counts ? `${tally.data.counts.ship} for Ship` : `${tally.data?.total ?? 0} answers so far`}</p>;
+}
+```
+
+- Counts are of answers, never of people, and only of the listed `choices` (2 to 50): any other value counts nothing, so what someone typed never shows. Counts only grow.
+- Below `minTotal` (default 0) a page gets only `total`, so with a handful of answers no one can tell how each person answered.
+- The field is a viewer field (each person's own answer), and the counts come from submissions, so the policy must submit (`once` per viewer or `epochs`).
 
 ## Signals
 

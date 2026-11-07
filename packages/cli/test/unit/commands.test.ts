@@ -150,7 +150,9 @@ describe("the command line (AX-01)", () => {
     for (const name of ["share", "share stop", "share list"]) expect(names).toContain(name);
     // WP-15 added `mcp` (D164).
     expect(names).toContain("mcp");
-    for (const later of ["review", "export", "plugin", "term", "run"]) {
+    // WP-29 added `export` (its bundle class) and `run` (RM-01).
+    for (const name of ["export", "run"]) expect(names).toContain(name);
+    for (const later of ["review", "plugin", "term"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
     }
   });

@@ -37,7 +37,7 @@ export interface InstanceSummary {
   /** Its process ID. */
   readonly pid: number;
   /** `daemon`, or `host` for an instance a host spawned (telemetry sends nothing then, D140). */
-  readonly mode: "host" | "daemon";
+  readonly mode: "host" | "daemon" | "hosted";
   /** The runtime's release. */
   readonly version: string;
   /** Whether this command started the daemon. */

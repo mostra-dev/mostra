@@ -6,6 +6,7 @@
  */
 import type { EventRecord, PollResult, StreamSnapshot } from "@mostra/protocol";
 import { eventsUrl } from "./api.ts";
+import { hosted, sessionHeaders } from "./hosted.ts";
 
 /** How long the shell's stream may stay silent after it opens before it long-polls (WP-13). */
 const STREAM_FIRST_MESSAGE_MS = 6_000;
@@ -32,7 +33,11 @@ export function openStream(apiBase: string, viewId: string, listener: StreamList
     while (!closed) {
       const url = `${eventsUrl(apiBase, viewId, true)}${cursor === undefined ? "" : `&cursor=${cursor}`}&wait=25`;
       try {
-        const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+        const response = await fetch(url, {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: sessionHeaders(),
+        });
         if (response.status === 410) {
           listener.onStatus("revoked");
           return;
@@ -54,6 +59,14 @@ export function openStream(apiBase: string, viewId: string, listener: StreamList
     }
   };
 
+  // A hosted shell's session is a header, which an EventSource can't send: it long-polls.
+  if (hosted()) {
+    void poll();
+    return () => {
+      closed = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }
   source = new EventSource(eventsUrl(apiBase, viewId));
   // The gateway's first message (`ready`) comes at once: silence after opening means something
   // holds the stream back (a buffering proxy or tunnel), so the shell long-polls instead.
@@ -114,6 +127,7 @@ export async function readSnapshot(
     const response = await fetch(`${eventsUrl(apiBase, viewId, true)}&wait=0`, {
       credentials: "same-origin",
       cache: "no-store",
+      headers: sessionHeaders(),
     });
     if (!response.ok) return undefined;
     return ((await response.json()) as PollResult).snapshot;

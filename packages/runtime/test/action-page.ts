@@ -128,7 +128,13 @@ export async function resultOf(state: RunState): Promise<unknown> {
 
 /** A counting fake mail server: every accepted POST is one email (J3's "Send"). */
 export class FakeMail {
-  readonly received: { to: string; body: string; authorization: string | undefined }[] = [];
+  readonly received: {
+    to: string;
+    body: string;
+    authorization: string | undefined;
+    /** When it arrived (the relay's drain rate). */
+    at: number;
+  }[] = [];
   server!: Server;
   url = "";
 
@@ -144,7 +150,11 @@ export class FakeMail {
           return;
         }
         const parsed = JSON.parse(body) as { to: string; body: string };
-        this.received.push({ ...parsed, authorization: request.headers.authorization });
+        this.received.push({
+          ...parsed,
+          authorization: request.headers.authorization,
+          at: Date.now(),
+        });
         // A slow provider, so a double click arrives while the first send is in flight.
         setTimeout(() => {
           response.setHeader("content-type", "application/json");

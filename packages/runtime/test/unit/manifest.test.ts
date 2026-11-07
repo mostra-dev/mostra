@@ -167,6 +167,48 @@ describe("invalid manifests", () => {
     }
   });
 
+  it("reads a tally and the hosted settings (D165 items 4, 12, 13)", () => {
+    const { manifest, warnings } = extractManifest(
+      "index.tsx",
+      entry(`export const artifact = defineArtifact({
+  title: "Poll",
+  tally: [{ field: "decision", choices: ["ship", "wait"], minTotal: 5 }],
+  hosted: { offline: { actions: "fail", limit: "7d" }, actions: "link", submissions: "signed-in", preview: "title" },
+});`),
+    );
+    expect(warnings).toEqual([]);
+    expect(manifest?.tally).toEqual([
+      { field: "decision", choices: ["ship", "wait"], minTotal: 5 },
+    ]);
+    expect(manifest?.hosted).toEqual({
+      offline: { actions: "fail", limit: "7d" },
+      actions: "link",
+      submissions: "signed-in",
+      preview: "title",
+    });
+  });
+
+  it("refuses a tally of one choice, of repeated choices or of one field twice, and an offline limit past 7 days", () => {
+    for (const [manifest, field] of [
+      ['{ title: "x", tally: [{ field: "d", choices: ["a"] }] }', "tally"],
+      ['{ title: "x", tally: [{ field: "d", choices: ["a", "a"] }] }', "tally"],
+      [
+        '{ title: "x", tally: [{ field: "d", choices: ["a", "b"] }, { field: "d", choices: ["c", "e"] }] }',
+        "tally",
+      ],
+      ['{ title: "x", tally: [{ field: "d", choices: ["a", "b"], minTotal: -1 }] }', "tally"],
+      ['{ title: "x", hosted: { offline: { limit: "8d" } } }', "hosted"],
+      ['{ title: "x", hosted: { actions: "anyone" } }', "hosted"],
+    ] as const) {
+      const diagnostic = failure(
+        "index.tsx",
+        entry(`export const artifact = defineArtifact(${manifest});`),
+      );
+      expect(diagnostic.code).toBe("MOSTRA_MANIFEST_INVALID");
+      expect(diagnostic.message).toContain(`\`${field}`);
+    }
+  });
+
   it("asks for the import when defineArtifact isn't imported", () => {
     const diagnostic = failure(
       "index.tsx",

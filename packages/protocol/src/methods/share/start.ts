@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { ArtifactRef } from "../../artifact.ts";
-import { CapabilityScope, Duration } from "../../capability.ts";
+import { CapabilityScope } from "../../capability.ts";
+import { Duration } from "../../duration.ts";
 import { ArtifactId, ShareId, TokenId } from "../../ids.ts";
 import { ViewerSpec } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
@@ -11,14 +12,15 @@ import { wireRegistry } from "../../wire-registry.ts";
  * user's tailnet, who are known by name; `funnel` through Tailscale Funnel and `cloudflare`
  * through a Cloudflare quick tunnel, both public, where the link is all that admits a viewer.
  */
-export type ShareVia = "tailnet" | "funnel" | "cloudflare";
+export type ShareVia = "tailnet" | "funnel" | "cloudflare" | "remote";
 
 /** The Zod schema of the `ShareVia` type. */
 export const ShareVia: z.ZodType<ShareVia> = z
-  .enum(["tailnet", "funnel", "cloudflare"])
+  .enum(["tailnet", "funnel", "cloudflare", "remote"])
   .register(wireRegistry, {
     id: "ShareVia",
-    description: "How a share reaches its viewers: tailnet, funnel or cloudflare.",
+    description:
+      "How a share reaches its viewers: tailnet, funnel or cloudflare, or remote: hosted on a remote server (D165).",
   });
 
 /** The longest a public share (Funnel or Cloudflare) may last: 7 days (D158). */
@@ -33,6 +35,8 @@ export interface ShareStartParams {
   readonly artifact: ArtifactRef;
   /** The tunnel. A public one (`funnel`, `cloudflare`) is explicit: never a fallback. */
   readonly via: ShareVia;
+  /** For `remote`: the server's API origin. Default: the home's default server (D165 item 15). */
+  readonly server?: string;
   /**
    * How long the share and its link last, such as `30m` or `24h`. Public shares: 1 hour by
    * default, at most 7 days. Tailnet shares: until stopped, unless given.
@@ -121,6 +125,10 @@ const params: z.ZodType<ShareStartParams> = z
   .object({
     artifact: ArtifactRef,
     via: ShareVia,
+    server: z
+      .string()
+      .regex(/^https?:\/\/[^/?#\s]+$/)
+      .exactOptional(),
     ttl: Duration.exactOptional(),
     scopes: z.array(CapabilityScope).min(1).readonly().exactOptional(),
     viewer: ViewerSpec.exactOptional(),

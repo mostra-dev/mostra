@@ -13,6 +13,16 @@ impl super::Method for ArtifactCreate {
     type Params = super::generated::ArtifactCreateParams;
     type Result = super::generated::ArtifactCreateResult;
 }
+///`artifact/export`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactExport;
+impl super::Method for ArtifactExport {
+    const NAME: &'static str = "artifact/export";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ArtifactExportParams;
+    type Result = super::generated::ArtifactExportResult;
+}
 ///`artifact/get`.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtifactGet;
@@ -22,6 +32,16 @@ impl super::Method for ArtifactGet {
     const MUTATING: bool = false;
     type Params = super::generated::ArtifactGetParams;
     type Result = super::generated::ArtifactDetail;
+}
+///`artifact/import`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactImport;
+impl super::Method for ArtifactImport {
+    const NAME: &'static str = "artifact/import";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ArtifactImportParams;
+    type Result = super::generated::PublishReceipt;
 }
 ///`artifact/list`.
 #[derive(Clone, Copy, Debug)]
@@ -133,6 +153,26 @@ impl super::Method for GcRun {
     type Params = super::generated::GcRunParams;
     type Result = super::generated::GcRunResult;
 }
+///`hosted/push`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostedPush;
+impl super::Method for HostedPush {
+    const NAME: &'static str = "hosted/push";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::HostedPushParams;
+    type Result = super::generated::HostedPushResult;
+}
+///`hosted/submission`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostedSubmission;
+impl super::Method for HostedSubmission {
+    const NAME: &'static str = "hosted/submission";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::HostedSubmissionParams;
+    type Result = super::generated::SubmissionEnvelope;
+}
 ///`instance/check`.
 #[derive(Clone, Copy, Debug)]
 pub struct InstanceCheck;
@@ -213,6 +253,56 @@ impl super::Method for PortIdentityResolve {
     type Params = super::generated::PortIdentityResolveParams;
     type Result = super::generated::PortIdentityResolveResult;
 }
+///`port/relay.call`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayCall;
+impl super::Method for PortRelayCall {
+    const NAME: &'static str = "port/relay.call";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayCallParams;
+    type Result = super::generated::PortRelayCallResult;
+}
+///`port/relay.cancel`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayCancel;
+impl super::Method for PortRelayCancel {
+    const NAME: &'static str = "port/relay.cancel";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayCancelParams;
+    type Result = super::generated::PortRelayCancelResult;
+}
+///`port/relay.live`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayLive;
+impl super::Method for PortRelayLive {
+    const NAME: &'static str = "port/relay.live";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayLiveParams;
+    type Result = super::generated::PortRelayLiveResult;
+}
+///`port/relay.reconcile`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayReconcile;
+impl super::Method for PortRelayReconcile {
+    const NAME: &'static str = "port/relay.reconcile";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayReconcileParams;
+    type Result = super::generated::PortRelayReconcileResult;
+}
+///`port/relay.run`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayRun;
+impl super::Method for PortRelayRun {
+    const NAME: &'static str = "port/relay.run";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::PortRelayRunParams;
+    type Result = super::generated::PortRelayRunResult;
+}
 ///`port/secrets.get`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortSecretsGet;
@@ -252,6 +342,96 @@ impl super::Method for PortTrustedControlsPolicy {
     const MUTATING: bool = false;
     type Params = super::generated::PortTrustedControlsPolicyParams;
     type Result = super::generated::ControlsPolicy;
+}
+///`relay/call.batch`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayCallBatch;
+impl super::Method for RelayCallBatch {
+    const NAME: &'static str = "relay/call.batch";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RelayCallBatchParams;
+    type Result = super::generated::RelayCallBatchResult;
+}
+///`relay/effect`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayEffect;
+impl super::Method for RelayEffect {
+    const NAME: &'static str = "relay/effect";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RelayEffectParams;
+    type Result = super::generated::RelayEffectResult;
+}
+///`relay/live.value`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayLiveValue;
+impl super::Method for RelayLiveValue {
+    const NAME: &'static str = "relay/live.value";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RelayLiveValueParams;
+    type Result = super::generated::RelayLiveValueResult;
+}
+///`relay/run.update`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayRunUpdate;
+impl super::Method for RelayRunUpdate {
+    const NAME: &'static str = "relay/run.update";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RelayRunUpdateParams;
+    type Result = super::generated::RelayRunUpdateResult;
+}
+///`remote/login`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLogin;
+impl super::Method for RemoteLogin {
+    const NAME: &'static str = "remote/login";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RemoteLoginParams;
+    type Result = super::generated::RemoteLoginResult;
+}
+///`remote/login.wait`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLoginWait;
+impl super::Method for RemoteLoginWait {
+    const NAME: &'static str = "remote/login.wait";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteLoginWaitParams;
+    type Result = super::generated::RemoteLoginWaitResult;
+}
+///`remote/logout`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLogout;
+impl super::Method for RemoteLogout {
+    const NAME: &'static str = "remote/logout";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RemoteLogoutParams;
+    type Result = super::generated::RemoteLogoutResult;
+}
+///`remote/status`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteStatus;
+impl super::Method for RemoteStatus {
+    const NAME: &'static str = "remote/status";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteStatusParams;
+    type Result = super::generated::RemoteStatusResult;
+}
+///`remote/token`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteToken;
+impl super::Method for RemoteToken {
+    const NAME: &'static str = "remote/token";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteTokenParams;
+    type Result = super::generated::RemoteTokenResult;
 }
 ///`results/get`.
 #[derive(Clone, Copy, Debug)]
@@ -432,9 +612,19 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: true,
     },
     super::MethodInfo {
+        name: "artifact/export",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "artifact/get",
         direction: super::Direction::ClientToInstance,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "artifact/import",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
     },
     super::MethodInfo {
         name: "artifact/list",
@@ -492,6 +682,16 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: true,
     },
     super::MethodInfo {
+        name: "hosted/push",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "hosted/submission",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "instance/check",
         direction: super::Direction::ClientToInstance,
         mutating: false,
@@ -532,6 +732,31 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "port/relay.call",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/relay.cancel",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/relay.live",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/relay.reconcile",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/relay.run",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "port/secrets.get",
         direction: super::Direction::InstanceToHost,
         mutating: false,
@@ -549,6 +774,51 @@ pub const METHODS: &[super::MethodInfo] = &[
     super::MethodInfo {
         name: "port/trustedControls.policy",
         direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "relay/call.batch",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "relay/effect",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "relay/live.value",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "relay/run.update",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/login",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/login.wait",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "remote/logout",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/status",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "remote/token",
+        direction: super::Direction::ClientToInstance,
         mutating: false,
     },
     super::MethodInfo {

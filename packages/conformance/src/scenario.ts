@@ -114,6 +114,7 @@ export class ScenarioContext {
   /** The host: its name and version. */
   host!: HostUnderTest;
   readonly #hosts: HostUnderTest[] = [];
+  readonly #cleanups: (() => Promise<void>)[] = [];
   #published = 0;
 
   constructor(settings: RunSettings, dir: string) {
@@ -296,8 +297,16 @@ export class ScenarioContext {
     }
   }
 
+  /** Runs `cleanup` when the scenario ends, before its hosts stop (a server it started). */
+  defer(cleanup: () => Promise<void>): void {
+    this.#cleanups.push(cleanup);
+  }
+
   /** Ends every shim, stops a daemon the scenario left, and removes the directory. */
   async close(): Promise<void> {
+    for (const cleanup of this.#cleanups.splice(0).reverse()) {
+      await cleanup().catch(() => undefined);
+    }
     for (const host of this.#hosts) {
       await host.stopInstance().catch(() => undefined);
       await host.close().catch(() => undefined);

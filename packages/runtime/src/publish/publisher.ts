@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import {
   chmod,
+  copyFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -35,7 +36,10 @@ import { createZstdCompress } from "node:zlib";
 import {
   type ArtifactCreateParams,
   type ArtifactCreateResult,
+  type ArtifactExportParams,
+  type ArtifactExportResult,
   ArtifactId,
+  type ArtifactImportParams,
   type ArtifactManifest,
   type ArtifactPublishParams,
   type ArtifactVerifyParams,
@@ -72,6 +76,7 @@ import {
   VERIFY_REVISION,
   type Verifier,
 } from "../verify/index.ts";
+import { readBundle, writeBundle } from "./bundle.ts";
 import {
   type BuildEnvironment,
   canonicalJson,
@@ -130,6 +135,10 @@ export interface Publisher {
   create(params: ArtifactCreateParams): Promise<ArtifactCreateResult>;
   /** `deps/add`: adds packages to an artifact's working lockfile (D95). */
   addDependencies(params: DepsAddParams): Promise<DepsAddResult>;
+  /** `artifact/export`: writes a version's portable bundle (RM-01). */
+  exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult>;
+  /** `artifact/import`: makes a bundle a version of this home, with its identity (RM-01). */
+  importBundle(params: ArtifactImportParams): Promise<PublishReceipt>;
 }
 
 const ENTRY_NAMES = ["index.tsx", "index.jsx", "index.mdx"];
@@ -867,7 +876,125 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // Runs in the source path's queue, like its publishes, so a publish that binds the path never
     // races an addition to the path-keyed lockfile it re-keys.
     addDependencies: (params) => gated(() => addDependencies(params)),
+    // gc removes files no kept version names: an export reads a version's files, and an import
+    // writes them, so both hold the gate shared like a publish (D140 item 14).
+    exportBundle: (params) => gated(() => exportBundle(params)),
+    importBundle: (params) =>
+      gated(() => idempotent(requestKey("artifact/import", params), () => importBundle(params))),
   };
+
+  async function exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult> {
+    // `artifact` arrives canonical: the method's handler made it so (canonicalRef).
+    const detail = registry.get(params.artifact);
+    const wanted = params.version;
+    const summary =
+      wanted === undefined
+        ? detail.latestVersion
+        : detail.versions.find((version) =>
+            typeof wanted === "number" ? version.number === wanted : version.id === wanted,
+          );
+    if (!summary) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
+          message: `${detail.title} has no version ${String(wanted ?? "")}.`,
+        }),
+      );
+    }
+    if (summary.collected !== undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_ARTIFACT_VERSION_COLLECTED", {
+          message: `Version ${summary.number} of ${detail.title} was collected; publish its source again to export it.`,
+        }),
+      );
+    }
+    const versionDir = registry.store.versionDir(summary.id);
+    const damage = await versionDamage(versionDir);
+    if (damage !== undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HOME_INTEGRITY", {
+          message: `Version ${summary.number} of ${detail.title} is damaged: ${damage}.`,
+        }),
+      );
+    }
+    const files = await writeBundle({
+      versionDir,
+      snapshot: registry.store.snapshotPath(detail.id, summary.sourceDigest),
+      number: summary.number,
+      title: detail.title,
+      mostraVersion: options.runtimeVersion,
+      out: params.out,
+    });
+    log.info("publish.exported", { artifactId: detail.id, versionId: summary.id });
+    return { files, versionId: summary.id };
+  }
+
+  async function importBundle(params: ArtifactImportParams): Promise<PublishReceipt> {
+    const read = await readBundle(params.bundle, registry.store.stagingDir);
+    const { info } = read;
+    return queue.run(`artifact:${info.artifactId}`, async () => {
+      const undo: (() => Promise<void>)[] = [];
+      let committed = false;
+      try {
+        if (!registry.hasVersion(info.versionId)) {
+          const archive = registry.store.snapshotPath(info.artifactId, info.sourceDigest);
+          if (!existsSync(archive)) {
+            await mkdir(dirname(archive), { recursive: true, mode: 0o700 });
+            await copyFile(read.snapshot, archive);
+            fsyncPath(archive);
+            fsyncPath(dirname(archive), true);
+            undo.push(() => removeTree(archive));
+          }
+          undo.push(() => removeTree(registry.store.versionDir(info.versionId)));
+          await registry.store.promote(read.versionDir, info.versionId);
+        }
+        const result = registry.commit({
+          artifactId: info.artifactId,
+          bindingPath: undefined,
+          manifestId: read.manifest.id,
+          versionId: info.versionId,
+          sourceDigest: info.sourceDigest,
+          envDigest: info.envDigest,
+          outputDigest: info.outputDigest,
+          manifest: read.manifest,
+          number: info.number,
+          policy: undefined,
+          homePolicy: options.homePolicy?.(),
+          forcedCodes: read.forcedCodes,
+          // Another home's verdict isn't this one's: an imported version records none, so it
+          // counts as passing here only once verify passes here (D138 item 4).
+          stillClaims: () => false,
+          faults,
+          request: requestKey("artifact/import", params),
+        });
+        committed = true;
+        log.info("publish.imported", {
+          artifactId: info.artifactId,
+          versionId: info.versionId,
+          version: result.version,
+          reused: result.reused,
+        });
+        return {
+          artifactId: info.artifactId,
+          versionId: info.versionId,
+          version: result.version,
+          cursor: result.cursor,
+          reused: result.reused,
+          ...(read.forcedCodes.length > 0 ? { forcedDiagnostics: [...read.forcedCodes] } : {}),
+        };
+      } catch (error) {
+        if (!committed) {
+          for (const step of undo.reverse()) {
+            await step().catch((cleanup: unknown) =>
+              log.warn("publish.undo_failed", { error: cleanup }),
+            );
+          }
+        }
+        throw error;
+      } finally {
+        await read.dispose().catch(() => {});
+      }
+    });
+  }
 
   async function addDependencies(params: DepsAddParams): Promise<DepsAddResult> {
     {

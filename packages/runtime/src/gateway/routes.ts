@@ -24,11 +24,12 @@ import {
   type RequestIntent,
   type RequestPolicy,
   refusal,
+  SHELL_SESSION_HEADER,
   scopeAllows,
 } from "@mostra/protocol";
 import type { Context, Hono } from "hono";
 import type { Log } from "../log.ts";
-import type { Capabilities, ResolvedSession } from "./capabilities.ts";
+import type { Capabilities, ResolvedSession, SessionMode } from "./capabilities.ts";
 import {
   cookieValues,
   type HttpEnv,
@@ -92,7 +93,7 @@ export interface ListenerChecks {
    * How this listener's sessions authenticate (D70): `cookie` (the default), or `worker`, where a
    * frame's service worker sends the session's secret as `X-Mostra-Frame`.
    */
-  readonly mode?: () => "cookie" | "worker";
+  readonly mode?: () => SessionMode;
   /** Whether event streams pass to this listener's browsers; `false` behind a quick tunnel. */
   readonly streams?: () => boolean;
 }
@@ -195,11 +196,18 @@ export function mount(
                   artifactId,
                   "worker",
                 )
-              : checks.capabilities.session(
-                  cookieValues(request.headers.get("cookie"), checks.cookieName()),
-                  policy.origin,
-                  artifactId,
-                );
+              : mode === "header"
+                ? checks.capabilities.session(
+                    [request.headers.get(SHELL_SESSION_HEADER) ?? ""],
+                    policy.origin,
+                    artifactId,
+                    "header",
+                  )
+                : checks.capabilities.session(
+                    cookieValues(request.headers.get("cookie"), checks.cookieName()),
+                    policy.origin,
+                    artifactId,
+                  );
         if (isRefusal(resolved)) return refuse(checks, resolved, meta);
         session = resolved;
         // 4. The CSRF token of this session.

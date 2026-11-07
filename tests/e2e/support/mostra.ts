@@ -219,7 +219,9 @@ export function removeTree(root: string): void {
  * Starts a daemon on a fresh home, or again on the home of an earlier one (`root`); resolves with
  * its status line and the process.
  */
-export async function startDaemon(options: { readonly root?: string } = {}): Promise<{
+export async function startDaemon(
+  options: { readonly root?: string; readonly env?: Readonly<Record<string, string>> } = {},
+): Promise<{
   child: ChildProcess;
   root: string;
   home: string;
@@ -245,6 +247,7 @@ export async function startDaemon(options: { readonly root?: string } = {}): Pro
       // Each connection and request the gateway saw, so a request a browser saw go unanswered
       // shows whether it ever arrived (#66); the log is kept when a test fails.
       MOSTRA_TEST_REQUEST_LOG: "1",
+      ...options.env,
     },
     stdio: ["ignore", "pipe", "inherit"],
     detached: false,

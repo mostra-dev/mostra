@@ -15,12 +15,30 @@ import { configDefaults, defineConfig } from "vitest/config";
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
 const DEV = "test/integration/dev.test.ts";
-const FAULTS = ["test/integration/publish-faults.test.ts", "test/integration/lifecycle.test.ts"];
+// The binding's heartbeat suite waits out a proxy's real 60 s idle limit and a 45 s silence
+// (WP-29): about two minutes, so it joins the shorter group.
+const FAULTS = [
+  "test/integration/publish-faults.test.ts",
+  "test/integration/lifecycle.test.ts",
+  "test/integration/heartbeat.test.ts",
+];
+// The remote server, its binding, the owner's link and the relay (WP-29): real servers and
+// owners, about five minutes, a machine of their own so `core` stays inside its deadline.
+const REMOTE = [
+  "test/integration/server.test.ts",
+  "test/integration/binding.test.ts",
+  "test/integration/link.test.ts",
+  "test/integration/hosted.test.ts",
+  "test/integration/relay.test.ts",
+  "test/integration/restore.test.ts",
+  "test/integration/replicator.test.ts",
+];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE],
   },
+  remote: { include: REMOTE, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
   clients: { include: [], exclude: [] },
@@ -36,9 +54,12 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/processes.test.ts",
       "test/integration/deps.test.ts",
       "test/integration/windows.test.ts",
+      "test/integration/heartbeat.test.ts",
     ],
     exclude: [],
   },
+  // The remote server and the relay (WP-29), as `remote` is on macOS and Linux.
+  "windows-remote": { include: [...REMOTE], exclude: [] },
   "windows-publish": {
     include: [
       "test/integration/protocol-suite.test.ts",
@@ -47,6 +68,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/ancestors.test.ts",
       "test/integration/audit.test.ts",
       "test/integration/render.test.ts",
+      "test/integration/bundle.test.ts",
     ],
     exclude: [],
   },

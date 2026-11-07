@@ -22,7 +22,7 @@ Use Mostra's tools when they're in your tool list (`artifact_create`, `artifact_
 | Write | your own file tools | `artifact_write` (whole files), `artifact_patch` (exact replacements or a unified diff) |
 | Verify | `mostra verify <dir>` | `artifact_verify`; `screenshots: "always"` returns both screenshots as images |
 | Publish | `mostra publish <dir>` | `artifact_publish`; its `url` is the default link |
-| Hand out the link | `mostra open <dir>` | `artifact_open` |
+| Hand out the link | `mostra open <dir> --browser` | `artifact_open` |
 | Wait | `mostra wait <dir> --until submitted` | `artifact_wait` with `until: "submitted"` |
 | Read the answers | `mostra results <dir>` | `artifact_results` (Markdown; `format: "json"` for the full structure) |
 

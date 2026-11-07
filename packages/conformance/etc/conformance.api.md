@@ -45,6 +45,7 @@ export class Browser {
         csrf?: string;
         headers?: Record<string, string>;
     }): Promise<Answer>;
+    keepShell(prefix: string, secret: string): void;
     workerFrame(origin: string): boolean;
 }
 
@@ -299,6 +300,7 @@ export class ScenarioContext {
     anotherHost(): Promise<HostUnderTest>;
     author(fixture: Fixture, name?: string): string;
     close(): Promise<void>;
+    defer(cleanup: () => Promise<void>): void;
     readonly dir: string;
     events(filter: {
         artifacts?: string[];

@@ -186,6 +186,52 @@ describe.each([
     expect(again[0]?.status).toBe("succeeded");
   });
 
+  it("tells a long-polling page its run ended at once, while the shell polls the same view (#119)", async () => {
+    const page = await openPage(actions.url);
+    const { link, viewId } = page.opened;
+    const start = (await page.poll()).json<{ cursor: string }>().cursor;
+    // The shell and its frame each keep a long poll of the view open, as both do behind a tunnel
+    // that holds event streams back.
+    let polling = true;
+    let shellHeard = 0;
+    const shell = (async () => {
+      let cursor = start;
+      while (polling) {
+        const answer = await page.browser.fetchJson(
+          link.shell,
+          `/a/${link.artifactId}/_mostra/v/2026-10-15/events/poll?view=${viewId}&cursor=${cursor}&wait=2`,
+        );
+        const body = answer.json<{ cursor: string; ephemeral?: unknown[] }>();
+        shellHeard += body.ephemeral?.length ?? 0;
+        cursor = body.cursor;
+      }
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const started = Date.now();
+    const run = (await page.run("actions.ts#echo", ["now"])).json<RunState>();
+    let cursor = start;
+    let ended = false;
+    while (!ended && Date.now() - started < 30_000) {
+      const body = (await page.poll(cursor, 25)).json<{
+        cursor: string;
+        ephemeral?: { kind: string; run?: { runId: string; status: string } }[];
+      }>();
+      cursor = body.cursor;
+      ended = (body.ephemeral ?? []).some(
+        (message) => message.run?.runId === run.runId && message.run.status === "succeeded",
+      );
+    }
+    const heardIn = Date.now() - started;
+    polling = false;
+    await shell;
+    expect(ended).toBe(true);
+    // Before the fix the shell's poll took the frame's run updates, and the page learned of the
+    // end only at its next renewal of the run, about 20 s later.
+    expect(heardIn).toBeLessThan(5_000);
+    // The shell's poll leaves run updates to the frame, the one that shows them.
+    expect(shellHeard).toBe(0);
+  }, 60_000);
+
   it("sends a keyed action once however often it is clicked, from tabs and reloads (AC-03)", async () => {
     const before = mail.received.length;
     const tabA = await openPage(actions.url);

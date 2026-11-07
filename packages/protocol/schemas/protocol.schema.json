@@ -15,6 +15,16 @@
         "$ref": "#/$defs/ArtifactCreateResult"
       }
     },
+    "artifact/export": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ArtifactExportParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ArtifactExportResult"
+      }
+    },
     "artifact/get": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -23,6 +33,16 @@
       },
       "result": {
         "$ref": "#/$defs/ArtifactDetail"
+      }
+    },
+    "artifact/import": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ArtifactImportParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PublishReceipt"
       }
     },
     "artifact/list": {
@@ -135,6 +155,26 @@
         "$ref": "#/$defs/GcRunResult"
       }
     },
+    "hosted/push": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/HostedPushParams"
+      },
+      "result": {
+        "$ref": "#/$defs/HostedPushResult"
+      }
+    },
+    "hosted/submission": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/HostedSubmissionParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SubmissionEnvelope"
+      }
+    },
     "instance/check": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -213,6 +253,56 @@
         "$ref": "#/$defs/PortIdentityResolveResult"
       }
     },
+    "port/relay.call": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortRelayCallParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayCallResult"
+      }
+    },
+    "port/relay.cancel": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortRelayCancelParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayCancelResult"
+      }
+    },
+    "port/relay.live": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortRelayLiveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayLiveResult"
+      }
+    },
+    "port/relay.reconcile": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortRelayReconcileParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayReconcileResult"
+      }
+    },
+    "port/relay.run": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PortRelayRunParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayRunResult"
+      }
+    },
     "port/secrets.get": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -249,6 +339,96 @@
       },
       "result": {
         "$ref": "#/$defs/ControlsPolicy"
+      }
+    },
+    "relay/call.batch": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/RelayCallBatchParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RelayCallBatchResult"
+      }
+    },
+    "relay/effect": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/RelayEffectParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RelayEffectResult"
+      }
+    },
+    "relay/live.value": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/RelayLiveValueParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RelayLiveValueResult"
+      }
+    },
+    "relay/run.update": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/RelayRunUpdateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RelayRunUpdateResult"
+      }
+    },
+    "remote/login": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/RemoteLoginParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteLoginResult"
+      }
+    },
+    "remote/login.wait": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/RemoteLoginWaitParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteLoginWaitResult"
+      }
+    },
+    "remote/logout": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/RemoteLogoutParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteLogoutResult"
+      }
+    },
+    "remote/status": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/RemoteStatusParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteStatusResult"
+      }
+    },
+    "remote/token": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/RemoteTokenParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteTokenResult"
       }
     },
     "results/get": {
@@ -420,6 +600,11 @@
     }
   },
   "$defs": {
+    "AccountId": {
+      "type": "string",
+      "pattern": "^acct_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Account ID: \"acct_\" followed by a 26-character ULID."
+    },
     "ActionError": {
       "type": "object",
       "properties": {
@@ -593,6 +778,58 @@
       ],
       "description": "One artifact in full: its summary, the latest manifest and every version."
     },
+    "ArtifactExportParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "as": {
+          "$ref": "#/$defs/ExportClass"
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "as",
+        "out"
+      ]
+    },
+    "ArtifactExportResult": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "versionId"
+      ]
+    },
     "ArtifactGetParams": {
       "type": "object",
       "properties": {
@@ -608,6 +845,22 @@
       "type": "string",
       "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Artifact ID: \"art_\" followed by a 26-character ULID."
+    },
+    "ArtifactImportParams": {
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "bundle"
+      ]
     },
     "ArtifactLink": {
       "type": "object",
@@ -850,6 +1103,16 @@
               "type": "boolean"
             }
           }
+        },
+        "tally": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TallySpec"
+          }
+        },
+        "hosted": {
+          "$ref": "#/$defs/HostedSettings"
         }
       },
       "required": [
@@ -2099,6 +2362,33 @@
       },
       "description": "Which events a reader wants: these artifacts' and these types (patterns allowed)."
     },
+    "EventOrigin": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "minLength": 1
+        },
+        "home": {
+          "type": "string",
+          "minLength": 1
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        }
+      },
+      "required": [
+        "server",
+        "home",
+        "incarnation",
+        "cursor"
+      ],
+      "description": "Where an owner's copy of a hosted record came from: server, home, incarnation, cursor."
+    },
     "EventRecord": {
       "type": "object",
       "properties": {
@@ -2153,6 +2443,9 @@
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "origin": {
+          "$ref": "#/$defs/EventOrigin"
         }
       },
       "required": [
@@ -2310,6 +2603,13 @@
     "EventsUnsubscribeResult": {
       "type": "object",
       "properties": {}
+    },
+    "ExportClass": {
+      "type": "string",
+      "enum": [
+        "bundle"
+      ],
+      "description": "An export class (VR-07)."
     },
     "ExternalBase": {
       "type": "object",
@@ -2898,6 +3198,155 @@
       },
       "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105)."
     },
+    "HomeId": {
+      "type": "string",
+      "pattern": "^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Hosted home ID: \"hom_\" followed by a 26-character ULID."
+    },
+    "HostedPushParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "version": {
+          "$ref": "#/$defs/VersionPush"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifactId",
+        "version"
+      ]
+    },
+    "HostedPushResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "complete"
+            },
+            "versionId": {
+              "type": "string"
+            },
+            "number": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "route": {
+              "$ref": "#/$defs/HostedRoute"
+            }
+          },
+          "required": [
+            "status",
+            "versionId",
+            "number",
+            "route"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "missing"
+            },
+            "files": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "route": {
+              "$ref": "#/$defs/HostedRoute"
+            }
+          },
+          "required": [
+            "status",
+            "files",
+            "route"
+          ]
+        }
+      ],
+      "description": "A push's state: the client files the server still lacks, or the hosted version."
+    },
+    "HostedRoute": {
+      "type": "object",
+      "properties": {
+        "routeId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "routeId",
+        "label"
+      ],
+      "description": "An artifact's hosted route: its rte_ ID and random label."
+    },
+    "HostedSettings": {
+      "type": "object",
+      "properties": {
+        "offline": {
+          "type": "object",
+          "properties": {
+            "actions": {
+              "type": "string",
+              "enum": [
+                "queue",
+                "fail"
+              ]
+            },
+            "limit": {
+              "$ref": "#/$defs/Duration"
+            }
+          }
+        },
+        "actions": {
+          "type": "string",
+          "enum": [
+            "signed-in",
+            "link"
+          ]
+        },
+        "submissions": {
+          "type": "string",
+          "enum": [
+            "link",
+            "signed-in"
+          ]
+        },
+        "preview": {
+          "type": "string",
+          "enum": [
+            "generic",
+            "title"
+          ]
+        }
+      },
+      "description": "How an artifact behaves on a remote server: offline actions, who may act and submit, previews."
+    },
+    "HostedSubmissionParams": {
+      "type": "object",
+      "properties": {
+        "submissionId": {
+          "$ref": "#/$defs/SubmissionId"
+        }
+      },
+      "required": [
+        "submissionId"
+      ]
+    },
     "InstanceCapabilities": {
       "type": "object",
       "properties": {
@@ -2996,8 +3445,15 @@
           "type": "string",
           "enum": [
             "host",
-            "daemon"
+            "daemon",
+            "hosted"
           ]
+        },
+        "incarnation": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
         }
       },
       "required": [
@@ -3064,6 +3520,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Share"
+          }
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RemoteLink"
           }
         }
       },
@@ -3214,6 +3677,11 @@
       ],
       "description": "A successful JSON-RPC 2.0 response."
     },
+    "LinkId": {
+      "type": "string",
+      "pattern": "^lnk_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Instance link ID: \"lnk_\" followed by a 26-character ULID."
+    },
     "LivePushParams": {
       "type": "object",
       "properties": {
@@ -3271,7 +3739,7 @@
             "properties": {
               "key": {
                 "type": "string",
-                "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+                "pattern": "^(?:[A-Za-z_$][A-Za-z0-9_$]{0,127}$|\\$tally\\/[^\\u0000-\\u001f\\u007f]{1,256}$)"
               },
               "window": {
                 "type": "integer",
@@ -3319,6 +3787,9 @@
         },
         "home": {
           "$ref": "#/$defs/HomeConfig"
+        },
+        "link": {
+          "$ref": "#/$defs/OwnerLinkInfo"
         }
       },
       "required": [
@@ -3424,6 +3895,41 @@
         "fromVersion"
       ],
       "description": "A draft field a version doesn't cover: its ID, label, value and source version."
+    },
+    "OwnerLinkInfo": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relayMark": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "followed": {
+          "type": "object",
+          "properties": {
+            "incarnation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cursor": {
+              "$ref": "#/$defs/Cursor"
+            }
+          },
+          "required": [
+            "incarnation",
+            "cursor"
+          ]
+        }
+      },
+      "required": [
+        "instanceId",
+        "relayMark"
+      ],
+      "description": "An owner instance's link on its binding session: its link ID, its relay mark and the hosted home's position it committed."
     },
     "PollResult": {
       "type": "object",
@@ -3537,6 +4043,210 @@
       "type": "string",
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
+    },
+    "PortRelayCallParams": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/Batches"
+        },
+        "viewer": {
+          "$ref": "#/$defs/RelayViewer"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "artifactId",
+        "versionId",
+        "fnId",
+        "args"
+      ]
+    },
+    "PortRelayCallResult": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "accepted"
+      ]
+    },
+    "PortRelayCancelParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "runId"
+      ]
+    },
+    "PortRelayCancelResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "PortRelayLiveParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interest": {
+          "type": "string",
+          "enum": [
+            "start",
+            "renew",
+            "stop",
+            "refresh"
+          ]
+        },
+        "keys": {
+          "readOnly": true,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+          }
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "interest",
+        "keys"
+      ]
+    },
+    "PortRelayLiveResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "PortRelayReconcileParams": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "readOnly": true,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "held": {
+          "readOnly": true,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RelayHeld"
+          }
+        }
+      },
+      "required": [
+        "runs"
+      ]
+    },
+    "PortRelayReconcileResult": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RelayReconciled"
+          }
+        }
+      },
+      "required": [
+        "runs"
+      ]
+    },
+    "PortRelayRunParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/Batches"
+        },
+        "key": {
+          "type": "string"
+        },
+        "viewer": {
+          "$ref": "#/$defs/RelayViewer"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "seq",
+        "artifactId",
+        "versionId",
+        "fnId",
+        "args"
+      ]
+    },
+    "PortRelayRunResult": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "accepted"
+      ]
     },
     "PortSecretsGetParams": {
       "type": "object",
@@ -3685,6 +4395,556 @@
         "reused"
       ],
       "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
+    },
+    "RelayCallBatchParams": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "$ref": "#/$defs/Batches"
+        },
+        "end": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed"
+              ]
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "maxLength": 10000
+                },
+                "code": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      },
+      "required": [
+        "callId",
+        "seq"
+      ]
+    },
+    "RelayCallBatchResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "RelayEffectParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string"
+        },
+        "callId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "signal",
+            "emit"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "payload": {}
+      },
+      "required": [
+        "artifactId",
+        "kind",
+        "name"
+      ]
+    },
+    "RelayEffectResult": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        }
+      },
+      "required": [
+        "cursor"
+      ]
+    },
+    "RelayHeld": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "log": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "runId",
+        "log",
+        "batches"
+      ]
+    },
+    "RelayLiveValueParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]{0,127}$"
+        },
+        "value": {
+          "$ref": "#/$defs/Batches"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ]
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "key",
+        "at"
+      ]
+    },
+    "RelayLiveValueResult": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    "RelayReconciled": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunState"
+            },
+            {
+              "type": "string",
+              "const": "unknown-to-owner"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "state"
+      ]
+    },
+    "RelayRunEnd": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string",
+              "maxLength": 10000
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "RelayRunUpdateParams": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "progress": {
+          "$ref": "#/$defs/RunProgress"
+        },
+        "log": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "logFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "batches": {
+          "$ref": "#/$defs/Batches"
+        },
+        "batchFrom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end": {
+          "$ref": "#/$defs/RelayRunEnd"
+        }
+      },
+      "required": [
+        "runId",
+        "seq"
+      ]
+    },
+    "RelayRunUpdateResult": {
+      "type": "object",
+      "properties": {}
+    },
+    "RelayViewer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "The viewer a relayed run or call acts for: the hosted home's viewer ID and name."
+    },
+    "RemoteLink": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "connected",
+            "connecting",
+            "offline",
+            "signed-out"
+          ]
+        },
+        "since": {
+          "type": "string"
+        },
+        "pendingPushes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastError": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "account",
+        "instanceId",
+        "name",
+        "default",
+        "state",
+        "since",
+        "pendingPushes"
+      ],
+      "description": "One remote server this home is linked to, and the state of the link."
+    },
+    "RemoteLoginParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RemoteLoginResult": {
+      "type": "object",
+      "properties": {
+        "loginId": {
+          "type": "string"
+        },
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "verificationUri": {
+          "type": "string"
+        },
+        "verificationUriComplete": {
+          "type": "string"
+        },
+        "userCode": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loginId",
+        "server",
+        "verificationUri",
+        "userCode",
+        "expiresAt"
+      ],
+      "description": "A device-grant sign-in that started: where to go and the code to enter."
+    },
+    "RemoteLoginWaitParams": {
+      "type": "object",
+      "properties": {
+        "loginId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "loginId",
+        "timeoutMs"
+      ]
+    },
+    "RemoteLoginWaitResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "signed-in"
+            },
+            "server": {
+              "$ref": "#/$defs/ServerOrigin"
+            },
+            "account": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ]
+            },
+            "instanceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "server",
+            "account",
+            "instanceId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "pending"
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      ],
+      "description": "A sign-in's end: signed in with the account and instance link, or pending."
+    },
+    "RemoteLogoutParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "forget": {
+          "type": "boolean"
+        }
+      }
+    },
+    "RemoteLogoutResult": {
+      "type": "object",
+      "properties": {
+        "servers": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ServerOrigin"
+          }
+        }
+      },
+      "required": [
+        "servers"
+      ],
+      "description": "The servers signed out of."
+    },
+    "RemoteStatusParams": {
+      "type": "object",
+      "properties": {}
+    },
+    "RemoteStatusResult": {
+      "type": "object",
+      "properties": {
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RemoteLink"
+          }
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "description": "Every remote server this home is linked to."
+    },
+    "RemoteTokenParams": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "accessToken"
+      ]
+    },
+    "RemoteTokenResult": {
+      "type": "object",
+      "properties": {
+        "expiresAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expiresAt"
+      ],
+      "description": "When the binding closes unless its token is refreshed again."
     },
     "ResultComment": {
       "type": "object",
@@ -3998,6 +5258,9 @@
               "items": {
                 "$ref": "#/$defs/DeliveryStatus"
               }
+            },
+            "origin": {
+              "$ref": "#/$defs/EventOrigin"
             }
           },
           "required": [
@@ -4245,6 +5508,11 @@
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
       "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
     },
+    "RouteId": {
+      "type": "string",
+      "pattern": "^rte_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "description": "Hosted route ID: \"rte_\" followed by a 26-character ULID."
+    },
     "RunAttachRequest": {
       "type": "object",
       "properties": {
@@ -4404,7 +5672,8 @@
             "waiting",
             "succeeded",
             "failed",
-            "cancelled"
+            "cancelled",
+            "unknown"
           ]
         },
         "reason": {
@@ -4455,6 +5724,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "ownerUnreachable": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -4578,6 +5850,11 @@
       ],
       "description": "A secret's name, value and optional artifact scope."
     },
+    "ServerOrigin": {
+      "type": "string",
+      "pattern": "^https?:\\/\\/[^/?#\\s]+$",
+      "description": "A remote server, by its API origin, such as https://api.example."
+    },
     "Sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
@@ -4696,6 +5973,10 @@
         },
         "via": {
           "$ref": "#/$defs/ShareVia"
+        },
+        "server": {
+          "type": "string",
+          "pattern": "^https?:\\/\\/[^/?#\\s]+$"
         },
         "ttl": {
           "$ref": "#/$defs/Duration"
@@ -4831,9 +6112,10 @@
       "enum": [
         "tailnet",
         "funnel",
-        "cloudflare"
+        "cloudflare",
+        "remote"
       ],
-      "description": "How a share reaches its viewers: tailnet, funnel or cloudflare."
+      "description": "How a share reaches its viewers: tailnet, funnel or cloudflare, or remote: hosted on a remote server (D165)."
     },
     "ShellSubmitRequest": {
       "type": "object",
@@ -4967,6 +6249,18 @@
             "agent",
             "host"
           ]
+        },
+        "causation": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "runId"
+          ]
         }
       },
       "required": [
@@ -5059,6 +6353,13 @@
         },
         "results": {
           "$ref": "#/$defs/Results"
+        },
+        "snapshot": {
+          "type": "string",
+          "maxLength": 41943040
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
         }
       },
       "required": [
@@ -5232,6 +6533,37 @@
         "channel"
       ],
       "description": "A browser submit: the view and the draft revision the viewer saw."
+    },
+    "TallySpec": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "choices": {
+          "readOnly": true,
+          "minItems": 2,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "minTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "field",
+        "choices"
+      ],
+      "description": "A count by choice of a viewer-scoped field: its field, 2 to 50 distinct choices and minTotal."
     },
     "ThreadId": {
       "type": "string",
@@ -5467,6 +6799,89 @@
       "type": "string",
       "pattern": "^ver_[0-9A-HJKMNP-TV-Z]{26}$",
       "description": "Version ID: \"ver_\" followed by 26 characters of Crockford base32."
+    },
+    "VersionPush": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sourceDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "envDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "outputDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manifest": {
+          "type": "string",
+          "maxLength": 4194304
+        },
+        "registry": {
+          "type": "string",
+          "maxLength": 16777216
+        },
+        "lock": {
+          "type": "string",
+          "maxLength": 16777216
+        },
+        "listing": {
+          "readOnly": true,
+          "maxItems": 100000,
+          "type": "array",
+          "items": {
+            "readOnly": true,
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            ],
+            "items": false,
+            "minItems": 4,
+            "maxItems": 4
+          }
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        }
+      },
+      "required": [
+        "versionId",
+        "number",
+        "sourceDigest",
+        "envDigest",
+        "outputDigest",
+        "manifest",
+        "registry",
+        "lock",
+        "listing"
+      ],
+      "description": "A version an owner pushes to its hosted home: its identity, manifest, registry, lockfile and output listing."
     },
     "VersionRef": {
       "type": "object",
@@ -5727,7 +7142,9 @@
             "local",
             "tailnet",
             "token",
-            "host"
+            "host",
+            "account",
+            "anonymous"
           ]
         },
         "name": {

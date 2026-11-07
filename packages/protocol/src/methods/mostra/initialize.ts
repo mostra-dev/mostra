@@ -3,6 +3,7 @@ import { Diagnostic } from "../../diagnostics/diagnostic.ts";
 import { SubmitChannel } from "../../interaction.ts";
 import { SubmissionPolicy } from "../../manifest.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
+import { OwnerLinkInfo } from "../../remote.ts";
 import { Revision } from "../../revision.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 
@@ -121,6 +122,11 @@ export interface MostraInitializeParams {
   readonly ports: readonly PortName[];
   /** Home settings and the home check. */
   readonly home?: HomeConfig;
+  /**
+   * On a binding to a remote server, the owner instance's link (INTERFACES §18.2): its `lnk_` ID,
+   * its relay mark and the hosted home's position it committed. Other sessions send none.
+   */
+  readonly link?: OwnerLinkInfo;
 }
 
 /** The instance a client is connected to. */
@@ -133,8 +139,15 @@ export interface InstanceInfo {
   readonly platform: string;
   /** The supervisor's process ID. */
   readonly pid: number;
-  /** `host` when spawned over stdio (`mostra-runtime host`), `daemon` when started as a daemon. */
-  readonly mode: "host" | "daemon";
+  /**
+   * `host` when spawned over stdio (`mostra-runtime host`), `daemon` when started as a daemon,
+   * `hosted` for a hosted home on a remote server (INTERFACES §18.2).
+   */
+  readonly mode: "host" | "daemon" | "hosted";
+  /** A hosted home's current incarnation, rotated when it is restored from a backup. */
+  readonly incarnation?: string;
+  /** A hosted home's head: its newest event cursor. */
+  readonly cursor?: string;
 }
 
 /** What the instance offers (D84). */
@@ -194,7 +207,9 @@ export const InstanceInfo: z.ZodType<InstanceInfo> = z
     home: z.string(),
     platform: z.string(),
     pid: z.int().min(1),
-    mode: z.enum(["host", "daemon"]),
+    mode: z.enum(["host", "daemon", "hosted"]),
+    incarnation: z.string().exactOptional(),
+    cursor: z.string().exactOptional(),
   })
   .register(wireRegistry, {
     id: "InstanceInfo",
@@ -220,6 +235,7 @@ const params: z.ZodType<MostraInitializeParams> = z
     capabilities: ClientCapabilities,
     ports: z.array(PortName).readonly(),
     home: HomeConfig.exactOptional(),
+    link: OwnerLinkInfo.exactOptional(),
   })
   .register(wireRegistry, { id: "MostraInitializeParams" });
 

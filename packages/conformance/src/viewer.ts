@@ -5,7 +5,9 @@
  * `Origin`, `Sec-Fetch-*` and CSRF headers a browser sends. It also sends what no browser would,
  * for the hygiene scenarios. It never follows redirects. Where the shell and the artifact are two
  * sites (a host's external bases, a Cloudflare share), it enters the frame as the bootstrap page
- * does and signs the frame's requests as Mostra's service worker does (D70, D158 item 5).
+ * does and signs the frame's requests as Mostra's service worker does (D70, D158 item 5). On a
+ * remote server's hosted link (`/a/<routeId>`) it keeps the shell's session as the hosted shell
+ * does, in a header and never a cookie (`X-Mostra-Shell`, D165 item 8).
  */
 import { request as httpRequest } from "node:http";
 import {
@@ -101,7 +103,7 @@ export function send(ask: Ask): Promise<Answer> {
 export interface ParsedLink {
   /** The shell's origin. */
   readonly origin: string;
-  /** The artifact the link opens. */
+  /** The artifact the link opens; on a hosted link, its hosted route (`rte_…`, §18.4). */
   readonly artifactId: string;
   /** The token's secret, from the fragment. */
   readonly secret: string;
@@ -109,10 +111,13 @@ export interface ParsedLink {
   readonly version?: string;
 }
 
-/** Reads a capability link (`http://host:port/a/<artifactId>[/v/<n>]#t=<secret>`). */
+/**
+ * Reads a capability link (`http://host:port/a/<artifactId>[/v/<n>]#t=<secret>`), or a hosted one
+ * (`https://<domain>/a/<routeId>…`).
+ */
 export function parseLink(link: string): ParsedLink {
   const url = new URL(link);
-  const match = /^\/a\/(art_[0-9A-Z]{26})(?:\/v\/(\d+))?$/.exec(url.pathname);
+  const match = /^\/a\/((?:art|rte)_[0-9A-Z]{26})(?:\/v\/(\d+))?$/.exec(url.pathname);
   const secret = new URLSearchParams(url.hash.slice(1)).get("t");
   if (!match?.[1] || !secret)
     throw new Error(`${url.origin}${url.pathname} isn't a capability link.`);
@@ -129,6 +134,14 @@ export class Browser {
   readonly #jar = new Map<string, { value: string; path: string }>();
   /** Worker-mode frame sessions by origin: the header Mostra's service worker adds (D70). */
   readonly #frames = new Map<string, string>();
+
+  /** Hosted shells' sessions by `<origin>/a/<routeId>`: the header the hosted shell sends. */
+  readonly #shells = new Map<string, string>();
+
+  /** Sends `secret` as `X-Mostra-Shell` on every later request under `prefix`, as a hosted shell does. */
+  keepShell(prefix: string, secret: string): void {
+    this.#shells.set(prefix, secret);
+  }
 
   /** Signs every later request to `origin` with a worker-mode frame session, as its worker does. */
   enterFrame(origin: string, secret: string): void {
@@ -158,11 +171,17 @@ export class Browser {
     const url = new URL(ask.url);
     // The service worker signs every same-origin request but a ticketed one, which bypasses it.
     const frame = url.searchParams.has("ticket") ? undefined : this.#frames.get(url.origin);
+    const shell = ask.noCookies
+      ? undefined
+      : [...this.#shells].find(
+          ([prefix]) => ask.url === prefix || ask.url.startsWith(`${prefix}/`),
+        )?.[1];
     const answer = await send({
       ...ask,
       headers: {
         ...(cookie ? { cookie } : {}),
         ...(frame !== undefined ? { "x-mostra-frame": frame } : {}),
+        ...(shell !== undefined ? { "x-mostra-shell": shell } : {}),
         ...ask.headers,
       },
     });
@@ -270,6 +289,9 @@ export class Viewer {
     });
     if (exchange.status !== 200) throw new OpenError("exchange", exchange);
     const shellCsrf = exchange.json<{ csrf: string }>().csrf;
+    // A hosted shell's session is a secret it keeps and sends in a header (D165 item 8).
+    const hosted = exchange.json<{ session?: string }>().session;
+    if (hosted !== undefined) browser.keepShell(`${parsed.origin}/a/${parsed.artifactId}`, hosted);
     const ticketAnswer = await browser.fetchJson(parsed.origin, `${api}/ticket`, {
       body: parsed.version !== undefined ? { version: Number(parsed.version) } : {},
       csrf: shellCsrf,

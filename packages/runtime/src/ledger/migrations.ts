@@ -654,4 +654,187 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 12,
+    name: "tallies",
+    up(db) {
+      // D165 item 12, RM-07 (DATA_MODEL §7.4). A count by choice of a fixed-choice field, written
+      // only inside the submit transaction, one more for the choice the new submission holds. A
+      // count never goes down and a row is never deleted, so what viewers were shown stays true.
+      db.exec(`
+        CREATE TABLE tally (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          field_id TEXT NOT NULL,
+          choice TEXT NOT NULL,
+          count INTEGER NOT NULL CHECK (count >= 0),
+          PRIMARY KEY (artifact_id, field_id, choice)
+        );
+        CREATE TRIGGER tally_only_grows BEFORE UPDATE ON tally
+          WHEN NEW.count < OLD.count OR NEW.artifact_id IS NOT OLD.artifact_id
+            OR NEW.field_id IS NOT OLD.field_id OR NEW.choice IS NOT OLD.choice
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally only grows');
+        END;
+        CREATE TRIGGER tally_kept BEFORE DELETE ON tally
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally is kept with its artifact');
+        END;
+        CREATE TRIGGER tally_not_replaced BEFORE INSERT ON tally
+        WHEN EXISTS (SELECT 1 FROM tally WHERE artifact_id = NEW.artifact_id
+          AND field_id = NEW.field_id AND choice = NEW.choice)
+        BEGIN
+          SELECT RAISE(ABORT, 'a tally row is counted, never replaced');
+        END;
+      `);
+    },
+  },
+  {
+    version: 13,
+    name: "remote server and owner link",
+    up(db) {
+      // D165 (DATA_MODEL §7.2, §7.3). A hosted home's incarnation, rotated in one transaction when
+      // the home is restored from a backup. A local home keeps the table empty.
+      db.exec(`
+        CREATE TABLE home_meta (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          incarnation TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+      // Hosted homes have viewers of kind `account` and `anonymous` (D165 item 8), and an owner
+      // instance imports its hosted submissions' viewers with their kinds (DATA_MODEL §7.3).
+      db.widenCheck(
+        "viewer",
+        "CHECK (kind IN ('local', 'tailnet', 'token', 'host'))",
+        "CHECK (kind IN ('local', 'tailnet', 'token', 'host', 'account', 'anonymous'))",
+      );
+      // A relayed run whose end its owner never reported is `unknown` (D165 item 4): a state of
+      // its own, never final, replaced once by the end the owner reports, never by anything else.
+      db.widenCheck(
+        "action_run",
+        "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'))",
+        "CHECK (status IN ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled', 'unknown'))",
+      );
+      // A hosted shell's session travels in a header (`X-Mostra-Shell`, D165 item 8): no cookie
+      // is ever set or read on a hosted host.
+      db.widenCheck(
+        "session",
+        "CHECK (mode IN ('cookie', 'worker'))",
+        "CHECK (mode IN ('cookie', 'worker', 'header'))",
+      );
+      // A share to a remote server (`via = 'remote'`, D165): its link is a token of the hosted
+      // home, never of this ledger, so the share names it without a foreign key; a trigger keeps
+      // every other share's token one of this home's.
+      db.widenCheck(
+        "share",
+        "via TEXT NOT NULL CHECK (via IN ('tailnet', 'funnel', 'cloudflare'))",
+        "via TEXT NOT NULL CHECK (via IN ('tailnet', 'funnel', 'cloudflare', 'remote'))",
+      );
+      db.widenCheck(
+        "share",
+        "token_id TEXT NOT NULL REFERENCES token(id)",
+        "token_id TEXT NOT NULL",
+      );
+      // A hosted home's floor for each owner link's relay sequences: the highest relay mark its
+      // owner reported, so after a restore the next sequence continues above it and the mark is
+      // compared with what the home knows, not only its runs (Opus review of WP-29, 9).
+      db.exec(`
+        CREATE TABLE relay_floor (
+          link_id TEXT PRIMARY KEY,
+          floor INTEGER NOT NULL CHECK (floor >= 0)
+        );
+      `);
+      // A followed submission this home doesn't hold, read again until it is imported (Opus review
+      // of WP-29, 3): written in the transaction that moves the sync cursor past it.
+      db.exec(`
+        CREATE TABLE remote_missing (
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          submission_id TEXT NOT NULL,
+          noted_at TEXT NOT NULL,
+          PRIMARY KEY (server, submission_id)
+        );
+      `);
+      db.exec(`
+        CREATE TRIGGER share_local_token BEFORE INSERT ON share
+          WHEN NEW.via != 'remote' AND NOT EXISTS (SELECT 1 FROM token WHERE id = NEW.token_id)
+        BEGIN
+          SELECT RAISE(ABORT, 'a share through a tunnel names one of this home''s tokens');
+        END;
+        CREATE TRIGGER action_run_unknown_once BEFORE UPDATE ON action_run
+          WHEN OLD.status = 'unknown' AND NEW.status NOT IN ('unknown', 'succeeded', 'failed', 'cancelled')
+        BEGIN
+          SELECT RAISE(ABORT, 'an unknown run is replaced only by the end its owner reports');
+        END;
+      `);
+      // The owner's side (DATA_MODEL §7.3): its link to each server, its hosted artifacts, the
+      // publishes waiting to reach a server, and the relayed runs it accepted. Imported submissions
+      // and followed events carry where they came from, and a followed event is appended once.
+      db.exec(`
+        CREATE TABLE remote_link (
+          server TEXT PRIMARY KEY,
+          account_id TEXT,
+          account_name TEXT,
+          instance_id TEXT,
+          is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+          linked_at TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('signed-in', 'signed-out')),
+          incarnation TEXT,
+          follow_cursor TEXT,
+          relay_mark INTEGER NOT NULL DEFAULT 0 CHECK (relay_mark >= 0)
+        );
+        CREATE TABLE hosted_artifact (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          hosted_home TEXT NOT NULL,
+          route_id TEXT NOT NULL,
+          label TEXT NOT NULL,
+          token_id TEXT,
+          url_secret_hint TEXT,
+          shared_at TEXT NOT NULL,
+          stopped_at TEXT,
+          PRIMARY KEY (artifact_id, server)
+        );
+        CREATE TABLE version_push (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          server TEXT NOT NULL REFERENCES remote_link(server),
+          state TEXT NOT NULL CHECK (state IN ('pending', 'complete', 'refused')),
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT,
+          created_at TEXT NOT NULL,
+          -- Why the server refused the push for good (Opus review of WP-29, 10): it waits no
+          -- longer, and no later push waits behind it.
+          refusal TEXT,
+          PRIMARY KEY (artifact_id, version_id, server)
+        );
+        CREATE TABLE relayed_run (
+          run_id TEXT PRIMARY KEY REFERENCES action_run(id),
+          server TEXT NOT NULL,
+          relay_seq INTEGER NOT NULL,
+          artifact_id TEXT NOT NULL,
+          version_id TEXT NOT NULL,
+          fn_id TEXT NOT NULL,
+          seq_sent INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT NOT NULL,
+          finished_at TEXT
+        );
+        CREATE TABLE relay_run (
+          run_id TEXT PRIMARY KEY REFERENCES action_run(id),
+          owner_link_id TEXT NOT NULL,
+          relay_seq INTEGER NOT NULL,
+          attempt INTEGER NOT NULL DEFAULT 0,
+          sent_at TEXT,
+          accepted_at TEXT,
+          owner_heard_at TEXT,
+          offline_limit_at TEXT NOT NULL,
+          last_seq INTEGER NOT NULL DEFAULT 0,
+          cancel_requested_at TEXT,
+          UNIQUE (owner_link_id, relay_seq)
+        );
+        ALTER TABLE submission ADD COLUMN origin_json TEXT;
+        ALTER TABLE event ADD COLUMN origin_json TEXT;
+        CREATE UNIQUE INDEX event_origin ON event (origin_json) WHERE origin_json IS NOT NULL;
+      `);
+    },
+  },
 ];

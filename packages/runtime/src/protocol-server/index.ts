@@ -13,6 +13,7 @@ import {
   instanceCheckMethod,
   instanceStatusMethod,
   mostraShutdownMethod,
+  type RemoteLink,
   RpcError,
   type Share,
   type WorkerStatus,
@@ -20,7 +21,20 @@ import {
 import { handler, type MethodHandler } from "./server.ts";
 
 export { attach, type SocketClient } from "./client.ts";
-export { handler, type MethodHandler, ProtocolServer, type Session } from "./server.ts";
+export {
+  handler,
+  type MethodHandler,
+  ProtocolServer,
+  type Session,
+} from "./server.ts";
+export {
+  BINDING_SUBPROTOCOL,
+  type HeartbeatOptions,
+  keepAlive,
+  MAX_FRAME_BYTES,
+  readFrame,
+  serveWebSocket,
+} from "./websocket.ts";
 
 /** What the session methods need from the instance. */
 export interface SessionMethodsOptions {
@@ -40,6 +54,8 @@ export interface SessionMethodsOptions {
   idleExitAt?(): string | undefined;
   /** The active shares (WP-13, D158). */
   shares?(): readonly Share[];
+  /** The home's links to remote servers (WP-29). */
+  links?(): readonly RemoteLink[];
   /**
    * The supervisor's own checks of its home (`instance/check`, D140 item 18), in order; `deep`
    * also hashes every version against its output digest.
@@ -66,6 +82,7 @@ export function sessionMethods(options: SessionMethodsOptions): MethodHandler[] 
         ...(options.deliveries ? { deliveries: [...options.deliveries()] } : {}),
         ...(options.workers ? { workers: [...options.workers()] } : {}),
         ...(options.shares ? { shares: [...options.shares()] } : {}),
+        ...(options.links ? { links: [...options.links()] } : {}),
         ...(() => {
           const at = options.idleExitAt?.();
           return at === undefined ? {} : { idleExitAt: at };

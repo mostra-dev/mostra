@@ -6,6 +6,7 @@ import {
   applyControlRequests,
   controlsArmed,
   initialState,
+  receiptOf,
   submitRevision,
   withControlRequest,
   withEvents,
@@ -266,5 +267,41 @@ describe("a view whose server code keeps crashing (WP-08, FAILURE_MODEL §2)", (
       record("version.published", { versionId: "ver_00000000000000000000000002", number: 2 }),
     ]);
     expect(published.serverParked).toBe(false);
+  });
+});
+
+describe("the receipt under epochs (#118)", () => {
+  const submission = {
+    id: "sub_01J00000000000000000000000",
+    at: "2026-11-05T00:00:00.000Z",
+    epoch: 1,
+    channel: "shell" as const,
+    versionId: "ver_00000000000000000000000001",
+    version: 1,
+    viewId: TICKET.viewId,
+    staleView: false,
+    draftRevision: "3",
+    digest: "0".repeat(64),
+    delivery: "delivered" as const,
+  };
+
+  it("shows a round's receipt in the view that submitted it", () => {
+    const epochs = initialState({ ...TICKET, policy: { policy: "epochs" } });
+    const state = withSubmission(epochs, submission as never);
+    expect(receiptOf(state)?.id).toBe(submission.id);
+  });
+
+  it("shows a new view the next round as open, not the last one as submitted", () => {
+    const later = initialState({
+      ...TICKET,
+      viewId: "vw_01J00000000000000000000001",
+      policy: { policy: "epochs" },
+    });
+    expect(receiptOf(withSubmission(later, submission as never))).toBeUndefined();
+  });
+
+  it("keeps the receipt under once, in every view, since the submission closed the draft", () => {
+    const later = initialState({ ...TICKET, viewId: "vw_01J00000000000000000000001" });
+    expect(receiptOf(withSubmission(later, submission as never))?.id).toBe(submission.id);
   });
 });

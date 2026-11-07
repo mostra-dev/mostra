@@ -5,7 +5,9 @@
 import type { AnyMethod, AnyNotification } from "../method.ts";
 import { ARTIFACT_PROGRESS, ArtifactProgressParams } from "../verify.ts";
 import { artifactCreateMethod } from "./artifact/create.ts";
+import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
+import { artifactImportMethod } from "./artifact/import.ts";
 import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
@@ -17,6 +19,8 @@ import { eventsReadMethod } from "./events/read.ts";
 import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
+import { hostedPushMethod } from "./hosted/push.ts";
+import { hostedSubmissionMethod } from "./hosted/submission.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
 import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
@@ -25,10 +29,24 @@ import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
+import { portRelayCallMethod } from "./port/relay-call.ts";
+import { portRelayCancelMethod } from "./port/relay-cancel.ts";
+import { portRelayLiveMethod } from "./port/relay-live.ts";
+import { portRelayReconcileMethod } from "./port/relay-reconcile.ts";
+import { portRelayRunMethod } from "./port/relay-run.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
+import { relayCallBatchMethod } from "./relay/call-batch.ts";
+import { relayEffectMethod } from "./relay/effect.ts";
+import { relayLiveValueMethod } from "./relay/live-value.ts";
+import { relayRunUpdateMethod } from "./relay/run-update.ts";
+import { remoteLoginMethod } from "./remote/login.ts";
+import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
+import { remoteLogoutMethod } from "./remote/logout.ts";
+import { remoteStatusMethod } from "./remote/status.ts";
+import { remoteTokenMethod } from "./remote/token.ts";
 import { resultsGetMethod } from "./results/get.ts";
 import { secretDeleteMethod } from "./secret/delete.ts";
 import { secretListMethod } from "./secret/list.ts";
@@ -88,6 +106,24 @@ export const hostMethods: readonly AnyMethod[] = [
   shareStopMethod,
   shareListMethod,
   portAddressingExternalBaseMethod,
+  artifactExportMethod,
+  artifactImportMethod,
+  remoteLoginMethod,
+  remoteLoginWaitMethod,
+  remoteLogoutMethod,
+  remoteStatusMethod,
+  remoteTokenMethod,
+  hostedPushMethod,
+  portRelayRunMethod,
+  portRelayCancelMethod,
+  portRelayReconcileMethod,
+  portRelayCallMethod,
+  relayRunUpdateMethod,
+  relayCallBatchMethod,
+  relayEffectMethod,
+  portRelayLiveMethod,
+  relayLiveValueMethod,
+  hostedSubmissionMethod,
   // gen:methods
 ];
 

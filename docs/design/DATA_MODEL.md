@@ -324,7 +324,12 @@ artifact_pause(artifact_id PK, by CHECK(by IN ('owner','operator')), reason, pau
 quarantine(route_id, version_id NULL, reason, at, UNIQUE(route_id, version_id))
                                                     -- a route, or one version of a route, the operator quarantined
                                                     -- (D165 item 9); an identical version in another home is untouched
-link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137)
+relay_floor(link_id PK, floor)                     -- the highest relay mark each owner link reported (WP-29,
+                                                    -- D166 item 22): after a restore the next sequence continues
+                                                    -- above it, and a restore is told once, not at every reconnect
+link_domain(token_id PK FK, domain)                -- the user-content domain a link was minted on (D137);
+                                                    -- as built (WP-29, D166 item 15) the token's own
+                                                    -- shell_origin records it, so no table is added
 ```
 
 ### 7.3 The owner's instance
@@ -345,8 +350,14 @@ remote_link(server PK, account_id, instance_id, is_default, linked_at, state, in
                                                     -- cursor); the server also keeps the named subscriber `owner:<lnk_…>`
 hosted_artifact(artifact_id FK, server FK, hosted_home, route_id, label, shared_at, stopped_at NULL,
                 PRIMARY KEY(artifact_id, server))   -- one artifact may be shared to several servers
-version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','complete')), attempts, next_attempt_at,
-             PRIMARY KEY(artifact_id, version_id, server))   -- publishes waiting to reach the server (D165 item 3)
+version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','complete','refused')), attempts,
+             next_attempt_at, refusal NULL, PRIMARY KEY(artifact_id, version_id, server))
+                                                    -- publishes waiting to reach the server (D165 item 3); one the
+                                                    -- server refused for good is `refused` with why, and nothing
+                                                    -- waits behind it (WP-29, D166 item 22)
+remote_missing(server FK, submission_id, noted_at, PRIMARY KEY(server, submission_id))
+                                                    -- followed submissions this home doesn't hold, written with the
+                                                    -- cursor that passed them, read again until imported (D166 item 22)
 relayed_run(run_id PK, server, relay_seq, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
                                                     -- the hosted run's ID recorded before its worker starts, so a
                                                     -- repeated relay.run joins it; a crash mid-run ends it failed,

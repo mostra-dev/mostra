@@ -6,7 +6,7 @@
  */
 import * as z from "zod";
 import { ArtifactId, VersionId, ViewId } from "./ids.ts";
-import { SubmissionPolicy } from "./manifest.ts";
+import { SubmissionPolicy } from "./policy.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
 /** Where a submit came from (D40). */

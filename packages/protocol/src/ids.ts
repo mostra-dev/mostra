@@ -29,7 +29,11 @@ export type IdPrefix =
   | "cmt"
   | "tok"
   | "mut"
-  | "shr";
+  | "shr"
+  | "acct"
+  | "hom"
+  | "lnk"
+  | "rte";
 
 /**
  * A branded ID string. The brand exists only at the type level, so an `Id<"art">` is a plain
@@ -248,6 +252,34 @@ export type ShareId = Id<"shr">;
 /** Share IDs. */
 export const ShareId: GeneratedIdKind<"shr"> = generated(
   defineKind("shr", "share", "ulid", "ShareId"),
+);
+
+/** An account on a remote server (`acct_` + ULID, D165 item 8). */
+export type AccountId = Id<"acct">;
+/** Account IDs. */
+export const AccountId: GeneratedIdKind<"acct"> = generated(
+  defineKind("acct", "account", "ulid", "AccountId"),
+);
+
+/** A hosted home on a remote server (`hom_` + ULID, D165 item 1). */
+export type HomeId = Id<"hom">;
+/** Hosted home IDs. */
+export const HomeId: GeneratedIdKind<"hom"> = generated(
+  defineKind("hom", "hosted home", "ulid", "HomeId"),
+);
+
+/** An instance linked to a remote server (`lnk_` + ULID, D165 item 2): its owner link. */
+export type LinkId = Id<"lnk">;
+/** Instance link IDs. */
+export const LinkId: GeneratedIdKind<"lnk"> = generated(
+  defineKind("lnk", "instance link", "ulid", "LinkId"),
+);
+
+/** A hosted route (`rte_` + ULID): one artifact on one hosted home (D165, after the Opus review). */
+export type RouteId = Id<"rte">;
+/** Hosted route IDs. */
+export const RouteId: GeneratedIdKind<"rte"> = generated(
+  defineKind("rte", "hosted route", "ulid", "RouteId"),
 );
 
 /**

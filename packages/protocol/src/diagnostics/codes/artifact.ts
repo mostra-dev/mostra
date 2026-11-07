@@ -18,6 +18,7 @@ export const artifactDiagnosticCodes = [
   "MOSTRA_ARTIFACT_PATH_INVALID",
   "MOSTRA_ARTIFACT_PATCH_REJECTED",
   "MOSTRA_ARTIFACT_ID_DROPPED",
+  "MOSTRA_ARTIFACT_BUNDLE_INVALID",
   // gen:codes
 ] as const;
 
@@ -167,6 +168,17 @@ export const artifactDiagnostics: AreaCatalog<ArtifactDiagnosticCode> = {
       explanation:
         "A write replaced the artifact's entry (`index.tsx`, `index.jsx` or `index.mdx`) with text that no longer names the artifact ID its manifest held. Mostra wrote it as asked. An artifact without an `id` is bound to its source path at its first publish, so a page that was never published gets a new ID there, and one that was published keeps its ID only while its path stays the same: links, waits and results named by the old ID then don't find it.",
       fix: 'Add the `id` back, exactly as it was (`id: "art_01…"` in `defineArtifact`, or `id:` in the MDX frontmatter), with `artifact_patch` or `artifact_write`.',
+    },
+  },
+  MOSTRA_ARTIFACT_BUNDLE_INVALID: {
+    severity: "error",
+    phase: "host",
+    title: "Not a bundle this version can import",
+    hint: "Export the bundle again with `mostra export <artifact> --as bundle`, and import the files it wrote unchanged.",
+    docs: {
+      explanation:
+        "Importing a bundle checks it before it keeps anything: its `mostra-bundle.json`, that its version ID is the one its artifact ID and digests give, and that its builds and source snapshot have the digests it records. This bundle failed one of those checks, so a file was changed, lost or added after it was exported, or it isn't a bundle Mostra wrote.",
+      fix: "Export the version again from the home that published it, and copy the bundle's directory or archive whole.",
     },
   },
   // gen:entries

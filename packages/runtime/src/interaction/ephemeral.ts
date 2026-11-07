@@ -14,15 +14,22 @@ export const INTEREST_LEASE_MS: number = 60_000;
 /** The most messages a polling view keeps between polls; older ones are dropped. */
 const POLL_QUEUE_MAX = 1000;
 
+/** A polling view's messages collected between its polls. */
+interface PollQueue {
+  readonly messages: EphemeralMessage[];
+  until: number;
+  /** The polls waiting now; each is woken by the next message. */
+  readonly wakes: Set<() => void>;
+}
+
 /** What a view listens to. */
 interface ViewInterest {
   readonly artifactId: string;
   readonly runs: Map<string, number>;
   readonly live: Map<string, { until: number; window?: number }>;
   readonly listeners: Set<(message: EphemeralMessage) => void>;
-  queue?: EphemeralMessage[];
-  queueUntil?: number;
-  wake?: () => void;
+  /** Its frame's poll queue, once the frame polled. */
+  poll?: PollQueue;
 }
 
 type RunMessage = Extract<EphemeralMessage, { kind: "run" }>;
@@ -123,9 +130,12 @@ export interface EphemeralBus {
     viewId: string,
     listener: (message: EphemeralMessage) => void,
   ): () => void;
-  /** Takes what the view collected since its last poll, starting its queue on the first. */
+  /**
+   * Takes what the view's frame collected since its last poll, starting its queue on the first.
+   * Only the frame polls for these: the shell's poll of the same view never takes them (#119).
+   */
   drain(artifactId: string, viewId: string): EphemeralMessage[];
-  /** Resolves when the polling view has something, or after `ms`. */
+  /** Resolves when the polling view has something, or after `ms`; several polls may wait. */
   wait(artifactId: string, viewId: string, ms: number, signal?: AbortSignal): Promise<void>;
   /** The live sources views read now. */
   liveInterest(): LiveInterest[];
@@ -181,12 +191,12 @@ export function createEphemeralBus(
 
   const deliver = (view: ViewInterest, message: EphemeralMessage): void => {
     for (const listener of view.listeners) listener(message);
-    if (view.queue && (view.queueUntil ?? 0) > now()) {
-      coalesceInto(view, view.queue, message);
-      if (view.queue.length > POLL_QUEUE_MAX)
-        view.queue.splice(0, view.queue.length - POLL_QUEUE_MAX);
-      view.wake?.();
-    }
+    const poll = view.poll;
+    if (!poll || poll.until <= now()) return;
+    coalesceInto(view, poll.messages, message);
+    if (poll.messages.length > POLL_QUEUE_MAX)
+      poll.messages.splice(0, poll.messages.length - POLL_QUEUE_MAX);
+    for (const wake of [...poll.wakes]) wake();
   };
 
   // Expired leases end; views with nothing left are forgotten.
@@ -196,15 +206,12 @@ export function createEphemeralBus(
       for (const [viewId, view] of views) {
         for (const [runId, until] of view.runs) if (until <= at) view.runs.delete(runId);
         for (const [key, lease] of view.live) if (lease.until <= at) view.live.delete(key);
-        if (view.queue && (view.queueUntil ?? 0) <= at) {
-          delete view.queue;
-          delete view.queueUntil;
-        }
+        if (view.poll && view.poll.until <= at && view.poll.wakes.size === 0) delete view.poll;
         if (
           view.runs.size === 0 &&
           view.live.size === 0 &&
           view.listeners.size === 0 &&
-          !view.queue
+          !view.poll
         ) {
           views.delete(viewId);
         }
@@ -258,24 +265,26 @@ export function createEphemeralBus(
     },
     drain(artifactId, viewId) {
       const view = viewOf(artifactId, viewId);
-      const taken = view.queue ?? [];
-      view.queue = [];
-      view.queueUntil = now() + lease;
+      const taken = view.poll ? view.poll.messages.splice(0) : [];
+      if (view.poll) view.poll.until = now() + lease;
+      else view.poll = { messages: [], until: now() + lease, wakes: new Set() };
       return taken;
     },
     wait(artifactId, viewId, ms, signal) {
       const view = viewOf(artifactId, viewId);
-      if (view.queue && view.queue.length > 0) return Promise.resolve();
+      view.poll ??= { messages: [], until: now() + lease, wakes: new Set() };
+      if (view.poll.messages.length > 0) return Promise.resolve();
+      const waiting = view.poll;
       return new Promise((resolve) => {
         const done = (): void => {
           clearTimeout(timer);
           signal?.removeEventListener("abort", done);
-          if (view.wake === done) delete view.wake;
+          waiting.wakes.delete(done);
           resolve();
         };
         const timer = setTimeout(done, ms);
         signal?.addEventListener("abort", done, { once: true });
-        view.wake = done;
+        waiting.wakes.add(done);
       });
     },
     liveInterest: currentInterest,
@@ -289,7 +298,7 @@ export function createEphemeralBus(
       const at = now();
       let count = 0;
       for (const view of views.values()) {
-        if (view.listeners.size > 0 || (view.queueUntil ?? 0) > at) count += 1;
+        if (view.listeners.size > 0 || (view.poll?.until ?? 0) > at) count += 1;
       }
       return count;
     },

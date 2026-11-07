@@ -5,7 +5,7 @@
  * off stdout. J1 runs through it end to end: new, verify, publish, open, a viewer's submission,
  * wait and results (WP-10's handoff).
  */
-import { execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -21,6 +21,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { request as httpRequest } from "node:http";
+import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -91,16 +93,69 @@ async function run(
   return { ran, result: value.result };
 }
 
-beforeAll(() => {
+/** A real remote server for `login`, `share --cloud` and `logout` (WP-29, INTERFACES §18.7). */
+let server: ChildProcess | undefined;
+let serverPort = 0;
+const SERVER_BIN = fileURLToPath(new URL("../../../runtime/dist/bin.js", import.meta.url));
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+beforeAll(async () => {
+  serverPort = await freePort();
   home = testHome({
     MOSTRA_OFFLINE: "1",
     // `share` runs the conformance kit's stand-ins for tailscale and cloudflared (D158).
     MOSTRA_TEST_TUNNELS: fileURLToPath(new URL("../../../conformance/tunnels/", import.meta.url)),
+    // The test server's names (`*.localhost`) reach it on loopback, whatever they resolve to.
+    MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${serverPort}`,
   });
   artifactDir = join(home.root, "review");
-});
+  const data = join(home.root, "server-data");
+  const config = join(home.root, "server.json");
+  writeFileSync(
+    config,
+    JSON.stringify({
+      apiOrigin: `http://api.localhost:${serverPort}`,
+      domains: { active: `content.localhost:${serverPort}` },
+      scheme: "http",
+      identityProviders: [{ id: "dev", kind: "development", label: "Development" }],
+    }),
+  );
+  const started = spawn(
+    process.execPath,
+    [
+      SERVER_BIN,
+      "server",
+      "--data",
+      data,
+      "--config",
+      config,
+      "--listen",
+      `127.0.0.1:${serverPort}`,
+    ],
+    { stdio: ["ignore", "pipe", "inherit"], env: home.env },
+  );
+  server = started;
+  await new Promise<void>((resolve, reject) => {
+    started.stdout?.setEncoding("utf8");
+    started.stdout?.once("data", (line: string) =>
+      line.includes('"started"') ? resolve() : reject(new Error(`server: ${line}`)),
+    );
+    started.once("exit", (code) => reject(new Error(`the server exited (${code})`)));
+  });
+}, 60_000);
 
 afterAll(async () => {
+  server?.kill();
   await home.cleanup();
 });
 
@@ -138,8 +193,45 @@ describe("every command, with --json and no terminal", () => {
     const opened = await run(["open", artifactDir, "--no-browser"], { code: 0, ok: true });
     const shown = CapabilityLink.parse(opened.result);
     expect(shown.url).toBe(receipt.url);
+    expect(opened.ran.stderr).not.toContain("No browser opened");
+    // An agent's shell isn't a terminal: no browser opens, and it says so (#114).
+    const plain = await cli(["open", artifactDir], { env: home.env });
+    expect(plain.code).toBe(0);
+    expect(plain.stdout.trim()).toBe(receipt.url);
+    expect(plain.stderr).toMatch(/No browser opened: .*[Gg]ive the person the link\./);
     link = shown.url;
   });
+
+  it("export writes a bundle and run makes it the same version in another home (RM-01)", async () => {
+    const bundle = join(home.root, "review.tar.zst");
+    const exported = await run(["export", artifactId, "--out", bundle], { code: 0, ok: true });
+    expect(exported.result).toMatchObject({ files: [bundle] });
+    const { versionId } = exported.result as { versionId: string };
+    // Writing over it again is refused, and it keeps the first bundle.
+    await run(["export", artifactId, "--out", bundle], {
+      code: 1,
+      ok: false,
+      error: "MOSTRA_ARTIFACT_DIR_NOT_EMPTY",
+    });
+    const other = testHome({ MOSTRA_OFFLINE: "1" });
+    try {
+      const imported = await cli(["run", bundle, "--json"], { env: other.env });
+      const value = envelope(imported);
+      expect({ code: imported.code, ok: value.ok }, imported.stderr).toEqual({ code: 0, ok: true });
+      const receipt = PublishReceipt.parse(value.result);
+      expect(receipt).toMatchObject({ artifactId, versionId, version: 1, reused: false });
+      covered.add("run");
+      // A file that isn't a bundle is refused with its own code, exit 1.
+      const notBundle = join(other.root, "x.tar.zst");
+      writeFileSync(notBundle, "not a bundle");
+      const refused = await cli(["run", notBundle, "--json"], { env: other.env });
+      expect(refused.code).toBe(1);
+      expect(envelope(refused).error?.code).toBe("MOSTRA_ARTIFACT_BUNDLE_INVALID");
+    } finally {
+      await cli(["daemon", "stop", "--json"], { env: other.env });
+      await other.cleanup();
+    }
+  }, 120_000);
 
   it("wait ends still_waiting with exit 5, then returns the viewer's submission; results reads it", async () => {
     const waiting = await run(["wait", artifactId, "--until", "submitted", "--timeout", "1s"], {
@@ -279,6 +371,116 @@ describe("every command, with --json and no terminal", () => {
       ),
     ).toBe(true);
   }, 120_000);
+
+  it("login, share --cloud, status and logout through a real remote server (RM-02, §18.7)", async () => {
+    const origin = `http://api.localhost:${serverPort}`;
+    // An artifact of this test's own, so it runs on its own too.
+    const cloudDir = join(home.root, "cloud");
+    const made = await cli(["new", cloudDir, "--title", "Hosted review", "--json"], {
+      env: home.env,
+    });
+    const cloudId = (envelope(made).result as { artifactId: string }).artifactId;
+    const published = await cli(["publish", cloudDir, "--json"], { env: home.env });
+    expect(published.code, published.stderr).toBe(0);
+    // `login` streams the code to enter, then waits: the person approves on the server's page.
+    const login = spawn(process.execPath, [BIN, "login", origin, "--json"], {
+      env: home.env,
+      cwd: home.root,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    login.stdin.end();
+    let out = "";
+    login.stdout.setEncoding("utf8");
+    login.stdout.on("data", (chunk: string) => {
+      out += chunk;
+    });
+    await eventually(() => out.includes("\n"), 60_000);
+    const first = JSON.parse(out.split("\n")[0] as string) as {
+      ok: boolean;
+      event: { kind: string; userCode: string; verificationUri: string };
+    };
+    expect(first).toMatchObject({ ok: true, event: { kind: "code" } });
+    expect(first.event.verificationUri).toBe(`${origin}/device`);
+    const approved = await new Promise<number>((resolve, reject) => {
+      const body = new URLSearchParams({
+        user_code: first.event.userCode,
+        name: "Ada",
+        provider: "dev",
+        decision: "approve",
+      }).toString();
+      const req = httpRequest(
+        {
+          host: "127.0.0.1",
+          port: serverPort,
+          path: "/device",
+          method: "POST",
+          setHost: false,
+          headers: {
+            host: `api.localhost:${serverPort}`,
+            origin,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? 0));
+        },
+      );
+      req.on("error", reject);
+      req.end(body);
+    });
+    expect(approved).toBe(200);
+    const code = await new Promise<number>((resolve) =>
+      login.once("close", (c) => resolve(c ?? -1)),
+    );
+    expect(code, out).toBe(0);
+    const lines = out.trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] as string) as {
+      ok: boolean;
+      result: { status: string; instanceId: string };
+    };
+    expect(last).toMatchObject({ ok: true, result: { status: "signed-in" } });
+    covered.add("login");
+
+    // Linked: status names the server, connected and this home's default.
+    let linked = false;
+    for (let attempt = 0; attempt < 30 && !linked; attempt += 1) {
+      const status = await run(["status"], { code: 0, ok: true });
+      linked = ((status.result as { links?: { state: string }[] }).links ?? []).some(
+        (one) => one.state === "connected",
+      );
+      if (!linked) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(linked).toBe(true);
+
+    // share --cloud hosts the artifact and prints its hosted link; list and stop include it.
+    const hosted = await run(["share", cloudId, "--cloud"], { code: 0, ok: true });
+    const share = hosted.result as { shareId: string; url: string; via: string };
+    expect(share.via).toBe("remote");
+    expect(new URL(share.url).host).toBe(`content.localhost:${serverPort}`);
+    await run(["share", cloudId, "--cloud", "--tailnet"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    await run(["share", cloudId, "https://elsewhere.example", "--tailnet"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    const listed = await run(["share", "list", cloudId], { code: 0, ok: true });
+    expect((listed.result as { shares: { via: string }[] }).shares.map((one) => one.via)).toContain(
+      "remote",
+    );
+    const stopped = await run(["share", "stop", share.shareId], { code: 0, ok: true });
+    expect((stopped.result as { stopped: unknown[] }).stopped).toHaveLength(1);
+
+    // logout keeps the instance link unless --forget; signing in again needs a new approval.
+    const out1 = await run(["logout"], { code: 0, ok: true });
+    expect((out1.result as { servers: string[] }).servers).toEqual([origin]);
+    const human = await cli(["logout"], { env: home.env });
+    expect(human.code).toBe(0);
+  }, 180_000);
 
   it("open --browser hands the browser a 0600 page holding a one-time launch URL, never a secret on its command line (Opus review findings 4, 7)", async () => {
     // A stand-in browser: Node.js running a script that records the arguments it was started with

@@ -13,6 +13,12 @@ export type A11yDiagnosticCode = (typeof a11yDiagnosticCodes)[number];
 export const a11yDiagnosticCodes: readonly ["MOSTRA_A11Y_SERIOUS", "MOSTRA_A11Y_MINOR"];
 
 // @public
+export type AccountId = Id<"acct">;
+
+// @public
+export const AccountId: GeneratedIdKind<"acct">;
+
+// @public
 export const ACTION_ARGS_MAX: number;
 
 // @public
@@ -113,7 +119,24 @@ export const ArtifactDetail: z.ZodType<ArtifactDetail>;
 export type ArtifactDiagnosticCode = (typeof artifactDiagnosticCodes)[number];
 
 // @public
-export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED", "MOSTRA_ARTIFACT_PATH_INVALID", "MOSTRA_ARTIFACT_PATCH_REJECTED", "MOSTRA_ARTIFACT_ID_DROPPED"];
+export const artifactDiagnosticCodes: readonly ["MOSTRA_ARTIFACT_NOT_FOUND", "MOSTRA_ARTIFACT_SOURCE_MISSING", "MOSTRA_ARTIFACT_SOURCE_UNREADABLE", "MOSTRA_ARTIFACT_NO_ENTRY", "MOSTRA_ARTIFACT_ENTRY_AMBIGUOUS", "MOSTRA_ARTIFACT_NO_PAGE", "MOSTRA_ARTIFACT_DIR_NOT_EMPTY", "MOSTRA_ARTIFACT_TEMPLATE_UNKNOWN", "MOSTRA_ARTIFACT_VERSION_NOT_FOUND", "MOSTRA_ARTIFACT_VERSION_COLLECTED", "MOSTRA_ARTIFACT_PATH_INVALID", "MOSTRA_ARTIFACT_PATCH_REJECTED", "MOSTRA_ARTIFACT_ID_DROPPED", "MOSTRA_ARTIFACT_BUNDLE_INVALID"];
+
+// @public
+export const artifactExportMethod: MethodDefinition<ArtifactExportParams, ArtifactExportResult>;
+
+// @public
+export interface ArtifactExportParams {
+    readonly artifact: ArtifactRef;
+    readonly as: ExportClass;
+    readonly out: string;
+    readonly version?: number | string;
+}
+
+// @public
+export interface ArtifactExportResult {
+    readonly files: readonly string[];
+    readonly versionId: string;
+}
 
 // @public
 export type ArtifactFamily = "questionnaire" | "proposal" | "prototype" | "review" | "dashboard" | "deck" | "demo" | "inbox" | "tasks" | (string & {});
@@ -134,6 +157,18 @@ export type ArtifactId = Id<"art">;
 
 // @public
 export const ArtifactId: GeneratedIdKind<"art">;
+
+// @public
+export const artifactImportMethod: MethodDefinition<ArtifactImportParams, ArtifactImportResult>;
+
+// @public
+export interface ArtifactImportParams {
+    readonly bundle: string;
+    readonly requestId?: string;
+}
+
+// @public
+export type ArtifactImportResult = PublishReceipt;
 
 // @public
 export interface ArtifactLink {
@@ -167,6 +202,7 @@ export interface ArtifactManifest {
     readonly demos?: Readonly<Record<string, DemoSpec>>;
     readonly description?: string;
     readonly family?: ArtifactFamily;
+    readonly hosted?: HostedSettings;
     readonly id?: string;
     readonly kit?: {
         readonly base?: "base" | "radix";
@@ -180,6 +216,7 @@ export interface ArtifactManifest {
     readonly links?: readonly ArtifactLink[];
     readonly mode?: "spa";
     readonly submission?: SubmissionPolicy;
+    readonly tally?: readonly TallySpec[];
     readonly terminals?: Readonly<Record<string, TerminalSpec>>;
     readonly title: string;
     readonly verify?: {
@@ -868,7 +905,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1027,12 +1064,24 @@ export interface EventFilter {
 export const EventFilter: z.ZodType<EventFilter>;
 
 // @public
+export interface EventOrigin {
+    readonly cursor: Cursor;
+    readonly home: string;
+    readonly incarnation: string;
+    readonly server: string;
+}
+
+// @public
+export const EventOrigin: z.ZodType<EventOrigin>;
+
+// @public
 export interface EventRecord {
     readonly actor: Actor;
     readonly artifactId: string | null;
     readonly at: string;
     readonly causation?: Readonly<Record<string, string>>;
     readonly cursor: Cursor;
+    readonly origin?: EventOrigin;
     readonly payload: Readonly<Record<string, unknown>>;
     readonly seq: number | null;
     readonly type: string;
@@ -1121,6 +1170,12 @@ export type EventTypePattern = string;
 
 // @public
 export const EventTypePattern: z.ZodType<EventTypePattern>;
+
+// @public
+export type ExportClass = "bundle";
+
+// @public
+export const ExportClass: z.ZodType<ExportClass>;
 
 // @public
 export interface ExternalBase {
@@ -1388,7 +1443,13 @@ export const HomeConfig: z.ZodType<HomeConfig>;
 export type HomeDiagnosticCode = (typeof homeDiagnosticCodes)[number];
 
 // @public
-export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE"];
+export const homeDiagnosticCodes: readonly ["MOSTRA_HOME_LOCKED", "MOSTRA_HOME_NOT_OWNED", "MOSTRA_HOME_SOCKET_TOO_LONG", "MOSTRA_HOME_TOO_NEW", "MOSTRA_HOME_LEDGER_UNREADABLE", "MOSTRA_HOME_DISK_FULL", "MOSTRA_HOME_GONE", "MOSTRA_HOME_MISMATCH", "MOSTRA_HOME_INTEGRITY", "MOSTRA_HOME_NOT_ALWAYS_ON", "MOSTRA_HOME_GC_INCOMPLETE", "MOSTRA_HOME_NETWORK_FILESYSTEM"];
+
+// @public
+export type HomeId = Id<"hom">;
+
+// @public
+export const HomeId: GeneratedIdKind<"hom">;
 
 // @public
 export const HOST_PROTOCOL_REVISIONS: readonly Revision[];
@@ -1398,6 +1459,68 @@ export type HostDiagnosticCode = (typeof hostDiagnosticCodes)[number];
 
 // @public
 export const hostDiagnosticCodes: readonly ["MOSTRA_HOST_REVISION_UNSUPPORTED", "MOSTRA_HOST_MALFORMED", "MOSTRA_HOST_METHOD_UNKNOWN", "MOSTRA_HOST_INVALID_PARAMS", "MOSTRA_HOST_INTERNAL_ERROR", "MOSTRA_HOST_INITIALIZE_ORDER", "MOSTRA_HOST_PORT_UNSUPPORTED", "MOSTRA_HOST_CONNECTION_CLOSED", "MOSTRA_HOST_TIMEOUT", "MOSTRA_HOST_SHUTDOWN_REFUSED", "MOSTRA_HOST_REQUEST_ID_REUSED", "MOSTRA_HOST_CURSOR_COMPACTED", "MOSTRA_HOST_SUBSCRIPTION_UNKNOWN", "MOSTRA_HOST_NOTIFICATION_UNSUPPORTED", "MOSTRA_HOST_MESSAGE_TOO_LARGE", "MOSTRA_HOST_IDENTITY_UNAVAILABLE"];
+
+// @public
+export const HOSTED_OFFLINE_LIMIT_DEFAULT: Duration;
+
+// @public
+export const HOSTED_OFFLINE_LIMIT_MAX_MS: number;
+
+// @public
+export const hostedPushMethod: MethodDefinition<HostedPushParams, HostedPushResult>;
+
+// @public
+export interface HostedPushParams {
+    readonly artifactId: string;
+    readonly requestId?: string;
+    readonly version: VersionPush;
+}
+
+// @public
+export type HostedPushResult = {
+    readonly status: "complete";
+    readonly versionId: string;
+    readonly number: number;
+    readonly route: HostedRoute;
+} | {
+    readonly status: "missing";
+    readonly files: readonly string[];
+    readonly route: HostedRoute;
+};
+
+// @public
+export interface HostedRoute {
+    readonly label: string;
+    readonly routeId: string;
+}
+
+// @public
+export const HostedRoute: z.ZodType<HostedRoute>;
+
+// @public
+export interface HostedSettings {
+    readonly actions?: "signed-in" | "link";
+    readonly offline?: {
+        readonly actions?: "queue" | "fail";
+        readonly limit?: Duration;
+    };
+    readonly preview?: "generic" | "title";
+    readonly submissions?: "link" | "signed-in";
+}
+
+// @public
+export const HostedSettings: z.ZodType<HostedSettings>;
+
+// @public
+export const hostedSubmissionMethod: MethodDefinition<HostedSubmissionParams, HostedSubmissionResult>;
+
+// @public
+export interface HostedSubmissionParams {
+    readonly submissionId: string;
+}
+
+// @public
+export type HostedSubmissionResult = SubmissionEnvelope;
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -1434,7 +1557,7 @@ export interface IdKind<P extends IdPrefix> {
 }
 
 // @public
-export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut" | "shr";
+export type IdPrefix = "art" | "ver" | "vw" | "vwr" | "sub" | "dlv" | "run" | "thr" | "cmt" | "tok" | "mut" | "shr" | "acct" | "hom" | "lnk" | "rte";
 
 // @public
 export interface InstanceCapabilities {
@@ -1468,8 +1591,10 @@ export interface InstanceCheckResult {
 
 // @public
 export interface InstanceInfo {
+    readonly cursor?: string;
     readonly home: string;
-    readonly mode: "host" | "daemon";
+    readonly incarnation?: string;
+    readonly mode: "host" | "daemon" | "hosted";
     readonly pid: number;
     readonly platform: string;
     readonly version: string;
@@ -1491,6 +1616,7 @@ export interface InstanceStatusResult {
     readonly gateway?: GatewayStatus;
     readonly idleExitAt?: string;
     readonly instance: InstanceInfo;
+    readonly links?: readonly RemoteLink[];
     readonly processes: readonly ChildProcessStatus[];
     readonly shares?: readonly Share[];
     readonly socket: string;
@@ -1584,7 +1710,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -1592,6 +1718,15 @@ export class LineSplitter {
     push(chunk: string): string[];
     get rest(): string;
 }
+
+// @public
+export type LinkId = Id<"lnk">;
+
+// @public
+export const LinkId: GeneratedIdKind<"lnk">;
+
+// @public
+export type ListingEntry = readonly [path: string, executable: boolean, sha256: string, size: number];
 
 // @public
 export const LIVE_KEY_PATTERN: RegExp;
@@ -1658,6 +1793,7 @@ export interface LiveState {
     readonly awaiting?: boolean;
     readonly error?: WireError;
     readonly key: string;
+    readonly ownerOffline?: boolean;
     readonly revision?: string;
     readonly ring?: readonly {
         readonly revision: string;
@@ -1682,6 +1818,12 @@ export type ManifestDiagnosticCode = (typeof manifestDiagnosticCodes)[number];
 
 // @public
 export const manifestDiagnosticCodes: readonly ["MOSTRA_MANIFEST_NOT_LITERAL", "MOSTRA_MANIFEST_INVALID", "MOSTRA_MANIFEST_UNKNOWN_KEY"];
+
+// @public
+export function manifestProblem(manifest: ArtifactManifest): {
+    readonly path: string;
+    readonly message: string;
+} | undefined;
 
 // @public
 export const MAX_LINE_LENGTH: number;
@@ -1733,6 +1875,7 @@ export interface MostraInitializeParams {
     readonly capabilities: ClientCapabilities;
     readonly client: ClientInfo;
     readonly home?: HomeConfig;
+    readonly link?: OwnerLinkInfo;
     readonly ports: readonly PortName[];
     readonly revisions: readonly string[];
 }
@@ -1818,6 +1961,19 @@ export interface OrphanedField {
 export const OrphanedField: z.ZodType<OrphanedField>;
 
 // @public
+export interface OwnerLinkInfo {
+    readonly followed?: {
+        readonly incarnation: string;
+        readonly cursor: Cursor;
+    };
+    readonly instanceId: string;
+    readonly relayMark: number;
+}
+
+// @public
+export const OwnerLinkInfo: z.ZodType<OwnerLinkInfo>;
+
+// @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
 
 // @public
@@ -1871,6 +2027,85 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 
 // @public
 export const PortName: z.ZodType<PortName, string>;
+
+// @public
+export const portRelayCallMethod: MethodDefinition<PortRelayCallParams, PortRelayCallResult>;
+
+// @public
+export interface PortRelayCallParams {
+    readonly args: Batches;
+    readonly artifactId: string;
+    readonly callId: string;
+    readonly fnId: string;
+    readonly versionId: string;
+    readonly viewer?: RelayViewer;
+    readonly viewId?: string;
+}
+
+// @public
+export interface PortRelayCallResult {
+    readonly accepted: true;
+}
+
+// @public
+export const portRelayCancelMethod: MethodDefinition<PortRelayCancelParams, PortRelayCancelResult>;
+
+// @public
+export interface PortRelayCancelParams {
+    readonly runId: string;
+}
+
+// @public
+export type PortRelayCancelResult = Record<string, never>;
+
+// @public
+export const portRelayLiveMethod: MethodDefinition<PortRelayLiveParams, PortRelayLiveResult>;
+
+// @public
+export interface PortRelayLiveParams {
+    readonly artifactId: string;
+    readonly interest: "start" | "renew" | "stop" | "refresh";
+    readonly keys: readonly string[];
+    readonly versionId: string;
+}
+
+// @public
+export type PortRelayLiveResult = Record<string, never>;
+
+// @public
+export const portRelayReconcileMethod: MethodDefinition<PortRelayReconcileParams, PortRelayReconcileResult>;
+
+// @public
+export interface PortRelayReconcileParams {
+    readonly held?: readonly RelayHeld[];
+    readonly runs: readonly string[];
+}
+
+// @public
+export interface PortRelayReconcileResult {
+    readonly runs: readonly RelayReconciled[];
+}
+
+// @public
+export const portRelayRunMethod: MethodDefinition<PortRelayRunParams, PortRelayRunResult>;
+
+// @public
+export interface PortRelayRunParams {
+    readonly args: Batches;
+    readonly artifactId: string;
+    readonly fnId: string;
+    readonly key?: string;
+    readonly runId: string;
+    readonly seq: number;
+    readonly versionId: string;
+    readonly viewer?: RelayViewer;
+    readonly viewId?: string;
+}
+
+// @public
+export interface PortRelayRunResult {
+    readonly accepted: true;
+}
 
 // @public
 export const portSecretsGetMethod: MethodDefinition<PortSecretsGetParams, PortSecretsGetResult>;
@@ -1951,6 +2186,9 @@ export interface PublishReceipt {
 export const PublishReceipt: z.ZodType<PublishReceipt>;
 
 // @public
+export const READABLE_LIVE_KEY_PATTERN: RegExp;
+
+// @public
 export function readViewContext(wire: ViewContextWire): ViewContext;
 
 // @public
@@ -1980,9 +2218,227 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
 
 // @public
+export const relayCallBatchMethod: MethodDefinition<RelayCallBatchParams, RelayCallBatchResult>;
+
+// @public
+export interface RelayCallBatchParams {
+    readonly batches?: Batches;
+    readonly callId: string;
+    readonly end?: {
+        readonly status: "succeeded" | "failed";
+        readonly error?: {
+            readonly message: string;
+            readonly code?: string;
+        };
+    };
+    readonly seq: number;
+}
+
+// @public
+export type RelayCallBatchResult = Record<string, never>;
+
+// @public
+export const relayEffectMethod: MethodDefinition<RelayEffectParams, RelayEffectResult>;
+
+// @public
+export interface RelayEffectParams {
+    readonly artifactId: string;
+    readonly callId?: string;
+    readonly kind: "signal" | "emit";
+    readonly name: string;
+    readonly payload?: unknown;
+    readonly runId?: string;
+}
+
+// @public
+export interface RelayEffectResult {
+    readonly cursor: Cursor;
+}
+
+// @public
+export interface RelayHeld {
+    readonly batches: number;
+    readonly log: number;
+    readonly runId: string;
+}
+
+// @public
+export const relayLiveValueMethod: MethodDefinition<RelayLiveValueParams, RelayLiveValueResult>;
+
+// @public
+export interface RelayLiveValueParams {
+    readonly artifactId: string;
+    readonly at: string;
+    readonly error?: {
+        readonly message: string;
+        readonly code?: string;
+    };
+    readonly key: string;
+    readonly value?: Batches;
+    readonly versionId: string;
+}
+
+// @public
+export interface RelayLiveValueResult {
+    readonly revision?: string;
+}
+
+// @public
+export interface RelayReconciled {
+    readonly runId: string;
+    readonly state: RunState | "unknown-to-owner";
+}
+
+// @public
+export interface RelayRunEnd {
+    readonly error?: {
+        readonly message: string;
+        readonly code?: string;
+    };
+    readonly reason?: string;
+    readonly status: "succeeded" | "failed" | "cancelled";
+}
+
+// @public
+export const relayRunUpdateMethod: MethodDefinition<RelayRunUpdateParams, RelayRunUpdateResult>;
+
+// @public
+export interface RelayRunUpdateParams {
+    readonly batches?: Batches;
+    readonly batchFrom?: number;
+    readonly end?: RelayRunEnd;
+    readonly log?: readonly string[];
+    readonly logFrom?: number;
+    readonly progress?: RunProgress;
+    readonly runId: string;
+    readonly running?: boolean;
+    readonly seq: number;
+}
+
+// @public
+export type RelayRunUpdateResult = Record<string, never>;
+
+// @public
+export interface RelayViewer {
+    readonly id: string;
+    readonly name?: string;
+}
+
+// @public
+export const RelayViewer: z.ZodType<RelayViewer>;
+
+// @public
+export type RemoteDiagnosticCode = (typeof remoteDiagnosticCodes)[number];
+
+// @public
+export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID", "MOSTRA_REMOTE_LOGIN_FAILED", "MOSTRA_REMOTE_UNREACHABLE", "MOSTRA_REMOTE_OWNER_OFFLINE", "MOSTRA_REMOTE_QUEUE_FULL", "MOSTRA_REMOTE_NOT_OWNER_INSTANCE", "MOSTRA_REMOTE_SIGN_IN_REQUIRED", "MOSTRA_REMOTE_RATE_LIMITED"];
+
+// @public
 export class RemoteError extends Error {
     constructor(error: WireError);
     readonly code: string | undefined;
+}
+
+// @public
+export interface RemoteLink {
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly default: boolean;
+    readonly instanceId: string;
+    readonly lastError?: string;
+    readonly name: string;
+    readonly pendingPushes: number;
+    readonly server: ServerOrigin;
+    readonly since: string;
+    readonly state: RemoteLinkState;
+}
+
+// @public
+export const RemoteLink: z.ZodType<RemoteLink>;
+
+// @public
+export type RemoteLinkState = "connected" | "connecting" | "offline" | "signed-out";
+
+// @public
+export const remoteLoginMethod: MethodDefinition<RemoteLoginParams, RemoteLoginResult>;
+
+// @public
+export interface RemoteLoginParams {
+    readonly default?: boolean;
+    readonly requestId?: string;
+    readonly server?: ServerOrigin;
+}
+
+// @public
+export interface RemoteLoginResult {
+    readonly expiresAt: string;
+    readonly loginId: string;
+    readonly server: ServerOrigin;
+    readonly userCode: string;
+    readonly verificationUri: string;
+    readonly verificationUriComplete?: string;
+}
+
+// @public
+export const remoteLoginWaitMethod: MethodDefinition<RemoteLoginWaitParams, RemoteLoginWaitResult>;
+
+// @public
+export interface RemoteLoginWaitParams {
+    readonly loginId: string;
+    readonly timeoutMs: number;
+}
+
+// @public
+export type RemoteLoginWaitResult = {
+    readonly status: "signed-in";
+    readonly server: ServerOrigin;
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly instanceId: string;
+} | {
+    readonly status: "pending";
+};
+
+// @public
+export const remoteLogoutMethod: MethodDefinition<RemoteLogoutParams, RemoteLogoutResult>;
+
+// @public
+export interface RemoteLogoutParams {
+    readonly forget?: boolean;
+    readonly server?: ServerOrigin;
+}
+
+// @public
+export interface RemoteLogoutResult {
+    readonly servers: readonly ServerOrigin[];
+}
+
+// @public
+export const remoteStatusMethod: MethodDefinition<RemoteStatusParams, RemoteStatusResult>;
+
+// @public
+export type RemoteStatusParams = Record<string, never>;
+
+// @public
+export interface RemoteStatusResult {
+    readonly links: readonly RemoteLink[];
+}
+
+// @public
+export const remoteTokenMethod: MethodDefinition<RemoteTokenParams, RemoteTokenResult>;
+
+// @public
+export interface RemoteTokenParams {
+    readonly accessToken: string;
+}
+
+// @public
+export interface RemoteTokenResult {
+    readonly expiresAt: string;
 }
 
 // @public
@@ -2145,6 +2601,7 @@ export interface Results {
         readonly digest: string;
         readonly delivery: DeliveryState;
         readonly deliveries: readonly DeliveryStatus[];
+        readonly origin?: EventOrigin;
     };
 }
 
@@ -2198,6 +2655,12 @@ export type RevisionNegotiation = {
     readonly ok: false;
     readonly diagnostic: Diagnostic;
 };
+
+// @public
+export type RouteId = Id<"rte">;
+
+// @public
+export const RouteId: GeneratedIdKind<"rte">;
 
 // @public
 export class RpcError extends Error {
@@ -2334,6 +2797,7 @@ export interface RunState {
     readonly key?: string;
     readonly log: readonly string[];
     readonly logFrom?: number;
+    readonly ownerUnreachable?: boolean;
     readonly progress?: RunProgress;
     readonly reason?: RunReason;
     readonly runId: string;
@@ -2345,7 +2809,7 @@ export interface RunState {
 export const RunState: z.ZodType<RunState>;
 
 // @public
-export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
+export type RunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled" | "unknown";
 
 // @public
 export type RuntimeDiagnosticCode = (typeof runtimeDiagnosticCodes)[number];
@@ -2477,6 +2941,12 @@ export interface ServerLogParams {
 export const ServerLogParams: z.ZodType<ServerLogParams>;
 
 // @public
+export type ServerOrigin = string;
+
+// @public
+export const ServerOrigin: z.ZodType<ServerOrigin>;
+
+// @public
 export interface ServerProgressParams extends RunProgress {
     readonly callId: string;
 }
@@ -2578,6 +3048,7 @@ export interface ShareStartParams {
     readonly artifact: ArtifactRef;
     readonly requestId?: string;
     readonly scopes?: readonly CapabilityScope[];
+    readonly server?: string;
     readonly ttl?: Duration;
     readonly via: ShareVia;
     readonly viewer?: ViewerSpec;
@@ -2604,10 +3075,13 @@ export interface ShareStopResult {
 }
 
 // @public
-export type ShareVia = "tailnet" | "funnel" | "cloudflare";
+export type ShareVia = "tailnet" | "funnel" | "cloudflare" | "remote";
 
 // @public
 export const ShareVia: z.ZodType<ShareVia>;
+
+// @public
+export const SHELL_SESSION_HEADER = "x-mostra-shell";
 
 // @public
 export interface ShellSubmitRequest {
@@ -2673,6 +3147,9 @@ export interface StatePatchParams {
     readonly artifact: ArtifactRef;
     readonly as?: "agent" | "host";
     readonly baseRevision?: DocumentRevision;
+    readonly causation?: {
+        readonly runId: string;
+    };
     readonly mutationId: string;
     readonly ops: readonly FieldOp[];
 }
@@ -2714,9 +3191,11 @@ export const StreamTicketRequest: z.ZodType<StreamTicketRequest>;
 export interface SubmissionEnvelope {
     readonly artifactId: string;
     readonly attempt: number;
+    readonly cursor?: Cursor;
     readonly deliveryId: string;
     readonly kind: "submission";
     readonly results: Results;
+    readonly snapshot?: string;
     readonly submissionId: string;
 }
 
@@ -2799,6 +3278,31 @@ export interface SubmitRequest {
 
 // @public
 export const SubmitRequest: z.ZodType<SubmitRequest>;
+
+// @public
+export const TALLY_CHOICES_MAX = 50;
+
+// @public
+export const TALLY_CHOICES_MIN = 2;
+
+// @public
+export const TALLY_LIVE_PREFIX = "$tally/";
+
+// @public
+export interface TallySpec {
+    readonly choices: readonly string[];
+    readonly field: string;
+    readonly minTotal?: number;
+}
+
+// @public
+export const TallySpec: z.ZodType<TallySpec>;
+
+// @public
+export interface TallyValue {
+    readonly counts?: Readonly<Record<string, number>>;
+    readonly total: number;
+}
 
 // @public
 export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
@@ -3018,6 +3522,23 @@ export interface VersionIdKind extends IdKind<"ver"> {
 }
 
 // @public
+export interface VersionPush {
+    readonly envDigest: string;
+    readonly listing: readonly ListingEntry[];
+    readonly lock: string;
+    readonly manifest: string;
+    readonly number: number;
+    readonly outputDigest: string;
+    readonly policy?: SubmissionPolicy;
+    readonly registry: string;
+    readonly sourceDigest: string;
+    readonly versionId: string;
+}
+
+// @public
+export const VersionPush: z.ZodType<VersionPush>;
+
+// @public
 export interface VersionRef {
     readonly id: string;
     readonly number: number;
@@ -3103,7 +3624,7 @@ export type ViewerId = Id<"vwr">;
 export const ViewerId: GeneratedIdKind<"vwr">;
 
 // @public
-export type ViewerKind = "local" | "tailnet" | "token" | "host";
+export type ViewerKind = "local" | "tailnet" | "token" | "host" | "account" | "anonymous";
 
 // @public
 export interface ViewerSpec {

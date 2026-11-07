@@ -1,6 +1,7 @@
 /**
  * The authoring methods of the host protocol (INTERFACES §6): `artifact/create`,
- * `artifact/publish`, `artifact/list`, `artifact/get` and `deps/add`.
+ * `artifact/publish`, `artifact/list`, `artifact/get`, `deps/add`, and a bundle's
+ * `artifact/export` and `artifact/import` (RM-01).
  */
 import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -8,7 +9,9 @@ import {
   ARTIFACT_PROGRESS,
   type ArtifactRef,
   artifactCreateMethod,
+  artifactExportMethod,
   artifactGetMethod,
+  artifactImportMethod,
   artifactListMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
@@ -91,6 +94,14 @@ export function artifactMethods(options: {
               options.notify?.(session.id, ARTIFACT_PROGRESS, { progressToken: token, stage })
           : undefined;
       return options.publisher().verify(params, progress);
+    }),
+    handler(artifactExportMethod, (params) =>
+      options.publisher().exportBundle({ ...params, artifact: canonicalRef(params.artifact) }),
+    ),
+    handler(artifactImportMethod, async (params) => {
+      const receipt = await options.publisher().importBundle(params);
+      options.published?.(receipt.artifactId);
+      return options.link ? { ...receipt, ...(await options.link(receipt.artifactId)) } : receipt;
     }),
     handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
     handler(artifactGetMethod, (params) => {

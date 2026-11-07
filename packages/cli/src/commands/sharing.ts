@@ -2,7 +2,8 @@
  * `mostra share`: an artifact opened to people beyond this machine through a tunnel the daemon
  * runs (D47, D158): `--tailnet` (Tailscale Serve, inside your tailnet, with each person's
  * identity) or `--public` (a Cloudflare quick tunnel by default, or Tailscale Funnel with `--via
- * funnel`), whose link expires (1 hour by default, 7 days at most). The share lives in the
+ * funnel`), whose link expires (1 hour by default, 7 days at most); or `--cloud` (D165 item 15),
+ * hosted on a remote server this home signed in to, so the link works while this machine sleeps. The share lives in the
  * daemon, so the command returns at once with the link; `share stop` ends it and `share list`
  * shows what is shared. A client of `share/start`, `share/stop` and `share/list`.
  */
@@ -26,6 +27,7 @@ const THROUGH: Readonly<Record<ShareVia, string>> = {
   tailnet: "Tailscale Serve, inside your tailnet",
   funnel: "Tailscale Funnel, public",
   cloudflare: "a Cloudflare quick tunnel, public",
+  remote: "a remote server, hosted",
 };
 
 /**
@@ -58,9 +60,22 @@ function line(share: Share): string {
 export const shareCommand: CommandDef = defineCommand({
   path: ["share"],
   summary:
-    "Open an artifact to people beyond this machine: inside your tailnet, or publicly with a link that expires.",
-  args: [{ name: "artifact", summary: "The artifact: its source path or its ID." }],
+    "Open an artifact to people beyond this machine: inside your tailnet, publicly with a link that expires, or hosted on a server.",
+  args: [
+    { name: "artifact", summary: "The artifact: its source path or its ID." },
+    {
+      name: "server",
+      summary: "With --cloud: the server's address. Default: the server signed in to last.",
+      optional: true,
+    },
+  ],
   flags: [
+    {
+      name: "cloud",
+      kind: "boolean",
+      summary:
+        "Host it on a remote server you signed in to with mostra login: the link keeps working while this machine sleeps.",
+    },
     {
       name: "tailnet",
       kind: "boolean",
@@ -115,16 +130,26 @@ export const shareCommand: CommandDef = defineCommand({
   ],
   output: { type: "ShareStartResult", topic: "cli" },
   exits: [EXIT.failure, EXIT.environment],
-  example: "share ./sidebar-review --public --ttl 2h",
+  example: "share ./sidebar-review --cloud",
   async run(context) {
     const artifact = artifactRef(arg(context, "artifact"), context.cwd);
     const tailnet = context.flags["tailnet"] === true;
     const publicly = context.flags["public"] === true;
-    if (tailnet === publicly) throw usage("Give --tailnet or --public.");
+    const cloud = context.flags["cloud"] === true;
+    if ([tailnet, publicly, cloud].filter(Boolean).length !== 1)
+      throw usage("Give one of --tailnet, --public or --cloud.");
     const viaFlag = flag(context, "via");
     if (viaFlag !== undefined && !publicly)
       throw usage("--via chooses a public tunnel: add --public.");
-    const via: ShareVia = tailnet ? "tailnet" : viaFlag === "funnel" ? "funnel" : "cloudflare";
+    const server = context.args["server"];
+    if (server !== undefined && !cloud) throw usage("A server names where --cloud hosts it.");
+    const via: ShareVia = cloud
+      ? "remote"
+      : tailnet
+        ? "tailnet"
+        : viaFlag === "funnel"
+          ? "funnel"
+          : "cloudflare";
     const ttl = flag(context, "ttl");
     const scopes = context.flags["scope"] as readonly string[] | undefined;
     const viewerRef = flag(context, "viewer");
@@ -135,6 +160,7 @@ export const shareCommand: CommandDef = defineCommand({
     const share = await context.call(shareStartMethod, {
       artifact,
       via,
+      ...(typeof server === "string" ? { server: server.replace(/\/+$/, "") } : {}),
       ...(ttl !== undefined ? { ttl: ttl as `${number}${"s" | "m" | "h" | "d"}` } : {}),
       ...(scopes !== undefined ? { scopes: scopes as CapabilityScope[] } : {}),
       ...(viewerRef !== undefined
@@ -144,6 +170,7 @@ export const shareCommand: CommandDef = defineCommand({
     });
     context.record({ event: "share.done", fields: { kind: via } });
     const until = share.expiresAt ? `until ${share.expiresAt}` : "until you stop it";
+    // A hosted page keeps working while this machine sleeps: its answers wait for it (D165).
     return {
       result: share,
       human: `${share.url}\nShared through ${THROUGH[via]}, ${until}.\n${via === "tailnet" ? tailnetReach(share) : ""}Stop it with: mostra share stop ${share.shareId}\n`,
