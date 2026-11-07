@@ -61,6 +61,30 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // WP-29 (D165): counts by choice, and run updates over long polls (#119).
   {
+    requirement: "RM-02",
+    name: "a hosted home keeps no floor of its owner's mark, so a restore is told again at every reconnect (Opus review of WP-29, 9)",
+    file: "src/server/hosted.ts",
+    from: "               ON CONFLICT (link_id) DO UPDATE SET floor = MAX(floor, excluded.floor)`,\n            link.instanceId,\n            link.relayMark,",
+    to: "               ON CONFLICT (link_id) DO UPDATE SET floor = MAX(floor, excluded.floor)`,\n            link.instanceId,\n            0,",
+    check: integration("restore.test.ts", "rotates on its owner"),
+  },
+  {
+    requirement: "RM-04",
+    name: "relay sequences restart below the owner's mark when the home restarts (Opus review of WP-29, 9)",
+    file: "src/server/relay.ts",
+    from: 'SELECT floor FROM relay_floor WHERE link_id = ?", owner',
+    to: 'SELECT floor FROM relay_floor WHERE link_id = ? AND 0", owner',
+    check: unit("hosted-relay.test.ts", "floor the home kept"),
+  },
+  {
+    requirement: "RM-02",
+    name: "a forgotten link signs in again with the old link's marks (Opus review of WP-29, 9)",
+    file: "src/link/manager.ts",
+    from: "               relay_mark = CASE WHEN remote_link.instance_id IS excluded.instance_id",
+    to: "               relay_mark = CASE WHEN 1 OR remote_link.instance_id IS excluded.instance_id",
+    check: integration("relay.test.ts", "forgotten link"),
+  },
+  {
     requirement: "RM-04",
     name: "an update past what the hosted home holds ends the run without its result (Opus review of WP-29, 4)",
     file: "src/server/relay.ts",

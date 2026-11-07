@@ -117,6 +117,7 @@ function setup(options: { sweepMs?: number; now?: () => number } = {}) {
       link: { instanceId: LINK, relayMark },
     }) as unknown as Session;
   return {
+    ledger,
     relay,
     calls,
     start,
@@ -421,6 +422,17 @@ describe("the hosted relay against a scripted owner (§18.3)", () => {
     expect(t.calls.some((call) => call.method === "port/relay.reconcile")).toBe(true);
     expect(t.state(run.runId)?.batches).toEqual(result);
     expect(t.state(run.runId)?.log).toEqual(["sent"]);
+    t.relay.stop();
+  });
+
+  it("continues relay sequences above the floor the home kept, with its owner away (Opus review of WP-29, 9)", async () => {
+    const t = setup();
+    t.ledger.write((db) => db.run("INSERT INTO relay_floor (link_id, floor) VALUES (?, 50)", LINK));
+    const waiting = await t.start();
+    expect(waiting.status).toBe("waiting");
+    t.connect(1, 0);
+    await until(() => t.calls.some((call) => call.method === "port/relay.run"));
+    expect(t.calls.find((call) => call.method === "port/relay.run")?.params["seq"]).toBe(51);
     t.relay.stop();
   });
 });

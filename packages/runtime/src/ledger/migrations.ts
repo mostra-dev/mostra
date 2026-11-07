@@ -735,6 +735,15 @@ export const MIGRATIONS: readonly Migration[] = [
         "token_id TEXT NOT NULL REFERENCES token(id)",
         "token_id TEXT NOT NULL",
       );
+      // A hosted home's floor for each owner link's relay sequences: the highest relay mark its
+      // owner reported, so after a restore the next sequence continues above it and the mark is
+      // compared with what the home knows, not only its runs (Opus review of WP-29, 9).
+      db.exec(`
+        CREATE TABLE relay_floor (
+          link_id TEXT PRIMARY KEY,
+          floor INTEGER NOT NULL CHECK (floor >= 0)
+        );
+      `);
       // A followed submission this home doesn't hold, read again until it is imported (Opus review
       // of WP-29, 3): written in the transaction that moves the sync cursor past it.
       db.exec(`

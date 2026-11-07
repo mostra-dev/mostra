@@ -648,11 +648,18 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       if (link !== undefined && link.instanceId === session.attributes["linkId"]) {
         const marks = ledger.read((db) => ({
           head: db.get<{ head: number | null }>("SELECT MAX(cursor) AS head FROM event")?.head ?? 0,
-          relayHigh:
+          // What the home knows of the link's relay: its runs, and the highest mark its owner
+          // reported, kept so a restore is told once, not at every later reconnect.
+          relayHigh: Math.max(
             db.get<{ high: number | null }>(
               "SELECT MAX(relay_seq) AS high FROM relay_run WHERE owner_link_id = ?",
               link.instanceId,
             )?.high ?? 0,
+            db.get<{ floor: number }>(
+              "SELECT floor FROM relay_floor WHERE link_id = ?",
+              link.instanceId,
+            )?.floor ?? 0,
+          ),
         }));
         const followedAhead =
           link.followed !== undefined &&
@@ -666,6 +673,14 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
             why: followedAhead ? "owner-cursor" : "owner-relay-mark",
           });
         }
+        ledger.write((db) =>
+          db.run(
+            `INSERT INTO relay_floor (link_id, floor) VALUES (?, ?)
+               ON CONFLICT (link_id) DO UPDATE SET floor = MAX(floor, excluded.floor)`,
+            link.instanceId,
+            link.relayMark,
+          ),
+        );
       }
       // An owner link is its own grant's: a session can't speak for another instance's link.
       if (params.link !== undefined && params.link.instanceId !== session.attributes["linkId"]) {

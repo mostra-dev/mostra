@@ -930,7 +930,11 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
             "SELECT MAX(relay_seq) AS high FROM relay_run WHERE owner_link_id = ?",
             owner,
           )?.high ?? 0) + 1;
-        const floor = marks.get(owner) ?? 0;
+        const floor = Math.max(
+          marks.get(owner) ?? 0,
+          db.get<{ floor: number }>("SELECT floor FROM relay_floor WHERE link_id = ?", owner)
+            ?.floor ?? 0,
+        );
         db.run(
           "INSERT INTO relay_run (run_id, owner_link_id, relay_seq, offline_limit_at) VALUES (?, ?, ?, ?)",
           row.id,

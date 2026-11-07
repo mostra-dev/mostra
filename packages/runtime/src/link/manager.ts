@@ -996,7 +996,17 @@ export function createLink(options: LinkOptions): Link {
           db.run(
             `INSERT INTO remote_link (server, account_id, account_name, instance_id, is_default, linked_at, state)
              VALUES (?, ?, ?, ?, ?, ?, 'signed-in')
-             ON CONFLICT (server) DO UPDATE SET account_id = excluded.account_id, account_name = excluded.account_name,
+             ON CONFLICT (server) DO UPDATE SET
+               -- Another link (after --forget, or another account) starts with no marks: a mark
+               -- of the old link would make the new one's home look restored (Opus review of
+               -- WP-29, 9).
+               relay_mark = CASE WHEN remote_link.instance_id IS excluded.instance_id
+                 AND remote_link.account_id = excluded.account_id THEN remote_link.relay_mark ELSE 0 END,
+               follow_cursor = CASE WHEN remote_link.instance_id IS excluded.instance_id
+                 AND remote_link.account_id = excluded.account_id THEN remote_link.follow_cursor ELSE NULL END,
+               incarnation = CASE WHEN remote_link.instance_id IS excluded.instance_id
+                 AND remote_link.account_id = excluded.account_id THEN remote_link.incarnation ELSE NULL END,
+               account_id = excluded.account_id, account_name = excluded.account_name,
                instance_id = excluded.instance_id, is_default = excluded.is_default, linked_at = excluded.linked_at,
                state = 'signed-in'`,
             server,

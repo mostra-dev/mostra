@@ -9,7 +9,7 @@
  * sent again and joins; an owner restored to before runs it accepted makes them `unknown`; and no
  * relay message carries a secret.
  */
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 import { deserializeAll, type Frame } from "@mostra/protocol";
@@ -104,6 +104,12 @@ describe("the relay (§18.3)", () => {
   const owner = new GatewayHome();
   const mail = new FakeMail();
   const trace = join(tempDir("relay-trace"), "binding.ndjson");
+  const serverData = tempDir("relay-server");
+  /** The server's log lines so far. */
+  const serverLog = (): string =>
+    readdirSync(join(serverData, "logs"))
+      .map((name) => readFileSync(join(serverData, "logs", name), "utf8"))
+      .join("");
   const ownerEnv = (): NodeJS.ProcessEnv => ({
     MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${proxy.port}`,
     MOSTRA_TEST_BINDING_TRACE: trace,
@@ -164,7 +170,7 @@ describe("the relay (§18.3)", () => {
     await mail.start();
     port = await freePort();
     server = await startServer({
-      data: tempDir("relay-server"),
+      data: serverData,
       port,
       config: {
         ...testConfig(port),
@@ -564,5 +570,26 @@ describe("the relay (§18.3)", () => {
     expect(text).toContain("port/relay.run");
     expect(text).toContain("relay/run.update");
     expect(text.includes(MAIL_TOKEN)).toBe(false);
+  }, 60_000);
+
+  it("signs a forgotten link in again with no marks of the old one (Opus review of WP-29, 9)", async () => {
+    // The owner accepts a relayed run: its relay mark is above zero.
+    const page = await openPage(hosted["queue"]?.url as string);
+    const id = runId(await page.run("actions.ts#echo", ["mark"]));
+    expect((await page.settled(id, 60_000)).status).toBe("succeeded");
+    const regressed = async (): Promise<number> =>
+      ok<{ events: { type: string }[] }>(
+        await owner.client.call("events/read", { filter: { types: ["remote.*"] } }),
+      ).events.filter((event) => event.type === "remote.regressed").length;
+    const before = await regressed();
+    const rotations = serverLog().split("server.home_rotated").length;
+    ok(await owner.client.call("remote/logout", { forget: true }));
+    await ownerSignIn(owner.client, port, "Ada");
+    await ownerOnline();
+    // A new link, whose hosted home never saw a run of it: no restore to tell of, and the home
+    // keeps its incarnation.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(await regressed()).toBe(before);
+    expect(serverLog().split("server.home_rotated").length).toBe(rotations);
   }, 60_000);
 });

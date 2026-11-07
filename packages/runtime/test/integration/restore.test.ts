@@ -203,6 +203,15 @@ export default function Page() {
         readFileSync(join(logs, file), "utf8").includes("relay.update_dropped"),
       );
     }, 30_000);
+    // Told once: the owner dialling again later finds no restore (Opus review of WP-29, 9).
+    await owner.stop();
+    await owner.start({ env: { ...ownerEnv(port), MOSTRA_TEST_RELAY_READY_MS: "60000" } });
+    const fourth = await answer("after the owner dialled again");
+    await imported(fourth.id);
+    const regressions = ok<{ events: { type: string }[] }>(
+      await owner.client.call("events/read", { filter: { types: ["remote.*"] } }),
+    ).events.filter((event) => event.type === "remote.regressed");
+    expect(regressions).toHaveLength(1);
   }, 240_000);
 
   it("reads a submission its owner lost to a restore again, and imports it once", async () => {
