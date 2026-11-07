@@ -14,6 +14,11 @@
 | Milestone `WP-29` | #114, #116, #118, #119; #39, #46, #55, #85, #95, #111 and #124 stay on no milestone (D155 item 7), #106 waits for the package that takes it |
 | Local toolchain | Node 24.22.1 (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64 |
 
+## Candidate checks
+
+- **`pnpm check`** on `b093424` in the detached worktree (fresh `pnpm install --frozen-lockfile`, 32 min): every job passed but `integration`, where one case, `verify.test.ts` "passes a single MDX page", met `MOSTRA_RUNTIME_NOT_READY` at 59.6 s while every job ran at once on this laptop; alone it passed (10 of 10 of its group). Every later commit ran its affected static jobs, unit and the suites it touched.
+- **CI** on the pull request with `ci:full` (every leg, Windows x64 and arm64 included): recorded below once the run ends.
+
 ## Decisions
 
 - **M58** (2026-11-05): Mirza delegated WP-29's four open points (imported submissions' local rows, no built-in default server, `mostra login <server> --default`, external evidence against a deployed server with WP-30's test deployment): "I trust you to make the most robust decision". Recorded as **D166**, proposed under D123 and brought with the candidate: the tally (item 1), the shell's poll and #119 (2), the bundle (3), the server's configuration, sign-in and binding (4 to 6), imported submissions (7), no built-in default server (8), external evidence (9), hosted pages (10), remote shares (11), the relay (12), live producers over the relay (13), restores and incarnations (14), a link's domain (15), reading a lost submission again (16), the kit's remote scenarios (17) and the size budgets (18), a link's rate for relayed actions (19), and a run the owner refuses or never answers (20).
