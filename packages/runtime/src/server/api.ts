@@ -10,12 +10,16 @@ import { rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
+import type { CredentialResource } from "@mostra/protocol/operator";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Log } from "../log.ts";
 import { BINDING_SUBPROTOCOL, MAX_FRAME_BYTES, serveWebSocket } from "../protocol-server/index.ts";
 import type { Authenticated, Authorization } from "./auth.ts";
+import type { Authorize } from "./authorize.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import type { HostedHome } from "./hosted.ts";
+import type { Clients } from "./oauth-clients.ts";
+import type { Operator } from "./operator.ts";
 
 /** How often an open binding's grant is checked again: a revocation closes it within 60 s. */
 const GRANT_RECHECK_MS = 30_000;
@@ -89,6 +93,12 @@ export interface ApiOptions {
   readonly message?: (homeId: string) => void;
   /** Told the bytes a home stored (an upload it hadn't stored before), for metering. */
   readonly stored?: (homeId: string, bytes: number) => void;
+  /** The authorization server's browser pages (sign-in, consent, viewer sign-in). */
+  readonly authorize: Authorize;
+  /** Its clients, for Dynamic Client Registration. */
+  readonly clients: Clients;
+  /** The operator module: its `accounts.authenticate` admits credentials it issued. */
+  readonly operator?: Operator;
   /** Whether the operator suspended a home: its bindings and uploads are refused (D165 item 9). */
   readonly suspended?: (homeId: string) => boolean;
   /** How often an open binding's token and grant are checked; tests shorten it. */
@@ -145,6 +155,26 @@ input{font:inherit;padding:.3rem}button{font:inherit;padding:.4rem .9rem;margin-
 <body><h1>Link a machine to Mostra</h1>${body}</body></html>`;
 }
 
+/** The device page for a browser already signed in: approving links a machine (§18.5). */
+function deviceApproval(options: {
+  readonly code: string;
+  readonly name: string;
+  readonly csrf: string;
+}): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Link a machine to Mostra</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1rem}
+input{font:inherit;padding:.3rem}button{font:inherit;padding:.4rem .9rem;margin-right:.5rem}</style></head>
+<body><h1>Link a machine to Mostra</h1>
+<p><strong>Approving links a machine to your account, ${escapeHtml(options.name)}.</strong> That machine's
+Mostra can then host pages under your account and receives their answers. Continue only if you started
+this sign-in yourself, on that machine.</p>
+<form method="post" action="/device"><input type="hidden" name="csrf" value="${escapeHtml(options.csrf)}">
+<label>Code <input name="user_code" value="${escapeHtml(options.code)}" autocomplete="off" required></label>
+<p><button name="session_decision" value="approve">Approve this machine</button>
+<button name="session_decision" value="deny">Refuse</button></p></form></body></html>`;
+}
+
 /** Creates the API origin. */
 export function createApi(options: ApiOptions): Api {
   const { config, auth, log } = options;
@@ -159,10 +189,30 @@ export function createApi(options: ApiOptions): Api {
   const bindings = new Set<WebSocket>();
   const bindingHomes = new Map<WebSocket, string>();
 
-  const bearer = (request: IncomingMessage): Authenticated | undefined => {
+  /**
+   * The account a bearer token names for one resource (`host`, `files` or `mcp`): a token this
+   * server issued for exactly that audience (RFC 8707; a token for `/mcp` opens no binding), or a
+   * credential the operator issued (`accounts.authenticate`, §18.6).
+   */
+  const bearer = async (
+    request: IncomingMessage,
+    resource: CredentialResource,
+  ): Promise<Authenticated | undefined> => {
     const header = request.headers.authorization ?? "";
     const match = /^bearer\s+(\S+)$/i.exec(header);
-    return match ? auth.authenticate(match[1] as string) : undefined;
+    if (!match) return undefined;
+    const token = match[1] as string;
+    const audience = `${apiOrigin}/${resource === "files" ? "host" : resource}`;
+    const issued = auth.authenticate(token);
+    if (issued) return issued.resource === audience ? issued : undefined;
+    if (!options.operator?.has.authenticate) return undefined;
+    const credential = await options.operator.authenticate(token, resource);
+    if (!credential || !credential.scope.includes("mostra")) return undefined;
+    return auth.credentialSession({
+      account: credential.account,
+      subject: credential.subject ?? "default",
+      resource: audience,
+    });
   };
 
   const unauthorized = (response: ServerResponse, message: string): void =>
@@ -175,17 +225,39 @@ export function createApi(options: ApiOptions): Api {
       },
     );
 
+  /**
+   * RFC 8414 metadata (INTERFACES §18.5): Client ID Metadata Documents with `none` among the token
+   * endpoint's methods, which Claude needs before it uses one, Dynamic Client Registration as the
+   * fallback, PKCE S256, `iss` in responses, and `offline_access` for rotating refresh tokens.
+   */
   const metadata = () => ({
     issuer: apiOrigin,
+    authorization_endpoint: `${apiOrigin}/oauth/authorize`,
     token_endpoint: `${apiOrigin}/oauth/token`,
+    registration_endpoint: `${apiOrigin}/oauth/register`,
     device_authorization_endpoint: `${apiOrigin}/oauth/device`,
     revocation_endpoint: `${apiOrigin}/oauth/revoke`,
-    grant_types_supported: ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
+    response_types_supported: ["code"],
+    response_modes_supported: ["query"],
+    grant_types_supported: [
+      "authorization_code",
+      "refresh_token",
+      "urn:ietf:params:oauth:grant-type:device_code",
+    ],
     token_endpoint_auth_methods_supported: ["none"],
+    revocation_endpoint_auth_methods_supported: ["none"],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: ["mostra", "offline_access"],
+    client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
   });
+
+  const sessionDevicePage = (code: string, signed: { accountId: string; hash: string }): string =>
+    deviceApproval({
+      code,
+      name: auth.accountName(signed.accountId).name ?? "your account",
+      csrf: options.authorize.csrf(signed.hash, "device"),
+    });
 
   const form = async (request: IncomingMessage): Promise<URLSearchParams | undefined> => {
     const type = request.headers["content-type"] ?? "";
@@ -199,7 +271,7 @@ export function createApi(options: ApiOptions): Api {
     response: ServerResponse,
     sha: string,
   ): Promise<void> => {
-    const who = bearer(request);
+    const who = await bearer(request, "files");
     if (!who) {
       unauthorized(response, "Version files need the binding's access token.");
       return;
@@ -267,6 +339,48 @@ export function createApi(options: ApiOptions): Api {
         send(response, 200, metadata());
         return;
       }
+      if (await options.authorize.handle(request, response, path)) return;
+      if (method === "GET" && path === "/.well-known/oauth-protected-resource/mcp") {
+        send(response, 200, {
+          resource: `${apiOrigin}/mcp`,
+          authorization_servers: [apiOrigin],
+          scopes_supported: ["mostra"],
+          bearer_methods_supported: ["header"],
+          resource_name: "Mostra",
+        });
+        return;
+      }
+      if (method === "POST" && path === "/oauth/register") {
+        // Dynamic Client Registration (RFC 7591): JSON in, the client's record out.
+        if (!(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          send(response, 400, {
+            error: "invalid_client_metadata",
+            error_description: "Send JSON.",
+          });
+          return;
+        }
+        const body = await readBody(request, 64 * 1024);
+        let metadata: unknown;
+        try {
+          metadata = JSON.parse(body?.toString("utf8") ?? "");
+        } catch {
+          send(response, 400, {
+            error: "invalid_client_metadata",
+            error_description: "Send JSON.",
+          });
+          return;
+        }
+        const registered = options.clients.register(metadata);
+        if ("error" in registered && "description" in registered) {
+          send(response, 400, {
+            error: registered["error"],
+            error_description: registered["description"],
+          });
+          return;
+        }
+        send(response, 201, registered);
+        return;
+      }
       if (method === "GET" && path === "/.well-known/oauth-protected-resource/host") {
         send(response, 200, {
           resource: `${apiOrigin}/host`,
@@ -322,10 +436,64 @@ export function createApi(options: ApiOptions): Api {
       }
       if (path === "/device") {
         const provider = developmentProvider(config);
+        const signed = options.authorize.sessionAccount(request);
         if (method === "GET") {
           const code = new URL(request.url ?? "/", apiOrigin).searchParams.get("user_code") ?? "";
+          if (signed) {
+            page(response, 200, sessionDevicePage(code, signed));
+            return;
+          }
+          // Real providers sign the person in first; the development one asks on this page.
+          if (!provider || (config.identityProviders?.length ?? 0) > 1) {
+            await options.authorize.signInPage(
+              response,
+              `/device?user_code=${encodeURIComponent(code)}`,
+            );
+            return;
+          }
           page(response, 200, devicePage({ code, provider }));
           return;
+        }
+        // The body is read once, for either form.
+        let posted: URLSearchParams | undefined;
+        if (method === "POST" && signed && request.headers.origin === apiOrigin) {
+          const body = await form(request);
+          posted = body;
+          const decision = body?.get("session_decision");
+          if (body && decision !== null && decision !== undefined) {
+            const code = body.get("user_code") ?? "";
+            if (body.get("csrf") !== options.authorize.csrf(signed.hash, "device")) {
+              page(
+                response,
+                403,
+                devicePage({
+                  code: "",
+                  provider,
+                  message: "This form must be sent from this page.",
+                }),
+              );
+              return;
+            }
+            const approve = decision === "approve";
+            const decided = auth.decideFor({ code, approve, accountId: signed.accountId });
+            page(
+              response,
+              decided.ok ? 200 : 400,
+              devicePage({
+                code,
+                provider,
+                ...(decided.ok
+                  ? {
+                      done: true,
+                      message: approve
+                        ? "The machine is linked to your account."
+                        : "The sign-in was refused.",
+                    }
+                  : { message: decided.reason }),
+              }),
+            );
+            return;
+          }
         }
         if (method === "POST") {
           // The page's own form only: a cross-site form post approves nothing.
@@ -337,7 +505,7 @@ export function createApi(options: ApiOptions): Api {
             );
             return;
           }
-          const body = await form(request);
+          const body = posted ?? (await form(request));
           const code = body?.get("user_code") ?? "";
           const name = (body?.get("name") ?? "").trim().slice(0, 64);
           if (!body || !provider || body.get("provider") !== provider.id || name === "") {
@@ -394,67 +562,87 @@ export function createApi(options: ApiOptions): Api {
         refuse(404, "Not Found");
         return;
       }
-      const who = bearer(request);
-      if (!who) {
-        refuse(
-          401,
-          "Unauthorized",
-          `www-authenticate: Bearer resource_metadata="${apiOrigin}/.well-known/oauth-protected-resource/host"\r\n`,
-        );
-        return;
-      }
-      if (options.suspended?.(who.homeId)) {
-        refuse(403, "Forbidden");
-        return;
-      }
-      void options.home(who.homeId).then(
-        (home) => {
-          sockets.handleUpgrade(request, socket, head, (ws) => {
-            bindings.add(ws);
-            bindingHomes.set(ws, who.homeId);
-            let expiresAt = who.expiresAt;
-            const attributes = {
-              accountId: who.accountId,
-              grantId: who.grantId,
-              homeId: who.homeId,
-              linkId: who.linkId,
-              replaceToken: (next: number) => {
-                expiresAt = next;
-              },
-            };
-            // The binding ends at its token's expiry unless refreshed in band (`remote/token`), and
-            // within 60 s of the grant's revocation or the account's suspension (§18.2).
-            const watch = setInterval(
-              () => {
-                if (Date.now() >= expiresAt) {
-                  log.info("binding.token_expired", { home: who.homeId });
-                  ws.close(4401, "token expired");
-                } else if (!auth.grantLive(who.grantId)) {
-                  log.info("binding.grant_revoked", { home: who.homeId });
-                  ws.close(4403, "grant revoked");
-                }
-              },
-              Math.min(GRANT_RECHECK_MS, options.recheckMs ?? GRANT_RECHECK_MS),
-            );
-            watch.unref();
-            ws.once("close", () => {
-              clearInterval(watch);
-              bindings.delete(ws);
-              bindingHomes.delete(ws);
-            });
-            ws.on("message", () => {
-              options.touch(who.homeId);
-              options.message?.(who.homeId);
-            });
-            serveWebSocket(home.protocol, ws, { attributes, log });
-            log.info("binding.opened", { home: who.homeId, link: who.linkId });
-          });
-        },
+      void bearer(request, "host").then(
+        (who) => upgradeFor(who),
         (error: unknown) => {
-          log.error("binding.home_failed", { home: who.homeId, error });
+          log.error("binding.auth_failed", { error });
           refuse(503, "Service Unavailable");
         },
       );
+      const upgradeFor = (who: Authenticated | undefined): void => {
+        if (!who) {
+          refuse(
+            401,
+            "Unauthorized",
+            `www-authenticate: Bearer resource_metadata="${apiOrigin}/.well-known/oauth-protected-resource/host"\r\n`,
+          );
+          return;
+        }
+        if (options.suspended?.(who.homeId)) {
+          refuse(403, "Forbidden");
+          return;
+        }
+        void options.home(who.homeId).then(
+          (home) => {
+            sockets.handleUpgrade(request, socket, head, (ws) => {
+              bindings.add(ws);
+              bindingHomes.set(ws, who.homeId);
+              let expiresAt = who.expiresAt;
+              const attributes = {
+                accountId: who.accountId,
+                grantId: who.grantId,
+                homeId: who.homeId,
+                linkId: who.linkId,
+                replaceToken: (next: number) => {
+                  expiresAt = next;
+                },
+              };
+              // The binding ends at its token's expiry unless refreshed in band (`remote/token`), and
+              // within 60 s of the grant's revocation or the account's suspension (§18.2).
+              const watch = setInterval(
+                () => {
+                  if (Date.now() >= expiresAt) {
+                    log.info("binding.token_expired", { home: who.homeId });
+                    ws.close(4401, "token expired");
+                  } else if (who.grantId.startsWith("credential:")) {
+                    // An operator's credential: the operator is asked again; a key it revoked, or
+                    // an account it suspended, closes the binding within the bound.
+                    void bearer(request, "host").then(
+                      (still) => {
+                        if (!still) {
+                          log.info("binding.credential_revoked", { home: who.homeId });
+                          ws.close(4403, "credential revoked");
+                        } else expiresAt = still.expiresAt;
+                      },
+                      () => undefined,
+                    );
+                  } else if (!auth.grantLive(who.grantId)) {
+                    log.info("binding.grant_revoked", { home: who.homeId });
+                    ws.close(4403, "grant revoked");
+                  }
+                },
+                Math.min(GRANT_RECHECK_MS, options.recheckMs ?? GRANT_RECHECK_MS),
+              );
+              watch.unref();
+              ws.once("close", () => {
+                clearInterval(watch);
+                bindings.delete(ws);
+                bindingHomes.delete(ws);
+              });
+              ws.on("message", () => {
+                options.touch(who.homeId);
+                options.message?.(who.homeId);
+              });
+              serveWebSocket(home.protocol, ws, { attributes, log });
+              log.info("binding.opened", { home: who.homeId, link: who.linkId });
+            });
+          },
+          (error: unknown) => {
+            log.error("binding.home_failed", { home: who.homeId, error });
+            refuse(503, "Service Unavailable");
+          },
+        );
+      };
     },
 
     closeHome(homeId) {

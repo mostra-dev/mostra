@@ -194,6 +194,8 @@ export interface HostedServices {
   readonly routing: Routing;
   /** The server's meter: views here, submissions through the operator feed. */
   readonly meter: Meter;
+  /** Viewer sign-in on the authorization server (INTERFACES §18.4). */
+  readonly signin?: HostedPagesOptions["signin"];
 }
 
 function refuse(code: Parameters<typeof createDiagnostic>[0], message: string): RpcError {
@@ -516,6 +518,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
             rates: options.services.rates,
             rateLimits: options.services.rateLimits,
             madeWith: options.services.madeWith,
+            ...(options.services.signin ? { signin: options.services.signin } : {}),
             viewed: (input) => metered(input.artifactId, input.viewerId),
             log,
           })

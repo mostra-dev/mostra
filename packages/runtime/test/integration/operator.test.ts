@@ -423,7 +423,8 @@ describe("operator ports (HO-09)", () => {
     // The chosen label shows the route's shell; another route's path there gets nothing.
     const page = await send(port, chosen, `/a/${routeId}`);
     expect(page.status, page.body).toBe(200);
-    const other = await send(port, chosen, "/a/rte_01JB8Z3QF6S7W3N8D5K2C4V9XG");
+    // Another route of the same home: the chosen host shows its one route only.
+    const other = await send(port, chosen, `/a/${routeOf(minted.href)}`);
     expect(other.status).toBe(404);
     await operator.set({ routing: {}, linkHost: null });
   }, 120_000);

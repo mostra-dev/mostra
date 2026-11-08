@@ -67,6 +67,22 @@ export interface HostedPagesOptions {
   };
   /** The configuration's made-with mark (off unless an operator shows it, D161). */
   readonly madeWith?: { readonly href?: string } | undefined;
+  /** Viewer sign-in on the authorization server, when one is configured (INTERFACES §18.4). */
+  readonly signin?: {
+    readonly start: (
+      signin: { homeId: string; routeId: string; sessionId: string; shellOrigin: string },
+      challenge: string,
+    ) => { readonly url: string; readonly state: string };
+    readonly finish: (input: {
+      state: string;
+      code: string;
+      verifier: string;
+      routeId: string;
+      sessionId: string;
+    }) =>
+      | { readonly accountId: string; readonly name?: string; readonly provider?: string }
+      | { readonly refused: string };
+  };
   /** Told each view the server admitted, for metering (`views`). */
   readonly viewed?: (input: { readonly artifactId: string; readonly viewerId: string }) => void;
   readonly log: Log;
@@ -263,7 +279,107 @@ export function hostedPages(
       return jsonResponse({ viewer: interaction.viewer(viewerId) });
     };
 
+    /**
+     * A page's sign-in, from a click in the trusted chrome only (INTERFACES §18.4): the address of
+     * the authorization server, with `state` bound to this route and this shell session.
+     */
+    const signinStart = async (context: RouteContext): Promise<Response> => {
+      const body = await readJsonObject(context.request, 4 * 1024);
+      if (isRefusal(body)) return helpers.refuse(body, meta(context));
+      const challenge = body["challenge"];
+      const route = options.routeOf(context.artifactId as string);
+      if (
+        typeof challenge !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(challenge) ||
+        !route ||
+        !options.signin ||
+        !context.session
+      ) {
+        return helpers.refuse(
+          refusal(
+            "MOSTRA_HYGIENE_REQUEST_MALFORMED",
+            "A sign-in starts with a PKCE S256 challenge.",
+          ),
+          meta(context),
+        );
+      }
+      const started = options.signin.start(
+        {
+          homeId: options.homeId,
+          routeId: route.id,
+          sessionId: context.session.id,
+          // The shell's own origin: the pipeline checked the request's Origin is exactly it.
+          shellOrigin: context.request.headers.get("origin") ?? "",
+        },
+        challenge,
+      );
+      return jsonResponse(started);
+    };
+
+    /** The code back from the authorization server: the session acts as the account from now on. */
+    const signinFinish = async (context: RouteContext): Promise<Response> => {
+      const body = await readJsonObject(context.request, 8 * 1024);
+      if (isRefusal(body)) return helpers.refuse(body, meta(context));
+      const route = options.routeOf(context.artifactId as string);
+      const { code, verifier, state } = body as Record<string, unknown>;
+      if (
+        typeof code !== "string" ||
+        typeof verifier !== "string" ||
+        typeof state !== "string" ||
+        !route ||
+        !options.signin ||
+        !context.session
+      ) {
+        return helpers.refuse(
+          refusal(
+            "MOSTRA_HYGIENE_REQUEST_MALFORMED",
+            "Send the sign-in's code, verifier and state.",
+          ),
+          meta(context),
+        );
+      }
+      const finished = options.signin.finish({
+        code,
+        verifier,
+        state,
+        routeId: route.id,
+        sessionId: context.session.id,
+      });
+      if ("refused" in finished) {
+        log.warn("hosted.signin_refused", { routeId: route.id });
+        return helpers.refuse(
+          refusal("MOSTRA_HYGIENE_SCOPE_DENIED", finished.refused, 403),
+          meta(context),
+        );
+      }
+      // A link minted for a named person keeps acting as that person (D104); any other session
+      // now acts as the account, its name verified by its provider (D165 item 8).
+      const viewerId = interaction.viewerForAccount(finished.accountId, finished.name);
+      if (context.session.grant.viewerId === undefined) {
+        const sessionId = context.session.id;
+        ledger.write((db) =>
+          db.run("UPDATE session SET viewer_id = ? WHERE id = ?", viewerId, sessionId),
+        );
+      }
+      log.info("hosted.signed_in", { routeId: route.id });
+      return jsonResponse({ viewer: interaction.viewer(viewerId) });
+    };
+
     const routes: RouteSpec[] = [
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/session/signin/start",
+        intent: "mutation",
+        auth: "session",
+        handler: signinStart,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/session/signin",
+        intent: "mutation",
+        auth: "session",
+        handler: signinFinish,
+      },
       {
         method: "POST",
         path: "/a/:artifactId/_mostra/report",

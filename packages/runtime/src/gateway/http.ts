@@ -53,6 +53,10 @@ export function documentHeaders(
         "base-uri 'none'",
         "form-action 'none'",
         "object-src 'none'",
+        // No string reaches a script sink on the shell: every text a tenant or operator supplies
+        // renders as text, and a DOM-injection attempt throws (Trusted Types, HY-09).
+        "require-trusted-types-for 'script'",
+        "trusted-types 'none'",
       ].join("; "),
       "x-frame-options": "DENY",
       // Popups the artifact frame opens get no opener, so none can navigate this page (D98

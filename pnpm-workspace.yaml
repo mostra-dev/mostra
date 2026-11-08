@@ -60,6 +60,10 @@ catalog:
   '@hono/node-server': 2.1.5
   # The remote server's network binding (WP-29, D165 item 2): JSON-RPC over WebSocket, with pings
   ws: 8.22.0
+  # The remote server's OpenID Connect identity providers (WP-30, INTERFACES §18.5): discovery,
+  # the authorization code flow with PKCE and nonce, and ID token validation (panva; MIT; it
+  # depends on jose and oauth4webapi, both MIT, no install scripts)
+  openid-client: 6.8.8
   # The MCP server (WP-15, D164): the v2 TypeScript SDK's server package, its client for tests,
   # jsdiff for artifact_patch's unified diffs, and the MCP conformance suites (D48; VERIFIED_FACTS)
   '@modelcontextprotocol/server': 2.4.0

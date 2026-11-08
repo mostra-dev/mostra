@@ -105,7 +105,7 @@ import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./wo
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 export type { DevUpstream } from "./dev.ts";
-export { isRefusal, jsonResponse, readJsonObject } from "./http.ts";
+export { BASE_HEADERS, documentHeaders, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
 export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
 export type { RouteContext, RouteSpec } from "./routes.ts";
 

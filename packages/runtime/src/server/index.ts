@@ -11,6 +11,8 @@
  * await server.close();
  * ```
  */
+
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -24,12 +26,18 @@ import {
   RouteId,
   RpcError,
 } from "@mostra/protocol";
-import { locateShell, shellAssetResponse } from "../gateway/index.ts";
+import {
+  BASE_HEADERS,
+  documentHeaders,
+  locateShell,
+  shellAssetResponse,
+} from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
 import type { LedgerOwner } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
+import { type Authorize, createAuthorize } from "./authorize.ts";
 import { clientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
@@ -37,7 +45,9 @@ import { createHandle } from "./handle.ts";
 import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
 import { createMeter, type Meter } from "./metering.ts";
+import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
+import { type BuiltInProvider, builtInProviders } from "./providers.ts";
 import { createRouting, type Destination, type Routing } from "./routing.ts";
 
 export { type RemoteServerConfig, readServerConfig } from "./config.ts";
@@ -106,6 +116,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   let operator: Operator | undefined;
   let meter: Meter | undefined;
   let routing: Routing;
+  let authorizer: Authorize | undefined;
   let api: Api | undefined;
   const shellDir = locateShell(options.env);
   const clients = clientAddresses({
@@ -149,6 +160,10 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     owner: ownerOf,
     meter: meter as Meter,
     routing,
+    signin: {
+      start: (signin, challenge) => (authorizer as Authorize).startViewerSignin(signin, challenge),
+      finish: (input) => (authorizer as Authorize).finishViewerSignin(input),
+    },
     signInOffered: () =>
       (config.identityProviders?.length ?? 0) > 0 || (operator?.has.identity ?? false),
   });
@@ -248,8 +263,12 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     directory: data.directory,
     config,
     log,
+    operator,
     ...(Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) > 0
       ? { accessTtlMs: Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) }
+      : {}),
+    ...(Number(options.env["MOSTRA_TEST_ROTATION_GRACE_MS"]) > 0
+      ? { rotationGraceMs: Number(options.env["MOSTRA_TEST_ROTATION_GRACE_MS"]) }
       : {}),
     // A new instance link is a hosted event the account's instances see (§18.5).
     linked: ({ homeId, linkId, name }) => {
@@ -267,9 +286,51 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       );
     },
   });
+  // The authorization server's clients and browser pages (INTERFACES §18.5).
+  const scheme = config.scheme ?? "https";
+  const oauthClients = createClients({
+    directory: data.directory,
+    log,
+    env: options.env,
+    isShellOrigin: (origin) => {
+      if (!origin.startsWith(`${scheme}://`)) return false;
+      const host = origin.slice(scheme.length + 3);
+      if (domains.includes(host)) return true;
+      return (
+        data.directory.read((db) => db.get("SELECT 1 FROM operator_host WHERE host = ?", host)) !==
+        undefined
+      );
+    },
+  });
+  let providers: BuiltInProvider[];
+  try {
+    providers = builtInProviders(config.identityProviders ?? [], {
+      apiOrigin: config.apiOrigin,
+      env: options.env,
+      log,
+    });
+  } catch (error) {
+    operator?.stop();
+    await data.close();
+    throw error;
+  }
+  const authorize = createAuthorize({
+    apiOrigin: config.apiOrigin,
+    directory: data.directory,
+    auth,
+    clients: oauthClients,
+    operator,
+    providers,
+    ownerName: (homeId) => ownerOf(homeId).name,
+    log,
+  });
+  authorizer = authorize;
   api = createApi({
     config,
     auth,
+    authorize,
+    clients: oauthClients,
+    operator,
     log,
     filesDir: join(options.data, "files"),
     home: async (id) => (await data.home(id)).assembled,
@@ -288,9 +349,10 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
 
   const onRequest = (request: IncomingMessage, response: ServerResponse): void => {
     const host = (request.headers.host ?? "").toLowerCase();
-    // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing.
-    delete request.headers.cookie;
     const path = (request.url ?? "/").split("?")[0] ?? "/";
+    // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing. Only
+    // the API origin's own sign-in pages read the cookies it set itself.
+    if (host !== apiHost) delete request.headers.cookie;
     if (host === apiHost) {
       if (request.method === "GET" && path === "/health") {
         json(response, 200, { status: "ok", homes: data.open().length });
@@ -443,6 +505,23 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     if (destination.kind === "shell") {
       if (path.startsWith("/_mostra/shell/assets/")) {
         await assets(request, response);
+        return;
+      }
+      // Where a page's sign-in returns (INTERFACES §18.4): the shell's own page, which finishes it
+      // for the route that started it. It reads only the fragment and query it was sent.
+      if (path === "/_mostra/signin" && (request.method === "GET" || request.method === "HEAD")) {
+        if (shellDir === undefined) {
+          notServed(response);
+          return;
+        }
+        const html = readFileSync(join(shellDir, "index.html"));
+        response.writeHead(200, {
+          ...BASE_HEADERS,
+          ...documentHeaders({ kind: "shell", origin: "", shellOrigin: "" }, "'none'"),
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        response.end(request.method === "HEAD" ? undefined : html);
         return;
       }
       const match = /^\/a\/(rte_[0-9A-HJKMNP-TV-Z]{26})(?:\/|$)/.exec(path);

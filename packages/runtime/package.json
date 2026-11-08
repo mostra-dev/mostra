@@ -52,6 +52,7 @@
     "better-sqlite3": "catalog:",
     "hono": "catalog:",
     "ignore": "catalog:",
+    "openid-client": "catalog:",
     "oxc-parser": "catalog:",
     "pnpm": "catalog:",
     "remark-frontmatter": "catalog:",
