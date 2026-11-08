@@ -263,6 +263,16 @@
         "$ref": "#/$defs/PortIdentityResolveResult"
       }
     },
+    "port/relay.author": {
+      "direction": "instance-to-host",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/PortRelayAuthorParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PortRelayAuthorResult"
+      }
+    },
     "port/relay.call": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -4199,6 +4209,31 @@
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
     },
+    "PortRelayAuthorParams": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "artifact/create",
+            "artifact/verify",
+            "artifact/publish",
+            "artifact/get",
+            "workspace/root",
+            "workspace/allocate",
+            "workspace/read",
+            "workspace/apply",
+            "verify/screenshot"
+          ]
+        },
+        "params": {}
+      },
+      "required": [
+        "method",
+        "params"
+      ]
+    },
+    "PortRelayAuthorResult": {},
     "PortRelayCallParams": {
       "type": "object",
       "properties": {

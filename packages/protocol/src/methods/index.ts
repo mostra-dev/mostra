@@ -30,6 +30,7 @@ import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
+import { portRelayAuthorMethod } from "./port/relay-author.ts";
 import { portRelayCallMethod } from "./port/relay-call.ts";
 import { portRelayCancelMethod } from "./port/relay-cancel.ts";
 import { portRelayLiveMethod } from "./port/relay-live.ts";
@@ -126,6 +127,7 @@ export const hostMethods: readonly AnyMethod[] = [
   relayLiveValueMethod,
   hostedSubmissionMethod,
   artifactPauseMethod,
+  portRelayAuthorMethod,
   // gen:methods
 ];
 

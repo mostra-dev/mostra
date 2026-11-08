@@ -677,8 +677,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "a parallel refresh within the grace gets a second successor",
     file: "src/server/auth.ts",
-    from: "            if (now() - used <= ROTATION_GRACE_MS) {",
-    to: "            if (now() - used <= ROTATION_GRACE_MS && false) {",
+    from: "        if (now() - used <= rotationGraceMs) {",
+    to: "        if (now() - used <= rotationGraceMs && false) {",
     check: integration("binding.test.ts", "links a machine"),
   },
   {
@@ -5591,6 +5591,30 @@ const SEEDS: readonly Seed[] = [
     from: "      const shift = 128n - BigInt(ipv6Prefix);",
     to: "      const shift = 0n;",
     check: unit("clients.test.ts", "per /64"),
+  },
+  {
+    requirement: "MC-04",
+    name: "relayed authoring writes outside the owner's workspace",
+    file: "src/link/author.ts",
+    from: "    if (!within(root, absolute) || !within(base, real)) {",
+    to: "    if (absolute === real && base === absolute) {",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
+  {
+    requirement: "MC-04",
+    name: "/mcp's 401 names no protected-resource metadata, so no client finds sign-in",
+    file: "src/server/api.ts",
+    from: '            { "www-authenticate": challenge },',
+    to: "            {},",
+    check: integration("remote-mcp.test.ts", "resource_metadata"),
+  },
+  {
+    requirement: "MC-04",
+    name: "authoring with no connected instance answers nothing useful",
+    file: "src/server/mcp.ts",
+    from: "      if (session === undefined) throw noInstance();",
+    to: "      if (session === undefined) return {};",
+    check: integration("remote-mcp.test.ts", "NO_INSTANCE"),
   },
 ];
 

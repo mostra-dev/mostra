@@ -18,6 +18,7 @@ import type { Authenticated, Authorization } from "./auth.ts";
 import type { Authorize } from "./authorize.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import type { HostedHome } from "./hosted.ts";
+import type { RemoteMcp } from "./mcp.ts";
 import type { Clients } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
 
@@ -93,6 +94,8 @@ export interface ApiOptions {
   readonly message?: (homeId: string) => void;
   /** Told the bytes a home stored (an upload it hadn't stored before), for metering. */
   readonly stored?: (homeId: string, bytes: number) => void;
+  /** The remote MCP endpoint (`/mcp`, INTERFACES §18.8). */
+  readonly mcp?: RemoteMcp;
   /** The authorization server's browser pages (sign-in, consent, viewer sign-in). */
   readonly authorize: Authorize;
   /** Its clients, for Dynamic Client Registration. */
@@ -207,7 +210,7 @@ export function createApi(options: ApiOptions): Api {
     if (issued) return issued.resource === audience ? issued : undefined;
     if (!options.operator?.has.authenticate) return undefined;
     const credential = await options.operator.authenticate(token, resource);
-    if (!credential || !credential.scope.includes("mostra")) return undefined;
+    if (!credential?.scope.includes("mostra")) return undefined;
     return auth.credentialSession({
       account: credential.account,
       subject: credential.subject ?? "default",
@@ -540,6 +543,32 @@ export function createApi(options: ApiOptions): Api {
           );
           return;
         }
+      }
+      if (path === "/mcp" && options.mcp) {
+        const who = await bearer(request, "mcp");
+        const challenge = `Bearer resource_metadata="${apiOrigin}/.well-known/oauth-protected-resource/mcp"`;
+        if (!who) {
+          // A 401 with resource_metadata is how an MCP client finds the authorization server
+          // (RFC 9728; Claude starts sign-in only from it).
+          send(
+            response,
+            401,
+            { error: "invalid_token", error_description: "Sign in to use Mostra here." },
+            { "www-authenticate": challenge },
+          );
+          return;
+        }
+        if (!who.scope.split(" ").includes("mostra")) {
+          send(
+            response,
+            403,
+            { error: "insufficient_scope", error_description: "The token lacks the mostra scope." },
+            { "www-authenticate": `${challenge}, error="insufficient_scope", scope="mostra"` },
+          );
+          return;
+        }
+        await options.mcp.handle(request, response, who);
+        return;
       }
       const file = /^\/files\/([0-9a-f]{64})$/.exec(path);
       if (file && method === "PUT") {

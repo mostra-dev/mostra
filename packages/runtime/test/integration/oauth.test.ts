@@ -7,10 +7,11 @@
  * revokes the grant. A real `mostra-runtime server` with the development provider; a browser is
  * played with plain requests and a cookie jar for the API origin.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ApiBrowser, located, pkce } from "../oauth-support.ts";
 import {
   freePort,
   type Reply,
@@ -21,61 +22,6 @@ import {
   testConfig,
 } from "../server-support.ts";
 import { tempDir } from "../support.ts";
-
-/** A browser on the API origin: its cookies, its requests, following nothing on its own. */
-class ApiBrowser {
-  readonly jar = new Map<string, string>();
-  readonly port: number;
-  readonly host: string;
-  constructor(port: number, host: string) {
-    this.port = port;
-    this.host = host;
-  }
-
-  async ask(
-    method: string,
-    path: string,
-    body?: Record<string, string>,
-    extra: Record<string, string> = {},
-  ): Promise<Reply> {
-    const cookie = [...this.jar].map(([name, value]) => `${name}=${value}`).join("; ");
-    const reply = await send(this.port, this.host, path, {
-      method,
-      headers: {
-        ...(cookie !== "" ? { cookie } : {}),
-        ...(body !== undefined
-          ? {
-              "content-type": "application/x-www-form-urlencoded",
-              origin: `http://${this.host}`,
-            }
-          : {}),
-        ...extra,
-      },
-      ...(body !== undefined ? { body: new URLSearchParams(body).toString() } : {}),
-    });
-    const set = reply.headers["set-cookie"];
-    for (const line of Array.isArray(set) ? set : set ? [set] : []) {
-      const [pair] = line.split(";");
-      const at = (pair as string).indexOf("=");
-      const name = (pair as string).slice(0, at);
-      const value = (pair as string).slice(at + 1);
-      if (/Max-Age=0/.test(line)) this.jar.delete(name);
-      else this.jar.set(name, value);
-    }
-    return reply;
-  }
-}
-
-function pkce(): { verifier: string; challenge: string } {
-  const verifier = randomBytes(32).toString("base64url");
-  return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
-}
-
-/** The `location` of a redirect, as a URL. */
-function located(reply: Reply): URL {
-  expect([302, 303], reply.body).toContain(reply.status);
-  return new URL(String(reply.headers["location"]), "http://api.localhost");
-}
 
 describe("the authorization server for MCP clients (MC-04)", () => {
   let port: number;

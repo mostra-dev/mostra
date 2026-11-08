@@ -16,6 +16,11 @@ import * as z from 'zod';
 export function artifactPath(path: string): string;
 
 // @public
+export function createAuthorizedEndpoint(optionsFor: (authorization: McpAuthorization) => McpServerOptions, policy?: {
+    readonly onError?: (error: Error) => void;
+}): McpAuthorizedEndpoint;
+
+// @public
 export function createHttpEndpoint(factory: McpServerFactory, policy: HttpEndpointPolicy): McpHttpEndpoint;
 
 // @public
@@ -37,6 +42,18 @@ export interface DocsHit {
 }
 
 // @public
+export function docsIndex(referenceDir: string, skillDir: string): DocsTopic[];
+
+// @public
+export interface DocsTopic {
+    readonly file: string;
+    readonly files?: readonly string[];
+    readonly title: string;
+    readonly topic: string;
+    readonly url: string;
+}
+
+// @public
 export interface DocsTopicSummary {
     readonly title: string;
     readonly topic: string;
@@ -47,10 +64,23 @@ export interface DocsTopicSummary {
 export function docsUri(topic: string): string;
 
 // @public
+export function fileDocs(options: {
+    readonly referenceDir: string;
+    readonly skillDir: string;
+    readonly links?: string;
+}): McpDocs;
+
+// @public
 export const GUESS_LIMIT = 30;
 
 // @public
 export const GUESS_WINDOW_MS = 6e4;
+
+// @public
+export const GUIDE_LINKS: string;
+
+// @public
+export function guideTopics(dir: string, base: string): DocsTopic[];
 
 // @public
 export interface HttpEndpointPolicy extends RequestPolicy {
@@ -64,13 +94,35 @@ export interface HttpEndpointPolicy extends RequestPolicy {
 }
 
 // @public
+export function indexMarkdown(topics: readonly DocsTopic[]): string;
+
+// @public
 export function localWorkspace(root: string): McpWorkspace;
+
+// @public
+export const MCP_GUIDE_LINKS: string;
 
 // @public
 export const MCP_MAX_BODY_BYTES: number;
 
 // @public
 export const MCP_PATH = "/mcp";
+
+// @public
+export interface McpAuthorization {
+    readonly clientId: string;
+    readonly expiresAt?: number;
+    readonly resource: string;
+    readonly scopes: readonly string[];
+    readonly subject: Readonly<Record<string, unknown>>;
+    readonly token: string;
+}
+
+// @public
+export interface McpAuthorizedEndpoint {
+    close(): Promise<void>;
+    fetch(request: Request, authorization: McpAuthorization): Promise<Response>;
+}
 
 // @public
 export interface McpBrowser {
@@ -126,6 +178,9 @@ export interface McpWorkspace {
     resolveDir(dir: string): string;
     readonly root: string;
 }
+
+// @public
+export function nearestTopics(wanted: string, topics: readonly DocsTopic[], count?: number): string[];
 
 // @public
 export interface PatchRejection {
@@ -212,6 +267,9 @@ export const toolRegistry: z.core.$ZodRegistry<{
     id: string;
     description?: string;
 }>;
+
+// @public
+export function topicMarkdown(topic: DocsTopic, dir: string, links?: string): string;
 
 // @public
 export const WAIT_MAX_SECONDS = 50;

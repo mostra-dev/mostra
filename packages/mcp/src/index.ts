@@ -12,13 +12,28 @@
  *
  * @packageDocumentation
  */
+
 export {
+  type DocsTopic,
+  docsIndex,
+  fileDocs,
+  GUIDE_LINKS,
+  guideTopics,
+  indexMarkdown,
+  MCP_GUIDE_LINKS,
+  nearestTopics,
+  topicMarkdown,
+} from "./docs.ts";
+export {
+  createAuthorizedEndpoint,
   createHttpEndpoint,
   GUESS_LIMIT,
   GUESS_WINDOW_MS,
   type HttpEndpointPolicy,
   MCP_MAX_BODY_BYTES,
   MCP_PATH,
+  type McpAuthorization,
+  type McpAuthorizedEndpoint,
   type McpHttpEndpoint,
   type RawRequest,
 } from "./http.ts";

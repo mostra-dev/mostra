@@ -14,7 +14,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
   createHttpEndpoint,
   createMcpServerFactory,
-  type DocsTopicSummary,
+  fileDocs,
   localWorkspace,
   MCP_PATH,
   type McpClientInfo,
@@ -32,7 +32,7 @@ import { resolveRuntime } from "@mostra/sdk";
 import { progressReporter } from "./bootstrap.ts";
 import { openInBrowser } from "./browser.ts";
 import { connect, type InstanceConnection } from "./client.ts";
-import { docsIndex, MCP_GUIDE_LINKS, skillDir, topicMarkdown } from "./docs.ts";
+import { MCP_GUIDE_LINKS, referenceDir, skillDir } from "./docs.ts";
 import type { Environment } from "./home.ts";
 
 /** How long the session with the daemon stays open after the last call. */
@@ -238,25 +238,7 @@ export function daemonInstance(options: {
 
 /** The bundled reference (`mostra docs`), read as the MCP server's docs. */
 export function bundledDocs(): McpDocs {
-  let topics: ReturnType<typeof docsIndex> | undefined;
-  const all = (): ReturnType<typeof docsIndex> => {
-    topics ??= docsIndex();
-    return topics;
-  };
-  const cache = new Map<string, string>();
-  return {
-    topics: (): DocsTopicSummary[] =>
-      all().map((topic) => ({ topic: topic.topic, title: topic.title, url: topic.url })),
-    read(topic) {
-      const cached = cache.get(topic);
-      if (cached !== undefined) return cached;
-      const found = all().find((entry) => entry.topic === topic);
-      if (found === undefined) return undefined;
-      const markdown = topicMarkdown(found, skillDir(), MCP_GUIDE_LINKS);
-      cache.set(topic, markdown);
-      return markdown;
-    },
-  };
+  return fileDocs({ referenceDir: referenceDir(), skillDir: skillDir(), links: MCP_GUIDE_LINKS });
 }
 
 /** What both transports are given. */

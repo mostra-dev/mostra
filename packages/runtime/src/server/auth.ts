@@ -42,6 +42,8 @@ export interface Authenticated {
   readonly resource: string;
   /** The client the grant is for. */
   readonly clientId: string;
+  /** The grant's scopes, space-separated. */
+  readonly scope: string;
   readonly accountId: string;
   readonly accountName: string | undefined;
   readonly grantId: string;
@@ -240,6 +242,8 @@ export interface Authorization {
     readonly subject: string;
     readonly resource: string;
   }): Authenticated;
+  /** The account's hosted home, made on its first use (one home per owner per server). */
+  ensureHome(accountId: string): string;
   /** Whether an account has consented to a client. */
   consented(accountId: string, clientId: string): boolean;
   /** Records an account's consent to a client. */
@@ -723,8 +727,9 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           name: string | null;
           resource: string;
           client_id: string;
+          scope: string;
         }>(
-          `SELECT t.hash, t.expires_at, t.grant_id, g.account_id, g.link_id, a.name, g.resource, g.client_id
+          `SELECT t.hash, t.expires_at, t.grant_id, g.account_id, g.link_id, a.name, g.resource, g.client_id, g.scope
              FROM token t JOIN "grant" g ON g.id = t.grant_id JOIN account a ON a.id = g.account_id
             WHERE t.hash = ? AND t.kind = 'access'`,
           hash,
@@ -743,6 +748,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         return {
           resource: row.resource,
           clientId: row.client_id,
+          scope: row.scope,
           accountId: row.account_id,
           accountName: row.name ?? undefined,
           grantId: row.grant_id,
@@ -899,6 +905,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         return {
           resource: input.resource,
           clientId: "operator",
+          scope: "mostra",
           accountId: input.account,
           accountName: name ?? undefined,
           // Not a grant of this server: the operator is asked again while the binding stays open.
@@ -908,6 +915,10 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           expiresAt: now() + accessTtlMs,
         };
       });
+    },
+
+    ensureHome(accountId) {
+      return directory.write((db) => homeFor(db, accountId));
     },
 
     consented(accountId, clientId) {

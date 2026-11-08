@@ -20,7 +20,7 @@ import {
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "./server.ts";
 
-export { attach, type SocketClient } from "./client.ts";
+export { attach, attachInProcess, type SocketClient } from "./client.ts";
 export {
   handler,
   type MethodHandler,

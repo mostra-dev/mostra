@@ -46,6 +46,7 @@
   "dependencies": {
     "@hono/node-server": "catalog:",
     "@mdx-js/mdx": "catalog:",
+    "@mostra/mcp": "workspace:*",
     "@mostra/protocol": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
@@ -66,6 +67,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "catalog:",
     "@mostra/shell": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@mostra/verify": "workspace:*",

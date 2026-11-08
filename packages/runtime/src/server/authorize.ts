@@ -273,7 +273,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
 
   /** Where a finished sign-in continues: an address of the API origin only. */
   const safeNext = (next: string | null): string =>
-    next !== null && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    next?.startsWith("/") && !next.startsWith("//") ? next : "/";
 
   /** A resolved identity: a session and on to `next`, a step, or why not. */
   const resolved = async (

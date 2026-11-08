@@ -23,7 +23,7 @@ import {
 } from "@mostra/protocol";
 import { checkBrowser, checkFiles, enclosingBundle, readBundle, readSetup } from "@mostra/sdk";
 import { type CommandContext, type CommandDef, defineCommand } from "../command.ts";
-import { docsIndex, indexMarkdown, nearestTopics, topicMarkdown } from "../docs.ts";
+import { docsIndex, indexMarkdown, nearestTopics, skillDir, topicMarkdown } from "../docs.ts";
 import { EXIT, exitCodeFor } from "../exit.ts";
 import { embeddedHome, locateRuntime, readHomeMarks } from "../home.ts";
 import { usage } from "../parse.ts";
@@ -713,7 +713,7 @@ export const docsCommand: CommandDef = defineCommand({
         `No topic "${wanted}". The nearest: ${nearestTopics(wanted, topics).join(", ")}. Run "mostra docs" for the index.`,
       );
     }
-    const markdown = topicMarkdown(found);
+    const markdown = topicMarkdown(found, skillDir());
     return { result: { topic: found.topic, markdown, url: found.url }, human: markdown };
   },
 });

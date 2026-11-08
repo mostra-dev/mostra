@@ -44,6 +44,7 @@ import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./dat
 import { createHandle } from "./handle.ts";
 import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
+import { createRemoteMcp, serverDocs } from "./mcp.ts";
 import { createMeter, type Meter } from "./metering.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
@@ -325,9 +326,20 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     log,
   });
   authorizer = authorize;
+  const mcp = createRemoteMcp({
+    apiOrigin: config.apiOrigin,
+    version: options.runtimeVersion,
+    docs: serverDocs(),
+    log,
+    operator,
+    meter,
+    home: async (id) => (await data.home(id)).assembled,
+    ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
+  });
   api = createApi({
     config,
     auth,
+    mcp,
     authorize,
     clients: oauthClients,
     operator,
@@ -594,6 +606,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     close() {
       closing ??= (async () => {
         served.close();
+        await mcp.close().catch(() => undefined);
         // What the operator hasn't taken yet stays queued in the directory for the next start.
         meter?.stop();
         operator?.stop();

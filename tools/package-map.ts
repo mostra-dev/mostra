@@ -80,7 +80,7 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/runtime",
     audience: "runtime bundle",
     environment: "node",
-    workspace: ["@mostra/protocol"],
+    workspace: ["@mostra/protocol", "@mostra/mcp"],
     external: "any",
     published: true,
   },

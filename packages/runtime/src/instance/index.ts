@@ -80,7 +80,14 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
-import { createLink, forwardHosted, hostedState, type Link, pauseHandler } from "../link/index.ts";
+import {
+  createLink,
+  createOwnerAuthor,
+  forwardHosted,
+  hostedState,
+  type Link,
+  pauseHandler,
+} from "../link/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
@@ -760,6 +767,16 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     actions,
     liveChanged: () => live.reconcile(),
     now: () => Date.now() + clockOffset,
+    // Remote MCP's authoring runs here, on this home's own protocol server (D165 item 5).
+    author: (from, params) => author(from, params),
+  });
+  const author = createOwnerAuthor({
+    home: home.path,
+    env: environment,
+    log,
+    runtimeVersion: runtimeVersion(),
+    protocol: () => server,
+    hostedOn: (artifactId) => link.hostedServers(artifactId),
   });
   const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>
     link.published(artifactId, versionId),

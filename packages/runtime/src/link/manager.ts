@@ -28,6 +28,7 @@ import {
   hostedSubmissionMethod,
   type ListingEntry,
   type MethodDefinition,
+  portRelayAuthorMethod,
   portSubmissionsDeliverMethod,
   type RemoteLink,
   type RemoteLoginResult,
@@ -166,6 +167,8 @@ export interface LinkOptions {
   readonly actions: OwnerRelayOptions["actions"];
   /** Hosted pages' live interest changed. */
   readonly liveChanged?: () => void;
+  /** Answers remote MCP's relayed authoring (`port/relay.author`, D165 item 5). */
+  readonly author?: (server: string, params: unknown) => Promise<unknown>;
   /** The clock (tests move it). */
   readonly now?: () => number;
 }
@@ -557,6 +560,16 @@ export function createLink(options: LinkOptions): Link {
   const onRequest =
     (connection: Connection) =>
     (method: string, params: unknown): unknown => {
+      if (method === portRelayAuthorMethod.method) {
+        if (!options.author) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_REMOTE_NO_INSTANCE", {
+              message: "This instance takes no authoring from a chat host.",
+            }),
+          );
+        }
+        return options.author(connection.server, params);
+      }
       if (relay.handles(method)) {
         return relay.request(
           connection.server,

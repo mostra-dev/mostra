@@ -3,6 +3,8 @@
  * binding, sign-in, the sync cursor and the relay. One public entry, as every runtime module
  * (REPO_STANDARDS §3).
  */
+
+export { createOwnerAuthor } from "./author.ts";
 export { type Binding, ownerInitialize, startBinding } from "./binding.ts";
 export { forwardHosted, hostedState, pauseHandler } from "./hosted.ts";
 export { createLink, type Link } from "./manager.ts";

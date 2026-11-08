@@ -416,7 +416,7 @@ describe("operator ports (HO-09)", () => {
     // answers for is bound to that home forever.
     const recorded = (await operator.calls("routing.resolve")).map((call) => call.payload["host"]);
     expect(recorded).toContain(outside);
-    const unknown = await send(port, `stranger.localhost:${port}`, "/a/" + routeId);
+    const unknown = await send(port, `stranger.localhost:${port}`, `/a/${routeId}`);
     expect(unknown.status).toBe(421);
     const unknownLabel = await send(port, `nobody.content.localhost:${port}`, "/");
     expect(unknownLabel.status).toBe(421);

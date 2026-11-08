@@ -131,6 +131,11 @@ export interface HostedHome {
    * forever, never served again (DATA_MODEL §7.5).
    */
   remove(artifactId: string): Promise<{ readonly rows: number }>;
+  /**
+   * The session of the account's default owner instance, while it is connected: where remote MCP's
+   * authoring goes (D165 items 1b, 5). The newest session of the link is its own.
+   */
+  defaultOwnerSession(): number | undefined;
   /** Whether a binding is open, a stream or poll is served, or a delivery waits. */
   busy(): boolean;
   /**
@@ -1164,6 +1169,20 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       const rows = Object.values(removed).reduce((sum, count) => sum + count, 0);
       log.info("server.artifact_removed", { home: id, artifactId, rows });
       return { rows };
+    },
+    defaultOwnerSession() {
+      const link = directory.read(
+        (db) =>
+          db.get<{ id: string }>(
+            "SELECT id FROM instance_link WHERE home_id = ? AND is_default = 1 AND revoked_at IS NULL",
+            id,
+          )?.id,
+      );
+      if (link === undefined) return undefined;
+      return protocol
+        .registrants("relay")
+        .filter((entry) => entry.owner === link)
+        .at(-1)?.session;
     },
     busy: () => protocol.connections > 0 || bus.activeViews() > 0 || relay.busy(),
     serve,

@@ -2077,6 +2077,18 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 export const PortName: z.ZodType<PortName, string>;
 
 // @public
+export const portRelayAuthorMethod: MethodDefinition<PortRelayAuthorParams, PortRelayAuthorResult>;
+
+// @public
+export interface PortRelayAuthorParams {
+    readonly method: RelayAuthorMethod;
+    readonly params: unknown;
+}
+
+// @public
+export type PortRelayAuthorResult = unknown;
+
+// @public
 export const portRelayCallMethod: MethodDefinition<PortRelayCallParams, PortRelayCallResult>;
 
 // @public
@@ -2264,6 +2276,12 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 
 // @public
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
+
+// @public
+export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "verify/screenshot"];
+
+// @public
+export type RelayAuthorMethod = (typeof RELAY_AUTHOR_METHODS)[number];
 
 // @public
 export const relayCallBatchMethod: MethodDefinition<RelayCallBatchParams, RelayCallBatchResult>;

@@ -470,6 +470,13 @@ export {
   portIdentityResolveMethod,
 } from "./methods/port/identity-resolve.ts";
 export {
+  type PortRelayAuthorParams,
+  type PortRelayAuthorResult,
+  portRelayAuthorMethod,
+  RELAY_AUTHOR_METHODS,
+  type RelayAuthorMethod,
+} from "./methods/port/relay-author.ts";
+export {
   type PortRelayCallParams,
   type PortRelayCallResult,
   portRelayCallMethod,
