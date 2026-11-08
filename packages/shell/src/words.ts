@@ -61,6 +61,16 @@ export function submitProblem(code: string): string {
       return "Some answers aren't saved yet. Submit again when the page is back online.";
     case "NETWORK":
       return "Mostra can't be reached right now. Nothing was submitted; try again.";
+    // A hosted page's refusals, each keeping the draft (D165 items 13, 14; INTERFACES §18.4).
+    case "MOSTRA_REMOTE_RATE_LIMITED":
+      return HOSTED_WORDS.tryAgain;
+    case "MOSTRA_REMOTE_LIMIT_REACHED":
+    case "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE":
+      return HOSTED_WORDS.notAccepting;
+    case "MOSTRA_REMOTE_SIGN_IN_REQUIRED":
+      return HOSTED_WORDS.signInToAnswer;
+    case "MOSTRA_SUBMIT_PAUSED":
+      return `${HOSTED_WORDS.paused} ${HOSTED_WORDS.pausedDetail}`;
     default:
       return "The submission didn't go through. Try again.";
   }
@@ -139,4 +149,55 @@ export const ORPHAN_WORDS = {
   show: (count: number): string =>
     count === 1 ? "1 answer not carried over" : `${String(count)} answers not carried over`,
   hide: "Hide",
+} as const;
+
+/**
+ * The hosted shell's trusted chrome (D161, ARCHITECTURE §15.8): drafts for Mirza's review with
+ * the package's prose (D149). Every name and reason a tenant or an operator supplies is shown as
+ * text beside these, never as markup.
+ */
+export const HOSTED_WORDS = {
+  /** The sender line: whose page this is, and who verified the name. */
+  sentBy: (name: string): string => `Sent by ${name}`,
+  verifiedWith: (provider: string): string => `verified with ${provider}`,
+  unverified: "name not verified",
+  /** The footer, on every hosted page. */
+  passwords: "Never enter passwords on this page.",
+  /** The report control. */
+  report: "Report this page",
+  reportTitle: "Report this page",
+  reportIntro: "Tell the people who run this server what's wrong with this page.",
+  reportReasons: {
+    phishing: "It asks for passwords or payment details",
+    abuse: "It's abusive or harmful",
+    spam: "It's spam",
+    other: "Something else",
+  } as Readonly<Record<string, string>>,
+  reportDetail: "More detail (optional)",
+  reportSend: "Send report",
+  reportCancel: "Cancel",
+  reportSent: "Thanks. The report was sent.",
+  reportFailed: "The report couldn't be sent. Try again shortly.",
+  /** The viewer. */
+  signIn: "Sign in",
+  signedInAs: (name: string): string => `Signed in as ${name}`,
+  anonymous: "Not signed in",
+  giveName: "Add your name",
+  changeName: "Change name",
+  saveName: "Save",
+  namedUnverified: (name: string): string => `${name} (not verified)`,
+  signInFailed: "Sign-in didn't finish. Open the page again and try once more.",
+  signingIn: "Signing you in…",
+  /** A page an operator paused, or that its owner paused. */
+  paused: "This page is paused.",
+  pausedDetail: "You can look at it, but it takes no answers right now. What you typed is kept.",
+  /** The interstitial an operator's policy may put before a page. */
+  interstitialTitle: "Before you open this page",
+  interstitialDetail:
+    "Someone sent you this page. Don't enter passwords or payment details unless you trust them.",
+  interstitialContinue: "Open the page",
+  /** A submission refused for a limit: try again shortly, the draft kept (RM-08). */
+  tryAgain: "Too many answers at once. Try again shortly; what you typed is kept.",
+  notAccepting: "This page isn't accepting answers right now. What you typed is kept.",
+  signInToAnswer: "Sign in to answer this page.",
 } as const;

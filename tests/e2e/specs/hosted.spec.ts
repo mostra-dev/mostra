@@ -145,4 +145,74 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
     expect(results.answers["name"]).toBe(answer);
     expect(await context.cookies()).toEqual([]);
   });
+
+  test("the trusted chrome: sender, footer and report outside the frame, Trusted Types, sign-in from the chrome (HY-08, HY-09, D161)", async ({
+    page,
+    browserName,
+  }, info) => {
+    test.setTimeout(150_000);
+    if (!client || !daemon) throw new Error("not started");
+    const own = await publishOwn(client, daemon.home, info);
+    const share = await client.call<{ url: string }>("share/start", {
+      artifact: { artifactId: own.artifactId },
+      via: "remote",
+    });
+    const frame = await openInShell(page, share.url);
+
+    // The sender line names the owner, unverified under the development provider (D161).
+    await expect(page.locator("[data-mostra-sender]")).toContainText("Sent by Ada");
+    await expect(page.locator("[data-mostra-sender-unverified]")).toBeVisible();
+    // The footer is the shell's, outside the frame, on every hosted page.
+    await expect(page.locator("[data-mostra-passwords]")).toHaveText(
+      "Never enter passwords on this page.",
+    );
+    // The page can't reach the shell's document, so it can't click, hide or restyle the chrome.
+    const reach = await frame.locator("body").evaluate(() => {
+      try {
+        return window.top?.document.title ?? "none";
+      } catch {
+        return "blocked";
+      }
+    });
+    expect(reach).toBe("blocked");
+    // The shell's own script sinks refuse strings under Trusted Types, where the engine has them.
+    if (browserName === "chromium") {
+      const injected = await page.evaluate(() => {
+        try {
+          document.body.insertAdjacentHTML("beforeend", "<img src=x onerror=alert(1)>");
+          return "allowed";
+        } catch (error) {
+          return (error as Error).name;
+        }
+      });
+      expect(injected).toBe("TypeError");
+    }
+
+    // The report control reaches the server (abuse.report, §18.4).
+    await page.locator("[data-mostra-report]").click();
+    await page.locator("input[name=mostra-report-reason][value=spam]").check();
+    await page.locator("[data-mostra-report-send]").click();
+    await expect(page.locator("[data-mostra-report-outcome]")).toHaveAttribute(
+      "data-mostra-report-outcome",
+      "sent",
+    );
+
+    // Sign-in starts only from the chrome, names the sender before the person is named to them,
+    // and returns to the page as the account (INTERFACES §18.4).
+    await expect(page.locator("[data-mostra-viewer]")).toHaveAttribute(
+      "data-mostra-viewer",
+      "anonymous",
+    );
+    await page.locator("[data-mostra-sign-in]").click();
+    await page.getByRole("link", { name: "Continue with Development" }).click();
+    await page.locator("input[name=name]").fill("Grace");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Continue as Grace to answer Ada's page?")).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.locator("[data-mostra-viewer]")).toHaveAttribute(
+      "data-mostra-viewer",
+      "account",
+    );
+    await expect(page.locator("[data-mostra-viewer]")).toContainText("Signed in as Grace");
+  });
 });

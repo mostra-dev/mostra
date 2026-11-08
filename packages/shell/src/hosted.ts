@@ -103,3 +103,76 @@ export async function routeBrowserKey(routeId: string): Promise<string | undefin
 function looksLikeSecret(value: string): boolean {
   return /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value);
 }
+
+/** A page's sign-in in progress, kept in this tab only until its return (INTERFACES §18.4). */
+interface PendingSignIn {
+  readonly routeId: string;
+  readonly verifier: string;
+  readonly state: string;
+  /** The authorization server's issuer, which the return's `iss` must equal (RFC 9207). */
+  readonly issuer: string;
+  /** The page to come back to, on this origin. */
+  readonly back: string;
+}
+
+const SIGNIN_KEY = "mostra.signin";
+
+/** A fresh PKCE pair (RFC 7636, S256): the verifier stays in this tab, the challenge travels. */
+export async function pkcePair(): Promise<{
+  readonly verifier: string;
+  readonly challenge: string;
+}> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const verifier = base64url(bytes);
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+  );
+  return { verifier, challenge: base64url(digest) };
+}
+
+function base64url(bytes: Uint8Array): string {
+  let text = "";
+  for (const byte of bytes) text += String.fromCharCode(byte);
+  return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Keeps a sign-in in progress; `false` when the tab can't keep it (sign-in then can't finish). */
+export function keepSignIn(pending: PendingSignIn): boolean {
+  try {
+    globalThis.sessionStorage?.setItem(SIGNIN_KEY, JSON.stringify(pending));
+    return globalThis.sessionStorage?.getItem(SIGNIN_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Takes the sign-in in progress, once: a second return finds nothing. */
+export function takeSignIn(): PendingSignIn | undefined {
+  try {
+    const text = globalThis.sessionStorage?.getItem(SIGNIN_KEY) ?? null;
+    globalThis.sessionStorage?.removeItem(SIGNIN_KEY);
+    return text === null ? undefined : (JSON.parse(text) as PendingSignIn);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether this tab passed a route's interstitial already (D161): it is shown once per tab. */
+export function interstitialPassed(routeId: string | undefined): boolean {
+  if (routeId === undefined) return true;
+  try {
+    return globalThis.sessionStorage?.getItem(`mostra.passed.${routeId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Notes that this tab passed a route's interstitial. */
+export function passInterstitial(routeId: string | undefined): void {
+  if (routeId === undefined) return;
+  try {
+    globalThis.sessionStorage?.setItem(`mostra.passed.${routeId}`, "1");
+  } catch {
+    // Not kept: the interstitial shows again at the next load, which is safe.
+  }
+}

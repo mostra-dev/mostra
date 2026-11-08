@@ -3025,7 +3025,8 @@
               "properties": {
                 "href": {
                   "type": "string",
-                  "maxLength": 2048
+                  "maxLength": 2048,
+                  "format": "uri"
                 }
               }
             },

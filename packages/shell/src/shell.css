@@ -375,3 +375,32 @@ body,
 .mostra-notice .mostra-actions {
   margin-top: 1rem;
 }
+
+/* The hosted shell's trusted chrome (D161): quiet, always present, outside the frame. */
+.mostra-viewer {
+  font-size: 0.85rem;
+  color: var(--mostra-muted);
+  white-space: nowrap;
+}
+.mostra-footer {
+  padding: 0.4rem 1rem;
+  border-top: 1px solid var(--mostra-line);
+  font-size: 0.8rem;
+  color: var(--mostra-muted);
+}
+.mostra-after-submit {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--mostra-muted);
+}
+.mostra-choice {
+  display: block;
+  margin: 0.35rem 0;
+}
+.mostra-choice textarea {
+  display: block;
+  width: 100%;
+  min-height: 4rem;
+  margin-top: 0.25rem;
+  font: inherit;
+}

@@ -283,7 +283,14 @@ const HostedChrome: z.ZodType<HostedChrome> = z.object({
   signIn: z.boolean(),
   footer: z.string().max(500).exactOptional(),
   afterSubmit: z.string().max(500).exactOptional(),
-  madeWith: z.object({ href: z.string().max(2_048).exactOptional() }).exactOptional(),
+  madeWith: z
+    .object({
+      href: z
+        .url({ protocol: /^https$/ })
+        .max(2_048)
+        .exactOptional(),
+    })
+    .exactOptional(),
   interstitial: z
     .object({ kind: z.string().max(64), message: z.string().max(2_000).exactOptional() })
     .exactOptional(),

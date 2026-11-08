@@ -241,3 +241,54 @@ export function setFollow(apiBase: string, csrf: string, follow: boolean): Promi
 export function carryOver(apiBase: string, version: number): Promise<CarryOver> {
   return call(shellRoute(apiBase, `/carry?version=${String(version)}`), { method: "GET" });
 }
+
+/** The report control (D161): the viewer tells the server's operator about this page. */
+export function report(
+  apiBase: string,
+  csrf: string,
+  input: { readonly reason: string; readonly detail?: string },
+): Promise<unknown> {
+  return call(`${apiBase}/report`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(input),
+  });
+}
+
+/** An anonymous viewer's name for this page, recorded unverified (D165 item 8). */
+export function nameViewer(apiBase: string, csrf: string, name: string | null): Promise<unknown> {
+  return call(`${apiBase}/session/name`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/**
+ * Starts this page's sign-in from the trusted chrome (INTERFACES §18.4): the authorization
+ * server's address, with `state` bound to this route and this shell session.
+ */
+export function signInStart(
+  apiBase: string,
+  csrf: string,
+  challenge: string,
+): Promise<{ readonly url: string; readonly state: string }> {
+  return call(`${apiBase}/session/signin/start`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify({ challenge }),
+  });
+}
+
+/** Finishes this page's sign-in: the session acts as the account from now on. */
+export function signInFinish(
+  apiBase: string,
+  csrf: string,
+  input: { readonly code: string; readonly verifier: string; readonly state: string },
+): Promise<{ readonly viewer: unknown }> {
+  return call(`${apiBase}/session/signin`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(input),
+  });
+}
