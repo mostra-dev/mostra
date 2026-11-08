@@ -837,4 +837,33 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 14,
+    name: "pause, quarantine and the operator's cursor",
+    up(db) {
+      // D165 items 9 and 14 (DATA_MODEL §7.2). A paused artifact keeps a row while paused, and an
+      // operator's pause is removed only by the operator; a quarantine names a route's artifact, or
+      // one version of it, in this home only. The operator's cursor is how far this home's events
+      // were turned into the operator's outbound events (at least once, stable IDs; WP-30).
+      db.exec(`
+        CREATE TABLE artifact_pause (
+          artifact_id TEXT PRIMARY KEY REFERENCES artifact(id),
+          by TEXT NOT NULL CHECK (by IN ('owner', 'operator')),
+          reason TEXT,
+          paused_at TEXT NOT NULL
+        );
+        CREATE TABLE quarantine (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL,
+          at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, version_id)
+        );
+        CREATE TABLE operator_cursor (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          cursor INTEGER NOT NULL CHECK (cursor >= 0)
+        );
+      `);
+    },
+  },
 ];

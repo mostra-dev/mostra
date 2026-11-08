@@ -1,0 +1,524 @@
+/**
+ * The operator ports (HO-09; INTERFACES §18.6; D165 items 7, 9, 14; D167): a real
+ * `mostra-runtime server` loads a fixture operator module (`test/fixtures/operator.mjs`) whose
+ * every port the test drives through its control server, and an owner instance shares to it.
+ * `limits` refuses with its words and, when it doesn't answer, shares fail closed while answers
+ * proceed; `events` and `metering` arrive at least once with stable IDs across a restart;
+ * `abuse.pushed` reads a pushed version and quarantines it; the report control reaches
+ * `abuse.report`; `routing` serves a supplied host and an unknown one gets nothing; `policy`'s
+ * chrome and expiry hold; and the server handle pauses, suspends, revokes, drains and removes,
+ * each acting on one route or home only.
+ */
+import { cpSync } from "node:fs";
+import { request } from "node:http";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { MutationId } from "@mostra/protocol";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { Browser, openLink } from "../browser-client.ts";
+import { GatewayHome, ok } from "../gateway-home.ts";
+import {
+  freePort,
+  ownerEnv,
+  ownerSignIn,
+  type RunningServer,
+  send,
+  startServer,
+  stopServer,
+  testConfig,
+} from "../server-support.ts";
+import { eventually, tempDir } from "../support.ts";
+
+const REVISION = "2026-10-15";
+const OPERATOR = fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url));
+const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts", import.meta.url));
+
+interface Call {
+  readonly port: string;
+  readonly payload: Record<string, unknown>;
+}
+
+/** The fixture operator's control server. */
+function control(port: number) {
+  const ask = (method: string, path: string, body?: unknown) =>
+    new Promise<{ status: number; json: unknown }>((resolve, reject) => {
+      const outgoing = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path,
+          method,
+          headers: { "content-type": "application/json" },
+        },
+        (incoming) => {
+          let text = "";
+          incoming.setEncoding("utf8");
+          incoming.on("data", (chunk: string) => {
+            text += chunk;
+          });
+          incoming.on("end", () =>
+            resolve({ status: incoming.statusCode ?? 0, json: JSON.parse(text || "null") }),
+          );
+        },
+      );
+      outgoing.on("error", reject);
+      if (body !== undefined) outgoing.write(JSON.stringify(body));
+      outgoing.end();
+    });
+  return {
+    set: (state: Record<string, unknown>) => ask("POST", "/state", state),
+    calls: async (port?: string) =>
+      ((await ask("GET", "/calls")).json as Call[]).filter(
+        (call) => port === undefined || call.port === port,
+      ),
+    handle: async (method: string, ...args: unknown[]) => ask("POST", "/handle", { method, args }),
+  };
+}
+
+describe("operator ports (HO-09)", () => {
+  let port: number;
+  let controlPort: number;
+  let server: RunningServer;
+  let data: string;
+  const owner = new GatewayHome();
+  let operator: ReturnType<typeof control>;
+
+  const start = async () => {
+    server = await startServer({
+      data,
+      port,
+      config: testConfig(port, { operator: OPERATOR }),
+      env: {
+        MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
+        MOSTRA_TEST_OPERATOR_DISPATCH_MS: "100",
+        MOSTRA_TEST_METER_WINDOW_MS: "300",
+      },
+    });
+    expect(server.status.status, server.stderr()).toBe("started");
+    operator = control(controlPort);
+  };
+
+  /**
+   * Publishes a fresh copy of a fixture (a new artifact each time), under `once` per viewer so
+   * every browser may answer, and shares it to the server; answers the share or the refusal.
+   */
+  const share = async (fixture = "single-mdx", entry = "page.mdx") => {
+    const dir = join(tempDir(`op-${fixture}`), fixture);
+    cpSync(join(FIXTURES, fixture), dir, { recursive: true });
+    const receipt = ok<{ artifactId: string }>(
+      await owner.client.call(
+        "artifact/publish",
+        {
+          source: { path: entry ? join(dir, entry) : dir },
+          policy: { policy: "once", scope: "per-viewer" },
+        },
+        120_000,
+      ),
+    );
+    const answer = await owner.client.call(
+      "share/start",
+      { artifact: { artifactId: receipt.artifactId }, via: "remote" },
+      60_000,
+    );
+    return { receipt, answer };
+  };
+
+  /** The route of a hosted link (`/a/<routeId>`). */
+  const routeOf = (url: string): string =>
+    (/\/a\/(rte_[0-9A-Z]{26})/.exec(new URL(url).pathname) as RegExpExecArray)[1] as string;
+
+  /** Answers a hosted page's field and submits it through the shell; the submit's answer. */
+  const answer = async (url: string, value: string) => {
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const fields = await browser.fetchJson(opened.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+      body: {
+        mutationId: MutationId.create(),
+        scope: "viewer",
+        baseRevision: "0",
+        viewId: opened.viewId,
+        ops: [{ id: "answer", value }],
+      },
+      csrf: opened.frameCsrf,
+    });
+    expect(fields.status, fields.body).toBe(200);
+    const revision = fields.json<{ revision: string }>().revision;
+    const api = `${new URL(url).pathname}/_mostra`;
+    return {
+      browser,
+      opened,
+      submit: () =>
+        browser.fetchJson(opened.link.shell, `${api}/v/${REVISION}/submit`, {
+          body: { viewId: opened.viewId, expectedRevision: revision },
+          csrf: opened.shellCsrf,
+        }),
+    };
+  };
+
+  beforeAll(async () => {
+    port = await freePort();
+    controlPort = await freePort();
+    data = tempDir("operator-data");
+    await start();
+    await owner.start({ env: ownerEnv(port) });
+    await ownerSignIn(owner.client, port, "Ada");
+  }, 120_000);
+
+  // Every case starts from an operator that allows everything and answers at once.
+  beforeEach(async () => {
+    await operator.set({
+      limits: {},
+      events: "ok",
+      metering: "ok",
+      routing: {},
+      linkHost: null,
+      policy: {},
+      pushed: null,
+    });
+  });
+
+  afterAll(async () => {
+    await owner.stop();
+    await stopServer(server);
+  });
+
+  it("refuses a share with the operator's words, and fails closed while it doesn't answer", async () => {
+    await operator.set({
+      limits: { share: { code: "PLAN_LIMIT", message: "Your plan hosts three pages." } },
+    });
+    const refused = await share();
+    expect(refused.answer.result).toBeUndefined();
+    expect(JSON.stringify(refused.answer.error)).toContain("MOSTRA_REMOTE_LIMIT_REACHED");
+    expect(JSON.stringify(refused.answer.error)).toContain("Your plan hosts three pages.");
+
+    await operator.set({ limits: { share: "hang" } });
+    const started = Date.now();
+    const hung = await share();
+    expect(JSON.stringify(hung.answer.error)).toContain("MOSTRA_REMOTE_OPERATOR_UNAVAILABLE");
+    // The operator has 2 s (INTERFACES §18.6); nothing waited much past it.
+    expect(Date.now() - started).toBeLessThan(15_000);
+    const asked = await operator.calls("limits");
+    expect(asked.some((call) => call.payload["operation"] === "share")).toBe(true);
+    await operator.set({ limits: {} });
+  }, 120_000);
+
+  it("lets views and submissions through while `limits` doesn't answer, and refuses one it refuses", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    await operator.set({ limits: { view: "hang", submit: "hang" } });
+    const page = await answer(url, "through the silence");
+    const submitted = await page.submit();
+    expect(submitted.status, submitted.body).toBe(200);
+
+    await operator.set({
+      limits: {
+        submit: { code: "CLOSED", message: "This page isn't accepting answers right now." },
+      },
+    });
+    const second = await answer(url, "refused");
+    const refused = await second.submit();
+    expect(refused.status).toBe(403);
+    expect(refused.json<{ code: string }>().code).toBe("MOSTRA_REMOTE_LIMIT_REACHED");
+    await operator.set({ limits: {} });
+  }, 120_000);
+
+  it("delivers events and meter batches at least once, with stable IDs across a restart", async () => {
+    await operator.set({ events: "fail", metering: "fail" });
+    const earlierAttempts = (await operator.calls("events.attempt")).length;
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const page = await answer(url, "kept for the operator");
+    const submitted = await page.submit();
+    expect(submitted.status, submitted.body).toBe(200);
+    const submissionId = submitted.json<{ id: string }>().id;
+    // The operator refuses for now: the server keeps trying the oldest event, in order, under
+    // the same ID each time.
+    let tried: string[] = [];
+    await eventually(
+      async () => {
+        tried = (await operator.calls("events.attempt"))
+          .slice(earlierAttempts)
+          .map((call) => String(call.payload["eventId"]));
+        return tried.length >= 2;
+      },
+      30_000,
+      `a retried event (data ${data})`,
+    );
+    expect(tried[1]).toBe(tried[0]);
+    await eventually(
+      async () => (await operator.calls("metering.attempt")).length >= 1,
+      30_000,
+      "a meter batch",
+    );
+
+    // A restart in the middle: what wasn't delivered is still there, under the same IDs.
+    await stopServer(server);
+    await start();
+    await operator.set({ events: "ok", metering: "ok" });
+    await eventually(
+      async () =>
+        (await operator.calls("events")).some(
+          (call) =>
+            call.payload["kind"] === "submission.accepted" &&
+            (call.payload["payload"] as { submission: { id: string } }).submission.id ===
+              submissionId,
+        ),
+      30_000,
+      "the submission's event delivered after the restart",
+    );
+    const deliveredIds = (await operator.calls("events")).map((call) =>
+      String(call.payload["eventId"]),
+    );
+    expect(deliveredIds).toContain(tried[0]);
+    const delivered = (await operator.calls("events")).find(
+      (call) =>
+        call.payload["kind"] === "submission.accepted" &&
+        (call.payload["payload"] as { submission: { id: string } }).submission.id === submissionId,
+    ) as Call;
+    expect(delivered.payload["routeId"]).toBe(routeOf(url));
+    expect(String(delivered.payload["label"])).toMatch(/^[0-9a-hjkmnp-tv-z]{26}$/);
+    const results = delivered.payload["payload"] as { submission: { id: string } };
+    expect(results.submission.id).toBe(submissionId);
+
+    await eventually(
+      async () => (await operator.calls("metering")).length >= 1,
+      30_000,
+      "a meter batch delivered",
+    );
+    const counters = (await operator.calls("metering")).flatMap(
+      (call) => call.payload["counters"] as { name: string; dimensions?: Record<string, string> }[],
+    );
+    const views = counters.filter((counter) => counter.name === "views");
+    expect(views.length).toBeGreaterThan(0);
+    for (const view of views) expect(view.dimensions?.["viewerKey"]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(counters.some((counter) => counter.name === "submissions")).toBe(true);
+    // Every batch ID delivered once is delivered under the ID it was first tried with.
+    const firstTried = (await operator.calls("metering.attempt"))[0]?.payload["batchId"];
+    expect((await operator.calls("metering")).map((call) => call.payload["batchId"])).toContain(
+      firstTried,
+    );
+  }, 180_000);
+
+  it("reads a pushed version, quarantines it on the operator's word, and releases it", async () => {
+    await operator.set({ pushed: "quarantine" });
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    await eventually(
+      async () => (await operator.calls("abuse.pushed")).length > 0,
+      30_000,
+      "the after-push hook",
+    );
+    const pushed = (await operator.calls("abuse.pushed")).at(-1) as Call;
+    expect(pushed.payload["routeId"]).toBe(routeOf(url));
+    expect(Number(pushed.payload["firstFileBytes"])).toBeGreaterThan(0);
+    // Quarantined: no frame, the neutral "under review" answer, the data kept.
+    await eventually(
+      async () => {
+        const browser = new Browser();
+        try {
+          await openLink(browser, url);
+          return false;
+        } catch (error) {
+          return String(error).includes("MOSTRA_REMOTE_UNDER_REVIEW");
+        }
+      },
+      15_000,
+      "the quarantine",
+    );
+    await operator.set({ pushed: undefined });
+    const released = await operator.handle("release", { routeId: routeOf(url) });
+    expect(released.status, JSON.stringify(released.json)).toBe(200);
+    await answer(url, "after the review");
+  }, 120_000);
+
+  it("sends the report control to `abuse.report` and holds `policy`'s chrome and expiry", async () => {
+    await operator.set({
+      policy: {
+        footer: "Never enter passwords on pages sent to you.",
+        afterSubmit: "Your agent can send pages like this.",
+        interstitial: { kind: "external", message: "You are leaving for a page someone sent." },
+      },
+    });
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const api = `${new URL(url).pathname}/_mostra`;
+    const ticket = await browser.fetchJson(opened.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: opened.shellCsrf,
+    });
+    const hosted = ticket.json<{
+      hosted: {
+        footer?: string;
+        afterSubmit?: string;
+        interstitial?: { kind: string };
+        sender?: { name: string };
+      };
+    }>().hosted;
+    expect(hosted.footer).toBe("Never enter passwords on pages sent to you.");
+    expect(hosted.afterSubmit).toBe("Your agent can send pages like this.");
+    expect(hosted.interstitial?.kind).toBe("external");
+    expect(hosted.sender?.name).toBe("Ada");
+
+    const reported = await browser.fetchJson(opened.link.shell, `${api}/report`, {
+      body: { reason: "phishing", detail: "It asks for a bank password." },
+      csrf: opened.shellCsrf,
+    });
+    expect(reported.status, reported.body).toBe(202);
+    const report = (await operator.calls("abuse.report")).at(-1) as Call;
+    expect(report.payload["routeId"]).toBe(routeOf(url));
+    expect(report.payload["reason"]).toBe("phishing");
+
+    // An idle expiry of one second: the link is revoked at its next use, 410.
+    await operator.set({ policy: { idleExpiry: "1s" } });
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    const late = await browser.fetchJson(opened.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: opened.shellCsrf,
+    });
+    expect(late.status, late.body).toBe(410);
+    await operator.set({ policy: {} });
+  }, 120_000);
+
+  it("serves a host the operator supplies, mints links on it, and gives an unknown host nothing", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const routeId = routeOf(url);
+    const home = String(
+      (await operator.calls("limits")).find((call) => call.payload["home"] !== undefined)?.payload[
+        "home"
+      ],
+    );
+    const chosen = `survey.content.localhost:${port}`;
+    const outside = `pages.acme.localhost:${port}`;
+    await operator.set({
+      routing: {
+        [chosen]: { route: { home, routeId } },
+        [outside]: { shell: { domain: outside, home } },
+      },
+      linkHost: outside,
+    });
+    // A link minted now goes on the operator's host, and opens there with its frames under the
+    // operator's domain, framed only by its shells.
+    const { answer: later } = await share();
+    const minted = new URL(ok<{ url: string }>(later).url);
+    expect(minted.host).toBe(outside);
+    const browser = new Browser();
+    const opened = await openLink(browser, minted.href);
+    expect(new URL(opened.frameOrigin).host).toMatch(
+      new RegExp(`^[0-9a-hjkmnp-tv-z]{26}\\.pages\\.acme\\.localhost:${port}$`),
+    );
+    expect(opened.page.header("content-security-policy")).toContain(
+      `frame-ancestors http://${outside}`,
+    );
+    // The operator's domain serves only the routes of the home it was given for, and a host it
+    // answers for is bound to that home forever.
+    const recorded = (await operator.calls("routing.resolve")).map((call) => call.payload["host"]);
+    expect(recorded).toContain(outside);
+    const unknown = await send(port, `stranger.localhost:${port}`, "/a/" + routeId);
+    expect(unknown.status).toBe(421);
+    const unknownLabel = await send(port, `nobody.content.localhost:${port}`, "/");
+    expect(unknownLabel.status).toBe(421);
+    // The chosen label shows the route's shell; another route's path there gets nothing.
+    const page = await send(port, chosen, `/a/${routeId}`);
+    expect(page.status, page.body).toBe(200);
+    const other = await send(port, chosen, "/a/rte_01JB8Z3QF6S7W3N8D5K2C4V9XG");
+    expect(other.status).toBe(404);
+    await operator.set({ routing: {}, linkHost: null });
+  }, 120_000);
+
+  it("pauses, suspends, revokes, drains and removes through the handle, and the owner can't undo an operator's pause", async () => {
+    const { receipt, answer: shared } = await share();
+    const url = ok<{ url: string; tokenId: string }>(shared).url;
+    const routeId = routeOf(url);
+    const artifact = { artifactId: receipt.artifactId };
+
+    // The operator's pause: views keep working and say so, answers are refused with the draft
+    // kept, and only the operator resumes it.
+    const pausedByOperator = await operator.handle("pause", routeId, "Under review");
+    expect(pausedByOperator.status, JSON.stringify(pausedByOperator.json)).toBe(200);
+    const paused = await answer(url, "while paused");
+    const refused = await paused.submit();
+    expect(refused.status).toBe(423);
+    expect(refused.json<{ code: string }>().code).toBe("MOSTRA_SUBMIT_PAUSED");
+    const ticket = await paused.browser.fetchJson(
+      paused.opened.link.shell,
+      `${new URL(url).pathname}/_mostra/ticket`,
+      { body: {}, csrf: paused.opened.shellCsrf },
+    );
+    expect(ticket.json<{ paused?: { by: string } }>().paused?.by).toBe("operator");
+    const undo = await owner.client.call("artifact/pause", { artifact, paused: false }, 30_000);
+    expect(JSON.stringify(undo.error)).toContain("MOSTRA_REMOTE_PAUSED_BY_OPERATOR");
+    expect((await operator.handle("resume", routeId)).status).toBe(200);
+    const after = await paused.submit();
+    expect(after.status, after.body).toBe(200);
+
+    // The owner's own pause, from its instance: the same refusal, and the owner resumes it.
+    const own = ok<{ paused: boolean; by?: string }>(
+      await owner.client.call(
+        "artifact/pause",
+        { artifact, paused: true, reason: "Closed" },
+        30_000,
+      ),
+    );
+    expect(own).toEqual({ paused: true, by: "owner" });
+    const later = await answer(url, "owner paused");
+    expect((await later.submit()).status).toBe(423);
+    ok(await owner.client.call("artifact/pause", { artifact, paused: false }, 30_000));
+    expect((await later.submit()).status).toBe(200);
+
+    // A suspended home serves nothing, and comes back on resumeHome.
+    const home = String(
+      (await operator.calls("limits")).find((call) => call.payload["routeId"] === routeId)?.payload[
+        "home"
+      ],
+    );
+    expect((await operator.handle("suspendHome", home, "Terms")).status).toBe(200);
+    const shellHost = new URL(url).host;
+    const suspended = await send(port, shellHost, `/a/${routeId}`);
+    expect(suspended.status).toBe(403);
+    expect(suspended.body).toContain("MOSTRA_REMOTE_HOME_SUSPENDED");
+    expect((await operator.handle("resumeHome", home)).status).toBe(200);
+    expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(200);
+
+    // A drained home answers "moving" until released.
+    expect((await operator.handle("drainHome", home)).status).toBe(200);
+    const moving = await send(port, shellHost, `/a/${routeId}`);
+    expect(moving.status).toBe(503);
+    expect(moving.body).toContain("MOSTRA_REMOTE_HOME_MOVING");
+    expect((await operator.handle("releaseHome", home)).status).toBe(200);
+    await eventually(
+      async () => (await send(port, shellHost, `/a/${routeId}`)).status === 200,
+      30_000,
+      "the released home",
+    );
+
+    // Revoking: one link, then every link of the route.
+    const second = ok<{ url: string; tokenId: string }>(
+      await owner.client.call("share/start", { artifact, via: "remote" }, 60_000),
+    );
+    expect((await operator.handle("revokeLink", second.tokenId)).status).toBe(200);
+    await expect(openLink(new Browser(), second.url)).rejects.toThrow(/410/);
+    await answer(url, "the first link still works");
+    const revoked = await operator.handle("revokeLinks", routeId);
+    expect((revoked.json as { result: number }).result).toBeGreaterThanOrEqual(1);
+    await expect(openLink(new Browser(), url)).rejects.toThrow(/410/);
+
+    // Removal: the route is gone, its label is never served again.
+    const label = new URL(
+      (
+        await openLink(
+          new Browser(),
+          ok<{ url: string }>(
+            await owner.client.call("share/start", { artifact, via: "remote" }, 60_000),
+          ).url,
+        )
+      ).frameOrigin,
+    ).host;
+    const removed = await operator.handle("remove", routeId);
+    expect(removed.status, JSON.stringify(removed.json)).toBe(200);
+    expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
+    expect((await send(port, label, "/")).status).toBe(421);
+  }, 180_000);
+});

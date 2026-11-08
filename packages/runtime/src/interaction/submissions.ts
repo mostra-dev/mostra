@@ -339,7 +339,19 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   if (repeat)
     return { submission: { ...submissionSummary(db, repeat), duplicate: true }, created: false };
 
-  // 2. The policy in force.
+  // 2. The policy in force, and whether the artifact takes answers now: a paused one takes none
+  // until resumed, whoever paused it, and the draft stays as it was (D165 item 14).
+  const paused = db.get<{ by: string }>(
+    "SELECT by FROM artifact_pause WHERE artifact_id = ?",
+    input.artifactId,
+  );
+  if (paused) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_SUBMIT_PAUSED", {
+        message: `This page is paused${paused.by === "operator" ? " by its server's operator" : ""}: it takes no answers until it is resumed, and the draft is kept.`,
+      }),
+    );
+  }
   const artifact = db.get<{ policy_json: string | null; latest_version_id: string | null }>(
     "SELECT policy_json, latest_version_id FROM artifact WHERE id = ?",
     input.artifactId,

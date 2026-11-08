@@ -12,6 +12,7 @@ import {
   type EventRecord,
   FieldsRequest,
   FollowRequest,
+  type Refusal,
   RpcError,
   refusal,
   ShellSubmitRequest,
@@ -64,6 +65,8 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_HOME_DISK_FULL: 507,
   MOSTRA_HOME_GONE: 503,
   MOSTRA_HYGIENE_SCOPE_DENIED: 403,
+  // A paused artifact takes no answers (D165 item 14).
+  MOSTRA_SUBMIT_PAUSED: 423,
 };
 
 /** Options for {@link browserRoutes}. */
@@ -86,6 +89,14 @@ export interface BrowserRoutesOptions {
    * without an `id`, a poll as its `ephemeral` (LL-04). Absent: neither carries any.
    */
   readonly bus?: EphemeralBus;
+  /**
+   * Before a submit, from the frame or the shell (a remote server's, D165 item 13): a refusal (with
+   * when to try again) keeps the draft; nothing is recorded. Absent: every submit goes on.
+   */
+  readonly admitSubmit?: (
+    page: PageIdentity,
+    context: RouteContext,
+  ) => Promise<(Refusal & { readonly retryAfter?: number }) | undefined>;
   /** Tells a host with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: (event: {
     readonly artifactId: string;
@@ -208,6 +219,19 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     };
   };
 
+  /** The answer to a submit the server's rules refused before it reached the ledger. */
+  const admit = async (context: RouteContext): Promise<Response | undefined> => {
+    if (!options.admitSubmit) return undefined;
+    const refused = await options.admitSubmit(pageOf(context), context);
+    if (!refused) return undefined;
+    return jsonResponse(refused.diagnostic, {
+      status: refused.status,
+      ...(refused.retryAfter !== undefined
+        ? { headers: { "retry-after": String(refused.retryAfter) } }
+        : {}),
+    });
+  };
+
   /** The view a stream or poll is for, checked against the page (D104). */
   const viewOf = (context: RouteContext, page: PageIdentity): Response | undefined => {
     const view = new URL(context.request.url).searchParams.get("view");
@@ -252,6 +276,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, SubmitRequest);
     if (request instanceof Response) return request;
+    const admitted = await admit(context);
+    if (admitted) return admitted;
     try {
       return jsonResponse(
         interaction.submit(pageOf(context), {
@@ -562,6 +588,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, ShellSubmitRequest);
     if (request instanceof Response) return request;
+    const admitted = await admit(context);
+    if (admitted) return admitted;
     const page = pageOf(context);
     let submission: SubmissionSummary & { readonly duplicate?: true };
     try {

@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
 import * as z from "zod";
 import type { Environment } from "../log.ts";
+import { validProxies } from "./clients.ts";
 
 /** A rate: `count` per `per` (a duration such as `1m`, as links' lifetimes are written). */
 const RateSchema: z.ZodType<Rate> = z.object({
@@ -212,6 +213,12 @@ export function readServerConfig(file: string | undefined, env: Environment): Re
   if (domains.some((domain) => domain === api || api.endsWith(`.${domain}`))) {
     throw invalid(
       "The configuration key `apiOrigin` can't be on a user-content domain: sign-in and the binding live apart from tenant pages (D165 item 7).",
+    );
+  }
+  const proxy = validProxies(config.trustedProxies ?? []);
+  if (proxy !== undefined) {
+    throw invalid(
+      `The configuration key \`trustedProxies\` names ${JSON.stringify(proxy)}, which is neither an address nor a CIDR block.`,
     );
   }
   if (new Set(domains).size !== domains.length) {

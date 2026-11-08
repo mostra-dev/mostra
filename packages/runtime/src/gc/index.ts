@@ -213,6 +213,11 @@ export const EXEMPT_COLUMNS: readonly ExemptColumn[] = [
     column: "schema_migration.runtime_version",
     reason: "the runtime release that ran a migration",
   },
+  {
+    column: "quarantine.version_id",
+    reason:
+      "an operator's quarantine of a hosted version (WP-30), which withholds it and keeps nothing; a hosted home runs no gc",
+  },
 ];
 
 /** The versions some source keeps. */

@@ -10,6 +10,7 @@
 import {
   CallRequest,
   type CapabilityScope,
+  createDiagnostic,
   type Diagnostic,
   LiveRequest,
   RpcError,
@@ -152,6 +153,21 @@ export function actionRoutes(options: ActionRoutesOptions): ActionRoutes {
   const may = (page: PageIdentity, fnId: string): boolean =>
     scopeAllows(page.scopes ?? [], `action:${fnId}` as CapabilityScope);
 
+  /**
+   * A paused artifact runs no actions (D165 item 14): a call or a new run is refused before
+   * anything is recorded, started or relayed to the owner.
+   */
+  const paused = (page: PageIdentity): Response | undefined => {
+    const pause = interaction.pauseOf(page.artifactId);
+    if (!pause) return undefined;
+    return answer(
+      createDiagnostic("MOSTRA_ACTION_PAUSED", {
+        message: `This page is paused${pause.by === "operator" ? " by its server's operator" : ""}: its actions don't run until it is resumed.`,
+      }),
+      423,
+    );
+  };
+
   return {
     async call(context) {
       const refused = served(context);
@@ -162,6 +178,8 @@ export function actionRoutes(options: ActionRoutesOptions): ActionRoutes {
       const page = pageOf(context);
       // The route checked `action:<fnId>` already (D97 item 4); this keeps the rule in one place.
       if (!may(page, fnId)) return denied(fnId);
+      const pausedNow = paused(page);
+      if (pausedNow) return pausedNow;
       let lines: AsyncIterable<unknown>;
       const abort = new AbortController();
       context.request.signal.addEventListener("abort", () => abort.abort(), { once: true });
@@ -215,6 +233,8 @@ export function actionRoutes(options: ActionRoutesOptions): ActionRoutes {
       if (request instanceof Response) return request;
       const page = pageOf(context);
       if (!may(page, request.fnId)) return denied(request.fnId);
+      const pausedNow = paused(page);
+      if (pausedNow) return pausedNow;
       try {
         return jsonResponse(
           actions.startRun(page, {

@@ -14,6 +14,7 @@ export const actionDiagnosticCodes = [
   "MOSTRA_ACTION_TOO_LARGE",
   "MOSTRA_ACTION_RUN_NOT_FOUND",
   "MOSTRA_ACTION_EVENT_INVALID",
+  "MOSTRA_ACTION_PAUSED",
   // gen:codes
 ] as const;
 
@@ -119,6 +120,17 @@ export const actionDiagnostics: AreaCatalog<ActionDiagnosticCode> = {
       explanation:
         "Server code called `emit(type, payload)` from `@mostra/server` with a type that isn't `host.` followed by a name, or a payload that isn't JSON or is larger than 64 KiB. The event is not appended; `emit` throws.",
       fix: "Use a type such as `host.reply-sent` and a small JSON payload. Put larger data in artifact state or a live source and send its key in the event.",
+    },
+  },
+  MOSTRA_ACTION_PAUSED: {
+    severity: "error",
+    phase: "host",
+    title: "Artifact paused, no actions run",
+    hint: "Wait until the page is resumed, then run the action again.",
+    docs: {
+      explanation:
+        "The artifact is paused, so its actions don't run: the run or call was refused before anything was recorded or sent to the owner's machine.",
+      fix: "The owner resumes it with `mostra resume <artifact>`; a pause by the server's operator is resumed only by the operator.",
     },
   },
   // gen:entries

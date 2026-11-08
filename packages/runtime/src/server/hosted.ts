@@ -19,6 +19,7 @@ import {
   ArtifactManifest,
   artifactGetMethod,
   artifactListMethod,
+  artifactPauseMethod,
   createDiagnostic,
   type HostedPushParams,
   type HostedPushResult,
@@ -26,9 +27,11 @@ import {
   hostedPushMethod,
   hostedSubmissionMethod,
   type InstanceInfo,
+  type PausedBy,
   RouteId,
   RpcError,
   remoteTokenMethod,
+  viewUrlMethod,
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
 import { coverageMatcher, readFieldCoverage, readServerFunctions } from "../builder/index.ts";
@@ -45,12 +48,25 @@ import { createEphemeralBus, createInteraction, type Interaction } from "../inte
 import type { Ledger } from "../ledger/index.ts";
 import { createLive, liveMethods } from "../live/index.ts";
 import type { Log } from "../log.ts";
-import { handler, ProtocolServer, type Session } from "../protocol-server/index.ts";
+import { removeTree } from "../platform/index.ts";
+import {
+  handler,
+  type MethodHandler,
+  ProtocolServer,
+  type Session,
+} from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
 import type { Authorization } from "./auth.ts";
+import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import { rotateIncarnation } from "./data.ts";
+import { createOperatorFeed, type OperatorFeed } from "./feed.ts";
+import { type HomeOwner, type HostedPagesOptions, hostedPages } from "./hosted-pages.ts";
+import type { Meter } from "./metering.ts";
+import type { Operator } from "./operator.ts";
 import { createHostedRelay } from "./relay.ts";
+import { purgeArtifact } from "./remove.ts";
+import type { Routing } from "./routing.ts";
 
 /** Lower-case Crockford base32, for route labels (one DNS label, 130 bits). */
 const LABEL_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -96,6 +112,25 @@ export interface HostedHome {
   wanted(sha256: string): boolean;
   /** Records a file this home uploaded (`PUT /files/<sha256>`, §18.2). */
   uploaded(sha256: string): void;
+  /** Pauses or resumes an artifact as its owner or the operator (D165 item 14). */
+  pause(
+    artifactId: string,
+    change: { readonly paused: boolean; readonly by: PausedBy; readonly reason?: string },
+  ): { readonly paused: boolean; readonly by?: PausedBy };
+  /** Quarantines an artifact, or one version of it, here only (D165 item 9). */
+  quarantine(artifactId: string, versionId: string | undefined, reason: string): void;
+  /** Ends a quarantine: the artifact's, or one version's. */
+  release(artifactId: string, versionId: string | undefined): void;
+  /** Revokes every live link of an artifact; answers how many were live. */
+  revokeLinks(artifactId: string): number;
+  /** Revokes one link; `false` when this home has no such link. */
+  revokeLink(tokenId: string): boolean;
+  /**
+   * Removes an artifact and everything of it from this home (`ServerHandle.remove`): its rows, its
+   * version files no other version of the home names, and its route; its label is kept issued
+   * forever, never served again (DATA_MODEL §7.5).
+   */
+  remove(artifactId: string): Promise<{ readonly rows: number }>;
   /** Whether a binding is open, a stream or poll is served, or a delivery waits. */
   busy(): boolean;
   /**
@@ -141,6 +176,24 @@ export interface HostedHomeOptions {
     /** `rateLimits.perLink.relayedRuns`, in milliseconds. */
     readonly perLink?: { readonly count: number; readonly perMs: number } | undefined;
   };
+  /** What the server lends every hosted home: its operator, client addresses and rates (WP-30). */
+  readonly services?: HostedServices;
+}
+
+/** What the server lends every hosted home (WP-30). */
+export interface HostedServices {
+  readonly operator: Operator;
+  readonly clients: ClientAddresses;
+  readonly rates: RateLimiter;
+  readonly rateLimits: HostedPagesOptions["rateLimits"];
+  /** Who owns a home, as its pages' sender line names them. */
+  readonly owner: (homeId: string) => HomeOwner;
+  readonly signInOffered: () => boolean;
+  readonly madeWith?: { readonly href?: string } | undefined;
+  /** The server's routing by exact `Host`: operator hosts, their frames and link hosts (D167). */
+  readonly routing: Routing;
+  /** The server's meter: views here, submissions through the operator feed. */
+  readonly meter: Meter;
 }
 
 function refuse(code: Parameters<typeof createDiagnostic>[0], message: string): RpcError {
@@ -271,13 +324,37 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     );
   const domains = [options.domains.active, ...options.domains.spares];
   const originOf = (host: string): string => `${options.scheme}://${host}`;
+  /** The host of one of this server's origins, or `undefined` for another scheme. */
+  const hostOfOrigin = (origin: string): string | undefined =>
+    origin.startsWith(`${options.scheme}://`) ? origin.slice(options.scheme.length + 3) : undefined;
+  /** Whether a shell origin is this home's: a configured apex, or an operator host of it. */
+  const servesShell = (origin: string): boolean => {
+    const host = hostOfOrigin(origin);
+    if (host === undefined) return false;
+    return options.services
+      ? options.services.routing.servesShell(id, host)
+      : domains.includes(host);
+  };
   const capabilities: Capabilities = new Capabilities({
     ledger,
     log,
     key: capabilityKey(dir, log),
     now: () => Date.now(),
     shellOrigin: () => originOf(options.domains.active),
-    servesShell: (origin) => domains.some((domain) => originOf(domain) === origin),
+    servesShell,
+    // Every hosted link is indexed in the directory, so the operator's `revokeLink` finds its home.
+    onMinted: ({ tokenId, artifactId }) => {
+      const route = routeOf(artifactId);
+      if (!route) return;
+      directory.write((db) =>
+        db.run(
+          "INSERT OR IGNORE INTO hosted_token (token_id, home_id, route_id) VALUES (?, ?, ?)",
+          tokenId,
+          id,
+          route.id,
+        ),
+      );
+    },
   });
   // A hosted home binds nothing: its faces are served through the front. These answer the few
   // questions the gateway asks of loopback addressing, none of which a hosted face reaches.
@@ -382,13 +459,67 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     activated: () => undefined,
     hosted: {
       shellOrigin: () => originOf(options.domains.active),
-      servesShell: (origin) => domains.some((domain) => originOf(domain) === origin),
+      servesShell,
       shellPath: (artifactId) => `/a/${routeOf(artifactId)?.id ?? artifactId}`,
       artifactOrigin: (artifactId, shellOrigin) => {
         const route = routeOf(artifactId);
-        const domain = domains.find((candidate) => originOf(candidate) === shellOrigin);
-        return route && domain ? originOf(`${route.label}.${domain}`) : undefined;
+        const host = hostOfOrigin(shellOrigin);
+        if (!route || host === undefined) return undefined;
+        const frameDomain = options.services
+          ? options.services.routing.frameDomainOf(id, route.id, host)
+          : domains.includes(host)
+            ? host
+            : undefined;
+        return frameDomain === undefined ? undefined : originOf(`${route.label}.${frameDomain}`);
       },
+      ...(options.services
+        ? {
+            // A new link goes on the operator's host for it when it names one that serves this
+            // route (D167, `routing.linkHost`), else on the active domain.
+            linkOrigin: async (artifactId: string) => {
+              const services = options.services as HostedServices;
+              const route = routeOf(artifactId);
+              if (!route || !services.operator.has.linkHost) return undefined;
+              const wanted = await services.operator.linkHost({
+                account: services.owner(id).account,
+                home: id,
+                routeId: route.id,
+              });
+              if (wanted === null) return undefined;
+              const host = await services.routing.linkHost(id, route.id, wanted);
+              return host === undefined ? undefined : originOf(host);
+            },
+            frameAncestors: (artifactId: string, frameOrigin: string) => {
+              const route = routeOf(artifactId);
+              const host = hostOfOrigin(frameOrigin);
+              if (!route || host === undefined) return "";
+              const frameDomain = host.slice(host.indexOf(".") + 1);
+              return (options.services as HostedServices).routing
+                .ancestorsOf(id, route.id, frameDomain)
+                .map(originOf)
+                .join(" ");
+            },
+          }
+        : {}),
+      ...(options.services
+        ? hostedPages({
+            homeId: id,
+            ledger,
+            interaction,
+            capabilities,
+            artifact: (artifactId) => registry.get({ artifactId }),
+            routeOf,
+            owner: () => (options.services as HostedServices).owner(id),
+            signInOffered: options.services.signInOffered,
+            operator: options.services.operator,
+            clients: options.services.clients,
+            rates: options.services.rates,
+            rateLimits: options.services.rateLimits,
+            madeWith: options.services.madeWith,
+            viewed: (input) => metered(input.artifactId, input.viewerId),
+            log,
+          })
+        : {}),
     },
   });
   /** The faces of a domain: its shell, and a route's frames, opened when first asked for. */
@@ -469,6 +600,98 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       ),
     );
 
+  /**
+   * Quarantines a route's artifact, or one version of it, in this home only (D165 item 9): its
+   * links show the neutral "under review" page and its files are withheld; data is kept. An
+   * identical version in another home is untouched, since the row is this home's.
+   */
+  const quarantine = (artifactId: string, versionId: string | undefined, reason: string): void => {
+    ledger.write((db) =>
+      db.run(
+        `INSERT INTO quarantine (artifact_id, version_id, reason, at) VALUES (?, ?, ?, ?)
+           ON CONFLICT (artifact_id, version_id) DO UPDATE SET reason = excluded.reason`,
+        artifactId,
+        versionId ?? "",
+        reason.slice(0, 1_000),
+        new Date().toISOString(),
+      ),
+    );
+    log.info("server.quarantined", { home: id, artifactId, versionId: versionId ?? null });
+  };
+
+  /**
+   * `view/url` on a hosted home under the operator's `limits` (`link`): refused with its words, and
+   * refused for now when the operator doesn't answer, since a link creates something (D165 item 9).
+   */
+  const limitedLinks = (method: MethodHandler): MethodHandler => ({
+    definition: method.definition,
+    async handle(params, session) {
+      const services = options.services;
+      if (services) {
+        const ref = (params as { artifact?: unknown }).artifact;
+        const artifactId = registry.get(canonicalRef(ref as never)).id;
+        const route = routeOf(artifactId);
+        const verdict = await services.operator.limit({
+          account: services.owner(id).account,
+          home: id,
+          artifact: artifactId,
+          ...(route ? { routeId: route.id } : {}),
+          operation: "link",
+        });
+        if (verdict.allowed === "unavailable") {
+          throw refuse(
+            "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+            "The server's operator didn't answer in time; try minting the link again.",
+          );
+        }
+        if (verdict.allowed === false) throw refuse("MOSTRA_REMOTE_LIMIT_REACHED", verdict.message);
+      }
+      return method.handle(params, session);
+    },
+  });
+
+  /**
+   * A view for metering, under the viewer's monthly pseudonymous key (D167): the account for a
+   * signed-in viewer, the viewer for a link minted with one, the route's key for anyone else.
+   */
+  const metered = (artifactId: string, viewerId: string): void => {
+    const meter = options.services?.meter;
+    if (!meter?.on) return;
+    const viewer = ledger.read((db) =>
+      db.get<{ kind: string; external_ref: string | null }>(
+        "SELECT kind, external_ref FROM viewer WHERE id = ?",
+        viewerId,
+      ),
+    );
+    const subject =
+      viewer?.kind === "account" || viewer?.kind === "anonymous"
+        ? `${viewer.kind}:${viewer.external_ref ?? viewerId}`
+        : `viewer:${id}:${viewerId}`;
+    const route = routeOf(artifactId);
+    meter.add("views", {
+      account: (options.services as HostedServices).owner(id).account,
+      home: id,
+      artifactId,
+      ...(route ? { routeId: route.id } : {}),
+      dimensions: { viewerKey: meter.viewerKey(subject) },
+    });
+  };
+
+  /** The live links of an artifact, revoked; answers how many were live. */
+  const revokeLinks = (artifactId: string): number => {
+    const tokens = ledger.read((db) =>
+      db
+        .all<{ id: string }>(
+          "SELECT id FROM token WHERE artifact_id = ? AND revoked_at IS NULL",
+          artifactId,
+        )
+        .map((row) => row.id),
+    );
+    let revoked = 0;
+    for (const tokenId of tokens) if (capabilities.revoke(tokenId) === "revoked") revoked += 1;
+    return revoked;
+  };
+
   const push = async (params: HostedPushParams, session: Session): Promise<HostedPushResult> => {
     const link = session.link?.instanceId;
     if (link === undefined || session.attributes["linkId"] !== link) {
@@ -527,6 +750,24 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     if (!manifest.success)
       throw refuse("MOSTRA_HOME_INTEGRITY", "The pushed artifact manifest isn't valid.");
 
+    const services = options.services;
+    // A first push hosts the artifact: the operator's `limits` judge it as a share, failing
+    // closed when it doesn't answer (D165 item 9).
+    if (services && routeOf(params.artifactId) === undefined) {
+      const verdict = await services.operator.limit({
+        account: services.owner(id).account,
+        home: id,
+        artifact: params.artifactId,
+        operation: "share",
+      });
+      if (verdict.allowed === "unavailable") {
+        throw refuse(
+          "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+          "The server's operator didn't answer in time; the share is tried again later.",
+        );
+      }
+      if (verdict.allowed === false) throw refuse("MOSTRA_REMOTE_LIMIT_REACHED", verdict.message);
+    }
     const route = routeFor(params.artifactId, link);
     if (registry.hasVersion(version.versionId)) {
       const known = registry
@@ -541,6 +782,31 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     }
     // Only client files are stored: server code never reaches the server (D165 item 3).
     const clientFiles = version.listing.filter(([path]) => path.startsWith("client/"));
+    // The operator's `limits` on a push and the bytes it stores: refused for good with its words,
+    // and refused for now (fail closed) when the operator doesn't answer (D165 item 9).
+    if (services) {
+      const owner = services.owner(id).account;
+      for (const [operation, quantity] of [
+        ["version.push", 1],
+        ["storage", clientFiles.reduce((sum, [, , , size]) => sum + size, 0)],
+      ] as const) {
+        const verdict = await services.operator.limit({
+          account: owner,
+          home: id,
+          artifact: params.artifactId,
+          routeId: route.routeId,
+          operation,
+          quantity,
+        });
+        if (verdict.allowed === "unavailable") {
+          throw refuse(
+            "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+            "The server's operator didn't answer in time; the push is tried again later.",
+          );
+        }
+        if (verdict.allowed === false) throw refuse("MOSTRA_REMOTE_LIMIT_REACHED", verdict.message);
+      }
+    }
     const missing = missingOf([...new Set(clientFiles.map(([, , sha]) => sha))]);
     if (missing.length > 0) {
       pending.set(version.versionId, new Set(missing));
@@ -615,6 +881,31 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       artifactId: params.artifactId,
       versionId: version.versionId,
     });
+    // The operator's after-push hook reads the client files; its answer can quarantine the
+    // version afterwards, never holding up serving it (D165 item 9).
+    if (services?.operator.has.pushed) {
+      const files = clientFiles.map(([path]) => path);
+      const shaOf = new Map(clientFiles.map(([path, , sha]) => [path, sha]));
+      services.operator.pushed(
+        {
+          routeId: route.routeId,
+          label: route.label,
+          artifactId: params.artifactId,
+          home: id,
+          versionId: version.versionId,
+          manifest: manifest.data,
+          files,
+          read: async (path) => {
+            const sha = shaOf.get(path);
+            if (sha === undefined) throw new Error(`No client file ${path} in this version.`);
+            return new Uint8Array(await readFile(join(options.filesDir, sha)));
+          },
+        },
+        async (reason) => {
+          quarantine(params.artifactId, version.versionId, reason);
+        },
+      );
+    }
     return { status: "complete", versionId: version.versionId, number: committed.version, route };
   };
 
@@ -726,7 +1017,21 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         }
         return envelope;
       }),
-      ...gateway.methods(),
+      ...gateway
+        .methods()
+        .map((method) =>
+          method.definition.method === viewUrlMethod.method ? limitedLinks(method) : method,
+        ),
+      handler(artifactPauseMethod, (params) => {
+        // The account's own instances pause and resume as the owner; only the operator, through
+        // its handle, resumes an operator's pause (D165 item 14).
+        const artifactId = registry.get(canonicalRef(params.artifact)).id;
+        return interaction.pause(artifactId, {
+          paused: params.paused,
+          by: "owner",
+          ...(params.reason !== undefined ? { reason: params.reason } : {}),
+        });
+      }),
       ...relay.methods(),
       ...liveMethods(live, (ref) => registry.get(canonicalRef(ref)).id),
       handler(remoteTokenMethod, (params, session) => {
@@ -747,6 +1052,20 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   });
   interaction.start();
   live.start();
+  // The operator's feed of this home's events, and its submissions for metering (§18.6).
+  const feed: OperatorFeed | undefined = options.services
+    ? createOperatorFeed({
+        homeId: id,
+        ledger,
+        interaction,
+        operator: options.services.operator,
+        meter: options.services.meter,
+        account: () => (options.services as HostedServices).owner(id).account,
+        routeOf,
+        incarnation: () => incarnation,
+        log,
+      })
+    : undefined;
 
   return {
     id,
@@ -773,9 +1092,80 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       });
       for (const files of pending.values()) files.delete(sha);
     },
+    pause: (artifactId, change) => interaction.pause(artifactId, change),
+    quarantine,
+    release(artifactId, versionId) {
+      ledger.write((db) =>
+        db.run(
+          versionId === undefined
+            ? "DELETE FROM quarantine WHERE artifact_id = ?"
+            : "DELETE FROM quarantine WHERE artifact_id = ? AND version_id = ?",
+          ...(versionId === undefined ? [artifactId] : [artifactId, versionId]),
+        ),
+      );
+    },
+    revokeLinks,
+    revokeLink: (tokenId) => capabilities.revoke(tokenId) !== "unknown",
+    async remove(artifactId) {
+      const versions = registry.get({ artifactId }).versions.map((version) => version.id);
+      /** The client files a version's listing names. */
+      const clientFilesOf = async (versionId: string): Promise<string[]> => {
+        try {
+          const listing = JSON.parse(
+            await readFile(join(registry.store.versionDir(versionId), "listing.json"), "utf8"),
+          ) as [string, boolean, string, number][];
+          return listing.filter(([path]) => path.startsWith("client/")).map(([, , sha]) => sha);
+        } catch {
+          return [];
+        }
+      };
+      const going = new Set<string>();
+      for (const versionId of versions)
+        for (const sha of await clientFilesOf(versionId)) going.add(sha);
+      revokeLinks(artifactId);
+      const removed = ledger.removal((db) => purgeArtifact(db, artifactId));
+      // Files another version of this home still names stay this home's.
+      const kept = new Set<string>();
+      for (const other of registry.list({})) {
+        for (const version of registry.get({ artifactId: other.id }).versions) {
+          for (const sha of await clientFilesOf(version.id)) kept.add(sha);
+        }
+      }
+      const route = routeOf(artifactId);
+      directory.write((db) => {
+        for (const sha of going) {
+          if (kept.has(sha)) continue;
+          if (
+            db.run("DELETE FROM home_file WHERE home_id = ? AND sha256 = ?", id, sha).changes > 0
+          ) {
+            db.run(
+              `UPDATE file_ref SET homes = homes - 1,
+                 unreferenced_at = CASE WHEN homes - 1 = 0 THEN ? ELSE NULL END
+               WHERE sha256 = ?`,
+              new Date().toISOString(),
+              sha,
+            );
+          }
+        }
+        if (route) {
+          db.run("DELETE FROM hosted_token WHERE route_id = ?", route.id);
+          // The route goes; its label stays in `label_issued`, never issued again.
+          db.run("DELETE FROM artifact_route WHERE id = ?", route.id);
+        }
+      });
+      for (const versionId of versions) {
+        await removeTree(registry.store.versionDir(versionId)).catch((error: unknown) =>
+          log.warn("server.remove_files_failed", { versionId, error }),
+        );
+      }
+      const rows = Object.values(removed).reduce((sum, count) => sum + count, 0);
+      log.info("server.artifact_removed", { home: id, artifactId, rows });
+      return { rows };
+    },
     busy: () => protocol.connections > 0 || bus.activeViews() > 0 || relay.busy(),
     serve,
     async stop() {
+      feed?.stop();
       relay.stop();
       live.stop();
       interaction.stop();

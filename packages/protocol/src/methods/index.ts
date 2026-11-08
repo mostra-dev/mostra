@@ -9,6 +9,7 @@ import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
 import { artifactImportMethod } from "./artifact/import.ts";
 import { artifactListMethod } from "./artifact/list.ts";
+import { artifactPauseMethod } from "./artifact/pause.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
 import { depsAddMethod } from "./deps/add.ts";
@@ -124,6 +125,7 @@ export const hostMethods: readonly AnyMethod[] = [
   portRelayLiveMethod,
   relayLiveValueMethod,
   hostedSubmissionMethod,
+  artifactPauseMethod,
   // gen:methods
 ];
 

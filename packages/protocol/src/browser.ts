@@ -237,7 +237,57 @@ export interface FrameTicket extends ViewContext {
    * (D70, D158 item 5). Absent: cookie mode.
    */
   readonly mode?: "worker";
+  /**
+   * The artifact is paused (D165 item 14): the shell says so, by whom and why (the reason as text);
+   * it takes no submissions and runs no actions until it is resumed (WP-30).
+   */
+  readonly paused?: { readonly by: "owner" | "operator"; readonly reason?: string };
+  /** On a remote server: what the hosted shell's trusted chrome shows around the page (D161). */
+  readonly hosted?: HostedChrome;
 }
+
+/**
+ * The hosted shell's trusted chrome for one view (D161, ARCHITECTURE §15.8; WP-30). Every string an
+ * owner or operator supplies is rendered as text, never as markup.
+ */
+export interface HostedChrome {
+  /** Who sent the page: the owner's display name, and the provider that verified it, if any. */
+  readonly sender?: { readonly name: string; readonly verifiedBy?: string };
+  /** Who this browser is to the page: signed in as an account, or anonymous (with a chosen name). */
+  readonly viewer: {
+    readonly kind: "account" | "anonymous" | "named";
+    readonly name?: string;
+    readonly verified: boolean;
+  };
+  /** Whether "Sign in" is offered (the viewer isn't signed in, and the server has a provider). */
+  readonly signIn: boolean;
+  /** The operator's footer wording in place of the shell's own; never hidden on a public link. */
+  readonly footer?: string;
+  /** The operator's line after "Your answer was sent.". */
+  readonly afterSubmit?: string;
+  /** The made-with mark, where the operator shows one. */
+  readonly madeWith?: { readonly href?: string };
+  /** A page shown before the artifact, once per browser and link. */
+  readonly interstitial?: { readonly kind: string; readonly message?: string };
+}
+
+const HostedChrome: z.ZodType<HostedChrome> = z.object({
+  sender: z
+    .object({ name: z.string().max(256), verifiedBy: z.string().max(64).exactOptional() })
+    .exactOptional(),
+  viewer: z.object({
+    kind: z.enum(["account", "anonymous", "named"]),
+    name: z.string().max(256).exactOptional(),
+    verified: z.boolean(),
+  }),
+  signIn: z.boolean(),
+  footer: z.string().max(500).exactOptional(),
+  afterSubmit: z.string().max(500).exactOptional(),
+  madeWith: z.object({ href: z.string().max(2_048).exactOptional() }).exactOptional(),
+  interstitial: z
+    .object({ kind: z.string().max(64), message: z.string().max(2_000).exactOptional() })
+    .exactOptional(),
+});
 
 /** The Zod schema of the `FrameTicket` type. */
 export const FrameTicket: z.ZodType<FrameTicket> = z
@@ -257,6 +307,13 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
     serverParked: z.literal(true).exactOptional(),
     devPreview: z.literal(true).exactOptional(),
     mode: z.literal("worker").exactOptional(),
+    paused: z
+      .object({
+        by: z.enum(["owner", "operator"]),
+        reason: z.string().max(500).exactOptional(),
+      })
+      .exactOptional(),
+    hosted: HostedChrome.exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",

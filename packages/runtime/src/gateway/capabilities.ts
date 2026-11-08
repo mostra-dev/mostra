@@ -261,6 +261,11 @@ export interface CapabilitiesOptions {
    * face, a host's): a launch ticket is only minted for a link whose address is served.
    */
   readonly servesShell?: (origin: string) => boolean;
+  /**
+   * Told each token minted, after its row is written (a remote server indexes its hosted homes'
+   * links, so its operator's `revokeLink` finds a link's home, WP-30).
+   */
+  readonly onMinted?: (token: { readonly tokenId: string; readonly artifactId: string }) => void;
 }
 
 /** What a stream ticket opens (D158 item 5). */
@@ -274,6 +279,7 @@ export class Capabilities {
   readonly #now: () => number;
   readonly #shellOrigin: () => string;
   readonly #servesShell: (origin: string) => boolean;
+  readonly #onMinted: CapabilitiesOptions["onMinted"];
   /** Single-use stream and socket tickets (D158 item 5), by the SHA-256 of their secret. */
   readonly #streamTickets = new Map<
     string,
@@ -304,6 +310,7 @@ export class Capabilities {
     this.#now = options.now;
     this.#shellOrigin = options.shellOrigin;
     this.#servesShell = options.servesShell ?? ((origin) => origin === this.#shellOrigin());
+    this.#onMinted = options.onMinted;
   }
 
   /** Runs `fn` in the caller's transaction, or in a new one. */
@@ -359,6 +366,7 @@ export class Capabilities {
       input.pinnedVersion ?? null,
       shellOrigin,
     );
+    this.#onMinted?.({ tokenId, artifactId: input.artifactId });
     return {
       tokenId,
       secret,

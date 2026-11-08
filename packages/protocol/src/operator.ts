@@ -425,11 +425,11 @@ export const ChatHostPolicy: z.ZodType<ChatHostPolicy> = z.object({
  * `routing.resolve`'s answer for an exact `Host` the server doesn't serve by itself (any host but
  * a configured user-content domain's apex and its routes' labels):
  *
- * - `shell`: the host shows the hosted shell (`/a/<routeId>`), whose frames are served on
- *   `<route label>.<domain>`. `domain` is a configured user-content domain, or one the operator
- *   supplies (an organization's own, whose TLS the operator's edge terminates, for which the
- *   operator answers `shell` for its apex and every label under it). `home` limits the host to one
- *   home's routes.
+ * - `shell`: the host shows the hosted shell (`/a/<routeId>`) for one home's routes, whose frames
+ *   are served on `<route label>.<domain>`. `domain` is a configured user-content domain, or one
+ *   the operator supplies (an organization's own, whose TLS the operator's edge terminates for the
+ *   host and every label under `domain`); the server serves those labels once the host is
+ *   recorded, without asking again.
  * - `route`: the host shows the shell of one route only (`/a/<routeId>`), with its frames on its
  *   label under the active domain: a chosen, readable name.
  * - `null`: nothing is served (421).
@@ -438,20 +438,24 @@ export const ChatHostPolicy: z.ZodType<ChatHostPolicy> = z.object({
  * forever: never issued to another home, so no origin's storage passes between tenants (D165).
  */
 export type RoutingAnswer =
-  | ({ readonly shell: { readonly domain: string; readonly home?: string } } & Cacheable)
+  | ({ readonly shell: { readonly domain: string; readonly home: string } } & Cacheable)
   | ({ readonly route: { readonly home: string; readonly routeId: string } } & Cacheable)
   | null;
 
+/**
+ * A host name of at least two labels, lower case; a port only as a local test server's hosts carry
+ * one (the server's own configuration allows the same).
+ */
 const hostName = z
   .string()
   .regex(
-    /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/,
+    /^(?=.{1,253}(:|$))[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(:\d{1,5})?$/,
   );
 
 /** The schema the server checks `routing.resolve`'s answer against. */
 export const RoutingAnswer: z.ZodType<RoutingAnswer> = z.union([
   z.object({
-    shell: z.object({ domain: hostName, home: z.string().min(1).exactOptional() }),
+    shell: z.object({ domain: hostName, home: z.string().min(1) }),
     cacheForMs: cacheFor,
   }),
   z.object({

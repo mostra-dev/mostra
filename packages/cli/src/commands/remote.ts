@@ -6,9 +6,15 @@
  * next sign-in, unless `--forget`. Clients of `remote/login`, `remote/login.wait` and
  * `remote/logout`.
  */
-import { remoteLoginMethod, remoteLoginWaitMethod, remoteLogoutMethod } from "@mostra/protocol";
+import {
+  artifactPauseMethod,
+  remoteLoginMethod,
+  remoteLoginWaitMethod,
+  remoteLogoutMethod,
+} from "@mostra/protocol";
 import { type CommandDef, defineCommand } from "../command.ts";
 import { EXIT } from "../exit.ts";
+import { arg, artifactRef, flag } from "./shared.ts";
 
 /** How long `mostra login` waits for the person to approve, in all (the code lives 10 minutes). */
 const LOGIN_WAIT_MS = 10 * 60_000;
@@ -108,6 +114,62 @@ export const logoutCommand: CommandDef = defineCommand({
         result.servers.length === 0
           ? "This machine wasn't signed in to a server.\n"
           : `Signed out of ${result.servers.join(", ")}.\n`,
+    };
+  },
+});
+
+/** `mostra pause <artifact> [--reason <text>]` (D165 item 14). */
+export const pauseCommand: CommandDef = defineCommand({
+  path: ["pause"],
+  summary:
+    "Pause an artifact: its pages stay viewable and its links valid, but it takes no answers and runs no actions until resumed.",
+  args: [{ name: "artifact", summary: "The artifact: its source path or its ID." }],
+  flags: [
+    {
+      name: "reason",
+      kind: "string",
+      summary: "Why, shown to the page's viewers beside the paused notice.",
+    },
+  ],
+  output: { type: "ArtifactPauseResult", topic: "cli" },
+  exits: [EXIT.failure, EXIT.environment],
+  example: 'pause ./survey --reason "Closed for review until Monday"',
+  async run(context) {
+    const reason = flag(context, "reason");
+    const result = await context.call(artifactPauseMethod, {
+      artifact: artifactRef(arg(context, "artifact"), context.cwd),
+      paused: true,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+    return {
+      result,
+      human:
+        result.by === "operator"
+          ? "Paused. The server's operator paused it too, and only the operator resumes that.\n"
+          : "Paused. Pages stay viewable; answers and actions wait until mostra resume.\n",
+    };
+  },
+});
+
+/** `mostra resume <artifact>` (D165 item 14). */
+export const resumeCommand: CommandDef = defineCommand({
+  path: ["resume"],
+  summary: "Resume a paused artifact: it takes answers and runs actions again.",
+  args: [{ name: "artifact", summary: "The artifact: its source path or its ID." }],
+  output: { type: "ArtifactPauseResult", topic: "cli" },
+  exits: [EXIT.failure, EXIT.environment],
+  example: "resume ./survey",
+  async run(context) {
+    const result = await context.call(artifactPauseMethod, {
+      artifact: artifactRef(arg(context, "artifact"), context.cwd),
+      paused: false,
+    });
+    return {
+      result,
+      human: result.paused
+        ? "Still paused: the server's operator paused it, and only the operator resumes that.\n"
+        : "Resumed. The artifact takes answers and runs actions again.\n",
+      ...(result.paused ? { exit: EXIT.failure } : {}),
     };
   },
 });

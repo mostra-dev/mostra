@@ -31,6 +31,7 @@ import {
   type FieldState,
   MutationId,
   type MutationResult,
+  type PausedBy,
   type Results,
   RpcError,
   type RunState,
@@ -62,6 +63,7 @@ import {
 } from "./fields.ts";
 import { type ImportSource, importSubmission } from "./imports.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
+import { type Pause, pauseOf, setPause } from "./pause.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
 import {
   appendRunOutput,
@@ -92,9 +94,12 @@ import {
 import { Subscriptions } from "./subscriptions.ts";
 import {
   localViewerId,
+  nameAnonymous,
   openView,
   viewControls,
   viewer,
+  viewerForAccount,
+  viewerForAnonymous,
   viewerForHost,
   viewerForLink,
   viewerForSpec,
@@ -191,6 +196,17 @@ export interface Interaction {
   /** Stops delivering; pending deliveries stay in the outbox. */
   stop(): void;
 
+  /**
+   * Pauses or resumes an artifact as its owner or its server's operator (D165 item 14, RM-09);
+   * the owner resuming an operator's pause is `MOSTRA_REMOTE_PAUSED_BY_OPERATOR`.
+   */
+  pause(
+    artifactId: string,
+    change: { readonly paused: boolean; readonly by: PausedBy; readonly reason?: string },
+  ): { readonly paused: boolean; readonly by?: PausedBy };
+  /** The artifact's pause, or `undefined` when it isn't paused. */
+  pauseOf(artifactId: string): Pause | undefined;
+
   /** The viewer a capability token's sessions act as (D104): its own, or the home's local user. */
   viewerOf(tokenViewerId: string | undefined): string;
   /** A viewer by ID (D104). */
@@ -203,6 +219,12 @@ export interface Interaction {
   viewerForTailnet(spec: ViewerSpec): string;
   /** A link's own viewer, for a tunnel visitor nobody named (D158 item 2). */
   viewerForLink(tokenId: string, name: string): string;
+  /** A signed-in account on a hosted link (D165 item 8), named as its provider verified it. */
+  viewerForAccount(accountId: string, name?: string): string;
+  /** An anonymous viewer on a hosted link, by the route's derived browser key (D165 item 8). */
+  viewerForAnonymous(key: string): string;
+  /** Sets an anonymous viewer's self-chosen name, unverified; `false` for any other viewer. */
+  nameAnonymous(viewerId: string, name: string | null): boolean;
   /** Records a frame load of a version (D104), with the controls in force (D108); returns its ID. */
   openView(input: {
     readonly artifactId: string;
@@ -235,6 +257,8 @@ export interface Interaction {
    * `hosted/submission`, FAILURE_MODEL §11.2); `undefined` when `owner` has no delivery of it.
    */
   envelopeFor(submissionId: string, owner: string): SubmissionEnvelope | undefined;
+  /** A submission's full Results (§8), built from the immutable submission alone. */
+  resultsOf(submissionId: string): Results | undefined;
   /** A viewer's submit (IN-05); `SubmitConflict` under a closed `once`. */
   submit(
     page: PageIdentity,
@@ -588,6 +612,12 @@ export function createInteraction(options: InteractionOptions): Interaction {
     viewerForHost: (spec) => ledger.write((db) => viewerForHost(db, spec)),
     viewerForTailnet: (spec) => ledger.write((db) => viewerForTailnet(db, spec)),
     viewerForLink: (tokenId, name) => ledger.write((db) => viewerForLink(db, tokenId, name)),
+    viewerForAccount: (accountId, name) =>
+      ledger.write((db) => viewerForAccount(db, accountId, name)),
+    viewerForAnonymous: (key) => ledger.write((db) => viewerForAnonymous(db, key)),
+    nameAnonymous: (viewerId, name) => ledger.write((db) => nameAnonymous(db, viewerId, name)),
+    pause: (artifactId, change) => ledger.write((db) => setPause(db, artifactId, change)),
+    pauseOf: (artifactId) => ledger.read((db) => pauseOf(db, artifactId)),
     openView(input) {
       return ledger.write((db) => openView(db, input));
     },
@@ -666,6 +696,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
         accepted: answer.accepted,
       });
       return answer;
+    },
+    resultsOf(submissionId) {
+      return ledger.read((db) => {
+        const submission = db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          submissionId,
+        );
+        return submission ? buildResults(db, submission) : undefined;
+      });
     },
     envelopeFor(submissionId, owner) {
       return ledger.read((db) => {

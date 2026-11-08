@@ -13,6 +13,7 @@ export const submitDiagnosticCodes = [
   "MOSTRA_SUBMIT_SIGNAL_INVALID",
   "MOSTRA_SUBMIT_CHANNEL_DENIED",
   "MOSTRA_SUBMIT_BLOCKED",
+  "MOSTRA_SUBMIT_PAUSED",
   // gen:codes
 ] as const;
 
@@ -107,6 +108,17 @@ export const submitDiagnostics: AreaCatalog<SubmitDiagnosticCode> = {
       explanation:
         "Before a submit, the shell and the client runtime check every mounted field (D106): a `required` field without a value, a value its `validate` rejects, or a conflict the viewer hasn't resolved blocks the submit. The diagnostic lists the blockers with their field IDs and labels; `useSubmit().blockers` lists them before anyone submits. Nothing was submitted.",
       fix: "Show `useSubmit().blockers` next to your submit button, or let the shell list them by label. Answer the required fields, fix the invalid values, and keep or take the conflicting values, then submit again.",
+    },
+  },
+  MOSTRA_SUBMIT_PAUSED: {
+    severity: "error",
+    phase: "host",
+    title: "Artifact paused, no answers taken",
+    hint: "Wait until the page is resumed, then submit again; the draft is kept.",
+    docs: {
+      explanation:
+        "The artifact is paused (`mostra pause`, or its server's operator paused it). A paused artifact stays viewable and its links stay valid, but it takes no submissions until it is resumed. Nothing was recorded, and the draft stays as it was.",
+      fix: "The owner resumes it with `mostra resume <artifact>`; a pause by the server's operator is resumed only by the operator.",
     },
   },
   // gen:entries

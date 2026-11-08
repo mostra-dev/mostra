@@ -209,6 +209,8 @@ export interface Link {
    * first it was shared to.
    */
   hostedOn(artifactId: string): string | undefined;
+  /** Every server an artifact is hosted on now, in the order it was shared to them. */
+  hostedServers(artifactId: string): string[];
   /**
    * Calls a method on a server's hosted home for this home's client: a hosted artifact's
    * `state/*` and `live/push` (D165 item 1). `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached.
@@ -1328,6 +1330,15 @@ export function createLink(options: LinkOptions): Link {
       }
       return true;
     },
+    hostedServers: (artifactId) =>
+      ledger.read((db) =>
+        db
+          .all<{ server: string }>(
+            "SELECT server FROM hosted_artifact WHERE artifact_id = ? AND stopped_at IS NULL AND route_id != '' ORDER BY shared_at",
+            artifactId,
+          )
+          .map((row) => row.server),
+      ),
     hostedOn: (artifactId) =>
       ledger.read(
         (db) =>

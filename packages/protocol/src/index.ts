@@ -105,6 +105,7 @@ export {
   FRAME_SESSION_HEADER,
   FrameSessionFacts,
   FrameTicket,
+  type HostedChrome,
   OrphanedField,
   PollResult,
   REVIEW_SET_ID_PATTERN,
@@ -338,6 +339,12 @@ export {
   type ArtifactListResult,
   artifactListMethod,
 } from "./methods/artifact/list.ts";
+export {
+  type ArtifactPauseParams,
+  type ArtifactPauseResult,
+  artifactPauseMethod,
+  type PausedBy,
+} from "./methods/artifact/pause.ts";
 export {
   type ArtifactPublishParams,
   type ArtifactPublishResult,

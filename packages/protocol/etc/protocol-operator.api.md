@@ -269,7 +269,7 @@ export type RouteTarget = {
 export type RoutingAnswer = ({
     readonly shell: {
         readonly domain: string;
-        readonly home?: string;
+        readonly home: string;
     };
 } & Cacheable) | ({
     readonly route: {

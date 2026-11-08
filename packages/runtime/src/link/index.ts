@@ -4,5 +4,5 @@
  * (REPO_STANDARDS §3).
  */
 export { type Binding, ownerInitialize, startBinding } from "./binding.ts";
-export { forwardHosted, hostedState } from "./hosted.ts";
+export { forwardHosted, hostedState, pauseHandler } from "./hosted.ts";
 export { createLink, type Link } from "./manager.ts";

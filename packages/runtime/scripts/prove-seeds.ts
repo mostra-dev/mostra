@@ -274,9 +274,9 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "RM-02",
     name: "an issued link's frames move to the active domain",
-    file: "src/server/hosted.ts",
-    from: "        const domain = domains.find((candidate) => originOf(candidate) === shellOrigin);",
-    to: "        const domain = shellOrigin ? options.domains.active : undefined;",
+    file: "src/server/routing.ts",
+    from: "      if (configured(shellHost)) return shellHost;",
+    to: "      if (configured(shellHost)) return options.active();",
     check: integration("hosted.test.ts", "domain move"),
   },
   {

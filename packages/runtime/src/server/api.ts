@@ -85,6 +85,12 @@ export interface ApiOptions {
   readonly home: (homeId: string) => Promise<HostedHome>;
   /** Notes a home was used, so it isn't closed while used. */
   readonly touch: (homeId: string) => void;
+  /** Told each message a home's binding carried in (relay and sync traffic), for metering. */
+  readonly message?: (homeId: string) => void;
+  /** Told the bytes a home stored (an upload it hadn't stored before), for metering. */
+  readonly stored?: (homeId: string, bytes: number) => void;
+  /** Whether the operator suspended a home: its bindings and uploads are refused (D165 item 9). */
+  readonly suspended?: (homeId: string) => boolean;
   /** How often an open binding's token and grant are checked; tests shorten it. */
   readonly recheckMs?: number;
 }
@@ -93,6 +99,8 @@ export interface ApiOptions {
 export interface Api {
   request(request: IncomingMessage, response: ServerResponse, path: string): Promise<void>;
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer, path: string): void;
+  /** Closes every binding of a home now (a suspension or a move, 4403). */
+  closeHome(homeId: string): void;
   close(): void;
 }
 
@@ -149,6 +157,7 @@ export function createApi(options: ApiOptions): Api {
       protocols.has(BINDING_SUBPROTOCOL) ? BINDING_SUBPROTOCOL : false,
   });
   const bindings = new Set<WebSocket>();
+  const bindingHomes = new Map<WebSocket, string>();
 
   const bearer = (request: IncomingMessage): Authenticated | undefined => {
     const header = request.headers.authorization ?? "";
@@ -197,6 +206,13 @@ export function createApi(options: ApiOptions): Api {
     }
     const home = await options.home(who.homeId);
     options.touch(who.homeId);
+    if (options.suspended?.(who.homeId)) {
+      send(response, 403, {
+        code: "MOSTRA_REMOTE_HOME_SUSPENDED",
+        message: "This account's pages are suspended by the server's operator.",
+      });
+      return;
+    }
     // A file is accepted only for a pending push of this home that names it as missing, so no
     // home stores bytes nobody asked for, nor learns what another home holds (§18.2).
     if (!home.wanted(sha)) {
@@ -240,6 +256,7 @@ export function createApi(options: ApiOptions): Api {
     if (existsSync(target)) await rm(scratch, { force: true });
     else renameSync(scratch, target);
     home.uploaded(sha);
+    options.stored?.(who.homeId, size);
     send(response, 201, { sha256: sha, size });
   };
 
@@ -386,10 +403,15 @@ export function createApi(options: ApiOptions): Api {
         );
         return;
       }
+      if (options.suspended?.(who.homeId)) {
+        refuse(403, "Forbidden");
+        return;
+      }
       void options.home(who.homeId).then(
         (home) => {
           sockets.handleUpgrade(request, socket, head, (ws) => {
             bindings.add(ws);
+            bindingHomes.set(ws, who.homeId);
             let expiresAt = who.expiresAt;
             const attributes = {
               accountId: who.accountId,
@@ -418,8 +440,12 @@ export function createApi(options: ApiOptions): Api {
             ws.once("close", () => {
               clearInterval(watch);
               bindings.delete(ws);
+              bindingHomes.delete(ws);
             });
-            ws.on("message", () => options.touch(who.homeId));
+            ws.on("message", () => {
+              options.touch(who.homeId);
+              options.message?.(who.homeId);
+            });
             serveWebSocket(home.protocol, ws, { attributes, log });
             log.info("binding.opened", { home: who.homeId, link: who.linkId });
           });
@@ -429,6 +455,12 @@ export function createApi(options: ApiOptions): Api {
           refuse(503, "Service Unavailable");
         },
       );
+    },
+
+    closeHome(homeId) {
+      for (const [ws, home] of bindingHomes) {
+        if (home === homeId) ws.close(4403, "home unavailable");
+      }
     },
 
     close() {

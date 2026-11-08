@@ -55,6 +55,16 @@
         "$ref": "#/$defs/ArtifactListResult"
       }
     },
+    "artifact/pause": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/ArtifactPauseParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ArtifactPauseResult"
+      }
+    },
     "artifact/publish": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -1119,6 +1129,47 @@
         "title"
       ],
       "description": "The artifact manifest (INTERFACES §2.2): literal metadata from the entry's defineArtifact call or MDX frontmatter."
+    },
+    "ArtifactPauseParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "paused"
+      ]
+    },
+    "ArtifactPauseResult": {
+      "type": "object",
+      "properties": {
+        "paused": {
+          "type": "boolean"
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "owner",
+            "operator"
+          ]
+        }
+      },
+      "required": [
+        "paused"
+      ]
     },
     "ArtifactProgressParams": {
       "type": "object",
@@ -2885,6 +2936,110 @@
         "mode": {
           "type": "string",
           "const": "worker"
+        },
+        "paused": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "operator"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "by"
+          ]
+        },
+        "hosted": {
+          "type": "object",
+          "properties": {
+            "sender": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "verifiedBy": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "name"
+              ]
+            },
+            "viewer": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "account",
+                    "anonymous",
+                    "named"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "verified": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "verified"
+              ]
+            },
+            "signIn": {
+              "type": "boolean"
+            },
+            "footer": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "afterSubmit": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "madeWith": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "type": "string",
+                  "maxLength": 2048
+                }
+              }
+            },
+            "interstitial": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          },
+          "required": [
+            "viewer",
+            "signIn"
+          ]
         }
       },
       "required": [
@@ -7152,6 +7307,9 @@
         },
         "ref": {
           "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
         }
       },
       "required": [

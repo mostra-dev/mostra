@@ -472,6 +472,17 @@ describe("every command, with --json and no terminal", () => {
     expect((listed.result as { shares: { via: string }[] }).shares.map((one) => one.via)).toContain(
       "remote",
     );
+    // pause and resume act here and on the server the artifact is hosted on (RM-09).
+    const paused = await run(["pause", cloudId, "--reason", "Closed until Monday"], {
+      code: 0,
+      ok: true,
+    });
+    expect(paused.result).toEqual({ paused: true, by: "owner" });
+    covered.add("pause");
+    const resumed = await run(["resume", cloudId], { code: 0, ok: true });
+    expect(resumed.result).toEqual({ paused: false });
+    covered.add("resume");
+    await run(["pause"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });
     const stopped = await run(["share", "stop", share.shareId], { code: 0, ok: true });
     expect((stopped.result as { stopped: unknown[] }).stopped).toHaveLength(1);
 

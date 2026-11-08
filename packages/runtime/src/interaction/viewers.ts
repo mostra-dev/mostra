@@ -57,6 +57,9 @@ function viewerOf(row: ViewerRow): Viewer {
     ...(row.kind === "token" || row.kind === "host" || row.kind === "tailnet"
       ? { ref: row.external_ref }
       : {}),
+    // A hosted account's name is its identity provider's; an anonymous viewer's, their own.
+    ...(row.kind === "account" ? { verified: true } : {}),
+    ...(row.kind === "anonymous" ? { verified: false } : {}),
   };
 }
 
@@ -110,7 +113,37 @@ export function viewerForLink(db: LedgerDb, tokenId: string, name: string): stri
   return viewerByRef(db, "token", { ref: `link:${tokenId}`, name });
 }
 
-function viewerByRef(db: LedgerDb, kind: "token" | "host" | "tailnet", spec: ViewerSpec): string {
+/**
+ * A signed-in person on a hosted link minted without a viewer (D165 item 8): one viewer of kind
+ * `account` per account, named as its identity provider verified it.
+ */
+export function viewerForAccount(db: LedgerDb, accountId: string, name?: string): string {
+  return viewerByRef(db, "account", { ref: accountId, ...(name !== undefined ? { name } : {}) });
+}
+
+/**
+ * A person who isn't signed in on a hosted link minted without a viewer (D165 item 8): one viewer
+ * of kind `anonymous` per browser and route, by the route's derived key
+ * (`HMAC-SHA-256(browser secret, routeId)`), never the shell's raw secret. A name they choose is
+ * set apart, unverified ({@link nameAnonymous}).
+ */
+export function viewerForAnonymous(db: LedgerDb, key: string): string {
+  return viewerByRef(db, "anonymous", { ref: key });
+}
+
+/** Sets the self-chosen, unverified name of an anonymous viewer; any other viewer is left alone. */
+export function nameAnonymous(db: LedgerDb, viewerId: string, name: string | null): boolean {
+  return (
+    db.run("UPDATE viewer SET name = ? WHERE id = ? AND kind = 'anonymous'", name, viewerId)
+      .changes > 0
+  );
+}
+
+function viewerByRef(
+  db: LedgerDb,
+  kind: "token" | "host" | "tailnet" | "account" | "anonymous",
+  spec: ViewerSpec,
+): string {
   const found = db.get<ViewerRow>(
     "SELECT * FROM viewer WHERE kind = ? AND external_ref = ?",
     kind,
