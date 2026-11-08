@@ -17,3 +17,14 @@
 ## Decisions
 
 - **M60** (2026-11-07): Mirza's answers to the session's question set. A test deployment on a server Mirza already runs, on the production names, for claude.ai only (ChatGPT's external check later); GitHub's OAuth app made by him on request; the container image's registry, the operator questions and the plugin's remote server delegated ("I trust you to make the most robust … optimal decision"), with whatever is left for later named explicitly; `@mostra/protocol/operator` ships with this package's release (the managed service's work starts after WP-30). Recorded as D167 with the package's other choices.
+
+## Slices so far
+
+| Commit | Slice |
+|---|---|
+| `91bb507` | `@mostra/protocol/operator`: the operator ports, the server handle and their schemas (HO-09) |
+| `312f1c2` | The operator runtime (limits, metering, events, abuse, policy, routing), the server handle, pause and resume (`mostra pause`, `resume`; RM-09), anonymous viewers per browser, per-IP and per-link submission rates (RM-08) |
+| `b575fa9` | The authorization server for MCP clients (Client ID Metadata Documents, Dynamic Client Registration, PKCE S256, `iss`, audiences, rotating refresh tokens), identity providers (OpenID Connect, GitHub, development, operator-supplied), first sign-in steps, consent, operator credentials, viewer sign-in routes (MC-04, HY-08) |
+| `2b95dad` | The remote MCP endpoint at `/mcp`, authoring relayed to the default owner instance (`port/relay.author`), the bundled reference in `@mostra/mcp` (MC-04) |
+| `cc42876`, `5201f9f` | The container image from the release's Linux bundles; Rust wire types regenerated |
+| (this) | The image rehearsed on every release build and published with each release |
