@@ -42,7 +42,13 @@ describe("the operator boundary's answers (INTERFACES §18.6, HO-09)", () => {
       LinkPolicy.safeParse({ maxTtl: "7d", idleExpiry: "30d", madeWith: { show: false } }).success,
     ).toBe(true);
     expect(RoutingAnswer.safeParse(null).success).toBe(true);
-    expect(RoutingAnswer.safeParse({ shell: { domain: "pages.acme.example" } }).success).toBe(true);
+    // A shell on a host the operator supplies names the home whose links it serves (D167).
+    expect(
+      RoutingAnswer.safeParse({ shell: { domain: "pages.acme.example", home: "hom_1" } }).success,
+    ).toBe(true);
+    expect(RoutingAnswer.safeParse({ shell: { domain: "pages.acme.example" } }).success).toBe(
+      false,
+    );
     expect(RoutingAnswer.safeParse({ route: { home: "hom_1", routeId: "rte_1" } }).success).toBe(
       true,
     );

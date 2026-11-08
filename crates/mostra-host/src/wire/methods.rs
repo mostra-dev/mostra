@@ -53,6 +53,16 @@ impl super::Method for ArtifactList {
     type Params = super::generated::ArtifactListParams;
     type Result = super::generated::ArtifactListResult;
 }
+///`artifact/pause`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactPause;
+impl super::Method for ArtifactPause {
+    const NAME: &'static str = "artifact/pause";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ArtifactPauseParams;
+    type Result = super::generated::ArtifactPauseResult;
+}
 ///`artifact/publish`.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtifactPublish;
@@ -252,6 +262,16 @@ impl super::Method for PortIdentityResolve {
     const MUTATING: bool = false;
     type Params = super::generated::PortIdentityResolveParams;
     type Result = super::generated::PortIdentityResolveResult;
+}
+///`port/relay.author`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayAuthor;
+impl super::Method for PortRelayAuthor {
+    const NAME: &'static str = "port/relay.author";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = true;
+    type Params = super::generated::PortRelayAuthorParams;
+    type Result = super::generated::PortRelayAuthorResult;
 }
 ///`port/relay.call`.
 #[derive(Clone, Copy, Debug)]
@@ -632,6 +652,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "artifact/pause",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
         name: "artifact/publish",
         direction: super::Direction::ClientToInstance,
         mutating: true,
@@ -730,6 +755,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "port/identity.resolve",
         direction: super::Direction::InstanceToHost,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/relay.author",
+        direction: super::Direction::InstanceToHost,
+        mutating: true,
     },
     super::MethodInfo {
         name: "port/relay.call",
