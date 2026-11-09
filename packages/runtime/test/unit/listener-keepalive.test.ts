@@ -53,4 +53,36 @@ describe("gateway listeners' idle connections (D157 item 2)", () => {
   it("are kept longer than Chromium keeps its own (300 s) and Firefox (115 s)", () => {
     expect(KEEP_ALIVE_MS).toBeGreaterThan(300_000);
   });
+
+  it("are reset, not closed, when the listener stops, so none stays in TIME_WAIT on its port (#132)", async () => {
+    let port = 0;
+    const listener = createListener({
+      policy: () => ({ origin: `http://127.0.0.1:${port}`, hosts: [`127.0.0.1:${port}`] }),
+      log: silentLog,
+      frameAncestors: () => "'none'",
+      configure: (app) => {
+        app.get("/x", (c) => c.text("ok"));
+      },
+    });
+    await new Promise<void>((done) => listener.server.listen(0, "127.0.0.1", done));
+    port = (listener.server.address() as AddressInfo).port;
+    const socket = connect(port, "127.0.0.1");
+    let received = "";
+    socket.on("data", (chunk) => {
+      received += chunk.toString("latin1");
+    });
+    const ended = new Promise<string>((done) => {
+      socket.once("error", (error: NodeJS.ErrnoException) => done(error.code ?? "error"));
+      socket.once("end", () => done("end"));
+    });
+    socket.write(`GET /x HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n\r\n`);
+    await new Promise((done) => setTimeout(done, 300));
+    expect(received).toContain("HTTP/1.1 200");
+    // The idle connection, still open, as a browser keeps it: the stopping listener resets it. A
+    // close (FIN) from the server would leave the connection in TIME_WAIT on the server's port,
+    // where a browser's next connect from that random port fails on Windows (#66, #132).
+    await listener.close();
+    expect(await ended).toBe("ECONNRESET");
+    socket.destroy();
+  }, 20_000);
 });

@@ -30,6 +30,7 @@ import {
   BASE_HEADERS,
   documentHeaders,
   locateShell,
+  resetOnClose,
   shellAssetResponse,
 } from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
@@ -570,6 +571,8 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   // jar (180 cookies of 4 KiB, no public-suffix entry, D137), and its cookies, dropped unread here,
   // must never cost another page its session (D165 item 8).
   const listener: Server = createServer({ maxHeaderSize: 1024 * 1024 }, onRequest);
+  // Stopping resets its connections, so none stays in TIME_WAIT on the server's port (#132).
+  const stopListener = resetOnClose(listener);
   listener.keepAliveTimeout = 305_000;
   listener.headersTimeout = 30_000;
   listener.requestTimeout = 120_000;
@@ -613,10 +616,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         // What the operator hasn't taken yet stays queued in the directory for the next start.
         meter?.stop();
         operator?.stop();
-        await new Promise<void>((resolve) => {
-          listener.close(() => resolve());
-          listener.closeAllConnections();
-        });
+        await stopListener();
         await data.close();
         log.info("server.stopped", {});
       })();

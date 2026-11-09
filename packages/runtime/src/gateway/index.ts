@@ -98,6 +98,9 @@ import {
 import { type IdentityOutcome, tailnetPerson } from "./identity.ts";
 import { versionIntegrity } from "./integrity.ts";
 import { createListener, type Listener } from "./listener.ts";
+
+export { resetOnClose } from "./listener.ts";
+
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
 import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./worker.ts";

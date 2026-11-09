@@ -2490,6 +2490,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/listener-keepalive.test.ts", "-t", "stay open"],
   },
   {
+    requirement: "SH-03",
+    name: "a stopping listener closes its idle connections, leaving TIME_WAIT on its port (#132)",
+    file: "src/gateway/listener.ts",
+    from: '        if (typeof socket.resetAndDestroy === "function" && socket.readyState === "open") {',
+    to: '        if (typeof socket.resetAndDestroy === "function" && socket.readyState === "closed") {',
+    check: ["--project", "unit", "test/unit/listener-keepalive.test.ts", "-t", "are reset"],
+  },
+  {
     requirement: "EN-07",
     name: "the gateway's request record logs a request's query, where a frame ticket travels (#66)",
     file: "src/gateway/listener.ts",
