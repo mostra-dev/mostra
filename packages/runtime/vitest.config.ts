@@ -38,6 +38,7 @@ const REMOTE = [
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
   "test/integration/anonymous-volume.test.ts",
+  "test/integration/tenancy.test.ts",
 ];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {

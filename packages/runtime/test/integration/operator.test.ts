@@ -10,13 +10,13 @@
  * each acting on one route or home only.
  */
 import { cpSync } from "node:fs";
-import { request } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
+import { type Call, control } from "../operator-support.ts";
 import {
   freePort,
   ownerEnv,
@@ -32,48 +32,6 @@ import { eventually, tempDir } from "../support.ts";
 const REVISION = "2026-10-15";
 const OPERATOR = fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts", import.meta.url));
-
-interface Call {
-  readonly port: string;
-  readonly payload: Record<string, unknown>;
-}
-
-/** The fixture operator's control server. */
-function control(port: number) {
-  const ask = (method: string, path: string, body?: unknown) =>
-    new Promise<{ status: number; json: unknown }>((resolve, reject) => {
-      const outgoing = request(
-        {
-          host: "127.0.0.1",
-          port,
-          path,
-          method,
-          headers: { "content-type": "application/json" },
-        },
-        (incoming) => {
-          let text = "";
-          incoming.setEncoding("utf8");
-          incoming.on("data", (chunk: string) => {
-            text += chunk;
-          });
-          incoming.on("end", () =>
-            resolve({ status: incoming.statusCode ?? 0, json: JSON.parse(text || "null") }),
-          );
-        },
-      );
-      outgoing.on("error", reject);
-      if (body !== undefined) outgoing.write(JSON.stringify(body));
-      outgoing.end();
-    });
-  return {
-    set: (state: Record<string, unknown>) => ask("POST", "/state", state),
-    calls: async (port?: string) =>
-      ((await ask("GET", "/calls")).json as Call[]).filter(
-        (call) => port === undefined || call.port === port,
-      ),
-    handle: async (method: string, ...args: unknown[]) => ask("POST", "/handle", { method, args }),
-  };
-}
 
 describe("operator ports (HO-09)", () => {
   let port: number;

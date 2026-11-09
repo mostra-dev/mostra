@@ -274,6 +274,65 @@ describe("the network binding (§18.2)", () => {
     });
   });
 
+  it("tells one home nothing of another's files, and takes from it only what its own push asks for (RM-03)", async () => {
+    const { port } = await serve();
+    const ada = await deviceSignIn(port, "Ada");
+    const grace = await deviceSignIn(port, "Grace");
+    expect(grace.accountId).not.toBe(ada.accountId);
+    const adas = await bind(port, ada).ready();
+    const graces = await bind(port, grace).ready();
+    // One copied project: the same artifact ID and the same version, byte for byte, in two homes.
+    const artifactId = "art_01JZ0000000000000000000001";
+    const { push, files } = version(artifactId, "copied");
+    const clientShas = ["client/index.html", "client/assets/app.js"].map((path) =>
+      sha(files.get(path) as string),
+    );
+    const upload = (who: SignedIn, text: string) =>
+      send(port, `api.localhost:${port}`, `/files/${sha(text)}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${who.accessToken}` },
+        body: text,
+      });
+    const first = await adas.call(hostedPushMethod, { artifactId, version: push });
+    expect(first.status).toBe("missing");
+    for (const path of ["client/index.html", "client/assets/app.js"]) {
+      expect((await upload(ada, files.get(path) as string)).status).toBe(201);
+    }
+    const adaDone = await adas.call(hostedPushMethod, { artifactId, version: push });
+    expect(adaDone.status).toBe("complete");
+
+    // Grace's home is asked for every client file, though the server stores them already for Ada:
+    // no answer says what another home holds, and a home must send every byte of its own versions.
+    const second = await graces.call(hostedPushMethod, { artifactId, version: push });
+    expect(second.status).toBe("missing");
+    if (second.status !== "missing") throw new Error("expected missing");
+    expect([...second.files].sort()).toEqual([...clientShas].sort());
+    // Its own route: neither home can take the other's.
+    expect(second.route.routeId).not.toBe(first.route.routeId);
+    expect(second.route.label).not.toBe(first.route.label);
+    // Only what its pending push names: a file of Ada's other versions isn't Grace's to send.
+    expect((await upload(grace, "never asked for")).status).toBe(409);
+    // Asking for a file directly tells nothing either: the same answer for a file the server holds
+    // for another home as for one nobody has.
+    for (const method of ["HEAD", "GET"]) {
+      const held = await send(port, `api.localhost:${port}`, `/files/${clientShas[0]}`, {
+        method,
+        headers: { authorization: `Bearer ${grace.accessToken}` },
+      });
+      const none = await send(port, `api.localhost:${port}`, `/files/${sha("nobody's")}`, {
+        method,
+        headers: { authorization: `Bearer ${grace.accessToken}` },
+      });
+      expect(held.status, method).toBe(none.status);
+      expect(held.status, method).not.toBe(200);
+    }
+    for (const path of ["client/index.html", "client/assets/app.js"]) {
+      expect((await upload(grace, files.get(path) as string)).status).toBe(201);
+    }
+    const graceDone = await graces.call(hostedPushMethod, { artifactId, version: push });
+    expect(graceDone).toMatchObject({ status: "complete", versionId: push.versionId });
+  }, 120_000);
+
   it("refuses a listing path that would leave the version on any system (Opus review of WP-29, 5)", async () => {
     const { port } = await serve();
     const owner = await deviceSignIn(port, "Ada");
