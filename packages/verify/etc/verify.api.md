@@ -65,7 +65,9 @@ export const RUNNER_IDLE_MS: number;
 
 // @public
 export interface RunnerOptions {
+    readonly failOnceFile?: string;
     readonly idleMs?: number;
+    readonly loseBrowser?: boolean;
     readonly onIdle?: () => void;
 }
 
