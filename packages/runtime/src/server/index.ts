@@ -566,7 +566,10 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     });
   };
 
-  const listener: Server = createServer({ maxHeaderSize: 64 * 1024 }, onRequest);
+  // Up to 1 MiB of headers (D98 item 9): a sibling tenant page can fill the parent domain's cookie
+  // jar (180 cookies of 4 KiB, no public-suffix entry, D137), and its cookies, dropped unread here,
+  // must never cost another page its session (D165 item 8).
+  const listener: Server = createServer({ maxHeaderSize: 1024 * 1024 }, onRequest);
   listener.keepAliveTimeout = 305_000;
   listener.headersTimeout = 30_000;
   listener.requestTimeout = 120_000;

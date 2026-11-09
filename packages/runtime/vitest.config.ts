@@ -36,6 +36,7 @@ const REMOTE = [
   "test/integration/oauth.test.ts",
   "test/integration/remote-mcp.test.ts",
   "test/integration/signin.test.ts",
+  "test/integration/hosted-rules.test.ts",
 ];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {

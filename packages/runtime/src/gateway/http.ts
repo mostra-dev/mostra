@@ -29,6 +29,11 @@ export interface ListenerKind {
   readonly origin: string;
   /** The shell's origin: the only page that may frame an artifact (D98 item 4). */
   readonly shellOrigin: string;
+  /**
+   * The framers an artifact's documents name, when they are more than its shell: a hosted
+   * label's are the shells of its domain an operator also serves it under (INTERFACES §18.6).
+   */
+  readonly frameAncestors?: string;
 }
 
 /**
@@ -64,7 +69,9 @@ export function documentHeaders(
       "cross-origin-opener-policy": "same-origin",
     };
   }
-  return { "content-security-policy": `frame-ancestors ${listener.shellOrigin}` };
+  return {
+    "content-security-policy": `frame-ancestors ${listener.frameAncestors ?? listener.shellOrigin}`,
+  };
 }
 
 /** Every header of a request as `[name, value]` pairs, repeats kept. */

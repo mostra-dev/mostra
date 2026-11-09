@@ -1081,7 +1081,13 @@ export function createGateway(options: GatewayOptions): Gateway {
         const found = await artifactWayFor(way, group, context.artifactId).catch(() => undefined);
         frames = found && !isRefusal(found) ? (found.way.origin() ?? "'none'") : "'none'";
       }
-      const html = readFileSync(join(options.shellDir, "index.html"));
+      const file = readFileSync(join(options.shellDir, "index.html"));
+      // A hosted page's link preview is the same for every artifact (D161): an unfurl in a chat
+      // app shows neither its title, text nor images unless its owner opted in to the title.
+      const html =
+        way.by === "hosted"
+          ? hostedPreview(file.toString("utf8"), previewTitle(context.artifactId))
+          : file;
       return new Response(context.request.method === "HEAD" ? null : html, {
         headers: {
           ...BASE_HEADERS,
@@ -1090,6 +1096,16 @@ export function createGateway(options: GatewayOptions): Gateway {
           "cache-control": "no-cache",
         },
       });
+    };
+
+    /** The title a hosted page's preview may show: its own only when the manifest asks (D161). */
+    const previewTitle = (artifactId: string): string | undefined => {
+      try {
+        const detail = artifacts.get({ artifactId });
+        return detail.manifest.hosted?.preview === "title" ? detail.title : undefined;
+      } catch {
+        return undefined;
+      }
     };
 
     const shellAsset = async (context: RouteContext): Promise<Response> => {
@@ -1565,12 +1581,15 @@ export function createGateway(options: GatewayOptions): Gateway {
   ): RouteSpec[] => {
     const origin = (): string => wayOf().origin() ?? "";
     const shell = (): string => shellOf(wayOf(), group)?.origin() ?? "";
+    const checks = artifactChecks(artifactId, wayOf, group);
     const kind = (): ListenerKind => ({
       kind: "artifact",
       origin: origin(),
       shellOrigin: shell(),
+      // A hosted label's documents name exactly the framers its refusals do: its domain's shell,
+      // and the outside hosts an operator serves its shell on (D165 item 7, Opus review of WP-28).
+      ...(wayOf().by === "hosted" ? { frameAncestors: checks.frameAncestors() } : {}),
     });
-    const checks = artifactChecks(artifactId, wayOf, group);
     const mode = (): FrameMode => modeOf(wayOf(), group);
     const notServed = (context: RouteContext, message: string): Response =>
       refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", message), {
@@ -2330,4 +2349,34 @@ export async function shellAssetResponse(
 export function locateShell(env: Environment): string | undefined {
   const dir = env["MOSTRA_SHELL_DIR"] ?? resolve(runtimeRoot(), "..", "shell", "dist");
   return existsSync(join(dir, "index.html")) ? dir : undefined;
+}
+
+/** The generic preview of every hosted page (D161): one title, one description, no image. */
+export const HOSTED_PREVIEW = {
+  title: "A page sent with Mostra",
+  description: "Someone sent you this page. Open it to see it.",
+} as const;
+
+/** Text for an HTML attribute or element: nothing a tenant writes is ever markup. */
+function previewText(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+}
+
+/**
+ * The hosted shell's page with its link preview (D161): the generic title and description, or
+ * the artifact's title alone when its manifest asks (`hosted.preview: "title"`), never its text or
+ * images, and `noindex`.
+ */
+function hostedPreview(html: string, title: string | undefined): string {
+  const shown = previewText(title ?? HOSTED_PREVIEW.title);
+  const description = previewText(HOSTED_PREVIEW.description);
+  const tags = [
+    `<meta name="robots" content="noindex, nofollow">`,
+    `<meta name="description" content="${description}">`,
+    `<meta property="og:title" content="${shown}">`,
+    `<meta property="og:description" content="${description}">`,
+    `<meta property="og:site_name" content="Mostra">`,
+    `<meta name="twitter:card" content="summary">`,
+  ].join("\n    ");
+  return html.replace(/<title>[^<]*<\/title>/, `<title>${shown}</title>\n    ${tags}`);
 }
