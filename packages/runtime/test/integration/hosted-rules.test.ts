@@ -28,10 +28,12 @@ describe("the hosted shell's rules and viewers (HY-08, HY-09)", () => {
   const owner = new GatewayHome();
   let apex: string;
   let api: string;
+  let data: string;
 
   beforeAll(async () => {
     port = await freePort();
-    server = await startServer({ data: tempDir("rules-data"), port });
+    data = tempDir("rules-data");
+    server = await startServer({ data, port });
     await owner.start({ env: ownerEnv(port) });
     await ownerSignIn(owner.client, port, "Ada");
     apex = `http://content.localhost:${port}`;
@@ -342,5 +344,24 @@ describe("the hosted shell's rules and viewers (HY-08, HY-09)", () => {
       },
     );
     expect(refused.status).toBe(403);
+  }, 120_000);
+
+  it("keeps every hosted session across a restart of the server, as a domain change needs (D167 item 8)", async () => {
+    const { url } = await share("single-tsx", "page.tsx");
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const route = `/a/${opened.link.artifactId}`;
+    await stopServer(server);
+    server = await startServer({ data, port });
+    expect(server.status.status, server.stderr()).toBe("started");
+    const shell = await browser.fetchJson(apex, `${route}/_mostra/session`);
+    expect(shell.status, shell.body).toBe(200);
+    const frame = await browser.fetchJson(opened.frameOrigin, "/_mostra/session");
+    expect(frame.status, frame.body).toBe(200);
+    const ticket = await browser.fetchJson(apex, `${route}/_mostra/ticket`, {
+      body: {},
+      csrf: opened.shellCsrf,
+    });
+    expect(ticket.status, ticket.body).toBe(200);
   }, 120_000);
 });
