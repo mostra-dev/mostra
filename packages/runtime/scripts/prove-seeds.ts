@@ -715,6 +715,22 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "HY-08",
+    name: "a page's sign-in code is redeemed on another route (login CSRF)",
+    file: "src/server/authorize.ts",
+    from: "      if (!started || started.routeId !== input.routeId || started.sessionId !== input.sessionId) {",
+    to: "      if (!started) {",
+    check: integration("signin.test.ts", "started on one route"),
+  },
+  {
+    requirement: "HY-08",
+    name: "a provider's answer is taken in a browser that didn't start the sign-in",
+    file: "src/server/authorize.ts",
+    from: "          flow === undefined ||\n          hashSecret(flow) !== pending.flow ||",
+    to: "",
+    check: integration("signin.test.ts", "another browser started"),
+  },
+  {
+    requirement: "HY-08",
     name: "the shell sends every route its raw browser secret",
     file: "../shell/src/hosted.ts",
     from: '    const mac = new Uint8Array(await subtle.sign("HMAC", key, new TextEncoder().encode(routeId)));',
