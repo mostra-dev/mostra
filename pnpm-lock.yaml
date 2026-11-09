@@ -846,6 +846,12 @@ importers:
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.4.0
+      '@modelcontextprotocol/conformance':
+        specifier: 'catalog:'
+        version: 0.1.16(supports-color@8.1.1)
+      '@modelcontextprotocol/conformance-next':
+        specifier: 'catalog:'
+        version: '@modelcontextprotocol/conformance@0.2.0-alpha.12(supports-color@8.1.1)'
       '@mostra/shell':
         specifier: workspace:*
         version: link:../shell
