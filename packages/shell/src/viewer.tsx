@@ -52,7 +52,7 @@ import {
 } from "./api.ts";
 import { HostedFooter, Interstitial, PausedNotice, SenderLine, ViewerChip } from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
-import { hosted, interstitialPassed, passInterstitial } from "./hosted.ts";
+import { hosted, interstitialPassed, passInterstitial, sessionUnstored } from "./hosted.ts";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
@@ -80,6 +80,7 @@ import {
   CONTROL_WORDS,
   DEV_WORDS,
   FRAME_WORDS,
+  HOSTED_WORDS,
   ORPHAN_WORDS,
   RECEIPT_WORDS,
   SAVE_WORDS,
@@ -1113,6 +1114,11 @@ export function ViewerPage(props: {
         )}
       </header>
       <PausedNotice ticket={ticket} />
+      {chrome && sessionUnstored() && (
+        <div className="mostra-banner mostra-warn" data-mostra-storage="unsaved" role="status">
+          <div>{HOSTED_WORDS.storageFull}</div>
+        </div>
+      )}
       {state.ticket.devPreview && (
         <div className="mostra-banner mostra-dev" data-mostra-dev-preview="" role="status">
           <div>

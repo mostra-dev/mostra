@@ -188,6 +188,9 @@ export const HOSTED_WORDS = {
   namedUnverified: (name: string): string => `${name} (not verified)`,
   signInFailed: "Sign-in didn't finish. Open the page again and try once more.",
   signingIn: "Signing you in…",
+  /** The shell couldn't store its session (a sibling page filled the site's storage). */
+  storageFull:
+    "This browser couldn't save your place on this page. If you reload it, open the link you were given again.",
   /** A page an operator paused, or that its owner paused. */
   paused: "This page is paused.",
   pausedDetail: "You can look at it, but it takes no answers right now. What you typed is kept.",

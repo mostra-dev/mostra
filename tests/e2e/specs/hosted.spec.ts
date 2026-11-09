@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 import { openInShell, publishOwn, saved, viewerName } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
@@ -75,13 +75,9 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
     if (daemon) removeTree(daemon.root);
   });
 
-  test("a respondent answers on the hosted link and the owner's agent gets it", async ({
-    page,
-    context,
-  }, info) => {
-    test.setTimeout(150_000);
-    if (!client || !daemon) throw new Error("not started");
-    // The owner signs in: the person approves the machine on the server's device page.
+  /** The owner signs in, approving the machine on the server's device page as a person does. */
+  const signIn = async (page: Page): Promise<void> => {
+    if (!client) throw new Error("not started");
     const login = await client.call<{
       loginId: string;
       verificationUriComplete?: string;
@@ -99,6 +95,25 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
       timeoutMs: 30_000,
     });
     expect(signedIn.status).toBe("signed-in");
+    owner = true;
+  };
+  let owner = false;
+  /** Each case runs alone too (`-g`, as the seeds run it): it signs the owner in if none did. */
+  const ensureSignedIn = async (browser: Browser): Promise<void> => {
+    if (owner) return;
+    const context = await browser.newContext();
+    await signIn(await context.newPage());
+    await context.close();
+  };
+
+  test("a respondent answers on the hosted link and the owner's agent gets it", async ({
+    page,
+    context,
+  }, info) => {
+    test.setTimeout(150_000);
+    if (!client || !daemon) throw new Error("not started");
+    // The owner signs in: the person approves the machine on the server's device page.
+    await signIn(page);
 
     const own = await publishOwn(client, daemon.home, info);
     const share = await client.call<{ url: string }>("share/start", {
@@ -148,10 +163,12 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
 
   test("the trusted chrome: sender, footer and report outside the frame, Trusted Types, sign-in from the chrome (HY-08, HY-09, D161)", async ({
     page,
+    browser,
     browserName,
   }, info) => {
     test.setTimeout(150_000);
     if (!client || !daemon) throw new Error("not started");
+    await ensureSignedIn(browser);
     const own = await publishOwn(client, daemon.home, info);
     const share = await client.call<{ url: string }>("share/start", {
       artifact: { artifactId: own.artifactId },
@@ -214,5 +231,79 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
       "account",
     );
     await expect(page.locator("[data-mostra-viewer]")).toContainText("Signed in as Grace");
+  });
+
+  test("sends each route its own anonymous key, and never the browser's own secret (HY-08)", async ({
+    page,
+    context,
+    browser,
+  }, info) => {
+    test.setTimeout(150_000);
+    if (!client || !daemon) throw new Error("not started");
+    await ensureSignedIn(browser);
+    const links: string[] = [];
+    for (const _ of [1, 2]) {
+      const own = await publishOwn(client, daemon.home, info);
+      links.push(
+        (
+          await client.call<{ url: string }>("share/start", {
+            artifact: { artifactId: own.artifactId },
+            via: "remote",
+          })
+        ).url,
+      );
+    }
+    const sent: { url: string; headers: Record<string, string>; body: string }[] = [];
+    context.on("request", (request) => {
+      sent.push({ url: request.url(), headers: request.headers(), body: request.postData() ?? "" });
+    });
+    for (const link of links) await openInShell(page, link);
+    const keys = sent
+      .filter((request) => request.url.endsWith("/_mostra/session") && request.body !== "")
+      .map((request) => (JSON.parse(request.body) as { browser?: string }).browser);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(keys[1]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(keys[0]).not.toBe(keys[1]);
+    const secret = await page.evaluate(() => localStorage.getItem("mostra.browser-secret"));
+    expect(secret).toBeTruthy();
+    for (const request of sent) {
+      const everything = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}`;
+      expect(everything.includes(secret as string), request.url).toBe(false);
+    }
+  });
+
+  test("keeps working when a sibling filled the site's storage, with the link kept and the viewer told (HY-09)", async ({
+    browser,
+  }, info) => {
+    test.setTimeout(150_000);
+    if (!client || !daemon) throw new Error("not started");
+    await ensureSignedIn(browser);
+    const own = await publishOwn(client, daemon.home, info);
+    const share = await client.call<{ url: string }>("share/start", {
+      artifact: { artifactId: own.artifactId },
+      via: "remote",
+    });
+    const context = await browser.newContext();
+    // What a sibling page that filled the site's storage group leaves: every write throws.
+    await context.addInitScript(() => {
+      Storage.prototype.setItem = () => {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      };
+    });
+    const page = await context.newPage();
+    const frame = await openInShell(page, share.url);
+    const answer = viewerName(info);
+    await frame.getByTestId("name").fill(answer);
+    await saved(page);
+    // The link stays in the address bar, so a reload still has it, and the viewer is told.
+    expect(new URL(page.url()).hash).toMatch(/^#t=/);
+    await expect(page.locator("[data-mostra-storage]")).toBeVisible();
+    // A reload opens the page again from the link that stayed (the answer belonged to the session
+    // the browser couldn't keep; FAILURE_MODEL §11.3).
+    await page.reload();
+    const again = await openInShell(page, page.url());
+    await expect(again.getByTestId("name")).toBeVisible();
+    await context.close();
   });
 });

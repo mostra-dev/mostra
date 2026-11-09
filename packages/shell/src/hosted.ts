@@ -13,7 +13,7 @@ import { SHELL_SESSION_HEADER } from "@mostra/protocol";
 const SESSION_KEY = (routeId: string): string => `mostra.session.${routeId}`;
 const BROWSER_SECRET_KEY = "mostra.browser-secret";
 
-let current: { readonly routeId: string; secret: string | undefined } | undefined;
+let current: { readonly routeId: string; secret: string | undefined; unstored?: true } | undefined;
 
 /** Starts the hosted mode for a route: the shell's requests carry that route's session. */
 export function enterRoute(routeId: string): void {
@@ -47,12 +47,24 @@ export function sessionHeaders(): Record<string, string> {
 export function keepSession(secret: string): boolean {
   if (!current) return false;
   current.secret = secret;
+  let stored = false;
   try {
     globalThis.localStorage?.setItem(SESSION_KEY(current.routeId), secret);
-    return globalThis.localStorage?.getItem(SESSION_KEY(current.routeId)) === secret;
+    stored = globalThis.localStorage?.getItem(SESSION_KEY(current.routeId)) === secret;
   } catch {
-    return false;
+    stored = false;
   }
+  if (stored) delete current.unstored;
+  else current.unstored = true;
+  return stored;
+}
+
+/**
+ * Whether this page's session lives in memory only, its storage write having failed: the viewer is
+ * told a reload will need the link again (INTERFACES §18.4).
+ */
+export function sessionUnstored(): boolean {
+  return current?.unstored === true;
 }
 
 /** Forgets the route's session (its link was revoked): the next open needs the link again. */
