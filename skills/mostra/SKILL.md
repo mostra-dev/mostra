@@ -17,6 +17,8 @@ Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/c
 
 When Mostra's tools are in your tool list (`artifact_create`, `artifact_verify` and the rest), use them instead: each step below has its tool, and everything else here holds unchanged. See [references/mcp.md](references/mcp.md).
 
+A link that starts with `http://127.0.0.1` opens only on the computer Mostra runs on. When you run in a cloud sandbox (a chat app's code execution, a remote container), the person can't open it: use Mostra's tools from a connector when you have them, and otherwise say so and offer to share the page ([references/sharing.md](references/sharing.md)).
+
 ## Words
 
 | Word | Meaning |
