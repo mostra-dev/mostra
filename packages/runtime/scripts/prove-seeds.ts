@@ -5591,8 +5591,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MC-04",
     name: "a metadata document is fetched from a name that resolves to loopback",
     file: "src/server/oauth-clients.ts",
-    from: "              if (forbiddenAddress(found.address)) {",
-    to: '              if (found.address === "") {',
+    from: "              if (!allowed && forbiddenAddress(found.address)) {",
+    to: '              if (!allowed && found.address === "") {',
     check: integration("oauth.test.ts", "Metadata Document"),
   },
   {
