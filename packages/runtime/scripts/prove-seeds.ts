@@ -5677,6 +5677,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "HO-09",
+    name: "the handle's restored leaves a restored home's incarnation as it was",
+    file: "src/server/handle.ts",
+    from: "      await options.data().restored(homeId);\n",
+    to: "",
+    check: integration("operator.test.ts", "through the handle"),
+  },
+  {
+    requirement: "HO-09",
     name: "MCP calls are counted without their client's name",
     file: "src/server/mcp.ts",
     from: "            dimensions: { client: client.name.slice(0, 64) },",

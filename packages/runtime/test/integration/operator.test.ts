@@ -457,6 +457,17 @@ describe("operator ports (HO-09)", () => {
       "the released home",
     );
 
+    // A restore from a backup: the home rotates its incarnation before it answers anyone, and its
+    // owner, meeting the new incarnation, records the regression once (FAILURE_MODEL §11.2).
+    const regressions = async (): Promise<number> =>
+      ok<{ events: unknown[] }>(
+        await owner.client.call("events/read", { filter: { types: ["remote.regressed"] } }),
+      ).events.length;
+    const before = await regressions();
+    expect((await operator.handle("restored", home)).status).toBe(200);
+    await eventually(async () => (await regressions()) === before + 1, 60_000, "remote.regressed");
+    expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(200);
+
     // Revoking: one link, then every link of the route.
     const second = ok<{ url: string; tokenId: string }>(
       await owner.client.call("share/start", { artifact, via: "remote" }, 60_000),
