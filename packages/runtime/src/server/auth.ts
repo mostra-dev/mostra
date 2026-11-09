@@ -242,6 +242,11 @@ export interface Authorization {
     readonly subject: string;
     readonly resource: string;
   }): Authenticated;
+  /**
+   * Whether an instance link is its account's default, after making it so when `makeDefault`
+   * (`POST /link`, D167; one default per account, as `mostra login --default` makes it).
+   */
+  linkState(linkId: string, makeDefault: boolean): { readonly default: boolean };
   /** The account's hosted home, made on its first use (one home per owner per server). */
   ensureHome(accountId: string): string;
   /** Whether an account has consented to a client. */
@@ -914,6 +919,30 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           linkId: link,
           expiresAt: now() + accessTtlMs,
         };
+      });
+    },
+
+    linkState(linkId, makeDefault) {
+      return directory.write((db) => {
+        if (makeDefault) {
+          const owner = db.get<{ account_id: string }>(
+            "SELECT account_id FROM instance_link WHERE id = ?",
+            linkId,
+          );
+          if (owner) {
+            db.run(
+              "UPDATE instance_link SET is_default = 0 WHERE account_id = ? AND id != ?",
+              owner.account_id,
+              linkId,
+            );
+            db.run("UPDATE instance_link SET is_default = 1 WHERE id = ?", linkId);
+          }
+        }
+        const row = db.get<{ is_default: number }>(
+          "SELECT is_default FROM instance_link WHERE id = ?",
+          linkId,
+        );
+        return { default: row?.is_default === 1 };
       });
     },
 

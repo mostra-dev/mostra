@@ -88,8 +88,8 @@ export default function operator(server) {
         record("accounts.resolve", identity);
         return state.accounts[identity.subject] ?? { account: `op:${identity.subject}`, status: "active" };
       },
-      async authenticate(bearer, resource) {
-        record("accounts.authenticate", { resource });
+      async authenticate(bearer, context) {
+        record("accounts.authenticate", { resource: context.resource });
         return state.credentials[bearer] ?? null;
       },
     },

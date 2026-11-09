@@ -9,16 +9,19 @@
  * chrome and expiry hold; and the server handle pauses, suspends, revokes, drains and removes,
  * each acting on one route or home only.
  */
-import { cpSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
+import { ApiBrowser, authorizeUrl, located, pkce, register, signIn } from "../oauth-support.ts";
 import { type Call, control } from "../operator-support.ts";
 import {
   freePort,
+  loopbackFetch,
   ownerEnv,
   ownerSignIn,
   type RunningServer,
@@ -50,6 +53,7 @@ describe("operator ports (HO-09)", () => {
         MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
         MOSTRA_TEST_OPERATOR_DISPATCH_MS: "100",
         MOSTRA_TEST_METER_WINDOW_MS: "300",
+        MOSTRA_TEST_GRANT_RECHECK_MS: "500",
       },
     });
     expect(server.status.status, server.stderr()).toBe("started");
@@ -480,4 +484,142 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
+
+  it("sends a person to the operator's first sign-in step and resumes there, once", async () => {
+    const api = `http://api.localhost:${port}`;
+    await operator.set({
+      accounts: { grace: { step: { url: "https://operator.example/welcome" } } },
+    });
+    const redirect = "https://client.example/callback";
+    const clientId = await register(port, redirect, "Step test client");
+    const who = new ApiBrowser(port, `api.localhost:${port}`);
+    const { challenge } = pkce();
+    const first = await who.ask("GET", authorizeUrl(api, clientId, redirect, challenge));
+    // The provider names Grace; the operator asks for a step first, on its own origin.
+    const step = await signIn(who, first, "Grace");
+    expect(step.origin).toBe("https://operator.example");
+    const back = new URL(step.searchParams.get("mostra_return") as string);
+    expect(`${back.origin}${back.pathname}`).toBe(`${api}/signin/return`);
+    expect(back.searchParams.get("step")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // The browser's own sign-in cookie, kept to try the return again after it was used.
+    const flow = [...who.jar].find(([name]) => name.includes("flow")) as [string, string];
+    expect(flow).toBeDefined();
+    // The person does what the step asks; the operator now answers with the account.
+    await operator.set({ accounts: { grace: { account: "op:grace", status: "active" } } });
+    const resumed = located(await who.ask("GET", `${back.pathname}${back.search}`));
+    expect(resumed.pathname).toBe("/oauth/authorize/continue");
+    const asked = (await operator.calls("accounts.resolve")).filter(
+      (call) => call.payload["subject"] === "grace",
+    );
+    expect(asked).toHaveLength(2);
+    // A step's return is single-use, even in the browser that started it with its cookie back,
+    // and bound to that browser: another browser holding the link gets nothing.
+    who.jar.set(flow[0], flow[1]);
+    const again = await who.ask("GET", `${back.pathname}${back.search}`);
+    expect(again.status).toBe(400);
+    const stranger = new ApiBrowser(port, `api.localhost:${port}`);
+    expect((await stranger.ask("GET", `${back.pathname}${back.search}`)).status).toBe(400);
+    await operator.set({ accounts: {} });
+  }, 60_000);
+
+  it("links an always-on instance with an operator-issued key on /host, /files and /mcp, and counts MCP calls by client", async () => {
+    const api = `http://api.localhost:${port}`;
+    const key = "op-key-7f3c2a9e5b1d4c8a6e0f2b3d";
+    await operator.set({
+      credentials: { [key]: { account: "op:ada", scope: ["mostra"], subject: "cell-1" } },
+    });
+    const cell = new GatewayHome();
+    await cell.start({ env: ownerEnv(port) });
+    try {
+      // A key the operator didn't issue links nothing.
+      const refused = await cell.client.call("remote/link", {
+        server: api,
+        key: "op-key-not-issued-by-the-operator-0000",
+      });
+      expect(
+        (refused as { error?: { data?: { code?: string } } }).error?.data?.code,
+        JSON.stringify(refused),
+      ).toBe("MOSTRA_REMOTE_LOGIN_FAILED");
+      const linked = ok<{
+        account: { id: string };
+        instanceId: string;
+        default: boolean;
+      }>(await cell.client.call("remote/link", { server: api, key, default: true }));
+      expect(linked.account.id).toBe("op:ada");
+      expect(linked.instanceId).toMatch(/^lnk_/);
+      expect(linked.default).toBe(true);
+      await eventually(async () => {
+        const links = ok<{ links: { state: string }[] }>(
+          await cell.client.call("remote/status", {}),
+        ).links;
+        return links[0]?.state === "connected";
+      }, 30_000);
+      // The binding and the version files run on the key: the instance hosts a page.
+      const dir = join(tempDir("op-key"), "single-mdx");
+      cpSync(join(FIXTURES, "single-mdx"), dir, { recursive: true });
+      const receipt = ok<{ artifactId: string }>(
+        await cell.client.call(
+          "artifact/publish",
+          { source: { path: join(dir, "page.mdx") } },
+          120_000,
+        ),
+      );
+      const shared = ok<{ url: string }>(
+        await cell.client.call(
+          "share/start",
+          { artifact: { artifactId: receipt.artifactId }, via: "remote" },
+          60_000,
+        ),
+      );
+      expect(new URL(shared.url).pathname).toMatch(/^\/a\/rte_/);
+      const resources = (await operator.calls("accounts.authenticate")).map(
+        (call) => call.payload["resource"],
+      );
+      expect(resources).toContain("host");
+      expect(resources).toContain("files");
+      // MCP takes the key too, and each call is counted under the client's `clientInfo` name.
+      const client = new Client({ name: "acme-agent", version: "1.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(`${api}/mcp`), {
+          requestInit: { headers: { Authorization: `Bearer ${key}` } },
+          fetch: loopbackFetch,
+        }),
+      );
+      expect((await client.listTools()).tools.length).toBe(13);
+      await client.close();
+      expect(
+        (await operator.calls("accounts.authenticate")).map((call) => call.payload["resource"]),
+      ).toContain("mcp");
+      await eventually(async () => {
+        const counters = (await operator.calls("metering")).flatMap(
+          (call) =>
+            call.payload["counters"] as { name: string; dimensions?: Record<string, string> }[],
+        );
+        return counters.some(
+          (counter) =>
+            counter.name === "mcp.calls" && counter.dimensions?.["client"] === "acme-agent",
+        );
+      }, 20_000);
+      // The key is kept only in the home's owner-only credentials file: no ledger, log or other
+      // file of the home holds it.
+      const holding = readdirSync(cell.home.home, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => join(entry.parentPath, entry.name))
+        .filter((file) => readFileSync(file).includes(key));
+      expect(holding.map((file) => file.slice(cell.home.home.length))).toEqual([
+        expect.stringMatching(/[\\/]keys[\\/]remote[\\/][^\\/]+\.json$/),
+      ]);
+      // The operator revokes the key: the binding closes within the bound, and stays closed.
+      await operator.set({ credentials: {} });
+      await eventually(async () => {
+        const links = ok<{ links: { state: string }[] }>(
+          await cell.client.call("remote/status", {}),
+        ).links;
+        return links[0]?.state !== "connected";
+      }, 30_000);
+    } finally {
+      await operator.set({ credentials: {} });
+      await cell.stop();
+    }
+  }, 240_000);
 });

@@ -11634,6 +11634,87 @@ pub struct RemoteLinkAccount {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub name: ::std::option::Option<::std::string::String>,
 }
+///`RemoteLinkParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLinkParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub default: ::std::option::Option<bool>,
+    pub key: RemoteLinkParamsKey,
+    pub server: ServerOrigin,
+}
+///`RemoteLinkParamsKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemoteLinkParamsKey(::std::string::String);
+impl ::std::ops::Deref for RemoteLinkParamsKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemoteLinkParamsKey> for ::std::string::String {
+    fn from(value: RemoteLinkParamsKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemoteLinkParamsKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 20usize {
+            return Err("shorter than 20 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemoteLinkParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemoteLinkParamsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemoteLinkParamsKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A home linked to a remote server with an operator-issued key.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLinkResult {
+    pub account: RemoteLinkResultAccount,
+    pub default: bool,
+    #[serde(rename = "instanceId")]
+    pub instance_id: ::std::string::String,
+    pub server: ServerOrigin,
+}
+///`RemoteLinkResultAccount`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct RemoteLinkResultAccount {
+    pub id: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+}
 ///`RemoteLinkState`
 #[derive(
     ::serde::Deserialize,

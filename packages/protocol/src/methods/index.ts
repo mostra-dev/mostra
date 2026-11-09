@@ -44,6 +44,7 @@ import { relayCallBatchMethod } from "./relay/call-batch.ts";
 import { relayEffectMethod } from "./relay/effect.ts";
 import { relayLiveValueMethod } from "./relay/live-value.ts";
 import { relayRunUpdateMethod } from "./relay/run-update.ts";
+import { remoteLinkMethod } from "./remote/link.ts";
 import { remoteLoginMethod } from "./remote/login.ts";
 import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
 import { remoteLogoutMethod } from "./remote/logout.ts";
@@ -128,6 +129,7 @@ export const hostMethods: readonly AnyMethod[] = [
   hostedSubmissionMethod,
   artifactPauseMethod,
   portRelayAuthorMethod,
+  remoteLinkMethod,
   // gen:methods
 ];
 

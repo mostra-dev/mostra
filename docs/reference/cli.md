@@ -310,6 +310,7 @@ Arguments:
 
 Flags:
   --default                    Make this machine the account's default, the one chat apps create pages on. Default: the first machine linked.
+  --key-file <string>          Link with a key the server's operator issued for an account, read from this file, instead of a person's sign-in (for an always-on machine).
 
 Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).

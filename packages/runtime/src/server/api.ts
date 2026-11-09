@@ -353,6 +353,27 @@ export function createApi(options: ApiOptions): Api {
         });
         return;
       }
+      if (method === "POST" && path === "/link") {
+        // What a binding's credential links (D167): the account, the instance link it binds and
+        // whether that instance is the account's default; `default=1` makes it so. A person's
+        // device-grant token and an operator-issued key alike, for the binding's own resource.
+        const who = await bearer(request, "host");
+        if (!who || who.linkId === undefined) {
+          unauthorized(response, "This credential links no instance on this server.");
+          return;
+        }
+        const body = await form(request);
+        const linked = auth.linkState(who.linkId, body?.get("default") === "1");
+        send(response, 200, {
+          account: {
+            id: who.accountId,
+            ...(who.accountName !== undefined ? { name: who.accountName } : {}),
+          },
+          instanceId: who.linkId,
+          default: linked.default,
+        });
+        return;
+      }
       if (method === "POST" && path === "/oauth/register") {
         // Dynamic Client Registration (RFC 7591): JSON in, the client's record out.
         if (!(request.headers["content-type"] ?? "").startsWith("application/json")) {

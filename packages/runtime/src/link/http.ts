@@ -116,10 +116,15 @@ export async function postForm(
   path: string,
   fields: Record<string, string>,
   connectTo?: RemoteAddress,
+  bearer?: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const answer = await remoteRequest(server, path, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+      ...(bearer !== undefined ? { authorization: `Bearer ${bearer}` } : {}),
+    },
     body: new URLSearchParams(fields).toString(),
     ...(connectTo ? { connectTo } : {}),
   });

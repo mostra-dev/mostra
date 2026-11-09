@@ -403,6 +403,16 @@ impl super::Method for RelayRunUpdate {
     type Params = super::generated::RelayRunUpdateParams;
     type Result = super::generated::RelayRunUpdateResult;
 }
+///`remote/link`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLink;
+impl super::Method for RemoteLink {
+    const NAME: &'static str = "remote/link";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteLinkParams;
+    type Result = super::generated::RemoteLinkResult;
+}
 ///`remote/login`.
 #[derive(Clone, Copy, Debug)]
 pub struct RemoteLogin;
@@ -825,6 +835,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "relay/run.update",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/link",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "remote/login",

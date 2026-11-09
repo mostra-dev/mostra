@@ -401,6 +401,16 @@
         "$ref": "#/$defs/RelayRunUpdateResult"
       }
     },
+    "remote/link": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/RemoteLinkParams"
+      },
+      "result": {
+        "$ref": "#/$defs/RemoteLinkResult"
+      }
+    },
     "remote/login": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -4949,6 +4959,61 @@
         "pendingPushes"
       ],
       "description": "One remote server this home is linked to, and the state of the link."
+    },
+    "RemoteLinkParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 512
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "server",
+        "key"
+      ]
+    },
+    "RemoteLinkResult": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/ServerOrigin"
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "server",
+        "account",
+        "instanceId",
+        "default"
+      ],
+      "description": "A home linked to a remote server with an operator-issued key."
     },
     "RemoteLoginParams": {
       "type": "object",

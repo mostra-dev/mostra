@@ -546,6 +546,11 @@ export {
   relayRunUpdateMethod,
 } from "./methods/relay/run-update.ts";
 export {
+  type RemoteLinkParams,
+  type RemoteLinkResult,
+  remoteLinkMethod,
+} from "./methods/remote/link.ts";
+export {
   type RemoteLoginParams,
   type RemoteLoginResult,
   remoteLoginMethod,

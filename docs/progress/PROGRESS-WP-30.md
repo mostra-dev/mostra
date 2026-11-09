@@ -27,4 +27,18 @@
 | `b575fa9` | The authorization server for MCP clients (Client ID Metadata Documents, Dynamic Client Registration, PKCE S256, `iss`, audiences, rotating refresh tokens), identity providers (OpenID Connect, GitHub, development, operator-supplied), first sign-in steps, consent, operator credentials, viewer sign-in routes (MC-04, HY-08) |
 | `2b95dad` | The remote MCP endpoint at `/mcp`, authoring relayed to the default owner instance (`port/relay.author`), the bundled reference in `@mostra/mcp` (MC-04) |
 | `cc42876`, `5201f9f` | The container image from the release's Linux bundles; Rust wire types regenerated |
-| (this) | The image rehearsed on every release build and published with each release |
+| `4d5a763` | The image rehearsed on every release build and published with each release |
+| `9964a88`, `e5ca26d` | The hosted shell's trusted chrome: sender line, viewer and sign-in, "Never enter passwords", report control, paused notice, interstitial, after-submit line, made-with link, Trusted Types; the storage-failure notice (HY-08, HY-09) |
+| `5b3d094`, `e0f9a57`, `20d6e80` | Sign-in through OpenID Connect and GitHub fakes and bound to its route; generic previews, a full cookie jar survived, one set of framers for label documents; a restart keeps every hosted session (HY-08, HY-09) |
+| `3a9d169`, `8a3d87d` | The image's rehearsal without attestations; test servers reached on Windows; the self-hosting page (Caddy) |
+| `164af59` | Anonymous answers at volume with the owner offline, the per-IP and per-link rates, the load script (RM-08) |
+| `d6c7c98` | Two accounts hosting one copied project; one home learns nothing of another's files; the open-server audit (RM-03) |
+| `632b1df`, `d9e10f3` | The harness plugin's remote MCP server on |
+| `fb0506e` | A stopping listener resets its connections (#132) |
+| `6bfa48c`, `3446861` | D167 in the dossier; WP-30's verified facts |
+| `b9bea94` | A metadata document's lookup answered in the shape Node.js asks for (found by claude.ai's connector) |
+| `e0b45ac`, `c828e9b`, `6c116cb` | Verify relaunches a browser that died under its runner and replaces a runner that failed (#106) |
+| `4cf57c6` | The replicator test on CI's Linux remote legs, with a pinned Litestream |
+| `5ca02f7` | The Skill: a local link opens only where Mostra runs; the tools through a Mostra server |
+| `8328c7e`, `1691645`, `1b83ebd` | Pause end to end (RM-09); the sign-in's bindings seeded (HY-08) |
+| `ac7f5e6` | The MCP conformance suites through the remote endpoint (MC-04) |

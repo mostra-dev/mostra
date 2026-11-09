@@ -2425,6 +2425,27 @@ export interface RemoteLink {
 export const RemoteLink: z.ZodType<RemoteLink>;
 
 // @public
+export const remoteLinkMethod: MethodDefinition<RemoteLinkParams, RemoteLinkResult>;
+
+// @public
+export interface RemoteLinkParams {
+    readonly default?: boolean;
+    readonly key: string;
+    readonly server: ServerOrigin;
+}
+
+// @public
+export interface RemoteLinkResult {
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly default: boolean;
+    readonly instanceId: string;
+    readonly server: ServerOrigin;
+}
+
+// @public
 export type RemoteLinkState = "connected" | "connecting" | "offline" | "signed-out";
 
 // @public

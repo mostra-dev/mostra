@@ -3,17 +3,22 @@
  * remote server by the OAuth device authorization grant, so `mostra share --cloud` can host its
  * artifacts there, and signs out again. The instance keeps the refresh token in the home,
  * owner-only; signing out keeps its instance link, so the artifacts it shared stay its own at the
- * next sign-in, unless `--forget`. Clients of `remote/login`, `remote/login.wait` and
- * `remote/logout`.
+ * next sign-in, unless `--forget`. With `--key-file`, a machine links with a key the server's
+ * operator issued instead (`remote/link`, D167). Clients of `remote/login`, `remote/login.wait`,
+ * `remote/link` and `remote/logout`.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   artifactPauseMethod,
+  remoteLinkMethod,
   remoteLoginMethod,
   remoteLoginWaitMethod,
   remoteLogoutMethod,
 } from "@mostra/protocol";
 import { type CommandDef, defineCommand } from "../command.ts";
 import { EXIT } from "../exit.ts";
+import { usage } from "../parse.ts";
 import { arg, artifactRef, flag } from "./shared.ts";
 
 /** How long `mostra login` waits for the person to approve, in all (the code lives 10 minutes). */
@@ -41,12 +46,41 @@ export const loginCommand: CommandDef = defineCommand({
       summary:
         "Make this machine the account's default, the one chat apps create pages on. Default: the first machine linked.",
     },
+    {
+      name: "key-file",
+      kind: "string",
+      summary:
+        "Link with a key the server's operator issued for an account, read from this file, instead of a person's sign-in (for an always-on machine).",
+    },
   ],
   output: { type: "RemoteLoginWaitResult", topic: "cli" },
   exits: [EXIT.failure, EXIT.environment],
   example: "login https://api.example.com",
   async run(context) {
     const server = context.args["server"];
+    // An operator-issued key, from a file: never on the command line, which every local user sees.
+    const keyFile = flag(context, "key-file");
+    if (keyFile !== undefined) {
+      if (typeof server !== "string")
+        throw usage("Name the server the key is for: mostra login <server> --key-file <file>.");
+      let key: string;
+      try {
+        key = readFileSync(resolve(context.cwd, keyFile), "utf8").trim();
+      } catch (error) {
+        throw usage(
+          `--key-file ${keyFile} can't be read (${(error as NodeJS.ErrnoException).code ?? "error"}).`,
+        );
+      }
+      const linked = await context.call(remoteLinkMethod, {
+        server: server.replace(/\/+$/, ""),
+        key,
+        ...(context.flags["default"] === true ? { default: true } : {}),
+      });
+      return {
+        result: { status: "signed-in", ...linked },
+        human: `Linked to ${linked.server} for ${linked.account.name ?? linked.account.id} with the operator's key. This machine is ${linked.instanceId}.\n`,
+      };
+    }
     const started = await context.call(remoteLoginMethod, {
       ...(typeof server === "string" ? { server: server.replace(/\/+$/, "") } : {}),
       ...(context.flags["default"] === true ? { default: true } : {}),
