@@ -39,6 +39,10 @@ function exitWithGroup(code: number): never {
 const idle = Number(process.env["MOSTRA_TEST_VERIFY_IDLE_MS"]);
 const runner = createRunner({
   ...(idle > 0 ? { idleMs: idle } : {}),
+  ...(process.env["MOSTRA_TEST_VERIFY_LOSE_BROWSER"] === "1" ? { loseBrowser: true } : {}),
+  ...(process.env["MOSTRA_TEST_VERIFY_FAIL_ONCE"]
+    ? { failOnceFile: process.env["MOSTRA_TEST_VERIFY_FAIL_ONCE"] }
+    : {}),
   onIdle: () => {
     void runner.close().finally(() => exitWithGroup(0));
   },
@@ -49,11 +53,26 @@ const peer = new RpcPeer({
     send(message);
   },
   onRequest: async (method, params) => {
+    // The runner is the supervisor's own child: an error it didn't expect is answered with what
+    // went wrong, so the supervisor can say it (the peer would answer it without its details).
+    const told = async <T>(work: () => Promise<T>): Promise<T> => {
+      try {
+        return await work();
+      } catch (error) {
+        if (error instanceof RpcError) throw error;
+        const what = error instanceof Error ? error.message : String(error);
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+            message: `The verify runner failed: ${what.slice(0, 500)}`,
+          }),
+        );
+      }
+    };
     if (method === VERIFY_RUNNER_METHODS.render) {
-      return runner.render(params as unknown as RenderRequest);
+      return told(() => runner.render(params as unknown as RenderRequest));
     }
     if (method === VERIFY_RUNNER_METHODS.compare) {
-      return runner.compare(params as unknown as CompareRequest);
+      return told(() => runner.compare(params as unknown as CompareRequest));
     }
     throw new RpcError(
       createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {

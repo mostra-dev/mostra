@@ -206,6 +206,43 @@ describe("verify's failures", () => {
   );
 
   it(
+    "launches a fresh browser when the warm runner's died, so the next verify passes (#106's sighting)",
+    async () => {
+      await withDaemon({ MOSTRA_TEST_VERIFY_LOSE_BROWSER: "1" }, async (client, home) => {
+        // Every render leaves the runner's browser gone, as a crashed browser does.
+        expect((await verifyOf(client, single())).status).toBe("pass");
+        const second = single();
+        writeFileSync(second, `${readFileSync(second, "utf8")}\n// a second source\n`);
+        const again = await verifyOf(client, second);
+        expect(codes(again, "error")).toEqual([]);
+        expect(again.status).toBe("pass");
+        // The runner launched the browser again itself: no runner failed and none was replaced.
+        const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+        expect(log).not.toContain("verify.runner_failed");
+      });
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "replaces a runner that failed in itself and renders the page again on a fresh one, saying why",
+    async () => {
+      const flag = join(tempDir("verify-fail-once"), "fail");
+      writeFileSync(flag, "");
+      await withDaemon({ MOSTRA_TEST_VERIFY_FAIL_ONCE: flag }, async (client, home) => {
+        const verdict = await verifyOf(client, single());
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(verdict.status).toBe("pass");
+        expect(existsSync(flag)).toBe(false);
+        const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+        expect(log).toContain("verify.runner_failed");
+        expect(log).toContain("MOSTRA_TEST_VERIFY_FAIL_ONCE");
+      });
+    },
+    VERIFY_MS,
+  );
+
+  it(
     "removes the sandboxes a stopped instance left, at start (D138 item 1)",
     async () => {
       await withDaemon(

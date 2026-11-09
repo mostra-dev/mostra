@@ -4483,6 +4483,22 @@ const SEEDS: readonly Seed[] = [
     check: integration("verify.test.ts", "server code that crashes"),
   },
   {
+    requirement: "wp30-106",
+    name: "the warm runner keeps a browser that died under it, so every later render fails",
+    file: "../verify/src/runner.ts",
+    from: "        if (open.isConnected()) return open;",
+    to: "        return open;",
+    check: integration("verify-failures.test.ts", "warm runner's died"),
+  },
+  {
+    requirement: "wp30-106",
+    name: "a runner that failed in itself is asked again, failing every later verify",
+    file: "src/verify/runner.ts",
+    from: '      if (code === "MOSTRA_HOST_INTERNAL_ERROR") {',
+    to: '      if (code === "MOSTRA_HOST_INTERNAL_ERROR" && false) {',
+    check: integration("verify-failures.test.ts", "failed in itself"),
+  },
+  {
     requirement: "wp09-opus-5",
     name: "a render another run's recovery cut off isn't retried",
     file: "src/verify/runner.ts",
