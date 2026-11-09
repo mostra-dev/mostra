@@ -74,9 +74,15 @@ describe("the harness plugins (AX-10)", () => {
       readFileSync(join(REPO, "skills/mostra/SKILL.md")),
     );
     // The local server is on (WP-15): every manifest starts it, pinned and marked as a plugin's
-    // (D148); the remote one is off until WP-30, and the README says this release sends nothing.
+    // (D148); the remote one is on since WP-30 (D162 item 5), over HTTPS, and the README says this
+    // release sends no usage data.
     const launch = { command: "npx", args: ["-y", "@mostra/cli@1.2.3", "mcp", "--embedded"] };
-    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toEqual({ mostra: launch });
+    const remote = PLUGIN.features.remoteMcp.url as string;
+    expect(remote).toMatch(/^https:\/\//);
+    expect(readJson(dir, "gemini-extension.json")["mcpServers"]).toEqual({
+      mostra: launch,
+      "mostra-remote": { httpUrl: remote },
+    });
     expect(readJson(dir, ".mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
     expect(readJson(dir, "mcp.json")["mcpServers"]).toMatchObject({ mostra: launch });
     expect(readFileSync(join(dir, "README.md"), "utf8")).toContain("sends no usage data");
@@ -332,7 +338,10 @@ describe("the harness plugins (AX-10)", () => {
     // A server file left behind when the feature is off again is refused.
     const off = built({
       ...PLUGIN,
-      features: { ...PLUGIN.features, localMcp: { ...PLUGIN.features.localMcp, enabled: false } },
+      features: {
+        localMcp: { ...PLUGIN.features.localMcp, enabled: false },
+        remoteMcp: { enabled: false, owner: "WP-30" },
+      },
     });
     writeFileSync(join(off.dir, "mcp.json"), readFileSync(join(dir, "mcp.json")));
     expect(off.check().join("\n")).toMatch(/mcp.json declares a server no feature turns on/);
