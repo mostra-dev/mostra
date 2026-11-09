@@ -16,6 +16,7 @@ import { GatewayHome, ok } from "../gateway-home.ts";
 import { ApiBrowser, approve, located, signIn } from "../oauth-support.ts";
 import {
   freePort,
+  ownerEnv,
   ownerSignIn,
   type RunningServer,
   startServer,
@@ -205,7 +206,7 @@ describe("identity providers and a page's sign-in (HY-08)", () => {
     });
     expect(server.status.status, server.stderr()).toBe("started");
     owner = new GatewayHome();
-    await owner.start({});
+    await owner.start({ env: ownerEnv(port) });
     await ownerSignIn(owner.client, port, "Ada");
   }, 120_000);
 

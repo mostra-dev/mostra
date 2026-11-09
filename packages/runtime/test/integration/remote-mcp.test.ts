@@ -14,6 +14,8 @@ import { GatewayHome } from "../gateway-home.ts";
 import { mcpAccessToken } from "../oauth-support.ts";
 import {
   freePort,
+  loopbackFetch,
+  ownerEnv,
   ownerSignIn,
   type RunningServer,
   send,
@@ -51,6 +53,7 @@ describe("the remote MCP server (MC-04)", () => {
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`http://api.localhost:${port}/mcp`), {
         requestInit: { headers: { Authorization: `Bearer ${token}` } },
+        fetch: loopbackFetch,
       }),
     );
     clients.push(client);
@@ -63,7 +66,7 @@ describe("the remote MCP server (MC-04)", () => {
     expect(server.status.status, server.stderr()).toBe("started");
     workspace = tempDir("mcp-workspace");
     owner = new GatewayHome();
-    await owner.start({ env: { MOSTRA_MCP_WORKSPACE: workspace } });
+    await owner.start({ env: { ...ownerEnv(port), MOSTRA_MCP_WORKSPACE: workspace } });
     await ownerSignIn(owner.client, port, "Ada");
     accessToken = await mcpAccessToken(port, "Ada");
   }, 120_000);

@@ -8,6 +8,7 @@ import { writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { BIN, tempDir } from "./support.ts";
 
 /** A free loopback port, found by binding one and releasing it. */
@@ -217,6 +218,55 @@ export async function deviceSignIn(
 /** The environment an owner instance needs to reach a test server on loopback (D166). */
 export function ownerEnv(port: number): NodeJS.ProcessEnv {
   return { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` };
+}
+
+/**
+ * A `fetch` for the test server's names (`api.localhost`, `content.localhost`): Windows resolves
+ * no `*.localhost` name, so it connects to 127.0.0.1 and sends the name as `Host`, as an edge would,
+ * streaming the answer's body (Streamable HTTP's event streams included).
+ */
+export async function loopbackFetch(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> {
+  const asked = new Request(input, init);
+  const url = new URL(asked.url);
+  const body = asked.body === null ? undefined : Buffer.from(await asked.arrayBuffer());
+  const headers: Record<string, string> = { host: url.host };
+  asked.headers.forEach((value, name) => {
+    headers[name] = value;
+  });
+  return new Promise<Response>((resolve, reject) => {
+    const outgoing = request(
+      {
+        host: "127.0.0.1",
+        port: Number(url.port),
+        method: asked.method,
+        path: `${url.pathname}${url.search}`,
+        headers,
+      },
+      (incoming) => {
+        const answer = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (value === undefined) continue;
+          for (const one of Array.isArray(value) ? value : [value]) answer.append(name, one);
+        }
+        const status = incoming.statusCode ?? 500;
+        const empty = status === 204 || status === 304 || asked.method === "HEAD";
+        resolve(
+          new Response(empty ? null : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>), {
+            status,
+            headers: answer,
+          }),
+        );
+      },
+    );
+    outgoing.on("error", reject);
+    asked.signal.addEventListener("abort", () => outgoing.destroy(new Error("aborted")), {
+      once: true,
+    });
+    outgoing.end(body);
+  });
 }
 
 /** A client that answers host-protocol calls, as `GatewayHome.client` does. */

@@ -102,8 +102,9 @@ try {
     platforms.join(","),
     "--build-arg",
     `VERSION=${version}`,
-    "--provenance=mode=max",
-    "--sbom=true",
+    // Provenance and an SBOM travel with a pushed image as attestation manifests; the local
+    // engine's exporter loads no manifest list, so a loaded rehearsal image carries none.
+    ...(values.push ? ["--provenance=mode=max", "--sbom=true"] : ["--provenance=false"]),
     ...tags.flatMap((tag) => ["--tag", tag]),
     ...(values.push ? ["--push"] : values.load ? ["--load"] : []),
     ...(values.metadata ? ["--metadata-file", resolve(values.metadata)] : []),
