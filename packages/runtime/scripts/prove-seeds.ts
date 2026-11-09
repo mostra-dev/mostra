@@ -5636,6 +5636,22 @@ const SEEDS: readonly Seed[] = [
     check: integration("operator.test.ts", "through the handle"),
   },
   {
+    requirement: "RM-09",
+    name: "a paused artifact's relayed actions run",
+    file: "src/gateway/actions.ts",
+    from: "    const pause = interaction.pauseOf(page.artifactId);\n    if (!pause) return undefined;",
+    to: "    const pause = interaction.pauseOf(page.artifactId);\n    if (pause || !pause) return undefined;",
+    check: integration("pause.test.ts", "owner pauses"),
+  },
+  {
+    requirement: "RM-09",
+    name: "the shell isn't told a page is paused",
+    file: "src/gateway/index.ts",
+    from: "      const pause = interaction.pauseOf(artifactId);\n      const chrome = hosted?.chrome",
+    to: "      const pause = undefined as ReturnType<typeof interaction.pauseOf>;\n      const chrome = hosted?.chrome",
+    check: integration("pause.test.ts", "owner pauses"),
+  },
+  {
     requirement: "RM-08",
     name: "a forged leftmost X-Forwarded-For is believed",
     file: "src/server/clients.ts",
