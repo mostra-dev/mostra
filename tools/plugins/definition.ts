@@ -120,6 +120,11 @@ export const PLUGIN: PluginDefinition = {
       // Started from Claude Code, Gemini CLI and Codex on each, harness-plugins.yml run 41637680175.
       verifiedOn: ["darwin", "linux", "win32"],
     },
-    remoteMcp: { enabled: false, owner: "WP-30" },
+    remoteMcp: {
+      enabled: true,
+      owner: "WP-30",
+      url: "https://api.mostradev.com/mcp",
+      privacyPolicyUrl: "https://mostradev.com/privacy",
+    },
   },
 };
