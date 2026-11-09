@@ -1,5 +1,5 @@
 /**
- * The bundled reference (D140 item 17, D162): the CLI reference, the telemetry page, every
+ * The bundled reference (D140 item 17, D162): the CLI reference, the telemetry and self-hosting pages, every
  * diagnostic code and the Agent Skill as `guide` topics, read from the directories a package ships.
  * `mostra docs` and both MCP servers read it.
  */
@@ -41,7 +41,7 @@ export function docsIndex(referenceDir: string, skillDir: string): DocsTopic[] {
   const dir = referenceDir;
   const base = DEFAULT_DOCS_BASE.replace(/\/+$/, "");
   const pages: DocsTopic[] = [];
-  for (const topic of ["cli", "telemetry"]) {
+  for (const topic of ["cli", "telemetry", "self-hosting"]) {
     const file = join(dir, `${topic}.md`);
     if (existsSync(file))
       pages.push({ topic, title: titleOf(file), url: `${base}/${topic}`, file });
