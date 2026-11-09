@@ -170,6 +170,9 @@ export function metadataClientId(clientId: string): URL | undefined {
   }
 }
 
+/** The loopback addresses a test's metadata origin may resolve to (`MOSTRA_TEST_CIMD_ORIGIN`). */
+const LOOPBACK = new Set(["127.0.0.1", "::1"]);
+
 /** Builds the clients over the directory. */
 export function createClients(options: ClientsOptions): Clients {
   const { directory, log } = options;
@@ -192,14 +195,26 @@ export function createClients(options: ClientsOptions): Clients {
     new Promise((resolve, reject) => {
       const test =
         testOrigin !== undefined && url.origin === testOrigin.replace(/^http:/, "https:");
-      const pinned: LookupFunction = (hostname, _options, callback) => {
+      // Every address the name has is checked, on the connection that uses it. Node.js asks for
+      // all of them (`all: true`, its happy-eyeballs connect) or for one, and expects the answer
+      // in the shape it asked for. A test's loopback origin passes the same lookup, with its
+      // loopback address allowed, so the tests run this path.
+      const pinned: LookupFunction = (hostname, options, callback) => {
         lookup(hostname, { all: true, verbatim: true })
           .then((addresses) => {
             if (addresses.length === 0) throw new Error("no address");
             for (const found of addresses) {
-              if (forbiddenAddress(found.address)) {
+              const allowed = test && LOOPBACK.has(found.address);
+              if (!allowed && forbiddenAddress(found.address)) {
                 throw new Error(`the name resolves to a non-public address (${found.address})`);
               }
+            }
+            if ((options as { all?: boolean }).all === true) {
+              (callback as unknown as (error: null, list: typeof addresses) => void)(
+                null,
+                addresses,
+              );
+              return;
             }
             const chosen = addresses[0] as { address: string; family: number };
             callback(null, chosen.address, chosen.family);
@@ -218,7 +233,7 @@ export function createClients(options: ClientsOptions): Clients {
           method: "GET",
           headers: { accept: "application/json", "user-agent": "mostra-remote-server" },
           timeout: FETCH_TIMEOUT_MS,
-          ...(test ? {} : { lookup: pinned }),
+          lookup: pinned,
         },
         (response) => {
           let size = 0;

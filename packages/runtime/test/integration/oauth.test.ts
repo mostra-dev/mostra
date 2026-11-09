@@ -44,7 +44,8 @@ describe("the authorization server for MCP clients (MC-04)", () => {
       response.end(answer.body === undefined ? "" : JSON.stringify(answer.body));
     });
     await new Promise<void>((resolve) => documents.listen(0, "127.0.0.1", resolve));
-    documentsOrigin = `http://127.0.0.1:${(documents.address() as AddressInfo).port}`;
+    // A name, never a literal address, so the fetch resolves it through the server's own lookup.
+    documentsOrigin = `http://localhost:${(documents.address() as AddressInfo).port}`;
     port = await freePort();
     api = `http://api.localhost:${port}`;
     server = await startServer({
@@ -376,7 +377,9 @@ describe("the authorization server for MCP clients (MC-04)", () => {
       port,
       `api.localhost:${port}`,
       authorizeUrl(
-        `https://localhost:${new URL(documentsOrigin).port}/client.json`,
+        // A name that resolves to loopback, at an origin other than the test's own: the lookup
+        // refuses it before anything connects.
+        `https://localhost:${Number(new URL(documentsOrigin).port) + 1}/client.json`,
         "https://claude.example/cb",
         challenge,
       ),
