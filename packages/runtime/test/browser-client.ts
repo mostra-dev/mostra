@@ -5,6 +5,7 @@
  * browser would send. It never follows redirects on its own.
  */
 import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { connect } from "node:net";
 
 /** A response: status, every header as sent (repeats kept), and the body. */
@@ -162,10 +163,13 @@ export function send(ask: Ask): Promise<Answer> {
   // tunnels' sites (`<name>.localhost`) live there.
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const loopback = host === "localhost" || host.endsWith(".localhost");
+  // A deployed server is `https:` (the load test against the container image, RM-08).
+  const secure = url.protocol === "https:";
   return new Promise((resolve, reject) => {
-    const req = httpRequest(
+    const req = (secure ? httpsRequest : httpRequest)(
       {
         host: loopback ? "127.0.0.1" : host,
+        ...(secure ? { servername: host } : {}),
         // The Host the URL names, as a browser sends it, whatever address it connects to.
         setHost: false,
         port: url.port,
