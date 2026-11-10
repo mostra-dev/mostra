@@ -35,13 +35,15 @@ function addressBits(address: string): { readonly v6: boolean; readonly bits: bi
   if (!isIPv6(text)) return undefined;
   const zone = text.indexOf("%");
   if (zone !== -1) text = text.slice(0, zone);
-  // A trailing IPv4 part becomes two groups.
-  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
-  if (v4) {
-    const parts = (v4[1] as string).split(".").map(Number);
+  // A trailing IPv4 part becomes two groups. It is what follows the last colon, read without a
+  // pattern: an address comes from a client's `X-Forwarded-For` (CodeQL js/polynomial-redos).
+  const last = text.slice(text.lastIndexOf(":") + 1);
+  if (last.includes(".")) {
+    if (!isIPv4(last)) return undefined;
+    const parts = last.split(".").map(Number);
     const high = (((parts[0] as number) << 8) | (parts[1] as number)).toString(16);
     const low = (((parts[2] as number) << 8) | (parts[3] as number)).toString(16);
-    text = `${text.slice(0, -(v4[1] as string).length)}${high}:${low}`;
+    text = `${text.slice(0, -last.length)}${high}:${low}`;
   }
   const [head, tail] = text.split("::") as [string, string | undefined];
   const left = head === "" ? [] : head.split(":");

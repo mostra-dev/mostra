@@ -41,6 +41,20 @@ describe("client addresses (RM-08)", () => {
     );
   });
 
+  it("reads an IPv6 address that ends in an IPv4 part, and a long one in linear time", () => {
+    expect(validProxies(["64:ff9b::192.0.2.0/120", "::ffff:10.0.0.1"])).toBeUndefined();
+    const via = clientAddresses({ trustedProxies: ["64:ff9b::192.0.2.0/120"] });
+    const request = {
+      socket: { remoteAddress: "64:ff9b::192.0.2.7" },
+      headers: { "x-forwarded-for": "198.51.100.4" },
+    } as unknown as IncomingMessage;
+    expect(via.of(request)).toBe("198.51.100.4");
+    // What CodeQL's js/polynomial-redos warned of: many repetitions of one digit, from a header.
+    const started = performance.now();
+    expect(validProxies([`::${"0".repeat(100_000)}.1.1.1`])).toBeDefined();
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it("names a trusted proxy entry that is neither an address nor a block", () => {
     expect(validProxies(["10.0.0.0/8", "::1"])).toBeUndefined();
     expect(validProxies(["10.0.0.0/33"])).toBe("10.0.0.0/33");
