@@ -11,6 +11,8 @@
  * await server.close();
  * ```
  */
+
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -24,15 +26,32 @@ import {
   RouteId,
   RpcError,
 } from "@mostra/protocol";
-import { locateShell, shellAssetResponse } from "../gateway/index.ts";
+import { faultsFrom } from "../faults.ts";
+import {
+  BASE_HEADERS,
+  documentHeaders,
+  locateShell,
+  resetOnClose,
+  shellAssetResponse,
+} from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
 import type { LedgerOwner } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
+import { type Authorize, createAuthorize } from "./authorize.ts";
+import { clientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
-import { type HostedHome, openHostedHome } from "./hosted.ts";
+import { createHandle } from "./handle.ts";
+import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
+import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
+import { createRemoteMcp, serverDocs } from "./mcp.ts";
+import { createMeter, type Meter } from "./metering.ts";
+import { createClients } from "./oauth-clients.ts";
+import { loadOperator, type Operator } from "./operator.ts";
+import { type BuiltInProvider, builtInProviders } from "./providers.ts";
+import { createRouting, type Destination, type Routing } from "./routing.ts";
 
 export { type RemoteServerConfig, readServerConfig } from "./config.ts";
 
@@ -94,12 +113,74 @@ function parseListen(listen: string): { host: string; port: number } {
 /** Starts the remote server: its data directory, then its listener. */
 export async function startServer(options: ServerOptions): Promise<RemoteServer> {
   const { config, log } = options;
-  // The authorization server is made once the directory is open; homes open only after that.
+  // The authorization server and the operator module are made once the directory is open; homes
+  // open only after both.
   let auth: Authorization | undefined;
+  let operator: Operator | undefined;
+  let meter: Meter | undefined;
+  let routing: Routing;
+  let authorizer: Authorize | undefined;
+  let api: Api | undefined;
   const shellDir = locateShell(options.env);
+  const clients = clientAddresses({
+    trustedProxies: config.trustedProxies,
+    ipv6Prefix: config.rateLimits?.ipv6Prefix,
+  });
+  const rates = new RateLimiter();
+  const faults = faultsFrom(options.env);
+  const rateOf = (rate: { count: number; per: string } | undefined) =>
+    rate === undefined ? undefined : { count: rate.count, perMs: durationMs(rate.per as Duration) };
+  /**
+   * `rateLimits.perIp.requests`: every request to the server, from one client address (IPv6 per
+   * /64), API origin and hosted hosts alike, before anything else is read (D165 item 13). A
+   * health check is never counted. Without the setting there is no limit.
+   */
+  const perIpRequests = rateOf(config.rateLimits?.perIp?.requests);
+  /** Who owns a home, as its pages' sender line names them (D161). */
+  const ownerOf = (homeId: string): HomeOwner => {
+    const row = data.directory.read((db) =>
+      db.get<{ account: string; name: string | null; provider: string | null }>(
+        `SELECT a.id AS account, a.name, (SELECT i.provider FROM identity i WHERE i.account_id = a.id
+            ORDER BY i.linked_at LIMIT 1) AS provider
+           FROM home h JOIN account a ON a.id = h.owner_account_id WHERE h.id = ?`,
+        homeId,
+      ),
+    );
+    if (!row) return { account: "" };
+    const provider = config.identityProviders?.find((candidate) => candidate.id === row.provider);
+    // A name the development provider took on trust is unverified (D161).
+    const verifiedBy =
+      provider && provider.kind !== "development"
+        ? (provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id))
+        : undefined;
+    return {
+      account: row.account,
+      ...(row.name !== null ? { name: row.name } : {}),
+      ...(verifiedBy !== undefined ? { verifiedBy } : {}),
+    };
+  };
+  const services = (): HostedServices => ({
+    operator: operator as Operator,
+    clients,
+    rates,
+    rateLimits: {
+      perIpSubmissions: rateOf(config.rateLimits?.perIp?.submissions),
+      perLinkSubmissions: rateOf(config.rateLimits?.perLink?.submissions),
+    },
+    owner: ownerOf,
+    meter: meter as Meter,
+    routing,
+    signin: {
+      start: (signin, challenge) => (authorizer as Authorize).startViewerSignin(signin, challenge),
+      finish: (input) => (authorizer as Authorize).finishViewerSignin(input),
+    },
+    signInOffered: () =>
+      (config.identityProviders?.length ?? 0) > 0 || (operator?.has.identity ?? false),
+  });
   const assembler: HomeAssembler<HostedHome> = {
     assemble: (home) =>
       openHostedHome({
+        faults,
         id: home.id,
         dir: home.dir,
         ledger: home.ledger,
@@ -112,6 +193,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         scheme: config.scheme ?? "https",
         domains: { active: config.domains.active, spares: config.domains.spares ?? [] },
         shellDir,
+        services: services(),
         relay: {
           waitingRunsPerArtifact: config.relay?.waitingRunsPerArtifact,
           drainPerSecond: config.relay?.drainPerSecond,
@@ -150,12 +232,54 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       ? { walAutocheckpoint: config.ledger.walAutocheckpoint }
       : {}),
   });
+  const handle = createHandle({
+    apiOrigin: config.apiOrigin,
+    data: () => data,
+    directory: () => data.directory,
+    suspended: (homeId) => api?.closeHome(homeId),
+    log,
+  });
+  try {
+    operator = await loadOperator({
+      path: config.operator,
+      handle,
+      directory: data.directory,
+      log,
+      ...(Number(options.env["MOSTRA_TEST_OPERATOR_DISPATCH_MS"]) > 0
+        ? { dispatchMs: Number(options.env["MOSTRA_TEST_OPERATOR_DISPATCH_MS"]) }
+        : {}),
+    });
+  } catch (error) {
+    await data.close();
+    throw error;
+  }
+  routing = createRouting({
+    apiHost: new URL(config.apiOrigin).host,
+    domains: () => [config.domains.active, ...(config.domains.spares ?? [])],
+    active: () => config.domains.active,
+    directory: data.directory,
+    operator,
+    log,
+  });
+  meter = createMeter({
+    operator,
+    keysDir: join(options.data, "keys"),
+    log,
+    ...(Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) > 0
+      ? { windowMs: Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) }
+      : {}),
+    activeHomes: () => data.open().map((home) => ({ home, account: ownerOf(home).account })),
+  });
   auth = createAuthorization({
     directory: data.directory,
     config,
     log,
+    operator,
     ...(Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) > 0
       ? { accessTtlMs: Number(options.env["MOSTRA_TEST_ACCESS_TTL_MS"]) }
+      : {}),
+    ...(Number(options.env["MOSTRA_TEST_ROTATION_GRACE_MS"]) > 0
+      ? { rotationGraceMs: Number(options.env["MOSTRA_TEST_ROTATION_GRACE_MS"]) }
       : {}),
     // A new instance link is a hosted event the account's instances see (§18.5).
     linked: ({ homeId, linkId, name }) => {
@@ -173,31 +297,105 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       );
     },
   });
-  const api: Api = createApi({
+  // The authorization server's clients and browser pages (INTERFACES §18.5).
+  const scheme = config.scheme ?? "https";
+  const oauthClients = createClients({
+    directory: data.directory,
+    log,
+    env: options.env,
+    isShellOrigin: (origin) => {
+      if (!origin.startsWith(`${scheme}://`)) return false;
+      const host = origin.slice(scheme.length + 3);
+      if (domains.includes(host)) return true;
+      return (
+        data.directory.read((db) => db.get("SELECT 1 FROM operator_host WHERE host = ?", host)) !==
+        undefined
+      );
+    },
+  });
+  let providers: BuiltInProvider[];
+  try {
+    providers = builtInProviders(config.identityProviders ?? [], {
+      apiOrigin: config.apiOrigin,
+      env: options.env,
+      log,
+    });
+  } catch (error) {
+    operator?.stop();
+    await data.close();
+    throw error;
+  }
+  const authorize = createAuthorize({
+    apiOrigin: config.apiOrigin,
+    directory: data.directory,
+    auth,
+    clients: oauthClients,
+    operator,
+    providers,
+    ownerName: (homeId) => ownerOf(homeId).name,
+    log,
+  });
+  authorizer = authorize;
+  const mcp = createRemoteMcp({
+    apiOrigin: config.apiOrigin,
+    version: options.runtimeVersion,
+    docs: serverDocs(),
+    log,
+    operator,
+    meter,
+    home: async (id) => (await data.home(id)).assembled,
+    ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
+  });
+  api = createApi({
     config,
     auth,
+    mcp,
+    authorize,
+    clients: oauthClients,
+    registrations: { addresses: clients, rates },
+    operator,
     log,
     filesDir: join(options.data, "files"),
     home: async (id) => (await data.home(id)).assembled,
     touch: (id) => data.touch(id),
+    suspended: (id) => suspendedHome(id),
+    message: (id) => meter?.add("relay.messages", { account: ownerOf(id).account, home: id }),
+    stored: (id, bytes) =>
+      meter?.add("bytes.stored", { account: ownerOf(id).account, home: id }, bytes),
     ...(Number(options.env["MOSTRA_TEST_GRANT_RECHECK_MS"]) > 0
       ? { recheckMs: Number(options.env["MOSTRA_TEST_GRANT_RECHECK_MS"]) }
       : {}),
   });
+  const served: Api = api;
   const apiHost = new URL(config.apiOrigin).host;
-  const domains = new Set([config.domains.active, ...(config.domains.spares ?? [])]);
+  const domains = [config.domains.active, ...(config.domains.spares ?? [])];
 
   const onRequest = (request: IncomingMessage, response: ServerResponse): void => {
     const host = (request.headers.host ?? "").toLowerCase();
-    // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing.
-    delete request.headers.cookie;
     const path = (request.url ?? "/").split("?")[0] ?? "/";
-    if (host === apiHost) {
-      if (request.method === "GET" && path === "/health") {
-        json(response, 200, { status: "ok", homes: data.open().length });
+    // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing. Only
+    // the API origin's own sign-in pages read the cookies it set itself.
+    if (host !== apiHost) delete request.headers.cookie;
+    if (host === apiHost && request.method === "GET" && path === "/health") {
+      json(response, 200, { status: "ok", homes: data.open().length });
+      return;
+    }
+    if (perIpRequests) {
+      const taken = rates.take(`request-ip:${clients.keyOf(clients.of(request))}`, perIpRequests);
+      if (!taken.ok) {
+        response.setHeader("retry-after", String(taken.retryAfterS));
+        refusal(
+          response,
+          429,
+          createDiagnostic("MOSTRA_REMOTE_RATE_LIMITED", {
+            message: "Too many requests from this address; try again shortly.",
+          }),
+        );
         return;
       }
-      api.request(request, response, path).catch((error: unknown) => {
+    }
+    if (host === apiHost) {
+      served.request(request, response, path).catch((error: unknown) => {
         log.error("server.api_failed", { path, error });
         if (!response.headersSent) {
           refusal(
@@ -211,10 +409,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       });
       return;
     }
-    const domain = [...domains].find(
-      (candidate) => host === candidate || host.endsWith(`.${candidate}`),
-    );
-    if (domain === undefined) {
+    const hostRefused = (): void =>
       refusal(
         response,
         421,
@@ -222,24 +417,36 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
           message: "This server serves no pages at this host.",
         }),
       );
+    // An empty or malformed Host gets nothing, and is never asked of an operator.
+    if (!/^[a-z0-9.-]{1,253}(:\d{1,5})?$/.test(host)) {
+      hostRefused();
       return;
     }
-    // Every hosted answer keeps its page in an agent cluster of its own and out of indexes
-    // (ARCHITECTURE §15.6, D161).
-    response.setHeader("origin-agent-cluster", "?1");
-    response.setHeader("x-robots-tag", "noindex");
-    hosted(request, response, host, domain, path).catch((error: unknown) => {
-      log.error("server.hosted_failed", { error });
-      if (!response.headersSent) {
-        refusal(
-          response,
-          500,
-          createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
-            message: "The server failed to answer.",
-          }),
-        );
-      } else response.destroy();
-    });
+    routing
+      .destination(host)
+      .then(async (destination) => {
+        if (destination.kind === "none" || destination.kind === "api") {
+          hostRefused();
+          return;
+        }
+        // Every hosted answer keeps its page in an agent cluster of its own and out of indexes
+        // (ARCHITECTURE §15.6, D161).
+        response.setHeader("origin-agent-cluster", "?1");
+        response.setHeader("x-robots-tag", "noindex");
+        await hosted(request, response, destination, path);
+      })
+      .catch((error: unknown) => {
+        log.error("server.hosted_failed", { error });
+        if (!response.headersSent) {
+          refusal(
+            response,
+            500,
+            createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+              message: "The server failed to answer.",
+            }),
+          );
+        } else response.destroy();
+      });
   };
 
   const notServed = (response: ServerResponse): void =>
@@ -265,57 +472,131 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     { overrideGlobalObjects: false },
   );
 
+  /** Whether the operator suspended a home (`ServerHandle.suspendHome`). */
+  const suspendedHome = (homeId: string): boolean =>
+    data.directory.read(
+      (db) =>
+        db.get<{ suspended_at: string | null }>(
+          "SELECT suspended_at FROM home WHERE id = ?",
+          homeId,
+        )?.suspended_at != null,
+    );
+
+  /**
+   * A home whose pages are served now: a suspended one answers 403 and one being moved 503,
+   * each with its diagnostic, and nothing of it is opened for a page (D165 item 9).
+   */
+  const pagesOf = async (homeId: string, response: ServerResponse) => {
+    if (suspendedHome(homeId)) {
+      refusal(response, 403, homeUnavailable("suspended"));
+      return undefined;
+    }
+    try {
+      const opened = await data.home(homeId);
+      // Requests and the bytes they sent count against the home's owner (metering, §18.6): one
+      // HTTP/1.1 connection answers one request at a time, so its written bytes are this one's.
+      if (meter?.on) {
+        const socket = response.socket;
+        const before = socket?.bytesWritten ?? 0;
+        response.once("finish", () => {
+          const account = ownerOf(homeId).account;
+          meter?.add("requests", { account, home: homeId });
+          meter?.add(
+            "bytes.egress",
+            { account, home: homeId },
+            Math.max(0, (socket?.bytesWritten ?? before) - before),
+          );
+        });
+      }
+      return opened;
+    } catch (error) {
+      if (error instanceof RpcError && error.diagnostic.code === "MOSTRA_REMOTE_HOME_MOVING") {
+        response.setHeader("retry-after", "30");
+        refusal(response, 503, error.diagnostic);
+        return undefined;
+      }
+      throw error;
+    }
+  };
+
   /** A route of the directory: its home and ID, by ID or by label. */
   const routeBy = (column: "id" | "label", value: string) =>
     data.directory.read((db) =>
       db.get<{ id: string; home_id: string }>(
-        `SELECT id, home_id FROM artifact_route WHERE ${column} = ?`,
+        `SELECT id, home_id FROM artifact_route WHERE ${column} = ? AND removing_json IS NULL`,
         value,
       ),
     );
 
-  /** A request on a user-content domain: the shell on its apex, a route's frames on its label. */
+  /**
+   * A hosted request (§18.4): a shell (a configured apex, or an operator's host for one home or
+   * one route) serves only `/a/<routeId>` of the routes it may show and the shell's files; a
+   * route's label serves that route's frames.
+   */
   const hosted = async (
     request: IncomingMessage,
     response: ServerResponse,
-    host: string,
-    domain: string,
+    destination: Exclude<Destination, { kind: "none" | "api" }>,
     path: string,
   ): Promise<void> => {
-    if (host === domain) {
+    if (destination.kind === "shell") {
       if (path.startsWith("/_mostra/shell/assets/")) {
         await assets(request, response);
+        return;
+      }
+      // Where a page's sign-in returns (INTERFACES §18.4): the shell's own page, which finishes it
+      // for the route that started it. It reads only the fragment and query it was sent.
+      if (path === "/_mostra/signin" && (request.method === "GET" || request.method === "HEAD")) {
+        if (shellDir === undefined) {
+          notServed(response);
+          return;
+        }
+        const html = readFileSync(join(shellDir, "index.html"));
+        response.writeHead(200, {
+          ...BASE_HEADERS,
+          ...documentHeaders({ kind: "shell", origin: "", shellOrigin: "" }, "'none'"),
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        response.end(request.method === "HEAD" ? undefined : html);
         return;
       }
       const match = /^\/a\/(rte_[0-9A-HJKMNP-TV-Z]{26})(?:\/|$)/.exec(path);
       const route =
         match?.[1] !== undefined && RouteId.is(match[1]) ? routeBy("id", match[1]) : undefined;
-      if (!route) {
+      // An operator's host shows only its own home's routes, or its one route.
+      if (
+        !route ||
+        (destination.homeId !== undefined && route.home_id !== destination.homeId) ||
+        (destination.routeId !== undefined && route.id !== destination.routeId)
+      ) {
         notServed(response);
         return;
       }
-      const home = await data.home(route.home_id);
-      await home.assembled.serve(request, response, { kind: "shell", domain, routeId: route.id });
+      const home = await pagesOf(route.home_id, response);
+      if (!home) return;
+      await home.assembled.serve(request, response, {
+        kind: "shell",
+        domain: destination.host,
+        routeId: route.id,
+      });
       return;
     }
-    // One DNS label under the domain: a route's label, never issued twice (§18.4).
-    const label = host.slice(0, host.length - domain.length - 1);
-    const route = /^[0-9a-hjkmnp-tv-z]{26}$/.test(label) ? routeBy("label", label) : undefined;
-    if (!route) {
-      refusal(
-        response,
-        421,
-        createDiagnostic("MOSTRA_HYGIENE_HOST_REFUSED", {
-          message: "This server serves no pages at this host.",
-        }),
-      );
-      return;
-    }
-    const home = await data.home(route.home_id);
-    await home.assembled.serve(request, response, { kind: "frame", domain, routeId: route.id });
+    const home = await pagesOf(destination.route.homeId, response);
+    if (!home) return;
+    await home.assembled.serve(request, response, {
+      kind: "frame",
+      domain: destination.frameDomain,
+      routeId: destination.route.id,
+    });
   };
 
-  const listener: Server = createServer({ maxHeaderSize: 64 * 1024 }, onRequest);
+  // Up to 1 MiB of headers (D98 item 9): a sibling tenant page can fill the parent domain's cookie
+  // jar (180 cookies of 4 KiB, no public-suffix entry, D137), and its cookies, dropped unread here,
+  // must never cost another page its session (D165 item 8).
+  const listener: Server = createServer({ maxHeaderSize: 1024 * 1024 }, onRequest);
+  // Stopping resets its connections, so none stays in TIME_WAIT on the server's port (#132).
+  const stopListener = resetOnClose(listener);
   listener.keepAliveTimeout = 305_000;
   listener.headersTimeout = 30_000;
   listener.requestTimeout = 120_000;
@@ -323,7 +604,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     const host = (request.headers.host ?? "").toLowerCase();
     const path = (request.url ?? "/").split("?")[0] ?? "/";
     if (host === apiHost) {
-      api.upgrade(request, socket, head, path);
+      served.upgrade(request, socket, head, path);
       return;
     }
     socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\ncontent-length: 0\r\n\r\n");
@@ -354,11 +635,12 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     config,
     close() {
       closing ??= (async () => {
-        api.close();
-        await new Promise<void>((resolve) => {
-          listener.close(() => resolve());
-          listener.closeAllConnections();
-        });
+        served.close();
+        await mcp.close().catch(() => undefined);
+        // What the operator hasn't taken yet stays queued in the directory for the next start.
+        meter?.stop();
+        operator?.stop();
+        await stopListener();
         await data.close();
         log.info("server.stopped", {});
       })();

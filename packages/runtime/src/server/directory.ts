@@ -138,4 +138,73 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: "operator, sign-in and links",
+    up(db) {
+      // WP-30 (DATA_MODEL §7.1, additive). A home an operator drained is refused until released;
+      // the hosted links of every home, so a handle's revokeLink finds its home; the instance link
+      // of each operator-issued credential; sign-ins in progress and the API origin's browser
+      // sessions (both by SHA-256 only); and the monthly metering keys' months.
+      db.exec(`
+        ALTER TABLE home ADD COLUMN drained_at TEXT;
+        ALTER TABLE home ADD COLUMN suspend_reason TEXT;
+        CREATE TABLE hosted_token (
+          token_id TEXT PRIMARY KEY,
+          home_id TEXT NOT NULL REFERENCES home(id),
+          route_id TEXT NOT NULL
+        );
+        CREATE TABLE credential_link (
+          account_id TEXT NOT NULL REFERENCES account(id),
+          subject TEXT NOT NULL,
+          link_id TEXT NOT NULL REFERENCES instance_link(id),
+          PRIMARY KEY (account_id, subject)
+        );
+        CREATE TABLE signin (
+          hash TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK (kind IN ('provider', 'step', 'authorize')),
+          data_json TEXT NOT NULL,
+          expires_at TEXT NOT NULL
+        );
+        CREATE TABLE browser_session (
+          hash TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL REFERENCES account(id),
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL
+        );
+        CREATE INDEX browser_session_account ON browser_session(account_id);
+        -- A host an operator supplies through routing (D165 item 7, D167): a hosted shell for one
+        -- home (or one route of it), its frames on <label>.<frame_domain>. Recorded with its
+        -- label_issued row when first served, kept forever and never moved to another home.
+        CREATE TABLE operator_host (
+          host TEXT PRIMARY KEY,
+          home_id TEXT NOT NULL REFERENCES home(id),
+          route_id TEXT,
+          frame_domain TEXT NOT NULL,
+          recorded_at TEXT NOT NULL
+        );
+        CREATE INDEX operator_host_frames ON operator_host(frame_domain);
+        CREATE TRIGGER operator_host_kept BEFORE DELETE ON operator_host
+        BEGIN
+          SELECT RAISE(ABORT, 'an operator host is kept forever');
+        END;
+        CREATE TRIGGER operator_host_fixed BEFORE UPDATE ON operator_host
+          WHEN NEW.host IS NOT OLD.host OR NEW.home_id IS NOT OLD.home_id
+        BEGIN
+          SELECT RAISE(ABORT, 'an operator host never moves to another home');
+        END;
+      `);
+    },
+  },
+  {
+    version: 3,
+    name: "a route's removal in progress",
+    up(db) {
+      // ServerHandle.remove spans two databases, the home's ledger and this directory, so it
+      // records its plan here first (the versions and client files it removes); a removal cut
+      // off between them is finished by the next call, and the route serves nothing meanwhile
+      // (Fable review of WP-30, 4).
+      db.exec("ALTER TABLE artifact_route ADD COLUMN removing_json TEXT");
+    },
+  },
 ];

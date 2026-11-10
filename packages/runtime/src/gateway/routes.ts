@@ -75,6 +75,11 @@ export interface RouteContext {
   readonly document: boolean;
   /** The address of the connection's peer: on a face, the tunnel's own process (D158 item 2). */
   readonly remote: string | undefined;
+  /**
+   * The client's address: on a remote server the one its trusted proxies name (the forwarded
+   * address read from the right, D165 item 13), elsewhere the connection's peer.
+   */
+  readonly client: string | undefined;
 }
 
 /** What a listener contributes to every route's checks. */
@@ -96,6 +101,8 @@ export interface ListenerChecks {
   readonly mode?: () => SessionMode;
   /** Whether event streams pass to this listener's browsers; `false` behind a quick tunnel. */
   readonly streams?: () => boolean;
+  /** The client's address of a request (a remote server's trusted proxies); default its peer. */
+  readonly client?: (incoming: import("node:http").IncomingMessage) => string | undefined;
 }
 
 /** Logs a refusal without any of the request's capability material, and answers it. */
@@ -242,6 +249,7 @@ export function mount(
         ...(session ? { session } : {}),
         document,
         remote: incoming.socket.remoteAddress,
+        client: checks.client ? checks.client(incoming) : incoming.socket.remoteAddress,
       });
     };
     if (route.method === "GET") app.get(route.path, handle);

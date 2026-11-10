@@ -43,7 +43,7 @@ import {
   waitCommand,
 } from "./interaction.ts";
 import { mcpCommand } from "./mcp.ts";
-import { loginCommand, logoutCommand } from "./remote.ts";
+import { loginCommand, logoutCommand, pauseCommand, resumeCommand } from "./remote.ts";
 import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
 import { openCommand } from "./viewing.ts";
 
@@ -59,6 +59,8 @@ export const COMMANDS: readonly CommandDef[] = [
   shareListCommand,
   loginCommand,
   logoutCommand,
+  pauseCommand,
+  resumeCommand,
   waitCommand,
   resultsCommand,
   stateGetCommand,

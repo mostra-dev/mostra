@@ -26,12 +26,16 @@ import {
   type HostedRoute,
   hostedPushMethod,
   hostedSubmissionMethod,
+  LinkId,
   type ListingEntry,
   type MethodDefinition,
+  portRelayAuthorMethod,
   portSubmissionsDeliverMethod,
   type RemoteLink,
+  type RemoteLinkResult,
   type RemoteLoginResult,
   RpcError,
+  remoteLinkMethod,
   remoteLoginMethod,
   remoteLoginWaitMethod,
   remoteLogoutMethod,
@@ -126,11 +130,17 @@ function loginFailed(message: string): RpcError {
 }
 
 /** What the link keeps for a server in `<home>/keys/remote/<server key>.json` (DATA_MODEL §7.3). */
-interface Credentials {
-  readonly server: string;
-  readonly refreshToken: string;
-  readonly instanceId: string;
-}
+/**
+ * How this home signs in to a server: a person's sign-in (the device grant's refresh token, rotated
+ * at every use) or a key the server's operator issued (`remote/link`, D167), used as is.
+ */
+type Credentials =
+  | { readonly server: string; readonly instanceId: string; readonly refreshToken: string }
+  | { readonly server: string; readonly instanceId: string; readonly key: string };
+
+/** The secret a home's credentials hold. */
+const credentialSecret = (credentials: Credentials): string =>
+  "key" in credentials ? credentials.key : credentials.refreshToken;
 
 /** A `remote_link` row. */
 interface LinkRow {
@@ -166,6 +176,8 @@ export interface LinkOptions {
   readonly actions: OwnerRelayOptions["actions"];
   /** Hosted pages' live interest changed. */
   readonly liveChanged?: () => void;
+  /** Answers remote MCP's relayed authoring (`port/relay.author`, D165 item 5). */
+  readonly author?: (server: string, params: unknown) => Promise<unknown>;
   /** The clock (tests move it). */
   readonly now?: () => number;
 }
@@ -209,6 +221,8 @@ export interface Link {
    * first it was shared to.
    */
   hostedOn(artifactId: string): string | undefined;
+  /** Every server an artifact is hosted on now, in the order it was shared to them. */
+  hostedServers(artifactId: string): string[];
   /**
    * Calls a method on a server's hosted home for this home's client: a hosted artifact's
    * `state/*` and `live/push` (D165 item 1). `MOSTRA_REMOTE_UNREACHABLE` when it can't be reached.
@@ -272,8 +286,11 @@ export function createLink(options: LinkOptions): Link {
     if (!existsSync(file)) return undefined;
     try {
       const parsed = JSON.parse(readFileSync(file, "utf8")) as Credentials;
-      if (parsed.server !== server || typeof parsed.refreshToken !== "string") return undefined;
-      options.protect(parsed.refreshToken);
+      const secret =
+        (parsed as { refreshToken?: unknown; key?: unknown }).refreshToken ??
+        (parsed as { key?: unknown }).key;
+      if (parsed.server !== server || typeof secret !== "string") return undefined;
+      options.protect(secret);
       return parsed;
     } catch {
       return undefined;
@@ -281,7 +298,7 @@ export function createLink(options: LinkOptions): Link {
   };
   const writeCredentials = (credentials: Credentials): void => {
     mkdirSync(keysDir, { recursive: true, mode: 0o700 });
-    options.protect(credentials.refreshToken);
+    options.protect(credentialSecret(credentials));
     // Written beside it, then renamed: a crash never leaves half a token (as secrets are, D131).
     const target = credentialsFile(credentials.server);
     const temporary = `${target}.${process.pid}.tmp`;
@@ -343,6 +360,9 @@ export function createLink(options: LinkOptions): Link {
       try {
         const credentials = readCredentials(connection.server);
         if (!credentials) throw loginFailed(`This home isn't signed in to ${connection.server}.`);
+        // An operator's key is the bearer itself: nothing to refresh, and the server asks the
+        // operator again while the binding is open.
+        if ("key" in credentials) return credentials.key;
         const answer = await postForm(
           connection.server,
           "/oauth/token",
@@ -555,6 +575,16 @@ export function createLink(options: LinkOptions): Link {
   const onRequest =
     (connection: Connection) =>
     (method: string, params: unknown): unknown => {
+      if (method === portRelayAuthorMethod.method) {
+        if (!options.author) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_REMOTE_NO_INSTANCE", {
+              message: "This instance takes no authoring from a chat host.",
+            }),
+          );
+        }
+        return options.author(connection.server, params);
+      }
       if (relay.handles(method)) {
         return relay.request(
           connection.server,
@@ -960,6 +990,91 @@ export function createLink(options: LinkOptions): Link {
     return last.server;
   };
 
+  /** Records this home's link to a server, rebinding its marks only to the same link (WP-29). */
+  const recordLink = (
+    server: string,
+    account: { readonly id: string; readonly name?: string | undefined },
+    instanceId: string,
+    isDefault: boolean,
+  ): void => {
+    ledger.write((db) =>
+      db.run(
+        `INSERT INTO remote_link (server, account_id, account_name, instance_id, is_default, linked_at, state)
+         VALUES (?, ?, ?, ?, ?, ?, 'signed-in')
+         ON CONFLICT (server) DO UPDATE SET
+           -- Another link (after --forget, or another account) starts with no marks: a mark
+           -- of the old link would make the new one's home look restored (Opus review of
+           -- WP-29, 9).
+           relay_mark = CASE WHEN remote_link.instance_id IS excluded.instance_id
+             AND remote_link.account_id = excluded.account_id THEN remote_link.relay_mark ELSE 0 END,
+           follow_cursor = CASE WHEN remote_link.instance_id IS excluded.instance_id
+             AND remote_link.account_id = excluded.account_id THEN remote_link.follow_cursor ELSE NULL END,
+           incarnation = CASE WHEN remote_link.instance_id IS excluded.instance_id
+             AND remote_link.account_id = excluded.account_id THEN remote_link.incarnation ELSE NULL END,
+           account_id = excluded.account_id, account_name = excluded.account_name,
+           instance_id = excluded.instance_id, is_default = excluded.is_default, linked_at = excluded.linked_at,
+           state = 'signed-in'`,
+        server,
+        account.id,
+        account.name ?? null,
+        instanceId,
+        isDefault ? 1 : 0,
+        new Date(now()).toISOString(),
+      ),
+    );
+  };
+
+  /**
+   * Links this home with a key the server's operator issued (`remote/link`, D167): the server says
+   * which account and instance link the key binds, the key is kept like a refresh token, and the
+   * binding opens with it at once.
+   */
+  const linkWithKey = async (
+    requested: string,
+    key: string,
+    makeDefault: boolean,
+  ): Promise<RemoteLinkResult> => {
+    const server = serverOrigin(requested);
+    options.protect(key);
+    const answer = await postForm(
+      server,
+      "/link",
+      makeDefault ? { default: "1" } : {},
+      connectTo,
+      key,
+    );
+    const account = answer.json["account"] as { id?: unknown; name?: unknown } | undefined;
+    const instanceId = answer.json["instanceId"];
+    if (
+      answer.status !== 200 ||
+      typeof account?.id !== "string" ||
+      typeof instanceId !== "string" ||
+      !LinkId.is(instanceId)
+    ) {
+      throw loginFailed(
+        `${server} didn't admit this key (${String(answer.json["message"] ?? answer.status)}).`,
+      );
+    }
+    const name = typeof account.name === "string" ? account.name : undefined;
+    const isDefault = answer.json["default"] === true;
+    writeCredentials({ server, key, instanceId });
+    recordLink(server, { id: account.id, name }, instanceId, isDefault);
+    const previous = connections.get(server);
+    if (previous) {
+      await previous.binding.stop();
+      if (previous.refreshTimer) clearTimeout(previous.refreshTimer);
+      connections.delete(server);
+    }
+    connect(server);
+    log.info("link.linked_with_key", { server, instanceId });
+    return {
+      server,
+      account: { id: account.id, ...(name !== undefined ? { name } : {}) },
+      instanceId,
+      default: isDefault,
+    };
+  };
+
   /** Starts a sign-in: the device grant's code, then polls for the token in the background. */
   const login = async (
     requested: string | undefined,
@@ -1047,31 +1162,7 @@ export function createLink(options: LinkOptions): Link {
         const accessToken = String(answer.json["access_token"]);
         options.protect(accessToken);
         writeCredentials({ server, refreshToken, instanceId });
-        ledger.write((db) =>
-          db.run(
-            `INSERT INTO remote_link (server, account_id, account_name, instance_id, is_default, linked_at, state)
-             VALUES (?, ?, ?, ?, ?, ?, 'signed-in')
-             ON CONFLICT (server) DO UPDATE SET
-               -- Another link (after --forget, or another account) starts with no marks: a mark
-               -- of the old link would make the new one's home look restored (Opus review of
-               -- WP-29, 9).
-               relay_mark = CASE WHEN remote_link.instance_id IS excluded.instance_id
-                 AND remote_link.account_id = excluded.account_id THEN remote_link.relay_mark ELSE 0 END,
-               follow_cursor = CASE WHEN remote_link.instance_id IS excluded.instance_id
-                 AND remote_link.account_id = excluded.account_id THEN remote_link.follow_cursor ELSE NULL END,
-               incarnation = CASE WHEN remote_link.instance_id IS excluded.instance_id
-                 AND remote_link.account_id = excluded.account_id THEN remote_link.incarnation ELSE NULL END,
-               account_id = excluded.account_id, account_name = excluded.account_name,
-               instance_id = excluded.instance_id, is_default = excluded.is_default, linked_at = excluded.linked_at,
-               state = 'signed-in'`,
-            server,
-            account.id,
-            account.name ?? null,
-            instanceId,
-            answer.json["mostra_default"] === true ? 1 : 0,
-            new Date(now()).toISOString(),
-          ),
-        );
+        recordLink(server, account, instanceId, answer.json["mostra_default"] === true);
         const previous = connections.get(server);
         if (previous) {
           await previous.binding.stop();
@@ -1132,6 +1223,9 @@ export function createLink(options: LinkOptions): Link {
     methods() {
       return [
         handler(remoteLoginMethod, (params) => login(params.server, params.default === true)),
+        handler(remoteLinkMethod, (params) =>
+          linkWithKey(params.server, params.key, params.default === true),
+        ),
         handler(remoteLoginWaitMethod, async (params) => {
           const pending = logins.get(params.loginId);
           if (!pending) throw invalid(`No sign-in ${params.loginId} is in progress.`);
@@ -1175,7 +1269,8 @@ export function createLink(options: LinkOptions): Link {
               if (connection.pushTimer) clearTimeout(connection.pushTimer);
               connections.delete(server);
             }
-            if (credentials) {
+            // An operator's key is the operator's to revoke: signing out only forgets it here.
+            if (credentials && "refreshToken" in credentials) {
               try {
                 await postForm(
                   server,
@@ -1328,6 +1423,15 @@ export function createLink(options: LinkOptions): Link {
       }
       return true;
     },
+    hostedServers: (artifactId) =>
+      ledger.read((db) =>
+        db
+          .all<{ server: string }>(
+            "SELECT server FROM hosted_artifact WHERE artifact_id = ? AND stopped_at IS NULL AND route_id != '' ORDER BY shared_at",
+            artifactId,
+          )
+          .map((row) => row.server),
+      ),
     hostedOn: (artifactId) =>
       ledger.read(
         (db) =>

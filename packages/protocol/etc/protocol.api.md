@@ -28,7 +28,7 @@ export const ACTION_RESULT_MAX: number;
 export type ActionDiagnosticCode = (typeof actionDiagnosticCodes)[number];
 
 // @public
-export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID", "MOSTRA_ACTION_UNSERIALIZABLE", "MOSTRA_ACTION_THREW", "MOSTRA_ACTION_UNKNOWN_FUNCTION", "MOSTRA_ACTION_INTERRUPTED", "MOSTRA_ACTION_CANCELLED", "MOSTRA_ACTION_TOO_LARGE", "MOSTRA_ACTION_RUN_NOT_FOUND", "MOSTRA_ACTION_EVENT_INVALID"];
+export const actionDiagnosticCodes: readonly ["MOSTRA_ACTION_EXPORT_INVALID", "MOSTRA_ACTION_UNSERIALIZABLE", "MOSTRA_ACTION_THREW", "MOSTRA_ACTION_UNKNOWN_FUNCTION", "MOSTRA_ACTION_INTERRUPTED", "MOSTRA_ACTION_CANCELLED", "MOSTRA_ACTION_TOO_LARGE", "MOSTRA_ACTION_RUN_NOT_FOUND", "MOSTRA_ACTION_EVENT_INVALID", "MOSTRA_ACTION_PAUSED"];
 
 // @public
 export interface ActionError extends WireError {
@@ -229,6 +229,23 @@ export interface ArtifactManifest {
 
 // @public
 export const ArtifactManifest: z.ZodType<ArtifactManifest>;
+
+// @public
+export const artifactPauseMethod: MethodDefinition<ArtifactPauseParams, ArtifactPauseResult>;
+
+// @public
+export interface ArtifactPauseParams {
+    readonly artifact: ArtifactRef;
+    readonly paused: boolean;
+    readonly reason?: string;
+    readonly requestId?: string;
+}
+
+// @public
+export interface ArtifactPauseResult {
+    readonly by?: PausedBy;
+    readonly paused: boolean;
+}
 
 // @public
 export interface ArtifactProgressParams {
@@ -1343,7 +1360,12 @@ export interface FrameTicket extends ViewContext {
     readonly artifactOrigin: string;
     readonly devPreview?: true;
     readonly follow: boolean;
+    readonly hosted?: HostedChrome;
     readonly mode?: "worker";
+    readonly paused?: {
+        readonly by: "owner" | "operator";
+        readonly reason?: string;
+    };
     readonly pinned: boolean;
     readonly serverParked?: true;
     readonly src: string;
@@ -1465,6 +1487,29 @@ export const HOSTED_OFFLINE_LIMIT_DEFAULT: Duration;
 
 // @public
 export const HOSTED_OFFLINE_LIMIT_MAX_MS: number;
+
+// @public
+export interface HostedChrome {
+    readonly afterSubmit?: string;
+    readonly footer?: string;
+    readonly interstitial?: {
+        readonly kind: string;
+        readonly message?: string;
+    };
+    readonly madeWith?: {
+        readonly href?: string;
+    };
+    readonly sender?: {
+        readonly name: string;
+        readonly verifiedBy?: string;
+    };
+    readonly signIn: boolean;
+    readonly viewer: {
+        readonly kind: "account" | "anonymous" | "named";
+        readonly name?: string;
+        readonly verified: boolean;
+    };
+}
 
 // @public
 export const hostedPushMethod: MethodDefinition<HostedPushParams, HostedPushResult>;
@@ -1977,6 +2022,9 @@ export const OwnerLinkInfo: z.ZodType<OwnerLinkInfo>;
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
 
 // @public
+export type PausedBy = "owner" | "operator";
+
+// @public
 export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
 
 // @public
@@ -2027,6 +2075,18 @@ export type PortName = "identity" | "submissions" | "drafts" | "reviews" | "addr
 
 // @public
 export const PortName: z.ZodType<PortName, string>;
+
+// @public
+export const portRelayAuthorMethod: MethodDefinition<PortRelayAuthorParams, PortRelayAuthorResult>;
+
+// @public
+export interface PortRelayAuthorParams {
+    readonly method: RelayAuthorMethod;
+    readonly params: unknown;
+}
+
+// @public
+export type PortRelayAuthorResult = unknown;
 
 // @public
 export const portRelayCallMethod: MethodDefinition<PortRelayCallParams, PortRelayCallResult>;
@@ -2218,6 +2278,12 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
 
 // @public
+export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "verify/screenshot"];
+
+// @public
+export type RelayAuthorMethod = (typeof RELAY_AUTHOR_METHODS)[number];
+
+// @public
 export const relayCallBatchMethod: MethodDefinition<RelayCallBatchParams, RelayCallBatchResult>;
 
 // @public
@@ -2331,7 +2397,7 @@ export const RelayViewer: z.ZodType<RelayViewer>;
 export type RemoteDiagnosticCode = (typeof remoteDiagnosticCodes)[number];
 
 // @public
-export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID", "MOSTRA_REMOTE_LOGIN_FAILED", "MOSTRA_REMOTE_UNREACHABLE", "MOSTRA_REMOTE_OWNER_OFFLINE", "MOSTRA_REMOTE_QUEUE_FULL", "MOSTRA_REMOTE_NOT_OWNER_INSTANCE", "MOSTRA_REMOTE_SIGN_IN_REQUIRED", "MOSTRA_REMOTE_RATE_LIMITED"];
+export const remoteDiagnosticCodes: readonly ["MOSTRA_REMOTE_CONFIG_INVALID", "MOSTRA_REMOTE_LOGIN_FAILED", "MOSTRA_REMOTE_UNREACHABLE", "MOSTRA_REMOTE_OWNER_OFFLINE", "MOSTRA_REMOTE_QUEUE_FULL", "MOSTRA_REMOTE_NOT_OWNER_INSTANCE", "MOSTRA_REMOTE_SIGN_IN_REQUIRED", "MOSTRA_REMOTE_RATE_LIMITED", "MOSTRA_REMOTE_PAUSED_BY_OPERATOR", "MOSTRA_REMOTE_LIMIT_REACHED", "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE", "MOSTRA_REMOTE_NO_INSTANCE", "MOSTRA_REMOTE_UNDER_REVIEW", "MOSTRA_REMOTE_HOME_SUSPENDED", "MOSTRA_REMOTE_HOME_MOVING"];
 
 // @public
 export class RemoteError extends Error {
@@ -2357,6 +2423,27 @@ export interface RemoteLink {
 
 // @public
 export const RemoteLink: z.ZodType<RemoteLink>;
+
+// @public
+export const remoteLinkMethod: MethodDefinition<RemoteLinkParams, RemoteLinkResult>;
+
+// @public
+export interface RemoteLinkParams {
+    readonly default?: boolean;
+    readonly key: string;
+    readonly server: ServerOrigin;
+}
+
+// @public
+export interface RemoteLinkResult {
+    readonly account: {
+        readonly id: string;
+        readonly name?: string;
+    };
+    readonly default: boolean;
+    readonly instanceId: string;
+    readonly server: ServerOrigin;
+}
 
 // @public
 export type RemoteLinkState = "connected" | "connecting" | "offline" | "signed-out";
@@ -3267,7 +3354,7 @@ export const SubmitChannel: z.ZodType<SubmitChannel>;
 export type SubmitDiagnosticCode = (typeof submitDiagnosticCodes)[number];
 
 // @public
-export const submitDiagnosticCodes: readonly ["MOSTRA_SUBMIT_ALREADY", "MOSTRA_SUBMIT_REVISION_MOVED", "MOSTRA_SUBMIT_POLICY_NONE", "MOSTRA_SUBMIT_NOT_FOUND", "MOSTRA_SUBMIT_VIEW_INVALID", "MOSTRA_SUBMIT_SIGNAL_INVALID", "MOSTRA_SUBMIT_CHANNEL_DENIED", "MOSTRA_SUBMIT_BLOCKED"];
+export const submitDiagnosticCodes: readonly ["MOSTRA_SUBMIT_ALREADY", "MOSTRA_SUBMIT_REVISION_MOVED", "MOSTRA_SUBMIT_POLICY_NONE", "MOSTRA_SUBMIT_NOT_FOUND", "MOSTRA_SUBMIT_VIEW_INVALID", "MOSTRA_SUBMIT_SIGNAL_INVALID", "MOSTRA_SUBMIT_CHANNEL_DENIED", "MOSTRA_SUBMIT_BLOCKED", "MOSTRA_SUBMIT_PAUSED"];
 
 // @public
 export interface SubmitRequest {
@@ -3612,6 +3699,7 @@ export interface Viewer {
     readonly kind: ViewerKind;
     readonly name?: string;
     readonly ref?: string;
+    readonly verified?: boolean;
 }
 
 // @public

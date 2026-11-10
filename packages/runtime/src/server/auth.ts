@@ -13,9 +13,11 @@
  */
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { AccountId, HomeId, LinkId } from "@mostra/protocol";
+import type { SignInIdentity } from "@mostra/protocol/operator";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import type { RemoteServerConfig } from "./config.ts";
+import type { Operator } from "./operator.ts";
 
 /** The CLI's client ID: a first-party public client (§18.5). */
 export const CLI_CLIENT_ID = "mostra-cli";
@@ -28,12 +30,22 @@ const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const DEVICE_TTL_MS = 10 * 60 * 1000;
 const DEVICE_INTERVAL_S = 5;
 const ROTATION_GRACE_MS = 30_000;
+/** An authorization code lives a minute (OAuth 2.1 §4.1.2: short-lived). */
+const CODE_TTL_MS = 60_000;
+/** How long a used or expired code is kept to recognize its reuse (an hour). */
+const CODE_KEPT_MS = 60 * 60 * 1000;
 
 /** User codes: eight letters a person can't confuse (RFC 8628 §6.1), shown as `ABCD-EFGH`. */
 const USER_CODE_LETTERS = "BCDFGHJKLMNPQRSTVWXZ";
 
 /** What a valid access token names. */
 export interface Authenticated {
+  /** The resource (audience) the token was issued for: `<apiOrigin>/host` or `<apiOrigin>/mcp`. */
+  readonly resource: string;
+  /** The client the grant is for. */
+  readonly clientId: string;
+  /** The grant's scopes, space-separated. */
+  readonly scope: string;
   readonly accountId: string;
   readonly accountName: string | undefined;
   readonly grantId: string;
@@ -57,12 +69,37 @@ export interface TokenAnswer {
   readonly refresh_token: string;
   readonly scope: string;
   readonly mostra_account: { readonly id: string; readonly name?: string };
-  readonly mostra_instance: string;
+  readonly mostra_instance?: string;
   /** Whether this instance is the account's default instance (D165 item 1b). */
-  readonly mostra_default: boolean;
+  readonly mostra_default?: boolean;
   /** The account's hosted home. */
-  readonly mostra_home: string;
+  readonly mostra_home?: string;
 }
+
+/** What an authorization code carries, kept with its hash (one minute, single use). */
+export interface CodeGrant {
+  readonly clientId: string;
+  readonly redirectUri: string;
+  readonly challenge: string;
+  readonly resource: string;
+  readonly scope: string;
+  readonly accountId: string;
+  /** A hosted shell's viewer sign-in this code finishes (INTERFACES §18.4). */
+  readonly viewerSignin?: string;
+  /**
+   * Whether the authorization request named its redirect URI; the token request must name it
+   * too then (OAuth 2.1 §4.1.3). Absent: it did.
+   */
+  readonly redirectGiven?: boolean;
+}
+
+/** A sign-in identity resolved to the server's account, or why not. */
+export type ResolvedAccount =
+  | { readonly kind: "account"; readonly accountId: string; readonly name: string | undefined }
+  | { readonly kind: "step"; readonly url: string }
+  | { readonly kind: "refused"; readonly message: string }
+  | { readonly kind: "suspended" }
+  | { readonly kind: "unavailable" };
 
 /** The SHA-256 of a secret, as the directory stores it. */
 export function hashSecret(secret: string): string {
@@ -78,6 +115,31 @@ function userCode(): string {
   for (let index = 0; index < 8; index++)
     code += USER_CODE_LETTERS[randomInt(USER_CODE_LETTERS.length)];
   return code;
+}
+
+/** Whether a PKCE verifier hashes to the S256 challenge (RFC 7636 §4.6), in constant time. */
+export function pkceMatches(verifier: string, challenge: string): boolean {
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return false;
+  const computed = createHash("sha256").update(verifier).digest("base64url");
+  return (
+    computed.length === challenge.length &&
+    timingSafeEqual(Buffer.from(computed), Buffer.from(challenge))
+  );
+}
+
+/**
+ * A resource indicator in its canonical form (RFC 8707; the MCP specification): scheme and host in
+ * lower case, no trailing slash, no fragment. An unusable one answers `""`.
+ */
+export function canonicalResource(resource: string): string {
+  try {
+    // WHATWG URL parsing already lower-cases the scheme and host.
+    const url = new URL(resource);
+    if (url.hash !== "" || url.search !== "") return "";
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
 }
 
 /** `abcd-efgh`, `ABCDEFGH` → `ABCDEFGH`. */
@@ -102,9 +164,13 @@ export interface AuthorizationOptions {
   readonly directory: Ledger;
   readonly config: RemoteServerConfig;
   readonly log: Log;
+  /** The operator module, for `accounts.resolve` and `accounts.status` (D165 item 9). */
+  readonly operator?: Operator;
   readonly now?: () => number;
   /** How long an access token lasts; an hour unless tests shorten it. */
   readonly accessTtlMs?: number;
+  /** How long a used refresh token returns its successor; 30 s unless tests shorten it. */
+  readonly rotationGraceMs?: number;
   /**
    * Called when an instance link was made or bound again (`instance.linked`, §18.5): the server
    * appends the event in the hosted home.
@@ -147,6 +213,61 @@ export interface Authorization {
   }): { readonly ok: true } | { readonly ok: false; readonly reason: string };
   /** The verification address people open. */
   readonly verificationUri: string;
+  /** Approves or denies a device code for an account a browser session signed in as. */
+  decideFor(input: {
+    readonly code: string;
+    readonly approve: boolean;
+    readonly accountId: string;
+  }): { readonly ok: true } | { readonly ok: false; readonly reason: string };
+  /**
+   * Resolves a sign-in identity to an account (INTERFACES §18.5): through the operator's
+   * `accounts.resolve` when it has one, else the server's own accounts; `steps` counts the first
+   * sign-in steps already taken.
+   */
+  resolveAccount(identity: SignInIdentity, steps: number): Promise<ResolvedAccount>;
+  /** An account's display name, and the provider that verified it (its first identity's). */
+  accountName(accountId: string): { readonly name?: string; readonly provider?: string };
+  /** Mints an authorization code (one minute, single use; only its hash is kept). */
+  issueCode(grant: CodeGrant): string;
+  /**
+   * Redeems a hosted shell's viewer sign-in code (never at the token endpoint): its client, PKCE
+   * verifier and sign-in must match. Answers the account, or why not.
+   */
+  redeemViewerCode(input: {
+    readonly code: string;
+    readonly verifier: string;
+    readonly clientId: string;
+    readonly viewerSignin: string;
+  }): { readonly accountId: string } | { readonly refused: string };
+  /**
+   * A session for a credential the operator issued (`accounts.authenticate`, §18.6): the account
+   * (kept under the operator's ID), its hosted home, and one instance link per credential subject,
+   * so a program holding an operator-issued key runs an always-on owner instance.
+   */
+  credentialSession(input: {
+    readonly account: string;
+    readonly subject: string;
+    readonly resource: string;
+    /** Whether this use links an instance (the binding's, `/host`); `/mcp` and `/files` don't. */
+    readonly link: boolean;
+  }): Authenticated;
+  /** The account a refresh token belongs to, so the operator's word on it is asked first. */
+  refreshAccount(refreshToken: string): string | undefined;
+  /** An account's standing in the directory. */
+  accountStatus(accountId: string): "active" | "suspended";
+  /** Records the operator's word on an account (`accounts.status`, §18.6). */
+  setAccountStatus(accountId: string, status: "active" | "suspended"): void;
+  /**
+   * Whether an instance link is its account's default, after making it so when `makeDefault`
+   * (`POST /link`, D167; one default per account, as `mostra login --default` makes it).
+   */
+  linkState(linkId: string, makeDefault: boolean): { readonly default: boolean };
+  /** The account's hosted home, made on its first use (one home per owner per server). */
+  ensureHome(accountId: string): string;
+  /** Whether an account has consented to a client. */
+  consented(accountId: string, clientId: string): boolean;
+  /** Records an account's consent to a client. */
+  consent(accountId: string, clientId: string): void;
 }
 
 function oauthError(status: number, error: string, description: string): OAuthError {
@@ -158,6 +279,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
   const { directory, config, log } = options;
   const now = options.now ?? (() => Date.now());
   const accessTtlMs = options.accessTtlMs ?? ACCESS_TTL_MS;
+  const rotationGraceMs = options.rotationGraceMs ?? ROTATION_GRACE_MS;
   const iso = (ms: number): string => new Date(ms).toISOString();
   const verificationUri = `${config.apiOrigin}/device`;
 
@@ -175,6 +297,35 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       "SELECT data_json, expires_at FROM token WHERE hash = ? AND kind = 'device'",
       hash,
     );
+
+  /** An account the operator names: kept in the directory under the operator's own ID. */
+  const operatorAccount = (
+    db: LedgerDb,
+    identity: { provider: string; subject: string; name?: string; email?: string },
+    account: string,
+    name: string | undefined,
+    status: "active" | "suspended",
+  ): void => {
+    db.run(
+      `INSERT INTO account (id, name, status, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = COALESCE(excluded.name, name), status = excluded.status`,
+      account,
+      name ?? identity.name ?? null,
+      status,
+      iso(now()),
+    );
+    db.run(
+      `INSERT INTO identity (provider, subject, account_id, email, name, linked_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (provider, subject) DO UPDATE SET account_id = excluded.account_id,
+           email = excluded.email, name = excluded.name`,
+      identity.provider,
+      identity.subject,
+      account,
+      identity.email ?? null,
+      identity.name ?? null,
+      iso(now()),
+    );
+  };
 
   /** The account for a sign-in identity, made on the first sign-in. */
   const accountFor = (
@@ -285,8 +436,9 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       name: string | null;
       is_default: number | null;
       home_id: string | null;
+      scope: string;
     }>(
-      `SELECT g.account_id, g.link_id, a.name, l.is_default, l.home_id
+      `SELECT g.account_id, g.link_id, a.name, l.is_default, l.home_id, g.scope
          FROM "grant" g JOIN account a ON a.id = g.account_id
          LEFT JOIN instance_link l ON l.id = g.link_id WHERE g.id = ?`,
       grantId,
@@ -297,11 +449,16 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       token_type: "Bearer",
       expires_in: Math.max(1, Math.floor(accessTtlMs / 1000)),
       refresh_token: tokens.refresh,
-      scope: "mostra",
+      scope: row.scope,
       mostra_account: { id: row.account_id, ...(row.name !== null ? { name: row.name } : {}) },
-      mostra_instance: row.link_id ?? "",
-      mostra_default: row.is_default === 1,
-      mostra_home: row.home_id ?? "",
+      // An instance's link, for the CLI's device grant; an MCP client's grant has none.
+      ...(row.link_id !== null
+        ? {
+            mostra_instance: row.link_id,
+            mostra_default: row.is_default === 1,
+            mostra_home: row.home_id ?? "",
+          }
+        : {}),
     };
   };
 
@@ -315,16 +472,98 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
     { readonly tokens: { access: string; refresh: string }; readonly at: number }
   >();
   const forgetOld = (): void => {
-    for (const [hash, entry] of recent)
-      if (now() - entry.at > ROTATION_GRACE_MS) recent.delete(hash);
+    for (const [hash, entry] of recent) if (now() - entry.at > rotationGraceMs) recent.delete(hash);
   };
 
-  const grantLiveIn = (db: LedgerDb, grantId: string): boolean => {
+  /** `grant_type=refresh_token`: rotation with a 30 s grace, reuse after it revokes the grant. */
+  const refresh = (form: URLSearchParams, clientId: string): TokenAnswer | OAuthError => {
+    const presented = form.get("refresh_token") ?? "";
+    const hash = hashSecret(presented);
+    return directory.write((db): TokenAnswer | OAuthError => {
+      const row = db.get<{
+        grant_id: string;
+        expires_at: string;
+        used_at: string | null;
+      }>(
+        "SELECT grant_id, expires_at, used_at FROM token WHERE hash = ? AND kind = 'refresh'",
+        hash,
+      );
+      if (
+        !row ||
+        !grantLiveIn(db, row.grant_id, { anyStatus: true }) ||
+        grantClient(db, row.grant_id) !== clientId
+      ) {
+        return oauthError(400, "invalid_grant", "The refresh token isn't valid; sign in again.");
+      }
+      // A suspended account's refresh token stays good: the refresh is refused for now, without
+      // touching the token, so the instance or client keeps it and refreshes once the operator
+      // lifts the suspension. `invalid_grant` would tell it to sign in again (second Fable
+      // review of WP-30, 1).
+      if (!grantLiveIn(db, row.grant_id)) {
+        return oauthError(
+          403,
+          "temporarily_unavailable",
+          "This account is suspended; its sign-in works again once the server's operator lifts the suspension.",
+        );
+      }
+      if (Date.parse(row.expires_at) <= now()) {
+        return oauthError(400, "invalid_grant", "The refresh token expired; sign in again.");
+      }
+      if (row.used_at !== null) {
+        const used = Date.parse(row.used_at);
+        forgetOld();
+        if (now() - used <= rotationGraceMs) {
+          // A parallel refresh within the grace: the same successor (§18.5).
+          const kept = recent.get(hash);
+          if (kept) return answer(db, row.grant_id, kept.tokens);
+          return oauthError(
+            400,
+            "invalid_grant",
+            "This refresh token was just used; use its successor.",
+          );
+        }
+        // A refresh token used again after its grace: someone else holds it. The grant goes.
+        db.run('UPDATE "grant" SET revoked_at = ? WHERE id = ?', iso(now()), row.grant_id);
+        log.warn("auth.refresh_reused", { grant: row.grant_id });
+        return oauthError(
+          400,
+          "invalid_grant",
+          "The refresh token was used before; sign in again.",
+        );
+      }
+      const tokens = issue(db, row.grant_id);
+      db.run(
+        "UPDATE token SET used_at = ?, successor_hash = ? WHERE hash = ?",
+        iso(now()),
+        hashSecret(tokens.refresh),
+        hash,
+      );
+      forgetOld();
+      recent.set(hash, { tokens, at: now() });
+      return answer(db, row.grant_id, tokens);
+    });
+  };
+
+  /** The client a grant is for. */
+  const grantClient = (db: LedgerDb, grantId: string): string | undefined =>
+    db.get<{ client_id: string }>('SELECT client_id FROM "grant" WHERE id = ?', grantId)?.client_id;
+
+  const grantLiveIn = (
+    db: LedgerDb,
+    grantId: string,
+    options: { readonly anyStatus?: boolean } = {},
+  ): boolean => {
+    // An operator's credential is checked by asking the operator, by the binding's watch.
+    if (grantId.startsWith("credential:")) return true;
     const row = db.get<{ revoked_at: string | null; status: string }>(
       'SELECT g.revoked_at, a.status FROM "grant" g JOIN account a ON a.id = g.account_id WHERE g.id = ?',
       grantId,
     );
-    return row !== undefined && row.revoked_at === null && row.status === "active";
+    return (
+      row !== undefined &&
+      row.revoked_at === null &&
+      (options.anyStatus === true || row.status === "active")
+    );
   };
 
   return {
@@ -371,7 +610,91 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
 
     token(form) {
       const grantType = form.get("grant_type");
-      if (form.get("client_id") !== CLI_CLIENT_ID) {
+      const clientId = form.get("client_id") ?? "";
+      if (grantType === "authorization_code") {
+        const code = form.get("code") ?? "";
+        const hash = hashSecret(code);
+        return directory.write((db): TokenAnswer | OAuthError => {
+          const row = db.get<{ data_json: string; expires_at: string; used_at: string | null }>(
+            "SELECT data_json, expires_at, used_at FROM token WHERE hash = ? AND kind = 'code'",
+            hash,
+          );
+          if (row?.used_at != null) {
+            // A code presented again: someone else may hold it, so what it gave is revoked
+            // (OAuth 2.1 §4.1.3, RFC 9700 §4.5.3).
+            const spent = JSON.parse(row.data_json) as CodeGrant & { readonly grantId?: string };
+            if (spent.grantId !== undefined) {
+              db.run(
+                'UPDATE "grant" SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL',
+                iso(now()),
+                spent.grantId,
+              );
+              log.warn("auth.code_reused", { grant: spent.grantId });
+            }
+            return oauthError(400, "invalid_grant", "The code is unknown, used or expired.");
+          }
+          // Spent at its first presentation, whatever comes of it: a code works once. The row is
+          // kept (as a hash) until it is long expired, so a second presentation is recognized.
+          // Code rows only: a refresh token sent as a code is no code, and is left alone.
+          db.run("UPDATE token SET used_at = ? WHERE hash = ? AND kind = 'code'", iso(now()), hash);
+          if (!row || Date.parse(row.expires_at) <= now()) {
+            return oauthError(400, "invalid_grant", "The code is unknown, used or expired.");
+          }
+          const grant = JSON.parse(row.data_json) as CodeGrant;
+          if (grant.viewerSignin !== undefined) {
+            return oauthError(
+              400,
+              "invalid_grant",
+              "This code is a page's sign-in, not a client's.",
+            );
+          }
+          if (grant.clientId !== clientId) {
+            return oauthError(400, "invalid_grant", "The code was issued to another client.");
+          }
+          // Required when the authorization request named it (OAuth 2.1 §4.1.3), and the same.
+          const redirectUri = form.get("redirect_uri");
+          if (
+            (redirectUri === null && grant.redirectGiven !== false) ||
+            (redirectUri !== null && redirectUri !== grant.redirectUri)
+          ) {
+            return oauthError(
+              400,
+              "invalid_grant",
+              "redirect_uri isn't the one the code was issued for.",
+            );
+          }
+          if (!pkceMatches(form.get("code_verifier") ?? "", grant.challenge)) {
+            return oauthError(400, "invalid_grant", "The PKCE code_verifier doesn't match.");
+          }
+          const resource = form.get("resource");
+          if (resource !== null && canonicalResource(resource) !== grant.resource) {
+            return oauthError(
+              400,
+              "invalid_target",
+              "resource isn't the one the code was issued for.",
+            );
+          }
+          const grantId = `grt_${randomBytes(16).toString("hex")}`;
+          db.run(
+            'INSERT INTO "grant" (id, account_id, client_id, scope, resource, link_id, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)',
+            grantId,
+            grant.accountId,
+            grant.clientId,
+            grant.scope,
+            grant.resource,
+            iso(now()),
+          );
+          db.run(
+            "UPDATE token SET data_json = ? WHERE hash = ? AND kind = 'code'",
+            JSON.stringify({ ...grant, grantId }),
+            hash,
+          );
+          log.info("auth.code_redeemed", { client: grant.clientId, grant: grantId });
+          return answer(db, grantId, issue(db, grantId));
+        });
+      }
+      if (grantType === "refresh_token") return refresh(form, clientId);
+      if (clientId !== CLI_CLIENT_ID) {
         return oauthError(401, "invalid_client", "Unknown client.");
       }
       if (grantType === DEVICE_GRANT) {
@@ -434,63 +757,11 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           return answer(db, grantId, tokens);
         });
       }
-      if (grantType === "refresh_token") {
-        const presented = form.get("refresh_token") ?? "";
-        const hash = hashSecret(presented);
-        return directory.write((db): TokenAnswer | OAuthError => {
-          const row = db.get<{
-            grant_id: string;
-            expires_at: string;
-            used_at: string | null;
-          }>(
-            "SELECT grant_id, expires_at, used_at FROM token WHERE hash = ? AND kind = 'refresh'",
-            hash,
-          );
-          if (!row || !grantLiveIn(db, row.grant_id)) {
-            return oauthError(
-              400,
-              "invalid_grant",
-              "The refresh token isn't valid; sign in again.",
-            );
-          }
-          if (Date.parse(row.expires_at) <= now()) {
-            return oauthError(400, "invalid_grant", "The refresh token expired; sign in again.");
-          }
-          if (row.used_at !== null) {
-            const used = Date.parse(row.used_at);
-            forgetOld();
-            if (now() - used <= ROTATION_GRACE_MS) {
-              // A parallel refresh within the grace: the same successor (§18.5).
-              const kept = recent.get(hash);
-              if (kept) return answer(db, row.grant_id, kept.tokens);
-              return oauthError(
-                400,
-                "invalid_grant",
-                "This refresh token was just used; use its successor.",
-              );
-            }
-            // A refresh token used again after its grace: someone else holds it. The grant goes.
-            db.run('UPDATE "grant" SET revoked_at = ? WHERE id = ?', iso(now()), row.grant_id);
-            log.warn("auth.refresh_reused", { grant: row.grant_id });
-            return oauthError(
-              400,
-              "invalid_grant",
-              "The refresh token was used before; sign in again.",
-            );
-          }
-          const tokens = issue(db, row.grant_id);
-          db.run(
-            "UPDATE token SET used_at = ?, successor_hash = ? WHERE hash = ?",
-            iso(now()),
-            hashSecret(tokens.refresh),
-            hash,
-          );
-          forgetOld();
-          recent.set(hash, { tokens, at: now() });
-          return answer(db, row.grant_id, tokens);
-        });
-      }
-      return oauthError(400, "unsupported_grant_type", "Use the device grant or a refresh token.");
+      return oauthError(
+        400,
+        "unsupported_grant_type",
+        "Use authorization_code, refresh_token or the device grant.",
+      );
     },
 
     revoke(form) {
@@ -523,8 +794,11 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           account_id: string;
           link_id: string | null;
           name: string | null;
+          resource: string;
+          client_id: string;
+          scope: string;
         }>(
-          `SELECT t.hash, t.expires_at, t.grant_id, g.account_id, g.link_id, a.name
+          `SELECT t.hash, t.expires_at, t.grant_id, g.account_id, g.link_id, a.name, g.resource, g.client_id, g.scope
              FROM token t JOIN "grant" g ON g.id = t.grant_id JOIN account a ON a.id = g.account_id
             WHERE t.hash = ? AND t.kind = 'access'`,
           hash,
@@ -533,21 +807,273 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         // Constant-time on what was found, though the lookup was by hash already.
         if (!timingSafeEqual(Buffer.from(row.hash), Buffer.from(hash))) return undefined;
         const expiresAt = Date.parse(row.expires_at);
-        if (expiresAt <= now() || !grantLiveIn(db, row.grant_id)) return undefined;
+        // A suspended account's token still names it, so its caller hears "suspended" (403)
+        // rather than "sign in again", and the operator's later word can lift it (D165 item 9).
+        if (expiresAt <= now() || !grantLiveIn(db, row.grant_id, { anyStatus: true }))
+          return undefined;
         const home = db.get<{ id: string }>(
           "SELECT id FROM home WHERE owner_account_id = ?",
           row.account_id,
         );
-        if (!home) return undefined;
+        // An MCP client's account may have no home yet: it gets one at its first hosted call.
+        if (!home && row.resource.endsWith("/host")) return undefined;
         return {
+          resource: row.resource,
+          clientId: row.client_id,
+          scope: row.scope,
           accountId: row.account_id,
           accountName: row.name ?? undefined,
           grantId: row.grant_id,
-          homeId: home.id,
+          homeId: home?.id ?? "",
           linkId: row.link_id ?? undefined,
           expiresAt,
         };
       });
+    },
+
+    decideFor(input) {
+      const wanted = normalizeUserCode(input.code);
+      return directory.write((db) => {
+        const rows = db.all<{ hash: string; data_json: string }>(
+          "SELECT hash, data_json FROM token WHERE kind = 'device' AND expires_at > ?",
+          iso(now()),
+        );
+        const row = rows.find(
+          (candidate) => (JSON.parse(candidate.data_json) as DeviceState).userCode === wanted,
+        );
+        if (!row) return { ok: false as const, reason: "That code is unknown or has expired." };
+        const state = JSON.parse(row.data_json) as DeviceState;
+        if (state.status !== "pending")
+          return { ok: false as const, reason: "That code was already used." };
+        db.run(
+          "UPDATE token SET data_json = ? WHERE hash = ?",
+          JSON.stringify(
+            input.approve
+              ? { ...state, status: "approved", accountId: input.accountId }
+              : { ...state, status: "denied" },
+          ),
+          row.hash,
+        );
+        if (input.approve) {
+          db.run(
+            "INSERT INTO consent (account_id, client_id, granted_at) VALUES (?, ?, ?) ON CONFLICT (account_id, client_id) DO UPDATE SET revoked_at = NULL",
+            input.accountId,
+            CLI_CLIENT_ID,
+            iso(now()),
+          );
+        }
+        return { ok: true as const };
+      });
+    },
+
+    async resolveAccount(identity, steps) {
+      const verdict = options.operator
+        ? await options.operator.resolve(identity, steps)
+        : ({ default: true } as const);
+      if (verdict === "unavailable") return { kind: "unavailable" };
+      if ("default" in verdict) {
+        const accountId = directory.write((db) => accountFor(db, identity));
+        const status = directory.read(
+          (db) =>
+            db.get<{ status: string }>("SELECT status FROM account WHERE id = ?", accountId)
+              ?.status,
+        );
+        if (status === "suspended") return { kind: "suspended" };
+        return { kind: "account", accountId, name: identity.name };
+      }
+      if ("step" in verdict) return { kind: "step", url: verdict.step.url };
+      if ("refused" in verdict) return { kind: "refused", message: verdict.refused.message };
+      directory.write((db) =>
+        operatorAccount(db, identity, verdict.account, verdict.name, verdict.status),
+      );
+      if (verdict.status === "suspended") return { kind: "suspended" };
+      return { kind: "account", accountId: verdict.account, name: verdict.name ?? identity.name };
+    },
+
+    accountName(accountId) {
+      return directory.read((db) => {
+        const row = db.get<{ name: string | null; provider: string | null }>(
+          `SELECT a.name, (SELECT i.provider FROM identity i WHERE i.account_id = a.id
+              ORDER BY i.linked_at LIMIT 1) AS provider FROM account a WHERE a.id = ?`,
+          accountId,
+        );
+        return {
+          ...(row?.name ? { name: row.name } : {}),
+          ...(row?.provider ? { provider: row.provider } : {}),
+        };
+      });
+    },
+
+    issueCode(grant) {
+      const code = secret();
+      directory.write((db) => {
+        // Codes are kept a while after use to recognize a second presentation, then dropped.
+        db.run(
+          "DELETE FROM token WHERE kind = 'code' AND expires_at < ?",
+          iso(now() - CODE_KEPT_MS),
+        );
+        db.run(
+          "INSERT INTO token (hash, kind, expires_at, data_json) VALUES (?, 'code', ?, ?)",
+          hashSecret(code),
+          iso(now() + CODE_TTL_MS),
+          JSON.stringify(grant),
+        );
+      });
+      return code;
+    },
+
+    redeemViewerCode(input) {
+      const hash = hashSecret(input.code);
+      return directory.write((db) => {
+        const row = db.get<{ data_json: string; expires_at: string }>(
+          "SELECT data_json, expires_at FROM token WHERE hash = ? AND kind = 'code'",
+          hash,
+        );
+        db.run("DELETE FROM token WHERE hash = ?", hash);
+        if (!row || Date.parse(row.expires_at) <= now()) {
+          return { refused: "The sign-in code is unknown, used or expired." };
+        }
+        const grant = JSON.parse(row.data_json) as CodeGrant;
+        if (grant.viewerSignin === undefined || grant.viewerSignin !== input.viewerSignin) {
+          return { refused: "This sign-in code was started for another page." };
+        }
+        if (grant.clientId !== input.clientId) {
+          return { refused: "This sign-in code was issued to another shell." };
+        }
+        if (!pkceMatches(input.verifier, grant.challenge)) {
+          return { refused: "The sign-in's PKCE verifier doesn't match." };
+        }
+        return { accountId: grant.accountId };
+      });
+    },
+
+    credentialSession(input) {
+      return directory.write((db) => {
+        db.run(
+          "INSERT INTO account (id, name, status, created_at) VALUES (?, NULL, 'active', ?) ON CONFLICT (id) DO NOTHING",
+          input.account,
+          iso(now()),
+        );
+        const home = homeFor(db, input.account);
+        let link = db.get<{ link_id: string }>(
+          "SELECT link_id FROM credential_link WHERE account_id = ? AND subject = ?",
+          input.account,
+          input.subject,
+        )?.link_id;
+        // Only a binding makes the key's instance link: a key used on /mcp or /files first names
+        // none, so no link that never binds takes the account's default (Fable review, 3).
+        if (link === undefined && input.link) {
+          link = linkFor(
+            db,
+            input.account,
+            home,
+            undefined,
+            `Service key ${input.subject}`.slice(0, 128),
+          );
+          db.run(
+            "INSERT INTO credential_link (account_id, subject, link_id) VALUES (?, ?, ?)",
+            input.account,
+            input.subject,
+            link,
+          );
+        }
+        const name = db.get<{ name: string | null }>(
+          "SELECT name FROM account WHERE id = ?",
+          input.account,
+        )?.name;
+        return {
+          resource: input.resource,
+          clientId: "operator",
+          scope: "mostra",
+          accountId: input.account,
+          accountName: name ?? undefined,
+          // Not a grant of this server: the operator is asked again while the binding stays open.
+          grantId: `credential:${input.account}:${input.subject}`,
+          homeId: home,
+          linkId: link,
+          expiresAt: now() + accessTtlMs,
+        };
+      });
+    },
+
+    refreshAccount(refreshToken) {
+      return directory.read(
+        (db) =>
+          db.get<{ account_id: string }>(
+            "SELECT g.account_id FROM token t JOIN \"grant\" g ON g.id = t.grant_id WHERE t.hash = ? AND t.kind = 'refresh'",
+            hashSecret(refreshToken),
+          )?.account_id,
+      );
+    },
+
+    accountStatus(accountId) {
+      return directory.read((db) =>
+        db.get<{ status: string }>("SELECT status FROM account WHERE id = ?", accountId)?.status ===
+        "suspended"
+          ? "suspended"
+          : "active",
+      );
+    },
+
+    setAccountStatus(accountId, status) {
+      directory.write((db) =>
+        db.run(
+          "UPDATE account SET status = ? WHERE id = ? AND status != ?",
+          status,
+          accountId,
+          status,
+        ),
+      );
+    },
+
+    linkState(linkId, makeDefault) {
+      return directory.write((db) => {
+        if (makeDefault) {
+          const owner = db.get<{ account_id: string }>(
+            "SELECT account_id FROM instance_link WHERE id = ?",
+            linkId,
+          );
+          if (owner) {
+            db.run(
+              "UPDATE instance_link SET is_default = 0 WHERE account_id = ? AND id != ?",
+              owner.account_id,
+              linkId,
+            );
+            db.run("UPDATE instance_link SET is_default = 1 WHERE id = ?", linkId);
+          }
+        }
+        const row = db.get<{ is_default: number }>(
+          "SELECT is_default FROM instance_link WHERE id = ?",
+          linkId,
+        );
+        return { default: row?.is_default === 1 };
+      });
+    },
+
+    ensureHome(accountId) {
+      return directory.write((db) => homeFor(db, accountId));
+    },
+
+    consented(accountId, clientId) {
+      return directory.read(
+        (db) =>
+          db.get(
+            "SELECT 1 FROM consent WHERE account_id = ? AND client_id = ? AND revoked_at IS NULL",
+            accountId,
+            clientId,
+          ) !== undefined,
+      );
+    },
+
+    consent(accountId, clientId) {
+      directory.write((db) =>
+        db.run(
+          "INSERT INTO consent (account_id, client_id, granted_at) VALUES (?, ?, ?) ON CONFLICT (account_id, client_id) DO UPDATE SET revoked_at = NULL, granted_at = excluded.granted_at",
+          accountId,
+          clientId,
+          iso(now()),
+        ),
+      );
     },
 
     grantLive(grantId) {

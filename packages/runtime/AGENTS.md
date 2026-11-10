@@ -206,6 +206,15 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   The home's gateway never proxies to it, no home link opens it, and a non-loopback `--bind`
   refuses it. A session belongs to the connection that started it, keeps a daemon from its idle
   exit, and its directory is removed when it ends and at every start.
+- **A remote server holds many tenants and runs none of their code (ARCHITECTURE §15, D165, D167).**
+  `src/server` serves hosted homes behind one front that routes by the exact `Host`; every lookup
+  of a route, a file, a link or a home names its home, so two accounts hosting one artifact ID never
+  meet (RM-03), and a label, the server's or an operator's, is issued once and never moves. Hosted
+  origins take no cookie: sessions travel in headers, the shell runs under Trusted Types, and
+  sign-in happens only on the API origin. Everything an operating layer adds comes through the
+  operator ports (`server/operator.ts`), each time-limited with a no-op default; the open server
+  holds no billing, quota, mail, webhook, scoring or placement code (`test/unit/open-server.test.ts`
+  fails on one).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -238,6 +247,8 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `gc` | What keeps a version (`REFERENCE_SOURCES`, one named source per rule, checked against every ledger column that names a version by `test/unit/gc.test.ts`), the collection that marks versions in `version_collected` and removes their files, unreferenced snapshots, lock layouts, store packages and verify caches, serialized against publish, verify and installs by the instance's `Gate` (`src/gate.ts`), and `gc/run` (D140 item 14) |
 | `dev` | `mostra dev`'s sessions (D140 item 12): the source mirrored into `cache/dev/<session>/root`, the dev server in a builder child (`builder/child/dev.ts`, Vite in middleware mode, answering only with the session's secret), the sandbox the preview is served from (`verify/sandbox.ts` with `dev`), and `dev/start`, `dev/stop` and `dev/notify` |
 | `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
+| `link` | The owner's side of a remote server (WP-29, D165): sign-in by the device grant or an operator's key (`manager.ts`, `remote/*`), the network binding with heartbeats and in-band tokens (`binding.ts`), version pushes, the sync cursor and imported submissions (`hosted.ts`), the relay's runs, calls and live producers (`relay.ts`), and relayed authoring confined to the MCP workspace (`author.ts`) |
+| `server` | The remote server (WP-29, WP-30): the front and its exact-Host routing (`index.ts`, `routing.ts`), the data directory, locks and hosted homes opened on demand (`data.ts`, `directory.ts`, `hosted.ts`), the API origin (`api.ts`), the authorization server and sign-in (`auth.ts`, `authorize.ts`, `oauth-clients.ts`, `providers.ts`), hosted pages' rules and chrome (`hosted-pages.ts`), client addresses and rates (`clients.ts`), the relay (`relay.ts`), operator ports, events and metering (`operator.ts`, `feed.ts`, `metering.ts`), the server handle and removal (`handle.ts`, `remove.ts`), and remote MCP on `@mostra/mcp`'s factory (`mcp.ts`) |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -264,6 +275,17 @@ responses back as quick tunnels do; `MOSTRA_FAKE_TAILNET_USER` (`login|Display N
 `MOSTRA_FAKE_TAILSCALE` (`stopped`, `no-serve`, `no-funnel`), `MOSTRA_FAKE_TAILSCALE_SERVED` and
 `MOSTRA_FAKE_CLOUDFLARED` (`fail`) script them, and `MOSTRA_TEST_SHARE_PROBE_MS` sets how long a
 new quick tunnel's names are waited for (0: not at all). Tests only, like the rest.
+
+The remote server's test hooks, tests only: `MOSTRA_TEST_NETWORK_FILESYSTEM` (a directory treated
+as a network filesystem), `MOSTRA_TEST_ACCESS_TTL_MS`, `MOSTRA_TEST_GRANT_RECHECK_MS` (how often a
+binding's grant and an account's standing are asked again), `MOSTRA_TEST_ROTATION_GRACE_MS` (a
+refresh token's 30 s), `MOSTRA_TEST_CIMD_ORIGIN` (one loopback origin a metadata document may come
+from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fakes on loopback),
+`MOSTRA_TEST_OPERATOR_DISPATCH_MS` and `MOSTRA_TEST_METER_WINDOW_MS` (the operator's outbound
+queue and meter), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
+message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
+server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.
 
 To serve a new protocol method, define it with `pnpm gen protocol-method` in `@mostra/protocol`
 ([playbook](../../docs/agents/add-protocol-method.md)), implement it in the module that owns its
@@ -292,8 +314,10 @@ first module outside `protocol-server` needs it.
   submissions, the session's end, its listeners and secrets).
   CI runs them on macOS and
   Linux (`integration` job, D86), split into groups of suites, one machine each:
-  `MOSTRA_TEST_GROUP=core|verify|verify-failures` runs one group (`vitest.config.ts`), unset runs
-  them all. The groups partition the files by name, so a new suite lands in exactly one; a new
+  `MOSTRA_TEST_GROUP=core|remote|verify|verify-failures` runs one group (`vitest.config.ts`), unset
+  runs them all. `remote` holds the remote server's suites: the server, binding, link, hosted pages
+  and their rules, relay, restore, replicator (`MOSTRA_TEST_LITESTREAM`), OAuth, sign-in, remote
+  MCP and its conformance, operator ports, tenancy, pause and anonymous answers at volume. The groups partition the files by name, so a new suite lands in exactly one; a new
   `verify*` suite joins `verify`.
 - `pnpm --filter @mostra/runtime test:integration -- verify audit`: verify through a real daemon
   (`verify.test.ts`: WP-03's fixtures as negatives, a fixture per stage's faults, regressions, the

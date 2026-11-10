@@ -53,6 +53,16 @@ impl super::Method for ArtifactList {
     type Params = super::generated::ArtifactListParams;
     type Result = super::generated::ArtifactListResult;
 }
+///`artifact/pause`.
+#[derive(Clone, Copy, Debug)]
+pub struct ArtifactPause;
+impl super::Method for ArtifactPause {
+    const NAME: &'static str = "artifact/pause";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::ArtifactPauseParams;
+    type Result = super::generated::ArtifactPauseResult;
+}
 ///`artifact/publish`.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtifactPublish;
@@ -253,6 +263,16 @@ impl super::Method for PortIdentityResolve {
     type Params = super::generated::PortIdentityResolveParams;
     type Result = super::generated::PortIdentityResolveResult;
 }
+///`port/relay.author`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortRelayAuthor;
+impl super::Method for PortRelayAuthor {
+    const NAME: &'static str = "port/relay.author";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = true;
+    type Params = super::generated::PortRelayAuthorParams;
+    type Result = super::generated::PortRelayAuthorResult;
+}
 ///`port/relay.call`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortRelayCall;
@@ -382,6 +402,16 @@ impl super::Method for RelayRunUpdate {
     const MUTATING: bool = true;
     type Params = super::generated::RelayRunUpdateParams;
     type Result = super::generated::RelayRunUpdateResult;
+}
+///`remote/link`.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteLink;
+impl super::Method for RemoteLink {
+    const NAME: &'static str = "remote/link";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RemoteLinkParams;
+    type Result = super::generated::RemoteLinkResult;
 }
 ///`remote/login`.
 #[derive(Clone, Copy, Debug)]
@@ -632,6 +662,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "artifact/pause",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
         name: "artifact/publish",
         direction: super::Direction::ClientToInstance,
         mutating: true,
@@ -732,6 +767,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "port/relay.author",
+        direction: super::Direction::InstanceToHost,
+        mutating: true,
+    },
+    super::MethodInfo {
         name: "port/relay.call",
         direction: super::Direction::InstanceToHost,
         mutating: false,
@@ -795,6 +835,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "relay/run.update",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "remote/link",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "remote/login",

@@ -44,6 +44,7 @@ import {
   FRAME_SESSION_HEADER,
   type FrameSessionFacts,
   type FrameTicket,
+  type HostedChrome,
   type IdentityVia,
   type PortAddressingExternalBaseResult,
   type Refusal,
@@ -97,6 +98,9 @@ import {
 import { type IdentityOutcome, tailnetPerson } from "./identity.ts";
 import { versionIntegrity } from "./integrity.ts";
 import { createListener, type Listener } from "./listener.ts";
+
+export { resetOnClose } from "./listener.ts";
+
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
 import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./worker.ts";
@@ -104,7 +108,9 @@ import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./wo
 export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 export type { DevUpstream } from "./dev.ts";
+export { BASE_HEADERS, documentHeaders, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
 export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
+export type { RouteContext, RouteSpec } from "./routes.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -255,6 +261,59 @@ export interface HostedAddressing {
   readonly shellPath: (artifactId: string) => string;
   /** The origin of an artifact's frames beside a domain's shell: its route's label there. */
   readonly artifactOrigin: (artifactId: string, shellOrigin: string) => string | undefined;
+  /** The client's address of a request, through the server's trusted proxies (D165 item 13). */
+  readonly client?: (incoming: IncomingMessage) => string | undefined;
+  /**
+   * The shell origin a new link of an artifact is minted on (an operator's host for it, D167), or
+   * `undefined` for the active domain's apex.
+   */
+  readonly linkOrigin?: (artifactId: string) => Promise<string | undefined>;
+  /**
+   * The shells that may frame an artifact's documents at a frame origin: the apex of the domain the
+   * frame is served on, and the operator hosts that serve the route's shell with frames there
+   * (D167). Space-separated origins, for `frame-ancestors`.
+   */
+  readonly frameAncestors?: (artifactId: string, frameOrigin: string) => string;
+  /**
+   * Who a browser is that exchanges a link minted without a viewer (D165 item 8): an anonymous
+   * viewer per browser, by the route's derived key (`browser`), or a fresh one when the shell
+   * sent none. Sign-in turns a session's viewer into its account's later.
+   */
+  readonly anonymousViewer?: (browser: string | undefined) => string;
+  /**
+   * Before a view's frame ticket (WP-30): a quarantined route or version shows the neutral "under
+   * review" page, and the operator's `limits` may refuse a view. A refusal, or nothing.
+   */
+  readonly admitView?: (input: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly tokenId: string;
+    readonly client: string | undefined;
+  }) => Promise<(Refusal & { readonly retryAfter?: number }) | undefined>;
+  /** A version whose files are withheld now (a quarantine): refused even to an open frame. */
+  readonly blocked?: (artifactId: string, versionId: string) => Refusal | undefined;
+  /** The hosted shell's trusted chrome for a view (D161). */
+  readonly chrome?: (input: {
+    readonly artifactId: string;
+    readonly tokenId: string;
+    readonly viewerId: string;
+  }) => Promise<HostedChrome>;
+  /**
+   * Before a submit from the shell or the frame (D165 item 13): sign-in when the artifact asks for
+   * it, the per-IP and per-link rates, and the operator's `limits`. A refusal, or nothing.
+   */
+  readonly admitSubmit?: BrowserRoutesOptions["admitSubmit"];
+  /** Shell routes of a hosted home of its own (sign-in, the report control, a viewer's name). */
+  readonly shellRoutes?: (helpers: HostedRouteHelpers) => readonly RouteSpec[];
+}
+
+/** What a hosted home's own shell routes may use of the gateway. */
+export interface HostedRouteHelpers {
+  /** Turns a refusal into the answer every route gives. */
+  readonly refuse: (
+    refused: Refusal & { readonly retryAfter?: number },
+    request: { readonly method: string; readonly path: string; readonly document: boolean },
+  ) => Response;
 }
 
 /** The gateway of one instance. */
@@ -489,6 +548,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         : undefined;
     },
     activated: options.activated,
+    ...(options.hosted?.admitSubmit ? { admitSubmit: options.hosted.admitSubmit } : {}),
     ...(options.revisions ? { revisions: options.revisions } : {}),
     ...(options.bus ? { bus: options.bus } : {}),
   });
@@ -888,6 +948,7 @@ export function createGateway(options: GatewayOptions): Gateway {
 
   /** Where an artifact's links point: a host's external base when it gives one, else loopback. */
   const linkBase = async (artifactId: string): Promise<string> => {
+    if (hosted?.linkOrigin) return (await hosted.linkOrigin(artifactId)) ?? shellOrigin();
     const face = await hostFace(artifactId, "shell");
     return face?.origin ?? shellOrigin();
   };
@@ -966,6 +1027,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     },
     // The shell's own stream is refused where streams don't pass, as the frame's is (D158 item 5).
     streams: () => way().streams(),
+    ...(hosted?.client ? { client: hosted.client } : {}),
   });
 
   const shellMissing = (): Response =>
@@ -1022,7 +1084,13 @@ export function createGateway(options: GatewayOptions): Gateway {
         const found = await artifactWayFor(way, group, context.artifactId).catch(() => undefined);
         frames = found && !isRefusal(found) ? (found.way.origin() ?? "'none'") : "'none'";
       }
-      const html = readFileSync(join(options.shellDir, "index.html"));
+      const file = readFileSync(join(options.shellDir, "index.html"));
+      // A hosted page's link preview is the same for every artifact (D161): an unfurl in a chat
+      // app shows neither its title, text nor images unless its owner opted in to the title.
+      const html =
+        way.by === "hosted"
+          ? hostedPreview(file.toString("utf8"), previewTitle(context.artifactId))
+          : file;
       return new Response(context.request.method === "HEAD" ? null : html, {
         headers: {
           ...BASE_HEADERS,
@@ -1031,6 +1099,16 @@ export function createGateway(options: GatewayOptions): Gateway {
           "cache-control": "no-cache",
         },
       });
+    };
+
+    /** The title a hosted page's preview may show: its own only when the manifest asks (D161). */
+    const previewTitle = (artifactId: string): string | undefined => {
+      try {
+        const detail = artifacts.get({ artifactId });
+        return detail.manifest.hosted?.preview === "title" ? detail.title : undefined;
+      } catch {
+        return undefined;
+      }
     };
 
     const shellAsset = async (context: RouteContext): Promise<Response> => {
@@ -1056,8 +1134,16 @@ export function createGateway(options: GatewayOptions): Gateway {
      * 2): the home's local user on loopback; over a tunnel the tailnet person Tailscale Serve
      * named, else the link's own viewer, never the home's local user.
      */
-    const defaultViewer = (way: Way, context: RouteContext, grant: Grant): string | undefined => {
+    const defaultViewer = (
+      way: Way,
+      context: RouteContext,
+      grant: Grant,
+      browser: string | undefined,
+    ): string | undefined => {
       if (way.via === "local") return undefined;
+      // On a remote server, one anonymous viewer per browser, by the route's own key (D165 item 8):
+      // a public page answered by thousands needs one draft per person.
+      if (way.by === "hosted" && hosted?.anonymousViewer) return hosted.anonymousViewer(browser);
       if (way.via === "tailnet") {
         const person = tailnetPerson(context.request.headers, context.remote);
         if (person) return interaction.viewerForTailnet(person);
@@ -1150,7 +1236,14 @@ export function createGateway(options: GatewayOptions): Gateway {
         viewerId =
           outcome.kind === "person"
             ? interaction.viewerForHost(outcome.viewer)
-            : defaultViewer(way, context, grant);
+            : defaultViewer(
+                way,
+                context,
+                grant,
+                typeof body["browser"] === "string" && browser !== undefined
+                  ? body["browser"]
+                  : undefined,
+              );
       }
       // Everything is judged again after the await, in one synchronous step with the session's
       // creation: a link revoked or expired meanwhile gets no session (Opus review of WP-12,
@@ -1278,6 +1371,17 @@ export function createGateway(options: GatewayOptions): Gateway {
       // A dev preview has no stored build to check: Vite serves the source (D140 item 12).
       const damage = options.dev ? undefined : await integrity.check(version.id);
       if (damage !== undefined) return damaged(version.number, damage, false, "'none'");
+      // On a remote server: a quarantined route or version, or a view the operator's `limits`
+      // refused, gets no frame; the shell shows why (WP-30).
+      if (hosted?.admitView) {
+        const refused = await hosted.admitView({
+          artifactId,
+          versionId: version.id,
+          tokenId: session.grant.tokenId,
+          client: context.client,
+        });
+        if (refused) return refuse(checks, refused, meta);
+      }
       // The frame opens on the artifact's way in this shell's group: its loopback listener, or
       // the artifact's face at this address (D158 item 1), in the mode the pair needs (D70).
       const found = await artifactWayFor(way, group, artifactId);
@@ -1297,6 +1401,10 @@ export function createGateway(options: GatewayOptions): Gateway {
       // the channels and controls in force for it (D108).
       const controls = await options.controls(detail);
       const viewerId = interaction.viewerOf(session.viewerId);
+      const pause = interaction.pauseOf(artifactId);
+      const chrome = hosted?.chrome
+        ? await hosted.chrome({ artifactId, tokenId: session.grant.tokenId, viewerId })
+        : undefined;
       const viewId = interaction.openView({
         artifactId,
         versionId: version.id,
@@ -1331,6 +1439,15 @@ export function createGateway(options: GatewayOptions): Gateway {
         ...(options.parked?.(version.id) ? { serverParked: true as const } : {}),
         ...(options.dev ? { devPreview: true as const } : {}),
         ...(mode === "worker" ? { mode: "worker" as const } : {}),
+        ...(pause
+          ? {
+              paused: {
+                by: pause.by,
+                ...(pause.reason !== undefined ? { reason: pause.reason } : {}),
+              },
+            }
+          : {}),
+        ...(chrome ? { hosted: chrome } : {}),
       };
       return jsonResponse(answer);
     };
@@ -1428,6 +1545,11 @@ export function createGateway(options: GatewayOptions): Gateway {
         auth: "session",
         scope: () => "review",
       },
+      // A hosted home's own shell routes (sign-in, the report control, a viewer's name), behind
+      // the same checks as every other route (D96).
+      ...(hosted?.shellRoutes?.({
+        refuse: (refused, request) => refuse(checks, refused, request),
+      }) ?? []),
     ];
   };
 
@@ -1442,10 +1564,17 @@ export function createGateway(options: GatewayOptions): Gateway {
     capabilities,
     log,
     cookieName: () => `mostra-${wayOf().port()}`,
-    frameAncestors: () => shellOf(wayOf(), group)?.origin() ?? "'none'",
+    frameAncestors: () => {
+      const way = wayOf();
+      if (way.by === "hosted" && hosted?.frameAncestors) {
+        return hosted.frameAncestors(artifactId, way.origin() ?? "") || "'none'";
+      }
+      return shellOf(way, group)?.origin() ?? "'none'";
+    },
     artifactOf: () => artifactId,
     mode: () => modeOf(wayOf(), group),
     streams: () => wayOf().streams(),
+    ...(hosted?.client ? { client: hosted.client } : {}),
   });
 
   const artifactRoutes = (
@@ -1455,12 +1584,15 @@ export function createGateway(options: GatewayOptions): Gateway {
   ): RouteSpec[] => {
     const origin = (): string => wayOf().origin() ?? "";
     const shell = (): string => shellOf(wayOf(), group)?.origin() ?? "";
+    const checks = artifactChecks(artifactId, wayOf, group);
     const kind = (): ListenerKind => ({
       kind: "artifact",
       origin: origin(),
       shellOrigin: shell(),
+      // A hosted label's documents name exactly the framers its refusals do: its domain's shell,
+      // and the outside hosts an operator serves its shell on (D165 item 7, Opus review of WP-28).
+      ...(wayOf().by === "hosted" ? { frameAncestors: checks.frameAncestors() } : {}),
     });
-    const checks = artifactChecks(artifactId, wayOf, group);
     const mode = (): FrameMode => modeOf(wayOf(), group);
     const notServed = (context: RouteContext, message: string): Response =>
       refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", message), {
@@ -1739,6 +1871,9 @@ export function createGateway(options: GatewayOptions): Gateway {
       // again whenever a file changed since (FAILURE_MODEL §3).
       const checked =
         file ?? (context.document ? await findFile(root(versionId), "/index.html") : undefined);
+      // A quarantined version's files are withheld even from a frame that entered it before.
+      const withheld = hosted?.blocked?.(artifactId, from);
+      if (withheld) return refuse(checks, withheld, meta);
       if (checked) {
         const damage = await integrity.serve(from, checked);
         if (damage !== undefined) {
@@ -2217,4 +2352,34 @@ export async function shellAssetResponse(
 export function locateShell(env: Environment): string | undefined {
   const dir = env["MOSTRA_SHELL_DIR"] ?? resolve(runtimeRoot(), "..", "shell", "dist");
   return existsSync(join(dir, "index.html")) ? dir : undefined;
+}
+
+/** The generic preview of every hosted page (D161): one title, one description, no image. */
+export const HOSTED_PREVIEW = {
+  title: "A page sent with Mostra",
+  description: "Someone sent you this page. Open it to see it.",
+} as const;
+
+/** Text for an HTML attribute or element: nothing a tenant writes is ever markup. */
+function previewText(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+}
+
+/**
+ * The hosted shell's page with its link preview (D161): the generic title and description, or
+ * the artifact's title alone when its manifest asks (`hosted.preview: "title"`), never its text or
+ * images, and `noindex`.
+ */
+function hostedPreview(html: string, title: string | undefined): string {
+  const shown = previewText(title ?? HOSTED_PREVIEW.title);
+  const description = previewText(HOSTED_PREVIEW.description);
+  const tags = [
+    `<meta name="robots" content="noindex, nofollow">`,
+    `<meta name="description" content="${description}">`,
+    `<meta property="og:title" content="${shown}">`,
+    `<meta property="og:description" content="${description}">`,
+    `<meta property="og:site_name" content="Mostra">`,
+    `<meta name="twitter:card" content="summary">`,
+  ].join("\n    ");
+  return html.replace(/<title>[^<]*<\/title>/, `<title>${shown}</title>\n    ${tags}`);
 }

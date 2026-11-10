@@ -59,6 +59,21 @@ export interface DataDirectory<T> {
   open(): readonly string[];
   /** Notes that a home was used now, so it isn't closed while used. */
   touch(id: string): void;
+  /**
+   * Closes a home now, if open, and holds it closed until `undrain` (`ServerHandle.drainHome`):
+   * every request for it meanwhile is refused with `MOSTRA_REMOTE_HOME_MOVING`, so two data
+   * directories never serve one home at once.
+   */
+  drain(id: string): Promise<void>;
+  /** Serves a drained home again (`ServerHandle.releaseHome`). */
+  undrain(id: string): void;
+  /**
+   * A restore from a backup by hand (`ServerHandle.restored`): the home is closed and rotates its
+   * incarnation before it serves anything again.
+   */
+  restored(id: string): Promise<void>;
+  /** Closes a home now if open (it reopens on its next request). */
+  closeHome(id: string): Promise<void>;
   /** Closes every home, then the directory, then releases the lock. */
   close(): Promise<void>;
 }
@@ -192,11 +207,21 @@ export async function openDataDirectory<T>(
 
   const openHome = async (id: string): Promise<OpenedHome<T>> => {
     const row = directory.read((db) =>
-      db.get<{ data_path: string }>("SELECT data_path FROM home WHERE id = ?", id),
+      db.get<{ data_path: string; drained_at: string | null }>(
+        "SELECT data_path, drained_at FROM home WHERE id = ?",
+        id,
+      ),
     );
     if (!row) {
       throw new RpcError(
         createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", { message: `No hosted home ${id}.` }),
+      );
+    }
+    if (row.drained_at !== null) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_REMOTE_HOME_MOVING", {
+          message: "This account's pages are moving to another machine; try again in a minute.",
+        }),
       );
     }
     const homeDir = join(dir, row.data_path);
@@ -352,6 +377,39 @@ export async function openDataDirectory<T>(
     touch(id) {
       const entry = entries.get(id);
       if (entry) entry.lastUsed = Date.now();
+    },
+    async closeHome(id) {
+      const entry = entries.get(id);
+      if (!entry) return;
+      entry.closing ??= closeHome(id, entry);
+      await entry.closing;
+    },
+    async drain(id) {
+      directory.write((db) =>
+        db.run(
+          "UPDATE home SET drained_at = COALESCE(drained_at, ?) WHERE id = ?",
+          new Date().toISOString(),
+          id,
+        ),
+      );
+      const entry = entries.get(id);
+      if (entry) {
+        entry.closing ??= closeHome(id, entry);
+        await entry.closing;
+      }
+      log.info("server.home_drained", { home: id });
+    },
+    undrain(id) {
+      directory.write((db) => db.run("UPDATE home SET drained_at = NULL WHERE id = ?", id));
+      log.info("server.home_released", { home: id });
+    },
+    async restored(id) {
+      restores.add(id);
+      const entry = entries.get(id);
+      if (entry) {
+        entry.closing ??= closeHome(id, entry);
+        await entry.closing;
+      }
     },
     async close() {
       if (closed) return;

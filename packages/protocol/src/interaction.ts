@@ -42,6 +42,11 @@ export interface Viewer {
   readonly name?: string;
   /** The host's own key for this person, as given to `view/url` (D104). */
   readonly ref?: string;
+  /**
+   * Whether an identity provider verified the name: `true` for a signed-in account, `false` for an
+   * anonymous viewer's self-chosen name (hosted links, D165 item 8). Absent for other kinds.
+   */
+  readonly verified?: boolean;
 }
 
 /** The Zod schema of the `Viewer` type. */
@@ -51,6 +56,7 @@ export const Viewer: z.ZodType<Viewer> = z
     kind: z.enum(["local", "tailnet", "token", "host", "account", "anonymous"]),
     name: z.string().exactOptional(),
     ref: z.string().exactOptional(),
+    verified: z.boolean().exactOptional(),
   })
   .register(wireRegistry, {
     id: "Viewer",

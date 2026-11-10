@@ -1,0 +1,54 @@
+# Expected failures of the remote server's `/mcp` (MC-04, D167 item 16; the same tools and factory as `mostra mcp --http`, whose baseline in packages/cli this repeats) under @modelcontextprotocol/conformance 0.2.0-alpha.12
+# at the 2026-07-28 revision (D164, MC-01). Each entry names one check, so the rest of its scenario
+# (always its wire-schema check, which validates every message the server sends against the
+# revision's schema) stays enforced. The checks listed call the suite's reference fixtures, or a
+# feature Mostra's server doesn't offer; an entry that starts passing fails the run.
+server:
+  # server-stateless: 24 checks pass; these four need the reference server's diagnostic tools.
+  - server-stateless:sep-2575-server-rejects-undeclared-capability
+  - server-stateless:sep-2575-missing-capability-http-400
+  - server-stateless:sep-2575-http-server-no-independent-requests-on-stream
+  - server-stateless:sep-2575-server-no-log-without-loglevel
+  # A warning: the check changes the tool list through a reference fixture; Mostra's tool list never
+  # changes while it runs.
+  - server-stateless:sep-2575-server-sends-tools-list-changed-on-subscription
+  # No prompts and no argument completion.
+  - caching:sep-2549-prompts-list-caching-hints
+  - completion-complete:completion-complete
+  - prompts-list:prompts-list
+  - prompts-get-simple:prompts-get-simple
+  - prompts-get-with-args:prompts-get-with-args
+  - prompts-get-embedded-resource:prompts-get-embedded-resource
+  - prompts-get-with-image:prompts-get-with-image
+  # No tool takes custom x-mcp-header parameters (SEP-2243), so there is nothing to validate.
+  - http-custom-header-server-validation:sep-2243-server-no-xmcp-tool
+  - http-custom-header-server-validation:sep-2243-server-decode-base64
+  - http-custom-header-server-validation:sep-2243-server-validate-param-match
+  - http-custom-header-server-validation:sep-2243-server-reject-invalid-param-chars
+  - http-custom-header-server-validation:sep-2243-server-reject-param-mismatch
+  # No tool asks the client for input mid-call (SEP-2322); these call the reference fixtures.
+  - input-required-result-basic-elicitation:sep-2322-elicitation-incomplete
+  - input-required-result-basic-list-roots:sep-2322-list-roots-incomplete
+  - input-required-result-basic-sampling:sep-2322-sampling-incomplete
+  - input-required-result-capability-check:sep-2322-respect-client-capabilities
+  - input-required-result-multi-round:sep-2322-multi-round-r1
+  - input-required-result-multiple-input-requests:sep-2322-multiple-inputs-incomplete
+  - input-required-result-non-tool-request:sep-2322-non-tool-incomplete
+  - input-required-result-request-state:sep-2322-request-state-incomplete
+  - input-required-result-result-type:sep-2322-result-type-included
+  - input-required-result-tampered-state:sep-2322-reject-tampered-state
+  # Warnings from the same fixtures: the tool they call doesn't exist here.
+  - input-required-result-ignore-extra-params:sep-2322-ignore-unexpected-params
+  - input-required-result-missing-input-response:sep-2322-missing-response-rerequests
+  # The reference server's fixture tools and resources.
+  - json-schema-2020-12:json-schema-2020-12-tool-found
+  - tools-call-simple-text:tools-call-simple-text
+  - tools-call-image:tools-call-image
+  - tools-call-audio:tools-call-audio
+  - tools-call-embedded-resource:tools-call-embedded-resource
+  - tools-call-mixed-content:tools-call-mixed-content
+  - tools-call-error:tools-call-error
+  - tools-call-with-progress:tools-call-with-progress
+  - resources-read-text:resources-read-text
+  - resources-read-binary:resources-read-binary
+  - resources-templates-read:resources-templates-read

@@ -302,6 +302,8 @@ outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempt
                                                                -- what an operator hasn't acknowledged yet (at least once)
 ```
 
+As built (WP-30, D167): the directory's migration 2 adds `home.drained_at` and `home.suspend_reason`; `hosted_token(token_id PK, home_id, route_id)`, every hosted link by its home, for `ServerHandle.revokeLink`; `credential_link(account_id, subject, link_id, PK(account_id, subject))`, the instance link an operator-issued credential's subject binds; `signin(hash PK, kind CHECK(kind IN ('provider','step','authorize')), data_json, expires_at)`, sign-ins in progress by the SHA-256 of their handle; `browser_session(hash PK, account_id, created_at, expires_at)`, the API origin's browser sessions; and `operator_host(host PK, home_id, route_id NULL, frame_domain, recorded_at)`, hosts an operator supplied, never deleted nor moved (triggers). `outbound` is `id` `<port>:<eventId | batchId>`, so a repeat enqueues nothing. Migration 3 adds `artifact_route.removing_json`: the plan of a `ServerHandle.remove` in progress (the versions and client files it removes), written before the home is touched, so a removal cut off between the two databases is finished by the next call; a route with a plan serves nothing and takes no push (D167 item 23).
+
 ### 7.2 A hosted home
 
 A hosted home is a home (§1) with these differences:
@@ -331,6 +333,8 @@ link_domain(token_id PK FK, domain)                -- the user-content domain a 
                                                     -- as built (WP-29, D166 item 15) the token's own
                                                     -- shell_origin records it, so no table is added
 ```
+
+As built (WP-30, D167 item 9; the home ledger's migration 14): `quarantine` is keyed by `(artifact_id, version_id)`, `version_id` empty for the whole route, since a hosted home's route is its artifact (the route ID lives in the directory); `artifact_pause` references `artifact`; `operator_cursor(id PK CHECK(id = 1), cursor)` is how far the home's events were turned into operator events. Migration 15 keys `artifact_pause` by `(artifact_id, by)`: an owner's pause and an operator's are rows of their own, so neither one's resume lifts the other's, and the artifact takes answers again once no row is left (D167 item 23).
 
 ### 7.3 The owner's instance
 

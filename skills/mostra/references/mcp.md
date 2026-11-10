@@ -7,6 +7,7 @@
 - Files and directories
 - Waiting and results
 - Links for people
+- Through a Mostra server in a chat app
 - Long-lived pages
 - Adding the server to a client
 
@@ -46,7 +47,11 @@ When you also have your own file tools on the same computer, use whichever you l
 
 `artifact_open` returns the artifact's default link. A link made without `viewer` is shared by everyone who holds it: they edit one draft and have one `once` submission between them. For several people, call `artifact_open` once per person with `viewer: { ref, name }` and give each their own link (with `{ policy: "once", scope: "per-viewer" }` each submits once). `ttl`, `scopes` and `version` make a new link that expires, allows less, or opens one version, as in [sharing.md](sharing.md). `open: true` also opens the link in a browser on this computer, for the person sitting at it.
 
-Links open on this computer only. To reach someone elsewhere, share it as [sharing.md](sharing.md) shows (`mostra share`).
+A local server's links open on this computer only: to reach someone elsewhere, share the page as [sharing.md](sharing.md) shows. Through a Mostra server (a chat app's connector), links open anywhere: `artifact_publish` and `artifact_open` return the hosted link, `https://` and a server's address ending in `/a/rte_…`.
+
+## Through a Mostra server in a chat app
+
+A chat app's connector reaches the person's own computer through their Mostra server. Creating, writing, verifying and publishing run there, in its workspace, so that computer must be on with Mostra running; otherwise those tools answer `MOSTRA_REMOTE_NO_INSTANCE`, while listing, waiting and reading results keep working. Answers people send wait on the server while that computer sleeps, and reach it when it's back.
 
 ## Long-lived pages
 

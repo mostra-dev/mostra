@@ -33,6 +33,11 @@ Audience: MCP clients, through `mostra mcp` and WP-30's remote server. Runs in: 
   runs `checkRequest` with the `rpc` intent (exact `Host`, a sane target and headers, no foreign
   `Origin`, a JSON body), then the bearer token in constant time under a guessing limit, before
   the SDK sees the request; every answer carries CORP, `nosniff` and `no-referrer`, and no CORS.
+- **Remote MCP serves the same factory** (D164, D167): `createAuthorizedEndpoint(optionsFor)`
+  builds one stateless handler per request from the `authInfo` the remote server's authorization
+  checks attach, so the tools, their schemas and their results are the local server's; the remote
+  server supplies its own instance, workspace and docs ports. `src/docs.ts` reads the bundled
+  reference for both (`fileDocs`).
 - **No telemetry here.** `onClient` reports the client a server instance serves; only
   `@mostra/cli` may turn that into an event (D119, D140 item 1, D164 item 4).
 

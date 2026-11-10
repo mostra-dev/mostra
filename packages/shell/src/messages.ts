@@ -18,6 +18,31 @@ export function explain(code: string): { readonly title: string; readonly detail
       };
     case "MOSTRA_HYGIENE_RATE_LIMITED":
       return { title: "Too many attempts", detail: "Wait a minute, then open the link again." };
+    case "SIGN_IN_FAILED":
+      return {
+        title: "Sign-in didn't finish",
+        detail: "Open the page with its link again, and sign in from there once more.",
+      };
+    // A hosted page's refusals (D165 items 9, 14; FAILURE_MODEL §11.3): neutral, naming nobody.
+    case "MOSTRA_REMOTE_UNDER_REVIEW":
+      return {
+        title: "This page is under review",
+        detail: "The people who run this server are looking at it. Try again later.",
+      };
+    case "MOSTRA_REMOTE_HOME_SUSPENDED":
+      return {
+        title: "This page isn't available",
+        detail: "The account that shared it is suspended on this server.",
+      };
+    case "MOSTRA_REMOTE_HOME_MOVING":
+      return { title: "This page is moving", detail: "Try again in a minute." };
+    case "MOSTRA_REMOTE_LIMIT_REACHED":
+      return {
+        title: "This page isn't available right now",
+        detail: "Try again later.",
+      };
+    case "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE":
+      return { title: "This page can't open right now", detail: "Try again in a minute." };
     case "MOSTRA_ARTIFACT_VERSION_NOT_FOUND":
       return {
         title: "This version doesn't exist",

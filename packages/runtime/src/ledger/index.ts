@@ -29,7 +29,7 @@ export {
   recordResult,
   requestKey,
 } from "./requests.ts";
-export type { LedgerDb } from "./types.ts";
+export type { LedgerDb, MigrationDb, SqlValue } from "./types.ts";
 
 /** The ledger's file name inside `<home>/store`. */
 export const LEDGER_FILE = "ledger.sqlite";
@@ -81,6 +81,13 @@ export interface Ledger {
    * `MOSTRA_HOME_DISK_FULL`; a removed ledger throws `MOSTRA_HOME_GONE`. Nothing partial commits.
    */
   write<T>(fn: (db: LedgerDb) => T): T;
+  /**
+   * Runs `fn` in one write transaction that may also drop and create triggers: the one path past
+   * the write-once triggers, for a remote server operator's explicit removal of an artifact
+   * (`ServerHandle.remove`, DATA_MODEL §7.5), which recreates every trigger it dropped before it
+   * commits. Nothing else calls it.
+   */
+  removal<T>(fn: (db: MigrationDb) => T): T;
   /** Runs `fn` in one read transaction, so it sees a single consistent state. */
   read<T>(fn: (db: LedgerDb) => T): T;
   /**
@@ -435,6 +442,18 @@ function wrap(
       assertInPlace();
       // A write nested in another commits with the outer one; listeners hear of that one.
       if (db.inTransaction) return result;
+      for (const listener of listeners) {
+        try {
+          listener();
+        } catch {
+          // A listener's failure is its own; the commit stands.
+        }
+      }
+      return result;
+    },
+    removal<T>(fn: (db: MigrationDb) => T): T {
+      assertInPlace();
+      const result = guarded(() => db.transaction(() => fn(target)).immediate());
       for (const listener of listeners) {
         try {
           listener();

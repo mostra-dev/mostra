@@ -19,6 +19,8 @@ import {
   refusal,
   safeEqual,
 } from "@mostra/protocol";
+import type { McpServerOptions } from "./ports.ts";
+import { createMcpServerFactory } from "./server.ts";
 
 /** The path the endpoint serves. */
 export const MCP_PATH = "/mcp";
@@ -182,6 +184,75 @@ export function createHttpEndpoint(
         );
       }
       return harden(await handler.fetch(request));
+    },
+    close: () => handler.close(),
+  };
+}
+
+/** What an authorization server established about a remote MCP request (INTERFACES §18.8). */
+export interface McpAuthorization {
+  /** The access token, as presented (never logged). */
+  readonly token: string;
+  /** The OAuth client the token was issued to. */
+  readonly clientId: string;
+  /** The token's scopes. */
+  readonly scopes: readonly string[];
+  /** When the token expires, in seconds since the epoch. */
+  readonly expiresAt?: number;
+  /** The resource (audience) it was issued for. */
+  readonly resource: string;
+  /** Whatever the server needs to build the request's ports (its account, its home). */
+  readonly subject: Readonly<Record<string, unknown>>;
+}
+
+/** A remote MCP endpoint: requests whose authorization the caller checked already. */
+export interface McpAuthorizedEndpoint {
+  /** Serves one request, `authorization` being what the caller established for it. */
+  fetch(request: Request, authorization: McpAuthorization): Promise<Response>;
+  /** Stops serving: requests in flight end. */
+  close(): Promise<void>;
+}
+
+/**
+ * A Streamable HTTP endpoint for a server that authorizes requests itself (the remote server,
+ * D164): stateless, for the `2026-07-28` and the 2025 revisions, building each request's MCP
+ * server from the ports `optionsFor` gives for its authorization. Host, Origin, the bearer token,
+ * its audience and its scope are the caller's to check before; this adds the endpoint's own
+ * headers to every answer.
+ */
+export function createAuthorizedEndpoint(
+  optionsFor: (authorization: McpAuthorization) => McpServerOptions,
+  policy: { readonly onError?: (error: Error) => void } = {},
+): McpAuthorizedEndpoint {
+  const handler = createMcpHandler(
+    (context) => {
+      const authorization = context.authInfo?.extra?.["mostra"] as McpAuthorization | undefined;
+      if (authorization === undefined)
+        throw new Error("An authorized request has no authorization.");
+      return createMcpServerFactory(optionsFor(authorization))(context);
+    },
+    {
+      legacy: "stateless",
+      maxRequestBodySize: MCP_MAX_BODY_BYTES,
+      ...(policy.onError !== undefined ? { onerror: policy.onError } : {}),
+    },
+  );
+  return {
+    async fetch(request, authorization) {
+      return harden(
+        await handler.fetch(request, {
+          authInfo: {
+            token: authorization.token,
+            clientId: authorization.clientId,
+            scopes: [...authorization.scopes],
+            ...(authorization.expiresAt !== undefined
+              ? { expiresAt: authorization.expiresAt }
+              : {}),
+            resource: new URL(authorization.resource),
+            extra: { mostra: authorization },
+          },
+        }),
+      );
     },
     close: () => handler.close(),
   };

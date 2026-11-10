@@ -13,6 +13,7 @@ import {
   type FieldsParams,
   type FlushResult,
   type FrameTicket,
+  type HostedChrome,
   MCP_APPS_PROTOCOL_VERSION,
   mostraControlsRequest,
   mostraFieldFocus,
@@ -49,8 +50,9 @@ import {
   setFollow,
   submit,
 } from "./api.ts";
+import { HostedFooter, Interstitial, PausedNotice, SenderLine, ViewerChip } from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
-import { hosted } from "./hosted.ts";
+import { hosted, interstitialPassed, passInterstitial, sessionUnstored } from "./hosted.ts";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
@@ -78,6 +80,7 @@ import {
   CONTROL_WORDS,
   DEV_WORDS,
   FRAME_WORDS,
+  HOSTED_WORDS,
   ORPHAN_WORDS,
   RECEIPT_WORDS,
   SAVE_WORDS,
@@ -401,7 +404,10 @@ function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactEl
 }
 
 /** The submission receipt (IN-13, D47): Mostra's record and each host's delivery, kept apart. */
-function Receipt(props: { readonly state: ViewState }): ReactElement | null {
+function Receipt(props: {
+  readonly state: ViewState;
+  readonly chrome?: HostedChrome | undefined;
+}): ReactElement | null {
   const submission = receiptOf(props.state);
   if (!submission) return null;
   const time = new Date(submission.at).toLocaleTimeString(undefined, { timeStyle: "medium" });
@@ -416,6 +422,18 @@ function Receipt(props: { readonly state: ViewState }): ReactElement | null {
             <time dateTime={submission.at}>{time}</time>
           </li>
         </ul>
+        {/* One quiet line, where the server's operator turns it on (D161), as text. */}
+        {props.chrome?.afterSubmit !== undefined && (
+          <p className="mostra-after-submit" data-mostra-after-submit="">
+            {props.chrome.madeWith?.href?.startsWith("https:") ? (
+              <a href={props.chrome.madeWith.href} rel="noopener noreferrer" target="_blank">
+                {props.chrome.afterSubmit}
+              </a>
+            ) : (
+              props.chrome.afterSubmit
+            )}
+          </p>
+        )}
       </aside>
     );
   }
@@ -474,6 +492,9 @@ export function ViewerPage(props: {
 }): ReactElement {
   const { target, session } = props;
   const [ticket, setTicket] = useState(props.ticket);
+  const chrome = ticket.hosted;
+  const [passed, setPassed] = useState(() => interstitialPassed(target.routeId));
+  const [interstitialAt] = useState(() => Date.now());
   const [focusFrame, setFocusFrame] = useState(false);
   const [state, setState] = useState<ViewState>(() => initialState(props.ticket));
   const [follow, setFollowing] = useState(props.ticket.follow);
@@ -966,6 +987,22 @@ export function ViewerPage(props: {
   const chooses = showsChoose(state) ? [...state.chooses.values()] : [];
   const versionLabel = `Version ${ticket.version.number}`;
 
+  // A hosted page's chrome (D161), and the interstitial a server's policy may put before it: the
+  // frame isn't made until the person chose to go on.
+  if (chrome?.interstitial && !passed) {
+    return (
+      <Interstitial
+        chrome={chrome}
+        onContinue={() => {
+          passInterstitial(target.routeId);
+          // A frame ticket lives a minute: one this old is asked again with the page.
+          if (Date.now() - interstitialAt > 45_000) location.reload();
+          else setPassed(true);
+        }}
+      />
+    );
+  }
+
   // A `verify` run (D138) measures the page alone: the frame fills the viewport, at exactly the
   // size verify renders, with none of the shell's chrome. Sessions, tickets and the bridge are the
   // same as a viewer's, and `data-shell` still says when the page is ready.
@@ -996,8 +1033,9 @@ export function ViewerPage(props: {
             <div className="mostra-title">{session.artifact.title}</div>
             <div className="mostra-subtitle">
               {versionLabel}
-              {state.viewer?.name ? ` · ${state.viewer.name}` : ""}
+              {!chrome && state.viewer?.name ? ` · ${state.viewer.name}` : ""}
             </div>
+            {chrome && <SenderLine chrome={chrome} />}
           </div>
         </div>
         {/* The page's save state, once its runtime reports it: until then it is "Connecting…",
@@ -1015,6 +1053,14 @@ export function ViewerPage(props: {
             />
             {frameKind === "loading" ? SAVE_WORDS.connecting : SAVE_WORDS[state.save]}
           </div>
+        )}
+        {chrome && target.routeId !== undefined && (
+          <ViewerChip
+            chrome={chrome}
+            apiBase={target.apiBase}
+            csrf={session.csrf}
+            routeId={target.routeId}
+          />
         )}
         {(submitShown || chooses.length > 0) && (
           <div
@@ -1067,6 +1113,12 @@ export function ViewerPage(props: {
           </div>
         )}
       </header>
+      <PausedNotice ticket={ticket} />
+      {chrome && sessionUnstored() && (
+        <div className="mostra-banner mostra-warn" data-mostra-storage="unsaved" role="status">
+          <div>{HOSTED_WORDS.storageFull}</div>
+        </div>
+      )}
       {state.ticket.devPreview && (
         <div className="mostra-banner mostra-dev" data-mostra-dev-preview="" role="status">
           <div>
@@ -1181,9 +1233,10 @@ export function ViewerPage(props: {
             )}
           </aside>
         )}
-        <Receipt state={state} />
+        <Receipt state={state} chrome={chrome} />
         <Orphans orphans={orphans} />
       </main>
+      {chrome && <HostedFooter chrome={chrome} apiBase={target.apiBase} csrf={session.csrf} />}
       {confirming && (
         <div className="mostra-dialog-backdrop">
           <div

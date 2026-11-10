@@ -16,8 +16,9 @@ import {
   readSession,
   ShellError,
   type ShellSession,
+  signInFinish,
 } from "./api.ts";
-import { enterRoute, forgetSession, keepSession } from "./hosted.ts";
+import { enterRoute, forgetSession, keepSession, takeSignIn } from "./hosted.ts";
 import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
 import { describeAccess, explain } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
@@ -61,8 +62,38 @@ async function frame(target: ShellTarget, session: ShellSession): Promise<State>
   }
 }
 
+/**
+ * A page's sign-in comes back here (`/_mostra/signin` on the apex, INTERFACES §18.4): the code is
+ * redeemed for the route that started it, with this tab's PKCE verifier, once `iss` names the
+ * authorization server that was asked (RFC 9207). The page opens again afterwards, as its account.
+ */
+async function signInReturn(): Promise<State> {
+  const params = new URLSearchParams(location.search);
+  // The code leaves the address bar at once.
+  history.replaceState(null, "", location.pathname);
+  const pending = takeSignIn();
+  const code = params.get("code");
+  const state = params.get("state");
+  if (!pending || code === null || state === null || state !== pending.state) {
+    return { kind: "error", code: "SIGN_IN_FAILED" };
+  }
+  if (params.get("iss") !== pending.issuer) return { kind: "error", code: "SIGN_IN_FAILED" };
+  enterRoute(pending.routeId);
+  const apiBase = `/a/${pending.routeId}/_mostra`;
+  try {
+    const session = await readSession(apiBase);
+    await signInFinish(apiBase, session.csrf, { code, verifier: pending.verifier, state });
+  } catch {
+    return { kind: "error", code: "SIGN_IN_FAILED" };
+  }
+  // Back to the page, on this origin only.
+  location.replace(pending.back.startsWith("/a/") ? pending.back : `/a/${pending.routeId}`);
+  return { kind: "loading" };
+}
+
 /** Opens the page: exchanges the link's token, or reads the session the browser has. */
 async function open(): Promise<State> {
+  if (location.pathname === "/_mostra/signin") return signInReturn();
   const target = parseTarget(location.pathname);
   if (!target) return { kind: "error", code: "NO_ARTIFACT" };
   const token = credentialFrom(location.hash);

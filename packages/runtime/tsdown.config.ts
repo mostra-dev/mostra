@@ -12,4 +12,10 @@ export default defineConfig({
   tsconfig: "tsconfig.src.json",
   // better-sqlite3 is a native dependency loaded at run time, never bundled.
   external: ["better-sqlite3"],
+  // The remote MCP server's docs (`docs_search`, INTERFACES §18.8): the bundled reference and the
+  // Agent Skill, as the CLI ships them (D162).
+  copy: [
+    { from: "../../docs/reference", to: "dist" },
+    { from: "../../skills/mostra", to: "dist", rename: "skill" },
+  ],
 });

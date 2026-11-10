@@ -39,6 +39,35 @@ export const MAX_HEADER_SIZE: number = 1024 * 1024;
  */
 export const KEEP_ALIVE_MS: number = 305_000;
 
+/**
+ * Ends a server's connections when it stops, without leaving them in TIME_WAIT on its side (#132):
+ * a connection the server closes first stays in TIME_WAIT on the server's port for minutes, and
+ * Windows refuses a browser's next connect from a random local port that meets one of them with
+ * `ERR_NO_BUFFER_SPACE`, the more often as a restarted instance listens on the same leased ports
+ * (D99). A reset (`SO_LINGER` 0) leaves nothing behind; whatever a stopping server still had on a
+ * connection was being cut anyway. Answers the function that stops it.
+ */
+export function resetOnClose(server: Server): () => Promise<void> {
+  const sockets = new Set<Socket>();
+  server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  return () =>
+    new Promise((resolve) => {
+      if (!server.listening) return resolve();
+      // Before `close()`, which since Node.js 19 ends idle connections itself, with a FIN.
+      for (const socket of sockets) {
+        if (socket.destroyed) continue;
+        if (typeof socket.resetAndDestroy === "function" && socket.readyState === "open") {
+          socket.resetAndDestroy();
+        } else socket.destroy();
+      }
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+}
+
 /** A listener: its server and its Hono app. */
 export interface Listener {
   readonly server: Server;
@@ -302,15 +331,11 @@ export function createListener(options: {
   // An idle connection waits for its next request without these two limits, which count from a
   // request's first byte.
   server.keepAliveTimeout = KEEP_ALIVE_MS;
+  const stop = resetOnClose(server);
 
   return {
     server,
     app,
-    close: () =>
-      new Promise((resolve) => {
-        if (!server.listening) return resolve();
-        server.close(() => resolve());
-        server.closeAllConnections();
-      }),
+    close: stop,
   };
 }

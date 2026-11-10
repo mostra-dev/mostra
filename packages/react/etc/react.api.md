@@ -282,6 +282,7 @@ export function useViewer(): {
     readonly id: string;
     readonly name?: string;
     readonly source: ViewerKind;
+    readonly verified?: boolean;
 };
 
 // (No @packageDocumentation comment for this package)

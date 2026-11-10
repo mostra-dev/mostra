@@ -9,6 +9,7 @@ import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
 import { artifactImportMethod } from "./artifact/import.ts";
 import { artifactListMethod } from "./artifact/list.ts";
+import { artifactPauseMethod } from "./artifact/pause.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
 import { depsAddMethod } from "./deps/add.ts";
@@ -29,6 +30,7 @@ import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
+import { portRelayAuthorMethod } from "./port/relay-author.ts";
 import { portRelayCallMethod } from "./port/relay-call.ts";
 import { portRelayCancelMethod } from "./port/relay-cancel.ts";
 import { portRelayLiveMethod } from "./port/relay-live.ts";
@@ -42,6 +44,7 @@ import { relayCallBatchMethod } from "./relay/call-batch.ts";
 import { relayEffectMethod } from "./relay/effect.ts";
 import { relayLiveValueMethod } from "./relay/live-value.ts";
 import { relayRunUpdateMethod } from "./relay/run-update.ts";
+import { remoteLinkMethod } from "./remote/link.ts";
 import { remoteLoginMethod } from "./remote/login.ts";
 import { remoteLoginWaitMethod } from "./remote/login-wait.ts";
 import { remoteLogoutMethod } from "./remote/logout.ts";
@@ -124,6 +127,9 @@ export const hostMethods: readonly AnyMethod[] = [
   portRelayLiveMethod,
   relayLiveValueMethod,
   hostedSubmissionMethod,
+  artifactPauseMethod,
+  portRelayAuthorMethod,
+  remoteLinkMethod,
   // gen:methods
 ];
 

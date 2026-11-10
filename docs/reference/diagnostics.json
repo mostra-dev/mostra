@@ -55,6 +55,15 @@
       "fix": "Look at the effect where it happens (the mail provider's sent folder, say) before running the action again. Pass the provider's own idempotency key from the action (for example, the run's key) so a repeated request can't act twice."
     },
     {
+      "code": "MOSTRA_ACTION_PAUSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Artifact paused, no actions run",
+      "hint": "Wait until the page is resumed, then run the action again.",
+      "explanation": "The artifact is paused, so its actions don't run: the run or call was refused before anything was recorded or sent to the owner's machine.",
+      "fix": "The owner resumes it with `mostra resume <artifact>`; a pause by the server's operator is resumed only by the operator."
+    },
+    {
       "code": "MOSTRA_ACTION_RUN_NOT_FOUND",
       "severity": "error",
       "phase": "runtime",
@@ -1099,6 +1108,33 @@
       "fix": "Correct the key the message names: `apiOrigin` must be an `https:` origin (or `http:` on loopback), and `domains.active` a host name."
     },
     {
+      "code": "MOSTRA_REMOTE_HOME_MOVING",
+      "severity": "error",
+      "phase": "host",
+      "title": "This account's pages are moving",
+      "hint": "Try again in a minute: this account's pages are moving between machines.",
+      "explanation": "The server's operator is moving this account's hosted home to another data directory (`drainHome`), so the home is closed here until it serves again. Clients retry; nothing is lost.",
+      "fix": "Retry shortly; the move ends when the operator releases the home on its new machine."
+    },
+    {
+      "code": "MOSTRA_REMOTE_HOME_SUSPENDED",
+      "severity": "error",
+      "phase": "host",
+      "title": "This account's pages are suspended",
+      "hint": "Contact the server's operator: this account's pages are suspended.",
+      "explanation": "The server's operator suspended this account's hosted home: its pages, its owner instances' bindings, pushes and links are refused until the operator resumes it. Nothing was deleted.",
+      "fix": "Ask the server's operator to resume the account."
+    },
+    {
+      "code": "MOSTRA_REMOTE_LIMIT_REACHED",
+      "severity": "error",
+      "phase": "host",
+      "title": "The server's limit refused this",
+      "hint": "Read the message for the server's limit, and try again once it allows the operation.",
+      "explanation": "The server's operator refused the operation for this account (its `limits` port): a share, a version push, a link, a view, a submission, an action or an MCP call. The message is the operator's own. A refused submission keeps its draft.",
+      "fix": "Follow the operator's message; its `Retry-After`, when present, says when to try again."
+    },
+    {
       "code": "MOSTRA_REMOTE_LOGIN_FAILED",
       "severity": "error",
       "phase": "host",
@@ -1106,6 +1142,15 @@
       "hint": "Run mostra login again, and approve the code on the server's page within ten minutes.",
       "explanation": "Signing this home in to a remote server didn't finish: the code expired, the person refused it, the server refused the client, or the binding's access token was refused (revoked, expired, or for another server). Nothing of the home changed; artifacts it owns on that server stay its own.",
       "fix": "Sign in to the server again and approve the code on the page it names. A refusal you didn't expect means the sign-in was revoked on the server."
+    },
+    {
+      "code": "MOSTRA_REMOTE_NO_INSTANCE",
+      "severity": "error",
+      "phase": "host",
+      "title": "No owner instance connected",
+      "hint": "Start Mostra on the machine linked to this account (mostra daemon start), then try again.",
+      "explanation": "Creating, verifying and publishing from a chat host run on the account's default owner instance, through the relay (D165 item 5), and no default instance is connected to the server now. Reading tools (list, wait, results, state, docs, open) keep working.",
+      "fix": "Start Mostra on the linked machine (`mostra daemon start`, or `mostra daemon install` to keep it running); link a machine first with `mostra login <server> --default`."
     },
     {
       "code": "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
@@ -1117,6 +1162,15 @@
       "fix": "Run the command on the instance the message names. Moving an artifact to another owner instance isn't part of this release."
     },
     {
+      "code": "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+      "severity": "error",
+      "phase": "host",
+      "title": "The server's operator didn't answer",
+      "hint": "Try again in a moment; the server's operator didn't answer in time.",
+      "explanation": "The server's operator module didn't answer in time (2 s for limits, 5 s for sign-in), so an operation that creates something (a share, a push, a link, authoring, a sign-in) was refused rather than allowed blind. Views, drafts and submissions never wait for it, and existing sessions keep working.",
+      "fix": "Try again; if it lasts, the server's operator has to fix its operator module."
+    },
+    {
       "code": "MOSTRA_REMOTE_OWNER_OFFLINE",
       "severity": "error",
       "phase": "host",
@@ -1124,6 +1178,15 @@
       "hint": "Start Mostra on the machine that shared the page, or try again once it is back.",
       "explanation": "A hosted page called server code its owner instance runs, and the owner instance isn't connected. A plain call isn't kept, so it is refused at once; an action run waits or fails as the artifact's `hosted.offline` says.",
       "fix": "Start Mostra on the owner's machine (`mostra daemon start`, or `mostra daemon install` for always-on). An action that must work while the owner is away should be an action run with `hosted.offline.actions: \"queue\"`."
+    },
+    {
+      "code": "MOSTRA_REMOTE_PAUSED_BY_OPERATOR",
+      "severity": "error",
+      "phase": "host",
+      "title": "Paused by the server's operator",
+      "hint": "Contact the server's operator: only the operator resumes a pause it made.",
+      "explanation": "The server's operator paused this hosted artifact, and an owner can't undo an operator's pause (D165 item 14). Views keep working and the links stay valid.",
+      "fix": "Ask the server's operator why it was paused and to resume it."
     },
     {
       "code": "MOSTRA_REMOTE_QUEUE_FULL",
@@ -1151,6 +1214,15 @@
       "hint": "Sign in from the page's chrome, or have the owner allow this for anyone with the link.",
       "explanation": "On a hosted link, an action that runs on the owner's machine, or a submission when the artifact asks for it, needs a viewer signed in (D159, D165 item 13). Nothing was recorded.",
       "fix": "Sign in with the page's Sign in. An owner who wants anyone with the link to run actions sets `hosted: { actions: \"link\" }` in the manifest (and `submissions: \"link\"` for answers)."
+    },
+    {
+      "code": "MOSTRA_REMOTE_UNDER_REVIEW",
+      "severity": "error",
+      "phase": "host",
+      "title": "This page is under review",
+      "hint": "Nothing to do here: the server's operator is reviewing this page.",
+      "explanation": "The server's operator quarantined this hosted page, or this version of it, while it reviews it. Its data is kept; the page shows a neutral notice instead of its content until the operator releases it.",
+      "fix": "The owner can ask the server's operator about the review."
     },
     {
       "code": "MOSTRA_REMOTE_UNREACHABLE",
@@ -1331,6 +1403,15 @@
       "hint": "Wait for a submission with `mostra wait <artifact> --until submitted`, or, when the message says the policy is none, read `mostra state get <artifact>` or wait for a signal with `--until signal:<name>`.",
       "explanation": "The artifact has no submission yet, or none with the ID asked for. Submissions are durable once made, so this means none was made (or the ID belongs to another artifact or home). An artifact whose submission policy is `none` never has one, and the message says so: its viewers' work is in its shared state, its signals and its action runs.",
       "fix": "Run `mostra wait <artifact> --until submitted` to block until the viewer submits, then read the results. List the artifact's submissions through `submission.created` events. Under policy `none`, read the shared state with `mostra state get <artifact>`, or wait for a signal the page raises with `mostra wait <artifact> --until signal:<name>`: its event carries the signal's payload."
+    },
+    {
+      "code": "MOSTRA_SUBMIT_PAUSED",
+      "severity": "error",
+      "phase": "host",
+      "title": "Artifact paused, no answers taken",
+      "hint": "Wait until the page is resumed, then submit again; the draft is kept.",
+      "explanation": "The artifact is paused (`mostra pause`, or its server's operator paused it). A paused artifact stays viewable and its links stay valid, but it takes no submissions until it is resumed. Nothing was recorded, and the draft stays as it was.",
+      "fix": "The owner resumes it with `mostra resume <artifact>`; a pause by the server's operator is resumed only by the operator."
     },
     {
       "code": "MOSTRA_SUBMIT_POLICY_NONE",

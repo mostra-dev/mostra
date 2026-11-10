@@ -1,0 +1,40 @@
+# Expected failures of the remote server's `/mcp` (MC-04, D167 item 16; the same tools and factory as `mostra mcp --http`, whose baseline in packages/cli this repeats) under @modelcontextprotocol/conformance 0.1.16, whose
+# scenarios speak the 2025-era protocol (D164, MC-01). The suite is written against its own
+# reference server: these scenarios call that server's fixture tools, resources and prompts, or
+# features Mostra's server deliberately doesn't offer. Each is refused correctly (-32601 for a
+# method Mostra doesn't serve, -32602 for a tool or resource it doesn't have). An entry that starts
+# passing fails the run, so this list only shrinks.
+server:
+  # Features Mostra's server doesn't offer: no prompts, no argument completion, no resource
+  # subscriptions, and MCP logging, deprecated by 2026-07-28 (SEP-2577); the server logs to stderr.
+  - logging-set-level
+  - completion-complete
+  - tools-call-with-logging
+  - resources-subscribe
+  - resources-unsubscribe
+  - prompts-list
+  - prompts-get-simple
+  - prompts-get-with-args
+  - prompts-get-embedded-resource
+  - prompts-get-with-image
+  # Warnings for resumable SSE streams, which need a session: the server is stateless (D61, D164),
+  # one server per request, so there is no session ID, priming event or retry field to give.
+  - server-sse-polling
+  - server-sse-multiple-streams
+  # The reference server's fixture tools (test_simple_text, test_image_content and the rest).
+  - tools-call-simple-text
+  - tools-call-image
+  - tools-call-audio
+  - tools-call-embedded-resource
+  - tools-call-mixed-content
+  - tools-call-error
+  - tools-call-with-progress
+  - tools-call-sampling
+  - tools-call-elicitation
+  - json-schema-2020-12
+  - elicitation-sep1034-defaults
+  - elicitation-sep1330-enums
+  # The reference server's fixture resources (test://static-text, test://template/{id}/data).
+  - resources-read-text
+  - resources-read-binary
+  - resources-templates-read

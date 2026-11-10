@@ -46,12 +46,14 @@
   "dependencies": {
     "@hono/node-server": "catalog:",
     "@mdx-js/mdx": "catalog:",
+    "@mostra/mcp": "workspace:*",
     "@mostra/protocol": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "better-sqlite3": "catalog:",
     "hono": "catalog:",
     "ignore": "catalog:",
+    "openid-client": "catalog:",
     "oxc-parser": "catalog:",
     "pnpm": "catalog:",
     "remark-frontmatter": "catalog:",
@@ -65,6 +67,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/conformance": "catalog:",
+    "@modelcontextprotocol/conformance-next": "catalog:",
     "@mostra/shell": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@mostra/verify": "workspace:*",

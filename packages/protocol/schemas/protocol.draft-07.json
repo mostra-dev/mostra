@@ -55,6 +55,16 @@
         "$ref": "#/definitions/ArtifactListResult"
       }
     },
+    "artifact/pause": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/ArtifactPauseParams"
+      },
+      "result": {
+        "$ref": "#/definitions/ArtifactPauseResult"
+      }
+    },
     "artifact/publish": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -253,6 +263,16 @@
         "$ref": "#/definitions/PortIdentityResolveResult"
       }
     },
+    "port/relay.author": {
+      "direction": "instance-to-host",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/PortRelayAuthorParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PortRelayAuthorResult"
+      }
+    },
     "port/relay.call": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -379,6 +399,16 @@
       },
       "result": {
         "$ref": "#/definitions/RelayRunUpdateResult"
+      }
+    },
+    "remote/link": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RemoteLinkParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RemoteLinkResult"
       }
     },
     "remote/login": {
@@ -1139,6 +1169,47 @@
         "title"
       ],
       "description": "The artifact manifest (INTERFACES §2.2): literal metadata from the entry's defineArtifact call or MDX frontmatter."
+    },
+    "ArtifactPauseParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "paused"
+      ]
+    },
+    "ArtifactPauseResult": {
+      "type": "object",
+      "properties": {
+        "paused": {
+          "type": "boolean"
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "owner",
+            "operator"
+          ]
+        }
+      },
+      "required": [
+        "paused"
+      ]
     },
     "ArtifactProgressParams": {
       "type": "object",
@@ -2977,6 +3048,111 @@
         "mode": {
           "type": "string",
           "const": "worker"
+        },
+        "paused": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "operator"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "by"
+          ]
+        },
+        "hosted": {
+          "type": "object",
+          "properties": {
+            "sender": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "verifiedBy": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "name"
+              ]
+            },
+            "viewer": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "account",
+                    "anonymous",
+                    "named"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "verified": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "verified"
+              ]
+            },
+            "signIn": {
+              "type": "boolean"
+            },
+            "footer": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "afterSubmit": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "madeWith": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "format": "uri"
+                }
+              }
+            },
+            "interstitial": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          },
+          "required": [
+            "viewer",
+            "signIn"
+          ]
         }
       },
       "required": [
@@ -4168,6 +4344,31 @@
       "pattern": "^[a-z][a-zA-Z0-9]*$",
       "description": "A host port name: identity, submissions, drafts, reviews, addressing, trustedControls, capture, secrets, pty, or ai (reserved). Open for later ports."
     },
+    "PortRelayAuthorParams": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "artifact/create",
+            "artifact/verify",
+            "artifact/publish",
+            "artifact/get",
+            "workspace/root",
+            "workspace/allocate",
+            "workspace/read",
+            "workspace/apply",
+            "verify/screenshot"
+          ]
+        },
+        "params": {}
+      },
+      "required": [
+        "method",
+        "params"
+      ]
+    },
+    "PortRelayAuthorResult": {},
     "PortRelayCallParams": {
       "type": "object",
       "properties": {
@@ -4914,6 +5115,61 @@
         "pendingPushes"
       ],
       "description": "One remote server this home is linked to, and the state of the link."
+    },
+    "RemoteLinkParams": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/definitions/ServerOrigin"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 512
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "server",
+        "key"
+      ]
+    },
+    "RemoteLinkResult": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/definitions/ServerOrigin"
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "server",
+        "account",
+        "instanceId",
+        "default"
+      ],
+      "description": "A home linked to a remote server with an operator-issued key."
     },
     "RemoteLoginParams": {
       "type": "object",
@@ -7396,6 +7652,9 @@
         },
         "ref": {
           "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
         }
       },
       "required": [

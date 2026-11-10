@@ -99,6 +99,17 @@ rules.push(
     to: { path: "^packages/cli/src/telemetry/" },
   },
   {
+    name: "runtime-mcp-in-server-and-link-only",
+    comment:
+      "@mostra/runtime reaches @mostra/mcp only in its server module (the remote MCP endpoint, D165) and its link module (the owner instance's workspace for relayed authoring, D167), so the supervisor's other modules never load the MCP SDK.",
+    severity: "error",
+    from: {
+      path: "^packages/runtime/src/",
+      pathNot: "^packages/runtime/src/(server|link)/",
+    },
+    to: { path: "(^|/)(packages/mcp/|node_modules/@mostra/mcp/)" },
+  },
+  {
     name: "core-never-imports-ee",
     comment:
       "The core never imports ee/ (D118, EN-09): everything outside ee/ that users install, embed or self-host stays Apache-2.0, so no core module may reach source-available code.",

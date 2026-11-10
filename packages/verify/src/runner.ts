@@ -6,6 +6,7 @@
  * failures are errors, observations warnings or hints, and faults that follow from verify's own
  * refusal of an action are attributed to it. The supervisor decides everything else.
  */
+import { existsSync, rmSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -120,6 +121,10 @@ export interface RunnerOptions {
   readonly onIdle?: () => void;
   /** How long without work counts as idle; {@link RUNNER_IDLE_MS} by default. */
   readonly idleMs?: number;
+  /** For tests only: the browser goes away under the runner after each render. */
+  readonly loseBrowser?: boolean;
+  /** For tests only: a render fails in the runner itself while this file exists, which it removes. */
+  readonly failOnceFile?: string;
 }
 
 /** The runner of one process. */
@@ -154,21 +159,46 @@ export function createRunner(options: RunnerOptions = {}): Runner {
     idleTimer.unref?.();
   };
 
+  /**
+   * The runner's browser, launched on first use and launched again once it is gone. A browser
+   * that died under the runner (its process killed, a crash, its files unreadable for a moment) is
+   * disconnected; keeping its promise made every later render of this warm runner fail at once,
+   * though nothing was wrong with the pages (found by claude.ai's connector, #106's sighting).
+   */
   const launch = (): Promise<Browser> => {
-    browser ??= chromium.launch({ headless: true }).catch((error: unknown) => {
-      browser = undefined;
-      if (browserMissing(error)) {
-        throw new RpcError(
-          createDiagnostic("MOSTRA_ENV_BROWSER_MISSING", {
-            message:
-              "verify's browser, Playwright's Chromium headless shell, isn't installed for this runtime.",
-          }),
-        );
-      }
-      throw error;
-    });
-    return browser;
+    const held = browser;
+    if (held) {
+      return held.then((open) => {
+        if (open.isConnected()) return open;
+        if (browser === held) browser = undefined;
+        return launch();
+      });
+    }
+    // Every render asks for the browser here, so the check above catches one that died between
+    // two renders, whatever killed it.
+    const started: Promise<Browser> = chromium
+      .launch({ headless: true })
+      .catch((error: unknown) => {
+        if (browser === started) browser = undefined;
+        if (browserMissing(error)) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_ENV_BROWSER_MISSING", {
+              message:
+                "verify's browser, Playwright's Chromium headless shell, isn't installed for this runtime.",
+            }),
+          );
+        }
+        throw error;
+      });
+    browser = started;
+    return started;
   };
+
+  /**
+   * For tests only (`MOSTRA_TEST_VERIFY_LOSE_BROWSER`): after each render the browser goes away
+   * under the runner, as a crashed browser does, so the next render shows a fresh one is launched.
+   */
+  const loseBrowser = options.loseBrowser === true;
 
   const work = async <T>(task: () => Promise<T>): Promise<T> => {
     busy += 1;
@@ -185,7 +215,21 @@ export function createRunner(options: RunnerOptions = {}): Runner {
     render: (request) =>
       work(async () => {
         axeSource ??= await readFile(require.resolve("axe-core/axe.min.js"), "utf8");
-        return renderBounded(await launch(), request, axeSource);
+        if (options.failOnceFile !== undefined && existsSync(options.failOnceFile)) {
+          rmSync(options.failOnceFile, { force: true });
+          // Quoting the link it was loading, as Playwright's own errors do: what the runner says
+          // passes through the supervisor's redactor before anyone reads it.
+          throw new Error(
+            `the runner failed in itself (MOSTRA_TEST_VERIFY_FAIL_ONCE) at ${request.url}`,
+          );
+        }
+        const open = await launch();
+        try {
+          return await renderBounded(open, request, axeSource);
+        } finally {
+          // Closed behind the holder's back, as a crash would: only the browser itself tells it.
+          if (loseBrowser) await open.close().catch(() => undefined);
+        }
       }),
     compare: (request) => work(() => compareImages(request)),
     async close() {

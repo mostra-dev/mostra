@@ -100,6 +100,10 @@ export function runnerEnvironment(env: Environment, browsers?: string): Environm
   if (browsers !== undefined) out["PLAYWRIGHT_BROWSERS_PATH"] = browsers;
   const idle = env["MOSTRA_TEST_VERIFY_IDLE_MS"];
   if (idle) out["MOSTRA_TEST_VERIFY_IDLE_MS"] = idle;
+  for (const name of ["MOSTRA_TEST_VERIFY_LOSE_BROWSER", "MOSTRA_TEST_VERIFY_FAIL_ONCE"]) {
+    const value = env[name];
+    if (value) out[name] = value;
+  }
   return out;
 }
 
@@ -187,12 +191,28 @@ export function createRunnerClient(options: {
         }),
       );
     }
+    let failure = "";
     if (outcome.kind === "error" && outcome.error instanceof RpcError) {
       // The runner answered with a diagnostic of its own (no browser, say): it stands. A closed
-      // channel or an internal error means the runner itself failed, reported as a crash.
+      // channel (the runner died) or an internal error means the runner itself failed.
       const code = outcome.error.diagnostic.code;
       if (code !== "MOSTRA_HOST_INTERNAL_ERROR" && !code.startsWith("MOSTRA_HOST_CONNECTION"))
         throw outcome.error;
+      if (code === "MOSTRA_HOST_INTERNAL_ERROR") {
+        // Alive but failed in itself: it never answers again. It is stopped, and the request runs
+        // once more on a fresh runner, so one broken runner can't fail every later verify (#106's
+        // sighting); the page is judged by that try. A runner that died is reported as a crash
+        // below, as before, since the page may have killed it.
+        failure = outcome.error.diagnostic.message;
+        options.log.warn("verify.runner_failed", { method, error: failure.slice(0, 500) });
+        if (child) {
+          const failed = child;
+          child = undefined;
+          const stopped = await failed.catch(() => undefined);
+          if (stopped) recycled.add(stopped);
+          await stopped?.stop(2000);
+        }
+      }
     }
     // Another run's recovery stopped the runner under this request: it isn't this page's fault,
     // so the request runs once more on a fresh runner (Opus review finding 5). The retry keeps the
@@ -209,9 +229,10 @@ export function createRunnerClient(options: {
             new Promise<undefined>((done) => setTimeout(() => done(undefined), 1000)),
           ]);
     const tail = exit?.stderrTail.slice(-10).join("\n") ?? "";
+    const said = failure ? `\nThe runner said: ${failure.slice(0, 1000)}` : "";
     throw new RpcError(
       createDiagnostic("MOSTRA_VERIFY_CRASHED", {
-        message: `The verify runner stopped before it answered${exit ? ` (${exit.signal ?? `code ${exit.code}`})` : ""}.${tail ? `\n${tail}` : ""}`,
+        message: `The verify runner stopped before it answered${exit ? ` (${exit.signal ?? `code ${exit.code}`})` : ""}.${tail ? `\n${tail}` : ""}${said}`,
       }),
     );
   };

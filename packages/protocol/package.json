@@ -26,6 +26,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./operator": {
+      "@mostra/source": "./src/operator.ts",
+      "types": "./dist/operator.d.ts",
+      "default": "./dist/operator.js"
+    },
     "./schemas/*": "./schemas/*",
     "./package.json": "./package.json"
   },
@@ -113,5 +118,10 @@
       ],
       "limit": "5 kB"
     }
-  ]
+  ],
+  "mostra": {
+    "apiReports": [
+      "./operator"
+    ]
+  }
 }

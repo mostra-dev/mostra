@@ -387,6 +387,24 @@ jobs:
           browser: chromium-headless-shell
           package: "@mostra/runtime"
           image: ${{ steps.setup.outputs.image }}
+      # A backup replicator reads a live hosted ledger (D165 item 0b): the remote group's Linux legs
+      # fetch Litestream, checked against its pinned SHA-256, so `replicator.test.ts` runs where the
+      # container image runs (WP-30; WP-29 ran it on macOS only). A test tool, never bundled.
+      - name: Litestream for the replicator test
+        if: matrix.leg.group == 'remote' && runner.os == 'Linux' && runner.arch == 'X64'
+        env:
+          LITESTREAM_VERSION: 0.5.18
+          LITESTREAM_SHA256: d3687b9fd0f2e9426bbd3da828429ff3f1dfc5c9b74d54fdf028e4ee510e7dea
+        run: |
+          dir="$RUNNER_TEMP/litestream"
+          mkdir -p "$dir"
+          archive="$dir/litestream.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-x86_64.tar.gz"
+          echo "${LITESTREAM_SHA256}  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$dir"
+          "$dir/litestream" version
+          echo "MOSTRA_TEST_LITESTREAM=$dir/litestream" >> "$GITHUB_ENV"
       # A run still going at 10 minutes (the slowest leg takes about 6) lists every process, keeps
       # the supervisor logs its test homes still hold and fails, so the step below keeps them: a job
       # cancelled for its own limit keeps nothing (#55). The step's limit is the backstop.

@@ -47,7 +47,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/react` | artifact authors (browser) | protocol, react | Node built-ins, runtime, worker |
 | `@mostra/server` | artifact authors (worker) | protocol | runtime, react |
 | `@mostra/kit` | artifact authors | react, protocol, kit libraries | runtime, worker, Node built-ins |
-| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module only, for the remote MCP endpoint, D165) | react, kit, worker internals |
+| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module, for the remote MCP endpoint, D165, and the `link` module, for the owner's side of its authoring, D167 item 16), openid-client (in the `server` module, D167 item 11) | react, kit, worker internals |
 | `@mostra/worker` | runtime bundle | protocol, server | runtime |
 | `@mostra/verify` | runtime bundle | protocol, playwright, axe-core | runtime internals |
 | `@mostra/shell` | runtime bundle | react, protocol, kit tokens | runtime |

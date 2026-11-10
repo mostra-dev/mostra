@@ -501,6 +501,8 @@ export function useViewer(): {
   readonly id: string;
   readonly name?: string;
   readonly source: ViewerKind;
+  /** On a hosted link: `true` for a signed-in account, `false` for an anonymous viewer's name. */
+  readonly verified?: boolean;
 } {
   const { store } = useRuntime();
   useStoreVersion(store);
@@ -510,6 +512,7 @@ export function useViewer(): {
         id: viewer.id,
         ...(viewer.name !== undefined ? { name: viewer.name } : {}),
         source: viewer.kind,
+        ...(viewer.verified !== undefined ? { verified: viewer.verified } : {}),
       }
     : { id: "", source: "local" };
 }

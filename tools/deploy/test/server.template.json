@@ -1,0 +1,34 @@
+{
+  "apiOrigin": "https://api.mostradev.com",
+  "domains": {
+    "active": "mostrausercontent.com"
+  },
+  "trustedProxies": ["172.31.230.0/24"],
+  "identityProviders": [
+    {
+      "id": "github",
+      "kind": "github",
+      "label": "GitHub",
+      "clientId": "${GITHUB_CLIENT_ID}",
+      "clientSecretFile": "/run/secrets/github"
+    }
+  ],
+  "rateLimits": {
+    "perIp": {
+      "submissions": {
+        "count": 120,
+        "per": "1m"
+      }
+    },
+    "perLink": {
+      "submissions": {
+        "count": 600,
+        "per": "1m"
+      },
+      "relayedRuns": {
+        "count": 60,
+        "per": "1m"
+      }
+    }
+  }
+}

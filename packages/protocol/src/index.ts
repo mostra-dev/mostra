@@ -105,6 +105,7 @@ export {
   FRAME_SESSION_HEADER,
   FrameSessionFacts,
   FrameTicket,
+  type HostedChrome,
   OrphanedField,
   PollResult,
   REVIEW_SET_ID_PATTERN,
@@ -339,6 +340,12 @@ export {
   artifactListMethod,
 } from "./methods/artifact/list.ts";
 export {
+  type ArtifactPauseParams,
+  type ArtifactPauseResult,
+  artifactPauseMethod,
+  type PausedBy,
+} from "./methods/artifact/pause.ts";
+export {
   type ArtifactPublishParams,
   type ArtifactPublishResult,
   artifactPublishMethod,
@@ -463,6 +470,13 @@ export {
   portIdentityResolveMethod,
 } from "./methods/port/identity-resolve.ts";
 export {
+  type PortRelayAuthorParams,
+  type PortRelayAuthorResult,
+  portRelayAuthorMethod,
+  RELAY_AUTHOR_METHODS,
+  type RelayAuthorMethod,
+} from "./methods/port/relay-author.ts";
+export {
   type PortRelayCallParams,
   type PortRelayCallResult,
   portRelayCallMethod,
@@ -531,6 +545,11 @@ export {
   type RelayRunUpdateResult,
   relayRunUpdateMethod,
 } from "./methods/relay/run-update.ts";
+export {
+  type RemoteLinkParams,
+  type RemoteLinkResult,
+  remoteLinkMethod,
+} from "./methods/remote/link.ts";
 export {
   type RemoteLoginParams,
   type RemoteLoginResult,

@@ -59,6 +59,7 @@ mostra logout                             # sign out; hosted pages keep working,
 - Only the source, its versions and its secrets stay on this machine; the server holds the built page and what people enter.
 - Several machines can sign in to one account. The one that shared a page receives its answers. `mostra login <server> --default` makes this machine the one pages created from a chat app go to.
 - `mostra share stop` and `mostra share list` include hosted shares.
+- `mostra pause ./x --reason "Closed until Monday"` stops a page taking answers and running actions, here and on every server it's hosted on; it stays viewable, its links keep working, and the draft people typed is kept. `mostra resume ./x` opens it again. A pause the server's operator made can only be lifted by the operator.
 
 ### Actions on a hosted page
 
