@@ -215,6 +215,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   const { id, dir, ledger, directory, log } = options;
   const registry = await openRegistry({ home: dir, ledger });
   /** Pending pushes: version ID → the client files still missing. */
+  /** For tests: a removal cut off once after the home's purge (`MOSTRA_TEST_REMOVE_INTERRUPT`). */
+  let interruptedOnce = false;
   /** Pending pushes: version ID → each missing client file's SHA-256 and the size its listing gives. */
   const pending = new Map<string, Map<string, number>>();
   let incarnation = options.incarnation;
@@ -271,11 +273,22 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   /** The route of an artifact on this home, minted on its first push by `link`. */
   const routeFor = (artifactId: string, link: string): HostedRoute =>
     directory.write((db) => {
-      const found = db.get<{ id: string; label: string; owner_link_id: string }>(
-        "SELECT id, label, owner_link_id FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
+      const found = db.get<{
+        id: string;
+        label: string;
+        owner_link_id: string;
+        removing_json: string | null;
+      }>(
+        "SELECT id, label, owner_link_id, removing_json FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
         id,
         artifactId,
       );
+      if (found?.removing_json != null) {
+        throw refuse(
+          "MOSTRA_REMOTE_HOME_MOVING",
+          "This artifact is being removed from the server; push it again once that's done.",
+        );
+      }
       if (found) {
         if (found.owner_link_id !== link) {
           const owner = db.get<{ name: string }>(
@@ -316,10 +329,11 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
 
   // ── Hosted pages (INTERFACES §18.4) ────────────────────────────────────────────────────
 
+  // A route being removed serves nothing (its removal finishes on the next call).
   const routeOf = (artifactId: string): { id: string; label: string } | undefined =>
     directory.read((db) =>
       db.get<{ id: string; label: string }>(
-        "SELECT id, label FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
+        "SELECT id, label FROM artifact_route WHERE home_id = ? AND artifact_id = ? AND removing_json IS NULL",
         id,
         artifactId,
       ),
@@ -328,7 +342,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     directory.read(
       (db) =>
         db.get<{ artifact_id: string }>(
-          "SELECT artifact_id FROM artifact_route WHERE id = ? AND home_id = ?",
+          "SELECT artifact_id FROM artifact_route WHERE id = ? AND home_id = ? AND removing_json IS NULL",
           routeId,
           id,
         )?.artifact_id,
@@ -1157,7 +1171,6 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     revokeLinks,
     revokeLink: (tokenId) => capabilities.revoke(tokenId) !== "unknown",
     async remove(artifactId) {
-      const versions = registry.get({ artifactId }).versions.map((version) => version.id);
       /** The client files a version's listing names. */
       const clientFilesOf = async (versionId: string): Promise<string[]> => {
         try {
@@ -1169,11 +1182,43 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
           return [];
         }
       };
-      const going = new Set<string>();
-      for (const versionId of versions)
-        for (const sha of await clientFilesOf(versionId)) going.add(sha);
-      revokeLinks(artifactId);
+      // The plan is recorded in the directory before anything goes, so a removal cut off between
+      // the two databases is finished by the next call, from the same plan (Fable review, 4).
+      const recorded = directory.read(
+        (db) =>
+          db.get<{ removing_json: string | null }>(
+            "SELECT removing_json FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
+            id,
+            artifactId,
+          )?.removing_json,
+      );
+      let plan: { readonly versions: string[]; readonly going: string[] };
+      if (recorded != null) plan = JSON.parse(recorded) as typeof plan;
+      else {
+        const versions = registry.get({ artifactId }).versions.map((version) => version.id);
+        const files = new Set<string>();
+        for (const versionId of versions)
+          for (const sha of await clientFilesOf(versionId)) files.add(sha);
+        plan = { versions, going: [...files] };
+        directory.write((db) =>
+          db.run(
+            "UPDATE artifact_route SET removing_json = ? WHERE home_id = ? AND artifact_id = ?",
+            JSON.stringify(plan),
+            id,
+            artifactId,
+          ),
+        );
+      }
+      const versions = plan.versions;
+      const going = new Set(plan.going);
+      if (registry.list({}).some((summary) => summary.id === artifactId)) revokeLinks(artifactId);
       const removed = ledger.removal((db) => purgeArtifact(db, artifactId));
+      if (process.env["MOSTRA_TEST_REMOVE_INTERRUPT"] === "1" && !interruptedOnce) {
+        interruptedOnce = true;
+        throw new Error(
+          "the removal was cut off after the home's purge (MOSTRA_TEST_REMOVE_INTERRUPT)",
+        );
+      }
       // Files another version of this home still names stay this home's.
       const kept = new Set<string>();
       for (const other of registry.list({})) {
@@ -1181,7 +1226,13 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
           for (const sha of await clientFilesOf(version.id)) kept.add(sha);
         }
       }
-      const route = routeOf(artifactId);
+      const route = directory.read((db) =>
+        db.get<{ id: string }>(
+          "SELECT id FROM artifact_route WHERE home_id = ? AND artifact_id = ?",
+          id,
+          artifactId,
+        ),
+      );
       directory.write((db) => {
         for (const sha of going) {
           if (kept.has(sha)) continue;

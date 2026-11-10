@@ -54,12 +54,13 @@ describe("operator ports (HO-09)", () => {
   const owner = new GatewayHome();
   let operator: ReturnType<typeof control>;
 
-  const start = async () => {
+  const start = async (extra: Record<string, string> = {}) => {
     server = await startServer({
       data,
       port,
       config: testConfig(port, { operator: OPERATOR }),
       env: {
+        ...extra,
         MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
         MOSTRA_TEST_OPERATOR_DISPATCH_MS: "100",
         MOSTRA_TEST_METER_WINDOW_MS: "300",
@@ -650,6 +651,53 @@ describe("operator ports (HO-09)", () => {
       await cell.stop();
     }
   }, 120_000);
+
+  it("finishes a removal cut off between the home's ledger and the directory (Fable review, 4)", async () => {
+    await stopServer(server);
+    await start({ MOSTRA_TEST_REMOVE_INTERRUPT: "1" });
+    const shared = await share();
+    const url = ok<{ url: string }>(shared.answer).url;
+    const routeId = routeOf(url);
+    const shellHost = new URL(url).host;
+    const directory = () =>
+      new Database(join(data, "server.sqlite"), { readonly: true, fileMustExist: true });
+    const routeRow = () => {
+      const db = directory();
+      try {
+        return db
+          .prepare("SELECT id, home_id, label FROM artifact_route WHERE id = ?")
+          .get(routeId) as { id: string; home_id: string; label: string } | undefined;
+      } finally {
+        db.close();
+      }
+    };
+    const before = routeRow();
+    expect(before).toBeDefined();
+    // Cut off after the home's purge: the route serves nothing meanwhile.
+    expect((await operator.handle("remove", routeId)).status).not.toBe(200);
+    expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
+    // The next call finishes it from the recorded plan: the route and its links' index go, and its
+    // label stays issued, never to be given again.
+    expect((await operator.handle("remove", routeId)).status).toBe(200);
+    expect(routeRow()).toBeUndefined();
+    const db = directory();
+    try {
+      expect(
+        (
+          db.prepare("SELECT COUNT(*) AS n FROM hosted_token WHERE route_id = ?").get(routeId) as {
+            n: number;
+          }
+        ).n,
+      ).toBe(0);
+      expect(
+        db.prepare("SELECT 1 FROM label_issued WHERE label = ?").get(before?.label),
+      ).toBeDefined();
+    } finally {
+      db.close();
+    }
+    await stopServer(server);
+    await start();
+  }, 180_000);
 
   it("asks for the operator's identity providers at every sign-in, bounded, and checks what they name", async () => {
     const api = `http://api.localhost:${port}`;

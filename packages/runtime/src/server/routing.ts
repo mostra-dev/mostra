@@ -89,7 +89,7 @@ export function createRouting(options: RoutingOptions): Routing {
   const routeByLabel = (label: string): { id: string; home_id: string } | undefined =>
     directory.read((db) =>
       db.get<{ id: string; home_id: string }>(
-        "SELECT id, home_id FROM artifact_route WHERE label = ?",
+        "SELECT id, home_id FROM artifact_route WHERE label = ? AND removing_json IS NULL",
         label,
       ),
     );
@@ -127,7 +127,7 @@ export function createRouting(options: RoutingOptions): Routing {
         };
       } else {
         const found = db.get<{ home_id: string }>(
-          "SELECT home_id FROM artifact_route WHERE id = ? AND home_id = ?",
+          "SELECT home_id FROM artifact_route WHERE id = ? AND home_id = ? AND removing_json IS NULL",
           answer.route.routeId,
           answer.route.home,
         );

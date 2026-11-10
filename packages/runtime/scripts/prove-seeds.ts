@@ -5645,6 +5645,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "HO-09",
+    name: "a removal cut off between its two databases can't be finished (Fable review, 4)",
+    file: "src/server/hosted.ts",
+    from: "      if (recorded != null) plan = JSON.parse(recorded) as typeof plan;",
+    to: '      if (recorded === "never") plan = JSON.parse(recorded) as typeof plan;',
+    check: integration("operator.test.ts", "finishes a removal cut off"),
+  },
+  {
+    requirement: "HO-09",
     name: "a suspended home is still used through /mcp (Fable review, 1)",
     file: "src/server/api.ts",
     from: '    if (options.suspended?.(who.homeId) || (await accountStanding(who.accountId)) === "suspended") {',

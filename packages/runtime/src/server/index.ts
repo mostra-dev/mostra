@@ -500,7 +500,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   const routeBy = (column: "id" | "label", value: string) =>
     data.directory.read((db) =>
       db.get<{ id: string; home_id: string }>(
-        `SELECT id, home_id FROM artifact_route WHERE ${column} = ?`,
+        `SELECT id, home_id FROM artifact_route WHERE ${column} = ? AND removing_json IS NULL`,
         value,
       ),
     );

@@ -196,4 +196,15 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: "a route's removal in progress",
+    up(db) {
+      // ServerHandle.remove spans two databases, the home's ledger and this directory, so it
+      // records its plan here first (the versions and client files it removes); a removal cut
+      // off between them is finished by the next call, and the route serves nothing meanwhile
+      // (Fable review of WP-30, 4).
+      db.exec("ALTER TABLE artifact_route ADD COLUMN removing_json TEXT");
+    },
+  },
 ];
