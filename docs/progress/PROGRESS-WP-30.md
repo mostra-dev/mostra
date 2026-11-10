@@ -14,6 +14,11 @@
 | Milestone `WP-30` | #129, #132; #39, #46, #55, #85, #95, #111 and #124 stay on no milestone (D155 item 7), #106 waits for the package that takes it |
 | Local toolchain | Node 24.22.1 (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64 |
 
+## Candidate checks
+
+- **`pnpm check`** on `c05e8bb` in the detached worktree on the external disk (fresh `pnpm install --frozen-lockfile`, 45 min): every job passed but `unit`, where six cases timed out while every job ran at once (`@mostra/react`'s seams and hooks, `runtime`'s gc and fields properties, `tools`'s Rust seeds at 181 s); each suite passed alone (59 of 59, 46 of 46, the Rust seed case), the same class as the baseline's.
+- **CI** on the pull request with `ci:full` (every leg): see the run named at the closeout.
+
 ## Decisions
 
 - **M60** (2026-11-07): Mirza's answers to the session's question set. A test deployment on a server Mirza already runs, on the production names, for claude.ai only (ChatGPT's external check later); GitHub's OAuth app made by him on request; the container image's registry, the operator questions and the plugin's remote server delegated ("I trust you to make the most robust … optimal decision"), with whatever is left for later named explicitly; `@mostra/protocol/operator` ships with this package's release (the managed service's work starts after WP-30). Recorded as D167 with the package's other choices.
