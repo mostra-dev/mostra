@@ -620,7 +620,8 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           }
           // Spent at its first presentation, whatever comes of it: a code works once. The row is
           // kept (as a hash) until it is long expired, so a second presentation is recognized.
-          db.run("UPDATE token SET used_at = ? WHERE hash = ?", iso(now()), hash);
+          // Code rows only: a refresh token sent as a code is no code, and is left alone.
+          db.run("UPDATE token SET used_at = ? WHERE hash = ? AND kind = 'code'", iso(now()), hash);
           if (!row || Date.parse(row.expires_at) <= now()) {
             return oauthError(400, "invalid_grant", "The code is unknown, used or expired.");
           }
@@ -669,7 +670,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
             iso(now()),
           );
           db.run(
-            "UPDATE token SET data_json = ? WHERE hash = ?",
+            "UPDATE token SET data_json = ? WHERE hash = ? AND kind = 'code'",
             JSON.stringify({ ...grant, grantId }),
             hash,
           );

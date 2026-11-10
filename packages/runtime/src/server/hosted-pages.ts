@@ -485,19 +485,6 @@ export function hostedPages(
           );
         }
       }
-      // The server's rates (D165 item 13): nothing is recorded past them, and the draft is kept.
-      const limits = options.rateLimits;
-      if (limits.perIpSubmissions) {
-        const taken = options.rates.take(
-          `submit-ip:${options.clients.keyOf(context.client)}`,
-          limits.perIpSubmissions,
-        );
-        if (!taken.ok) return rateRefusal(taken.retryAfterS);
-      }
-      if (limits.perLinkSubmissions && page.tokenId !== undefined) {
-        const taken = options.rates.take(`submit-link:${page.tokenId}`, limits.perLinkSubmissions);
-        if (!taken.ok) return rateRefusal(taken.retryAfterS);
-      }
       // The operator's `limits`: a refusal keeps the draft; no answer lets the submission through.
       const route = options.routeOf(page.artifactId);
       const verdict = await operator.limit({
@@ -507,7 +494,23 @@ export function hostedPages(
         ...(route ? { routeId: route.id } : {}),
         operation: "submit",
       });
-      return limitRefusal(verdict);
+      const refused = limitRefusal(verdict);
+      if (refused) return refused;
+      // The server's rates (D165 item 13), last and together: an attempt refused anywhere takes
+      // nothing from any bucket, nothing is recorded past them, and the draft is kept.
+      const limits = options.rateLimits;
+      const wanted: { key: string; rate: NonNullable<typeof limits.perIpSubmissions> }[] = [];
+      if (limits.perIpSubmissions) {
+        wanted.push({
+          key: `submit-ip:${options.clients.keyOf(context.client)}`,
+          rate: limits.perIpSubmissions,
+        });
+      }
+      if (limits.perLinkSubmissions && page.tokenId !== undefined) {
+        wanted.push({ key: `submit-link:${page.tokenId}`, rate: limits.perLinkSubmissions });
+      }
+      const taken = options.rates.takeAll(wanted);
+      return taken.ok ? undefined : rateRefusal(taken.retryAfterS);
     },
 
     shellRoutes,

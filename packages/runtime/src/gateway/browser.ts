@@ -220,9 +220,24 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
   };
 
   /** The answer to a submit the server's rules refused before it reached the ledger. */
-  const admit = async (context: RouteContext): Promise<Response | undefined> => {
+  const admit = async (
+    context: RouteContext,
+    request: { readonly viewId: string; readonly expectedRevision: unknown },
+  ): Promise<Response | undefined> => {
     if (!options.admitSubmit) return undefined;
-    const refused = await options.admitSubmit(pageOf(context), context);
+    // A repeat of a recorded submit answers that submission, and one its view or a pause refuses
+    // is refused before anything is recorded: neither spends the rates or asks the operator
+    // (Fable review of WP-30, 8).
+    const page = pageOf(context);
+    if (
+      !interaction.wouldRecord(page, {
+        viewId: request.viewId,
+        expectedRevision: Number(request.expectedRevision),
+      })
+    ) {
+      return undefined;
+    }
+    const refused = await options.admitSubmit(page, context);
     if (!refused) return undefined;
     return jsonResponse(refused.diagnostic, {
       status: refused.status,
@@ -276,7 +291,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, SubmitRequest);
     if (request instanceof Response) return request;
-    const admitted = await admit(context);
+    const admitted = await admit(context, request);
     if (admitted) return admitted;
     try {
       return jsonResponse(
@@ -588,7 +603,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, ShellSubmitRequest);
     if (request instanceof Response) return request;
-    const admitted = await admit(context);
+    const admitted = await admit(context, request);
     if (admitted) return admitted;
     const page = pageOf(context);
     let submission: SubmissionSummary & { readonly duplicate?: true };

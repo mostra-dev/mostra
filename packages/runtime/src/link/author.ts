@@ -42,6 +42,9 @@ export interface OwnerAuthorOptions {
 /** Answers `port/relay.author` from the server `server`. */
 export type OwnerAuthor = (server: string, params: unknown) => Promise<unknown>;
 
+/** The eight bytes every PNG file starts with. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
 function outside(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_ARTIFACT_PATH_INVALID", { message }));
 }
@@ -148,11 +151,21 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
         } catch {
           return {};
         }
-        // Only verify's own screenshots, by name and by where the name really leads.
-        if (!within(verifyCache, path) || !within(realpathSync.native(verifyCache), real))
+        // Only verify's own screenshots: a `.png` inside its cache, by name and by where the name
+        // really leads, whose bytes are a PNG; nothing else of the cache (a run's scratch ledger,
+        // its keys, a cached verdict) crosses the relay (Fable review of WP-30, 10).
+        if (
+          !path.toLowerCase().endsWith(".png") ||
+          !within(verifyCache, path) ||
+          !within(realpathSync.native(verifyCache), real)
+        ) {
           return {};
+        }
         try {
-          return { png: (await readFile(path)).toString("base64") };
+          const bytes = await readFile(real);
+          return bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+            ? { png: bytes.toString("base64") }
+            : {};
         } catch {
           return {};
         }

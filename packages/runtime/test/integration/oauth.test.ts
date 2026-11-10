@@ -274,6 +274,21 @@ describe("the authorization server for MCP clients (MC-04)", () => {
       refresh_token: stolen.refresh_token,
     });
     expect(JSON.parse(refreshed.body).error).toBe("invalid_grant");
+
+    // A refresh token sent as a code is no code: refused, and the token is left as it was, so its
+    // holder's next refresh works (Fable review, 9).
+    const fifth = await who.ask("GET", authorizeUrl(clientId, redirect, challenge));
+    const kept = JSON.parse(
+      (await token({ ...exchange, code: located(fifth).searchParams.get("code") as string })).body,
+    ) as { refresh_token: string };
+    const misused = await token({ ...exchange, code: kept.refresh_token });
+    expect(JSON.parse(misused.body).error).toBe("invalid_grant");
+    const stillGood = await token({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      refresh_token: kept.refresh_token,
+    });
+    expect(stillGood.status, stillGood.body).toBe(200);
     // Another client can't use this client's refresh token either.
   }, 60_000);
 

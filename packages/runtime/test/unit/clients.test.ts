@@ -75,4 +75,20 @@ describe("the rate limiter", () => {
     expect(allowed).toBeGreaterThanOrEqual(45);
     expect(allowed).toBeLessThanOrEqual(55);
   });
+
+  it("takes from several buckets together or from none (Fable review, 8)", () => {
+    let now = 0;
+    const limiter = new RateLimiter({ now: () => now });
+    const ip = { key: "ip", rate: { count: 5, perMs: 60_000 } };
+    const link = { key: "link", rate: { count: 1, perMs: 60_000 } };
+    expect(limiter.takeAll([ip, link])).toEqual({ ok: true });
+    // The link's bucket is empty: the refusal takes nothing from the address's.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      expect(limiter.takeAll([ip, link])).toMatchObject({ ok: false });
+    }
+    for (let left = 0; left < 4; left++) expect(limiter.takeAll([ip])).toEqual({ ok: true });
+    expect(limiter.takeAll([ip])).toMatchObject({ ok: false });
+    now += 60_000;
+    expect(limiter.takeAll([ip, link])).toEqual({ ok: true });
+  });
 });

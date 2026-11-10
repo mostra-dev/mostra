@@ -90,6 +90,7 @@ import {
   SubmitConflict,
   submissionSummary,
   submit,
+  wouldRecord,
 } from "./submissions.ts";
 import { Subscriptions } from "./subscriptions.ts";
 import {
@@ -259,6 +260,14 @@ export interface Interaction {
   envelopeFor(submissionId: string, owner: string): SubmissionEnvelope | undefined;
   /** A submission's full Results (§8), built from the immutable submission alone. */
   resultsOf(submissionId: string): Results | undefined;
+  /**
+   * Whether a page's submit would be judged afresh: not a repeat of a recorded one, not refused by
+   * its view or a pause. Only such a submit is admitted by a hosted home's rates and limits.
+   */
+  wouldRecord(
+    page: PageIdentity,
+    input: { readonly viewId: string; readonly expectedRevision: number },
+  ): boolean;
   /** A viewer's submit (IN-05); `SubmitConflict` under a closed `once`. */
   submit(
     page: PageIdentity,
@@ -730,6 +739,18 @@ export function createInteraction(options: InteractionOptions): Interaction {
         };
       });
     },
+    wouldRecord(page, input) {
+      return ledger.read((db) =>
+        wouldRecord(db, {
+          artifactId: page.artifactId,
+          viewerId: page.viewerId,
+          ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
+          viewId: input.viewId,
+          expectedRevision: input.expectedRevision,
+        }),
+      );
+    },
+
     submit(page, input) {
       const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
       const outcome = asPage(() =>

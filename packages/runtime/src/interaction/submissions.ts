@@ -323,6 +323,35 @@ export interface SubmitOutcome {
  * `MOSTRA_SUBMIT_POLICY_NONE`, `MOSTRA_SUBMIT_ALREADY` (a {@link SubmitConflict}) under `once`,
  * `MOSTRA_SUBMIT_REVISION_MOVED` when the draft changed since the viewer saw it.
  */
+/**
+ * Whether a submit would be judged afresh: not a repeat of one already recorded (which answers that
+ * submission), not refused by the view or a pause before anything is recorded. Only such a submit
+ * is admitted by the server's rates and the operator's limits (Fable review of WP-30, 8).
+ */
+export function wouldRecord(
+  db: LedgerDb,
+  input: Pick<SubmitInput, "artifactId" | "viewerId" | "tokenId" | "viewId" | "expectedRevision">,
+): boolean {
+  try {
+    const view = viewFor(db, input.viewId, input.artifactId, input.viewerId, input.tokenId);
+    const draft = documentFor(db, input.artifactId, input.viewerId, false);
+    if (
+      draft !== undefined &&
+      db.get(
+        "SELECT 1 FROM submission WHERE view_id = ? AND draft_document_id = ? AND draft_revision = ?",
+        view.id,
+        draft.id,
+        input.expectedRevision,
+      )
+    ) {
+      return false;
+    }
+    return !db.get("SELECT 1 FROM artifact_pause WHERE artifact_id = ?", input.artifactId);
+  } catch {
+    return false;
+  }
+}
+
 export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   // 1. The view, and through it the exact version the viewer saw, and the channels it accepts.
   const view = viewFor(db, input.viewId, input.artifactId, input.viewerId, input.tokenId);

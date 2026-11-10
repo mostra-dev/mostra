@@ -139,6 +139,15 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
     }
     for (const { answer } of first)
       if (answer.status === 200) accepted.push(answer.json<{ id: string }>().id);
+    // A recorded answer sent again, while the address is at its rate: the submission it made,
+    // never a 429 for an answer that was accepted (Fable review, 8).
+    const made = first.findIndex(({ answer }) => answer.status === 200);
+    const repeated = await submit(visitors[made] as never, one);
+    expect(repeated.answer.status, repeated.answer.body).toBe(200);
+    expect(repeated.answer.json<{ id: string; duplicate?: boolean }>()).toMatchObject({
+      id: first[made]?.answer.json<{ id: string }>().id,
+      duplicate: true,
+    });
     // The same drafts, after the wait they were told: accepted, nothing dropped.
     const wait = Math.max(...limited.map(({ answer }) => Number(answer.header("retry-after"))));
     await new Promise((resolve) => setTimeout(resolve, wait * 1000 + 200));

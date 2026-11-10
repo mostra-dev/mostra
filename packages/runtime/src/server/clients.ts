@@ -191,4 +191,35 @@ export class RateLimiter {
     bucket.tokens -= 1;
     return { ok: true };
   }
+
+  /**
+   * Takes one token under every key, or none: when any bucket is empty, nothing is taken from the
+   * others, and the answer says when the slowest one has a token again (Fable review, 8).
+   */
+  takeAll(
+    wanted: readonly { readonly key: string; readonly rate: RateLimit }[],
+  ): { readonly ok: true } | { readonly ok: false; readonly retryAfterS: number } {
+    const now = this.#now();
+    let waitMs = 0;
+    const buckets = wanted.map(({ key, rate }) => {
+      const perToken = rate.perMs / rate.count;
+      let bucket = this.#buckets.get(key);
+      if (bucket) {
+        bucket.tokens = Math.min(rate.count, bucket.tokens + (now - bucket.at) / perToken);
+        bucket.at = now;
+        this.#buckets.delete(key);
+      } else {
+        if (this.#buckets.size >= this.#maxKeys) {
+          this.#buckets.delete(this.#buckets.keys().next().value as string);
+        }
+        bucket = { tokens: rate.count, at: now };
+      }
+      this.#buckets.set(key, bucket);
+      if (bucket.tokens < 1) waitMs = Math.max(waitMs, (1 - bucket.tokens) * perToken);
+      return bucket;
+    });
+    if (waitMs > 0) return { ok: false, retryAfterS: Math.max(1, Math.ceil(waitMs / 1000)) };
+    for (const bucket of buckets) bucket.tokens -= 1;
+    return { ok: true };
+  }
 }
