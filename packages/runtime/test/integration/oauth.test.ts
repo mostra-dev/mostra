@@ -400,4 +400,29 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     expect(named.body).toContain("non-public address");
     expect(asked.length).toBe(count);
   }, 60_000);
+
+  // Last: it spends this address's registrations for the minute.
+  it("lets an address register a few clients a minute, and says when to try again", async () => {
+    const answers: { status: number; retryAfter: string | undefined }[] = [];
+    for (let index = 0; index < 12; index++) {
+      const reply = await send(port, `api.localhost:${port}`, "/oauth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_name: `Flood ${index}`,
+          redirect_uris: ["https://flood.example/cb"],
+          token_endpoint_auth_method: "none",
+        }),
+      });
+      const after = reply.headers["retry-after"];
+      answers.push({
+        status: reply.status,
+        retryAfter: typeof after === "string" ? after : undefined,
+      });
+    }
+    const limited = answers.filter((answer) => answer.status === 429);
+    expect(limited.length, JSON.stringify(answers)).toBeGreaterThan(0);
+    expect(answers.filter((answer) => answer.status === 201).length).toBeLessThanOrEqual(10);
+    for (const answer of limited) expect(Number(answer.retryAfter)).toBeGreaterThanOrEqual(1);
+  });
 });

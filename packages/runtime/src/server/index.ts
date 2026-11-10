@@ -343,6 +343,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     mcp,
     authorize,
     clients: oauthClients,
+    registrations: { addresses: clients, rates },
     operator,
     log,
     filesDir: join(options.data, "files"),

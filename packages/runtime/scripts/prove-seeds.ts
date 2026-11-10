@@ -707,6 +707,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MC-04",
+    name: "anyone registers clients without limit, filling the directory",
+    file: "src/server/index.ts",
+    from: "    registrations: { addresses: clients, rates },\n",
+    to: "",
+    check: integration("oauth.test.ts", "register a few clients"),
+  },
+  {
+    requirement: "MC-04",
     name: "a metadata document at an IPv4-mapped IPv6 address (::ffff:7f00:1 is loopback) is fetched",
     file: "src/server/oauth-clients.ts",
     from: "  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0xffff || g5 === 0)) {",

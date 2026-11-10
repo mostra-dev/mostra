@@ -16,6 +16,7 @@ import type { Log } from "../log.ts";
 import { BINDING_SUBPROTOCOL, MAX_FRAME_BYTES, serveWebSocket } from "../protocol-server/index.ts";
 import type { Authenticated, Authorization } from "./auth.ts";
 import type { Authorize } from "./authorize.ts";
+import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import type { HostedHome } from "./hosted.ts";
 import type { RemoteMcp } from "./mcp.ts";
@@ -24,6 +25,9 @@ import type { Operator } from "./operator.ts";
 
 /** How often an open binding's grant is checked again: a revocation closes it within 60 s. */
 const GRANT_RECHECK_MS = 30_000;
+
+/** Dynamic Client Registrations an address may make a minute (D167). */
+const REGISTRATIONS_PER_MINUTE = 10;
 
 /** The largest version file accepted (per file; an operator's storage limit is WP-30's). */
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
@@ -100,6 +104,14 @@ export interface ApiOptions {
   readonly authorize: Authorize;
   /** Its clients, for Dynamic Client Registration. */
   readonly clients: Clients;
+  /**
+   * Where a request comes from, and the rate its registrations count against (D167): Dynamic
+   * Client Registration takes no credential, so each address may register a few clients a minute.
+   */
+  readonly registrations?: {
+    readonly addresses: ClientAddresses;
+    readonly rates: RateLimiter;
+  };
   /** The operator module: its `accounts.authenticate` admits credentials it issued. */
   readonly operator?: Operator;
   /** Whether the operator suspended a home: its bindings and uploads are refused (D165 item 9). */
@@ -393,6 +405,27 @@ export function createApi(options: ApiOptions): Api {
             error_description: "Send JSON.",
           });
           return;
+        }
+        // A registration takes no credential: an address registers a few a minute, so nobody fills
+        // the directory with clients (each is removed after 30 days unused).
+        if (options.registrations) {
+          const { addresses, rates } = options.registrations;
+          const taken = rates.take(`register:${addresses.keyOf(addresses.of(request))}`, {
+            count: REGISTRATIONS_PER_MINUTE,
+            perMs: 60_000,
+          });
+          if (!taken.ok) {
+            send(
+              response,
+              429,
+              {
+                error: "slow_down",
+                error_description: "Too many registrations from this address; try again shortly.",
+              },
+              { "retry-after": String(taken.retryAfterS) },
+            );
+            return;
+          }
         }
         const registered = options.clients.register(metadata);
         if ("error" in registered && "description" in registered) {
