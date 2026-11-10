@@ -17,7 +17,7 @@
 ## Candidate checks
 
 - **`pnpm check`** on `c05e8bb` in the detached worktree on the external disk (fresh `pnpm install --frozen-lockfile`, 45 min): every job passed but `unit`, where six cases timed out while every job ran at once (`@mostra/react`'s seams and hooks, `runtime`'s gc and fields properties, `tools`'s Rust seeds at 181 s); each suite passed alone (59 of 59, 46 of 46, the Rust seed case), the same class as the baseline's.
-- **CI** on the pull request with `ci:full` (every leg): see the run named at the closeout.
+- **CI** on the pull request with `ci:full` (every leg: Linux, macOS, Windows x64 and arm64, every engine, the six-platform release rehearsal and the container image's): run 42808936200 on `5ae4e91`, after every fix of the Fable review, green (74 of 74 jobs). The later commits change documents only.
 
 ## Decisions
 
@@ -72,7 +72,7 @@ Issues on the milestone, each fixed at its root with a test as strict as before:
 
 ## Test deployment (external evidence)
 
-The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64`; first run 42651320718 with one hotfix layer for `b9bea94`, the metadata lookup, then run 42713777014's bundle of `67efd15` with none), on a server Mirza runs (Arch Linux x86_64, 2 CPUs, 8 GB, Docker), behind Caddy 2.11.8 with the Cloudflare DNS module and Let's Encrypt certificates (`api.mostradev.com`, `mostrausercontent.com` and its wildcard), DNS-only records, `trustedProxies` the Docker network, GitHub as the identity provider (Mirza's OAuth app). The owner is this Mac's instance, from the same run's `darwin-arm64` bundle, linked by `mostra login --default` approved with GitHub. Its configuration and Caddyfile are the self-hosting page's shape; secrets are files readable by root and the server's user only. Its shape is now in `tools/deploy/test/`, its secrets and facts on Mirza's machine (`~/.mostra-deploy/`), and `docs/agents/test-deployment.md` refreshes, checks and retires it. It stays up for WP-17's inline check and ChatGPT's (M60), and is retired when a production deployment takes its names (D167 item 20).
+The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64`; first run 42651320718 with one hotfix layer for `b9bea94`, the metadata lookup, then run 42713777014's bundle of `67efd15` with none, and last run 42808936200's bundle of `5ae4e91`, the candidate after the Fable review, refreshed by the playbook's own steps and its checks passed: health, metadata, `/mcp`'s 401, a hosted page's headers, the owner connected), on a server Mirza runs (Arch Linux x86_64, 2 CPUs, 8 GB, Docker), behind Caddy 2.11.8 with the Cloudflare DNS module and Let's Encrypt certificates (`api.mostradev.com`, `mostrausercontent.com` and its wildcard), DNS-only records, `trustedProxies` the Docker network, GitHub as the identity provider (Mirza's OAuth app). The owner is this Mac's instance, from the same run's `darwin-arm64` bundle, linked by `mostra login --default` approved with GitHub. Its configuration and Caddyfile are the self-hosting page's shape; secrets are files readable by root and the server's user only. Its shape is now in `tools/deploy/test/`, its secrets and facts on Mirza's machine (`~/.mostra-deploy/`), and `docs/agents/test-deployment.md` refreshes, checks and retires it. It stays up for WP-17's inline check and ChatGPT's (M60), and is retired when a production deployment takes its names (D167 item 20).
 
 ## Reviews (D80, D144)
 
