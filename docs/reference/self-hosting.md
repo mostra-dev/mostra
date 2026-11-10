@@ -40,7 +40,7 @@ The server reads a JSON file (`--config`) and `MOSTRA_SERVER_<KEY>` variables. A
 | `domains.active`, `domains.spares` | The user-content domain new links use, and older ones that issued links keep working on. To move off a domain, make a spare active and restart the server |
 | `trustedProxies` | Addresses or CIDR ranges whose `X-Forwarded-For` the server believes. It reads the header from the right and takes the first address that isn't a trusted proxy. Rate limits count IPv6 clients per /64 (`rateLimits.ipv6Prefix`) |
 | `identityProviders` | How people sign in: `github` (an OAuth app), `oidc` (any OpenID Connect provider: `issuer`, `clientId`, `clientSecretFile`) or `development` (trusts any typed name; for tests only, never on a public server) |
-| `rateLimits` | Per-IP and per-link rates for anonymous answers and actions. Past a rate a page gets 429 with `Retry-After` and says to try again shortly. The draft is kept. Without this key there is no limit |
+| `rateLimits` | Rates as `{ "count", "per" }`: `perIp.submissions` and `perLink.submissions` for answers, `perLink.relayedRuns` for actions, and `perIp.requests` for every request an address sends (a health check aside). Past a rate the answer is 429 with `Retry-After`; a page says to try again shortly and keeps the draft. A key left out is no limit |
 | `relay`, `homes`, `ledger` | The relay's waiting-run cap and drain rate, how long an idle hosted home stays open, and the ledger's WAL checkpoint (`0` for a backup replicator) |
 | `operator` | The path of an operator module, which adds limits, metering, accounts and abuse handling through the operator ports (`@mostra/protocol/operator`). Without one, every port keeps its no-op default |
 
@@ -80,6 +80,7 @@ services:
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dns-token:/run/secrets/dns-token:ro
       - caddy-data:/data
 ```
 
@@ -99,13 +100,13 @@ api.example.com {
 
 example-usercontent.com, *.example-usercontent.com {
 	tls {
-		dns cloudflare {env.CF_API_TOKEN}
+		dns cloudflare {file./run/secrets/dns-token}
 	}
 	reverse_proxy mostra-server:8080
 }
 ```
 
-The wildcard certificate needs the DNS-01 challenge, so Caddy needs a build with your DNS provider's module (`xcaddy build --with github.com/caddy-dns/<provider>`) and a token that may edit the zone's records. Caddy keeps the request's `Host` and adds `X-Forwarded-For`, and the server believes that header only from the network `trustedProxies` names.
+The wildcard certificate needs the DNS-01 challenge, so Caddy needs a build with your DNS provider's module (`xcaddy build --with github.com/caddy-dns/<provider>`) and a token that may edit the zone's records, kept in the file `dns-token` beside the `Caddyfile` (readable by the user Caddy runs as, and by nobody else) and read by `{file.…}`, so it is in no environment a process listing or a log can show. Caddy keeps the request's `Host` and adds `X-Forwarded-For`, and the server believes that header only from the network `trustedProxies` names.
 
 Check the server once it runs:
 
