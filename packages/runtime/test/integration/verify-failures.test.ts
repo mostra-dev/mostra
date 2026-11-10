@@ -237,6 +237,10 @@ describe("verify's failures", () => {
         const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
         expect(log).toContain("verify.runner_failed");
         expect(log).toContain("MOSTRA_TEST_VERIFY_FAIL_ONCE");
+        // The runner quoted the sandbox link it was loading; its secret never reaches the log.
+        const quoted = /MOSTRA_TEST_VERIFY_FAIL_ONCE\) at (\S+?)["\\]/.exec(log)?.[1] ?? "";
+        expect(quoted, log.slice(-2000)).toMatch(/\/a\/art_[0-9A-Z]{26}\//);
+        expect(quoted).not.toMatch(/#t=[0-9A-Za-z]{20,}/);
       });
     },
     VERIFY_MS,

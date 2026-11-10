@@ -217,7 +217,11 @@ export function createRunner(options: RunnerOptions = {}): Runner {
         axeSource ??= await readFile(require.resolve("axe-core/axe.min.js"), "utf8");
         if (options.failOnceFile !== undefined && existsSync(options.failOnceFile)) {
           rmSync(options.failOnceFile, { force: true });
-          throw new Error("the runner failed in itself (MOSTRA_TEST_VERIFY_FAIL_ONCE)");
+          // Quoting the link it was loading, as Playwright's own errors do: what the runner says
+          // passes through the supervisor's redactor before anyone reads it.
+          throw new Error(
+            `the runner failed in itself (MOSTRA_TEST_VERIFY_FAIL_ONCE) at ${request.url}`,
+          );
         }
         const open = await launch();
         try {

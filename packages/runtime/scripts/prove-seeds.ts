@@ -4500,6 +4500,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "wp30-106",
+    name: "what a failed verify runner says reaches the log with the link it quoted",
+    file: "src/log.ts",
+    from: "    let result = text.replace(CAPABILITY_PARAMS, `$1${REDACTED}`);",
+    to: "    let result = text;",
+    check: integration("verify-failures.test.ts", "failed in itself"),
+  },
+  {
+    requirement: "wp30-106",
     name: "the warm runner keeps a browser that died under it, so every later render fails",
     file: "../verify/src/runner.ts",
     from: "        if (open.isConnected()) return open;",
