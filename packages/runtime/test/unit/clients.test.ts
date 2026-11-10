@@ -91,4 +91,25 @@ describe("the rate limiter", () => {
     now += 60_000;
     expect(limiter.takeAll([ip, link])).toEqual({ ok: true });
   });
+
+  it("gives back what an attempt took when someone refuses it after the rates (second Fable review, 2)", () => {
+    const now = 0;
+    const limiter = new RateLimiter({ now: () => now });
+    const both = [
+      { key: "ip", rate: { count: 2, perMs: 60_000 } },
+      { key: "link", rate: { count: 2, perMs: 60_000 } },
+    ];
+    expect(limiter.takeAll(both)).toEqual({ ok: true });
+    limiter.refundAll(both);
+    expect(limiter.takeAll(both)).toEqual({ ok: true });
+    expect(limiter.takeAll(both)).toEqual({ ok: true });
+    expect(limiter.takeAll(both)).toMatchObject({ ok: false });
+    // Never past the bucket's size.
+    limiter.refundAll(both);
+    limiter.refundAll(both);
+    limiter.refundAll(both);
+    expect(limiter.takeAll(both)).toEqual({ ok: true });
+    expect(limiter.takeAll(both)).toEqual({ ok: true });
+    expect(limiter.takeAll(both)).toMatchObject({ ok: false });
+  });
 });

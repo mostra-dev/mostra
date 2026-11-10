@@ -59,7 +59,6 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_OIDC_INSECURE",
       "MOSTRA_TEST_GITHUB_BASE",
       "MOSTRA_TEST_VERIFY_LOSE_BROWSER",
-      "MOSTRA_TEST_REMOVE_INTERRUPT",
       "MOSTRA_BUNDLE_MIRROR",
       "MOSTRA_MCP_TOKEN",
       "MOSTRA_OFFLINE",

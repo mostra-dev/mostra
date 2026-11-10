@@ -161,21 +161,13 @@ export class RateLimiter {
     this.#maxKeys = options.maxKeys ?? 100_000;
   }
 
-  /**
-   * Takes one token under `key` when there is one. Without one, nothing is taken and the answer
-   * says when to try again, in whole seconds (`Retry-After`).
-   */
-  take(
-    key: string,
-    rate: RateLimit,
-  ): { readonly ok: true } | { readonly ok: false; readonly retryAfterS: number } {
-    const now = this.#now();
+  /** A key's bucket, refilled to now and marked most recently used, so the bound drops the least. */
+  #bucket(key: string, rate: RateLimit, now: number): { tokens: number; at: number } {
     const perToken = rate.perMs / rate.count;
     let bucket = this.#buckets.get(key);
     if (bucket) {
       bucket.tokens = Math.min(rate.count, bucket.tokens + (now - bucket.at) / perToken);
       bucket.at = now;
-      // Most recently used last, so the bound drops the least recently used key.
       this.#buckets.delete(key);
     } else {
       if (this.#buckets.size >= this.#maxKeys) {
@@ -184,12 +176,46 @@ export class RateLimiter {
       bucket = { tokens: rate.count, at: now };
     }
     this.#buckets.set(key, bucket);
-    if (bucket.tokens < 1) {
-      const waitMs = (1 - bucket.tokens) * perToken;
-      return { ok: false, retryAfterS: Math.max(1, Math.ceil(waitMs / 1000)) };
+    return bucket;
+  }
+
+  /** How long until every bucket holds a token: 0 when they all do now. */
+  #wait(
+    wanted: readonly { readonly key: string; readonly rate: RateLimit }[],
+    now: number,
+  ): { readonly waitMs: number; readonly buckets: { tokens: number }[] } {
+    let waitMs = 0;
+    const buckets = wanted.map(({ key, rate }) => {
+      const bucket = this.#bucket(key, rate, now);
+      if (bucket.tokens < 1)
+        waitMs = Math.max(waitMs, (1 - bucket.tokens) * (rate.perMs / rate.count));
+      return bucket;
+    });
+    return { waitMs, buckets };
+  }
+
+  /**
+   * Takes one token under `key` when there is one. Without one, nothing is taken and the answer
+   * says when to try again, in whole seconds (`Retry-After`).
+   */
+  take(
+    key: string,
+    rate: RateLimit,
+  ): { readonly ok: true } | { readonly ok: false; readonly retryAfterS: number } {
+    return this.takeAll([{ key, rate }]);
+  }
+
+  /**
+   * Gives back the token `takeAll` took under every key, as far as each bucket's size: an attempt
+   * someone refused after the rates admitted it (the operator's `limits`) costs nothing (second
+   * Fable review of WP-30, 2).
+   */
+  refundAll(wanted: readonly { readonly key: string; readonly rate: RateLimit }[]): void {
+    const now = this.#now();
+    for (const { key, rate } of wanted) {
+      const bucket = this.#bucket(key, rate, now);
+      bucket.tokens = Math.min(rate.count, bucket.tokens + 1);
     }
-    bucket.tokens -= 1;
-    return { ok: true };
   }
 
   /**
@@ -199,25 +225,7 @@ export class RateLimiter {
   takeAll(
     wanted: readonly { readonly key: string; readonly rate: RateLimit }[],
   ): { readonly ok: true } | { readonly ok: false; readonly retryAfterS: number } {
-    const now = this.#now();
-    let waitMs = 0;
-    const buckets = wanted.map(({ key, rate }) => {
-      const perToken = rate.perMs / rate.count;
-      let bucket = this.#buckets.get(key);
-      if (bucket) {
-        bucket.tokens = Math.min(rate.count, bucket.tokens + (now - bucket.at) / perToken);
-        bucket.at = now;
-        this.#buckets.delete(key);
-      } else {
-        if (this.#buckets.size >= this.#maxKeys) {
-          this.#buckets.delete(this.#buckets.keys().next().value as string);
-        }
-        bucket = { tokens: rate.count, at: now };
-      }
-      this.#buckets.set(key, bucket);
-      if (bucket.tokens < 1) waitMs = Math.max(waitMs, (1 - bucket.tokens) * perToken);
-      return bucket;
-    });
+    const { waitMs, buckets } = this.#wait(wanted, this.#now());
     if (waitMs > 0) return { ok: false, retryAfterS: Math.max(1, Math.ceil(waitMs / 1000)) };
     for (const bucket of buckets) bucket.tokens -= 1;
     return { ok: true };

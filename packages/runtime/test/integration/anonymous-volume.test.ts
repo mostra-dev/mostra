@@ -8,15 +8,18 @@
  * `clients.test.ts`'s.)
  * The 30-minute run against the container image is `scripts/load-anonymous.ts`.
  */
+import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, type Opened, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
+import { control } from "../operator-support.ts";
 import {
   freePort,
   ownerEnv,
   ownerSignIn,
   type RunningServer,
+  send,
   startServer,
   stopServer,
   testConfig,
@@ -33,12 +36,19 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
   let artifactId: string;
   const accepted: string[] = [];
 
+  let operator: ReturnType<typeof control>;
+
   beforeAll(async () => {
     port = await freePort();
+    const controlPort = await freePort();
+    operator = control(controlPort);
     server = await startServer({
       data: tempDir("volume-data"),
       port,
+      env: { MOSTRA_TEST_OPERATOR_PORT: String(controlPort) },
       config: testConfig(port, {
+        // An operator whose `limits` the rates must shield (second Fable review, 2).
+        operator: fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url)),
         // The test's browsers connect from loopback: a trusted proxy here, as Caddy is.
         trustedProxies: ["127.0.0.1"],
         rateLimits: {
@@ -104,6 +114,27 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
     return { answer, ms: performance.now() - started };
   };
 
+  it("gives an attempt the operator refused its rate back (second Fable review, 2)", async () => {
+    // First, while the link's own rate is full: only the address's is at stake here.
+    const one = "203.0.113.50";
+    const who = await visitor("monday");
+    await operator.set({ limits: { submit: { code: "PAUSED_BY_PLAN", message: "Not now." } } });
+    try {
+      // More attempts than the per-IP rate of four: every one is the operator's refusal, none a
+      // 429, since a refused attempt takes nothing from the rates.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const refused = await submit(who, one);
+        expect(refused.answer.status, refused.answer.body).toBe(403);
+        expect(refused.answer.json<{ code: string }>().code).toBe("MOSTRA_REMOTE_LIMIT_REACHED");
+      }
+    } finally {
+      await operator.set({ limits: {} });
+    }
+    const taken = await submit(who, one);
+    expect(taken.answer.status, taken.answer.body).toBe(200);
+    accepted.push(taken.answer.json<{ id: string }>().id);
+  }, 60_000);
+
   it("accepts a burst from many visitors at once, quickly, with the owner offline", async () => {
     const days = ["monday", "tuesday", "wednesday"];
     const visitors = await Promise.all(
@@ -128,7 +159,14 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
   it("answers 429 past the per-IP rate, keeps the draft, and takes it after Retry-After", async () => {
     const one = "203.0.113.7";
     const visitors = await Promise.all(Array.from({ length: 6 }, () => visitor("tuesday")));
+    const asked = async () =>
+      (await operator.calls("limits")).filter((call) => call.payload["operation"] === "submit")
+        .length;
+    const askedBefore = await asked();
     const first = await Promise.all(visitors.map((who) => submit(who, one)));
+    // Six at once, past a rate of four: the operator is asked for the four the rates admitted,
+    // never for the two they refused, though all six arrived together (second Fable review, 2).
+    expect((await asked()) - askedBefore).toBe(4);
     const statuses = first.map(({ answer }) => answer.status);
     expect(statuses.filter((status) => status === 200)).toHaveLength(4);
     const limited = first.filter(({ answer }) => answer.status === 429);
@@ -238,4 +276,45 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
     expect(cursors.every((cursor) => cursor > 0)).toBe(true);
     expect(cursors).toEqual([...cursors].sort((a, b) => a - b));
   }, 120_000);
+});
+
+describe("the server's per-IP request rate (RM-08)", () => {
+  let port: number;
+  let server: RunningServer;
+
+  beforeAll(async () => {
+    port = await freePort();
+    server = await startServer({
+      data: tempDir("requests-data"),
+      port,
+      config: testConfig(port, {
+        trustedProxies: ["127.0.0.1"],
+        rateLimits: { perIp: { requests: { count: 5, per: "1m" } } },
+      }),
+    });
+    expect(server.status.status, server.stderr()).toBe("started");
+  }, 60_000);
+
+  afterAll(async () => {
+    await stopServer(server);
+  });
+
+  const from = (address: string, host: string, path: string) =>
+    send(port, host, path, { method: "GET", headers: { "x-forwarded-for": address } });
+
+  it("bounds every request from one address, the API origin's and hosted pages' alike", async () => {
+    const api = `api.localhost:${port}`;
+    const content = `content.localhost:${port}`;
+    for (let index = 0; index < 5; index++) {
+      const answer = await from("192.0.2.1", index % 2 === 0 ? api : content, "/a/nothing");
+      expect(answer.status, answer.body).not.toBe(429);
+    }
+    const past = await from("192.0.2.1", content, "/a/nothing");
+    expect(past.status).toBe(429);
+    expect(JSON.parse(past.body).code).toBe("MOSTRA_REMOTE_RATE_LIMITED");
+    expect(Number(past.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    // Another address is its own, and a health check is never counted.
+    expect((await from("192.0.2.2", content, "/a/nothing")).status).not.toBe(429);
+    expect((await from("192.0.2.1", api, "/health")).status).toBe(200);
+  }, 60_000);
 });

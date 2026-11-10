@@ -10,7 +10,7 @@
 import type { FrameTicket, HostedChrome } from "@mostra/protocol";
 import { type ReactElement, useState } from "react";
 import { nameViewer, report, signInStart } from "./api.ts";
-import { keepSignIn, pkcePair } from "./hosted.ts";
+import { keepSignIn, pkcePair, sessionUnstored } from "./hosted.ts";
 import { HOSTED_WORDS } from "./words.ts";
 
 /** The sender and the viewer, beside the page's title in the rail. */
@@ -111,7 +111,10 @@ export function ViewerChip(props: {
           </button>
         </span>
       )}
-      {signIn && viewer.kind === "anonymous" && (
+      {/* Sign-in leaves the page and comes back to a session it reads from storage: with none
+          stored (a full or blocked storage), it couldn't finish and would lose the link, so it
+          isn't offered (second Fable review of WP-30, 7). */}
+      {signIn && viewer.kind === "anonymous" && !sessionUnstored() && (
         <>
           {" "}
           <button

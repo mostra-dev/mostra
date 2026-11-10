@@ -159,9 +159,13 @@ export function createHandle(options: HandleOptions): ServerHandle {
     async remove(routeId) {
       const found = route(routeId);
       const home = await homeOf(found.home);
-      await home.remove(found.artifactId);
-      // The home reopens from its ledger on its next request, holding nothing of the artifact.
-      await options.data().closeHome(found.home);
+      try {
+        await home.remove(found.artifactId);
+      } finally {
+        // The home reopens from its ledger on its next request, holding nothing of the artifact,
+        // and nothing a removal cut off part-way left open in it (second Fable review, 8).
+        await options.data().closeHome(found.home);
+      }
       log.info("operator.remove", { routeId });
     },
   };

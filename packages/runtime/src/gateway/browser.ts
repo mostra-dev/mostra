@@ -225,9 +225,10 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     request: { readonly viewId: string; readonly expectedRevision: unknown },
   ): Promise<Response | undefined> => {
     if (!options.admitSubmit) return undefined;
-    // A repeat of a recorded submit answers that submission, and one its view or a pause refuses
-    // is refused before anything is recorded: neither spends the rates or asks the operator
-    // (Fable review of WP-30, 8).
+    // A repeat of a recorded submit answers that submission, and one a paused page or a view not
+    // the page's refuses is refused before anything is recorded: neither spends the submission
+    // rates or asks the operator (Fable review of WP-30, 8). The server's per-IP request rate
+    // still bounds them, as it bounds every request (`rateLimits.perIp.requests`).
     const page = pageOf(context);
     if (
       !interaction.wouldRecord(page, {

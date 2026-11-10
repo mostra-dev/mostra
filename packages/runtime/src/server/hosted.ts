@@ -35,7 +35,7 @@ import {
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
 import { coverageMatcher, readFieldCoverage, readServerFunctions } from "../builder/index.ts";
-import { noFaults } from "../faults.ts";
+import { type Faults, noFaults } from "../faults.ts";
 import {
   Capabilities,
   capabilityKey,
@@ -174,6 +174,8 @@ export interface HostedHomeOptions {
   /** The shell's built files. */
   readonly shellDir: string | undefined;
   /** The relay's server settings (`relay` in the configuration, D165 item 4). */
+  /** The test fault points (`MOSTRA_TEST_FAULTS`); none by default. */
+  readonly faults?: Faults;
   readonly relay?: {
     readonly waitingRunsPerArtifact?: number | undefined;
     readonly drainPerSecond?: number | undefined;
@@ -212,11 +214,9 @@ function refuse(code: Parameters<typeof createDiagnostic>[0], message: string): 
 
 /** Opens the parts of a hosted home over its ledger. */
 export async function openHostedHome(options: HostedHomeOptions): Promise<HostedHome> {
+  const faults = options.faults ?? noFaults;
   const { id, dir, ledger, directory, log } = options;
   const registry = await openRegistry({ home: dir, ledger });
-  /** Pending pushes: version ID → the client files still missing. */
-  /** For tests: a removal cut off once after the home's purge (`MOSTRA_TEST_REMOVE_INTERRUPT`). */
-  let interruptedOnce = false;
   /** Pending pushes: version ID → each missing client file's SHA-256 and the size its listing gives. */
   const pending = new Map<string, Map<string, number>>();
   let incarnation = options.incarnation;
@@ -1213,12 +1213,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       const going = new Set(plan.going);
       if (registry.list({}).some((summary) => summary.id === artifactId)) revokeLinks(artifactId);
       const removed = ledger.removal((db) => purgeArtifact(db, artifactId));
-      if (process.env["MOSTRA_TEST_REMOVE_INTERRUPT"] === "1" && !interruptedOnce) {
-        interruptedOnce = true;
-        throw new Error(
-          "the removal was cut off after the home's purge (MOSTRA_TEST_REMOVE_INTERRUPT)",
-        );
-      }
+      // A test cuts the removal off here, between its two databases (`remove:after-purge`).
+      faults.at("remove:after-purge");
       // Files another version of this home still names stay this home's.
       const kept = new Set<string>();
       for (const other of registry.list({})) {

@@ -558,6 +558,16 @@ describe("operator ports (HO-09)", () => {
     ).links[0]?.account.id as string;
     expect(account).toBe("op:ada");
     await operator.set({ statuses: { [account]: "suspended" } });
+    // The owner is told no for now, never signed out: its refresh token stays good, so it comes
+    // back by itself once the operator lifts the suspension (second Fable review, 1).
+    const states = new Set<string>();
+    const sampling = setInterval(() => {
+      void owner.client.call("remote/status", {}).then((answer) => {
+        const state = (answer.result as { links?: { state: string }[] } | undefined)?.links?.[0]
+          ?.state;
+        if (state !== undefined) states.add(state);
+      });
+    }, 200);
     // Asked within the recheck bound, then refused everywhere the account acts.
     await eventually(async () => (await mcpCall(token)).status === 403, 10_000, "/mcp refused");
     await eventually(
@@ -568,6 +578,10 @@ describe("operator ports (HO-09)", () => {
       "the binding closed",
     );
     expect((await operator.calls("accounts.status")).length).toBeGreaterThan(0);
+    // Long enough for the owner to redial and refresh while suspended.
+    await new Promise((resolve) => setTimeout(resolve, 4_000));
+    clearInterval(sampling);
+    expect([...states]).not.toContain("signed-out");
     // The operator lifts it: the account acts again, and the owner's binding comes back.
     await operator.set({ statuses: {} });
     await eventually(async () => (await mcpCall(token)).status === 200, 10_000, "/mcp again");
@@ -602,6 +616,12 @@ describe("operator ports (HO-09)", () => {
         { user_code: userCode, name, provider: "dev", decision: "approve" },
         { origin: `http://api.localhost:${port}` },
       );
+    // A made-up code resolves nobody: the operator isn't asked and no account is made (second
+    // Fable review, 5).
+    const resolvedBefore = (await operator.calls("accounts.resolve")).length;
+    const madeUp = await approve("ZZZZ-ZZZZ", "Nobody");
+    expect(madeUp.status).toBe(400);
+    expect((await operator.calls("accounts.resolve")).length).toBe(resolvedBefore);
     // The operator refuses this person: the form links nothing.
     await operator.set({ accounts: { mallory: { refused: { message: "Not on this server." } } } });
     const refused = await pending();
@@ -654,7 +674,7 @@ describe("operator ports (HO-09)", () => {
 
   it("finishes a removal cut off between the home's ledger and the directory (Fable review, 4)", async () => {
     await stopServer(server);
-    await start({ MOSTRA_TEST_REMOVE_INTERRUPT: "1" });
+    await start({ MOSTRA_TEST_FAULTS: "remove:after-purge:throw-once" });
     const shared = await share();
     const url = ok<{ url: string }>(shared.answer).url;
     const routeId = routeOf(url);

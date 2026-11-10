@@ -26,6 +26,7 @@ import {
   RouteId,
   RpcError,
 } from "@mostra/protocol";
+import { faultsFrom } from "../faults.ts";
 import {
   BASE_HEADERS,
   documentHeaders,
@@ -126,8 +127,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     ipv6Prefix: config.rateLimits?.ipv6Prefix,
   });
   const rates = new RateLimiter();
+  const faults = faultsFrom(options.env);
   const rateOf = (rate: { count: number; per: string } | undefined) =>
     rate === undefined ? undefined : { count: rate.count, perMs: durationMs(rate.per as Duration) };
+  /**
+   * `rateLimits.perIp.requests`: every request to the server, from one client address (IPv6 per
+   * /64), API origin and hosted hosts alike, before anything else is read (D165 item 13). A
+   * health check is never counted. Without the setting there is no limit.
+   */
+  const perIpRequests = rateOf(config.rateLimits?.perIp?.requests);
   /** Who owns a home, as its pages' sender line names them (D161). */
   const ownerOf = (homeId: string): HomeOwner => {
     const row = data.directory.read((db) =>
@@ -172,6 +180,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   const assembler: HomeAssembler<HostedHome> = {
     assemble: (home) =>
       openHostedHome({
+        faults,
         id: home.id,
         dir: home.dir,
         ledger: home.ledger,
@@ -367,11 +376,25 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing. Only
     // the API origin's own sign-in pages read the cookies it set itself.
     if (host !== apiHost) delete request.headers.cookie;
-    if (host === apiHost) {
-      if (request.method === "GET" && path === "/health") {
-        json(response, 200, { status: "ok", homes: data.open().length });
+    if (host === apiHost && request.method === "GET" && path === "/health") {
+      json(response, 200, { status: "ok", homes: data.open().length });
+      return;
+    }
+    if (perIpRequests) {
+      const taken = rates.take(`request-ip:${clients.keyOf(clients.of(request))}`, perIpRequests);
+      if (!taken.ok) {
+        response.setHeader("retry-after", String(taken.retryAfterS));
+        refusal(
+          response,
+          429,
+          createDiagnostic("MOSTRA_REMOTE_RATE_LIMITED", {
+            message: "Too many requests from this address; try again shortly.",
+          }),
+        );
         return;
       }
+    }
+    if (host === apiHost) {
       served.request(request, response, path).catch((error: unknown) => {
         log.error("server.api_failed", { path, error });
         if (!response.headersSent) {

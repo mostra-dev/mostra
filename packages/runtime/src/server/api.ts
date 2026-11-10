@@ -669,6 +669,13 @@ export function createApi(options: ApiOptions): Api {
             return;
           }
           const approve = body.get("decision") === "approve";
+          // The code first, read only: a made-up code resolves nobody, makes no account and asks
+          // the operator nothing (second Fable review of WP-30, 5).
+          const pending = auth.pendingCode(code);
+          if (!pending.ok) {
+            page(response, 400, devicePage({ code, provider, message: pending.reason }));
+            return;
+          }
           // The typed name is an identity like any provider's: the operator's `accounts.resolve`
           // decides its account, its refusals, suspensions and first steps (D165 item 9).
           const identity = { provider: provider.id, subject: name.toLowerCase(), name };

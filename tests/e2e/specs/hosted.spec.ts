@@ -299,6 +299,9 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
     // The link stays in the address bar, so a reload still has it, and the viewer is told.
     expect(new URL(page.url()).hash).toMatch(/^#t=/);
     await expect(page.locator("[data-mostra-storage]")).toBeVisible();
+    // Sign-in comes back to a session it reads from storage, so with none stored it isn't offered
+    // (the trusted chrome's case shows it where storage works; second Fable review, 7).
+    await expect(page.locator("[data-mostra-sign-in]")).toHaveCount(0);
     // A reload opens the page again from the link that stayed (the answer belonged to the session
     // the browser couldn't keep; FAILURE_MODEL §11.3).
     await page.reload();

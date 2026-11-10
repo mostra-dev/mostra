@@ -485,19 +485,10 @@ export function hostedPages(
           );
         }
       }
-      // The operator's `limits`: a refusal keeps the draft; no answer lets the submission through.
-      const route = options.routeOf(page.artifactId);
-      const verdict = await operator.limit({
-        account: options.owner().account,
-        home: options.homeId,
-        artifact: page.artifactId,
-        ...(route ? { routeId: route.id } : {}),
-        operation: "submit",
-      });
-      const refused = limitRefusal(verdict);
-      if (refused) return refused;
-      // The server's rates (D165 item 13), last and together: an attempt refused anywhere takes
-      // nothing from any bucket, nothing is recorded past them, and the draft is kept.
+      // The server's rates (D165 item 13), then the operator's `limits`. The rates are taken first,
+      // together or not at all (Fable review, 8), so an attempt past them never reaches the
+      // operator, concurrent ones included; an attempt the operator then refuses gets its tokens
+      // back (second Fable review, 2). Nothing is recorded past either, and the draft is kept.
       const limits = options.rateLimits;
       const wanted: { key: string; rate: NonNullable<typeof limits.perIpSubmissions> }[] = [];
       if (limits.perIpSubmissions) {
@@ -510,7 +501,19 @@ export function hostedPages(
         wanted.push({ key: `submit-link:${page.tokenId}`, rate: limits.perLinkSubmissions });
       }
       const taken = options.rates.takeAll(wanted);
-      return taken.ok ? undefined : rateRefusal(taken.retryAfterS);
+      if (!taken.ok) return rateRefusal(taken.retryAfterS);
+      // The operator's `limits`: a refusal keeps the draft; no answer lets the submission through.
+      const route = options.routeOf(page.artifactId);
+      const verdict = await operator.limit({
+        account: options.owner().account,
+        home: options.homeId,
+        artifact: page.artifactId,
+        ...(route ? { routeId: route.id } : {}),
+        operation: "submit",
+      });
+      const refused = limitRefusal(verdict);
+      if (refused) options.rates.refundAll(wanted);
+      return refused;
     },
 
     shellRoutes,

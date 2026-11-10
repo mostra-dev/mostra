@@ -488,8 +488,23 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         "SELECT grant_id, expires_at, used_at FROM token WHERE hash = ? AND kind = 'refresh'",
         hash,
       );
-      if (!row || !grantLiveIn(db, row.grant_id) || grantClient(db, row.grant_id) !== clientId) {
+      if (
+        !row ||
+        !grantLiveIn(db, row.grant_id, { anyStatus: true }) ||
+        grantClient(db, row.grant_id) !== clientId
+      ) {
         return oauthError(400, "invalid_grant", "The refresh token isn't valid; sign in again.");
+      }
+      // A suspended account's refresh token stays good: the refresh is refused for now, without
+      // touching the token, so the instance or client keeps it and refreshes once the operator
+      // lifts the suspension. `invalid_grant` would tell it to sign in again (second Fable
+      // review of WP-30, 1).
+      if (!grantLiveIn(db, row.grant_id)) {
+        return oauthError(
+          403,
+          "temporarily_unavailable",
+          "This account is suspended; its sign-in works again once the server's operator lifts the suspension.",
+        );
       }
       if (Date.parse(row.expires_at) <= now()) {
         return oauthError(400, "invalid_grant", "The refresh token expired; sign in again.");
