@@ -13,11 +13,10 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
-import { ApiBrowser, approve, located, signIn } from "../oauth-support.ts";
+import { ApiBrowser, approve, located, ownerSignInThroughPage, signIn } from "../oauth-support.ts";
 import {
   freePort,
   ownerEnv,
-  ownerSignIn,
   type RunningServer,
   startServer,
   stopServer,
@@ -207,7 +206,9 @@ describe("identity providers and a page's sign-in (HY-08)", () => {
     expect(server.status.status, server.stderr()).toBe("started");
     owner = new GatewayHome();
     await owner.start({ env: ownerEnv(port) });
-    await ownerSignIn(owner.client, port, "Ada");
+    // Other providers beside the development one: no development form on the device page, so the
+    // owner signs in on the page as a person would (D167 item 23).
+    await ownerSignInThroughPage(owner.client, port, "Ada");
   }, 120_000);
 
   afterAll(async () => {

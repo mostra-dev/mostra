@@ -151,3 +151,43 @@ export async function mcpAccessToken(port: number, name: string): Promise<string
   expect(issued.status, issued.body).toBe(200);
   return (JSON.parse(issued.body) as { access_token: string }).access_token;
 }
+
+/**
+ * Links an owner instance on a server whose device page offers no development form (another
+ * provider is configured beside it): the person signs in on the API origin through the
+ * development provider's page, then approves the machine from their session (D167 item 23).
+ */
+export async function ownerSignInThroughPage(
+  client: {
+    call(
+      method: string,
+      params: unknown,
+      timeoutMs?: number,
+    ): Promise<{ result?: unknown; error?: unknown }>;
+  },
+  port: number,
+  name: string,
+): Promise<{ instanceId: string; account: { id: string; name?: string } }> {
+  const started = await client.call("remote/login", { server: `http://api.localhost:${port}` });
+  const { loginId, userCode } = started.result as { loginId: string; userCode: string };
+  const who = new ApiBrowser(port, `api.localhost:${port}`);
+  const page = await who.ask("GET", `/device?user_code=${encodeURIComponent(userCode)}`);
+  const back = await signIn(who, page, name);
+  const approval = await who.ask("GET", `${back.pathname}${back.search}`);
+  const csrf = /name="csrf" value="([^"]+)"/.exec(approval.body)?.[1];
+  expect(csrf, approval.body).toBeDefined();
+  const approved = await who.ask("POST", "/device", {
+    csrf: csrf as string,
+    user_code: userCode,
+    session_decision: "approve",
+  });
+  expect(approved.status, approved.body).toBe(200);
+  const waited = await client.call("remote/login.wait", { loginId, timeoutMs: 30_000 }, 40_000);
+  const result = waited.result as {
+    status: string;
+    instanceId: string;
+    account: { id: string; name?: string };
+  };
+  expect(result?.status, JSON.stringify(waited)).toBe("signed-in");
+  return result;
+}
