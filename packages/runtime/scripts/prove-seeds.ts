@@ -707,6 +707,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MC-04",
+    name: "a relayed publish sends the owner's local link, with its secret, to the server",
+    file: "src/link/author.ts",
+    from: "        const { url: _local, tokenId: _token, ...crossing } = receipt;\n        return crossing;",
+    to: "        return receipt;",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
+  {
+    requirement: "MC-04",
     name: "a code presented twice leaves the grant its first presentation made",
     file: "src/server/auth.ts",
     from: "            if (spent.grantId !== undefined) {",

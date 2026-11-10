@@ -142,7 +142,15 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
       }
       case "verify/screenshot": {
         const path = resolve(String(given["path"] ?? ""));
-        if (!within(verifyCache, path)) return {};
+        let real = path;
+        try {
+          real = realpathSync.native(path);
+        } catch {
+          return {};
+        }
+        // Only verify's own screenshots, by name and by where the name really leads.
+        if (!within(verifyCache, path) || !within(realpathSync.native(verifyCache), real))
+          return {};
         try {
           return { png: (await readFile(path)).toString("base64") };
         } catch {
@@ -152,13 +160,16 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
       case "artifact/create":
         return local(artifactCreateMethod, { ...given, dir: dirOf(given["dir"]) });
       case "artifact/get": {
+        // The relay asks which artifact a directory is; it learns that and its title, never this
+        // home's own links (their secrets open its local pages) or anything else of the artifact.
         const artifact = given["artifact"] as { path?: unknown; artifactId?: unknown } | undefined;
-        return local(artifactGetMethod, {
+        const detail = await local<object, { id: string; title: string }>(artifactGetMethod, {
           artifact:
             artifact?.path !== undefined
               ? { path: dirOf(artifact.path) }
               : { artifactId: String(artifact?.artifactId ?? "") },
         });
+        return { id: detail.id, title: detail.title };
       }
       case "artifact/verify": {
         const source = given["source"] as { path?: unknown } | undefined;
@@ -179,7 +190,10 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
             server,
           });
         }
-        return receipt;
+        // The receipt crosses the relay without this home's default link: its secret opens the
+        // local page, and the server answers its own hosted link instead.
+        const { url: _local, tokenId: _token, ...crossing } = receipt;
+        return crossing;
       }
       default:
         throw outside(`The relay serves no authoring method ${method as string}.`);

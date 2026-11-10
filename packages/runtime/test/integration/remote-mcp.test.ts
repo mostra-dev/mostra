@@ -7,10 +7,12 @@
  * workspace; a publish answers the hosted link, which a person opens and answers; without a
  * connected instance authoring answers `MOSTRA_REMOTE_NO_INSTANCE` while reading keeps working.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
-import { GatewayHome } from "../gateway-home.ts";
+import { GatewayHome, ok } from "../gateway-home.ts";
 import { mcpAccessToken } from "../oauth-support.ts";
 import {
   freePort,
@@ -45,6 +47,8 @@ describe("the remote MCP server (MC-04)", () => {
   let server: RunningServer;
   let owner: GatewayHome;
   let workspace: string;
+  /** Every binding message the owner sent or received. */
+  let trace: string;
   let accessToken: string;
   const clients: Client[] = [];
 
@@ -66,7 +70,10 @@ describe("the remote MCP server (MC-04)", () => {
     expect(server.status.status, server.stderr()).toBe("started");
     workspace = tempDir("mcp-workspace");
     owner = new GatewayHome();
-    await owner.start({ env: { ...ownerEnv(port), MOSTRA_MCP_WORKSPACE: workspace } });
+    trace = join(tempDir("mcp-trace"), "binding.ndjson");
+    await owner.start({
+      env: { ...ownerEnv(port), MOSTRA_MCP_WORKSPACE: workspace, MOSTRA_TEST_BINDING_TRACE: trace },
+    });
     await ownerSignIn(owner.client, port, "Ada");
     accessToken = await mcpAccessToken(port, "Ada");
   }, 120_000);
@@ -128,6 +135,13 @@ describe("the remote MCP server (MC-04)", () => {
     expect(receipt.artifactId).toBe(made.artifactId);
     // The hosted link, on the user-content domain, never the owner's loopback.
     expect(new URL(receipt.url).host).toBe(`content.localhost:${port}`);
+    // The owner's own default link (its secret opens the local page) never crossed the relay.
+    const local = ok<{ url: string }>(
+      await owner.client.call("view/default", { artifact: { artifactId: made.artifactId } }),
+    );
+    const secret = new URL(local.url).hash.slice("#t=".length);
+    expect(secret).toMatch(/^[0-9A-Za-z]{26}$/);
+    expect(readFileSync(trace, "utf8")).not.toContain(secret);
 
     const opened = JSON.parse(
       (await call(client, "artifact_open", { artifact: made.artifactId })).text,
