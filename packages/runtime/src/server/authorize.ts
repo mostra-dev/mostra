@@ -108,6 +108,8 @@ export interface Authorize {
   ): { readonly accountId: string; readonly hash: string } | undefined;
   /** A CSRF token for a signed-in browser's form. */
   csrf(sessionHash: string, purpose: string): string;
+  /** The providers a sign-in may use now: configured ones, then the operator's. */
+  providers(): Promise<readonly { readonly id: string; readonly label: string }[]>;
   /** Starts a sign-in whose end continues at a page of the API origin (the device page). */
   signInPage(response: ServerResponse, next: string, message?: string): Promise<void>;
 }
@@ -589,6 +591,8 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     sessionAccount,
     csrf,
     signInPage,
+    providers: async () =>
+      (await providers()).map((provider) => ({ id: provider.id, label: provider.label })),
 
     startViewerSignin(signin, challenge) {
       const state = token();

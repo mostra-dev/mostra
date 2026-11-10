@@ -221,4 +221,32 @@ describe("pausing a hosted artifact (RM-09)", () => {
     const accepted = await submit(who);
     expect(accepted.status, accepted.body).toBe(200);
   }, 120_000);
+
+  it("keeps the owner's pause when the operator lifts its own over it", async () => {
+    const who = await visitor("written under both pauses");
+    const paused = await owner.client.call("artifact/pause", {
+      artifact: { artifactId },
+      paused: true,
+      reason: "Closed until Monday",
+    });
+    expect(
+      (paused as { result?: { paused: boolean } }).result?.paused,
+      JSON.stringify(paused),
+    ).toBe(true);
+    expect((await operator.handle("pause", routeId, "Under review")).status).toBe(200);
+    expect((await ticket(who)).json<{ paused?: { by: string } }>().paused?.by).toBe("operator");
+    // The operator's resume lifts its own pause only: the owner's stands, and the page says so.
+    expect((await operator.handle("resume", routeId)).status).toBe(200);
+    const shown = (await ticket(who)).json<{ paused?: { by: string; reason?: string } }>();
+    expect(shown.paused).toEqual({ by: "owner", reason: "Closed until Monday" });
+    expect((await submit(who)).status).toBe(423);
+    // The owner's resume opens it again.
+    const resumed = await owner.client.call("artifact/pause", {
+      artifact: { artifactId },
+      paused: false,
+    });
+    expect((resumed as { result?: { paused: boolean } }).result?.paused).toBe(false);
+    const accepted = await submit(who);
+    expect(accepted.status, accepted.body).toBe(200);
+  }, 120_000);
 });

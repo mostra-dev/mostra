@@ -14,16 +14,26 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { MutationId } from "@mostra/protocol";
+import Database from "better-sqlite3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
-import { ApiBrowser, authorizeUrl, located, pkce, register, signIn } from "../oauth-support.ts";
+import {
+  ApiBrowser,
+  authorizeUrl,
+  located,
+  mcpAccessToken,
+  pkce,
+  register,
+  signIn,
+} from "../oauth-support.ts";
 import { type Call, control } from "../operator-support.ts";
 import {
   freePort,
   loopbackFetch,
   ownerEnv,
   ownerSignIn,
+  postForm,
   type RunningServer,
   send,
   startServer,
@@ -136,6 +146,10 @@ describe("operator ports (HO-09)", () => {
       linkHost: null,
       policy: {},
       pushed: null,
+      accounts: {},
+      statuses: {},
+      providers: [],
+      credentials: {},
     });
   });
 
@@ -495,6 +509,147 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
+
+  /** The owner's hosted home, from the server's directory. */
+  const homeOf = async (): Promise<string> => {
+    const account = ok<{ links: { account: { id: string } }[] }>(
+      await owner.client.call("remote/status", {}),
+    ).links[0]?.account.id;
+    const db = new Database(join(data, "server.sqlite"), { readonly: true, fileMustExist: true });
+    try {
+      return (
+        db.prepare("SELECT id FROM home WHERE owner_account_id = ?").get(account) as { id: string }
+      ).id;
+    } finally {
+      db.close();
+    }
+  };
+
+  /** An MCP call over `/mcp` with a bearer token: its status and body. */
+  const mcpCall = (bearer: string) =>
+    send(port, `api.localhost:${port}`, "/mcp", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${bearer}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+
+  it("lets a suspended home use /mcp no more than its pages (Fable review, 1)", async () => {
+    const token = await mcpAccessToken(port, "Ada");
+    expect((await mcpCall(token)).status).toBe(200);
+    const home = await homeOf();
+    expect((await operator.handle("suspendHome", home, "Terms")).status).toBe(200);
+    const refused = await mcpCall(token);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toContain("MOSTRA_REMOTE_HOME_SUSPENDED");
+    expect((await operator.handle("resumeHome", home)).status).toBe(200);
+    expect((await mcpCall(token)).status).toBe(200);
+  }, 120_000);
+
+  it("suspends an account on the operator's word: its MCP calls, refreshes and binding (Fable review, 6)", async () => {
+    const token = await mcpAccessToken(port, "Ada");
+    expect((await mcpCall(token)).status).toBe(200);
+    const account = ok<{ links: { account: { id: string } }[] }>(
+      await owner.client.call("remote/status", {}),
+    ).links[0]?.account.id as string;
+    expect(account).toBe("op:ada");
+    await operator.set({ statuses: { [account]: "suspended" } });
+    // Asked within the recheck bound, then refused everywhere the account acts.
+    await eventually(async () => (await mcpCall(token)).status === 403, 10_000, "/mcp refused");
+    await eventually(
+      async () =>
+        ok<{ links: { state: string }[] }>(await owner.client.call("remote/status", {})).links[0]
+          ?.state !== "connected",
+      30_000,
+      "the binding closed",
+    );
+    expect((await operator.calls("accounts.status")).length).toBeGreaterThan(0);
+    // The operator lifts it: the account acts again, and the owner's binding comes back.
+    await operator.set({ statuses: {} });
+    await eventually(async () => (await mcpCall(token)).status === 200, 10_000, "/mcp again");
+    await eventually(
+      async () =>
+        ok<{ links: { state: string }[] }>(await owner.client.call("remote/status", {})).links[0]
+          ?.state === "connected",
+      90_000,
+      "the binding back",
+    );
+  }, 180_000);
+
+  it("approves a device code through the development form only as the operator resolves it (Fable review, 5)", async () => {
+    const pending = async () => {
+      const started = await postForm(port, "/oauth/device", { client_id: "mostra-cli" });
+      return JSON.parse(started.body) as { device_code: string; user_code: string };
+    };
+    const poll = async (deviceCode: string) =>
+      JSON.parse(
+        (
+          await postForm(port, "/oauth/token", {
+            client_id: "mostra-cli",
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+            device_code: deviceCode,
+          })
+        ).body,
+      ) as { error?: string };
+    const approve = (userCode: string, name: string) =>
+      postForm(
+        port,
+        "/device",
+        { user_code: userCode, name, provider: "dev", decision: "approve" },
+        { origin: `http://api.localhost:${port}` },
+      );
+    // The operator refuses this person: the form links nothing.
+    await operator.set({ accounts: { mallory: { refused: { message: "Not on this server." } } } });
+    const refused = await pending();
+    const answer = await approve(refused.user_code, "Mallory");
+    expect(answer.status).toBe(403);
+    expect(answer.body).toContain("Not on this server.");
+    expect((await poll(refused.device_code)).error).toBe("authorization_pending");
+    // While the operator supplies providers of its own, the page offers no development form, and
+    // a post of one is refused too.
+    await operator.set({
+      accounts: {},
+      providers: [{ id: "acme", label: "Acme SSO", behaviour: "ok" }],
+    });
+    const hidden = await pending();
+    expect((await approve(hidden.user_code, "Grace")).status).toBe(400);
+    expect((await poll(hidden.device_code)).error).toBe("authorization_pending");
+    await operator.set({ providers: [] });
+  }, 60_000);
+
+  it("links no instance for an operator's key used on /mcp first (Fable review, 3)", async () => {
+    const key = "op-key-bob-3a9c7e1f5d2b8a4c6e0f";
+    await operator.set({
+      credentials: { [key]: { account: "op:bob", scope: ["mostra"], subject: "laptop" } },
+    });
+    expect((await mcpCall(key)).status).toBe(200);
+    const links = (): { id: string; is_default: number }[] => {
+      const db = new Database(join(data, "server.sqlite"), { readonly: true, fileMustExist: true });
+      try {
+        return db
+          .prepare("SELECT id, is_default FROM instance_link WHERE account_id = ?")
+          .all("op:bob") as { id: string; is_default: number }[];
+      } finally {
+        db.close();
+      }
+    };
+    expect(links()).toEqual([]);
+    // Its binding links one, the account's default.
+    const cell = new GatewayHome();
+    await cell.start({ env: ownerEnv(port) });
+    try {
+      const linked = ok<{ instanceId: string; default: boolean }>(
+        await cell.client.call("remote/link", { server: `http://api.localhost:${port}`, key }),
+      );
+      expect(linked.default).toBe(true);
+      expect(links()).toEqual([{ id: linked.instanceId, is_default: 1 }]);
+    } finally {
+      await cell.stop();
+    }
+  }, 120_000);
 
   it("asks for the operator's identity providers at every sign-in, bounded, and checks what they name", async () => {
     const api = `http://api.localhost:${port}`;

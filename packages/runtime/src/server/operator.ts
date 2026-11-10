@@ -62,6 +62,7 @@ export interface Operator {
     readonly metering: boolean;
     readonly accounts: boolean;
     readonly authenticate: boolean;
+    readonly status: boolean;
     readonly abuse: boolean;
     readonly pushed: boolean;
     readonly policy: boolean;
@@ -315,6 +316,7 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
     metering: typeof ports.metering?.record === "function",
     accounts: typeof ports.accounts?.resolve === "function",
     authenticate: typeof ports.accounts?.authenticate === "function",
+    status: typeof ports.accounts?.status === "function",
     abuse: typeof ports.abuse?.report === "function",
     pushed: typeof ports.abuse?.pushed === "function",
     policy: typeof ports.policy?.link === "function",

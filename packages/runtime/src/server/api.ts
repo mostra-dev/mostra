@@ -10,6 +10,7 @@ import { rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
+import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { CredentialResource } from "@mostra/protocol/operator";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Log } from "../log.ts";
@@ -25,6 +26,9 @@ import type { Operator } from "./operator.ts";
 
 /** How often an open binding's grant is checked again: a revocation closes it within 60 s. */
 const GRANT_RECHECK_MS = 30_000;
+
+/** How often the operator is asked again whether an account is suspended (`accounts.status`). */
+const STATUS_RECHECK_MS = 30_000;
 
 /** Dynamic Client Registrations an address may make a minute (D167). */
 const REGISTRATIONS_PER_MINUTE = 10;
@@ -205,29 +209,86 @@ export function createApi(options: ApiOptions): Api {
   const bindingHomes = new Map<WebSocket, string>();
 
   /**
+   * Whether the device page offers the development provider's form (D166 item 4): only while it is
+   * the one provider a sign-in may use now, none other configured and none the operator supplies.
+   * The page's GET and its POST judge by this one rule.
+   */
+  const devFormOffered = async (): Promise<boolean> => {
+    const development = developmentProvider(config);
+    if (development === undefined) return false;
+    const offered = await options.authorize.providers();
+    return offered.length === 1 && offered[0]?.id === development.id;
+  };
+
+  /**
+   * The operator's word on accounts (`accounts.status`, §18.6), asked at most every 30 s per
+   * account and written into the directory, so a suspension reaches every grant: its refreshes, its
+   * bindings, its MCP calls (Fable review of WP-30, 6). An operator that doesn't answer leaves the
+   * last word standing.
+   */
+  const statusAsked = new Map<string, number>();
+  const accountStanding = async (accountId: string): Promise<"active" | "suspended"> => {
+    if (options.operator?.has.status === true) {
+      const last = statusAsked.get(accountId);
+      const every = Math.min(STATUS_RECHECK_MS, options.recheckMs ?? STATUS_RECHECK_MS);
+      if (last === undefined || Date.now() - last >= every) {
+        statusAsked.set(accountId, Date.now());
+        if (statusAsked.size > 10_000)
+          statusAsked.delete(statusAsked.keys().next().value as string);
+        const said = await options.operator.status(accountId);
+        if (said !== undefined) auth.setAccountStatus(accountId, said);
+      }
+    }
+    return auth.accountStatus(accountId);
+  };
+
+  /**
+   * Whether an authenticated caller may act now: its home not suspended by the operator, its
+   * account not suspended (D165 item 9). One place for `/host`, `/files`, `/mcp` and `/link`
+   * (Fable review of WP-30, 1).
+   */
+  const standing = async (who: Authenticated): Promise<Diagnostic | undefined> => {
+    if (options.suspended?.(who.homeId) || (await accountStanding(who.accountId)) === "suspended") {
+      return createDiagnostic("MOSTRA_REMOTE_HOME_SUSPENDED", {
+        message: "This account's pages are suspended by the server's operator.",
+      });
+    }
+    return undefined;
+  };
+
+  /**
    * The account a bearer token names for one resource (`host`, `files` or `mcp`): a token this
    * server issued for exactly that audience (RFC 8707; a token for `/mcp` opens no binding), or a
-   * credential the operator issued (`accounts.authenticate`, §18.6).
+   * credential the operator issued (`accounts.authenticate`, §18.6); or why it may not act now.
    */
   const bearer = async (
     request: IncomingMessage,
     resource: CredentialResource,
-  ): Promise<Authenticated | undefined> => {
+  ): Promise<Authenticated | { readonly refused: Diagnostic } | undefined> => {
     const header = request.headers.authorization ?? "";
     const match = /^bearer\s+(\S+)$/i.exec(header);
     if (!match) return undefined;
     const token = match[1] as string;
     const audience = `${apiOrigin}/${resource === "files" ? "host" : resource}`;
     const issued = auth.authenticate(token);
-    if (issued) return issued.resource === audience ? issued : undefined;
-    if (!options.operator?.has.authenticate) return undefined;
-    const credential = await options.operator.authenticate(token, resource);
-    if (!credential?.scope.includes("mostra")) return undefined;
-    return auth.credentialSession({
-      account: credential.account,
-      subject: credential.subject ?? "default",
-      resource: audience,
-    });
+    let who: Authenticated | undefined;
+    if (issued) {
+      if (issued.resource !== audience) return undefined;
+      who = issued;
+    } else {
+      if (!options.operator?.has.authenticate) return undefined;
+      const credential = await options.operator.authenticate(token, resource);
+      if (!credential?.scope.includes("mostra")) return undefined;
+      who = auth.credentialSession({
+        account: credential.account,
+        subject: credential.subject ?? "default",
+        resource: audience,
+        // Only the binding links an instance; a key used on /mcp or /files names none.
+        link: resource === "host",
+      });
+    }
+    const refused = await standing(who);
+    return refused ? { refused } : who;
   };
 
   const unauthorized = (response: ServerResponse, message: string): void =>
@@ -291,15 +352,12 @@ export function createApi(options: ApiOptions): Api {
       unauthorized(response, "Version files need the binding's access token.");
       return;
     }
-    const home = await options.home(who.homeId);
-    options.touch(who.homeId);
-    if (options.suspended?.(who.homeId)) {
-      send(response, 403, {
-        code: "MOSTRA_REMOTE_HOME_SUSPENDED",
-        message: "This account's pages are suspended by the server's operator.",
-      });
+    if ("refused" in who) {
+      send(response, 403, who.refused);
       return;
     }
+    const home = await options.home(who.homeId);
+    options.touch(who.homeId);
     // A file is accepted only for a pending push of this home that names it as missing, so no
     // home stores bytes nobody asked for, nor learns what another home holds (§18.2).
     if (!home.wanted(sha)) {
@@ -370,6 +428,10 @@ export function createApi(options: ApiOptions): Api {
         // whether that instance is the account's default; `default=1` makes it so. A person's
         // device-grant token and an operator-issued key alike, for the binding's own resource.
         const who = await bearer(request, "host");
+        if (who && "refused" in who) {
+          send(response, 403, who.refused);
+          return;
+        }
         if (!who || who.linkId === undefined) {
           unauthorized(response, "This credential links no instance on this server.");
           return;
@@ -474,6 +536,12 @@ export function createApi(options: ApiOptions): Api {
           send(response, 400, { error: "invalid_request", error_description: "Send a form." });
           return;
         }
+        // A refresh asks the operator's word on its account first: a suspended account refreshes
+        // nothing, and one the operator lifted refreshes again (`accounts.status`, §18.6).
+        if (body.get("grant_type") === "refresh_token") {
+          const account = auth.refreshAccount(body.get("refresh_token") ?? "");
+          if (account !== undefined) await accountStanding(account);
+        }
         const answer = auth.token(body);
         if ("error" in answer) {
           send(response, answer.status, {
@@ -502,11 +570,7 @@ export function createApi(options: ApiOptions): Api {
           }
           // Real providers sign the person in first; the development one asks on this page, when it
           // is the only one: none other configured, and no operator that supplies its own (D167).
-          if (
-            !provider ||
-            (config.identityProviders?.length ?? 0) > 1 ||
-            options.operator?.has.identity === true
-          ) {
+          if (!(await devFormOffered())) {
             await options.authorize.signInPage(
               response,
               `/device?user_code=${encodeURIComponent(code)}`,
@@ -570,7 +634,15 @@ export function createApi(options: ApiOptions): Api {
           const body = posted ?? (await form(request));
           const code = body?.get("user_code") ?? "";
           const name = (body?.get("name") ?? "").trim().slice(0, 64);
-          if (!body || !provider || body.get("provider") !== provider.id || name === "") {
+          // Only where the page offers the development form: a server with real providers, or an
+          // operator's, signs people in through them alone (Fable review of WP-30, 5).
+          if (
+            !body ||
+            !provider ||
+            !(await devFormOffered()) ||
+            body.get("provider") !== provider.id ||
+            name === ""
+          ) {
             page(
               response,
               400,
@@ -579,11 +651,31 @@ export function createApi(options: ApiOptions): Api {
             return;
           }
           const approve = body.get("decision") === "approve";
-          const decided = auth.decide({
-            code,
-            approve,
-            identity: { provider: provider.id, subject: name.toLowerCase(), name },
-          });
+          // The typed name is an identity like any provider's: the operator's `accounts.resolve`
+          // decides its account, its refusals, suspensions and first steps (D165 item 9).
+          const identity = { provider: provider.id, subject: name.toLowerCase(), name };
+          let decided: { readonly ok: true } | { readonly ok: false; readonly reason: string };
+          if (!approve) decided = auth.decide({ code, approve: false, identity });
+          else {
+            const account = await auth.resolveAccount(identity, 0);
+            if (account.kind !== "account") {
+              const reason =
+                account.kind === "unavailable"
+                  ? "Sign-in is unavailable for a moment; try again shortly."
+                  : account.kind === "refused"
+                    ? account.message
+                    : account.kind === "suspended"
+                      ? "This account is suspended."
+                      : "This server asks for a step before a first sign-in, which the development sign-in can't take.";
+              page(
+                response,
+                account.kind === "unavailable" ? 503 : 403,
+                devicePage({ code, provider, message: reason }),
+              );
+              return;
+            }
+            decided = auth.decideFor({ code, approve: true, accountId: account.accountId });
+          }
           if (!decided.ok) {
             page(response, 400, devicePage({ code, provider, message: decided.reason }));
             return;
@@ -615,6 +707,10 @@ export function createApi(options: ApiOptions): Api {
             { error: "invalid_token", error_description: "Sign in to use Mostra here." },
             { "www-authenticate": challenge },
           );
+          return;
+        }
+        if ("refused" in who) {
+          send(response, 403, who.refused);
           return;
         }
         if (!who.scope.split(" ").includes("mostra")) {
@@ -657,17 +753,19 @@ export function createApi(options: ApiOptions): Api {
           refuse(503, "Service Unavailable");
         },
       );
-      const upgradeFor = (who: Authenticated | undefined): void => {
+      const upgradeFor = (
+        who: Authenticated | { readonly refused: Diagnostic } | undefined,
+      ): void => {
+        if (who && "refused" in who) {
+          refuse(403, "Forbidden");
+          return;
+        }
         if (!who) {
           refuse(
             401,
             "Unauthorized",
             `www-authenticate: Bearer resource_metadata="${apiOrigin}/.well-known/oauth-protected-resource/host"\r\n`,
           );
-          return;
-        }
-        if (options.suspended?.(who.homeId)) {
-          refuse(403, "Forbidden");
           return;
         }
         void options.home(who.homeId).then(
@@ -697,7 +795,7 @@ export function createApi(options: ApiOptions): Api {
                     // an account it suspended, closes the binding within the bound.
                     void bearer(request, "host").then(
                       (still) => {
-                        if (!still) {
+                        if (!still || "refused" in still) {
                           log.info("binding.credential_revoked", { home: who.homeId });
                           ws.close(4403, "credential revoked");
                         } else expiresAt = still.expiresAt;
@@ -707,6 +805,17 @@ export function createApi(options: ApiOptions): Api {
                   } else if (!auth.grantLive(who.grantId)) {
                     log.info("binding.grant_revoked", { home: who.homeId });
                     ws.close(4403, "grant revoked");
+                  } else {
+                    // The operator may have suspended the account since: asked within the bound.
+                    void standing(who).then(
+                      (refused) => {
+                        if (refused) {
+                          log.info("binding.account_suspended", { home: who.homeId });
+                          ws.close(4403, "account suspended");
+                        }
+                      },
+                      () => undefined,
+                    );
                   }
                 },
                 Math.min(GRANT_RECHECK_MS, options.recheckMs ?? GRANT_RECHECK_MS),

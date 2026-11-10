@@ -248,7 +248,15 @@ export interface Authorization {
     readonly account: string;
     readonly subject: string;
     readonly resource: string;
+    /** Whether this use links an instance (the binding's, `/host`); `/mcp` and `/files` don't. */
+    readonly link: boolean;
   }): Authenticated;
+  /** The account a refresh token belongs to, so the operator's word on it is asked first. */
+  refreshAccount(refreshToken: string): string | undefined;
+  /** An account's standing in the directory. */
+  accountStatus(accountId: string): "active" | "suspended";
+  /** Records the operator's word on an account (`accounts.status`, §18.6). */
+  setAccountStatus(accountId: string, status: "active" | "suspended"): void;
   /**
    * Whether an instance link is its account's default, after making it so when `makeDefault`
    * (`POST /link`, D167; one default per account, as `mostra login --default` makes it).
@@ -525,14 +533,22 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
   const grantClient = (db: LedgerDb, grantId: string): string | undefined =>
     db.get<{ client_id: string }>('SELECT client_id FROM "grant" WHERE id = ?', grantId)?.client_id;
 
-  const grantLiveIn = (db: LedgerDb, grantId: string): boolean => {
+  const grantLiveIn = (
+    db: LedgerDb,
+    grantId: string,
+    options: { readonly anyStatus?: boolean } = {},
+  ): boolean => {
     // An operator's credential is checked by asking the operator, by the binding's watch.
     if (grantId.startsWith("credential:")) return true;
     const row = db.get<{ revoked_at: string | null; status: string }>(
       'SELECT g.revoked_at, a.status FROM "grant" g JOIN account a ON a.id = g.account_id WHERE g.id = ?',
       grantId,
     );
-    return row !== undefined && row.revoked_at === null && row.status === "active";
+    return (
+      row !== undefined &&
+      row.revoked_at === null &&
+      (options.anyStatus === true || row.status === "active")
+    );
   };
 
   return {
@@ -775,7 +791,10 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         // Constant-time on what was found, though the lookup was by hash already.
         if (!timingSafeEqual(Buffer.from(row.hash), Buffer.from(hash))) return undefined;
         const expiresAt = Date.parse(row.expires_at);
-        if (expiresAt <= now() || !grantLiveIn(db, row.grant_id)) return undefined;
+        // A suspended account's token still names it, so its caller hears "suspended" (403)
+        // rather than "sign in again", and the operator's later word can lift it (D165 item 9).
+        if (expiresAt <= now() || !grantLiveIn(db, row.grant_id, { anyStatus: true }))
+          return undefined;
         const home = db.get<{ id: string }>(
           "SELECT id FROM home WHERE owner_account_id = ?",
           row.account_id,
@@ -925,7 +944,9 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           input.account,
           input.subject,
         )?.link_id;
-        if (link === undefined) {
+        // Only a binding makes the key's instance link: a key used on /mcp or /files first names
+        // none, so no link that never binds takes the account's default (Fable review, 3).
+        if (link === undefined && input.link) {
           link = linkFor(
             db,
             input.account,
@@ -957,6 +978,36 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           expiresAt: now() + accessTtlMs,
         };
       });
+    },
+
+    refreshAccount(refreshToken) {
+      return directory.read(
+        (db) =>
+          db.get<{ account_id: string }>(
+            "SELECT g.account_id FROM token t JOIN \"grant\" g ON g.id = t.grant_id WHERE t.hash = ? AND t.kind = 'refresh'",
+            hashSecret(refreshToken),
+          )?.account_id,
+      );
+    },
+
+    accountStatus(accountId) {
+      return directory.read((db) =>
+        db.get<{ status: string }>("SELECT status FROM account WHERE id = ?", accountId)?.status ===
+        "suspended"
+          ? "suspended"
+          : "active",
+      );
+    },
+
+    setAccountStatus(accountId, status) {
+      directory.write((db) =>
+        db.run(
+          "UPDATE account SET status = ? WHERE id = ? AND status != ?",
+          status,
+          accountId,
+          status,
+        ),
+      );
     },
 
     linkState(linkId, makeDefault) {

@@ -866,4 +866,26 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 15,
+    name: "an owner's pause and an operator's, apart",
+    up(db) {
+      // An owner's pause and an operator's are kept apart, one row each, so neither one's resume
+      // lifts the other's (Fable review of WP-30, 7): the artifact takes answers again only once
+      // no pause is left.
+      db.exec(`
+        CREATE TABLE artifact_pause_by (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          by TEXT NOT NULL CHECK (by IN ('owner', 'operator')),
+          reason TEXT,
+          paused_at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, by)
+        );
+        INSERT INTO artifact_pause_by (artifact_id, by, reason, paused_at)
+          SELECT artifact_id, by, reason, paused_at FROM artifact_pause;
+        DROP TABLE artifact_pause;
+        ALTER TABLE artifact_pause_by RENAME TO artifact_pause;
+      `);
+    },
+  },
 ];

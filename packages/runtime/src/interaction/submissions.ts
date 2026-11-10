@@ -342,7 +342,7 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
   // 2. The policy in force, and whether the artifact takes answers now: a paused one takes none
   // until resumed, whoever paused it, and the draft stays as it was (D165 item 14).
   const paused = db.get<{ by: string }>(
-    "SELECT by FROM artifact_pause WHERE artifact_id = ?",
+    "SELECT by FROM artifact_pause WHERE artifact_id = ? ORDER BY by = 'operator' DESC LIMIT 1",
     input.artifactId,
   );
   if (paused) {

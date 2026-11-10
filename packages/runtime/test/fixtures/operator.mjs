@@ -11,6 +11,7 @@
  * - `policy`: a link policy for every link.
  * - `accounts`: per subject, `{ account, status }`, `{ step: { url } }` or `{ refused: { message } }`.
  * - `credentials`: per bearer, `{ account, scope }`.
+ * - `statuses`: per account, `"active"` (the default) or `"suspended"` (`accounts.status`).
  * - `pushed`: `"quarantine"` to quarantine every pushed version.
  * - `providers`: identity providers it supplies, `{ id, label, behaviour }` (`"ok"`, `"hang"` or
  *   `"bad"`, an answer naming nobody); each "signs in" by sending the browser straight back to the
@@ -32,6 +33,7 @@ const state = {
   credentials: {},
   pushed: undefined,
   providers: [],
+  statuses: {},
   ...JSON.parse(process.env.MOSTRA_TEST_OPERATOR_STATE ?? "{}"),
 };
 const calls = [];
@@ -112,6 +114,10 @@ export default function operator(server) {
       async resolve(identity) {
         record("accounts.resolve", identity);
         return state.accounts[identity.subject] ?? { account: `op:${identity.subject}`, status: "active" };
+      },
+      async status(account) {
+        record("accounts.status", { account });
+        return state.statuses[account] ?? "active";
       },
       async authenticate(bearer, context) {
         record("accounts.authenticate", { resource: context.resource });
