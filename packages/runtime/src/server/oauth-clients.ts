@@ -56,17 +56,19 @@ export interface ClientRefusal {
  * IPv4 tail, hex), or `undefined` when it isn't one.
  */
 function ipv6Groups(address: string): number[] | undefined {
-  let text = address.toLowerCase().replace(/%.*$/, "");
-  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(text);
-  if (dotted) {
-    const [a, b, c, d] = (dotted[2] as string).split(".").map(Number) as [
-      number,
-      number,
-      number,
-      number,
-    ];
+  let text = address.toLowerCase();
+  const zone = text.indexOf("%");
+  if (zone !== -1) text = text.slice(0, zone);
+  // A dotted IPv4 tail, read by position rather than a backtracking pattern: the name comes from
+  // a client's metadata document URL (as clients.ts reads `X-Forwarded-For`).
+  const colon = text.lastIndexOf(":");
+  const dotted = text.slice(colon + 1);
+  if (colon !== -1 && dotted.includes(".")) {
+    const parts = dotted.split(".");
+    if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return undefined;
+    const [a, b, c, d] = parts.map(Number) as [number, number, number, number];
     if ([a, b, c, d].some((part) => part > 255)) return undefined;
-    text = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+    text = `${text.slice(0, colon + 1)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
   const halves = text.split("::");
   if (halves.length > 2) return undefined;
