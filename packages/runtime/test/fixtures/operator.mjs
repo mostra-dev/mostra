@@ -12,6 +12,9 @@
  * - `accounts`: per subject, `{ account, status }`, `{ step: { url } }` or `{ refused: { message } }`.
  * - `credentials`: per bearer, `{ account, scope }`.
  * - `pushed`: `"quarantine"` to quarantine every pushed version.
+ * - `providers`: identity providers it supplies, `{ id, label, behaviour }` (`"ok"`, `"hang"` or
+ *   `"bad"`, an answer naming nobody); each "signs in" by sending the browser straight back to the
+ *   server's callback, and names the subject the callback's `who` gives.
  *
  * The control server takes `POST /state` (merged into the behaviours), `GET /calls` and
  * `POST /handle { method, args }`, which calls the server handle and answers its result.
@@ -28,6 +31,7 @@ const state = {
   accounts: {},
   credentials: {},
   pushed: undefined,
+  providers: [],
   ...JSON.parse(process.env.MOSTRA_TEST_OPERATOR_STATE ?? "{}"),
 };
 const calls = [];
@@ -81,6 +85,27 @@ export default function operator(server) {
         record("metering.attempt", batch);
         await behave(state.metering);
         record("metering", batch);
+      },
+    },
+    identity: {
+      async providers() {
+        record("identity.providers", {});
+        return state.providers.map((supplied) => ({
+          id: supplied.id,
+          label: supplied.label,
+          async authorize(signinState, _pkce, context) {
+            if (supplied.behaviour === "hang") return never();
+            const back = new URL(context.redirectUri);
+            back.searchParams.set("state", signinState);
+            back.searchParams.set("who", supplied.who ?? "someone");
+            return back.href;
+          },
+          async callback(params) {
+            record("identity.callback", { provider: supplied.id });
+            if (supplied.behaviour === "bad") return { provider: supplied.id, subject: "" };
+            return { provider: supplied.id, subject: params.who, name: "Grace from Acme" };
+          },
+        }));
       },
     },
     accounts: {

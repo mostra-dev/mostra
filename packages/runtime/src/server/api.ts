@@ -467,8 +467,13 @@ export function createApi(options: ApiOptions): Api {
             page(response, 200, sessionDevicePage(code, signed));
             return;
           }
-          // Real providers sign the person in first; the development one asks on this page.
-          if (!provider || (config.identityProviders?.length ?? 0) > 1) {
+          // Real providers sign the person in first; the development one asks on this page, when it
+          // is the only one: none other configured, and no operator that supplies its own (D167).
+          if (
+            !provider ||
+            (config.identityProviders?.length ?? 0) > 1 ||
+            options.operator?.has.identity === true
+          ) {
             await options.authorize.signInPage(
               response,
               `/device?user_code=${encodeURIComponent(code)}`,

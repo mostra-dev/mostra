@@ -496,6 +496,47 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
 
+  it("asks for the operator's identity providers at every sign-in, bounded, and checks what they name", async () => {
+    const api = `http://api.localhost:${port}`;
+    const page = async (): Promise<string> =>
+      (await new ApiBrowser(port, `api.localhost:${port}`).ask("GET", "/device")).body;
+    expect(await page()).not.toContain("Acme SSO");
+    // A provider the operator turns on is offered at the next sign-in, with no restart (D167).
+    await operator.set({
+      providers: [{ id: "acme", label: "Acme SSO", behaviour: "ok", who: "acme-person" }],
+    });
+    expect(await page()).toContain("Continue with Acme SSO");
+    const who = new ApiBrowser(port, `api.localhost:${port}`);
+    const toProvider = located(await who.ask("GET", "/signin/acme/start?next=/device"));
+    expect(`${toProvider.origin}${toProvider.pathname}`).toBe(`${api}/signin/acme/callback`);
+    const signedIn = located(await who.ask("GET", `${toProvider.pathname}${toProvider.search}`));
+    expect(signedIn.pathname).toBe("/device");
+    const resolved = (await operator.calls("accounts.resolve")).at(-1);
+    expect(resolved?.payload["provider"]).toBe("acme");
+    // An answer naming nobody signs nobody in.
+    await operator.set({ providers: [{ id: "acme", label: "Acme SSO", behaviour: "bad" }] });
+    const bad = new ApiBrowser(port, `api.localhost:${port}`);
+    const back = located(await bad.ask("GET", "/signin/acme/start?next=/device"));
+    const refused = await bad.ask("GET", `${back.pathname}${back.search}`);
+    expect(refused.status).toBe(400);
+    expect(bad.jar.has("mostra-signin")).toBe(false);
+    // A provider that never answers is given up on inside the authorization server's 10 s.
+    await operator.set({ providers: [{ id: "acme", label: "Acme SSO", behaviour: "hang" }] });
+    const started = Date.now();
+    const hung = await new ApiBrowser(port, `api.localhost:${port}`).ask(
+      "GET",
+      "/signin/acme/start?next=/device",
+    );
+    expect(hung.status).toBe(503);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    // Turned off, it's gone at once.
+    await operator.set({ providers: [] });
+    expect(await page()).not.toContain("Acme SSO");
+    expect(
+      (await new ApiBrowser(port, `api.localhost:${port}`).ask("GET", "/signin/acme/start")).status,
+    ).toBe(404);
+  }, 60_000);
+
   it("sends a person to the operator's first sign-in step and resumes there, once", async () => {
     const api = `http://api.localhost:${port}`;
     await operator.set({

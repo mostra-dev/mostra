@@ -18,7 +18,11 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { IdentityProvider, SignInIdentity } from "@mostra/protocol/operator";
+import {
+  type IdentityProvider,
+  type SignInIdentity,
+  SignInIdentity as SignInIdentitySchema,
+} from "@mostra/protocol/operator";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { type Authorization, canonicalResource, hashSecret } from "./auth.ts";
@@ -31,6 +35,27 @@ const PENDING_MS = 15 * 60_000;
 const SESSION_MS = 7 * 24 * 60 * 60_000;
 /** At most this many first sign-in steps per sign-in (D167). */
 const MAX_STEPS = 3;
+/**
+ * How long an identity provider's own calls may take (its authorization address, the code's
+ * exchange): inside the 10 s every endpoint of the authorization server answers in (D165 item 10),
+ * whether the provider is built in or the operator's.
+ */
+const PROVIDER_MS = 8_000;
+
+/** A provider's call, or a refusal once it took longer than {@link PROVIDER_MS}. */
+async function bounded<T>(call: () => Promise<T> | T, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(call),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what} took too long`)), PROVIDER_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** What the pages need. */
 export interface AuthorizeOptions {
@@ -638,11 +663,22 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         } satisfies ProviderRecord);
         let target: string;
         try {
-          target = await provider.authorize(
-            state,
-            { challenge, method: "S256", verifier },
-            { redirectUri: `${apiOrigin}/signin/${provider.id}/callback`, nonce },
+          target = await bounded(
+            () =>
+              provider.authorize(
+                state,
+                { challenge, method: "S256", verifier },
+                { redirectUri: `${apiOrigin}/signin/${provider.id}/callback`, nonce },
+              ),
+            "the provider's sign-in address",
           );
+          // Only to an https: page (a server on loopback http, as tests and a first run use, may
+          // send its own providers' pages over http too).
+          const parsed = new URL(target, apiOrigin);
+          if (parsed.protocol !== "https:" && (secure || parsed.protocol !== "http:")) {
+            throw new Error("the provider's sign-in address isn't https:");
+          }
+          target = parsed.href;
         } catch (error) {
           log.warn("signin.provider_failed", {
             provider: provider.id,
@@ -722,12 +758,21 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         }
         let identity: SignInIdentity;
         try {
-          identity = await provider.callback(params, {
-            redirectUri: `${apiOrigin}/signin/${provider.id}/callback`,
-            nonce: pending.nonce,
-            state,
-            pkce: { challenge: pending.challenge, method: "S256", verifier: pending.verifier },
-          });
+          const answered = await bounded(
+            () =>
+              provider.callback(params, {
+                redirectUri: `${apiOrigin}/signin/${provider.id}/callback`,
+                nonce: pending.nonce,
+                state,
+                pkce: { challenge: pending.challenge, method: "S256", verifier: pending.verifier },
+              }),
+            "the provider's answer",
+          );
+          // An operator's provider is checked as every operator answer is (D167): a malformed
+          // identity names nobody.
+          const checked = SignInIdentitySchema.safeParse({ ...answered, provider: provider.id });
+          if (!checked.success) throw new Error("the provider named nobody this server can use");
+          identity = checked.data;
         } catch (error) {
           log.warn("signin.callback_failed", {
             provider: provider.id,
@@ -740,7 +785,6 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
           );
           return true;
         }
-        if (identity.provider !== provider.id) identity = { ...identity, provider: provider.id };
         await resolved(response, identity, 0, pending.flow, pending.next);
         return true;
       }
