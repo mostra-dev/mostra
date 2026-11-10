@@ -1,6 +1,6 @@
 # WP-30 progress: remote server and remote MCP
 
-**Status:** In progress. Owns RM-03, MC-04, HY-08, HY-09, HO-09, RM-08 and RM-09 ([specification](../design/work-packages/WP-30.md)), RM-02's external check (D166 item 9), and the issues on the `WP-30` milestone (#129, #132).
+**Status:** Done. Accepted by Mirza on 2026-11-10 (M61: "absolutely incredible work. 100% accepted and approved -- let's close out this WP in the most robust, complete, high-quality, meticulous way.") with D167 and the package's agent-facing prose (D149), after two Fable 5.2 reviews and their fixes; merged to `main` through the merge queue as `9613154` (#134) and released as Mostra 0.11.0 (#136). Owns RM-03, MC-04, HY-08, HY-09, HO-09, RM-08 and RM-09 ([specification](../design/work-packages/WP-30.md)), RM-02's external check (D166 item 9), and the issues on the `WP-30` milestone (#129, #132, and #106, which joined it).
 
 ## Baseline
 
@@ -21,6 +21,7 @@
 
 ## Decisions
 
+- **M61** (2026-11-10): Mirza accepted WP-30, its two Fable reviews' fixes, D167 and the package's agent-facing prose; recorded under D167.
 - **M60** (2026-11-07): Mirza's answers to the session's question set. A test deployment on a server Mirza already runs, on the production names, for claude.ai only (ChatGPT's external check later); GitHub's OAuth app made by him on request; the container image's registry, the operator questions and the plugin's remote server delegated ("I trust you to make the most robust … optimal decision"), with whatever is left for later named explicitly; `@mostra/protocol/operator` ships with this package's release (the managed service's work starts after WP-30). Recorded as D167 with the package's other choices.
 
 ## Slices so far
@@ -68,7 +69,7 @@ Every check runs through the real interface: a real `mostra-runtime server` on t
 
 RM-02's external check (D166 item 9), against the test deployment: `mostra login` by the device grant approved with GitHub in a real browser, `share --cloud` from an instance running the release build, hosted pages opened from claude.ai's link and by RM-08's run, and the owner's `wait` and `results` reading every hosted answer once its instance was back and the person's own answer from a real browser (Mirza's, 2026-11-10) imported once with its hosted origin. RM-02's row in WP-29's report gets this as external evidence at closeout.
 
-Issues on the milestone, each fixed at its root with a test as strict as before: #132 (a stopping listener resets its connections, so none stays in TIME_WAIT on its port; `listener-keepalive.test.ts`, seed), and #106, moved to this milestone when claude.ai's verify met it (a warm runner relaunches a browser that died under it, a runner that failed in itself is replaced, the crash says why; `verify-failures.test.ts`, two seeds; its sighting's trigger was an external disk dropping out). #129: every Windows unit leg since WP-29's fix has passed the store's first-run case (16 runs); under this laptop's full `pnpm check` load the case met a slow lock instead, recorded on the issue.
+Issues on the milestone: #132 in part (a stopping listener resets its connections, so none stays in TIME_WAIT on its port; `listener-keepalive.test.ts`, seed; the merge queue then met the same error on a server that never restarted, so the issue stays open for WP-31), and #106, fixed at its root with a test as strict as before, moved to this milestone when claude.ai's verify met it (a warm runner relaunches a browser that died under it, a runner that failed in itself is replaced, the crash says why; `verify-failures.test.ts`, two seeds; its sighting's trigger was an external disk dropping out). #129: every Windows unit leg since WP-29's fix has passed the store's first-run case (16 runs); under this laptop's full `pnpm check` load the case met a slow lock instead, recorded on the issue.
 
 ## Test deployment (external evidence)
 
@@ -88,6 +89,8 @@ The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64
 - **RM-03's tenancy cases** run against the server process, not the container image, which runs the same binary; the image serves one account at the test deployment.
 - **Names under the development provider.** A viewer signed in through the development provider (tests and a self-hoster's first run only; its page says it trusts the typed name) is recorded as an `account` viewer with `verified: true`, as every account viewer is; the owner's sender line does say "unverified" for it. An owner signed in through a provider the operator supplies is shown unverified too, since only configured providers name their verifier. Neither reaches a production server's real providers.
 - **The relay's one accepted boundary** stands (FAILURE_MODEL §11.1, WP-29).
+- **#132** stays open: one source of Windows Chromium's `ERR_NO_BUFFER_SPACE` on a shell's own load (an instance's listeners stopped and started on their leased ports) is removed; another, against a server that never restarted, is not found (WP-31's milestone).
+- **#135**: on Windows Firefox, Playwright twice never reached a hosted frame's content after the worker-mode bootstrap's navigation, though the frame worked for the shell; Linux and macOS Firefox pass every hosted case (WP-31's milestone).
 - **Windows** runs every suite this package added in `windows-remote` and Chromium and Firefox e2e; WebKit's hosted cases run on macOS and Linux only, as every WebKit case does.
 
 ## Deviations
@@ -106,3 +109,26 @@ The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64
 - The `AGENTS.md` of `@mostra/runtime` (the remote server, the owner's link, their test hooks and group), `@mostra/protocol` (the operator subpath), `@mostra/mcp` (remote MCP) and `@mostra/shell` (the hosted shell).
 - The playbook `docs/agents/test-deployment.md`.
 
+## Commits and publication
+
+- **Range:** `c06bb86..9613154` on `main`: the signed-off commits of `wp/30-remote-server` (last `9007f90`) and the merge commit `9613154` ([#134](https://github.com/mostra-dev/mostra/pull/134)), then the version pull request [#136](https://github.com/mostra-dev/mostra/pull/136) (`chore(release): Mostra 0.11.0`).
+- **CI:** #134's last pull-request runs (42839618994 on `9007f90`, and 42846424698 after one re-run of Windows Firefox) green on every leg; its merge-queue runs: five failed on Windows and macOS legs unrelated to its code (Windows Firefox's frame reload and hosted frames, #95 and #135; a Windows Chromium `ERR_NO_BUFFER_SPACE`, #132; a verify render's failed request on Windows, #95; a Windows arm64 runner whose setup crashed; a macOS runner that never started), each recorded on its issue, and the sixth, 42889209272, green, which merged it.
+- **Publication:** PUBLICATION
+- **Remaining dirty paths:** none in the repository. Outside it: the baseline worktree `/Volumes/Active/mostra-wp28-baseline` (detached), logs and scratch in `/Volumes/Active/wp30-logs/`, `/Volumes/Active/wp30-tmp/`, `/Volumes/Active/wp30-bundles/`, `/Volumes/Active/wp30-load/` and `/Volumes/Active/wp30-106/`, the git-ignored `temp/` (the session's edit scripts and the deployment's first files), the owner instance in `~/.mostra-wp30/` (an always-on daemon, linked to the test deployment as the account's default) and `/Volumes/Active/wp30-owner/`, and the deployment's secrets and facts in `~/.mostra-deploy/` (mode 0600). The test deployment stays up (D167 item 20). Mostra HQ was not written to: its roadmap and changelog lines for WP-30 wait for Mirza's go (D127).
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #129 | Closed | Every Windows unit leg since WP-29's retry passed the store's first-run case; the macOS lock slowness under a full local check recorded on the issue |
+| #106 | Closed | A warm runner relaunches a browser that died under it, a runner that failed in itself is replaced, the crash says why (Evidence) |
+| #132 | Open, on `WP-31` | One source removed (a stopping listener's resets); the merge queue met it again on a server that never restarted |
+| #135 | Open, on `WP-31` | Filed in the merge queue: Playwright's Windows Firefox loses a hosted frame's content after the worker-mode bootstrap's navigation |
+| #95 | Open, no milestone | Three more Windows sightings recorded (a frame's reload, a submit's request late, a verify render's failed request) |
+| #39, #46, #55, #85, #111, #124 | Open, no milestone (D155 item 7) | Not met |
+
+The `WP-30` milestone is closed; `WP-31` holds #132 and #135, and WP-31's specification names both (`tools/design/wp_specs.py`).
+
+## Next
+
+WP-31, teams (`docs/design/work-packages/WP-31.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-31`. It owns its requirements, #132 and #135, and builds on this package's viewer identity. For Mirza, once the release is out: GitHub's container registry makes a new package private, so `ghcr.io/mostra-dev/mostra-server` needs one click to public (package settings, Change visibility); the Anthropic directory's Cowork and Claude apps boxes and the remote server's connector submission wait for the production deployment, whose URL the plugin's `features.remoteMcp` names then (it names the test deployment now, D167).
