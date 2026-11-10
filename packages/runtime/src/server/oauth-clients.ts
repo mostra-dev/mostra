@@ -51,6 +51,37 @@ export interface ClientRefusal {
   readonly description: string;
 }
 
+/**
+ * An IPv6 address's eight 16-bit groups, whatever its written form (`::` compressed, a dotted
+ * IPv4 tail, hex), or `undefined` when it isn't one.
+ */
+function ipv6Groups(address: string): number[] | undefined {
+  let text = address.toLowerCase().replace(/%.*$/, "");
+  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (dotted) {
+    const [a, b, c, d] = (dotted[2] as string).split(".").map(Number) as [
+      number,
+      number,
+      number,
+      number,
+    ];
+    if ([a, b, c, d].some((part) => part > 255)) return undefined;
+    text = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return undefined;
+  const parse = (half: string): number[] =>
+    half === "" ? [] : half.split(":").map((group) => Number.parseInt(group, 16));
+  const head = parse(halves[0] as string);
+  const tail = halves.length === 2 ? parse(halves[1] as string) : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return undefined;
+  const groups = [...head, ...Array<number>(halves.length === 2 ? missing : 0).fill(0), ...tail];
+  return groups.length === 8 && groups.every((group) => group >= 0 && group <= 0xffff)
+    ? groups
+    : undefined;
+}
+
 /** Whether an IP address is one no client document may come from. */
 export function forbiddenAddress(address: string): boolean {
   const family = isIP(address);
@@ -69,25 +100,36 @@ export function forbiddenAddress(address: string): boolean {
       a >= 224
     );
   }
-  if (family === 6) {
-    const lower = address.toLowerCase();
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-    if (mapped) return forbiddenAddress(mapped[1] as string);
-    return (
-      lower === "::" ||
-      lower === "::1" ||
-      lower.startsWith("fe8") ||
-      lower.startsWith("fe9") ||
-      lower.startsWith("fea") ||
-      lower.startsWith("feb") ||
-      lower.startsWith("fc") ||
-      lower.startsWith("fd") ||
-      lower.startsWith("ff") ||
-      lower.startsWith("64:ff9b:") ||
-      lower.startsWith("2001:db8:")
-    );
+  if (family !== 6) return true;
+  const groups = ipv6Groups(address);
+  if (!groups) return true;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const embedded = `${g6 >> 8}.${g6 & 0xff}.${g7 >> 8}.${g7 & 0xff}`;
+  // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d) addresses reach the IPv4
+  // address they carry, however they are written (`::ffff:7f00:1` is 127.0.0.1).
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0xffff || g5 === 0)) {
+    if (g5 === 0 && g6 === 0 && (g7 === 0 || g7 === 1)) return true; // :: and ::1
+    return forbiddenAddress(embedded);
   }
-  return true;
+  return (
+    (g0 & 0xffc0) === 0xfe80 || // link-local fe80::/10
+    (g0 & 0xfe00) === 0xfc00 || // unique-local fc00::/7
+    (g0 & 0xff00) === 0xff00 || // multicast ff00::/8
+    (g0 === 0x64 && g1 === 0xff9b) || // NAT64 64:ff9b::/96 and 64:ff9b:1::/48
+    g0 === 0x2002 || // 6to4, which carries an IPv4 address
+    (g0 === 0x2001 && g1 === 0) || // Teredo 2001::/32
+    (g0 === 0x2001 && g1 === 0xdb8) || // documentation
+    (g0 === 0x0100 && g1 === 0 && g2 === 0 && g3 === 0) // discard 100::/64
+  );
 }
 
 /** Whether a redirect URI a request names is one the client's list allows. */

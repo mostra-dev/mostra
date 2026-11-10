@@ -364,7 +364,19 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     // At a loopback or private address (no test exception for it): never fetched at all, by
     // address or by a name that resolves to one.
     const count = asked.length;
-    for (const address of ["127.0.0.2", "10.0.0.1", "169.254.169.254", "[::1]"]) {
+    // IPv6 forms that reach an IPv4 address too: mapped (which a URL writes as `::ffff:7f00:1`),
+    // compatible, NAT64 and 6to4.
+    for (const address of [
+      "127.0.0.2",
+      "10.0.0.1",
+      "169.254.169.254",
+      "[::1]",
+      "[::ffff:127.0.0.1]",
+      "[::ffff:a9fe:a9fe]",
+      "[::127.0.0.1]",
+      "[64:ff9b::a00:1]",
+      "[2002:7f00:1::1]",
+    ]) {
       const refused = await send(
         port,
         `api.localhost:${port}`,
