@@ -1,0 +1,21 @@
+# The test deployment's front (WP-30): TLS for the API origin and the user-content domain, with
+# one wildcard certificate for every route's label (DNS-01 through Cloudflare). The server speaks
+# plain HTTP behind it and trusts X-Forwarded-For only from this proxy (`trustedProxies`).
+{
+	admin off
+	servers {
+		# A sibling page can fill the domain's cookie jar: pass up to 1 MiB of headers.
+		max_header_size 1MiB
+	}
+}
+
+api.mostradev.com {
+	reverse_proxy mostra-server:8080
+}
+
+mostrausercontent.com, *.mostrausercontent.com {
+	tls {
+		dns cloudflare {file./run/secrets/cloudflare}
+	}
+	reverse_proxy mostra-server:8080
+}

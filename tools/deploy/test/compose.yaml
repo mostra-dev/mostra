@@ -1,0 +1,38 @@
+# The test deployment (docs/agents/test-deployment.md): the server's container image behind Caddy.
+name: mostra-wp30
+networks:
+  front:
+    ipam:
+      config:
+        - subnet: 172.31.230.0/24
+volumes:
+  data: {}
+  config:
+    external: true
+    name: mostra-wp30-config
+  caddy-config:
+    external: true
+    name: mostra-wp30-caddy-config
+  caddy-data: {}
+services:
+  mostra-server:
+    image: ${MOSTRA_SERVER_IMAGE:?the image to run, as the playbook builds it}
+    command: ["--config", "/config/server.json"]
+    restart: unless-stopped
+    networks: [front]
+    volumes:
+      - data:/data
+      - config:/config:ro
+      - config:/run/secrets:ro
+    read_only: true
+    tmpfs: [/tmp]
+  caddy:
+    image: mostra-wp30-caddy:2.11.8
+    restart: unless-stopped
+    networks: [front]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - caddy-config:/run/secrets:ro
+      - caddy-data:/data
+    command: ["caddy", "run", "--config", "/run/secrets/Caddyfile", "--adapter", "caddyfile"]
+    depends_on: [mostra-server]
