@@ -70,6 +70,7 @@ The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64
 
 - **ChatGPT's custom MCP server**: needs a Business workspace (M60); not run.
 - **RM-03's tenancy cases** run against the server process, not the container image, which runs the same binary; the image serves one account at the test deployment.
+- **Names under the development provider.** A viewer signed in through the development provider (tests and a self-hoster's first run only; its page says it trusts the typed name) is recorded as an `account` viewer with `verified: true`, as every account viewer is; the owner's sender line does say "unverified" for it. An owner signed in through a provider the operator supplies is shown unverified too, since only configured providers name their verifier. Neither reaches a production server's real providers.
 - **The relay's one accepted boundary** stands (FAILURE_MODEL §11.1, WP-29).
 - **Windows** runs every suite this package added in `windows-remote` and Chromium and Firefox e2e; WebKit's hosted cases run on macOS and Linux only, as every WebKit case does.
 
