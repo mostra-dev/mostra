@@ -12,7 +12,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { linkSync, mkdirSync, writeFileSync } from "node:fs";
-import { copyFile, readFile, rm } from "node:fs/promises";
+import { copyFile, readFile, rm, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, join, relative } from "node:path";
 import {
@@ -108,8 +108,11 @@ export interface HostedHome {
   readonly protocol: ProtocolServer;
   /** The home's current incarnation (DATA_MODEL §7.2). */
   incarnation(): string;
-  /** The SHA-256s of client files a pending push of this home names as missing. */
-  wanted(sha256: string): boolean;
+  /**
+   * The size a pending push of this home gives a client file it names as missing, or `undefined`
+   * when none names it: an upload must bring exactly those bytes (Fable review of WP-30, 2).
+   */
+  wanted(sha256: string): number | undefined;
   /** Records a file this home uploaded (`PUT /files/<sha256>`, §18.2). */
   uploaded(sha256: string): void;
   /** Pauses or resumes an artifact as its owner or the operator (D165 item 14). */
@@ -212,7 +215,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   const { id, dir, ledger, directory, log } = options;
   const registry = await openRegistry({ home: dir, ledger });
   /** Pending pushes: version ID → the client files still missing. */
-  const pending = new Map<string, Set<string>>();
+  /** Pending pushes: version ID → each missing client file's SHA-256 and the size its listing gives. */
+  const pending = new Map<string, Map<string, number>>();
   let incarnation = options.incarnation;
 
   const ownerLinkOf = (artifactId: string): string | undefined =>
@@ -790,13 +794,42 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     }
     // Only client files are stored: server code never reaches the server (D165 item 3).
     const clientFiles = version.listing.filter(([path]) => path.startsWith("client/"));
+    // The sizes a listing gives are what the storage limit is asked with, so each is held to the
+    // bytes: one file has one size, a file this home holds already has the size it has on disk, and
+    // an upload brings exactly the size given (Fable review of WP-30, 2).
+    const sizes = new Map<string, number>();
+    for (const [path, , sha, size] of clientFiles) {
+      if (!Number.isSafeInteger(size) || size < 0 || (sizes.get(sha) ?? size) !== size) {
+        throw refuse(
+          "MOSTRA_HOME_INTEGRITY",
+          `The listing gives ${path} a size its bytes can't have.`,
+        );
+      }
+      sizes.set(sha, size);
+    }
+    for (const [sha, size] of sizes) {
+      const held = directory.read((db) =>
+        db.get("SELECT 1 FROM home_file WHERE home_id = ? AND sha256 = ?", id, sha),
+      );
+      if (held === undefined) continue;
+      const onDisk = await stat(join(options.filesDir, sha)).then(
+        (found) => found.size,
+        () => undefined,
+      );
+      if (onDisk !== undefined && onDisk !== size) {
+        throw refuse(
+          "MOSTRA_HOME_INTEGRITY",
+          "The listing gives a held file another size than its bytes.",
+        );
+      }
+    }
     // The operator's `limits` on a push and the bytes it stores: refused for good with its words,
     // and refused for now (fail closed) when the operator doesn't answer (D165 item 9).
     if (services) {
       const owner = services.owner(id).account;
       for (const [operation, quantity] of [
         ["version.push", 1],
-        ["storage", clientFiles.reduce((sum, [, , , size]) => sum + size, 0)],
+        ["storage", [...sizes.values()].reduce((sum, size) => sum + size, 0)],
       ] as const) {
         const verdict = await services.operator.limit({
           account: owner,
@@ -817,7 +850,10 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     }
     const missing = missingOf([...new Set(clientFiles.map(([, , sha]) => sha))]);
     if (missing.length > 0) {
-      pending.set(version.versionId, new Set(missing));
+      pending.set(
+        version.versionId,
+        new Map(missing.map((sha) => [sha, sizes.get(sha) as number])),
+      );
       return { status: "missing", files: missing, route };
     }
     pending.delete(version.versionId);
@@ -1083,7 +1119,13 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     interaction,
     protocol,
     incarnation: () => incarnation,
-    wanted: (sha) => [...pending.values()].some((files) => files.has(sha)),
+    wanted: (sha) => {
+      for (const files of pending.values()) {
+        const size = files.get(sha);
+        if (size !== undefined) return size;
+      }
+      return undefined;
+    },
     uploaded(sha) {
       directory.write((db) => {
         const added = db.run(

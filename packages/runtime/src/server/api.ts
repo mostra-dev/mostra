@@ -360,11 +360,24 @@ export function createApi(options: ApiOptions): Api {
     options.touch(who.homeId);
     // A file is accepted only for a pending push of this home that names it as missing, so no
     // home stores bytes nobody asked for, nor learns what another home holds (§18.2).
-    if (!home.wanted(sha)) {
+    const declared = home.wanted(sha);
+    if (declared === undefined) {
       send(response, 409, {
         code: "MOSTRA_HOME_INTEGRITY",
         message: "No pending push of this home names that file as missing.",
       });
+      return;
+    }
+    /** Refuses the upload and closes its connection once the answer is out: the rest isn't read. */
+    const refuseUpload = (status: number, message: string): void => {
+      response.once("finish", () => request.destroy());
+      send(response, status, { code: "MOSTRA_HOME_INTEGRITY", message }, { connection: "close" });
+    };
+    const sizeMessage = "The file's bytes aren't the size its push gave them.";
+    // A body announced at another size than its push gave is refused before any byte is read.
+    const announced = request.headers["content-length"];
+    if (announced !== undefined && Number(announced) !== declared) {
+      refuseUpload(declared > MAX_FILE_BYTES ? 413 : 400, sizeMessage);
       return;
     }
     const target = join(options.filesDir, sha);
@@ -374,28 +387,33 @@ export function createApi(options: ApiOptions): Api {
     let tooLarge = false;
     await new Promise<void>((resolve, reject) => {
       const out = createWriteStream(scratch, { mode: 0o600 });
-      request.on("data", (chunk: Buffer) => {
+      const onData = (chunk: Buffer): void => {
         size += chunk.length;
-        if (size > MAX_FILE_BYTES) {
+        // Past the size its push gave it, or the cap: no more of it is read.
+        if (size > MAX_FILE_BYTES || size > declared) {
           tooLarge = true;
-          request.destroy();
+          request.off("data", onData);
+          request.pause();
+          out.end(() => resolve());
           return;
         }
         hash.update(chunk);
         out.write(chunk);
+      };
+      request.on("data", onData);
+      request.on("end", () => {
+        if (!tooLarge) out.end(() => resolve());
       });
-      request.on("end", () => out.end(() => resolve()));
       request.on("error", reject);
-      request.on("close", () => {
-        if (tooLarge) out.end(() => resolve());
-      });
+      request.on("close", () => out.end(() => resolve()));
     }).catch(() => undefined);
-    if (tooLarge || hash.digest("hex") !== sha) {
+    const shortOrLong = !tooLarge && size !== declared;
+    if (tooLarge || shortOrLong || hash.digest("hex") !== sha) {
       await rm(scratch, { force: true });
-      send(response, tooLarge ? 413 : 400, {
-        code: "MOSTRA_HOME_INTEGRITY",
-        message: tooLarge ? "The file is too large." : "The bytes don't hash to the file's name.",
-      });
+      refuseUpload(
+        tooLarge && size > MAX_FILE_BYTES ? 413 : 400,
+        tooLarge || shortOrLong ? sizeMessage : "The bytes don't hash to the file's name.",
+      );
       return;
     }
     if (existsSync(target)) await rm(scratch, { force: true });

@@ -333,6 +333,60 @@ describe("the network binding (§18.2)", () => {
     expect(graceDone).toMatchObject({ status: "complete", versionId: push.versionId });
   }, 120_000);
 
+  it("holds the sizes a listing gives, which the storage limit is asked with, to the bytes (Fable review, 2)", async () => {
+    const { port } = await serve();
+    const ada = await deviceSignIn(port, "Ada");
+    const adas = await bind(port, ada).ready();
+    const artifactId = "art_01JZ0000000000000000000002";
+    const { push, files } = version(artifactId, "sized");
+    const app = files.get("client/assets/app.js") as string;
+    // A listing that says the script is one byte: what the operator's storage limit would be told.
+    const understated = {
+      ...push,
+      listing: push.listing.map((entry) =>
+        entry[0] === "client/assets/app.js"
+          ? ([entry[0], entry[1], entry[2], 1] as typeof entry)
+          : entry,
+      ),
+    };
+    const upload = (text: string) =>
+      send(port, `api.localhost:${port}`, `/files/${sha(text)}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${ada.accessToken}` },
+        body: text,
+      });
+    const missing = await adas.call(hostedPushMethod, { artifactId, version: understated });
+    expect(missing.status).toBe("missing");
+    const refused = await upload(app);
+    expect(refused.status, refused.body).toBe(400);
+    expect(refused.body).toContain("MOSTRA_HOME_INTEGRITY");
+    // The true listing goes through, and once the home holds the file, a listing that gives it
+    // another size is refused before anything is asked or stored.
+    expect((await adas.call(hostedPushMethod, { artifactId, version: push })).status).toBe(
+      "missing",
+    );
+    for (const path of ["client/index.html", "client/assets/app.js"]) {
+      expect((await upload(files.get(path) as string)).status).toBe(201);
+    }
+    expect((await adas.call(hostedPushMethod, { artifactId, version: push })).status).toBe(
+      "complete",
+    );
+    // A second version of the same files (another source), whose listing understates the script.
+    const sourceDigest = sha("source sized, second");
+    const versionId = versionIdFor(artifactId, sourceDigest, push.envDigest);
+    const held = {
+      ...push,
+      versionId,
+      number: 2,
+      sourceDigest,
+      manifest: push.manifest.replace(push.versionId, versionId),
+      listing: understated.listing,
+    };
+    await expect(adas.call(hostedPushMethod, { artifactId, version: held })).rejects.toThrow(
+      /size/,
+    );
+  }, 120_000);
+
   it("refuses a listing path that would leave the version on any system (Opus review of WP-29, 5)", async () => {
     const { port } = await serve();
     const owner = await deviceSignIn(port, "Ada");

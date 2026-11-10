@@ -5821,6 +5821,22 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RM-03",
+    name: "an upload is taken at whatever size it brings, though its push gave another (Fable review, 2)",
+    file: "src/server/api.ts",
+    from: "    const declared = home.wanted(sha);",
+    to: '    const declared = home.wanted(sha) === undefined ? undefined : Number(request.headers["content-length"] ?? 0);',
+    check: integration("binding.test.ts", "holds the sizes"),
+  },
+  {
+    requirement: "RM-03",
+    name: "a listing gives a file the home holds another size than its bytes (Fable review, 2)",
+    file: "src/server/hosted.ts",
+    from: "      if (onDisk !== undefined && onDisk !== size) {",
+    to: "      if (onDisk === -1) {",
+    check: integration("binding.test.ts", "holds the sizes"),
+  },
+  {
+    requirement: "RM-03",
     name: "the open server grows a billing concern",
     file: "src/server/metering.ts",
     from: 'import { join } from "node:path";\n',
