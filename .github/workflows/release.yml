@@ -225,18 +225,31 @@ jobs:
           merge-multiple: true
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The registry is the repository's own host, so moving it is the variable alone; GitHub's
+      # registry signs in with the run's token, another with the `release` environment's
+      # MOSTRA_IMAGE_REGISTRY_USERNAME and MOSTRA_IMAGE_REGISTRY_PASSWORD.
+      - name: Registry
+        run: echo "REGISTRY=${REPOSITORY%%/*}" >> "$GITHUB_ENV"
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY == 'ghcr.io' && github.actor || secrets.MOSTRA_IMAGE_REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY == 'ghcr.io' && github.token || secrets.MOSTRA_IMAGE_REGISTRY_PASSWORD }}
+      # A version's tag never moves: when it is there, its digest is attested (again, on a re-run
+      # whose attestation failed) and nothing is built. Only "not found" means not pushed; any
+      # other failure to read the registry fails the job, never a second push.
       - name: Already pushed?
         id: pushed
         run: |
-          if docker buildx imagetools inspect "$REPOSITORY:$VERSION" >/dev/null 2>&1; then
+          if found="$(docker buildx imagetools inspect "$REPOSITORY:$VERSION" --format '{{json .Manifest}}' 2>"$RUNNER_TEMP/inspect.err")"; then
             echo "already=true" >> "$GITHUB_OUTPUT"
-          else
+            echo "IMAGE_DIGEST=$(printf '%s' "$found" | jq -er .digest)" >> "$GITHUB_ENV"
+          elif grep -qiE 'not found|manifest unknown|name unknown' "$RUNNER_TEMP/inspect.err"; then
             echo "already=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/inspect.err" >&2
+            echo "::error::The registry couldn't be read; nothing is pushed until it can be."
+            exit 1
           fi
       - name: Build and push the image from the bundles
         if: steps.pushed.outputs.already == 'false'
@@ -245,7 +258,6 @@ jobs:
             --repository "$REPOSITORY" --latest --push --metadata "$RUNNER_TEMP/image.json"
           node -e 'const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log("IMAGE_DIGEST=" + m["containerimage.digest"])' "$RUNNER_TEMP/image.json" >> "$GITHUB_ENV"
       - name: Attest the image
-        if: steps.pushed.outputs.already == 'false'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.REPOSITORY }}
