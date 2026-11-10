@@ -1,5 +1,13 @@
 # @mostra/verify
 
+## 0.11.0
+
+### Patch Changes
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`e0b45ac`](https://github.com/mostra-dev/mostra/commit/e0b45acd4e567861601d8055cc094def5bca468a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Verify recovers from a browser or runner that failed under it ([#106](https://github.com/mostra-dev/mostra/issues/106)): a warm runner launches its browser again when the one it held died, a runner that failed in itself is replaced and the page rendered again on a fresh one, and `MOSTRA_VERIFY_CRASHED` says what the runner reported. Before, one browser lost (a disk that dropped out was the sighting) failed every later verify of that runner within a second.
+- Updated dependencies [[`9964a88`](https://github.com/mostra-dev/mostra/commit/9964a881a2a7d57738bbc0691711982f13f0aea1), [`fad4595`](https://github.com/mostra-dev/mostra/commit/fad459525cf1ee74c6fc47960c733f34bc3a81ea), [`91bb507`](https://github.com/mostra-dev/mostra/commit/91bb5079056db241ae5b2fd7cbc743a590c616be), [`312f1c2`](https://github.com/mostra-dev/mostra/commit/312f1c22811cbf53075a215ca71de9cbfcefd6f1), [`2b95dad`](https://github.com/mostra-dev/mostra/commit/2b95dadd20892c3458598b9b1c161dd7237cb5f6)]:
+  - @mostra/protocol@0.11.0
+
 ## 0.10.0
 
 ### Patch Changes
