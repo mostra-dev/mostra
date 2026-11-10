@@ -69,6 +69,13 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 - **The bridge talks to one window at one origin.** `connectBridge` gets the frame's
   `contentWindow` and the artifact origin from the ticket answer; nothing else is accepted
   (SH-04).
+- **On a hosted shell nothing is a cookie, and the chrome is the shell's (D161, D165, D167).**
+  `src/hosted.ts` keeps each route's session secret in the origin's storage (in memory when a
+  write fails, keeping the link's fragment and telling the viewer) and sends it as
+  `X-Mostra-Shell`; each route gets its own anonymous key, `HMAC-SHA-256` of one browser secret
+  that never leaves storage. `src/chrome.tsx` draws the sender line, "Never enter passwords", the
+  viewer chip and sign-in (PKCE from a click, bound to the route), the report control, the paused
+  notice and the interstitial, every tenant or operator string as text, never as markup.
 - **Same-origin only.** The gateway serves this page with a `'self'`-only Content-Security-Policy
   and `frame-ancestors 'none'`. Keep the build free of inline scripts and styles and of every
   third-party URL.
@@ -81,8 +88,9 @@ None: the package publishes `dist/` for the runtime bundle. `src/main.tsx` is th
 the banner, the receipt, the "Not carried over" panel), `src/model.ts` the view's state built from
 the shell's stream, `src/stream.ts` that stream, `src/api.ts` its calls to the gateway (session,
 ticket, submit, choose, follow, carry), `src/links.ts` `ui/open-link`, `src/messages.ts` what the
-page tells a person when it can't show the artifact, and `src/words.ts` every other word the
-viewer reads (IN-13: Mirza reviews them).
+page tells a person when it can't show the artifact, `src/hosted.ts` and `src/chrome.tsx` a hosted
+shell's sessions and trusted chrome, and `src/words.ts` every other word the viewer reads (IN-13,
+`HOSTED_WORDS`: Mirza reviews them).
 
 ## Tests to run
 

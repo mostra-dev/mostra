@@ -101,4 +101,6 @@ The container image built from this branch's CI bundle (`mostra-0.11.0-linux-x64
 - The Skill: `references/sharing.md` (pause and resume), `SKILL.md` (a local link from a cloud sandbox), `references/mcp.md` (the tools through a Mostra server).
 - The hosted shell's words (`packages/shell/src/words.ts`, `HOSTED_WORDS`): sender line, viewer chip, "Never enter passwords on this page.", report dialog, paused notice, interstitial, storage notice, the submit refusals.
 - The self-hosting page (`docs/reference/self-hosting.md`, `mostra docs self-hosting`).
+- The `AGENTS.md` of `@mostra/runtime` (the remote server, the owner's link, their test hooks and group), `@mostra/protocol` (the operator subpath), `@mostra/mcp` (remote MCP) and `@mostra/shell` (the hosted shell).
+- The playbook `docs/agents/test-deployment.md`.
 
