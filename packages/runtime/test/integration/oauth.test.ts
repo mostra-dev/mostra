@@ -232,6 +232,48 @@ describe("the authorization server for MCP clients (MC-04)", () => {
       refresh_token: successor,
     });
     expect(JSON.parse(after.body).error).toBe("invalid_grant");
+
+    // A code presented a second time revokes the grant its first presentation made (OAuth 2.1
+    // §4.1.3): its access token opens nothing, its refresh token refreshes nothing.
+    const third = await who.ask("GET", authorizeUrl(clientId, redirect, challenge));
+    const code3 = located(third).searchParams.get("code") as string;
+    const exchange = {
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code: code3,
+      redirect_uri: redirect,
+      code_verifier: verifier,
+      resource: `${api}/mcp`,
+    };
+    // A request that leaves out the redirect URI its authorization named is refused, and spends it.
+    const { redirect_uri: _named, ...withoutRedirect } = exchange;
+    const noRedirect = await token(withoutRedirect);
+    expect(JSON.parse(noRedirect.body).error).toBe("invalid_grant");
+    const fourth = await who.ask("GET", authorizeUrl(clientId, redirect, challenge));
+    const code4 = located(fourth).searchParams.get("code") as string;
+    const exchanged = await token({ ...exchange, code: code4 });
+    expect(exchanged.status, exchanged.body).toBe(200);
+    const stolen = JSON.parse(exchanged.body) as { access_token: string; refresh_token: string };
+    const mcp = (bearer: string) =>
+      send(port, `api.localhost:${port}`, "/mcp", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${bearer}`,
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      });
+    expect((await mcp(stolen.access_token)).status).not.toBe(401);
+    const replayed = await token({ ...exchange, code: code4 });
+    expect(JSON.parse(replayed.body).error).toBe("invalid_grant");
+    expect((await mcp(stolen.access_token)).status).toBe(401);
+    const refreshed = await token({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      refresh_token: stolen.refresh_token,
+    });
+    expect(JSON.parse(refreshed.body).error).toBe("invalid_grant");
     // Another client can't use this client's refresh token either.
   }, 60_000);
 

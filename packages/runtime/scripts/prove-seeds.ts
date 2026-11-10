@@ -707,6 +707,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MC-04",
+    name: "a code presented twice leaves the grant its first presentation made",
+    file: "src/server/auth.ts",
+    from: "            if (spent.grantId !== undefined) {",
+    to: '            if (spent.grantId === "never") {',
+    check: integration("oauth.test.ts", "exchanges it under PKCE"),
+  },
+  {
+    requirement: "MC-04",
     name: "anyone registers clients without limit, filling the directory",
     file: "src/server/index.ts",
     from: "    registrations: { addresses: clients, rates },\n",

@@ -349,6 +349,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     readonly resource: string;
     readonly scope: string;
     readonly viewerSignin?: string;
+    readonly redirectGiven: boolean;
   }
   interface ViewerSigninRecord extends ViewerSignin {
     readonly clientId: string;
@@ -429,6 +430,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       resource: pending.resource,
       scope: pending.scope,
       accountId: signed.accountId,
+      redirectGiven: pending.redirectGiven !== false,
       ...(pending.viewerSignin !== undefined
         ? { viewerSignin: hashSecret(pending.viewerSignin) }
         : {}),
@@ -573,6 +575,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       resource,
       scope,
       ...(viewerSignin !== undefined ? { viewerSignin } : {}),
+      redirectGiven: query.get("redirect_uri") !== null,
     } satisfies AuthorizeRecord);
     const signed = sessionAccount(request);
     if (signed) {

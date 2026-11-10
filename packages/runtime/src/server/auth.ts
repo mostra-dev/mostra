@@ -32,6 +32,8 @@ const DEVICE_INTERVAL_S = 5;
 const ROTATION_GRACE_MS = 30_000;
 /** An authorization code lives a minute (OAuth 2.1 §4.1.2: short-lived). */
 const CODE_TTL_MS = 60_000;
+/** How long a used or expired code is kept to recognize its reuse (an hour). */
+const CODE_KEPT_MS = 60 * 60 * 1000;
 
 /** User codes: eight letters a person can't confuse (RFC 8628 §6.1), shown as `ABCD-EFGH`. */
 const USER_CODE_LETTERS = "BCDFGHJKLMNPQRSTVWXZ";
@@ -84,6 +86,11 @@ export interface CodeGrant {
   readonly accountId: string;
   /** A hosted shell's viewer sign-in this code finishes (INTERFACES §18.4). */
   readonly viewerSignin?: string;
+  /**
+   * Whether the authorization request named its redirect URI; the token request must name it
+   * too then (OAuth 2.1 §4.1.3). Absent: it did.
+   */
+  readonly redirectGiven?: boolean;
 }
 
 /** A sign-in identity resolved to the server's account, or why not. */
@@ -577,12 +584,27 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
         const code = form.get("code") ?? "";
         const hash = hashSecret(code);
         return directory.write((db): TokenAnswer | OAuthError => {
-          const row = db.get<{ data_json: string; expires_at: string }>(
-            "SELECT data_json, expires_at FROM token WHERE hash = ? AND kind = 'code'",
+          const row = db.get<{ data_json: string; expires_at: string; used_at: string | null }>(
+            "SELECT data_json, expires_at, used_at FROM token WHERE hash = ? AND kind = 'code'",
             hash,
           );
-          // Spent at its first presentation, whatever comes of it: a code works once.
-          db.run("DELETE FROM token WHERE hash = ?", hash);
+          if (row?.used_at != null) {
+            // A code presented again: someone else may hold it, so what it gave is revoked
+            // (OAuth 2.1 §4.1.3, RFC 9700 §4.5.3).
+            const spent = JSON.parse(row.data_json) as CodeGrant & { readonly grantId?: string };
+            if (spent.grantId !== undefined) {
+              db.run(
+                'UPDATE "grant" SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL',
+                iso(now()),
+                spent.grantId,
+              );
+              log.warn("auth.code_reused", { grant: spent.grantId });
+            }
+            return oauthError(400, "invalid_grant", "The code is unknown, used or expired.");
+          }
+          // Spent at its first presentation, whatever comes of it: a code works once. The row is
+          // kept (as a hash) until it is long expired, so a second presentation is recognized.
+          db.run("UPDATE token SET used_at = ? WHERE hash = ?", iso(now()), hash);
           if (!row || Date.parse(row.expires_at) <= now()) {
             return oauthError(400, "invalid_grant", "The code is unknown, used or expired.");
           }
@@ -597,7 +619,12 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           if (grant.clientId !== clientId) {
             return oauthError(400, "invalid_grant", "The code was issued to another client.");
           }
-          if ((form.get("redirect_uri") ?? "") !== grant.redirectUri) {
+          // Required when the authorization request named it (OAuth 2.1 §4.1.3), and the same.
+          const redirectUri = form.get("redirect_uri");
+          if (
+            (redirectUri === null && grant.redirectGiven !== false) ||
+            (redirectUri !== null && redirectUri !== grant.redirectUri)
+          ) {
             return oauthError(
               400,
               "invalid_grant",
@@ -624,6 +651,11 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
             grant.scope,
             grant.resource,
             iso(now()),
+          );
+          db.run(
+            "UPDATE token SET data_json = ? WHERE hash = ?",
+            JSON.stringify({ ...grant, grantId }),
+            hash,
           );
           log.info("auth.code_redeemed", { client: grant.clientId, grant: grantId });
           return answer(db, grantId, issue(db, grantId));
@@ -839,14 +871,19 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
 
     issueCode(grant) {
       const code = secret();
-      directory.write((db) =>
+      directory.write((db) => {
+        // Codes are kept a while after use to recognize a second presentation, then dropped.
+        db.run(
+          "DELETE FROM token WHERE kind = 'code' AND expires_at < ?",
+          iso(now() - CODE_KEPT_MS),
+        );
         db.run(
           "INSERT INTO token (hash, kind, expires_at, data_json) VALUES (?, 'code', ?, ?)",
           hashSecret(code),
           iso(now() + CODE_TTL_MS),
           JSON.stringify(grant),
-        ),
-      );
+        );
+      });
       return code;
     },
 
