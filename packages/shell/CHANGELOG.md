@@ -1,5 +1,19 @@
 # @mostra/shell
 
+## 0.11.0
+
+### Minor Changes
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`9964a88`](https://github.com/mostra-dev/mostra/commit/9964a881a2a7d57738bbc0691711982f13f0aea1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The hosted shell's trusted chrome (D161, WP-30): the sender line with the provider that verified the owner's name, the viewer with "Sign in" from the chrome (its state bound to the page's route and session, its code redeemed only there) and an anonymous viewer's own unverified name, "Never enter passwords on this page." and the report control in the footer, the paused notice, an operator's interstitial, after-submit line and made-with link, and plain pages for a page under review, a suspended account or a page moving. Every shell page now requires Trusted Types. A hosted submission refused for a rate, a limit, a pause or sign-in says so and keeps the draft.
+
+### Patch Changes
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`b9bea94`](https://github.com/mostra-dev/mostra/commit/b9bea94ba3edf30b08e00f087ecde8c4f00d94b2) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A Client ID Metadata Document is fetched again: the fetch's own DNS lookup answered Node.js with one address when it asked for all of them (its happy-eyeballs connect), so every document failed with "Invalid IP address: undefined" (found by claude.ai's connector). The hosted shell tells the viewer when it couldn't store its session, and that a reload will need the link again.
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`27df61b`](https://github.com/mostra-dev/mostra/commit/27df61b518428bf70887dadc70d6230f01f766c1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A suspended account's refresh is refused for now (403 `temporarily_unavailable`), never as a sign-out; a hosted submit takes its rates before the operator's `limits` is asked and gets them back when the operator refuses; `rateLimits.perIp.requests` is applied to every request; the development device form checks the code before it resolves anyone; a hosted shell whose session isn't stored offers no sign-in.
+- Updated dependencies [[`9964a88`](https://github.com/mostra-dev/mostra/commit/9964a881a2a7d57738bbc0691711982f13f0aea1), [`fad4595`](https://github.com/mostra-dev/mostra/commit/fad459525cf1ee74c6fc47960c733f34bc3a81ea), [`91bb507`](https://github.com/mostra-dev/mostra/commit/91bb5079056db241ae5b2fd7cbc743a590c616be), [`312f1c2`](https://github.com/mostra-dev/mostra/commit/312f1c22811cbf53075a215ca71de9cbfcefd6f1), [`2b95dad`](https://github.com/mostra-dev/mostra/commit/2b95dadd20892c3458598b9b1c161dd7237cb5f6)]:
+  - @mostra/protocol@0.11.0
+
 ## 0.10.0
 
 ### Minor Changes

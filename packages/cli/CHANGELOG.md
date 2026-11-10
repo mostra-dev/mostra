@@ -1,5 +1,28 @@
 # @mostra/cli
 
+## 0.11.0
+
+### Minor Changes
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`fad4595`](https://github.com/mostra-dev/mostra/commit/fad459525cf1ee74c6fc47960c733f34bc3a81ea) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - An always-on owner instance links to a remote server with a key the server's operator issued for an account: `remote/link` (and `mostra login <server> --key-file <file>`), the server's `POST /link`, and the key kept owner-only and sent as the binding's bearer token.
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`312f1c2`](https://github.com/mostra-dev/mostra/commit/312f1c22811cbf53075a215ca71de9cbfcefd6f1) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Pausing, and the remote server's operator boundary (WP-30, RM-09, HO-09):
+  
+  - `mostra pause <artifact> [--reason <text>]` and `mostra resume <artifact>` (`artifact/pause`): a paused artifact stays viewable and its links keep working, while submissions answer 423 `MOSTRA_SUBMIT_PAUSED` and actions 423 `MOSTRA_ACTION_PAUSED`, keeping the draft. On an owner instance the pause also goes to every server the artifact is hosted on; a pause the server's operator made is lifted only by the operator (`MOSTRA_REMOTE_PAUSED_BY_OPERATOR`).
+  - `mostra-runtime server` loads an operator module (`operator` in its configuration) and calls its ports with their time limits and no-op defaults: `limits` (shares, pushes and links fail closed with `MOSTRA_REMOTE_OPERATOR_UNAVAILABLE` when it doesn't answer, while views and answers proceed), `metering` and `events` (at least once, with stable IDs, across restarts), `abuse` (the shell's report control and the after-push hook), `policy` (interstitial, footer, after-submit line, link lifetimes), `routing` (hosts and link hosts an operator supplies, recorded for one home forever) and the server handle (quarantine, pause, suspension, link revocation, moving and restoring homes, removal), each acting on one hosted route or home only.
+  - Hosted links minted without a viewer act as one anonymous viewer per browser; per-IP and per-link submission rates (`rateLimits`) answer 429 `MOSTRA_REMOTE_RATE_LIMITED` with `Retry-After`; `X-Forwarded-For` is believed only from `trustedProxies`, read from the right, and IPv6 counts per /64.
+  - `FrameTicket` gains `paused` and `hosted` (the trusted chrome's facts), `Viewer` and `useViewer()` gain `verified`, and nine diagnostics join the catalog.
+
+### Patch Changes
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`2b95dad`](https://github.com/mostra-dev/mostra/commit/2b95dadd20892c3458598b9b1c161dd7237cb5f6) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The remote MCP server (WP-30, MC-04): `mostra-runtime server` serves `@mostra/mcp`'s tools at `<apiOrigin>/mcp` over Streamable HTTP behind its authorization server, for the account a token names. Reading tools act on the account's hosted home; `artifact_create`, `artifact_verify`, `artifact_publish` and the workspace's files are relayed to the account's default owner instance (`port/relay.author`), inside its MCP workspace, and answer `MOSTRA_REMOTE_NO_INSTANCE` while none is connected; a publish answers the hosted link. `@mostra/mcp` gains `createAuthorizedEndpoint` and the bundled reference reader (`fileDocs`, `docsIndex`, `topicMarkdown`), which `mostra docs` now uses too.
+
+- [#134](https://github.com/mostra-dev/mostra/pull/134) [`e0b45ac`](https://github.com/mostra-dev/mostra/commit/e0b45acd4e567861601d8055cc094def5bca468a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Verify recovers from a browser or runner that failed under it ([#106](https://github.com/mostra-dev/mostra/issues/106)): a warm runner launches its browser again when the one it held died, a runner that failed in itself is replaced and the page rendered again on a fresh one, and `MOSTRA_VERIFY_CRASHED` says what the runner reported. Before, one browser lost (a disk that dropped out was the sighting) failed every later verify of that runner within a second.
+- Updated dependencies [[`9964a88`](https://github.com/mostra-dev/mostra/commit/9964a881a2a7d57738bbc0691711982f13f0aea1), [`fad4595`](https://github.com/mostra-dev/mostra/commit/fad459525cf1ee74c6fc47960c733f34bc3a81ea), [`91bb507`](https://github.com/mostra-dev/mostra/commit/91bb5079056db241ae5b2fd7cbc743a590c616be), [`312f1c2`](https://github.com/mostra-dev/mostra/commit/312f1c22811cbf53075a215ca71de9cbfcefd6f1), [`2b95dad`](https://github.com/mostra-dev/mostra/commit/2b95dadd20892c3458598b9b1c161dd7237cb5f6)]:
+  - @mostra/protocol@0.11.0
+  - @mostra/mcp@0.11.0
+  - @mostra/sdk@0.11.0
+
 ## 0.10.0
 
 ### Minor Changes
