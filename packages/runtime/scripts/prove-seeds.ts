@@ -63,6 +63,30 @@ const SEEDS: readonly Seed[] = [
   // they guard: personal links, the roster's completion and its waits, status, presence,
   // attribution and the visibility policy.
   {
+    requirement: "wp31-132",
+    name: "a render the browser's own connection failure spoiled is never rendered again",
+    file: "../verify/src/runner.ts",
+    from: "            first.collision === undefined ||",
+    to: "            true ||",
+    check: integration("verify-failures.test.ts", "connection failed it"),
+  },
+  {
+    requirement: "wp31-132",
+    name: "any failed request renders the page again, the artifact's own included",
+    file: "../verify/src/network.ts",
+    from: "    if (collision === undefined && (text.includes(COLLISION) || standIns.has(request))) {",
+    to: "    if (collision === undefined) {",
+    check: integration("verify.test.ts", "network: the page's own missing file"),
+  },
+  {
+    requirement: "wp31-132",
+    name: "a second render is never said in the log",
+    file: "src/verify/index.ts",
+    from: "          if (result.renderedAgain !== undefined)",
+    to: "          if (result.renderedAgain === null)",
+    check: integration("verify-failures.test.ts", "connection failed it"),
+  },
+  {
     requirement: "CO-07",
     name: "a private page hears of other viewers' submissions through its events (Opus review 1)",
     file: "src/interaction/index.ts",

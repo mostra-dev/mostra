@@ -403,6 +403,13 @@ export interface RenderResult {
   readonly timedOut: boolean;
   /** When each step ended, in ms after the render started. */
   readonly timingsMs: Readonly<Record<string, number>>;
+  /**
+   * Why the page was rendered a second time, in a fresh browser context, when it was: a
+   * connection the browser couldn't make for a reason of its own (Chromium's random local port
+   * colliding on Windows, `net::ERR_NO_BUFFER_SPACE`, D157, #132). The second render's findings
+   * are the answer's.
+   */
+  readonly renderedAgain?: string;
 }
 
 /** `verify/compare`'s params; internal to Mostra. */

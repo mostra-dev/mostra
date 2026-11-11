@@ -100,7 +100,11 @@ export function runnerEnvironment(env: Environment, browsers?: string): Environm
   if (browsers !== undefined) out["PLAYWRIGHT_BROWSERS_PATH"] = browsers;
   const idle = env["MOSTRA_TEST_VERIFY_IDLE_MS"];
   if (idle) out["MOSTRA_TEST_VERIFY_IDLE_MS"] = idle;
-  for (const name of ["MOSTRA_TEST_VERIFY_LOSE_BROWSER", "MOSTRA_TEST_VERIFY_FAIL_ONCE"]) {
+  for (const name of [
+    "MOSTRA_TEST_VERIFY_LOSE_BROWSER",
+    "MOSTRA_TEST_VERIFY_FAIL_ONCE",
+    "MOSTRA_TEST_VERIFY_COLLIDE_ONCE",
+  ]) {
     const value = env[name];
     if (value) out[name] = value;
   }

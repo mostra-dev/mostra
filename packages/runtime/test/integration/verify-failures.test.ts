@@ -247,6 +247,29 @@ describe("verify's failures", () => {
   );
 
   it(
+    "renders a page again once when the browser's own connection failed it (#132), and only that render",
+    async () => {
+      // Playwright can't make Chromium's ERR_NO_BUFFER_SPACE: the runner fails the first script or
+      // stylesheet of one render's artifact frame instead, which it takes for a collision.
+      const flag = join(tempDir("verify-collide-once"), "collide");
+      writeFileSync(flag, "");
+      await withDaemon({ MOSTRA_TEST_VERIFY_COLLIDE_ONCE: flag }, async (client, home) => {
+        const verdict = await verifyOf(client, single());
+        // Without the second render, the failed request is an error the artifact never made.
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(verdict.status).toBe("pass");
+        expect(existsSync(flag)).toBe(false);
+        const log = readFileSync(join(home.home, "logs", "supervisor.log"), "utf8");
+        const again = log.split("\n").filter((line) => line.includes("verify.rendered_again"));
+        expect(again, log.slice(-2000)).toHaveLength(1);
+        expect(again[0]).toContain("ERR_ADDRESS_UNREACHABLE");
+        expect(again[0]).not.toMatch(/#t=|[?&]t=/);
+      });
+    },
+    VERIFY_MS,
+  );
+
+  it(
     "removes the sandboxes a stopped instance left, at start (D138 item 1)",
     async () => {
       await withDaemon(

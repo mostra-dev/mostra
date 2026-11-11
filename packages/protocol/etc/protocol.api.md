@@ -2631,6 +2631,7 @@ export interface RenderResult {
     readonly fields?: readonly ProbedField[];
     readonly findings: readonly Diagnostic[];
     readonly ready: boolean;
+    readonly renderedAgain?: string;
     readonly screenshot?: {
         readonly path: string;
         readonly width: number;

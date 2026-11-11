@@ -492,6 +492,13 @@ export function createVerifier(options: VerifierOptions): Verifier {
                 return { timedOut: true } as RenderResult;
               throw error;
             });
+          // A render the browser's own connection failure spoiled was rendered again (#132): said
+          // in the log, never in the verdict, since it says nothing of the artifact.
+          if (result.renderedAgain !== undefined)
+            options.log.info("verify.rendered_again", {
+              name,
+              why: options.redactor.redact(result.renderedAgain),
+            });
           // Every ARIA snapshot verify keeps is written through the redactor, the baseline's too
           // (D138 item 1, Opus review finding 8); the runner only reads it.
           if (result.aria) {
