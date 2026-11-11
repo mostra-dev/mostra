@@ -225,8 +225,8 @@
         },
         "until": {
           "type": "string",
-          "pattern": "^(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$",
-          "description": "submitted, signal:<name>, state:<fieldId> or event:<type> (event:submission.* matches a family)."
+          "pattern": "^(?:(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$|submitted:(?:all|[1-9][0-9]{0,3}|10000)$)",
+          "description": "submitted, submitted:all (every expected respondent), submitted:<N>, signal:<name>, state:<fieldId> or event:<type> (event:submission.* matches a family)."
         },
         "after": {
           "description": "Wait for what happens after this cursor: the one a previous wait returned.",

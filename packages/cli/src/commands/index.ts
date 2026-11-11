@@ -45,6 +45,7 @@ import {
 import { mcpCommand } from "./mcp.ts";
 import { loginCommand, logoutCommand, pauseCommand, resumeCommand } from "./remote.ts";
 import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
+import { rosterAddCommand, rosterGetCommand, rosterRemoveCommand } from "./team.ts";
 import { openCommand } from "./viewing.ts";
 
 /** The commands, in help's order: the authoring loop first. */
@@ -61,6 +62,9 @@ export const COMMANDS: readonly CommandDef[] = [
   logoutCommand,
   pauseCommand,
   resumeCommand,
+  rosterAddCommand,
+  rosterGetCommand,
+  rosterRemoveCommand,
   waitCommand,
   resultsCommand,
   stateGetCommand,
