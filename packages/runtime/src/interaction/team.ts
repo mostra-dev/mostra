@@ -60,7 +60,13 @@ interface Present {
   selection?: { readonly element?: string; readonly start?: number; readonly end?: number };
   at: number;
   until: number;
-  /** The view's token bucket: updates it may still post now. */
+}
+
+/**
+ * A view's token bucket: the posts it may still make now. It outlives the view's presence (a
+ * leave keeps it), so leaving and joining again never refills it; it goes once unused for a lease.
+ */
+interface Bucket {
   tokens: number;
   refilled: number;
 }
@@ -106,6 +112,7 @@ export function createTeamTraffic(options: {
   const { bus, source } = options;
   const now = options.now ?? Date.now;
   const present = new Map<string, Present>();
+  const buckets = new Map<string, Bucket>();
   const following = new Map<string, Following>();
   const fanout = new Map<string, ReturnType<typeof setTimeout>>();
   const settle = new Map<string, ReturnType<typeof setTimeout>>();
@@ -250,6 +257,9 @@ export function createTeamTraffic(options: {
       }
     }
     for (const [viewId, entry] of following) if (entry.until <= at) following.delete(viewId);
+    for (const [viewId, bucket] of buckets) {
+      if (bucket.refilled + PRESENCE_LEASE_MS <= at) buckets.delete(viewId);
+    }
     for (const artifactId of left) changedPresence(artifactId);
   }, 1_000);
   sweep.unref?.();
@@ -263,13 +273,30 @@ export function createTeamTraffic(options: {
         present.delete(viewId);
         entry = undefined;
       }
-      if (request.leave === true) {
-        if (entry) {
-          present.delete(viewId);
-          changedPresence(page.artifactId);
-        }
+      // A present view's leave is always honored: it removes what the others see, and a page sends
+      // it as it goes, however fast it moved before.
+      if (request.leave === true && entry) {
+        present.delete(viewId);
+        changedPresence(page.artifactId);
         return { state: stateFor(page.artifactId, page.viewerId) };
       }
+      // Every other post takes a token (a leave of a view that isn't present too):
+      // PRESENCE_RATE a second, in bursts of as many, from a bucket a leave never refills.
+      const bucket = buckets.get(viewId) ?? { tokens: PRESENCE_RATE, refilled: at };
+      bucket.tokens = Math.min(
+        PRESENCE_RATE,
+        bucket.tokens + ((at - bucket.refilled) / 1000) * PRESENCE_RATE,
+      );
+      bucket.refilled = at;
+      buckets.set(viewId, bucket);
+      if (bucket.tokens < 1) {
+        return {
+          limited: true,
+          retryAfterMs: Math.ceil(((1 - bucket.tokens) / PRESENCE_RATE) * 1000),
+        };
+      }
+      bucket.tokens -= 1;
+      if (request.leave === true) return { state: stateFor(page.artifactId, page.viewerId) };
       if (!entry) {
         entry = {
           artifactId: page.artifactId,
@@ -277,24 +304,9 @@ export function createTeamTraffic(options: {
           viewerId: page.viewerId,
           at,
           until: at + PRESENCE_LEASE_MS,
-          tokens: PRESENCE_RATE,
-          refilled: at,
         };
         present.set(viewId, entry);
       }
-      // A token bucket per view: PRESENCE_RATE a second, in bursts of as many.
-      entry.tokens = Math.min(
-        PRESENCE_RATE,
-        entry.tokens + ((at - entry.refilled) / 1000) * PRESENCE_RATE,
-      );
-      entry.refilled = at;
-      if (entry.tokens < 1) {
-        return {
-          limited: true,
-          retryAfterMs: Math.ceil(((1 - entry.tokens) / PRESENCE_RATE) * 1000),
-        };
-      }
-      entry.tokens -= 1;
       if (request.cursor !== undefined) {
         if (request.cursor === null) delete entry.cursor;
         else entry.cursor = { x: request.cursor.x, y: request.cursor.y };
@@ -333,6 +345,9 @@ export function createTeamTraffic(options: {
     },
     close() {
       clearInterval(sweep);
+      present.clear();
+      buckets.clear();
+      following.clear();
       stopTeam();
       for (const timer of fanout.values()) clearTimeout(timer);
       for (const timer of settle.values()) clearTimeout(timer);

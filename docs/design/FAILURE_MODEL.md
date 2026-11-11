@@ -287,7 +287,7 @@ The plan update of 2026-10-16 added failure cases for the remote server and team
 | A respondent's personal link was revoked or expired | `roster/add` for them again mints a new link (`relinked`); their draft and submissions stay theirs, as they belong to their viewer |
 | `roster/add` past 1,000 respondents | Refused whole with `MOSTRA_TEAM_ROSTER_TOO_LARGE`, nothing added |
 | `submitted:all` or `submitted:<N>` (N > 1) under `once` per artifact | Refused at once with `MOSTRA_TEAM_ROSTER_POLICY`: one submission in all can never satisfy it |
-| A page posts presence faster than 20 updates a second | 429 `MOSTRA_TEAM_PRESENCE_RATE_LIMITED` with `Retry-After`; nothing else changes, and the client waits it out and sends its latest state |
+| A page posts presence faster than 20 updates a second | 429 `MOSTRA_TEAM_PRESENCE_RATE_LIMITED` with `Retry-After`; nothing else changes, and the client waits it out and sends its latest state. The view's bucket outlives its presence, so leaving and joining again never refills it; a present view's leave is honored at once, so a page that goes after a burst of cursor moves is gone for the others |
 | A page closes, crashes or loses its network without leaving | Its presence lapses after 30 s without a renewal, and the others see it gone |
 | The instance restarts | Presence starts empty (it is never stored); pages join again with their next renewal. Rosters, rounds and roster events are durable |
 | A version built before WP-31 is open | It never asks for team traffic, so it never receives a message kind it doesn't know |
