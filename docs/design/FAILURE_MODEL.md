@@ -194,7 +194,7 @@
 ## 11. Remote server, relay and teams
 
 The plan update of 2026-10-16 added failure cases for the remote server and teams. WP-28's are designed below (D165), and the rules of §1 hold for all of them. The others are a *Deferred decision* for the package named, which adds its rows here.
-- **WP-31** (D121): roster changes while a wait is pending, and presence traffic over its rate.
+- **WP-31** (D121, D168): its rows are in §11.4.
 - **WP-W1 to WP-W3** (D146): the cases of §2, §3 and §10 on Windows (Job Objects in place of process groups, sharing violations on rename and delete, the transport's access list), each re-derived rather than ported. WP-W1's rows are in §2, §3 and §10 (D150), WP-W2's in §2 and §10 (D151), WP-W3's (the bundles') in §10 (D153).
 
 ### 11.1 The owner offline, and the relay (D165 item 4)
@@ -276,3 +276,20 @@ The plan update of 2026-10-16 added failure cases for the remote server and team
 | An operator's answer is malformed (D167 item 2) | Counted as no answer, logged: the port's no-answer rule applies, as for a timeout |
 | An operator answers a host it gave one home for another (D167 item 6) | Refused and logged; the host keeps serving the home it was first given, and an unknown host still gets 421 |
 | The server stops, or an instance stops its gateway (D167 item 18) | Every open connection is reset, not closed, so none stays in TIME_WAIT on the listener's port; a browser reconnects to the next instance on the same leased port without `ERR_NO_BUFFER_SPACE` on Windows (#132) |
+
+### 11.4 Teams (D168)
+
+| Case | Behavior |
+|---|---|
+| The roster changes while `submitted:all` is pending | Each change settles the roster in its own transaction: a respondent added makes a complete round incomplete again, so the wait goes on until they answer too; the last respondent who hadn't answered removed completes the round, with its `roster.completed`, and the wait returns |
+| The last respondent's submission commits | `roster.completed` is appended in that transaction, so a wait never sees the submission without the completion or the completion without it; a crash before the commit leaves neither |
+| An owner instance follows a hosted completion before the submissions it names are delivered | `submitted:all` waits until every one is imported, so `results` then holds them all; deliveries come in order (D105) |
+| A respondent's personal link was revoked or expired | `roster/add` for them again mints a new link (`relinked`); their draft and submissions stay theirs, as they belong to their viewer |
+| `roster/add` past 1,000 respondents | Refused whole with `MOSTRA_TEAM_ROSTER_TOO_LARGE`, nothing added |
+| `submitted:all` or `submitted:<N>` (N > 1) under `once` per artifact | Refused at once with `MOSTRA_TEAM_ROSTER_POLICY`: one submission in all can never satisfy it |
+| A page posts presence faster than 20 updates a second | 429 `MOSTRA_TEAM_PRESENCE_RATE_LIMITED` with `Retry-After`; nothing else changes, and the client waits it out and sends its latest state |
+| A page closes, crashes or loses its network without leaving | Its presence lapses after 30 s without a renewal, and the others see it gone |
+| The instance restarts | Presence starts empty (it is never stored); pages join again with their next renewal. Rosters, rounds and roster events are durable |
+| A version built before WP-31 is open | It never asks for team traffic, so it never receives a message kind it doesn't know |
+| An invitation's link stops working before the operator takes it | It is dropped when its turn comes, never sent with a dead link; a new link gets an invitation of its own |
+

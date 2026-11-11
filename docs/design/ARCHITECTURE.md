@@ -193,7 +193,7 @@ The viewer sees `Submitted` (durable in Mostra), then `Delivered` or `Pending de
 **Signals** (IN-09) are events with type `signal.raised`, raised by artifact code (`useSignal`), by server code (`signal()`), or by the shell for submit. Mostra never decides what wakes an agent. Hosts filter.
 
 **Wait and results** (IN-10, IN-11):
-- `wait` blocks until a condition holds or the timeout passes. Its conditions are `submitted`, `signal:<name>`, `state:<field>` and `event:<type>`.
+- `wait` blocks until a condition holds or the timeout passes. Its conditions are `submitted`, `submitted:all` (every expected respondent, D168), `submitted:<N>`, `signal:<name>`, `state:<field>` and `event:<type>`.
 - `submitted` is level-triggered under `once` (any existing submission satisfies it; under `per-viewer` only while no cursor is given, D107) and edge-triggered under `epochs`; it is refused under `none` (D103). The others are edge-triggered after a cursor, defaulting to the cursor of the artifact's latest publish.
 - On timeout it returns `still_waiting` with a cursor and loses nothing.
 - `results` assembles the complete submission (INTERFACES §8) as JSON and as Markdown for agents.
@@ -464,7 +464,8 @@ The tools and their schemas are the local server's (D32). How a page renders and
 | `abuse` | Receives reports and a hook after each version push (with read access to its client files); acts through the server handle: quarantine, pause, suspend, revoke links, and deletion as a separate call | nothing |
 | `policy` | Per link and artifact: interstitial, longest link lifetime, after-submit line, footer wording, the made-with mark | none of them |
 | `routing` | Resolves an exact `Host` to the shell, a home and an artifact | the server's own labels |
-| `events` | Receives submission accepted, version pushed, run ended, roster complete (WP-31), at least once with stable IDs | discard |
+| `events` | Receives submission accepted, version pushed, run ended, roster completed (D168), at least once with stable IDs | discard |
+| `invitations` | Receives one invitation per expected respondent with an email, with their personal link, to send as the operator chooses (D168) | nothing sent |
 
 When `limits` doesn't answer in time, operations that create fail closed and viewer input proceeds, so nothing a person typed is lost.
 
