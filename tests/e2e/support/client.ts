@@ -93,6 +93,28 @@ export async function gotoShell(page: Page, url: string): Promise<void> {
 /** Opens a link in the shell and waits until the page rendered; returns the frame. */
 export async function openInShell(page: Page, url: string): Promise<FrameLocator> {
   await gotoShell(page, url);
+  await shellReady(page);
+  const frame = page.frameLocator("iframe.mostra-frame");
+  // The shell is ready once its frame greeted it, so the frame's content is there. Playwright's
+  // Firefox on Windows has not reached it, after the worker-mode bootstrap's navigation, even to
+  // run a script in it, while the frame worked for the shell (#135: CI run 43012158370 on #138).
+  // The page is healthy, so this loads it again once, as the shell's own recovery would, and
+  // records it on the test; a second time fails at once naming Playwright's frame tree.
+  if (await frameReached(frame)) return frame;
+  test.info().annotations.push({
+    type: "issue",
+    description: `#135: Playwright reached no body in a ready shell's frame and loaded the page again once (${await frameTree(page)})`,
+  });
+  await page.reload();
+  await shellReady(page);
+  if (await frameReached(frame)) return frame;
+  throw new Error(
+    `#135: the shell is ready but Playwright reaches no body in its frame, twice.\nPlaywright's frames:\n${await frameTree(page)}\n${await rendering(page)}`,
+  );
+}
+
+/** Waits until the shell says it is ready, or fails saying what each document renders (#39). */
+async function shellReady(page: Page): Promise<void> {
   try {
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
   } catch (error) {
@@ -100,34 +122,39 @@ export async function openInShell(page: Page, url: string): Promise<FrameLocator
     // it renders: say what each document's visibility was and whether a frame ran (#39).
     throw new Error(`${(error as Error).message}\n${await rendering(page)}`, { cause: error });
   }
-  const frame = page.frameLocator("iframe.mostra-frame");
-  // The shell is ready once its frame greeted it, so the frame's content is there. Playwright's
-  // Firefox on Windows has twice not reached it after the worker-mode bootstrap's navigation
-  // (#135): say what Playwright's frame tree holds within a bounded wait instead of every later
-  // step waiting out the test's limit.
-  try {
-    await frame.locator("body").waitFor({ state: "attached", timeout: 20_000 });
-  } catch (error) {
-    const tree = page
-      .frames()
-      .map(
-        (one) =>
-          `  ${one === page.mainFrame() ? "shell" : "frame"} ${one.url().split("#")[0]}${one.isDetached() ? " (detached)" : ""}`,
-      )
-      .join("\n");
-    throw new Error(
-      `#135: the shell is ready but Playwright reaches no body in its frame.\nPlaywright's frames:\n${tree}\n${await rendering(page)}`,
-      { cause: error },
-    );
-  }
-  return frame;
 }
 
-/** Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s. */
+/** Whether Playwright reaches the frame's body within 20 s. */
+async function frameReached(frame: FrameLocator): Promise<boolean> {
+  return frame
+    .locator("body")
+    .waitFor({ state: "attached", timeout: 20_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Playwright's frames of `page`, each with its URL and whether it detached. */
+async function frameTree(page: Page): Promise<string> {
+  return page
+    .frames()
+    .map(
+      (one) =>
+        `  ${one === page.mainFrame() ? "shell" : "frame"} ${one.url().split("#")[0]}${one.isDetached() ? " (detached)" : ""}`,
+    )
+    .join("\n");
+}
+
+/**
+ * Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s.
+ * Each read is bounded (3 s): Playwright may not reach a frame at all (#135), and a diagnosis
+ * must never wait out the test.
+ */
 async function rendering(page: Page): Promise<string> {
   const lines: string[] = [];
   for (const frame of page.frames()) {
-    const seen = await frame
+    const read = frame
       .evaluate(() =>
         new Promise<string>((done) => {
           const timer = setTimeout(() => done("no animation frame within 2 s"), 2000);
@@ -141,6 +168,17 @@ async function rendering(page: Page): Promise<string> {
         ),
       )
       .catch((error: unknown) => `unreadable: ${(error as Error).message.split("\n")[0]}`);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const seen = await Promise.race([
+      read,
+      new Promise<string>((done) => {
+        timer = setTimeout(
+          () => done("unreachable: Playwright answered nothing within 3 s"),
+          3_000,
+        );
+      }),
+    ]);
+    clearTimeout(timer);
     const kind = frame === page.mainFrame() ? "shell" : "frame";
     lines.push(`  ${kind} ${frame.url().split("#")[0]}: ${seen}`);
   }
