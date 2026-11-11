@@ -9,6 +9,7 @@ import { INTERACTION_SCENARIOS } from "./interaction.ts";
 import { PORT_SCENARIOS } from "./ports.ts";
 import { REMOTE_SCENARIOS } from "./remote.ts";
 import { SESSION_SCENARIOS } from "./session.ts";
+import { TEAM_SCENARIOS } from "./team.ts";
 import { VIEWING_SCENARIOS } from "./viewing.ts";
 
 /** Every scenario. */
@@ -19,4 +20,5 @@ export const SCENARIOS: readonly Scenario[] = [
   ...PORT_SCENARIOS,
   ...VIEWING_SCENARIOS,
   ...REMOTE_SCENARIOS,
+  ...TEAM_SCENARIOS,
 ];
