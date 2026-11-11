@@ -38,6 +38,8 @@
 | `2340045`, `b98eda3`, `84289be` | D168 and the dossier, the AGENTS.md files, the verified facts |
 | `2f237cc` | The session's own review: presence's rate held across a leave and a join again, with a unit suite for the team traffic |
 | `3aa4e71` | The Skill's team sample as a complete module (found by the full `pnpm check`) |
+| `a5f6f7c` | #135's measure: a ready shell's frame Playwright can't reach loads again once, every diagnostic read bounded |
+| `bad96d4`, `f74fbe7` | The Claude Opus review's ten findings, each with a test and a seed (Reviews) |
 
 ## Evidence
 
@@ -63,7 +65,7 @@ Every check runs through the real interface: a real daemon (`GatewayHome`) or a 
 ## Candidate checks
 
 - **`pnpm check`** on `a115639` in the detached worktree on the external disk (fresh `pnpm install --frozen-lockfile`, 53 min): every job passed but `integration`, where one case failed for a real defect: the Skill's `teams.md` sample used a component it never declared, and verify type-checks and renders every sample (`verify.test.ts`). Fixed in `3aa4e71`; the case passes alone. The fix of `2f237cc` (after that run) passed its own unit suite, the team integration suite and every CO-04 seed.
-- **CI** on #138 with `ci:full` (every leg: Linux, macOS, Windows x64 and arm64, every engine, the six-platform release rehearsal): run 43012158370 on `3aa4e71` failed only Windows Firefox's `hosted.spec.ts:109`, #135, whose trace narrowed it (Issues, below); run 43019630810 on `ea5763f`, with `a5f6f7c`'s measure, passed Windows Firefox and every other leg but two, unrelated to WP-31 and green on their re-run: `integration (macos, remote)`'s RM-08 order check (two imported answers out of the server's order, filed as #139: a race between the owner's follow and its deliveries, WP-29's paths) and `integration (windows-arm64, windows-clients)`'s SDK verify (a stylesheet failed with `ERR_NO_BUFFER_SPACE` inside verify's own browser, recorded on #132). After the re-run all 74 jobs are green, `ci-ok` included.
+- **CI** on #138 with `ci:full` (every leg: Linux, macOS, Windows x64 and arm64, every engine, the six-platform release rehearsal): run 43012158370 on `3aa4e71` failed only Windows Firefox's `hosted.spec.ts:109`, #135, whose trace narrowed it (Issues, below); run 43019630810 on `ea5763f`, with `a5f6f7c`'s measure, passed Windows Firefox and every other leg but two, unrelated to WP-31 and green on their re-run: `integration (macos, remote)`'s RM-08 order check (two imported answers out of the server's order, filed as #139: a race between the owner's follow and its deliveries, WP-29's paths) and `integration (windows-arm64, windows-clients)`'s SDK verify (a stylesheet failed with `ERR_NO_BUFFER_SPACE` inside verify's own browser, recorded on #132). After the re-run all 74 jobs are green, `ci-ok` included. Run 43048370674 on `f74fbe7`, with the Opus review's fixes, passed every leg the first time: 78 of 78 checks, Windows Firefox's hosted cases included.
 
 ## Reviews (D80, D144)
 
