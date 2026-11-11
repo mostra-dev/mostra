@@ -97,6 +97,55 @@ describe("a team form on a remote server (CO-01, CO-02, CO-03)", () => {
     );
     expect(roster.counts).toMatchObject({ total: 3, notOpened: 3 });
 
+    // A respondent the owner's own `roster/add` names is forwarded there too, and their hosted
+    // link's secret is protected here as the share's are (Opus review 3): a durable event of this
+    // home that names it keeps none of it, even without the `#t=` that marks it in a URL.
+    const more = ok<{ links: { ref: string; link: { url: string } }[] }>(
+      await owner.client.call("roster/add", {
+        artifact: { artifactId },
+        respondents: [{ ref: "barbara", name: "Barbara" }],
+      }),
+    );
+    const barbara = more.links.find((entry) => entry.ref === "barbara")?.link.url ?? "";
+    expect(barbara.startsWith(shell)).toBe(true);
+    const secret = new URL(barbara).hash.slice("#t=".length);
+    expect(secret.length).toBeGreaterThan(20);
+    const notesDir = join(tempDir("team-hosted-notes"), "notes");
+    cpSync(FIXTURE, notesDir, { recursive: true });
+    const notes = ok<{ artifactId: string }>(
+      await owner.client.call("artifact/publish", { source: { path: notesDir } }, 120_000),
+    );
+    ok(
+      await owner.client.call("state/patch", {
+        artifact: { artifactId: notes.artifactId },
+        ops: [{ id: "actions", value: `Barbara's link: ${barbara}, its secret ${secret}` }],
+        mutationId: MutationId.create(),
+      }),
+    );
+    const changed = ok<{ events: unknown[] }>(
+      await owner.client.call("events/read", {
+        filter: { artifacts: [notes.artifactId], types: ["state.changed"] },
+      }),
+    );
+    expect(changed.events).toHaveLength(1);
+    expect(JSON.stringify(changed.events)).not.toContain(secret);
+    // The operator's `limits` was asked for the links each call mints (Opus review 10): three for
+    // the share's respondents, one for Barbara, and nothing for respondents whose links are kept.
+    const linkQuantities = async () =>
+      (await operator.calls("limits"))
+        .map((call) => call.payload)
+        .filter((query) => query["operation"] === "link" && query["quantity"] !== undefined)
+        .map((query) => query["quantity"]);
+    expect(await linkQuantities()).toEqual([3, 1]);
+    ok(
+      await owner.client.call("roster/add", {
+        artifact: { artifactId },
+        respondents: [...PEOPLE, { ref: "barbara", name: "Barbara Liskov" }],
+      }),
+    );
+    expect(await linkQuantities()).toEqual([3, 1]);
+    ok(await owner.client.call("roster/remove", { artifact: { artifactId }, refs: ["barbara"] }));
+
     // Two invitations wait (Alan has no email), each by its link's token: no URL, no secret.
     await eventually(async () => (await operator.calls("invitations.attempt")).length >= 2);
     const directory = new Database(join(data, "server.sqlite"), { readonly: true });

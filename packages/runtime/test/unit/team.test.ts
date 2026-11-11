@@ -435,8 +435,41 @@ describe("respondent status and the visibility policy (CO-03, CO-07)", () => {
       expect(theirs.owner).toBe(true);
       expect(theirs.self).toBeUndefined();
       expect(theirs.respondents).toHaveLength(2);
+      // The same through the events (Opus review 1): Grace's submission reaches Ada's page only as
+      // the policy allows, and never with Grace's viewer, view or key under counts.
+      const grace = viewerOf(ledger, "grace");
+      const created = (viewerId: string) =>
+        interaction
+          .pageEvents({ artifactId, viewerId }, 0, 1000)
+          .events.filter((event) => event.type.startsWith("submission."));
+      const adaSees = created(ada);
+      if (visibility === "private") expect(adaSees).toEqual([]);
+      else {
+        expect(adaSees.map((event) => event.type)).toEqual(["submission.created"]);
+        const [only] = adaSees;
+        const seen = JSON.stringify(only);
+        expect(seen).not.toContain(grace);
+        if (visibility === "counts") expect(only?.actor).toEqual({ kind: "viewer" });
+        else expect(only?.actor).toEqual({ kind: "viewer", key: expect.stringMatching(/^vk_/) });
+      }
+      // Grace sees her own, the owner sees it with its key whatever the policy.
+      expect(created(grace).some((event) => event.type === "submission.created")).toBe(true);
+      expect(created(owner).find((event) => event.type === "submission.created")?.actor).toEqual({
+        kind: "viewer",
+        key: expect.stringMatching(/^vk_/),
+      });
     });
   }
+
+  it("tells every page of a submission under once per-artifact, which closes every draft", () => {
+    const { ledger, artifactId, versionId, interaction } = setup({ policy: "once" });
+    const owner = viewOf(ledger, artifactId, versionId).viewerId;
+    const ada = ledger.write((db) => viewerForSpec(db, { ref: "ada", name: "Ada" }));
+    viewOf(ledger, artifactId, versionId, ada);
+    submitAs(ledger, interaction, artifactId, versionId, owner);
+    const seen = interaction.pageEvents({ artifactId, viewerId: ada }, 0, 1000).events;
+    expect(seen.some((event) => event.type === "submission.created")).toBe(true);
+  });
 
   it("keeps the roster's events from pages", () => {
     const { ledger, artifactId, versionId, interaction } = setup({

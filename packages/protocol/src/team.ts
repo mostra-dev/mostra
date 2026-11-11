@@ -326,6 +326,12 @@ export interface PresenceRequest {
   readonly selection?: PresenceSelection | null;
   /** Ends the page's presence now. */
   readonly leave?: true;
+  /**
+   * The page's own count of its presence posts, growing with each (a leave included): a post the
+   * gateway gets after one with a higher count, such as an update that overtook the page's leave,
+   * changes nothing.
+   */
+  readonly seq?: number;
 }
 
 /** The Zod schema of the `PresenceRequest` type. */
@@ -335,6 +341,7 @@ export const PresenceRequest: z.ZodType<PresenceRequest> = z
     cursor: PresenceCursor.nullable().exactOptional(),
     selection: PresenceSelection.nullable().exactOptional(),
     leave: z.literal(true).exactOptional(),
+    seq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).exactOptional(),
   })
   .register(wireRegistry, {
     id: "PresenceRequest",

@@ -48,6 +48,7 @@ export interface TeamSource {
   isOwner(viewerId: string): boolean;
   peer(artifactId: string, viewerId: string): { readonly key: string } & RosterViewer;
   rosterForPage(page: { readonly artifactId: string; readonly viewerId: string }): RosterForPage;
+  rostersForPages(artifactId: string, viewerIds: readonly string[]): RosterForPage[];
   onTeam(listener: (artifactId: string) => void): () => void;
 }
 
@@ -60,6 +61,8 @@ interface Present {
   selection?: { readonly element?: string; readonly start?: number; readonly end?: number };
   at: number;
   until: number;
+  /** The presence this view last got, so it hears only a change of what it may see. */
+  last?: string;
 }
 
 /**
@@ -69,6 +72,8 @@ interface Present {
 interface Bucket {
   tokens: number;
   refilled: number;
+  /** The highest `seq` the view posted with, so an older post that arrives later changes nothing. */
+  seq?: number;
 }
 
 /** A view that follows its roster. */
@@ -112,6 +117,31 @@ export function createTeamTraffic(options: {
   const { bus, source } = options;
   const now = options.now ?? Date.now;
   const present = new Map<string, Present>();
+  /** Each artifact's present views, so a fan-out reads only its own artifact's (Opus review 9). */
+  const presentOn = new Map<string, Set<string>>();
+  const put = (entry: Present): void => {
+    present.set(entry.viewId, entry);
+    let views = presentOn.get(entry.artifactId);
+    if (!views) {
+      views = new Set();
+      presentOn.set(entry.artifactId, views);
+    }
+    views.add(entry.viewId);
+  };
+  const drop = (viewId: string): void => {
+    const entry = present.get(viewId);
+    if (!entry) return;
+    present.delete(viewId);
+    const views = presentOn.get(entry.artifactId);
+    views?.delete(viewId);
+    if (views?.size === 0) presentOn.delete(entry.artifactId);
+  };
+  const presentFor = function* (artifactId: string): Generator<Present> {
+    for (const viewId of presentOn.get(artifactId) ?? []) {
+      const entry = present.get(viewId);
+      if (entry) yield entry;
+    }
+  };
   const buckets = new Map<string, Bucket>();
   const following = new Map<string, Following>();
   const fanout = new Map<string, ReturnType<typeof setTimeout>>();
@@ -154,8 +184,8 @@ export function createTeamTraffic(options: {
     const at = now();
     // One entry per viewer: their most recent view's cursor and selection.
     const byViewer = new Map<string, Present>();
-    for (const entry of present.values()) {
-      if (entry.artifactId !== artifactId || entry.until <= at) continue;
+    for (const entry of presentFor(artifactId)) {
+      if (entry.until <= at) continue;
       const kept = byViewer.get(entry.viewerId);
       if (!kept || kept.at < entry.at) byViewer.set(entry.viewerId, entry);
     }
@@ -186,17 +216,23 @@ export function createTeamTraffic(options: {
     };
   };
 
+  /**
+   * Sends each present view of an artifact what it may see now, when that differs from what it
+   * last got: a view under `private` sees only itself, so others coming, moving and going send it
+   * nothing (Opus review 2), and under `counts` only a change of the count does.
+   */
   const fanOut = (artifactId: string): void => {
     fanout.delete(artifactId);
     const at = now();
     const lookups = memo(artifactId);
-    for (const entry of present.values()) {
-      if (entry.artifactId !== artifactId || entry.until <= at) continue;
+    for (const entry of presentFor(artifactId)) {
+      if (entry.until <= at) continue;
       try {
-        bus.send(artifactId, entry.viewId, {
-          kind: "presence",
-          presence: stateFor(artifactId, entry.viewerId, lookups),
-        });
+        const presence = stateFor(artifactId, entry.viewerId, lookups);
+        const text = JSON.stringify(presence);
+        if (text === entry.last) continue;
+        entry.last = text;
+        bus.send(artifactId, entry.viewId, { kind: "presence", presence });
       } catch (error) {
         options.log?.error("team.presence_failed", { error });
       }
@@ -211,25 +247,39 @@ export function createTeamTraffic(options: {
     fanout.set(artifactId, timer);
   };
 
+  /** Sends each following view its roster when it changed, from one read for all of them. */
   const sendRosters = (artifactId: string): void => {
     settle.delete(artifactId);
     const at = now();
+    const views: [string, Following][] = [];
     for (const [viewId, entry] of following) {
       if (entry.artifactId !== artifactId) continue;
-      if (entry.until <= at) {
-        following.delete(viewId);
-        continue;
-      }
+      if (entry.until <= at) following.delete(viewId);
+      else views.push([viewId, entry]);
+    }
+    if (views.length === 0) return;
+    let rosters: RosterForPage[];
+    try {
+      rosters = source.rostersForPages(
+        artifactId,
+        views.map(([, entry]) => entry.viewerId),
+      );
+    } catch (error) {
+      options.log?.error("team.respondents_failed", { error });
+      return;
+    }
+    views.forEach(([viewId, entry], index) => {
+      const roster = rosters[index];
+      if (!roster) return;
+      const text = JSON.stringify(roster);
+      if (text === entry.last) return;
+      entry.last = text;
       try {
-        const roster = source.rosterForPage({ artifactId, viewerId: entry.viewerId });
-        const text = JSON.stringify(roster);
-        if (text === entry.last) continue;
-        entry.last = text;
         bus.send(artifactId, viewId, { kind: "respondents", respondents: roster });
       } catch (error) {
         options.log?.error("team.respondents_failed", { error });
       }
-    }
+    });
   };
 
   const stopTeam = source.onTeam((artifactId) => {
@@ -252,7 +302,7 @@ export function createTeamTraffic(options: {
     const left = new Set<string>();
     for (const [viewId, entry] of present) {
       if (entry.until <= at) {
-        present.delete(viewId);
+        drop(viewId);
         left.add(entry.artifactId);
       }
     }
@@ -270,13 +320,25 @@ export function createTeamTraffic(options: {
       const viewId = request.viewId;
       let entry = present.get(viewId);
       if (entry && (entry.artifactId !== page.artifactId || entry.viewerId !== page.viewerId)) {
-        present.delete(viewId);
+        drop(viewId);
         entry = undefined;
+      }
+      // Posts of one page can arrive out of order (a cursor update in flight when the page left):
+      // one older than the newest the view sent changes nothing, so a leave is never undone by an
+      // update that overtook it (Opus review 7). The count lives in the view's bucket, which
+      // outlives its presence by a lease.
+      const known = buckets.get(viewId);
+      const stale =
+        request.seq !== undefined && known?.seq !== undefined && request.seq <= known.seq;
+      if (request.seq !== undefined && !stale) {
+        const remembered = known ?? { tokens: PRESENCE_RATE, refilled: at };
+        remembered.seq = request.seq;
+        buckets.set(viewId, remembered);
       }
       // A present view's leave is always honored: it removes what the others see, and a page sends
       // it as it goes, however fast it moved before.
-      if (request.leave === true && entry) {
-        present.delete(viewId);
+      if (request.leave === true && entry && !stale) {
+        drop(viewId);
         changedPresence(page.artifactId);
         return { state: stateFor(page.artifactId, page.viewerId) };
       }
@@ -296,7 +358,9 @@ export function createTeamTraffic(options: {
         };
       }
       bucket.tokens -= 1;
-      if (request.leave === true) return { state: stateFor(page.artifactId, page.viewerId) };
+      // A stale post takes its token like any, so sending old counts never escapes the rate.
+      if (stale || request.leave === true)
+        return { state: stateFor(page.artifactId, page.viewerId) };
       if (!entry) {
         entry = {
           artifactId: page.artifactId,
@@ -305,7 +369,7 @@ export function createTeamTraffic(options: {
           at,
           until: at + PRESENCE_LEASE_MS,
         };
-        present.set(viewId, entry);
+        put(entry);
       }
       if (request.cursor !== undefined) {
         if (request.cursor === null) delete entry.cursor;
@@ -325,7 +389,10 @@ export function createTeamTraffic(options: {
       entry.at = at;
       entry.until = at + PRESENCE_LEASE_MS;
       changedPresence(page.artifactId);
-      return { state: stateFor(page.artifactId, page.viewerId) };
+      // The answer is what the view sees now: the fan-out sends it again only once that changes.
+      const state = stateFor(page.artifactId, page.viewerId);
+      entry.last = JSON.stringify(state);
+      return { state };
     },
     respondents(page, viewId) {
       const roster = source.rosterForPage(page);
@@ -346,6 +413,7 @@ export function createTeamTraffic(options: {
     close() {
       clearInterval(sweep);
       present.clear();
+      presentOn.clear();
       buckets.clear();
       following.clear();
       stopTeam();

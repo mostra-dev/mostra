@@ -73,11 +73,46 @@ describe("TeamClient (CO-03, CO-04)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(presence.at(-1)?.request.leave).toBeUndefined();
     leaveB();
-    expect(presence.at(-1)?.request).toEqual({ viewId: "vw_1", leave: true });
+    expect(presence.at(-1)?.request).toMatchObject({ viewId: "vw_1", leave: true });
     expect(team.presence()).toBeUndefined();
     const left = presence.length;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(presence.length).toBe(left);
+  });
+
+  it("counts every post, a leave included, and takes no answer to a post it made before leaving (Opus review 7)", async () => {
+    const sent: PresenceRequest[] = [];
+    let release: ((state: PresenceState) => void) | undefined;
+    const transport = {
+      presence: (request: PresenceRequest) => {
+        sent.push(request);
+        if (request.leave === true) return Promise.resolve(PRESENT);
+        return new Promise<PresenceState>((resolve) => {
+          release = resolve;
+        });
+      },
+      respondents: async () => ROSTER,
+    } as unknown as Transport;
+    const team = new TeamClient({ transport, viewId: "vw_1" });
+    const heard = vi.fn();
+    team.subscribe(heard);
+    const leave = team.joinPresence({ cursor: true, selection: false });
+    await vi.advanceTimersByTimeAsync(0);
+    // A post is on its way when the hook unmounts: the leave carries a higher count, so the
+    // gateway takes no post after it that is older.
+    expect(sent).toHaveLength(1);
+    leave();
+    const [update, left] = sent;
+    expect(left).toMatchObject({ leave: true });
+    expect((left?.seq ?? 0) > (update?.seq ?? Number.POSITIVE_INFINITY)).toBe(true);
+    const calls = heard.mock.calls.length;
+    // The late answer is no longer the page's: no state, no listener, no heartbeat after it.
+    release?.({ visibility: "names", peers: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(team.presence()).toBeUndefined();
+    expect(heard.mock.calls.length).toBe(calls);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sent).toHaveLength(2);
   });
 
   it("waits out the gateway's rate and posts again", async () => {

@@ -10708,6 +10708,8 @@ pub struct PresenceRequest {
     pub leave: ::std::option::Option<crate::wire::ConstTrue>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub selection: ::std::option::Option<PresenceSelection>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub seq: ::std::option::Option<i64>,
     #[serde(rename = "viewId")]
     pub view_id: ViewId,
 }

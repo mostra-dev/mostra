@@ -2255,6 +2255,7 @@ export interface PresenceRequest {
     readonly cursor?: PresenceCursor | null;
     readonly leave?: true;
     readonly selection?: PresenceSelection | null;
+    readonly seq?: number;
     readonly viewId: string;
 }
 

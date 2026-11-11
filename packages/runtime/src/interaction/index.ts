@@ -79,7 +79,10 @@ import {
   readRoster,
   removeRespondents,
   rosterForPage,
+  rosterForPages,
+  type SubmissionStanding,
   settleRoster,
+  submissionStanding,
   teamVisibility,
 } from "./roster.ts";
 import {
@@ -482,6 +485,8 @@ export interface Interaction {
   roster(artifactId: string, live?: (tokenId: string) => boolean): Roster;
   /** The roster as a page may see it (CO-07). */
   rosterForPage(page: PageIdentity): RosterForPage;
+  /** The roster as each of an artifact's pages may see it, from one read (in their order). */
+  rostersForPages(artifactId: string, viewerIds: readonly string[]): RosterForPage[];
   /** What viewers of an artifact see of each other (CO-07). */
   visibility(artifactId: string): TeamVisibility;
   /** Whether a page's viewer is the artifact's owner, who sees everyone (CO-07). */
@@ -551,6 +556,28 @@ function actorForPage(actor: Actor, viewerId: string, artifactId: string): Actor
   const key = peerKey(artifactId, actor.id);
   if (actor.id === viewerId) return { ...actor, key };
   return { kind: "viewer", ...(actor.name !== undefined ? { name: actor.name } : {}), key };
+}
+
+/**
+ * How a page sees an event of a submission (CO-07, D168): its own as it is; another viewer's
+ * under `once` for the whole artifact as it is, since it closes every draft; otherwise only its
+ * `submission.created`, and only as the visibility allows: none under `private`, without a name
+ * or key under `counts`, named under `names`. Another viewer's deliveries tell a page nothing it
+ * needs, so they never reach it there.
+ */
+function submissionShown(
+  event: EventRecord,
+  viewerId: string,
+  standing: SubmissionStanding,
+  submitterOf: (submissionId: string) => string | undefined,
+): "as-is" | "hidden" | "anonymous" {
+  const submitter =
+    event.type === "submission.created"
+      ? String(event.payload["viewerId"] ?? "")
+      : submitterOf(String(event.payload["submissionId"] ?? ""));
+  if (submitter === viewerId || standing.closesAll) return "as-is";
+  if (event.type !== "submission.created" || standing.visibility === "private") return "hidden";
+  return standing.visibility === "counts" ? "anonymous" : "as-is";
 }
 
 /** An event as a page sees it: other viewers' identities left out. */
@@ -790,8 +817,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     importSubmission(envelope, source) {
       const owners = options.deliveryOwners?.(envelope.artifactId) ?? outbox.owners();
-      const answer = ledger.write((db) =>
-        importSubmission(db, {
+      let created = false;
+      const answer = ledger.write((db) => {
+        const held = db.get("SELECT 1 FROM submission WHERE id = ?", envelope.submissionId);
+        const result = importSubmission(db, {
           envelope,
           source,
           owners,
@@ -801,8 +830,16 @@ export function createInteraction(options: InteractionOptions): Interaction {
               artifactId,
               source.server,
             ) !== undefined,
-        }),
-      );
+        });
+        created =
+          held === undefined &&
+          db.get("SELECT 1 FROM submission WHERE id = ?", envelope.submissionId) !== undefined;
+        // An imported submission settles the roster like a local one, in its own transaction
+        // (D168 item 3, Opus review 5): whatever it completes is recorded with it.
+        if (created) settleRoster(db, envelope.artifactId, new Date().toISOString());
+        return result;
+      });
+      if (created) touched(envelope.artifactId);
       log.info("interaction.imported", {
         artifactId: envelope.artifactId,
         submissionId: envelope.submissionId,
@@ -1047,6 +1084,20 @@ export function createInteraction(options: InteractionOptions): Interaction {
           if (!runs.has(runId)) runs.set(runId, runById(db, page.artifactId, runId));
           return runs.get(runId);
         };
+        const standing = submissionStanding(db, page.artifactId, ownerOf(db, page.viewerId));
+        const submitters = new Map<string, string | undefined>();
+        const submitterOf = (submissionId: string): string | undefined => {
+          if (!submitters.has(submissionId)) {
+            submitters.set(
+              submissionId,
+              db.get<{ viewer_id: string }>(
+                "SELECT viewer_id FROM submission WHERE id = ?",
+                submissionId,
+              )?.viewer_id,
+            );
+          }
+          return submitters.get(submissionId);
+        };
         for (;;) {
           const read = readEvents(db, {
             filter: { artifacts: [page.artifactId] },
@@ -1057,6 +1108,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
             if (options.sentOnly && DELIVERY_EVENTS.has(event.type)) continue;
+            if (event.type.startsWith("submission.")) {
+              const shown = submissionShown(event, page.viewerId, standing, submitterOf);
+              if (shown === "hidden") continue;
+              const seen = eventForPage(event, page.viewerId);
+              events.push(
+                shown === "anonymous" ? { ...seen, actor: { kind: seen.actor.kind } } : seen,
+              );
+              continue;
+            }
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));
@@ -1386,6 +1446,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
           artifactId: page.artifactId,
           viewerId: page.viewerId,
           owner: ownerOf(db, page.viewerId),
+          viewerOf: (viewerId) => viewer(db, viewerId),
+        }),
+      );
+    },
+    rostersForPages(artifactId, viewerIds) {
+      return ledger.read((db) =>
+        rosterForPages(db, {
+          artifactId,
+          pages: viewerIds.map((viewerId) => ({ viewerId, owner: ownerOf(db, viewerId) })),
           viewerOf: (viewerId) => viewer(db, viewerId),
         }),
       );

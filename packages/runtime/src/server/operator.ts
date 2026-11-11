@@ -252,7 +252,11 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
     try {
       if (row.port === "invitations") {
         const { tokenId, ...invitation } = payload as QueuedInvitation;
-        const link = await options.invitationLink?.(invitation.home, tokenId);
+        // Building the link opens its home: bounded like the hand-over, so a home that hangs
+        // can't stall the dispatcher (Opus review 4).
+        const link = await within(OPERATOR_TIME_LIMITS.outbound, () =>
+          options.invitationLink?.(invitation.home, tokenId),
+        );
         if (link === undefined) {
           // The link stopped working before it was handed over: inviting with it would mail a
           // dead link, and a later one gets an invitation of its own.
@@ -298,23 +302,31 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
       await Promise.resolve();
       try {
         for (;;) {
-          // The oldest rows of each port, due or not: a port whose oldest delivery waits for its
-          // retry waits whole, so an operator sees a home's events in the order they happened.
-          const rows = directory.read((db) =>
-            (["events", "metering", "invitations"] as const).flatMap((port) =>
-              db.all<{
-                id: string;
-                port: string;
-                payload_json: string;
-                attempts: number;
-                next_attempt_at: string;
-              }>(
+          // The oldest rows of each ordered port, due or not: a port whose oldest delivery waits
+          // for its retry waits whole, so an operator sees a home's events in the order they
+          // happened. Invitations have no order: each waits for its own retry and none holds
+          // another back, so one home that can't build its links never stops the server's
+          // other invitations (Opus review 4).
+          const due = new Date(now()).toISOString();
+          type Row = {
+            id: string;
+            port: string;
+            payload_json: string;
+            attempts: number;
+            next_attempt_at: string;
+          };
+          const rows = directory.read((db) => [
+            ...(["events", "metering"] as const).flatMap((port) =>
+              db.all<Row>(
                 "SELECT id, port, payload_json, attempts, next_attempt_at FROM outbound WHERE port = ? ORDER BY rowid LIMIT 50",
                 port,
               ),
             ),
-          );
-          const due = new Date(now()).toISOString();
+            ...db.all<Row>(
+              "SELECT id, port, payload_json, attempts, next_attempt_at FROM outbound WHERE port = 'invitations' AND next_attempt_at <= ? ORDER BY rowid LIMIT 50",
+              due,
+            ),
+          ]);
           if (rows.every((row) => row.next_attempt_at > due)) return;
           const blocked = new Set<string>();
           let delivered = 0;
@@ -329,8 +341,9 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
             const still = directory.read((db) =>
               db.get<{ attempts: number }>("SELECT attempts FROM outbound WHERE id = ?", row.id),
             );
-            if (still && still.attempts > before) blocked.add(row.port);
-            else delivered += 1;
+            if (still && still.attempts > before) {
+              if (row.port !== "invitations") blocked.add(row.port);
+            } else delivered += 1;
           }
           if (delivered === 0) return;
         }

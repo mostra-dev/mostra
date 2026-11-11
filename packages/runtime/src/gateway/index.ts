@@ -228,6 +228,12 @@ export interface GatewayOptions {
   readonly live?: Pick<Live, "read">;
   /** Run and live updates for page streams and polls (WP-08). */
   readonly bus?: EphemeralBus;
+  /**
+   * Asks whether `count` new links may be minted for an artifact, throwing to refuse: a remote
+   * server's operator `limits` (`link`, D165 item 9). `roster/add` asks it for exactly the
+   * personal links it will mint (Opus review 10).
+   */
+  readonly linkLimit?: (artifactId: string, count: number) => Promise<void>;
   /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */
   readonly parked?: (versionId: string) => boolean;
   /**
@@ -2210,6 +2216,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         linkBase,
         link,
         collected: (number) => new RpcError(collectedDiagnostic(number)),
+        ...(options.linkLimit ? { linkLimit: options.linkLimit } : {}),
       }),
       handler(viewUrlMethod, async (params) => {
         const detail = artifacts.get(params.artifact);

@@ -246,8 +246,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       directory: data.directory,
       log,
       // An invitation's link is built when it is handed over, never kept in the queue (D168).
-      invitationLink: async (homeId, tokenId) =>
-        (await data.home(homeId)).assembled.invitationLink(tokenId),
+      invitationLink: async (homeId, tokenId) => {
+        // A home the directory no longer has can't build a link: its invitations go, while one
+        // that is only closed, drained or failing to open is tried again later.
+        const known = data.directory.read((db) =>
+          db.get("SELECT 1 FROM home WHERE id = ?", homeId),
+        );
+        if (known === undefined) return undefined;
+        return (await data.home(homeId)).assembled.invitationLink(tokenId);
+      },
       ...(Number(options.env["MOSTRA_TEST_OPERATOR_DISPATCH_MS"]) > 0
         ? { dispatchMs: Number(options.env["MOSTRA_TEST_OPERATOR_DISPATCH_MS"]) }
         : {}),

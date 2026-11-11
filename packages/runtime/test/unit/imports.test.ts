@@ -6,7 +6,13 @@
  * delivered once in effect, a repeated delivery and a re-import included. The sync cursor copies each
  * followed event once.
  */
-import { ArtifactId, type EventRecord, type SubmissionEnvelope, VersionId } from "@mostra/protocol";
+import {
+  ArtifactId,
+  type EventRecord,
+  type SubmissionEnvelope,
+  TokenId,
+  VersionId,
+} from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
 import { appendEvent } from "../../src/interaction/events.ts";
@@ -307,6 +313,64 @@ describe("hosted submissions through the owner's outbox (RM-02, D165 item 1)", (
         }),
       );
       expect(restored.appended).toBe(once.appended);
+    } finally {
+      s.stop();
+    }
+  });
+  it("settles the roster with an imported submission: the last import completes it, in its transaction (D168 item 3, Opus review 5)", async () => {
+    const s = await setup();
+    try {
+      // A roster named here whose respondents answer on the hosted home: each imported viewer is
+      // keyed by the server (DATA_MODEL §7.3), which is the roster's reference here.
+      const refs = ["SERVERKEY:person-1", "SERVERKEY:person-2"];
+      s.ownerLedger.write((db) =>
+        s.owner.addRespondents(db, {
+          artifactId: s.artifactId,
+          respondents: refs.map((ref) => ({ ref })),
+          actor: { kind: "agent", id: "test" },
+          link: (viewerId, current) => {
+            if (current !== undefined) return current;
+            const id = TokenId.create();
+            db.run(
+              "INSERT INTO token (id, secret_hash, artifact_id, scopes_json, viewer_id, created_at, shell_origin) VALUES (?, ?, ?, '[\"view\"]', ?, ?, 'http://127.0.0.1:1')",
+              id,
+              `hash-${id}`,
+              s.artifactId,
+              viewerId,
+              new Date().toISOString(),
+            );
+            return id;
+          },
+        }),
+      );
+      const heard: string[] = [];
+      const stop = s.owner.onTeam((artifactId) => heard.push(artifactId));
+      s.respond(1, "yes");
+      s.respond(2, "no");
+      await until(() => s.envelopes.length === 2);
+      const completions = () =>
+        s.ownerLedger.read(
+          (db) =>
+            db.all<{ cursor: number }>(
+              "SELECT cursor FROM event WHERE artifact_id = ? AND type = 'roster.completed'",
+              s.artifactId,
+            ).length,
+        );
+      expect(s.owner.importSubmission(s.envelopes[0] as SubmissionEnvelope, s.source)).toEqual({
+        accepted: true,
+      });
+      expect(completions()).toBe(0);
+      expect(s.owner.importSubmission(s.envelopes[1] as SubmissionEnvelope, s.source)).toEqual({
+        accepted: true,
+      });
+      expect(completions()).toBe(1);
+      expect(s.owner.roster(s.artifactId).complete).toBe(true);
+      // A repeated delivery holds nothing new and completes nothing again.
+      s.owner.importSubmission(s.envelopes[1] as SubmissionEnvelope, s.source);
+      expect(completions()).toBe(1);
+      // Pages that follow the roster hear each import that changed a status.
+      expect(heard.filter((id) => id === s.artifactId).length).toBeGreaterThanOrEqual(2);
+      stop();
     } finally {
       s.stop();
     }

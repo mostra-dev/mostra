@@ -1,8 +1,9 @@
 /**
  * Team traffic on its own (D168; CO-04, CO-07): the presence rate per view, which neither leaving
  * nor joining again refills; leases that lapse; one coalesced presence message per artifact
- * however many cursors move; each view told only what its visibility allows; and roster pushes
- * only to views that asked for them.
+ * however many cursors move, and none to a view whose own view of who is here didn't change; each
+ * view told only what its visibility allows; and roster pushes only to views that asked for them,
+ * from one roster read however many follow.
  */
 import type { EphemeralMessage, PresenceState, TeamVisibility } from "@mostra/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,9 @@ function setup(visibility: TeamVisibility = "names", owner = "") {
     },
   } as unknown as EphemeralBus;
   let team: ((artifactId: string) => void) | undefined;
+  const reads = { rosters: 0 };
+  let round = 1;
+  const roster = (viewerId: string) => ({ visibility, owner: viewerId === owner, round });
   const source: TeamSource = {
     visibility: () => visibility,
     isOwner: (viewerId) => viewerId === owner,
@@ -35,7 +39,11 @@ function setup(visibility: TeamVisibility = "names", owner = "") {
       kind: "token",
       name: viewerId,
     }),
-    rosterForPage: (page) => ({ visibility, owner: page.viewerId === owner, round: 1 }),
+    rosterForPage: (page) => roster(page.viewerId),
+    rostersForPages: (_artifactId, viewerIds) => {
+      reads.rosters += 1;
+      return viewerIds.map(roster);
+    },
     onTeam: (listener) => {
       team = listener;
       return () => {
@@ -47,6 +55,10 @@ function setup(visibility: TeamVisibility = "names", owner = "") {
   return {
     traffic,
     sent,
+    reads,
+    nextRound: () => {
+      round += 1;
+    },
     tick: (ms: number) => {
       clock += ms;
     },
@@ -93,6 +105,27 @@ describe("team traffic (CO-04, CO-07)", () => {
     traffic.close();
   });
 
+  it("takes no post older than the newest a view sent, so an update that overtook a leave never brings it back (Opus review 7)", () => {
+    const { traffic, page } = setup();
+    traffic.presence(page("ada"), { viewId: "vw_ada", seq: 1, cursor: { x: 1, y: 1 } });
+    expect(traffic.presentCount()).toBe(1);
+    // The page left (seq 3) while an update (seq 2) was on its way, which arrives after it.
+    traffic.presence(page("ada"), { viewId: "vw_ada", seq: 3, leave: true });
+    expect(
+      state(traffic.presence(page("ada"), { viewId: "vw_ada", seq: 2, cursor: { x: 9, y: 9 } }))
+        .peers,
+    ).toEqual([]);
+    expect(traffic.presentCount()).toBe(0);
+    // A stale post costs a token like any, so old counts never escape the rate.
+    let limited = false;
+    for (let index = 0; index < PRESENCE_RATE * 2; index++) {
+      if ("limited" in traffic.presence(page("ada"), { viewId: "vw_ada", seq: 2 })) limited = true;
+    }
+    expect(limited).toBe(true);
+    expect(traffic.presentCount()).toBe(0);
+    traffic.close();
+  });
+
   it("lets presence lapse after its lease, and tells the others", async () => {
     const { traffic, page, tick, sent } = setup();
     state(traffic.presence(page("ada"), { viewId: "vw_ada", cursor: { x: 1, y: 2 } }));
@@ -121,7 +154,8 @@ describe("team traffic (CO-04, CO-07)", () => {
     }
     await vi.advanceTimersByTimeAsync(PRESENCE_FANOUT_MS + 5);
     const presence = sent.filter((one) => one.message.kind === "presence");
-    expect(presence.map((one) => one.viewId).sort()).toEqual(["vw_ada", "vw_edsger", "vw_grace"]);
+    // Grace's own answer already said all she may see; the others hear once each.
+    expect(presence.map((one) => one.viewId).sort()).toEqual(["vw_ada", "vw_edsger"]);
     const toAda = presence.find((one) => one.viewId === "vw_ada")?.message as {
       presence: PresenceState;
     };
@@ -143,6 +177,44 @@ describe("team traffic (CO-04, CO-07)", () => {
       expect(owner.peers.filter((peer) => !peer.self)).toHaveLength(2);
       traffic.close();
     }
+  });
+
+  it("sends a private view nothing while others come, move and go, and a counts view only a new count (Opus review 2)", async () => {
+    for (const visibility of ["private", "counts"] as const) {
+      const { traffic, page, sent, tick } = setup(visibility);
+      traffic.presence(page("ada"), { viewId: "vw_ada" });
+      await vi.advanceTimersByTimeAsync(PRESENCE_FANOUT_MS + 5);
+      sent.length = 0;
+      traffic.presence(page("grace"), { viewId: "vw_grace", cursor: { x: 0, y: 0 } });
+      await vi.advanceTimersByTimeAsync(PRESENCE_FANOUT_MS + 5);
+      const toAda = () =>
+        sent.filter((one) => one.viewId === "vw_ada" && one.message.kind === "presence").length;
+      // Grace arriving changes the count, which only counts shows.
+      expect(toAda()).toBe(visibility === "counts" ? 1 : 0);
+      for (let index = 1; index <= 10; index++) {
+        tick(100);
+        traffic.presence(page("grace"), { viewId: "vw_grace", cursor: { x: index, y: index } });
+        await vi.advanceTimersByTimeAsync(PRESENCE_FANOUT_MS + 5);
+      }
+      expect(toAda()).toBe(visibility === "counts" ? 1 : 0);
+      traffic.presence(page("grace"), { viewId: "vw_grace", leave: true });
+      await vi.advanceTimersByTimeAsync(PRESENCE_FANOUT_MS + 5);
+      expect(toAda()).toBe(visibility === "counts" ? 2 : 0);
+      traffic.close();
+    }
+  });
+
+  it("reads the roster once per change for every view that follows it (Opus review 9)", async () => {
+    const { traffic, page, sent, changed, reads, nextRound } = setup();
+    for (const name of ["ada", "grace", "edsger", "barbara"]) {
+      traffic.respondents(page(name), `vw_${name}`);
+    }
+    nextRound();
+    changed();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(reads.rosters).toBe(1);
+    expect(sent.filter((one) => one.message.kind === "respondents")).toHaveLength(4);
+    traffic.close();
   });
 
   it("pushes the roster only to views that read it, only when it changed for them", async () => {

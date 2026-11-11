@@ -194,6 +194,47 @@ describe("expected respondents and their personal links (CO-01, CO-02, CO-03)", 
     expect(seen.body).not.toContain("roster.");
   });
 
+  it("keeps a re-added respondent's link only while it is the one the request would mint (Opus review 6)", async () => {
+    const { artifactId } = await publishTeam(gateway, "names");
+    const add = async (extra: Record<string, unknown>) => {
+      const answer = ok<RosterAnswer>(
+        await gateway.client.call("roster/add", {
+          artifact: { artifactId },
+          respondents: [{ ref: "ada@example.com", name: "Ada" }],
+          ...extra,
+        }),
+      );
+      return answer.links[0]?.link.tokenId as string;
+    };
+    const first = await add({});
+    expect(await add({})).toBe(first);
+    // Each step changes one thing, and each gets a new link for the same respondent: other scopes
+    // (the same ones in another order and without `view` are the same), a pinned version, an expiry.
+    const scopes = ["view", "draft", "submit"];
+    const narrow = await add({ scopes });
+    expect(narrow).not.toBe(first);
+    expect(await add({ scopes: ["submit", "draft"] })).toBe(narrow);
+    const pinned = await add({ scopes, version: 1 });
+    expect(pinned).not.toBe(narrow);
+    expect(await add({ scopes, version: 1 })).toBe(pinned);
+    const expiring = await add({ scopes, version: 1, ttl: "7d" });
+    expect(expiring).not.toBe(pinned);
+    expect(await add({ scopes, version: 1, ttl: "7d" })).toBe(expiring);
+    // The roster names the newest; the replaced links weren't revoked, since Ada may hold them.
+    const roster = ok<RosterAnswer["roster"]>(
+      await gateway.client.call("roster/get", { artifact: { artifactId } }),
+    );
+    expect(roster.respondents[0]?.tokenId).toBe(expiring);
+    const events = ok<{ events: { payload: Record<string, unknown> }[] }>(
+      await gateway.client.call("events/read", {
+        filter: { artifacts: [artifactId], types: ["roster.changed"] },
+      }),
+    );
+    expect(
+      events.events.filter((event) => (event.payload["relinked"] as unknown[] | undefined)?.length),
+    ).toHaveLength(3);
+  });
+
   it("shows each respondent's status alike to hosts and to pages", async () => {
     const { artifactId, pages } = await five();
     await (pages.get("ada@example.com") as Page).submit();

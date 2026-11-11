@@ -83,6 +83,29 @@ function policyOf(db: LedgerDb, artifactId: string): SubmissionPolicy {
 }
 
 /**
+ * What a page may learn of other viewers' submissions (CO-07, D168): under `once` for the whole
+ * artifact anyone's submission closes every draft, so every page hears of it; otherwise a
+ * submission is its viewer's status, shown only as the visibility allows, the owner seeing as
+ * `names`.
+ */
+export interface SubmissionStanding {
+  readonly closesAll: boolean;
+  readonly visibility: TeamVisibility;
+}
+
+export function submissionStanding(
+  db: LedgerDb,
+  artifactId: string,
+  owner: boolean,
+): SubmissionStanding {
+  const policy = policyOf(db, artifactId);
+  return {
+    closesAll: policy.policy === "once" && policy.scope !== "per-viewer",
+    visibility: owner ? "names" : teamVisibility(db, artifactId),
+  };
+}
+
+/**
  * What viewers see of each other on an artifact (CO-07): its latest version's `team.visibility`,
  * else `private` (D168). The latest version decides for every view, so a version that narrows it
  * narrows it for pages of older versions too.
@@ -495,33 +518,67 @@ export function rosterForPage(
     readonly viewerOf: (viewerId: string) => RosterViewer;
   },
 ): RosterForPage {
+  const [one] = rosterForPages(db, {
+    artifactId: input.artifactId,
+    pages: [{ viewerId: input.viewerId, owner: input.owner }],
+    viewerOf: input.viewerOf,
+  });
+  return one as RosterForPage;
+}
+
+/**
+ * The roster as each of several pages may see it, from one read of the standings (Opus review 9):
+ * a change heard by many following pages costs one roster read, not one per page.
+ */
+export function rosterForPages(
+  db: LedgerDb,
+  input: {
+    readonly artifactId: string;
+    readonly pages: readonly { readonly viewerId: string; readonly owner: boolean }[];
+    readonly viewerOf: (viewerId: string) => RosterViewer;
+  },
+): RosterForPage[] {
   const state = stateOf(db, input.artifactId);
   const list = standings(db, input.artifactId, state);
   const visibility = teamVisibility(db, input.artifactId);
-  const project = (one: Standing): RespondentForPage => {
-    const viewer = input.viewerOf(one.entry.viewer_id);
-    return {
-      ...peerOf(
-        input.artifactId,
-        // The roster's name is the one the host gave; the viewer row keeps the same.
-        { ...viewer, ...(one.entry.name !== null ? { name: one.entry.name } : {}) },
-        one.entry.viewer_id === input.viewerId,
-      ),
-      status: one.status,
-      ...(one.openedAt !== undefined ? { openedAt: one.openedAt } : {}),
-      ...(one.submission ? { submittedAt: one.submission.at } : {}),
+  const viewers = new Map<string, RosterViewer>();
+  const viewerOf = (viewerId: string): RosterViewer => {
+    let viewer = viewers.get(viewerId);
+    if (!viewer) {
+      viewer = input.viewerOf(viewerId);
+      viewers.set(viewerId, viewer);
+    }
+    return viewer;
+  };
+  const counts = countsOf(list);
+  const complete = completeOf(list);
+  const byViewer = new Map(list.map((one) => [one.entry.viewer_id, one]));
+  return input.pages.map((page) => {
+    const project = (one: Standing): RespondentForPage => {
+      const viewer = viewerOf(one.entry.viewer_id);
+      return {
+        ...peerOf(
+          input.artifactId,
+          // The roster's name is the one the host gave; the viewer row keeps the same.
+          { ...viewer, ...(one.entry.name !== null ? { name: one.entry.name } : {}) },
+          one.entry.viewer_id === page.viewerId,
+        ),
+        status: one.status,
+        ...(one.openedAt !== undefined ? { openedAt: one.openedAt } : {}),
+        ...(one.submission ? { submittedAt: one.submission.at } : {}),
+      };
     };
-  };
-  const own = list.find((one) => one.entry.viewer_id === input.viewerId);
-  const sees = input.owner ? "names" : visibility;
-  return {
-    visibility,
-    owner: input.owner,
-    round: state.round,
-    ...(own ? { self: project(own) } : {}),
-    ...(sees !== "private" ? { counts: countsOf(list), complete: completeOf(list) } : {}),
-    ...(sees === "names" ? { respondents: list.map(project) } : {}),
-  };
+    const own = byViewer.get(page.viewerId);
+    const sees = page.owner ? "names" : visibility;
+    return {
+      visibility,
+      owner: page.owner,
+      round: state.round,
+      ...(own ? { self: project(own) } : {}),
+      ...(sees !== "private" ? { counts, complete } : {}),
+      ...(sees === "names" ? { respondents: list.map(project) } : {}),
+    };
+  });
 }
 
 /** The roster's events' types: pages never see them (they name refs and emails, D168). */

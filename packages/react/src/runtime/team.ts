@@ -8,7 +8,11 @@
  *   (the gateway follows it for a minute), and the stream brings each change between.
  * - Presence starts when the first `usePresence` mounts: the page posts at most 10 updates a second
  *   (the latest wins), every 10 s even when nothing changed, and leaves when the last one unmounts
- *   or the page goes away. Cursor and selection are shared only while a mounted hook asks for them.
+ *   or the page goes away, joining again when the browser brings it back from its back/forward
+ *   cache. Cursor and selection are shared only while a mounted hook asks for them.
+ * - Every presence post carries the page's own count (`seq`), a leave included: the gateway takes
+ *   no post older than the newest it has, so an update still in flight when the page left never
+ *   brings it back, and the page takes no answer to a post it made before its last leave.
  */
 import type {
   PresenceCursor,
@@ -66,6 +70,10 @@ export class TeamClient {
   #inFlight = false;
   #again = false;
   #blockedUntil = 0;
+  /** This page's count of its presence posts (`seq`), a leave included. */
+  #seq = 0;
+  /** The count of the page's last leave: an answer to an earlier post is no longer its own. */
+  #leftAt = -1;
   #stopTracking: (() => void) | undefined;
 
   constructor(options: {
@@ -213,10 +221,22 @@ export class TeamClient {
         document.removeEventListener("selectionchange", read);
       });
     }
-    // Leaving with the page: a closed tab is gone at once, not when its lease ends.
+    // Leaving with the page: a closed tab is gone at once, not when its lease ends. A page the
+    // browser brings back from its back/forward cache, hooks still mounted, joins again (Opus
+    // review 8): its old state is stale, and nothing else would post for it.
     const gone = (): void => this.#leave(true);
+    const back = (event: PageTransitionEvent): void => {
+      if (!event.persisted || this.#sharing.size === 0) return;
+      this.#presence = undefined;
+      this.#changed();
+      this.#schedule(0);
+    };
     window.addEventListener("pagehide", gone);
-    stops.push(() => window.removeEventListener("pagehide", gone));
+    window.addEventListener("pageshow", back);
+    stops.push(() => {
+      window.removeEventListener("pagehide", gone);
+      window.removeEventListener("pageshow", back);
+    });
     this.#stopTracking = () => {
       for (const stop of stops) stop();
     };
@@ -251,13 +271,19 @@ export class TeamClient {
     this.#lastSend = Date.now();
     const cursor = JSON.stringify(this.#cursor);
     const selection = JSON.stringify(this.#selection);
+    this.#seq += 1;
+    const seq = this.#seq;
     const request: PresenceRequest = {
       viewId: this.#viewId,
       ...(cursor !== this.#sent.cursor ? { cursor: this.#cursor } : {}),
       ...(selection !== this.#sent.selection ? { selection: this.#selection } : {}),
+      seq,
     };
     try {
-      this.#presence = await transport.presence(request);
+      const answer = await transport.presence(request);
+      // The page left while this post was on its way: its answer is no longer the page's.
+      if (this.#leftAt > seq) return;
+      this.#presence = answer;
       this.#sent = { cursor, selection };
       this.#changed();
     } catch (error) {
@@ -269,6 +295,7 @@ export class TeamClient {
     } finally {
       this.#inFlight = false;
     }
+    if (this.#leftAt > seq) return;
     if (this.#heartbeat !== undefined) this.#timers.clearTimeout(this.#heartbeat);
     this.#heartbeat =
       this.#sharing.size > 0
@@ -291,10 +318,13 @@ export class TeamClient {
     this.#sendTimer = undefined;
     this.#heartbeat = undefined;
     this.#sent = { cursor: "null", selection: "null" };
+    this.#again = false;
     const transport = this.#transport;
     if (!transport?.presence || this.#viewId === undefined) return;
+    this.#seq += 1;
+    this.#leftAt = this.#seq;
     void transport
-      .presence({ viewId: this.#viewId, leave: true }, { keepalive: closing })
+      .presence({ viewId: this.#viewId, leave: true, seq: this.#seq }, { keepalive: closing })
       .catch(() => undefined);
     if (!closing) {
       this.#presence = undefined;

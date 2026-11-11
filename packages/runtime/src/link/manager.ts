@@ -336,6 +336,17 @@ export function createLink(options: LinkOptions): Link {
     const secret = /#t=([^&]+)/.exec(url)?.[1];
     if (secret !== undefined) options.protect(secret);
   };
+  /** Protects every capability link a value holds, at any depth. */
+  const protectLinksIn = (value: unknown, depth = 0): void => {
+    if (depth > 16) return;
+    if (typeof value === "string") {
+      if (value.includes("#t=")) protectLink(value);
+    } else if (Array.isArray(value)) {
+      for (const item of value) protectLinksIn(item, depth + 1);
+    } else if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) protectLinksIn(item, depth + 1);
+    }
+  };
 
   const linkRow = (db: LedgerDb, server: string): LinkRow | undefined =>
     db.get<LinkRow>("SELECT * FROM remote_link WHERE server = ?", server);
@@ -1453,7 +1464,12 @@ export function createLink(options: LinkOptions): Link {
           }),
         );
       }
-      return session.call(definition, params, { timeoutMs: 30_000 });
+      const answer = await session.call(definition, params, { timeoutMs: 30_000 });
+      // A forwarded answer may carry the hosted home's capability links (`roster/add`'s personal
+      // links, D168): whatever it carries is protected from the logs here, as the share's own link
+      // is (Opus review 3).
+      protectLinksIn(answer);
+      return answer;
     },
     shares: () => ({
       mint: async (input) => {

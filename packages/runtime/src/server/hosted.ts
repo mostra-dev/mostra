@@ -31,7 +31,6 @@ import {
   RouteId,
   RpcError,
   remoteTokenMethod,
-  rosterAddMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
@@ -491,6 +490,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     shellDir: options.shellDir,
     interaction,
     bus,
+    // `roster/add` asks the operator's `limits` for the personal links it mints (D168).
+    linkLimit: (artifactId, count) => linkLimit(artifactId, count),
     actions: relay,
     live: hostedLive,
     // Both channels: a hosted home has no host to narrow them (its owner is a host of it, D165).
@@ -660,35 +661,35 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   };
 
   /**
-   * `view/url` on a hosted home under the operator's `limits` (`link`): refused with its words, and
-   * refused for now when the operator doesn't answer, since a link creates something (D165 item 9).
+   * New links on a hosted home under the operator's `limits` (`link`): `view/url`'s one, and the
+   * personal links `roster/add` mints (D168); refused with the operator's words, and refused for now
+   * when it doesn't answer, since a link creates something (D165 item 9).
    */
+  const linkLimit = async (artifactId: string, quantity?: number): Promise<void> => {
+    const services = options.services;
+    if (!services) return;
+    const route = routeOf(artifactId);
+    const verdict = await services.operator.limit({
+      account: services.owner(id).account,
+      home: id,
+      artifact: artifactId,
+      ...(route ? { routeId: route.id } : {}),
+      operation: "link",
+      ...(quantity !== undefined ? { quantity } : {}),
+    });
+    if (verdict.allowed === "unavailable") {
+      throw refuse(
+        "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
+        "The server's operator didn't answer in time; try minting the link again.",
+      );
+    }
+    if (verdict.allowed === false) throw refuse("MOSTRA_REMOTE_LIMIT_REACHED", verdict.message);
+  };
   const limitedLinks = (method: MethodHandler): MethodHandler => ({
     definition: method.definition,
     async handle(params, session) {
-      const services = options.services;
-      if (services) {
-        const ref = (params as { artifact?: unknown }).artifact;
-        const artifactId = registry.get(canonicalRef(ref as never)).id;
-        const route = routeOf(artifactId);
-        // `roster/add` mints a personal link for each respondent it names (D168).
-        const respondents = (params as { respondents?: readonly unknown[] }).respondents;
-        const verdict = await services.operator.limit({
-          account: services.owner(id).account,
-          home: id,
-          artifact: artifactId,
-          ...(route ? { routeId: route.id } : {}),
-          operation: "link",
-          ...(respondents !== undefined ? { quantity: respondents.length } : {}),
-        });
-        if (verdict.allowed === "unavailable") {
-          throw refuse(
-            "MOSTRA_REMOTE_OPERATOR_UNAVAILABLE",
-            "The server's operator didn't answer in time; try minting the link again.",
-          );
-        }
-        if (verdict.allowed === false) throw refuse("MOSTRA_REMOTE_LIMIT_REACHED", verdict.message);
-      }
+      const ref = (params as { artifact?: unknown }).artifact;
+      await linkLimit(registry.get(canonicalRef(ref as never)).id);
       return method.handle(params, session);
     },
   });
@@ -1095,10 +1096,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       ...gateway
         .methods()
         .map((method) =>
-          method.definition.method === viewUrlMethod.method ||
-          method.definition.method === rosterAddMethod.method
-            ? limitedLinks(method)
-            : method,
+          method.definition.method === viewUrlMethod.method ? limitedLinks(method) : method,
         ),
       handler(artifactPauseMethod, (params) => {
         // The account's own instances pause and resume as the owner; only the operator, through
