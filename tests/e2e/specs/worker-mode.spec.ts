@@ -10,7 +10,7 @@
 import { cpSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { E2E_FIXTURES, openInShell, saved } from "../support/client.ts";
+import { E2E_FIXTURES, gotoShell, openInShell, saved } from "../support/client.ts";
 import { Client, removeTree, startDaemon } from "../support/mostra.ts";
 
 interface Base {
@@ -138,7 +138,7 @@ test.describe("worker-mode frames across sites (HY-07)", () => {
     const blocked = await browser.newContext({ serviceWorkers: "block" });
     try {
       const page = await blocked.newPage();
-      await page.goto(await link());
+      await gotoShell(page, await link());
       await expect(page.locator("html")).toHaveAttribute(
         "data-frame-session",
         /^(blocked|unsupported)$/,

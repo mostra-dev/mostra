@@ -8,6 +8,7 @@
  * viewer (D104), so the engines never share a draft.
  */
 import { expect, type Frame, type Page, test } from "@playwright/test";
+import { gotoShell } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
 const run = readRun();
@@ -16,7 +17,7 @@ const V = "2026-10-15";
 /** Opens a link in the shell; returns the frame and the view the shell's ticket recorded. */
 async function openView(page: Page, url: string): Promise<{ frame: Frame; viewId: string }> {
   const ticket = page.waitForResponse((response) => response.url().endsWith("/_mostra/ticket"));
-  await page.goto(url);
+  await gotoShell(page, url);
   const { viewId } = (await (await ticket).json()) as { viewId: string };
   await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 15_000 });
   const frame = page.frames().find((candidate) => candidate !== page.mainFrame());

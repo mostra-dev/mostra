@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, expect, firefox, test, webkit } from "@playwright/test";
 import {
+  gotoShell,
   linkFor,
   openInShell,
   publishOwn,
@@ -102,7 +103,7 @@ test.describe("a frame whose first handshake fails (Claude review finding 4)", (
         if (failures === 2) await page.unroute(sessionRead, failTwice);
       };
       await page.route(sessionRead, failTwice);
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("[data-mostra-save]")).toHaveAttribute(
         "data-mostra-save",
         "connecting",
@@ -155,7 +156,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
         await page.unroute(enter, refuseOnce);
       };
       await page.route(enter, refuseOnce);
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
         timeout: 45_000,
       });
@@ -206,7 +207,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
         });
         await route.fallback().catch(() => undefined);
       });
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       const view = await page.locator("iframe.mostra-frame").getAttribute("data-mostra-view");
       await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "1", {
         timeout: 30_000,
@@ -247,7 +248,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
           await new Promise(() => undefined);
         },
       );
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "gave-up", {
         timeout: 120_000,
       });
@@ -281,7 +282,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
           return route.fallback();
         },
       );
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "gave-up", {
         timeout: 120_000,
       });
@@ -312,7 +313,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
         refused += 1;
         await route.abort("connectionrefused");
       });
-      await page.goto(await linkFor(client, own.artifactId, viewerName(info)));
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
       await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "gave-up", {
         timeout: 120_000,
       });
