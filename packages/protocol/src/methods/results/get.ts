@@ -42,7 +42,8 @@ export const ResultsMarkdown: z.ZodType<ResultsMarkdown> = z
     description: "A submission's results as Markdown for agents.",
   });
 
-const result: z.ZodType<ResultsGetResult> = z
+/** The Zod schema of the `ResultsGetResult` type. */
+export const ResultsGetResult: z.ZodType<ResultsGetResult> = z
   .union([Results, ResultsMarkdown])
   .register(wireRegistry, { id: "ResultsGetResult" });
 
@@ -55,5 +56,5 @@ export const resultsGetMethod: MethodDefinition<ResultsGetParams, ResultsGetResu
   direction: "client-to-instance",
   mutating: false,
   params,
-  result,
+  result: ResultsGetResult,
 });

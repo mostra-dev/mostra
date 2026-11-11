@@ -51,6 +51,10 @@ import { remoteLogoutMethod } from "./remote/logout.ts";
 import { remoteStatusMethod } from "./remote/status.ts";
 import { remoteTokenMethod } from "./remote/token.ts";
 import { resultsGetMethod } from "./results/get.ts";
+import { resultsListMethod } from "./results/list.ts";
+import { rosterAddMethod } from "./roster/add.ts";
+import { rosterGetMethod } from "./roster/get.ts";
+import { rosterRemoveMethod } from "./roster/remove.ts";
 import { secretDeleteMethod } from "./secret/delete.ts";
 import { secretListMethod } from "./secret/list.ts";
 import { secretSetMethod } from "./secret/set.ts";
@@ -130,6 +134,10 @@ export const hostMethods: readonly AnyMethod[] = [
   artifactPauseMethod,
   portRelayAuthorMethod,
   remoteLinkMethod,
+  rosterAddMethod,
+  rosterRemoveMethod,
+  rosterGetMethod,
+  resultsListMethod,
   // gen:methods
 ];
 

@@ -15,6 +15,7 @@ import { SubmissionPolicy } from "./policy.ts";
 export { SubmissionPolicy };
 
 import { ArtifactId } from "./ids.ts";
+import { TeamSettings } from "./team-settings.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
 /** The families Mostra's templates and gallery know; any other string is allowed too. */
@@ -144,6 +145,8 @@ export interface ArtifactManifest {
   readonly tally?: readonly TallySpec[];
   /** How the artifact behaves on a remote server (D165). */
   readonly hosted?: HostedSettings;
+  /** Team settings: what viewers see of each other's status and presence (D168). */
+  readonly team?: TeamSettings;
 }
 
 /** The keys of the artifact manifest, in INTERFACES §2.2 order. Other keys are warnings (FAILURE_MODEL §10). */
@@ -162,6 +165,7 @@ export const ARTIFACT_MANIFEST_KEYS: readonly (keyof ArtifactManifest)[] = [
   "verify",
   "tally",
   "hosted",
+  "team",
 ];
 
 const strings = z.array(z.string()).readonly();
@@ -264,6 +268,7 @@ export const ArtifactManifest: z.ZodType<ArtifactManifest> = z
       .exactOptional(),
     tally: z.array(TallySpec).readonly().exactOptional(),
     hosted: HostedSettings.exactOptional(),
+    team: TeamSettings.exactOptional(),
   })
   .register(wireRegistry, {
     id: "ArtifactManifest",

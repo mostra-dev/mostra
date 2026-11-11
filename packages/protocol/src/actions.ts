@@ -11,6 +11,7 @@
 import * as z from "zod";
 import { ViewId } from "./ids.ts";
 import type { Frame, WireError } from "./serializer.ts";
+import type { PresenceState, RosterForPage } from "./team.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
 /** A value written by the serializer: its batches, in order (`serializeAll`). */
@@ -270,13 +271,16 @@ export interface LiveUpdate {
 }
 
 /**
- * An ephemeral message on a page's event stream (SSE `event: run` or `event: live`, without an
- * `id`, so a reconnect's cursor is untouched) or in a poll's `ephemeral`: lossy, coalesced, and
- * never stored as an event.
+ * An ephemeral message on a page's event stream (SSE `event: run`, `live`, `respondents` or
+ * `presence`, without an `id`, so a reconnect's cursor is untouched) or in a poll's `ephemeral`:
+ * lossy, coalesced, and never stored as an event. `respondents` and `presence` (D168) reach only a
+ * page that asked for them, so a version built before them never receives one.
  */
 export type EphemeralMessage =
   | { readonly kind: "run"; readonly run: RunDelta }
-  | { readonly kind: "live"; readonly live: LiveUpdate };
+  | { readonly kind: "live"; readonly live: LiveUpdate }
+  | { readonly kind: "respondents"; readonly respondents: RosterForPage }
+  | { readonly kind: "presence"; readonly presence: PresenceState };
 
 /** `POST …/call/{fnId}`: a plain server-function call, no durable record (D54). */
 export interface CallRequest {

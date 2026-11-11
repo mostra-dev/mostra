@@ -195,8 +195,10 @@ export {
   smokeDiagnosticCodes,
   submitDiagnosticCodes,
   type TargetDiagnosticCode,
+  type TeamDiagnosticCode,
   type TypeDiagnosticCode,
   targetDiagnosticCodes,
+  teamDiagnosticCodes,
   typeDiagnosticCodes,
   type VerifyDiagnosticCode,
   verifyDiagnosticCodes,
@@ -283,7 +285,7 @@ export {
   SubmitChannel,
   TrustedControl,
   Viewer,
-  type ViewerKind,
+  ViewerKind,
   ViewerSpec,
   type Viewport,
   WaitCondition,
@@ -577,10 +579,32 @@ export {
 } from "./methods/remote/token.ts";
 export {
   type ResultsGetParams,
-  type ResultsGetResult,
+  ResultsGetResult,
   ResultsMarkdown,
   resultsGetMethod,
 } from "./methods/results/get.ts";
+export {
+  RESULTS_LIST_MAX,
+  type ResultsListParams,
+  type ResultsListResult,
+  resultsListMethod,
+} from "./methods/results/list.ts";
+export {
+  RespondentLink,
+  type RosterAddParams,
+  type RosterAddResult,
+  rosterAddMethod,
+} from "./methods/roster/add.ts";
+export {
+  type RosterGetParams,
+  type RosterGetResult,
+  rosterGetMethod,
+} from "./methods/roster/get.ts";
+export {
+  type RosterRemoveParams,
+  type RosterRemoveResult,
+  rosterRemoveMethod,
+} from "./methods/roster/remove.ts";
 export {
   type SecretDeleteParams,
   type SecretDeleteResult,
@@ -710,6 +734,27 @@ export {
   type WireError,
   wireError,
 } from "./serializer.ts";
+export {
+  DEFAULT_TEAM_VISIBILITY,
+  type Peer,
+  PRESENCE_COORDINATE_MAX,
+  PresenceCursor,
+  PresencePeer,
+  PresenceRequest,
+  PresenceSelection,
+  PresenceState,
+  Respondent,
+  RespondentForPage,
+  RespondentSpec,
+  RespondentStatus,
+  RespondentsRequest,
+  ROSTER_MAX,
+  Roster,
+  RosterCounts,
+  RosterForPage,
+  TeamSettings,
+  TeamVisibility,
+} from "./team.ts";
 export {
   ARTIFACT_PROGRESS,
   ArtifactProgressParams,
