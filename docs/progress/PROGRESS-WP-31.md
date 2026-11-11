@@ -57,7 +57,7 @@ Every check runs through the real interface: a real daemon (`GatewayHome`) or a 
 | Issue | State | What was done |
 |---|---|---|
 | #132 | Open, evidence added | Measured on macOS through the hosted spec: every TIME_WAIT is on the browser's ports, none on Mostra's listeners, so a shell page's own `ERR_NO_BUFFER_SPACE` is Chromium's random port colliding with its own TIME_WAIT, which Chromium's source confirms has no reuse delay on Windows (VERIFIED_FACTS, WP-31). The e2e helpers load a shell page again once for exactly that error and record it on the test (`gotoShell`); randomization stays on (D157). What a Windows run shows goes on the issue |
-| #135 | Open, diagnosable | `openInShell` waits for the frame's body within 20 s once the shell is ready, and otherwise names Playwright's frame tree, so the next occurrence on Windows Firefox shows what Playwright held |
+| #135 | Open, narrowed | #138's full CI run (43012158370) met it on `hosted.spec.ts:109`: the shell was ready (its frame's runtime had greeted it), the bounded wait for the frame's body fired after 20 s, and then Playwright's own evaluation in the frame never returned, so the diagnosis itself hung until the test's limit (the trace). Playwright's Windows Firefox loses the frame's execution context while the page works. `openInShell` now loads the page again once when Playwright reaches no body in a ready shell's frame, recorded on the test, and fails at once naming the frame tree otherwise; every read of the diagnosis is bounded (3 s). The team spec passed on the same leg |
 
 ## Candidate checks
 
