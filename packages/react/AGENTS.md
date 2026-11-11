@@ -11,7 +11,8 @@ The client runtime artifact authors import (INTERFACES §2.3): `defineArtifact`;
 `window.storage` (D53, D112); `openLink`; `@mostra/react/form` (react-hook-form, D52) and
 `@mostra/react/router` (`pages/`, D57). It also holds what the builder's generated entry calls
 (`mountArtifact`, `mountRoutes`) and `createServerReference`; and, since WP-08, `useAction`,
-`useLive` and the transport that makes server references reach a worker (`setServerCallback`).
+`useLive` and the transport that makes server references reach a worker (`setServerCallback`);
+and, since WP-31 (D168), `useRespondents` and `usePresence` (`src/team-hooks.ts`).
 
 ## How it works
 
@@ -30,6 +31,12 @@ The client runtime artifact authors import (INTERFACES §2.3): `defineArtifact`;
   one record per run and per key however many hooks show it, fed by the stream's ephemeral
   messages and read again after a gap or a reconnect; `src/server-hooks.ts` holds `useAction` and
   `useLive` over it.
+- `src/runtime/team.ts` (the store's `team`) owns the page's team traffic (D168): the roster, read
+  when the first `useRespondents` mounts and every 20 s while one is mounted, and presence, joined
+  only while a `usePresence` is mounted (every 10 s, at most 10 posts a second, a leave on unmount
+  and `pagehide`, the gateway's 429 waited out). It shares the pointer and the focused element only
+  when a hook asks, and ignores `respondents` and `presence` messages it never asked for; the
+  server client ignores every kind but its own, so neither ever misreads the other's.
 
 ## Invariants it owns
 

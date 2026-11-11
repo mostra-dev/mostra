@@ -14,7 +14,8 @@ the runtime's internals.
   kit itself only plays the viewer (the browser protocol, through the real gateway and route table)
   and, where a scenario is about the instance and not the host, opens its own socket session.
 - **A scenario ID is stable surface.** Baselines name scenarios by ID; renaming one breaks every
-  host's baseline. New scenarios are additive; WP-13, WP-20, WP-29 and WP-31 add theirs.
+  host's baseline. New scenarios are additive; WP-13, WP-29 and WP-31 (`team.roster`, `team.waits`) added
+  theirs, and WP-20 adds its own.
 - **Skips are honest.** A scenario skips only when the host lacks a port or a harness feature it
   needs (`NotApplicable`), never because something went wrong. The integration suite pins which
   scenarios each reference host skips, so a skip that creeps in fails it.

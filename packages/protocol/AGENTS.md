@@ -29,10 +29,14 @@ imports nothing but `zod` (tools/package-map.ts).
 - `src/index.ts` is the public interface; `etc/protocol.api.md` is its committed API report.
 - `src/operator.ts` is `@mostra/protocol/operator`, the remote server's operator contract (INTERFACES
   §18.6, D167): the ports, the server handle, their schemas, `OPERATOR_REVISION`,
-  `OPERATOR_TIME_LIMITS` and `defineOperator`. An operating layer imports nothing else of Mostra,
+  `OPERATOR_TIME_LIMITS` and `defineOperator`; since WP-31 the `invitations` port and its
+  `Invitation` (D168 item 9). An operating layer imports nothing else of Mostra,
   so it imports nothing with I/O and evolves additively under its own report,
   `etc/protocol-operator.api.md` (`mostra.apiReports` in `package.json` names each subpath with a
   report).
+- `src/team.ts` holds the team's wire shapes (D168): respondents and the roster, the page's
+  projection of them, presence; `src/team-settings.ts` the manifest's `team` setting, apart so
+  `manifest.ts` imports nothing that imports it.
 - `src/diagnostics/codes/<area>.ts` holds one area's codes. Add codes with `pnpm gen diagnostic`
   ([playbook](../../docs/agents/add-diagnostic.md)).
 - `src/rpc/` is the JSON-RPC core; a transport feeds `RpcPeer.receive` or `receiveLine` and sends
