@@ -14,7 +14,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
-import { compactEvents, readEvents } from "../../src/interaction/events.ts";
+import { appendEvent, compactEvents, readEvents } from "../../src/interaction/events.ts";
 import { createInteraction, type Interaction } from "../../src/interaction/index.ts";
 import { viewerForSpec } from "../../src/interaction/viewers.ts";
 import { checkCondition } from "../../src/interaction/wait.ts";
@@ -326,6 +326,49 @@ describe("the roster's completion and its waits (CO-02, D168)", () => {
     // Removing everyone empties it: it is no longer complete.
     remove(ledger, interaction, artifactId, ["ada", "grace"]);
     expect(check(ledger, artifactId, "submitted:all", 0, false)).toBeUndefined();
+  });
+
+  it("on an owner instance, answers submitted:all only once it holds every submission the followed completion names", () => {
+    // An owner instance copies a hosted home's events (D165 item 1) before the submissions they
+    // name are delivered: a completion read alone would hand an agent results that miss answers.
+    const { ledger, artifactId, versionId, interaction } = setup({
+      policy: "once",
+      scope: "per-viewer",
+    });
+    add(ledger, interaction, artifactId, ["ada"]);
+    submitAs(ledger, interaction, artifactId, versionId, viewerOf(ledger, "ada"));
+    const held = ledger.read(
+      (db) =>
+        db.get<{ id: string }>("SELECT id FROM submission WHERE artifact_id = ?", artifactId)?.id,
+    );
+    const first = check(ledger, artifactId, "submitted:all", 0, false);
+    expect(first?.type).toBe("roster.completed");
+    // A later completion, as followed from the hosted home, naming one answer not yet delivered.
+    ledger.write((db) => {
+      appendEvent(db, {
+        artifactId,
+        type: "roster.changed",
+        actor: agent,
+        payload: { round: 1, respondents: 2, complete: true, added: [{ ref: "grace" }] },
+      });
+      appendEvent(db, {
+        artifactId,
+        type: "roster.completed",
+        actor: agent,
+        payload: {
+          round: 1,
+          respondents: 2,
+          submissions: [
+            { ref: "ada", submissionId: held },
+            { ref: "grace", submissionId: "sub_01JB8Z3QF6S7W3N8D5K2C4V9XZ" },
+          ],
+        },
+      });
+    });
+    expect(check(ledger, artifactId, "submitted:all", 0, false)).toBeUndefined();
+    expect(
+      check(ledger, artifactId, "submitted:all", Number(first?.cursor ?? 0), true),
+    ).toBeUndefined();
   });
 });
 

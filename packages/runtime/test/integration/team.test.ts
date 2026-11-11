@@ -131,33 +131,34 @@ const FIVE = ["ada", "grace", "edsger", "barbara", "alan"].map((name) => ({
 
 describe("expected respondents and their personal links (CO-01, CO-02, CO-03)", () => {
   const gateway = new GatewayHome();
-  let artifactId: string;
-  let added: RosterAnswer;
-  const pages = new Map<string, Page>();
 
-  beforeAll(async () => {
-    await gateway.start();
-    ({ artifactId } = await publishTeam(gateway, "names"));
-    added = ok<RosterAnswer>(
+  beforeAll(() => gateway.start(), 180_000);
+  afterAll(() => gateway.stop());
+
+  /** A team form of its own for each case: its roster of five and each one's page, open. */
+  async function five(requestId?: string) {
+    const { artifactId } = await publishTeam(gateway, "names");
+    const added = ok<RosterAnswer>(
       await gateway.client.call("roster/add", {
         artifact: { artifactId },
         respondents: FIVE,
-        requestId: "add-five",
+        ...(requestId !== undefined ? { requestId } : {}),
       }),
     );
-  }, 180_000);
-  afterAll(() => gateway.stop());
+    const pages = new Map<string, Page>();
+    for (const entry of added.links) pages.set(entry.ref, await page(entry.link.url));
+    return { artifactId, added, pages };
+  }
 
   it("gives a roster of five five personal links that act as five viewers, and its changes are events", async () => {
+    const { artifactId, added, pages } = await five("add-five");
     expect(added.links.map((entry) => entry.ref)).toEqual(FIVE.map((one) => one.ref));
     expect(new Set(added.links.map((entry) => entry.link.tokenId)).size).toBe(5);
     expect(added.roster.counts).toEqual({ total: 5, notOpened: 5, drafting: 0, submitted: 0 });
     // Each link opens as its respondent: five pages, five viewers, the roster's own.
     const viewers = new Map<string, string>();
     for (const entry of added.links) {
-      const opened = await page(entry.link.url);
-      pages.set(entry.ref, opened);
-      const snapshot = await opened.snapshot();
+      const snapshot = await (pages.get(entry.ref) as Page).snapshot();
       viewers.set(entry.ref, snapshot.viewer.id);
     }
     expect(new Set(viewers.values()).size).toBe(5);
@@ -194,6 +195,7 @@ describe("expected respondents and their personal links (CO-01, CO-02, CO-03)", 
   });
 
   it("shows each respondent's status alike to hosts and to pages", async () => {
+    const { artifactId, pages } = await five();
     await (pages.get("ada@example.com") as Page).submit();
     const roster = ok<RosterAnswer["roster"]>(
       await gateway.client.call("roster/get", { artifact: { artifactId } }),
@@ -226,6 +228,8 @@ describe("expected respondents and their personal links (CO-01, CO-02, CO-03)", 
   });
 
   it("satisfies submitted:all exactly when the last respondent submits, and submitted:<N> at the N-th", async () => {
+    const { artifactId, pages } = await five();
+    expect((await (pages.get("ada@example.com") as Page).submit()).status).toBe(200);
     const waiting = gateway.client.call(
       "wait",
       { artifact: { artifactId }, until: "submitted:all", timeoutMs: 60_000 },
