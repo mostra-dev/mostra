@@ -34,15 +34,30 @@ function Progress() {
 
 function Cursors() {
   const { others } = usePresence({ cursor: true });  // shares this viewer's pointer while mounted
-  return others.map((peer) =>
-    peer.cursor ? <Cursor key={peer.key} name={peer.name} x={peer.cursor.x} y={peer.cursor.y} /> : null,
+  return (
+    <>
+      {others.map((peer) =>
+        peer.cursor ? (
+          <span key={peer.key} className="pointer-events-none absolute text-xs"
+            style={{ left: peer.cursor.x, top: peer.cursor.y }}>
+            ▲ {peer.name}
+          </span>
+        ) : null,
+      )}
+    </>
   );
 }
 
-function SharedItem({ id }: { id: string }) {
-  const [text, setText, meta] = useField(id, "", { scope: "artifact" });
-  // Who changed it last, and when: meta.updatedBy?.name, meta.updatedBy?.at, meta.updatedBy?.self
-  return <input value={text} onChange={(e) => setText(e.target.value)} />;
+function SharedNotes() {
+  const [text, setText, meta] = useField("team.notes", "", { scope: "artifact", label: "Notes" });
+  const who = meta.updatedBy;                        // { name, at, self, key } of the last change
+  return (
+    <label>
+      Notes
+      <textarea value={text} onChange={(e) => setText(e.target.value)} />
+      {who && <small>{who.self ? "You" : who.name} changed this</small>}
+    </label>
+  );
 }
 ```
 
