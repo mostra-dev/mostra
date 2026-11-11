@@ -135,13 +135,13 @@ v1 requirements: 154. v1.1 requirements: 7. Owned exactly once: 161. Neither v1 
 | EN-06 | WP-01 | M, X | Pinned action SHAs (lint), CodeQL, dependency review, Renovate minimum release age and Scorecard configured and running | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | EN-08 | WP-10 | M, I | Seeded: a host-spawned instance (`mostra host`) sends nothing; `DO_NOT_TRACK=1` sends nothing; payloads match the documented schema and contain no paths or tokens. WP-11 adds the SDK-spawned case to the same test | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | EN-09 | WP-11 | M | Seeded import from core into `ee/` fails the boundary check; a packed core tarball contains no `ee/` file | verified ([WP-11](../progress/PROGRESS-WP-11.md)) |
-| CO-01 | WP-31 | I, B | Roster of five yields five links mapping to five viewers; roster changes are events | unverified |
-| CO-02 | WP-31 | I, C | Property test over interleavings: satisfied exactly when the last respondent submits, under `once` per-viewer and `epochs` | unverified |
-| CO-03 | WP-31 | B | Five simulated viewers in browsers move through states; hook, protocol and CLI agree | unverified |
-| CO-04 | WP-31 | B | Cursors from three viewers reach each other within the rate; the ledger holds no presence rows; opting out stops sharing | unverified |
-| CO-05 | WP-31 | B | Two viewers edit a shared field; each sees the other's attribution | unverified |
+| CO-01 | WP-31 | I, B | Roster of five yields five links mapping to five viewers; roster changes are events | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
+| CO-02 | WP-31 | I, C | Property test over interleavings: satisfied exactly when the last respondent submits, under `once` per-viewer and `epochs` | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
+| CO-03 | WP-31 | B | Five simulated viewers in browsers move through states; hook, protocol and CLI agree | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
+| CO-04 | WP-31 | B | Cursors from three viewers reach each other within the rate; the ledger holds no presence rows; opting out stops sharing | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
+| CO-05 | WP-31 | B | Two viewers edit a shared field; each sees the other's attribution | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
 | CO-06 | WP-20 | I | A mention emits one event naming the mentioned viewer; hosts filter it | unverified |
-| CO-07 | WP-31 | B | Each policy setting returns exactly what it promises to a viewer's hooks; the default is the one WP-31 records with Mirza | unverified |
+| CO-07 | WP-31 | B | Each policy setting returns exactly what it promises to a viewer's hooks; the default is the one WP-31 records with Mirza | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | AU-09 | WP-07 | B | pages/ artifact navigates in browser history locally, hash in static export, memory in MCP Apps; comments record the page | validated ([WP-07](../progress/PROGRESS-WP-07.md)) |
