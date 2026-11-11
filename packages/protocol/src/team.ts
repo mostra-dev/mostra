@@ -67,8 +67,11 @@ export const RespondentStatus: z.ZodType<RespondentStatus> = z
 export interface RosterCounts {
   /** Every expected respondent. */
   readonly total: number;
+  /** How many haven't opened the artifact in the round. */
   readonly notOpened: number;
+  /** How many opened it or wrote their draft in the round, without submitting. */
   readonly drafting: number;
+  /** How many submitted in the round. */
   readonly submitted: number;
 }
 
@@ -140,6 +143,7 @@ export interface Roster {
   readonly complete: boolean;
   /** What viewers see of each other (the manifest's `team.visibility`). */
   readonly visibility: TeamVisibility;
+  /** How many stand where in the round. */
   readonly counts: RosterCounts;
   /** Every expected respondent, in the order they joined. */
   readonly respondents: readonly Respondent[];
@@ -186,8 +190,11 @@ const peerShape = {
 
 /** One respondent as a page sees them under the visibility policy. */
 export interface RespondentForPage extends Peer {
+  /** Where they stand in the round. */
   readonly status: RespondentStatus;
+  /** When they first opened the artifact. */
   readonly openedAt?: string;
+  /** When they submitted in the round. */
   readonly submittedAt?: string;
 }
 
@@ -214,6 +221,7 @@ export interface RosterForPage {
   readonly visibility: TeamVisibility;
   /** Whether this page's viewer sees everything as the artifact's owner. */
   readonly owner: boolean;
+  /** The roster's round (always 1 under `once`). */
   readonly round: number;
   /** The viewer's own entry, when they are an expected respondent. */
   readonly self?: RespondentForPage;
@@ -262,7 +270,9 @@ export const PRESENCE_COORDINATE_MAX = 10_000_000;
 
 /** A shared pointer position, in the page's document coordinates (CSS pixels). */
 export interface PresenceCursor {
+  /** From the document's left edge. */
   readonly x: number;
+  /** From the document's top edge. */
   readonly y: number;
 }
 
@@ -282,8 +292,11 @@ export const PresenceCursor: z.ZodType<PresenceCursor> = z
  * in a text input, the selected range.
  */
 export interface PresenceSelection {
+  /** The element: its `data-presence-id`, `id` or `name`. */
   readonly element?: string;
+  /** In a text input, where the selection starts. */
   readonly start?: number;
+  /** In a text input, where it ends. */
   readonly end?: number;
 }
 
@@ -307,8 +320,11 @@ export const PresenceSelection: z.ZodType<PresenceSelection> = z
 export interface PresenceRequest {
   /** The view the page was opened as (D104). */
   readonly viewId: string;
+  /** The pointer to share; `null` stops sharing it; absent leaves it as it was. */
   readonly cursor?: PresenceCursor | null;
+  /** The selection to share; `null` stops sharing it; absent leaves it as it was. */
   readonly selection?: PresenceSelection | null;
+  /** Ends the page's presence now. */
   readonly leave?: true;
 }
 
@@ -354,6 +370,7 @@ export const PresencePeer: z.ZodType<PresencePeer> = z
  * `private` only the page's own viewer.
  */
 export interface PresenceState {
+  /** The policy that decided what this answer holds. */
   readonly visibility: TeamVisibility;
   /** Present viewers this page may see, its own first. */
   readonly peers: readonly PresencePeer[];

@@ -41,6 +41,7 @@ export const ActionError: z.ZodType<ActionError>;
 // @public
 export interface Actor {
     readonly id?: string;
+    readonly key?: string;
     readonly kind: "viewer" | "agent" | "host" | "mostra";
     readonly name?: string;
 }
@@ -217,6 +218,7 @@ export interface ArtifactManifest {
     readonly mode?: "spa";
     readonly submission?: SubmissionPolicy;
     readonly tally?: readonly TallySpec[];
+    readonly team?: TeamSettings;
     readonly terminals?: Readonly<Record<string, TerminalSpec>>;
     readonly title: string;
     readonly verify?: {
@@ -767,6 +769,9 @@ export const Cursor: {
 export const DEFAULT_DOCS_BASE: string;
 
 // @public
+export const DEFAULT_TEAM_VISIBILITY: TeamVisibility;
+
+// @public
 export const DEFAULT_VIEWPORTS: readonly VerifyViewport[];
 
 // @public
@@ -922,7 +927,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1066,6 +1071,12 @@ export type EphemeralMessage = {
 } | {
     readonly kind: "live";
     readonly live: LiveUpdate;
+} | {
+    readonly kind: "respondents";
+    readonly respondents: RosterForPage;
+} | {
+    readonly kind: "presence";
+    readonly presence: PresenceState;
 };
 
 // @public
@@ -1755,7 +1766,7 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export class LineSplitter {
@@ -2025,6 +2036,15 @@ export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: un
 export type PausedBy = "owner" | "operator";
 
 // @public
+export interface Peer {
+    readonly key: string;
+    readonly kind: ViewerKind;
+    readonly name?: string;
+    readonly self: boolean;
+    readonly verified?: boolean;
+}
+
+// @public
 export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
 
 // @public
@@ -2207,6 +2227,59 @@ export interface PortTrustedControlsPolicyParams {
 
 // @public
 export type PortTrustedControlsPolicyResult = ControlsPolicy;
+
+// @public
+export const PRESENCE_COORDINATE_MAX = 1e7;
+
+// @public
+export interface PresenceCursor {
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
+export const PresenceCursor: z.ZodType<PresenceCursor>;
+
+// @public
+export interface PresencePeer extends Peer {
+    readonly at: string;
+    readonly cursor?: PresenceCursor;
+    readonly selection?: PresenceSelection;
+}
+
+// @public
+export const PresencePeer: z.ZodType<PresencePeer>;
+
+// @public
+export interface PresenceRequest {
+    readonly cursor?: PresenceCursor | null;
+    readonly leave?: true;
+    readonly selection?: PresenceSelection | null;
+    readonly viewId: string;
+}
+
+// @public
+export const PresenceRequest: z.ZodType<PresenceRequest>;
+
+// @public
+export interface PresenceSelection {
+    readonly element?: string;
+    readonly end?: number;
+    readonly start?: number;
+}
+
+// @public
+export const PresenceSelection: z.ZodType<PresenceSelection>;
+
+// @public
+export interface PresenceState {
+    readonly others?: number;
+    readonly peers: readonly PresencePeer[];
+    readonly visibility: TeamVisibility;
+}
+
+// @public
+export const PresenceState: z.ZodType<PresenceState>;
 
 // @public
 export interface ProbedField {
@@ -2591,6 +2664,70 @@ export interface RequestPolicy {
 }
 
 // @public
+export interface Respondent {
+    readonly activeAt?: string;
+    readonly addedAt: string;
+    readonly email?: string;
+    readonly name?: string;
+    readonly openedAt?: string;
+    readonly ref: string;
+    readonly status: RespondentStatus;
+    readonly submission?: {
+        readonly id: string;
+        readonly at: string;
+    };
+    readonly submissions: number;
+    readonly tokenId?: string;
+    readonly viewerId: string;
+}
+
+// @public
+export const Respondent: z.ZodType<Respondent>;
+
+// @public
+export interface RespondentForPage extends Peer {
+    readonly openedAt?: string;
+    readonly status: RespondentStatus;
+    readonly submittedAt?: string;
+}
+
+// @public
+export const RespondentForPage: z.ZodType<RespondentForPage>;
+
+// @public
+export interface RespondentLink {
+    readonly link: CapabilityLink;
+    readonly ref: string;
+}
+
+// @public
+export const RespondentLink: z.ZodType<RespondentLink>;
+
+// @public
+export interface RespondentSpec {
+    readonly email?: string;
+    readonly name?: string;
+    readonly ref: string;
+}
+
+// @public
+export const RespondentSpec: z.ZodType<RespondentSpec>;
+
+// @public
+export interface RespondentsRequest {
+    readonly viewId: string;
+}
+
+// @public
+export const RespondentsRequest: z.ZodType<RespondentsRequest>;
+
+// @public
+export type RespondentStatus = "not-opened" | "drafting" | "submitted";
+
+// @public
+export const RespondentStatus: z.ZodType<RespondentStatus>;
+
+// @public
 export interface ResultComment {
     readonly anchor: {
         readonly reviewId?: string;
@@ -2696,6 +2833,9 @@ export interface Results {
 export const Results: z.ZodType<Results>;
 
 // @public
+export const RESULTS_LIST_MAX = 100;
+
+// @public
 export const resultsGetMethod: MethodDefinition<ResultsGetParams, ResultsGetResult>;
 
 // @public
@@ -2707,6 +2847,27 @@ export interface ResultsGetParams {
 
 // @public
 export type ResultsGetResult = Results | ResultsMarkdown;
+
+// @public
+export const ResultsGetResult: z.ZodType<ResultsGetResult>;
+
+// @public
+export const resultsListMethod: MethodDefinition<ResultsListParams, ResultsListResult>;
+
+// @public
+export interface ResultsListParams {
+    readonly after?: string;
+    readonly artifact: ArtifactRef;
+    readonly format?: "json" | "md";
+    readonly limit?: number;
+}
+
+// @public
+export interface ResultsListResult {
+    readonly cursor: string;
+    readonly more: boolean;
+    readonly results: readonly ResultsGetResult[];
+}
 
 // @public
 export interface ResultsMarkdown {
@@ -2742,6 +2903,92 @@ export type RevisionNegotiation = {
     readonly ok: false;
     readonly diagnostic: Diagnostic;
 };
+
+// @public
+export interface Roster {
+    readonly complete: boolean;
+    readonly counts: RosterCounts;
+    readonly respondents: readonly Respondent[];
+    readonly round: number;
+    readonly visibility: TeamVisibility;
+}
+
+// @public
+export const Roster: z.ZodType<Roster>;
+
+// @public
+export const ROSTER_MAX = 1e3;
+
+// @public
+export const rosterAddMethod: MethodDefinition<RosterAddParams, RosterAddResult>;
+
+// @public
+export interface RosterAddParams {
+    readonly artifact: ArtifactRef;
+    readonly requestId?: string;
+    readonly respondents: readonly RespondentSpec[];
+    readonly scopes?: readonly CapabilityScope[];
+    readonly ttl?: Duration;
+    readonly version?: number | string;
+}
+
+// @public
+export interface RosterAddResult {
+    readonly links: readonly RespondentLink[];
+    readonly roster: Roster;
+}
+
+// @public
+export interface RosterCounts {
+    readonly drafting: number;
+    readonly notOpened: number;
+    readonly submitted: number;
+    readonly total: number;
+}
+
+// @public
+export const RosterCounts: z.ZodType<RosterCounts>;
+
+// @public
+export interface RosterForPage {
+    readonly complete?: boolean;
+    readonly counts?: RosterCounts;
+    readonly owner: boolean;
+    readonly respondents?: readonly RespondentForPage[];
+    readonly round: number;
+    readonly self?: RespondentForPage;
+    readonly visibility: TeamVisibility;
+}
+
+// @public
+export const RosterForPage: z.ZodType<RosterForPage>;
+
+// @public
+export const rosterGetMethod: MethodDefinition<RosterGetParams, RosterGetResult>;
+
+// @public
+export interface RosterGetParams {
+    readonly artifact: ArtifactRef;
+}
+
+// @public
+export type RosterGetResult = Roster;
+
+// @public
+export const rosterRemoveMethod: MethodDefinition<RosterRemoveParams, RosterRemoveResult>;
+
+// @public
+export interface RosterRemoveParams {
+    readonly artifact: ArtifactRef;
+    readonly refs: readonly string[];
+    readonly requestId?: string;
+}
+
+// @public
+export interface RosterRemoveResult {
+    readonly removed: readonly string[];
+    readonly roster: Roster;
+}
 
 // @public
 export type RouteId = Id<"rte">;
@@ -3134,6 +3381,7 @@ export const shareStartMethod: MethodDefinition<ShareStartParams, ShareStartResu
 export interface ShareStartParams {
     readonly artifact: ArtifactRef;
     readonly requestId?: string;
+    readonly respondents?: readonly RespondentSpec[];
     readonly scopes?: readonly CapabilityScope[];
     readonly server?: string;
     readonly ttl?: Duration;
@@ -3144,6 +3392,7 @@ export interface ShareStartParams {
 // @public
 export type ShareStartResult = Share & {
     readonly url: string;
+    readonly respondents?: readonly RespondentLink[];
 };
 
 // @public
@@ -3396,6 +3645,26 @@ export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
 
 // @public
 export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE"];
+
+// @public
+export type TeamDiagnosticCode = (typeof teamDiagnosticCodes)[number];
+
+// @public
+export const teamDiagnosticCodes: readonly ["MOSTRA_TEAM_ROSTER_POLICY", "MOSTRA_TEAM_ROSTER_TOO_LARGE", "MOSTRA_TEAM_PRESENCE_RATE_LIMITED"];
+
+// @public
+export interface TeamSettings {
+    readonly visibility?: TeamVisibility;
+}
+
+// @public
+export const TeamSettings: z.ZodType<TeamSettings>;
+
+// @public
+export type TeamVisibility = "private" | "counts" | "names";
+
+// @public
+export const TeamVisibility: z.ZodType<TeamVisibility>;
 
 // @public
 export interface TerminalSpec {
@@ -3713,6 +3982,9 @@ export const ViewerId: GeneratedIdKind<"vwr">;
 
 // @public
 export type ViewerKind = "local" | "tailnet" | "token" | "host" | "account" | "anonymous";
+
+// @public
+export const ViewerKind: z.ZodType<ViewerKind>;
 
 // @public
 export interface ViewerSpec {

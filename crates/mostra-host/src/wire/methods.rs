@@ -473,6 +473,46 @@ impl super::Method for ResultsGet {
     type Params = super::generated::ResultsGetParams;
     type Result = super::generated::ResultsGetResult;
 }
+///`results/list`.
+#[derive(Clone, Copy, Debug)]
+pub struct ResultsList;
+impl super::Method for ResultsList {
+    const NAME: &'static str = "results/list";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ResultsListParams;
+    type Result = super::generated::ResultsListResult;
+}
+///`roster/add`.
+#[derive(Clone, Copy, Debug)]
+pub struct RosterAdd;
+impl super::Method for RosterAdd {
+    const NAME: &'static str = "roster/add";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RosterAddParams;
+    type Result = super::generated::RosterAddResult;
+}
+///`roster/get`.
+#[derive(Clone, Copy, Debug)]
+pub struct RosterGet;
+impl super::Method for RosterGet {
+    const NAME: &'static str = "roster/get";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RosterGetParams;
+    type Result = super::generated::Roster;
+}
+///`roster/remove`.
+#[derive(Clone, Copy, Debug)]
+pub struct RosterRemove;
+impl super::Method for RosterRemove {
+    const NAME: &'static str = "roster/remove";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::RosterRemoveParams;
+    type Result = super::generated::RosterRemoveResult;
+}
 ///`secret/delete`.
 #[derive(Clone, Copy, Debug)]
 pub struct SecretDelete;
@@ -870,6 +910,26 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "results/get",
         direction: super::Direction::ClientToInstance,
         mutating: false,
+    },
+    super::MethodInfo {
+        name: "results/list",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "roster/add",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "roster/get",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "roster/remove",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
     },
     super::MethodInfo {
         name: "secret/delete",

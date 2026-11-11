@@ -418,7 +418,7 @@ export const WaitCondition: z.ZodType<WaitCondition> = z
   .string()
   .regex(
     // biome-ignore lint/suspicious/noControlCharactersInRegex: field IDs exclude control characters.
-    /^(submitted(:(all|[1-9][0-9]{0,3}|10000))?|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\u0000-\u001f\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*(\.\*)?)$/,
+    /^(?:(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\u0000-\u001f\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*(\.\*)?)$|submitted:(?:all|[1-9][0-9]{0,3}|10000)$)/,
   )
   .register(wireRegistry, {
     id: "WaitCondition",
