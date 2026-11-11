@@ -888,4 +888,39 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 16,
+    name: "expected respondents and the roster's rounds",
+    up(db) {
+      // The people an artifact expects answers from (D121, D168): one row per respondent, keyed by
+      // the host's stable key, acting as one viewer of kind `token` (D104) through a personal link.
+      // `roster_state` keeps the round and whether it is complete, so a completion is told once.
+      // Presence is never stored: no table holds it (D47, CO-04).
+      db.exec(`
+        CREATE TABLE roster_entry (
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          ref TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 256),
+          name TEXT,
+          email TEXT,
+          viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          token_id TEXT REFERENCES token(id),
+          position INTEGER NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (artifact_id, ref),
+          UNIQUE (artifact_id, viewer_id),
+          UNIQUE (artifact_id, position)
+        );
+        CREATE TABLE roster_state (
+          artifact_id TEXT PRIMARY KEY REFERENCES artifact(id),
+          round INTEGER NOT NULL CHECK (round >= 1),
+          round_cursor INTEGER NOT NULL CHECK (round_cursor >= 0),
+          round_started_at TEXT NOT NULL,
+          complete INTEGER NOT NULL CHECK (complete IN (0, 1))
+        );
+        CREATE TRIGGER roster_state_round_grows BEFORE UPDATE OF round, round_cursor ON roster_state
+          WHEN NEW.round < OLD.round OR NEW.round_cursor < OLD.round_cursor
+          BEGIN SELECT RAISE(ABORT, 'a roster round never goes back'); END;
+      `);
+    },
+  },
 ];

@@ -308,6 +308,11 @@ export interface CompactionSummary {
     readonly number: unknown;
     readonly cursor: number;
   };
+  /**
+   * Where the roster stood at the range's end (D168): whether it was complete, and its latest
+   * completion, so `submitted:all` still reads it once its events are replaced.
+   */
+  readonly roster?: { readonly complete: boolean; readonly completed?: EventRecord };
 }
 
 /**
@@ -335,6 +340,7 @@ export function compactEvents(
   let removed = 0;
   let from = first.cursor;
   let latestVersion: CompactionSummary["latestVersion"];
+  let roster: CompactionSummary["roster"];
   for (const row of rows) {
     if (row.type === COMPACTED) {
       // An earlier summary folds into this one, with everything it covered.
@@ -344,10 +350,20 @@ export function compactEvents(
       for (const [type, count] of Object.entries(earlier.types))
         types[type] = (types[type] ?? 0) + count;
       if (earlier.latestVersion) latestVersion = earlier.latestVersion;
+      if (earlier.roster) roster = earlier.roster;
       continue;
     }
     removed += 1;
     types[row.type] = (types[row.type] ?? 0) + 1;
+    if (row.type === "roster.completed") {
+      roster = { complete: true, completed: eventRecord(row) };
+    } else if (row.type === "roster.changed") {
+      const complete = (JSON.parse(row.payload_json) as { complete?: unknown }).complete === true;
+      roster = {
+        complete,
+        ...(complete && roster?.completed ? { completed: roster.completed } : {}),
+      };
+    }
     if (row.type === "version.published") {
       const payload = JSON.parse(row.payload_json) as { versionId?: unknown; number?: unknown };
       latestVersion = { versionId: payload.versionId, number: payload.number, cursor: row.cursor };
@@ -359,6 +375,7 @@ export function compactEvents(
     removed,
     types,
     ...(latestVersion ? { latestVersion } : {}),
+    ...(roster ? { roster } : {}),
   };
   db.run("DELETE FROM event WHERE artifact_id = ? AND cursor < ?", artifactId, before);
   db.run(

@@ -34,6 +34,7 @@ import {
 import { MostraError, targetUnavailable } from "./errors.ts";
 import type { Journal, JournalEntry, MutationEntry, PendingEntry } from "./journal.ts";
 import { ServerClient } from "./server-client.ts";
+import { TeamClient } from "./team.ts";
 import { NetworkError, type Transport } from "./transport.ts";
 
 /** How long the page waits after the last edit before it saves (INTERFACES §2.3). */
@@ -61,6 +62,8 @@ interface ServerField {
   readonly revision: number;
   readonly deleted: boolean;
   readonly updatedBy?: Actor;
+  /** When it was written last (D168: attribution says who and when). */
+  readonly updatedAt?: string;
 }
 
 /** A conflict the viewer hasn't resolved: what the field holds now. */
@@ -265,10 +268,17 @@ export class Store {
   #stopStream: (() => void) | undefined;
   /** Plain calls, action runs and live sources (WP-08), over the same transport and view. */
   readonly server: ServerClient;
+  /** The roster and presence (WP-31, D168), over the same transport and view. */
+  readonly team: TeamClient;
 
   constructor(options: StoreOptions) {
     this.#options = options;
     this.server = new ServerClient({
+      ...(options.mode === "live" && options.transport ? { transport: options.transport } : {}),
+      ...(options.mode === "live" && options.view ? { viewId: options.view.viewId } : {}),
+      ...(options.timers ? { timers: options.timers } : {}),
+    });
+    this.team = new TeamClient({
       ...(options.mode === "live" && options.transport ? { transport: options.transport } : {}),
       ...(options.mode === "live" && options.view ? { viewId: options.view.viewId } : {}),
       ...(options.timers ? { timers: options.timers } : {}),
@@ -351,11 +361,16 @@ export class Store {
             this.#kickQueue();
             // Run and live updates sent while the stream was down are gone: read them again.
             this.server.resync();
+            this.team.resync();
           }
           this.#changed(this.#allKeys());
         }
       },
-      onEphemeral: (message) => this.server.receive(message),
+      onEphemeral: (message) => {
+        if (message.kind === "respondents" || message.kind === "presence")
+          this.team.receive(message);
+        else this.server.receive(message);
+      },
     });
     if (typeof window !== "undefined") {
       window.addEventListener("online", () => this.#kickQueue());
@@ -366,6 +381,7 @@ export class Store {
   stop(): void {
     this.#stopStream?.();
     this.server.stop();
+    this.team.stop();
     this.#broadcast?.close();
     if (this.#debounce !== undefined) this.#timers.clearTimeout(this.#debounce);
     if (this.#retry !== undefined) this.#timers.clearTimeout(this.#retry);
@@ -412,6 +428,7 @@ export class Store {
           revision: Number(field.revision),
           deleted: false,
           ...(field.updatedBy ? { updatedBy: field.updatedBy } : {}),
+          updatedAt: field.updatedAt,
         });
       }
       return replace;
@@ -468,6 +485,7 @@ export class Store {
                 revision,
                 deleted: false,
                 updatedBy: event.actor,
+                updatedAt: event.at,
               });
             } else {
               // The page still shows the old value: until the snapshot brings the new one, an
@@ -483,6 +501,7 @@ export class Store {
             revision,
             deleted: change.deleted === true,
             updatedBy: event.actor,
+            updatedAt: event.at,
           });
         }
         this.#seen[scope] = Math.max(this.#seen[scope], revision);
@@ -559,6 +578,11 @@ export class Store {
   /** Who last wrote the field (artifact state, D63). */
   updatedBy(key: FieldKey): Actor | undefined {
     return this.#server.get(key)?.updatedBy;
+  }
+
+  /** When the field was written last, as the gateway or this page knows it. */
+  updatedAt(key: FieldKey): string | undefined {
+    return this.#server.get(key)?.updatedAt;
   }
 
   /** Why the gateway refused the field's edit for good, if it did: its code and message. */
@@ -1046,6 +1070,7 @@ export class Store {
             revision,
             deleted: op.delete === true,
             updatedBy: { kind: "viewer", ...(this.#viewer ? { id: this.#viewer.id } : {}) },
+            updatedAt: new Date().toISOString(),
           });
         }
         applied.push({ id: op.id, value: mine });
@@ -1310,6 +1335,7 @@ export class Store {
           revision: data.revision,
           deleted: change.value === undefined,
           ...(current?.updatedBy ? { updatedBy: current.updatedBy } : {}),
+          ...(current?.updatedAt !== undefined ? { updatedAt: current.updatedAt } : {}),
         });
         touched.push(key);
       }

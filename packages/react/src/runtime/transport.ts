@@ -16,6 +16,9 @@ import {
   type LiveUpdate,
   type MutationResult,
   type PollResult,
+  type PresenceRequest,
+  type PresenceState,
+  type RosterForPage,
   type RunAttachRequest,
   type RunDelta,
   type RunRequest,
@@ -72,6 +75,16 @@ export interface Transport {
   cancelRun?(runId: string, viewId: string): Promise<RunState>;
   /** Reads live sources and keeps them produced for a minute (D56). */
   live?(request: LiveRequest): Promise<{ readonly sources: readonly LiveState[] }>;
+  /** Reads the roster as the page may see it, and follows it for a minute (D168). */
+  respondents?(request: { readonly viewId: string }): Promise<RosterForPage>;
+  /**
+   * Joins presence, shares a cursor and a selection, or leaves (D168); `keepalive` lets a leave
+   * outlive the page.
+   */
+  presence?(
+    request: PresenceRequest,
+    options?: { readonly keepalive?: boolean },
+  ): Promise<PresenceState>;
 }
 
 /** The longest body `fetch` sends with `keepalive` (the Fetch standard's 64 KiB budget). */
@@ -280,6 +293,17 @@ export class HttpTransport implements Transport {
     return this.#post("/live", request) as Promise<{ sources: LiveState[] }>;
   }
 
+  respondents(request: { readonly viewId: string }): Promise<RosterForPage> {
+    return this.#post("/respondents", request) as Promise<RosterForPage>;
+  }
+
+  presence(
+    request: PresenceRequest,
+    options?: { readonly keepalive?: boolean },
+  ): Promise<PresenceState> {
+    return this.#post("/presence", request, options?.keepalive === true) as Promise<PresenceState>;
+  }
+
   subscribe(cursor: string | undefined, handlers: StreamHandlers): () => void {
     let closed = false;
     let last = cursor;
@@ -377,6 +401,15 @@ export class HttpTransport implements Transport {
       source.addEventListener("live", (event) => {
         const live = JSON.parse((event as MessageEvent<string>).data) as LiveUpdate;
         handlers.onEphemeral?.({ kind: "live", live });
+      });
+      // The roster and presence (D168) reach only a page that asked for them.
+      source.addEventListener("respondents", (event) => {
+        const respondents = JSON.parse((event as MessageEvent<string>).data) as RosterForPage;
+        handlers.onEphemeral?.({ kind: "respondents", respondents });
+      });
+      source.addEventListener("presence", (event) => {
+        const presence = JSON.parse((event as MessageEvent<string>).data) as PresenceState;
+        handlers.onEphemeral?.({ kind: "presence", presence });
       });
       source.addEventListener("error", () => {
         if (closed) return;
