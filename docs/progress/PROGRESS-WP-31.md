@@ -1,6 +1,6 @@
 # WP-31 progress: teams
 
-**Status:** In progress. Owns CO-01, CO-02, CO-03, CO-04, CO-05 and CO-07 ([specification](../design/work-packages/WP-31.md)), and the issues on the `WP-31` milestone (#132, #135).
+**Status:** Candidate, brought to Mirza for acceptance. Owns CO-01, CO-02, CO-03, CO-04, CO-05 and CO-07 ([specification](../design/work-packages/WP-31.md)), and the issues on the `WP-31` milestone (#132, #135).
 
 ## Baseline
 
@@ -36,6 +36,8 @@
 | `7d56270` | #132's and #135's e2e measures |
 | `0b97a72` | Sixteen seeded violations; each team case stands alone |
 | `2340045`, `b98eda3`, `84289be` | D168 and the dossier, the AGENTS.md files, the verified facts |
+| `2f237cc` | The session's own review: presence's rate held across a leave and a join again, with a unit suite for the team traffic |
+| `3aa4e71` | The Skill's team sample as a complete module (found by the full `pnpm check`) |
 
 ## Evidence
 
@@ -56,3 +58,33 @@ Every check runs through the real interface: a real daemon (`GatewayHome`) or a 
 |---|---|---|
 | #132 | Open, evidence added | Measured on macOS through the hosted spec: every TIME_WAIT is on the browser's ports, none on Mostra's listeners, so a shell page's own `ERR_NO_BUFFER_SPACE` is Chromium's random port colliding with its own TIME_WAIT, which Chromium's source confirms has no reuse delay on Windows (VERIFIED_FACTS, WP-31). The e2e helpers load a shell page again once for exactly that error and record it on the test (`gotoShell`); randomization stays on (D157). What a Windows run shows goes on the issue |
 | #135 | Open, diagnosable | `openInShell` waits for the frame's body within 20 s once the shell is ready, and otherwise names Playwright's frame tree, so the next occurrence on Windows Firefox shows what Playwright held |
+
+## Candidate checks
+
+- **`pnpm check`** on `a115639` in the detached worktree on the external disk (fresh `pnpm install --frozen-lockfile`, 53 min): every job passed but `integration`, where one case failed for a real defect: the Skill's `teams.md` sample used a component it never declared, and verify type-checks and renders every sample (`verify.test.ts`). Fixed in `3aa4e71`; the case passes alone. The fix of `2f237cc` (after that run) passed its own unit suite, the team integration suite and every CO-04 seed.
+- **CI** on #138 with `ci:full` (every leg): see the pull request's runs on `3aa4e71`.
+
+## Reviews (D80, D144)
+
+- **The session's own review** of its diff found one defect, fixed with a test and a seed red on the old code (`2f237cc`): a leave took no token and removed the view's presence bucket, so leaving and joining again refilled the rate, and a leave of a view that wasn't present cost a scan of every present view without any limit. Writing the seeds found two weak checks, both strengthened (`0b97a72`): cases that depended on an earlier case's pages, and an owner-instance guard the hosted suite didn't hold.
+- **GPT-6.1-Sol** (`codex review`): blocked. This machine's Codex sign-in has expired (`refresh_token_reused`), so no review ran and no tokens were spent; it needs `codex login` by Mirza.
+- **Claude Opus, or Fable as at WP-30** (D144): the prompt is ready for Mirza to run.
+
+## Untested boundaries
+
+- **Against a deployed server.** The hosted roster, invitations and `roster.completed` ran against a real `mostra-runtime server` on this machine, not against WP-30's test deployment, which runs 0.11.0 and would need the candidate's image.
+- **Windows.** The new suites run on the Windows legs in CI (`windows-gateway`, `windows-remote`, Chromium and Firefox e2e); #132's retry and #135's measure show their worth only when those engines meet the failures again.
+- **Many viewers.** Presence was measured with five pages and the rate with one fast view; a page with hundreds of present viewers is bounded by design (200 named peers, one coalesced message per 50 ms) but not load-tested.
+
+## Deviations
+
+- **`share/start`'s `respondents`** is for shares to a remote server only (INTERFACES §18.9 named it for `share/start` in general): over a tunnel each viewer is already their own (D158 item 2), and `roster/add` names respondents with local personal links (D168 item 9).
+- **No MCP tool for the roster.** The waits reach MCP through `artifact_wait`; a roster tool would join the frozen tool set additively later (D168 item 10).
+
+## Agent-facing prose for review (D149)
+
+- The Skill: `references/teams.md` (new), the pointers in `SKILL.md`, `references/answers.md`'s wait conditions and `results --all`.
+- CLI help: `mostra roster get|add|remove`, `wait --until`'s summary, `results --all`/`--after`, `share --respondent`.
+- Diagnostic hints and pages: `MOSTRA_TEAM_ROSTER_POLICY`, `MOSTRA_TEAM_ROSTER_TOO_LARGE`, `MOSTRA_TEAM_PRESENCE_RATE_LIMITED`.
+- The MCP `artifact_wait` description's team conditions.
+- The `AGENTS.md` of `@mostra/runtime`, `@mostra/react`, `@mostra/protocol`, `@mostra/cli` and `@mostra/conformance`.
