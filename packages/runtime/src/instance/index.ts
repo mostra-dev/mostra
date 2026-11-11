@@ -893,7 +893,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         dependenciesAdded: (artifact) => dev.dependenciesChanged(artifact),
       }),
       ...dev.methods(),
-      ...gateway.methods(),
+      // A hosted artifact's roster is its hosted home's, like its state (D165 item 1, D168).
+      ...forwardHosted(link, (ref) => registry.get(canonicalRef(ref)).id, gateway.methods()),
       ...shares.methods(),
       ...link.methods(),
       // A hosted artifact's state and live values act on its hosted home (D165 item 1).

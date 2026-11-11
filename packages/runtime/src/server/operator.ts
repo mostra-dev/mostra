@@ -5,9 +5,10 @@
  * schemas; a call that throws, times out or answers what the schema refuses counts as no answer,
  * and each port's caller says what no answer means (`limits`: operations that create fail closed,
  * viewer input proceeds; `routing`: nothing is served; `policy`: nothing is added). Outbound
- * deliveries (`metering`, `events`) are kept in the directory's `outbound` table and retried with
- * backoff until the operator takes them, at least once and idempotent by their IDs, across
- * restarts.
+ * deliveries (`metering`, `events`, `invitations`) are kept in the directory's `outbound` table and
+ * retried with backoff until the operator takes them, at least once and idempotent by their IDs,
+ * across restarts. An invitation is kept by its link's token and handed over with the link built
+ * then, so the queue never holds a capability secret (D168).
  *
  * Without an operator module every port is its no-op default, and this module does nothing but
  * answer "allowed".
@@ -21,6 +22,7 @@ import {
   ChatHostPolicy as ChatHostPolicySchema,
   type CredentialResource,
   type IdentityProvider,
+  type Invitation,
   LimitAnswer,
   type LimitQuery,
   LinkHost,
@@ -70,6 +72,7 @@ export interface Operator {
     readonly linkHost: boolean;
     readonly events: boolean;
     readonly identity: boolean;
+    readonly invitations: boolean;
   };
   limit(q: LimitQuery): Promise<LimitVerdict>;
   linkPolicy(q: LinkQuery): Promise<LinkPolicy>;
@@ -95,7 +98,8 @@ export interface Operator {
   enqueue(
     item:
       | { readonly port: "events"; readonly event: OperatorEvent }
-      | { readonly port: "metering"; readonly batch: MeterBatch },
+      | { readonly port: "metering"; readonly batch: MeterBatch }
+      | { readonly port: "invitations"; readonly invitation: QueuedInvitation },
   ): void;
   /** Delivers what waits now (tests; the dispatcher does it on its own). */
   flush(): Promise<void>;
@@ -112,7 +116,19 @@ export interface OperatorOptions {
   readonly now?: () => number;
   /** How often the outbound dispatcher looks for work; tests shorten it. */
   readonly dispatchMs?: number;
+  /**
+   * A personal link's URL, built from its token when an invitation is handed over (D168), or
+   * `undefined` when the link no longer works (revoked, expired, replaced): the queue never holds
+   * the URL, whose fragment is the link's secret.
+   */
+  readonly invitationLink?: (
+    home: string,
+    tokenId: string,
+  ) => Promise<{ readonly url: string; readonly expiresAt?: string } | undefined>;
 }
+
+/** An invitation as the outbound queue keeps it: its link's token, never the link (D168). */
+export type QueuedInvitation = Omit<Invitation, "url" | "expiresAt"> & { readonly tokenId: string };
 
 function configInvalid(message: string): RpcError {
   return new RpcError(createDiagnostic("MOSTRA_REMOTE_CONFIG_INVALID", { message }));
@@ -234,11 +250,30 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
   }): Promise<void> => {
     const payload = JSON.parse(row.payload_json) as unknown;
     try {
-      await within(OPERATOR_TIME_LIMITS.outbound, () =>
-        row.port === "events"
-          ? ports.events?.deliver(payload as OperatorEvent)
-          : ports.metering?.record(payload as MeterBatch),
-      );
+      if (row.port === "invitations") {
+        const { tokenId, ...invitation } = payload as QueuedInvitation;
+        const link = await options.invitationLink?.(invitation.home, tokenId);
+        if (link === undefined) {
+          // The link stopped working before it was handed over: inviting with it would mail a
+          // dead link, and a later one gets an invitation of its own.
+          directory.write((db) => db.run("DELETE FROM outbound WHERE id = ?", row.id));
+          log.info("operator.invitation_dropped", { invitationId: invitation.invitationId });
+          return;
+        }
+        await within(OPERATOR_TIME_LIMITS.outbound, () =>
+          ports.invitations?.send({
+            ...invitation,
+            url: link.url,
+            ...(link.expiresAt !== undefined ? { expiresAt: link.expiresAt } : {}),
+          }),
+        );
+      } else {
+        await within(OPERATOR_TIME_LIMITS.outbound, () =>
+          row.port === "events"
+            ? ports.events?.deliver(payload as OperatorEvent)
+            : ports.metering?.record(payload as MeterBatch),
+        );
+      }
       directory.write((db) => db.run("DELETE FROM outbound WHERE id = ?", row.id));
     } catch (error) {
       const delay = Math.min(OUTBOUND_MAX_BACKOFF_MS, 1_000 * 2 ** Math.min(row.attempts, 20));
@@ -266,7 +301,7 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
           // The oldest rows of each port, due or not: a port whose oldest delivery waits for its
           // retry waits whole, so an operator sees a home's events in the order they happened.
           const rows = directory.read((db) =>
-            (["events", "metering"] as const).flatMap((port) =>
+            (["events", "metering", "invitations"] as const).flatMap((port) =>
               db.all<{
                 id: string;
                 port: string;
@@ -306,7 +341,7 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
     return dispatching;
   };
   const timer =
-    ports.events || ports.metering
+    ports.events || ports.metering || ports.invitations
       ? setInterval(() => void dispatch(), options.dispatchMs ?? 1_000)
       : undefined;
   timer?.unref();
@@ -324,6 +359,7 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
     linkHost: typeof ports.routing?.linkHost === "function",
     events: typeof ports.events?.deliver === "function",
     identity: typeof ports.identity?.providers === "function",
+    invitations: typeof ports.invitations?.send === "function",
   };
 
   return {
@@ -474,9 +510,19 @@ export async function loadOperator(options: OperatorOptions): Promise<Operator> 
     },
 
     enqueue(item) {
-      if (item.port === "events" ? !has.events : !has.metering) return;
-      const id = item.port === "events" ? item.event.eventId : item.batch.batchId;
-      const payload = item.port === "events" ? item.event : item.batch;
+      if (!has[item.port]) return;
+      const id =
+        item.port === "events"
+          ? item.event.eventId
+          : item.port === "metering"
+            ? item.batch.batchId
+            : item.invitation.invitationId;
+      const payload =
+        item.port === "events"
+          ? item.event
+          : item.port === "metering"
+            ? item.batch
+            : item.invitation;
       directory.write((db) =>
         db.run(
           "INSERT OR IGNORE INTO outbound (id, port, payload_json, attempts, next_attempt_at) VALUES (?, ?, ?, 0, ?)",

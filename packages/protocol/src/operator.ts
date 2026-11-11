@@ -481,7 +481,9 @@ export type OperatorEventKind =
 /**
  * One outbound event, delivered at least once with a stable `eventId`. `payload`:
  * `submission.accepted` carries the submission's `Results` (INTERFACES §8, the `Results` type of `@mostra/protocol`); `version.pushed`
- * `{ versionId, number }`; `run.ended` `{ runId, action, status }`; `roster.completed` is WP-31's.
+ * `{ versionId, number }`; `run.ended` `{ runId, action, status }`; `roster.completed`
+ * `{ round, respondents, submissions: { ref, submissionId }[] }`, when every expected respondent
+ * answered (D168).
  * `label` is the route's label, so an operator running several servers behind one front learns
  * which serves which label (WP-30).
  */
@@ -568,8 +570,45 @@ export interface OperatorPorts {
   };
   /** Outbound events, at least once with stable IDs. Default: discard. */
   readonly events?: { deliver(e: OperatorEvent): Promise<void> };
-  /** Reserved for WP-31 (D121, D165 item 16); no mailer ships. */
-  readonly invitations?: unknown;
+  /**
+   * Invitations to expected respondents (D121, D168): for each respondent a hosted roster names
+   * with an `email`, when they are added or their personal link is replaced, so the operator can
+   * mail them their link. At least once, ordered per home, with a stable `invitationId`. No mailer
+   * ships: the open server only hands them over. Default: none sent.
+   */
+  readonly invitations?: { send(invitation: Invitation): Promise<void> };
+}
+
+/**
+ * One invitation (D168). `url` is the respondent's personal link, a capability URL whose secret is
+ * in its fragment: the server never stores or logs it (it builds it from the link's token when it
+ * hands the invitation over), so the operator mails it and keeps it no longer than that.
+ */
+export interface Invitation {
+  /** Stable across retries: `<home>:<tokenId>`, one per personal link. */
+  readonly invitationId: string;
+  /** The account that owns the route. */
+  readonly account: string;
+  /** Its hosted home. */
+  readonly home: string;
+  /** The route. */
+  readonly routeId: string;
+  /** The route's label. */
+  readonly label: string;
+  /** The artifact's ID. */
+  readonly artifactId: string;
+  /** The artifact's title, as its latest version names it. */
+  readonly title: string;
+  /** Who is invited: the owner's key for them, their name and the address to write to. */
+  readonly respondent: { readonly ref: string; readonly name?: string; readonly email: string };
+  /** Who invites: the owner's display name and the provider that verified it, when one did. */
+  readonly sender: { readonly name?: string; readonly verifiedBy?: string };
+  /** The personal link. */
+  readonly url: string;
+  /** When the link stops working, when it has a lifetime. */
+  readonly expiresAt?: string;
+  /** When the respondent was added, or their link replaced. */
+  readonly at: string;
 }
 
 /** A hosted route, or one version of it: what the handle's quarantine and release act on. */

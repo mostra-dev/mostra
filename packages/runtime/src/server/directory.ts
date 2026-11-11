@@ -207,4 +207,26 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
       db.exec("ALTER TABLE artifact_route ADD COLUMN removing_json TEXT");
     },
   },
+  {
+    version: 4,
+    name: "invitations in the outbound queue",
+    up(db) {
+      // WP-31 (D168): the operator's `invitations` port is delivered like `events` and `metering`,
+      // at least once from the same queue; a row keeps the link's token, never its URL. SQLite
+      // can't widen a CHECK in place, so the table is rebuilt with every row it holds.
+      db.exec(`
+        CREATE TABLE outbound_next (
+          id TEXT PRIMARY KEY,
+          port TEXT NOT NULL CHECK (port IN ('metering', 'events', 'invitations')),
+          payload_json TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT NOT NULL
+        );
+        INSERT INTO outbound_next (rowid, id, port, payload_json, attempts, next_attempt_at)
+          SELECT rowid, id, port, payload_json, attempts, next_attempt_at FROM outbound;
+        DROP TABLE outbound;
+        ALTER TABLE outbound_next RENAME TO outbound;
+      `);
+    },
+  },
 ];

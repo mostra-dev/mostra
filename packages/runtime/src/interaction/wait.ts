@@ -173,7 +173,9 @@ function checkTeamCondition(
   }
   if (level) {
     const state = latestRosterState(db, artifactId, upTo);
-    if (state?.complete && state.completed) return { event: state.completed };
+    if (state?.complete && state.completed) {
+      return heldHere(db, state.completed) ? { event: state.completed } : { cursor: after };
+    }
     return { cursor: Math.max(upTo, after) };
   }
   checkCompaction(db, { artifacts: [artifactId] }, after);
@@ -183,7 +185,27 @@ function checkTeamCondition(
     after,
     upTo,
   );
-  return completed ? { event: eventRecord(completed) } : { cursor: Math.max(upTo, after) };
+  if (!completed) return { cursor: Math.max(upTo, after) };
+  const event = eventRecord(completed);
+  // Not yet: the newest cursor examined stays before the completion, so the next wait finds it.
+  return heldHere(db, event) ? { event } : { cursor: Math.max(after, completed.cursor - 1) };
+}
+
+/**
+ * Whether this home holds every submission a completion names. A local home always does (they
+ * commit together); an owner instance copies a hosted `roster.completed` through its follow, while
+ * the submissions arrive by delivery, so a wait answers only once the last one is imported and
+ * `results` holds every answer the completion counts (J14). The import's commit wakes the wait.
+ */
+function heldHere(db: LedgerDb, completed: EventRecord): boolean {
+  const named = completed.payload["submissions"];
+  if (!Array.isArray(named)) return true;
+  for (const entry of named) {
+    const id = (entry as { submissionId?: unknown } | null)?.submissionId;
+    if (typeof id !== "string" || id === "") continue;
+    if (!db.get("SELECT 1 FROM submission WHERE id = ?", id)) return false;
+  }
+  return true;
 }
 
 /**

@@ -131,7 +131,7 @@ export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
-export { peerKey, teamVisibility } from "./roster.ts";
+export { peerKey } from "./roster.ts";
 export {
   appendRunOutput,
   finishRun,
@@ -146,14 +146,7 @@ export {
 } from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
 export { tallyField, tallyState } from "./tally.ts";
-export {
-  createTeamTraffic,
-  PRESENCE_FANOUT_MS,
-  PRESENCE_LEASE_MS,
-  PRESENCE_RATE,
-  type PresenceAnswer,
-  type TeamTraffic,
-} from "./team.ts";
+export { createTeamTraffic, type TeamTraffic } from "./team.ts";
 
 /** How the interaction core finds an artifact a host names. */
 export interface InteractionArtifacts {

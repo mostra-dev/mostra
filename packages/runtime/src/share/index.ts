@@ -27,6 +27,7 @@ import {
   durationMs,
   PUBLIC_SHARE_DEFAULT_TTL,
   PUBLIC_SHARE_MAX_TTL_MS,
+  type RespondentLink,
   RpcError,
   type Share,
   ShareId,
@@ -122,6 +123,17 @@ export interface RemoteShares {
     readonly hostname: string;
     readonly expiresAt?: string | undefined;
   }>;
+  /**
+   * Names expected respondents on the server's hosted home (`roster/add`, D168), each with a
+   * personal link there; idempotent by `ref`, so a retried share returns the same links.
+   */
+  respondents(input: {
+    readonly server: string;
+    readonly artifactId: string;
+    readonly respondents: NonNullable<ShareStartParams["respondents"]>;
+    readonly scopes?: ShareStartParams["scopes"];
+    readonly ttl?: ShareStartParams["ttl"];
+  }): Promise<readonly RespondentLink[]>;
   /** A minted link again, from what this home kept; `undefined` once it can't be. */
   url(server: string, tokenId: string): string | undefined;
   /** Revokes a link on the server's hosted home; fails with `MOSTRA_REMOTE_UNREACHABLE`. */
@@ -615,13 +627,49 @@ export function createShares(options: SharesOptions): Shares {
         }),
       );
     }
+    if (params.respondents !== undefined && params.respondents.length > 0) {
+      // Expected respondents are named on a hosted share (D168): their links are the hosted
+      // home's. Over a tunnel each viewer is already their own (a tailnet person, a link's own
+      // viewer), and `mostra roster add` names respondents with local personal links.
+      if (params.via !== "remote") {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message:
+              "Expected respondents are named on a share to a remote server (via remote); for local links use roster/add.",
+          }),
+          -32602,
+        );
+      }
+      if (params.viewer !== undefined) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message:
+              "A share names either one viewer for its link or expected respondents, each with a link of their own: not both.",
+          }),
+          -32602,
+        );
+      }
+    }
+    const withRespondents = async (share: ShareStartResult): Promise<ShareStartResult> => {
+      const respondents = params.respondents;
+      if (respondents === undefined || respondents.length === 0 || !options.remote) return share;
+      const plan = JSON.parse((row(share.shareId) as ShareRow).plan_json) as Plan;
+      const links = await options.remote.respondents({
+        server: plan.server as string,
+        artifactId: detail.id,
+        respondents,
+        scopes: params.scopes,
+        ttl: params.ttl,
+      });
+      return { ...share, respondents: [...links] };
+    };
     const key = requestKey("share/start", params);
     if (key !== undefined) {
       const replay = ledger.read((db) => recordedResult<{ shareId: string }>(db, key));
       const found = replay ? row(replay.shareId) : undefined;
-      if (found) return withUrl(toShare(found));
+      if (found) return withRespondents(withUrl(toShare(found)));
     }
-    if (params.via === "remote") return startRemote(params, detail, key);
+    if (params.via === "remote") return withRespondents(await startRemote(params, detail, key));
     const ttlMs = lifetime(params.via, params.ttl);
     const shareId = ShareId.create();
     const { shell, artifact, plan, hostname } = await setUp(

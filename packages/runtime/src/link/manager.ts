@@ -41,6 +41,7 @@ import {
   remoteLogoutMethod,
   remoteStatusMethod,
   remoteTokenMethod,
+  rosterAddMethod,
   type ServerLiveValueParams,
   SubmissionEnvelope,
   type SubmissionPolicy,
@@ -1474,6 +1475,19 @@ export function createLink(options: LinkOptions): Link {
           hostname: new URL(minted.url).host,
           ...(minted.expiresAt !== undefined ? { expiresAt: minted.expiresAt } : {}),
         };
+      },
+      respondents: async (input) => {
+        // The roster is the hosted home's, its personal links hosted links (D168): each is
+        // protected from the logs here as the share's own link is.
+        const session = await self.session(input.server);
+        const added = await session.call(rosterAddMethod, {
+          artifact: { artifactId: input.artifactId },
+          respondents: [...input.respondents],
+          ...(input.scopes !== undefined ? { scopes: input.scopes } : {}),
+          ...(input.ttl !== undefined ? { ttl: input.ttl } : {}),
+        });
+        for (const entry of added.links) protectLink(entry.link.url);
+        return added.links;
       },
       url: (server, tokenId) => readLinks(server)[tokenId],
       revoke: async (server, tokenId) => {

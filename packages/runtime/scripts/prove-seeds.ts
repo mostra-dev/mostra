@@ -3710,8 +3710,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp06-opus-12",
     name: "pages see other viewers' IDs",
     file: "src/interaction/index.ts",
-    from: "  if (own) return event;",
-    to: "  if (own || event) return event;",
+    from: '  const own = event.actor.kind !== "viewer" || event.actor.id === viewerId;',
+    to: "  const own = true;",
     check: unit("interaction-review.test.ts", "without their viewer and view IDs"),
   },
   // WP-07: the client runtime and the shell's trusted controls. Files outside the runtime are

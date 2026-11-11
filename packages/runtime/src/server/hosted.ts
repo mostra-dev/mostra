@@ -31,6 +31,7 @@ import {
   RouteId,
   RpcError,
   remoteTokenMethod,
+  rosterAddMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
 import type { Addressing } from "../addressing/index.ts";
@@ -128,6 +129,13 @@ export interface HostedHome {
   revokeLinks(artifactId: string): number;
   /** Revokes one link; `false` when this home has no such link. */
   revokeLink(tokenId: string): boolean;
+  /**
+   * A personal link's URL and expiry, built from its token now (an invitation's, D168), or
+   * `undefined` when it no longer works: revoked, expired, or made where it can't be shown again.
+   */
+  invitationLink(
+    tokenId: string,
+  ): { readonly url: string; readonly expiresAt?: string } | undefined;
   /**
    * Removes an artifact and everything of it from this home (`ServerHandle.remove`): its rows, its
    * version files no other version of the home names, and its route; its label is kept issued
@@ -248,6 +256,12 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
   const interaction = createInteraction({
     // A respondent on a hosted link learns only that the answer was sent (D165 item 1a).
     sentOnly: true,
+    // The owner is the account the home belongs to, signed in on its page (CO-07): it sees every
+    // respondent and every present viewer, whatever the artifact's visibility.
+    isOwner: (viewer) =>
+      options.services !== undefined &&
+      viewer.kind === "account" &&
+      viewer.ref === options.services.owner(id).account,
     ledger,
     log,
     faults: noFaults,
@@ -657,12 +671,15 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         const ref = (params as { artifact?: unknown }).artifact;
         const artifactId = registry.get(canonicalRef(ref as never)).id;
         const route = routeOf(artifactId);
+        // `roster/add` mints a personal link for each respondent it names (D168).
+        const respondents = (params as { respondents?: readonly unknown[] }).respondents;
         const verdict = await services.operator.limit({
           account: services.owner(id).account,
           home: id,
           artifact: artifactId,
           ...(route ? { routeId: route.id } : {}),
           operation: "link",
+          ...(respondents !== undefined ? { quantity: respondents.length } : {}),
         });
         if (verdict.allowed === "unavailable") {
           throw refuse(
@@ -1078,7 +1095,10 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       ...gateway
         .methods()
         .map((method) =>
-          method.definition.method === viewUrlMethod.method ? limitedLinks(method) : method,
+          method.definition.method === viewUrlMethod.method ||
+          method.definition.method === rosterAddMethod.method
+            ? limitedLinks(method)
+            : method,
         ),
       handler(artifactPauseMethod, (params) => {
         // The account's own instances pause and resume as the owner; only the operator, through
@@ -1119,6 +1139,13 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         operator: options.services.operator,
         meter: options.services.meter,
         account: () => (options.services as HostedServices).owner(id).account,
+        sender: () => {
+          const owner = (options.services as HostedServices).owner(id);
+          return {
+            ...(owner.name !== undefined ? { name: owner.name } : {}),
+            ...(owner.verifiedBy !== undefined ? { verifiedBy: owner.verifiedBy } : {}),
+          };
+        },
         routeOf,
         incarnation: () => incarnation,
         log,
@@ -1170,6 +1197,13 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     },
     revokeLinks,
     revokeLink: (tokenId) => capabilities.revoke(tokenId) !== "unknown",
+    invitationLink(tokenId) {
+      const grant = capabilities.grant(tokenId);
+      if (!grant?.live) return undefined;
+      const url = gateway.reveal(tokenId);
+      if (url === undefined) return undefined;
+      return { url, ...(grant.expiresAt !== undefined ? { expiresAt: grant.expiresAt } : {}) };
+    },
     async remove(artifactId) {
       /** The client files a version's listing names. */
       const clientFilesOf = async (versionId: string): Promise<string[]> => {

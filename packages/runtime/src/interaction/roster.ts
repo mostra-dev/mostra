@@ -352,6 +352,7 @@ export function addRespondents(
     )?.last ?? 0;
   const added: { ref: string; name?: string }[] = [];
   const renamed: { ref: string; name?: string }[] = [];
+  const relinked: string[] = [];
   const tokens: { ref: string; tokenId: string }[] = [];
   for (const spec of specs) {
     const viewerId = viewerForSpec(db, {
@@ -389,9 +390,13 @@ export function addRespondents(
         spec.ref,
       );
       if (name !== entry.name) renamed.push({ ref: spec.ref, ...(name !== null ? { name } : {}) });
+      // A new personal link replaced one that stopped working (revoked, expired, moved).
+      if (tokenId !== entry.token_id) relinked.push(spec.ref);
     }
   }
-  if (added.length > 0 || renamed.length > 0) changed(db, input, { added, renamed, removed: [] });
+  if (added.length > 0 || renamed.length > 0 || relinked.length > 0) {
+    changed(db, input, { added, renamed, relinked, removed: [] });
+  }
   return { tokens };
 }
 
@@ -418,7 +423,7 @@ export function removeRespondents(
     );
     if (result.changes > 0) removed.push(ref);
   }
-  if (removed.length > 0) changed(db, input, { added: [], renamed: [], removed });
+  if (removed.length > 0) changed(db, input, { added: [], renamed: [], relinked: [], removed });
   return { removed };
 }
 
@@ -429,6 +434,7 @@ function changed(
   change: {
     readonly added: readonly { ref: string; name?: string }[];
     readonly renamed: readonly { ref: string; name?: string }[];
+    readonly relinked: readonly string[];
     readonly removed: readonly string[];
   },
 ): void {
@@ -450,6 +456,7 @@ function changed(
       complete: completeOf(list),
       ...(change.added.length > 0 ? { added: change.added } : {}),
       ...(change.renamed.length > 0 ? { renamed: change.renamed } : {}),
+      ...(change.relinked.length > 0 ? { relinked: change.relinked } : {}),
       ...(change.removed.length > 0 ? { removed: change.removed } : {}),
     },
   });
