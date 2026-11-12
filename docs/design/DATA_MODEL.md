@@ -242,6 +242,7 @@ The plan update of 2026-10-16 added stored data for the remote server and teams.
 - **WP-28** (D116, D117) designed the remote server's data below (D165); WP-29 and WP-30 add its tables and migrations.
 - **WP-31** (D121, as built, D168): migration 16 adds `roster_entry(artifact_id, ref, name NULL, email NULL, viewer_id FK, token_id NULL, position, added_at, PRIMARY KEY(artifact_id, ref), UNIQUE(artifact_id, viewer_id), UNIQUE(artifact_id, position))`, one row per expected respondent, whose viewer is its personal link's (kind `token` by `ref`); and `roster_state(artifact_id PK, round, round_cursor, round_started_at, complete)`, a trigger refusing a round or its cursor that goes back. Attribution is `field.updated_by_json` and `updated_at` (§3). Presence, cursors and selections stay in the supervisor's memory and are never stored (§4, D47). The server's directory migration 4 lets `outbound` hold `invitations`, each by its link's token ID, never its URL.
 - **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).
+- **WP-33 to WP-35** (D170): homes an organization owns, in §7.6.
 
 ### 7.1 A remote server's data directory
 
@@ -306,7 +307,7 @@ outbound(id PK, port CHECK(port IN ('metering','events')), payload_json, attempt
 
 As built (WP-30, D167): the directory's migration 2 adds `home.drained_at` and `home.suspend_reason`; `hosted_token(token_id PK, home_id, route_id)`, every hosted link by its home, for `ServerHandle.revokeLink`; `credential_link(account_id, subject, link_id, PK(account_id, subject))`, the instance link an operator-issued credential's subject binds; `signin(hash PK, kind CHECK(kind IN ('provider','step','authorize')), data_json, expires_at)`, sign-ins in progress by the SHA-256 of their handle; `browser_session(hash PK, account_id, created_at, expires_at)`, the API origin's browser sessions; and `operator_host(host PK, home_id, route_id NULL, frame_domain, recorded_at)`, hosts an operator supplied, never deleted nor moved (triggers). `outbound` is `id` `<port>:<eventId | batchId>`, so a repeat enqueues nothing. Migration 3 adds `artifact_route.removing_json`: the plan of a `ServerHandle.remove` in progress (the versions and client files it removes), written before the home is touched, so a removal cut off between the two databases is finished by the next call; a route with a plan serves nothing and takes no push (D167 item 23).
 
-As built (MT-03, D169): directory migration 5 adds `identity.verified_by` (the label of the provider's verifier when it last linked or signed in the person, `IdentityProvider.verifies`; NULL when none verified the name) and `identity.verified_recorded_at`; the sender line reads the account's first identity's `verified_by`, never the configuration now. A row from before the migration has no `verified_recorded_at`, and the server's next start gives it, once, the verifier its configuration then names for the row's provider (none for one it no longer configures). Migration 6 adds `home_file.size` (`CHECK (size IS NULL OR size >= 0)`): the file's bytes as its push gave them, held to the bytes uploaded, so metering's `bytes.held` is `SUM(size)` over a home's rows; a row from before it takes its stored file's size at the next start. The home ledger's migration 17 (local and hosted homes alike) indexes `view (token_id, opened_at)`, since a hosted link's idle expiry is read from its last view at every frame ticket (INTERFACES §18.6).
+As built (MT-03, D169): directory migration 5 adds `identity.verified_by` (the label of the provider's verifier when it last linked or signed in the person, `IdentityProvider.verifies`; NULL when none verified the name) and `identity.verified_recorded_at`; the sender line reads the account's first identity's `verified_by`, never the configuration now. A row from before the migration has no `verified_recorded_at`, and the server's next start gives it, once, the verifier its configuration then names for the row's provider (none for one it no longer configures). Migration 6 adds `home_file.size` (`CHECK (size IS NULL OR size >= 0)`): the file's bytes as its push gave them, held to the bytes uploaded; and `home.held_bytes` (`CHECK (held_bytes >= 0)`), each home's running total, which triggers on `home_file`'s inserts, deletions and size changes keep in their own transaction, with `held_dirty` set by them and `held_reported`, the level last queued for the operator, so metering's `bytes.held` reads one row a home and a change made before a stop is reported after it. A row from before it takes its stored file's size at the next start (0 for a file that is gone, so it is read once). The home ledger's migration 17 (local and hosted homes alike) indexes `view (token_id, opened_at)`, since a hosted link's idle expiry is read from its last view at every frame ticket (INTERFACES §18.6).
 
 ### 7.2 A hosted home
 
@@ -388,3 +389,111 @@ Written only inside the submit transaction, one more for the choice the new subm
 ### 7.5 Retention
 
 The open server deletes nothing on its own (D165 item 13): hosted homes keep every version, submission and event as local homes do (D47), and `files/` keeps every file a kept version names. An operator removes an artifact through its server handle (`remove`, INTERFACES §18.6), which deletes the artifact's rows and links and its home's `home_file` rows no other version of the home names, in one transaction with `file_ref`'s counts; a file no home holds is swept after a grace period, so a push that names it meanwhile keeps it. The route's label stays in `label_issued`, never to be issued again. Retention policies (automatic removal after a time) are `ee/` or operator features (D165 item 11), never the core's. A submission still pending delivery to its owner is never removed by anything but an explicit `remove`.
+
+### 7.6 Organization homes
+
+Designed by D170 ([rounds/ORGANIZATION-HOMES.md](rounds/ORGANIZATION-HOMES.md)); WP-33, WP-34 and WP-35 add these migrations and record any finer shape here, additively. On a hosted home a delivery's `port_owner` is the link that owned its artifact's route when the submission was committed, kept as a record: from WP-35 the outbox sends a pending delivery to its artifact's owner link as the route names it at send time (D170 item 8), and `delivery_terminal` is unchanged.
+
+**The server's directory, migration 7 (WP-33).**
+
+```sql
+ALTER TABLE account ADD COLUMN kind TEXT NOT NULL DEFAULT 'person'
+  CHECK (kind IN ('person', 'organization'));
+ALTER TABLE home ADD COLUMN handle TEXT;                       -- NULL for a person's home
+CREATE UNIQUE INDEX home_handle ON home(handle) WHERE handle IS NOT NULL;
+ALTER TABLE home ADD COLUMN verified_by TEXT;                  -- the organization name's verifier
+ALTER TABLE home ADD COLUMN verified_recorded_at TEXT;
+
+CREATE TABLE home_member (
+  home_id TEXT NOT NULL REFERENCES home(id),
+  account_id TEXT NOT NULL REFERENCES account(id),
+  role TEXT NOT NULL CHECK (role IN ('member', 'admin')),
+  added_at TEXT NOT NULL,
+  PRIMARY KEY (home_id, account_id)
+);
+CREATE INDEX home_member_account ON home_member(account_id);
+-- Only an organization's home has members, and a member is a person.
+CREATE TRIGGER home_member_home BEFORE INSERT ON home_member
+  WHEN (SELECT a.kind FROM home h JOIN account a ON a.id = h.owner_account_id
+         WHERE h.id = NEW.home_id) IS NOT 'organization'
+BEGIN SELECT RAISE(ABORT, 'only an organization''s home has members'); END;
+CREATE TRIGGER home_member_person BEFORE INSERT ON home_member
+  WHEN (SELECT kind FROM account WHERE id = NEW.account_id) IS NOT 'person'
+BEGIN SELECT RAISE(ABORT, 'a member is a person''s account'); END;
+-- An organization's account signs in nowhere.
+CREATE TRIGGER identity_person BEFORE INSERT ON identity
+  WHEN (SELECT kind FROM account WHERE id = NEW.account_id) IS NOT 'person'
+BEGIN SELECT RAISE(ABORT, 'an organization has no sign-in identity'); END;
+-- An account's kind never changes.
+CREATE TRIGGER account_kind_fixed BEFORE UPDATE OF kind ON account
+  WHEN NEW.kind IS NOT OLD.kind
+BEGIN SELECT RAISE(ABORT, 'an account''s kind never changes'); END;
+
+ALTER TABLE "grant" ADD COLUMN home_id TEXT REFERENCES home(id);   -- NULL: the account's own home
+ALTER TABLE consent ADD COLUMN home_id TEXT;                        -- the home last chosen for this client
+
+DROP INDEX instance_link_default;                                   -- was: one default per account
+CREATE UNIQUE INDEX instance_link_default ON instance_link(account_id, home_id) WHERE is_default = 1;
+
+ALTER TABLE artifact_route ADD COLUMN access TEXT NOT NULL DEFAULT 'organization'
+  CHECK (access IN ('organization', 'private'));               -- who among the members reads it
+```
+
+- **Existing rows:** every account is a `person`; every grant has `home_id` NULL and acts on its account's own home as before; every default link stays the default of its account and home; every route is `organization`, which on a person's home means what it always did.
+- `instance_link.revoked_at` exists and is never set today (`server/auth.ts:441` only clears it). `revokeInstanceLink` and `hosted/link.revoke` set it; a sign-in from the same machine, approved again, clears it.
+- `instance_link.account_id` is the person whose machine it is, on personal and organization homes alike. `linkFor` rebinds a link only for the same account **and the same home** (today: the same account, `server/auth.ts:439`).
+- `credential_link` is unchanged: one link per key subject.
+
+**The server's directory, migration 8 (WP-35).**
+
+```sql
+ALTER TABLE artifact_route ADD COLUMN adopting_json TEXT;   -- the plan of a commit in progress: { from, to, by, at }
+ALTER TABLE artifact_route ADD COLUMN released_at TEXT;     -- its owner let any member adopt it
+```
+
+A route with `adopting_json` takes no push and sends no delivery or run until the commit finishes, as a route with `removing_json` serves nothing.
+
+**A hosted home's ledger.** No migration. `delivery_terminal` refuses a change of a delivery's `port_owner` (`ledger/migrations.ts:338-343`), and it stays: adoption rewrites no delivery, because a hosted home's outbox sends each pending delivery to its artifact's owner link as the route names it then (4.5). A delivery's `port_owner` on a hosted home is therefore the link that owned the route when the submission was committed. The adoption commit updates `relay_run.owner_link_id` and `relay_seq` of never-sent runs, which no trigger guards. The new events are rows of the existing `event` table.
+
+**The owner's ledger, migration 18 (WP-34).** `remote_link` is rebuilt with a local key, and its children reference the key.
+
+```sql
+remote_link(id PK,                       -- local: rl_ + ULID
+            server NOT NULL, home_id NULL, home_kind NOT NULL DEFAULT 'personal'
+              CHECK (home_kind IN ('personal', 'organization')),
+            home_name NULL, home_handle NULL, role NULL,
+            account_id, account_name, instance_id, is_default, linked_at, state,
+            incarnation NULL, follow_cursor NULL, relay_mark INTEGER NOT NULL DEFAULT 0)
+UNIQUE INDEX remote_link_personal ON remote_link(server) WHERE home_kind = 'personal'
+UNIQUE INDEX remote_link_home     ON remote_link(server, home_id) WHERE home_id IS NOT NULL
+hosted_artifact(artifact_id FK, link_id FK, server, hosted_home, route_id, label, token_id, url_secret_hint,
+                shared_at, stopped_at NULL, released_at NULL, PRIMARY KEY (artifact_id, link_id))
+version_push(artifact_id, version_id, link_id FK, server, state, attempts, next_attempt_at, created_at, refusal,
+             PRIMARY KEY (artifact_id, version_id, link_id))
+remote_missing(link_id FK, submission_id, noted_at, PRIMARY KEY (link_id, submission_id))
+relayed_run   gains link_id
+```
+
+- **Existing rows:** each `remote_link` row becomes its server's personal link with a fresh `id`; `home_id` is filled from that server's `hosted_artifact.hosted_home` when one is recorded, else at the next session from `mostra/initialize`. Child rows take their server's one link.
+- `server` stays on the children because `origin`, `scope_key` and every message to a person name the server.
+- Credentials: the personal link keeps `<home>/keys/remote/<server key>.json`; an organization link uses `<server key>.<home id>.json`, and the same for `.links.json` (mode 0600, never in the ledger, D44).
+
+**The owner's ledger, migration 19 (WP-35).**
+
+```sql
+ALTER TABLE version ADD COLUMN code TEXT NOT NULL DEFAULT 'full' CHECK (code IN ('full', 'client'));
+```
+
+A `client` version is a copy fetched from a hosted home: its client build and records, never server code. It is never launched, never exported as a bundle, and `gc` treats it as referenced while its artifact is hosted. Set at insert; the version row stays immutable.
+
+**Durable events, for hosts** (DATA_MODEL §4, additive):
+
+| Event | Where | Payload |
+|---|---|---|
+| `instance.linked` | hosted home (exists) | gains `account: { id, name? }` |
+| `instance.revoked` | hosted home | `{ instanceId, by }` |
+| `token.minted` | hosted home | `{ tokenId, by }`: who minted a link, never its secret. Hosts only, never pages |
+| `artifact.access` | hosted home | `{ access, by }` |
+| `artifact.released` | hosted home | `{ released, by }` |
+| `artifact.adopted` | hosted home, and followed by the old and new owner | `{ routeId, from: { instanceId, account }, to: { instanceId, account }, by, deliveries, runs }` |
+| `remote.adopted` | the adopter's own log | `{ server, home, artifactId, versions: { held, fetched }, submissions }` |

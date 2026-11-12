@@ -14,21 +14,21 @@
 
 For a work-package session, read the files marked *always*, then the ones its WP specification names. When in doubt, read more.
 
-1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D168, with source messages M1 to M63. It is the authority.
+1. **[DECISIONS.md](DECISIONS.md)** *(always)*: every approved decision, D01 to D170, with source messages M1 to M65. It is the authority.
 2. **[PRODUCT.md](PRODUCT.md)** *(always)*: the problem, users, vocabulary, journeys J1 to J14, scope, non-goals and invariants.
 3. **[STANDARDS.md](STANDARDS.md)** *(always)*: how all Mostra work is done, including labels, verification, prose and consequential actions.
 4. **[ARCHITECTURE.md](ARCHITECTURE.md)** *(always)*: the settled architecture, the remote server (§15), and the resolution of every seed open question (§16).
 5. **[INTERFACES.md](INTERFACES.md)**: the author API, browser protocol, bridge, host protocol, ports, results, CLI, MCP and diagnostics.
 6. **[DATA_MODEL.md](DATA_MODEL.md)**: the home, identity and digests, ledger tables and constraints, the event catalog, limits and migrations.
 7. **[FAILURE_MODEL.md](FAILURE_MODEL.md)**: failure, recovery and concurrency behavior for every case STANDARDS requires.
-8. **[REQUIREMENTS.md](REQUIREMENTS.md)**: 166 numbered requirements (154 in v1, 7 in v1.1) with release, source and verification route.
-9. **[WORK_PACKAGES.md](WORK_PACKAGES.md)**: 32 one-session work packages in D125 order (29 for v1, 3 after the first release), with ownership, dependencies and evidence.
+8. **[REQUIREMENTS.md](REQUIREMENTS.md)**: 174 numbered requirements (154 in v1, 15 in v1.1) with release, source and verification route.
+9. **[WORK_PACKAGES.md](WORK_PACKAGES.md)**: 37 one-session work packages in D125 order (32 for v1, 5 after the first release: WP-33 to WP-35, homes an organization owns, D170, then the terminal packages) and the maintenance units, with ownership, dependencies and evidence.
 10. **[EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md)**: one row per v1 and v1.1 requirement with its owning WP, route, concrete check and evidence state. Regenerate it with `python3 tools/design/evidence_matrix.py`.
 11. **[REPO_STANDARDS.md](REPO_STANDARDS.md)**: the repository machinery (layout, packages, toolchain, CI, workflow, docs, releases).
 12. **[JCODE_HOST.md](JCODE_HOST.md)**: what the first host needs, and the generic mechanism that meets each need.
 13. **[VERIFIED_FACTS.md](VERIFIED_FACTS.md)**: third-party facts re-verified on 2026-10-10 and by each package since, and the prototype evidence.
 14. **[evaluations/](evaluations/)**: agent-evaluation reports (EVAL-01, Base UI vs Radix).
-15. **[rounds/](rounds/)**: the decision rounds as presented. ROUND-3 holds the detailed kit, demo, extension and shell shapes that D65 approved by reference. [DECISION_TREE.md](DECISION_TREE.md) is the working map of the rounds, retired at acceptance.
+15. **[rounds/](rounds/)**: the decision rounds as presented. ROUND-3 holds the detailed kit, demo, extension and shell shapes that D65 approved by reference; ORGANIZATION-HOMES holds D170's design, its candidates and its checks. [DECISION_TREE.md](DECISION_TREE.md) is the working map of the rounds, retired at acceptance.
 16. **[../research/INDEX.md](../research/INDEX.md)**: the research reports. They are design input, never authority.
 17. **Mostra HQ** (private, cloned at `~/src/mostra-hq`): Mirza's business context, read as its own AGENTS.md lists. It is context, never authority, and nothing from it enters this repository (D127).
 

@@ -4,7 +4,7 @@
 
 **Strength.** Every row is a **requirement** ([STANDARDS.md](STANDARDS.md#rule-strengths)) unless it is marked **Invariant** or **Default**. Invariants are listed in [PRODUCT.md](PRODUCT.md#rule-strengths), and rows that restate one carry the label.
 
-**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): the terminal modes (D122). Windows moved into v1 (D146). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
+**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): homes an organization owns (D170) and the terminal modes (D122). Windows moved into v1 (D146). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
 
 **Verification routes:**
 - **M:** mechanism or unit tests.
@@ -129,6 +129,7 @@
 | HY-06 | Security issues are handled under SECURITY.md with private reporting | v1 | STANDARDS | R |
 | HY-08 | Viewer identity on remote servers: optional OAuth sign-in, display names for anonymous viewers recorded as unverified; capability URLs remain the authorization | v1 | D116, D121 | B |
 | HY-09 | Hosted artifacts are served only from the user-content domain; the shell offers a report control in its own origin; a server policy can add an interstitial and an expiry to public links | v1 | D116 | B |
+| HY-10 | An organization's hosted page names the organization and who verified its name, and the member responsible for it while they are a member and unless the operator's policy hides them, as text in the trusted chrome; a name no one verified is labelled unverified | v1.1 | D161, D170 | B |
 
 ## Host integration (HO)
 
@@ -145,6 +146,7 @@
 | HO-09 | Operator ports on the remote server (limits, metering, account resolution, abuse actions) with no-op defaults for self-hosters | v1 | D58, D116 | M, C |
 | HO-10 | An addressing port: a host supplies the external base of an artifact's links (its own tunnel hostname), which joins the Host allowlist and the links Mostra mints, with the loopback ports as the standalone default | v1 | D25, D143, JCODE_HOST H-14 | M, C |
 | HO-11 | Reviews and capture ports: hosts mirror review threads and choices, and supply the screenshots review crops use, with no mirror and the verify runner's browser as the standalone defaults | v1 | D25, D143 | M, C |
+| HO-12 | The operator contract for organization homes, additive within its revision: the handle makes an organization and sets, reads and removes its members, transfers a home, and lists and revokes linked instances; queries, counters and events name the owning account and, where a member acted, the actor; a link policy may hide the member on the sender line | v1.1 | D170 | I, M |
 
 ## Kit (KT)
 
@@ -195,6 +197,7 @@
 | MC-02 | MCP Apps export: one artifact compiles to a single-file `ui://` resource with declared CSP, mapped theme variables and a bridge transport; the full-page URL is always offered | v1 | D07 | I, X |
 | MC-03 | Features unavailable inside chat iframes degrade explicitly | v1 | §16 | B |
 | MC-04 | A remote MCP server over Streamable HTTP with OAuth (dynamic and metadata-document client registration, refresh tokens), stateless with explicit handles; inline MCP Apps in cloud chat hosts persist drafts, submissions and actions through it | v1 | D61, D116 | I, X |
+| MC-05 | A chat host's grant names one home, chosen on the authorization server's consent page; its reading tools see that home, and its authoring tools build on the member's own default instance there | v1.1 | D170 | I, X |
 
 ## Extensibility (EX)
 
@@ -230,6 +233,11 @@
 | RM-07 | Counts by choice: an artifact that opts in through its manifest gets a built-in tally of a fixed-choice field, counted in the submit transaction and pushed to viewers on the live channel with no artifact code and no relay, on hosted and local homes alike | v1 | D165 | I, B |
 | RM-08 | Hosted links accept submissions from viewers who aren't signed in when the artifact allows it, at about 1 a second sustained and 10 a second in bursts per artifact, accepted under 0.5 s at the 95th percentile with the owner offline; per-IP and per-link limits answer "try again shortly" and never drop a submission | v1 | D165 | I, B |
 | RM-09 | An artifact can be paused by its owner from the CLI and by an operator: views keep working, submissions and relayed actions are refused with the draft kept, links stay valid, and the pause is reversible (an operator's only by the operator) | v1 | D165 | I, B |
+| RM-10 | A hosted home may belong to an organization: an account of its own kind, whose home people act on as members with a role that only the operator's handle sets. Every session acts on the one home its grant names. A removed member's tokens, bindings and chat-host access stop when the removal resolves, while their pages keep serving. With no operator module there are no organizations and nothing else changes | v1.1 | D170 | I |
+| RM-11 | An owner instance links to several homes on one server, each link with its own grant, connection, cursor and relay mark. Sign-in, sharing and reads name the home, and nothing is shared into an organization's home by a default the person didn't see | v1.1 | D170 | I, C |
+| RM-12 | In an organization's home one check decides every call: every member reads every artifact, except one shared as private, which only its owner member and admins read and which is listed for no one else; links, the roster, pause and state writes belong to the owner member and admins; pushing versions and running relayed code stay the owner instance's alone | v1.1 | D170 | I, B |
+| RM-13 | A member's instance reads and waits on an artifact of the home that it doesn't own, through the hosted home, from the CLI and the host protocol, and writes nothing of that artifact to its own ledger | v1.1 | D170 | I |
+| RM-14 | Adoption moves a hosted artifact to another member's instance: the adopter takes the versions it holds or can import, fetches a client-only copy of the rest, imports the artifact's submissions, and receives its pending deliveries and unsent runs in order; each submission keeps its one delivery, no run runs twice, and a run the previous owner accepted and never finished ends outcome-unknown | v1.1 | D170 | I |
 
 ## Engineering and release (EN)
 

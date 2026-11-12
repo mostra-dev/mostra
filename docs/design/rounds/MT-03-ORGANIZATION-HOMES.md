@@ -1,6 +1,6 @@
 # Homes an organization owns: a design for decision (MT-03)
 
-**Status:** Design input, brought to Mirza by MT-03 (D169 item 9). Nothing here is decided or built; the decision is recorded as its own entry, with the package that builds it.
+**Status:** Superseded by D170 and its design, [ORGANIZATION-HOMES.md](ORGANIZATION-HOMES.md). This was MT-03's first sketch (D169 item 9), kept as the starting input the design tested.
 
 ## The problem
 

@@ -375,7 +375,7 @@ flowchart LR
 ### 15.2 Hosted homes
 
 - **Canonical data** (D165 item 1). A hosted home is canonical for everything viewers of its hosted links create: drafts, artifact state, submissions, comments, action runs, live values, links and views.
-- **One owner per home.** A hosted home belongs to one owner, an account, and later an organization (WP-31 and the operating layer), and holds every artifact that owner hosts on the server, whichever of its linked instances shared it (§15.3).
+- **One owner per home.** A hosted home belongs to one owning account, a person's or an organization's (D170), and holds every artifact hosted in it, whichever linked instance shared it (§15.3). An organization's account has no sign-in identity: people act on its home as members, with a role (`member` or `admin`) that only the operator's handle sets. Every member reads the home's artifacts (but one shared as `private`), the artifact's owner member and admins manage it, and only its owner link runs it, by one check over every call (INTERFACES §18.10). With no operator module there are no organizations.
 - **One writer per home** (D165 item 0b). A hosted ledger opens in WAL with normal locking and `synchronous=FULL`, so a backup replicator may read it. Its one writer is the process that holds the home's lock (a one-row SQLite database held in exclusive locking, which the operating system releases when the process dies), together with the server's in-process registry of open homes. A data directory on a network filesystem is refused.
 - **Incarnations.** Each hosted home carries a random incarnation, rotated when it is restored from a backup, so an owner that follows it never mistakes a reused cursor for one it already copied (FAILURE_MODEL §11.2). The owner instance, on another machine, is the witness a restore can't roll back: a home whose owner has committed more than it holds rotates before answering it.
 - **Opened on demand** (D165 item 6). A home opens on its first request (under 250 ms at the 95th percentile) and closes after 10 idle minutes: no connection, stream, poll, pending delivery or waiting run. Several server processes can serve several data directories; which one serves a home is the operator's routing.
@@ -390,7 +390,9 @@ flowchart LR
   - a named event subscription on the hosted home is the sync cursor: the instance copies the durable events of the artifacts it owns into its own log, so `wait`, `results` and `events` work locally unchanged;
   - it registers the `relay` port (§15.5).
 - **One copy of shared state.** A hosted artifact's artifact state and live values live in the hosted home. Writes from the owner's side go there, refused with a code when it can't be reached, never applied locally alone. The owner's own local links keep their drafts and submissions locally, as a separate audience.
-- **One owner instance per hosted artifact** (D165 item 1b): the instance that shared it receives its deliveries, relayed runs and authoring calls. Other instances of the account read and wait through the hosted home. Chat-host authoring goes to the account's default instance, the first one linked unless changed.
+- **One owner instance per hosted artifact** (D165 item 1b): the instance that shared it, or that adopted it (D170), receives its deliveries, relayed runs and authoring calls. Other instances of the account, and other members of an organization, read and wait through the hosted home. Chat-host authoring goes to the actor's default instance on that home, the first one linked unless changed.
+- **One link per server and home** (D170): an owner instance holds one link for each home it acts on (its person's own, and each organization's), each its own grant, link ID, cursor, relay mark and connection. Every session acts on the one home its grant names, and a link's follow carries only the events of the routes it owns.
+- **Adoption** (D170): another member's instance takes over a hosted artifact, holding or fetching its versions (a client-only copy when it lacks the build, never server code) and importing its answers; the route's owner link then changes by a commit whose plan is recorded first, and a hosted home sends each pending delivery to its artifact's owner link as the route names it at send time, so no delivery row is rewritten. No artifact moves between homes: a label never moves (§15.6).
 
 ### 15.4 Sharing and versions
 
@@ -438,7 +440,7 @@ The relay (D117, D165 item 4) runs a hosted artifact's server code on its owner 
 ### 15.8 What a respondent meets
 
 - **After Submit** the shell says "Your answer was sent." (D161) as soon as the hosted home commits the submission, and nothing about delivery. Delivery states are shown to the owner, the owner's agent and hosts, and in the shell only when the signed-in viewer is the owner (D165 item 1a, amending IN-13 for hosted links).
-- **The trusted chrome** (D161): the sender line, "Never enter passwords", generic link previews, `noindex`, and the report control.
+- **The trusted chrome** (D161): the sender line, "Never enter passwords", generic link previews, `noindex`, and the report control. On an organization's page the sender line names the organization and who verified its name, and under it the member responsible for the page while they are a member, unless the operator's policy hides them (D170).
 - **Anonymous answers at volume** (D165 item 13): hosted links accept submissions from viewers who aren't signed in when the artifact's policy allows it, at about 1 a second sustained and 10 a second in bursts per artifact, accepted under 0.5 s at the 95th percentile with the owner offline. Per-IP and per-link limits are server settings; past them the shell says "try again shortly" and keeps the draft.
 - **Counts by choice** (D165 item 12): an artifact that opts in through its manifest gets a built-in tally of a fixed-choice field, counted in the submit transaction and pushed to viewers on the live channel, with no artifact code and no relay. The same works locally.
 - **Pause** (D165 item 14): a paused artifact stays viewable and shows that it is paused; it takes no submissions and runs no relayed actions until resumed.
@@ -446,7 +448,7 @@ The relay (D117, D165 item 4) runs a hosted artifact's server code on its owner 
 ### 15.9 Remote MCP
 
 The remote MCP server (D116, MC-04, D165 item 10) serves `@mostra/mcp`'s factory (D164) at `https://api.example/mcp` over Streamable HTTP, statelessly, for the `2026-07-28` revision and the 2025 revisions. OAuth follows that revision's authorization specification (Client ID Metadata Documents and Dynamic Client Registration, PKCE, resource indicators, `iss`, rotating refresh tokens). Its ports:
-- **the instance:** reading tools act on the account's hosted home; authoring tools are relayed to the account's default owner instance, and without one connected they answer `MOSTRA_REMOTE_NO_INSTANCE`;
+- **the instance:** reading tools act on the hosted home the grant names (an account with organization memberships chooses it on the consent page, D170); authoring tools are relayed to the actor's default owner instance on that home, and without one connected they answer `MOSTRA_REMOTE_NO_INSTANCE`;
 - **the workspace** is the owner instance's own, reached through the relay;
 - **the docs** are bundled.
 
@@ -469,11 +471,13 @@ The tools and their schemas are the local server's (D32). How a page renders and
 
 When `limits` doesn't answer in time, operations that create fail closed and viewer input proceeds, so nothing a person typed is lost.
 
+**Organizations** (D170) go in through the server handle, never a port the server asks: `setOrganization`, `setMembers`, `setMember`, `removeMember`, `members`, `transferHome`, `instanceLinks` and `revokeInstanceLink`. A port's `account` stays the owning account, so an organization's entitlements apply to its home with no new rule, and `actor` names the member who caused an operation, for seats and attribution. Administering organizations (invitations, seats, a console, directory sync, audit logs) stays the operator's or `ee/`'s.
+
 **Not in the open server:** plans, entitlements and organization administration; quotas, cost and billing; abuse scoring, scanning and takedown tooling; placing homes across machines, backup and restore automation, and moving domains; service keys, webhooks and outside domains' provisioning; sending email; sandboxed execution (v1.x, `SandboxPort`). Enterprise identity and administration belong to `ee/` (D118).
 
 ### 15.11 Self-hosting
 
-One multi-architecture Linux container image (D165 item 11) runs `mostra-runtime server` as a non-root user with one data volume (hosted homes, version files, the server's directory and keys) and configuration from environment variables or a file: the user-content domains, the API origin, identity providers, trusted proxies, rate limits and an optional operator module. A TLS terminator with a wildcard certificate sits in front (the docs show Caddy). One small machine serves a public anonymous page at §15.8's targets.
+One multi-architecture Linux container image (D165 item 11) runs `mostra-runtime server` as a non-root user with one data volume (hosted homes, version files, the server's directory and keys) and configuration from environment variables or a file: the user-content domains, the API origin, identity providers, trusted proxies, rate limits and an optional operator module. A TLS terminator with a wildcard certificate sits in front (the docs show Caddy). One small machine serves a public anonymous page at §15.8's targets. A self-hoster gets no organizations unless an operator module names them; the self-hosting page shows a small module that names one shared home from a file (D170).
 
 ## 16. Resolution of the seed's open questions
 
