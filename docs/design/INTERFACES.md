@@ -91,7 +91,7 @@ interface FieldMeta<T> {
   save: "saved" | "saving" | "offline" | "conflict" | "readonly"; // readonly: static export or submitted under `once`
   error?: string;                    // validation message
   conflict?: { theirs: T; keepMine(): void; takeTheirs(): void };
-  updatedBy?: { kind: "viewer" | "agent" | "host"; name?: string }; // artifact scope
+  updatedBy?: { kind: "viewer" | "agent" | "host"; name?: string; key?: string; self?: boolean; at?: string }; // artifact scope (D168 item 7)
 }
 
 function useSubmit(): {
@@ -177,7 +177,7 @@ interface PresencePeer { key: string; name?: string; kind: ViewerKind; verified?
 ```
 
 - A person's `key` (`vk_…`, per artifact) is the same in all three, so a page matches a writer to a respondent or a present viewer; a page never learns another person's `ref`, email or viewer ID.
-- `useRespondents` reads `POST /_mostra/v/{rev}/respondents` when it mounts and follows the roster's changes while mounted (ephemeral `respondents` messages, interest renewed every 20 s). `usePresence` joins only while mounted (`POST /_mostra/v/{rev}/presence`, renewed every 10 s, left on unmount and `pagehide`), shares the pointer in document coordinates with `cursor` and the focused element (its `data-presence-id`, `id` or `name`) with `selection`, at most 10 updates a second. Outside a live page both answer `status: "unavailable"` and empty lists.
+- `useRespondents` reads `POST /_mostra/v/{rev}/respondents` when it mounts and follows the roster's changes while mounted (ephemeral `respondents` messages, interest renewed every 20 s). `usePresence` joins only while mounted (`POST /_mostra/v/{rev}/presence`, renewed every 10 s, left on unmount and `pagehide`, joined again on a `pageshow` from the back/forward cache, each post counted by `seq`), shares the pointer in document coordinates with `cursor` and the focused element (its `data-presence-id`, `id` or `name`) with `selection`, at most 10 updates a second. Outside a live page both answer `status: "unavailable"` and empty lists.
 - What each shows of the others is the manifest's `team: { visibility }` (D168 item 8): `private` only `self`; `counts` also `counts`, `complete` and the number of others here; `names` also every respondent and every present viewer with what they share. The owner sees as `names`. Attribution isn't governed by it.
 
 ### 2.4 `@mostra/server` (worker side)
