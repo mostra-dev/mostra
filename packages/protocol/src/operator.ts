@@ -404,7 +404,10 @@ export interface LinkPolicy extends Cacheable {
   readonly interstitial?: { readonly kind: string; readonly message?: string };
   /** The longest a link may live from when it was minted. */
   readonly maxTtl?: string;
-  /** A link unused for this long expires. */
+  /**
+   * A link without a view for this long expires: judged from its last view before the one being
+   * opened (or from its minting), so a fresh visit to an idle link is refused as well (MT-03).
+   */
   readonly idleExpiry?: string;
   /** The line after "Your answer was sent.", as text. */
   readonly afterSubmit?: string;

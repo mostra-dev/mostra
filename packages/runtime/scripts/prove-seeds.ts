@@ -228,7 +228,7 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-03",
-    name: "6: a pushed file's size is never recorded, so nothing held is counted",
+    name: "6: a held file's size is never recorded (upload or push), so nothing held is counted",
     file: "src/server/hosted.ts",
     from: `      sha,
       size ?? null,
@@ -236,6 +236,14 @@ const SEEDS: readonly Seed[] = [
     to: `      sha,
       null,
     );`,
+    // The push's commit records a size the upload left out: both paths must lose it.
+    also: [
+      {
+        file: "src/server/hosted.ts",
+        from: "    } else if (size !== undefined) {",
+        to: "    } else if (size === -1) {",
+      },
+    ],
     check: integration("operator.test.ts", "bytes a home holds"),
   },
   {
