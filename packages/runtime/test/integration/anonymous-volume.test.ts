@@ -208,15 +208,21 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
   }, 120_000);
 
   it("answers 429 past the per-link rate, and nothing is dropped", async () => {
-    const visitors = await Promise.all(Array.from({ length: 40 }, () => visitor("wednesday")));
+    // More at once than a full bucket holds (sixty a minute for the link), whatever the cases
+    // before left in it: on a slow runner more than a minute passes and it refills, so forty
+    // all fit and none was refused (#141's merge queue, Windows x64).
+    const visitors = await Promise.all(Array.from({ length: 100 }, () => visitor("wednesday")));
+    const sending = Date.now();
     const results = await Promise.all(
       visitors.map((who, index) =>
         submit(who, `100.64.${Math.floor(index / 200)}.${(index % 200) + 1}`),
       ),
     );
     const limited = results.filter(({ answer }) => answer.status === 429);
-    // Sixty a minute for the link: about twenty more fit, the rest wait.
-    expect(limited.length).toBeGreaterThan(0);
+    // A full bucket holds sixty and refills one a second, so at most sixty and one more for each
+    // second the answers took to arrive are taken; the rest wait, and at least one does.
+    const took = Math.ceil((Date.now() - sending) / 1000);
+    expect(limited.length).toBeGreaterThanOrEqual(Math.max(1, visitors.length - 60 - took));
     for (const [index, { answer }] of results.entries()) {
       if (answer.status === 200) {
         accepted.push(answer.json<{ id: string }>().id);
@@ -240,16 +246,23 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
 
   it("delivers every accepted answer to the owner once, in the server's order, when it returns", async () => {
     await owner.start({ env: ownerEnv(port) });
+    // Every page of them: a read answers at most 100 events.
     const imported = async () => {
-      const page = ok<{
-        events: { payload: { submissionId: string }; origin?: { cursor: string } }[];
-      }>(
-        await owner.client.call("events/read", {
-          filter: { artifacts: [artifactId], types: ["submission.created"] },
-          limit: 100,
-        }),
-      );
-      return page.events;
+      type Imported = { payload: { submissionId: string }; origin?: { cursor: string } };
+      const events: Imported[] = [];
+      let after: string | undefined;
+      for (;;) {
+        const page = ok<{ events: Imported[]; cursor: string }>(
+          await owner.client.call("events/read", {
+            filter: { artifacts: [artifactId], types: ["submission.created"] },
+            limit: 100,
+            ...(after !== undefined ? { after } : {}),
+          }),
+        );
+        events.push(...page.events);
+        if (page.events.length < 100) return events;
+        after = page.cursor;
+      }
     };
     await eventually(
       async () => (await imported()).length >= accepted.length,
