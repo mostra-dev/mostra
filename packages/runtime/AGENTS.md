@@ -228,6 +228,10 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   fails on one). The `invitations` port's queue keeps a personal link's token ID, never its URL
   (whose fragment is its secret): the URL is built from the token when the operator takes the
   invitation (`HostedHome.invitationLink`), and a link that stopped working is dropped (D168).
+  Viewer input never waits on the operator past its bound: `limits` is asked for a relayed run,
+  a waiting run and a plain call before anything is recorded or relayed, and no answer lets each
+  through (`server/relay.ts`, D169). A sender line's verifier is the one recorded on the identity
+  (`identity.verified_by`), never the configuration now (D169).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
