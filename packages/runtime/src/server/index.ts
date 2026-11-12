@@ -47,7 +47,7 @@ import { createHandle } from "./handle.ts";
 import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
 import { createRemoteMcp, serverDocs } from "./mcp.ts";
-import { createMeter, type Meter } from "./metering.ts";
+import { createMeter, heldLevels, type Meter } from "./metering.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
 import { type BuiltInProvider, builtInProviders } from "./providers.ts";
@@ -195,6 +195,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         domains: { active: config.domains.active, spares: config.domains.spares ?? [] },
         shellDir,
         services: services(),
+        ...(Number(options.env["MOSTRA_TEST_SESSION_TOUCH_MS"]) > 0
+          ? { sessionTouchMs: Number(options.env["MOSTRA_TEST_SESSION_TOUCH_MS"]) }
+          : {}),
         relay: {
           waitingRunsPerArtifact: config.relay?.waitingRunsPerArtifact,
           drainPerSecond: config.relay?.drainPerSecond,
@@ -282,14 +285,11 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       ? { windowMs: Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) }
       : {}),
     activeHomes: () => data.open().map((home) => ({ home, account: ownerOf(home).account })),
-    // `bytes.held`: the client bytes each home holds, each file once (MT-03).
-    heldBytes: () =>
-      data.directory.read((db) =>
-        db.all<{ home: string; account: string; bytes: number }>(
-          `SELECT f.home_id AS home, h.owner_account_id AS account, SUM(f.size) AS bytes
-             FROM home_file f JOIN home h ON h.id = f.home_id GROUP BY f.home_id`,
-        ),
-      ),
+    // `bytes.held` (MT-03): each home's running total, sent when it changed, and all in a snapshot.
+    held: heldLevels(data.directory),
+    ...(Number(options.env["MOSTRA_TEST_HELD_SNAPSHOT_MS"]) > 0
+      ? { snapshotMs: Number(options.env["MOSTRA_TEST_HELD_SNAPSHOT_MS"]) }
+      : {}),
   });
   auth = createAuthorization({
     directory: data.directory,
@@ -672,8 +672,8 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
 
 /**
  * Gives each `home_file` row recorded before sizes were kept (directory migration 6) the size of
- * its stored file, so `bytes.held` counts it (MT-03). A file that is gone keeps no size and counts
- * nothing; the row itself is left as it is.
+ * its stored file, so `bytes.held` counts it (MT-03); the triggers add it to the home's total. A
+ * file that is gone holds nothing on disk, so its row takes 0 and is never read again.
  */
 function fillHeldSizes(directory: Ledger, filesDir: string, log: Log): void {
   const rows = directory.read((db) =>
@@ -682,26 +682,26 @@ function fillHeldSizes(directory: Ledger, filesDir: string, log: Log): void {
     ),
   );
   if (rows.length === 0) return;
-  const sizes = new Map<string, number | undefined>();
+  const sizes = new Map<string, number>();
+  let missing = 0;
   for (const row of rows) {
     if (sizes.has(row.sha256)) continue;
     try {
       sizes.set(row.sha256, statSync(join(filesDir, row.sha256)).size);
     } catch {
-      sizes.set(row.sha256, undefined);
+      sizes.set(row.sha256, 0);
+      missing += 1;
     }
   }
   directory.write((db) => {
     for (const row of rows) {
-      const size = sizes.get(row.sha256);
-      if (size === undefined) continue;
       db.run(
         "UPDATE home_file SET size = ? WHERE home_id = ? AND sha256 = ? AND size IS NULL",
-        size,
+        sizes.get(row.sha256) ?? 0,
         row.home_id,
         row.sha256,
       );
     }
   });
-  log.info("server.held_sizes_filled", { files: sizes.size });
+  log.info("server.held_sizes_filled", { files: sizes.size, missing });
 }

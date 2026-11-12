@@ -65,8 +65,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MT-03",
     name: "1: a relayed run is recorded without asking `limits` for `run`",
     file: "src/server/relay.ts",
-    from: `          await admit(page.artifactId, "run");`,
-    to: "          void 0;",
+    from: `        await admit(page.artifactId, "run");`,
+    to: "        void 0;",
     check: integration("operator-relay.test.ts", "refuses a run and a call"),
   },
   {
@@ -81,22 +81,84 @@ const SEEDS: readonly Seed[] = [
     requirement: "MT-03",
     name: "1: a run waits for its absent owner without asking `limits` for `run.wait`",
     file: "src/server/relay.ts",
-    from: `            await admit(page.artifactId, "run.wait");`,
-    to: "            void 0;",
+    from: `          await admit(page.artifactId, "run.wait");`,
+    to: "          void 0;",
     check: integration("operator-relay.test.ts", "asks `run.wait`"),
   },
   {
     requirement: "MT-03",
-    name: "1: a run the operator refused keeps its link's use",
+    name: "1: a run refused after it took its link's use keeps the use",
     file: "src/server/relay.ts",
-    from: `          giveBack();
-          throw error;
-        }
-        // The queue may have filled`,
-    to: `          throw error;
-        }
-        // The queue may have filled`,
+    from: `      stillAdmitted(page);
+    } catch (error) {
+      giveBack();
+      throw error;
+    }`,
+    to: `      stillAdmitted(page);
+    } catch (error) {
+      throw error;
+    }`,
     check: integration("operator-relay.test.ts", "refuses a run and a call"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a call refused after it took its link's use keeps the use",
+    file: "src/server/relay.ts",
+    from: `        session = current;
+      } catch (error) {
+        giveBack();
+        throw error;
+      }`,
+    to: `        session = current;
+      } catch (error) {
+        throw error;
+      }`,
+    check: integration("operator-relay.test.ts", "refuses a run and a call"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a run paused or revoked while the operator answered is recorded and relayed anyway",
+    file: "src/server/relay.ts",
+    from: `      // same synchronous stretch as the record below.
+      stillAdmitted(page);`,
+    to: `      // same synchronous stretch as the record below.
+      void stillAdmitted;`,
+    check: integration("operator-relay.test.ts", "paused, or its link revoked"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a call paused while the operator answered is relayed anyway",
+    file: "src/server/relay.ts",
+    from: `        }
+        stillAdmitted(page);
+        const current = sessionFor(owner);`,
+    to: `        }
+        const current = sessionFor(owner);`,
+    check: integration("operator-relay.test.ts", "paused, or its link revoked"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a link revoked while the operator answered still runs its action",
+    file: "src/server/relay.ts",
+    from: "    if (!token || token.revoked_at !== null) {",
+    to: "    if (!token) {",
+    check: integration("operator-relay.test.ts", "paused, or its link revoked"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: duplicates sent while the operator answers each ask it",
+    file: "src/server/relay.ts",
+    from: "      if (prior === undefined) break;",
+    to: "      if (prior === undefined || prior) break;",
+    check: integration("operator-relay.test.ts", "asks the operator once"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a call the page stopped waiting for still reaches the owner",
+    file: "src/server/relay.ts",
+    from: "        if (signal.aborted) {",
+    to: "        if (signal.aborted && false) {",
+    check: integration("operator-relay.test.ts", "stopped waiting for"),
   },
   {
     requirement: "MT-03",
@@ -108,11 +170,19 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-03",
-    name: "2: idleness judged by the link's sessions, which the visit's own exchange just wrote",
+    name: "2: idleness counts the session asking, which the visit's own exchange just wrote",
     file: "src/server/hosted-pages.ts",
-    from: "(SELECT MAX(v.opened_at) FROM view v WHERE v.token_id = t.id) AS last",
-    to: "(SELECT MAX(last_seen_at) FROM session s WHERE s.token_id = t.id) AS last",
+    from: "WHERE s.token_id = t.id AND s.id != ?) AS active",
+    to: "WHERE s.token_id = t.id AND ? IS NOT NULL) AS active",
     check: integration("operator.test.ts", "refuses a fresh visit"),
+  },
+  {
+    requirement: "MT-03",
+    name: "2: idleness judged by views alone, so a page open and in use loses its link",
+    file: "src/server/hosted-pages.ts",
+    from: "    const lastUse = Math.max(minted, at(used.viewed), at(used.active));",
+    to: "    const lastUse = Math.max(minted, at(used.viewed));",
+    check: integration("operator.test.ts", "keeps a link in use"),
   },
   {
     requirement: "MT-03",
@@ -137,6 +207,38 @@ const SEEDS: readonly Seed[] = [
     from: "  if (names === undefined) return undefined;",
     to: "  if (names === undefined) return { facts: { ...claims } };",
     check: integration("signin-facts.test.ts", "chosen claims"),
+  },
+  {
+    requirement: "MT-03",
+    name: "4: a claim named `__proto__` is taken, reaching the facts' prototype",
+    file: "src/server/config.ts",
+    from: "                .refine((name) => !RESERVED_CLAIMS.has(name), {",
+    to: "                .refine((name) => name !== RESERVED_CLAIMS.toString(), {",
+    check: unit("server-config.test.ts", "isn't one"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: a verifier's label may hold control or format characters (a reversed name)",
+    file: "src/server/config.ts",
+    from: "  if (/[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]/u.test(label)) return undefined;",
+    to: "",
+    check: integration("signin-facts.test.ts", "operator module supplies"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: an identity the development provider made takes a verifier from the configuration now",
+    file: "src/server/auth.ts",
+    from: "            AND (name IS NULL OR subject != lower(name))",
+    to: "",
+    check: integration("signin-facts.test.ts", "after the provider is renamed"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: an identity whose subject isn't a GitHub user ID takes GitHub as its verifier",
+    file: "src/server/auth.ts",
+    from: "            AND (? != 'github' OR (subject != '' AND subject NOT GLOB '*[^0-9]*'))`,",
+    to: "            AND ? IS NOT NULL`,",
+    check: integration("signin-facts.test.ts", "after the provider is renamed"),
   },
   {
     requirement: "MT-03",
@@ -209,22 +311,57 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-03",
-    name: "6: no window carries a home's held bytes",
-    file: "src/server/metering.ts",
-    from: `      held.push({
-        name: "bytes.held",`,
-    to: `      void held;
-      ({
-        name: "bytes.held",`,
+    name: "6: a removal frees no held bytes",
+    file: "src/server/directory.ts",
+    from: "          UPDATE home SET held_bytes = held_bytes - OLD.size, held_dirty = 1 WHERE id = OLD.home_id;",
+    to: "          UPDATE home SET held_dirty = 1 WHERE id = OLD.home_id;",
     check: unit("metering.test.ts"),
   },
   {
     requirement: "MT-03",
-    name: "6: a home whose last bytes were removed never says 0",
+    name: "6: every held level is sent at every window, changed or not",
     file: "src/server/metering.ts",
-    from: `      if (!heldNow.has(home)) held.push({ name: "bytes.held", account, home, value: 0 });`,
-    to: `      if (!heldNow.has(home)) void account;`,
-    check: unit("metering.test.ts", "says 0 once"),
+    from: '            WHERE held_dirty = 1${full ? " OR held_bytes > 0 OR COALESCE(held_reported, 0) > 0" : ""}`,',
+    to: "            WHERE held_dirty = 1 OR held_bytes > 0 OR COALESCE(held_reported, 0) > 0`,",
+    also: [
+      {
+        file: "src/server/metering.ts",
+        from: "          if (!full && row.bytes === (row.reported ?? 0)) {",
+        to: "          if (false) {",
+      },
+    ],
+    check: unit("metering.test.ts", "as it changes"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: a home emptied before a restart never says 0",
+    file: "src/server/directory.ts",
+    from: "          UPDATE home SET held_bytes = held_bytes - OLD.size, held_dirty = 1 WHERE id = OLD.home_id;",
+    to: "          UPDATE home SET held_bytes = held_bytes - OLD.size WHERE id = OLD.home_id;",
+    also: [
+      {
+        file: "src/server/metering.ts",
+        from: '${full ? " OR held_bytes > 0 OR COALESCE(held_reported, 0) > 0" : ""}',
+        to: '${full ? " OR held_bytes > 0" : ""}',
+      },
+    ],
+    check: unit("metering.test.ts", "even across a restart"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: a window with many homes sends one unbounded batch",
+    file: "src/server/metering.ts",
+    from: "      for (let start = 0; start < all.length; start += MAX_COUNTERS) {",
+    to: "      for (let start = 0; start < all.length; start += all.length) {",
+    check: unit("metering.test.ts", "batches of at most"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: no snapshot after the first",
+    file: "src/server/metering.ts",
+    from: "    if (full) snapshotAt = to;",
+    to: "    if (full) snapshotAt = Number.POSITIVE_INFINITY;",
+    check: unit("metering.test.ts", "once a day"),
   },
   {
     requirement: "MT-03",
@@ -939,8 +1076,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-04",
     name: "a restored home reuses the owner's relay sequences",
     file: "src/server/relay.ts",
-    from: "          Math.max(seq, floor + 1),",
-    to: "          seq,",
+    from: "        Math.max(seq, floor + 1),",
+    to: "        seq,",
     check: unit("hosted-relay.test.ts", "above the owner's mark"),
   },
   {
@@ -955,8 +1092,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-04",
     name: "a run past the cap is recorded anyway",
     file: "src/server/relay.ts",
-    from: "        if (waiting >= cap && !joinsRun(page.artifactId, input)) {",
-    to: "        if (false) {",
+    from: "      if (waiting >= cap && !joinsRun(page.artifactId, input)) {",
+    to: "      if (false) {",
     check: integration("relay.test.ts", "refuses past the cap"),
   },
   {
@@ -1011,8 +1148,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-04",
     name: "the fail policy waits like queue",
     file: "src/server/relay.ts",
-    from: '      if (version.policy === "fail") {',
-    to: "      if (false) {",
+    from: '    if (version.policy === "fail") {',
+    to: "    if (false) {",
     check: integration("relay.test.ts", "waits while the owner is offline"),
   },
   {

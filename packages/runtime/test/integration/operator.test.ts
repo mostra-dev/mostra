@@ -16,6 +16,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { MutationId } from "@mostra/protocol";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openPage } from "../action-page.ts";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
 import {
@@ -64,6 +65,8 @@ describe("operator ports (HO-09)", () => {
         MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
         MOSTRA_TEST_OPERATOR_DISPATCH_MS: "100",
         MOSTRA_TEST_METER_WINDOW_MS: "300",
+        // A session's activity is written at most this often, so an open page keeps its link.
+        MOSTRA_TEST_SESSION_TOUCH_MS: "200",
         MOSTRA_TEST_GRANT_RECHECK_MS: "500",
       },
     });
@@ -1004,7 +1007,31 @@ describe("operator ports (HO-09)", () => {
     await operator.set({ policy: {} });
   }, 120_000);
 
-  it("meters the bytes a home holds at each window's end, falling when a removal frees them (MT-03)", async () => {
+  it("keeps a link in use past its idle time: an open page's activity counts, not only its views (MT-03)", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    await operator.set({ policy: { idleExpiry: "3s" } });
+    const page = await openPage(url);
+    // The page stays open and in use for longer than the idle time, with no new view.
+    for (let tick = 0; tick < 7; tick += 1) {
+      expect((await page.poll()).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    // Its next frame ticket (a reload, a version switch, D157's recovery) still opens.
+    const { link, shellCsrf } = page.opened;
+    const ticket = await page.browser.fetchJson(
+      link.shell,
+      `/a/${link.artifactId}/_mostra/ticket`,
+      {
+        body: {},
+        csrf: shellCsrf,
+      },
+    );
+    expect(ticket.status, ticket.body).toBe(200);
+    await operator.set({ policy: {} });
+  }, 120_000);
+
+  it("meters the bytes a home holds, falling when a removal frees them (MT-03)", async () => {
     const home = await homeOf();
     const heldAfter = async (since: number): Promise<number | undefined> => {
       const batches = (await operator.calls("metering")).slice(since);

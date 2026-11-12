@@ -95,7 +95,13 @@ function chosen(
     const value = claims[name];
     const text = JSON.stringify(value);
     if (text === undefined || text.length > CLAIM_MAX) continue;
-    facts[name] = JSON.parse(text) as unknown;
+    // A key of its own, whatever the name (`__proto__` would set the prototype by assignment).
+    Object.defineProperty(facts, name, {
+      value: JSON.parse(text) as unknown,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return Object.keys(facts).length > 0 ? { facts } : undefined;
 }

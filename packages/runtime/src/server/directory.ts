@@ -248,13 +248,36 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 6,
-    name: "a held file's size",
+    name: "what each home holds",
     up(db) {
       // MT-03 (DATA_MODEL §7.1, additive). The bytes of each version file a home holds, as its push
-      // gave them (held to the bytes uploaded), so metering's `bytes.held` sums what a home holds
-      // and falls when a removal frees it. A row from before this has none until the server, at its
-      // next start, reads the stored file's size.
-      db.exec("ALTER TABLE home_file ADD COLUMN size INTEGER CHECK (size IS NULL OR size >= 0)");
+      // gave them (held to the bytes uploaded), and each home's running total, kept by triggers in
+      // the transaction of every change to `home_file`, so metering's `bytes.held` reads one row a
+      // home and falls when a removal frees files. `held_dirty` marks a home whose total changed
+      // since `held_reported` (the level last queued for the operator), so a change is reported
+      // after a restart too. A row from before this has no size until the server, at its next
+      // start, reads the stored file's (0 for one that is gone, so it is read once).
+      db.exec(`
+        ALTER TABLE home_file ADD COLUMN size INTEGER CHECK (size IS NULL OR size >= 0);
+        ALTER TABLE home ADD COLUMN held_bytes INTEGER NOT NULL DEFAULT 0 CHECK (held_bytes >= 0);
+        ALTER TABLE home ADD COLUMN held_reported INTEGER;
+        ALTER TABLE home ADD COLUMN held_dirty INTEGER NOT NULL DEFAULT 0 CHECK (held_dirty IN (0, 1));
+        CREATE INDEX home_held_dirty ON home (held_dirty) WHERE held_dirty = 1;
+        CREATE TRIGGER home_file_held_insert AFTER INSERT ON home_file WHEN NEW.size IS NOT NULL
+        BEGIN
+          UPDATE home SET held_bytes = held_bytes + NEW.size, held_dirty = 1 WHERE id = NEW.home_id;
+        END;
+        CREATE TRIGGER home_file_held_delete AFTER DELETE ON home_file WHEN OLD.size IS NOT NULL
+        BEGIN
+          UPDATE home SET held_bytes = held_bytes - OLD.size, held_dirty = 1 WHERE id = OLD.home_id;
+        END;
+        CREATE TRIGGER home_file_held_size AFTER UPDATE OF size ON home_file
+          WHEN COALESCE(OLD.size, -1) != COALESCE(NEW.size, -1)
+        BEGIN
+          UPDATE home SET held_bytes = held_bytes - COALESCE(OLD.size, 0) + COALESCE(NEW.size, 0),
+            held_dirty = 1 WHERE id = NEW.home_id;
+        END;
+      `);
     },
   },
 ];

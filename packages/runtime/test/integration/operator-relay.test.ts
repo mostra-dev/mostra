@@ -6,7 +6,10 @@
  * absent owner `run.wait`, before a plain call is relayed `call`; a refusal answers the operator's
  * words (403 `MOSTRA_REMOTE_LIMIT_REACHED`, or 503 `MOSTRA_REMOTE_QUEUE_FULL` for `run.wait`) with
  * nothing recorded or relayed and the link's use given back; a request that joins a recorded run
- * is never asked; and an operator that doesn't answer lets every one of them through.
+ * is never asked; and an operator that doesn't answer lets every one of them through. What
+ * changes while the operator answers counts too (the Opus review of MT-03): a pause or a revoked
+ * link refuses the request then, with its use given back; a duplicate sent meanwhile is asked
+ * nothing and joins; and a call the page stopped waiting for never reaches the owner.
  */
 import { cpSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,10 +51,15 @@ describe("`limits` for relayed actions (MT-03)", () => {
     );
 
   /** A link of its own (each share mints one), so no other case's actions count against it. */
-  const freshLink = async (): Promise<string> =>
-    ok<{ url: string }>(
+  const freshShare = async (): Promise<{ url: string; tokenId: string }> =>
+    ok<{ url: string; tokenId: string }>(
       await owner.client.call("share/start", { artifact: { artifactId }, via: "remote" }, 60_000),
-    ).url;
+    );
+  const freshLink = async (): Promise<string> => (await freshShare()).url;
+  const pause = async (paused: boolean): Promise<void> => {
+    ok(await owner.client.call("artifact/pause", { artifact: { artifactId }, paused }, 30_000));
+  };
+  const soon = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
   const ownerOnline = async (): Promise<void> => {
     await eventually(async () => {
@@ -142,12 +150,14 @@ export default function Page() {
         message: "This account runs 1000 actions a month.",
       });
     }
-    const call = await page.call("actions.ts#send", ["ada@example.com", "a call"]);
-    expect(call.status, call.body).toBe(403);
-    expect(JSON.parse(call.body)).toMatchObject({
-      code: "MOSTRA_REMOTE_LIMIT_REACHED",
-      message: "This account makes 5000 calls a month.",
-    });
+    for (let attempt = 0; attempt < PER_LINK; attempt += 1) {
+      const call = await page.call("actions.ts#send", ["ada@example.com", "a call"]);
+      expect(call.status, call.body).toBe(403);
+      expect(JSON.parse(call.body)).toMatchObject({
+        code: "MOSTRA_REMOTE_LIMIT_REACHED",
+        message: "This account makes 5000 calls a month.",
+      });
+    }
     // Nothing ran on the owner, and nothing was recorded: the refused key starts a new run, and
     // the link still has its three uses a minute (the refusals gave each back).
     expect(mail.received.length).toBe(sent);
@@ -164,6 +174,9 @@ export default function Page() {
     expect(await asked("run.wait")).toHaveLength(0);
 
     await operator.set({ limits: {} });
+    // Twice the link's uses were refused, and each was given back: a call goes through, then a run.
+    const allowedCall = await page.call("actions.ts#echo", ["allowed call"]);
+    expect(allowedCall.status, allowedCall.body).toBe(200);
     const started = await page.run("actions.ts#send", ["ada@example.com", "allowed"], "kept-key");
     expect(started.status, started.body).toBe(200);
     const state = started.json<RunState>();
@@ -240,4 +253,79 @@ export default function Page() {
     expect((await page.settled(state.runId, 60_000)).status).toBe("succeeded");
     expect(mail.received.filter((entry) => entry.body === "waited")).toHaveLength(1);
   }, 180_000);
+  it("refuses a run or call paused, or its link revoked, while the operator answered, giving each use back", async () => {
+    const share = await freshShare();
+    const page = await openPage(share.url);
+    const sent = mail.received.length;
+    // The operator answers nothing: each request waits its 2 s, and the page is paused meanwhile.
+    await operator.set({ limits: { run: "hang", call: "hang" } });
+    try {
+      for (let attempt = 0; attempt < PER_LINK; attempt += 1) {
+        const pending = page.run("actions.ts#send", ["ada@example.com", "paused"]);
+        await soon(400);
+        await pause(true);
+        const refused = await pending;
+        expect(refused.status, refused.body).toBe(423);
+        expect(refused.json<{ code: string }>().code).toBe("MOSTRA_ACTION_PAUSED");
+        await pause(false);
+      }
+      const pendingCall = page.call("actions.ts#send", ["ada@example.com", "paused call"]);
+      await soon(400);
+      await pause(true);
+      const call = await pendingCall;
+      expect(call.status, call.body).toBe(423);
+      expect(JSON.parse(call.body).code).toBe("MOSTRA_ACTION_PAUSED");
+    } finally {
+      await pause(false);
+    }
+    // Nothing reached the owner, and every use came back: the link still runs an action now.
+    await operator.set({ limits: {} });
+    const allowed = await page.run("actions.ts#echo", ["after the pauses"]);
+    expect(allowed.status, allowed.body).toBe(200);
+    expect((await page.settled(allowed.json<RunState>().runId)).status).toBe("succeeded");
+    // A link revoked while the operator answered runs nothing either.
+    await operator.set({ limits: { run: "hang" } });
+    const pending = page.run("actions.ts#send", ["ada@example.com", "revoked"]);
+    await soon(400);
+    await operator.handle("revokeLink", share.tokenId);
+    const revoked = await pending;
+    expect(revoked.status, revoked.body).toBe(410);
+    expect(revoked.json<{ code: string }>().code).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
+    await soon(1_000);
+    expect(mail.received.length).toBe(sent);
+  }, 120_000);
+
+  it("asks the operator once for a run and the duplicates sent while it answers, which join it", async () => {
+    const page = await openPage(await freshLink());
+    await operator.set({ limits: { run: "hang" } });
+    const before = (await asked("run")).length;
+    // A double click (one client key twice) and a second tab (the same key, its own client key).
+    const ck = clientKey();
+    const [first, again, tab] = await Promise.all([
+      page.run("actions.ts#echo", ["once"], "dedupe-key", ck),
+      page.run("actions.ts#echo", ["once"], "dedupe-key", ck),
+      page.run("actions.ts#echo", ["once"], "dedupe-key"),
+    ]);
+    for (const answer of [first, again, tab]) expect(answer.status, answer.body).toBe(200);
+    const runId = first.json<RunState>().runId;
+    expect(again.json<RunState>().runId).toBe(runId);
+    expect(tab.json<RunState>().runId).toBe(runId);
+    expect((await asked("run")).length - before).toBe(1);
+    expect((await page.settled(runId)).status).toBe("succeeded");
+  }, 60_000);
+
+  it("relays no call the page stopped waiting for while the operator answered", async () => {
+    const page = await openPage(await freshLink());
+    const sent = mail.received.length;
+    await operator.set({ limits: { call: "hang" } });
+    const abandon = new AbortController();
+    const pending = page.call("actions.ts#send", ["ada@example.com", "abandoned"], abandon.signal);
+    await soon(400);
+    abandon.abort();
+    await expect(pending).rejects.toThrow();
+    // Past the operator's 2 s and the time a relayed call takes: nothing reached the owner.
+    await soon(4_000);
+    expect(mail.received.length).toBe(sent);
+    expect(mail.received.some((entry) => entry.body === "abandoned")).toBe(false);
+  }, 60_000);
 });

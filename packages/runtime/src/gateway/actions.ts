@@ -53,6 +53,10 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_REMOTE_SIGN_IN_REQUIRED: 403,
   MOSTRA_REMOTE_RATE_LIMITED: 429,
   MOSTRA_ACTION_PAUSED: 423,
+  // A link revoked or expired, or a page that stopped waiting, while the relay asked the
+  // operator (MT-03).
+  MOSTRA_HYGIENE_TOKEN_REVOKED: 410,
+  MOSTRA_ACTION_CANCELLED: 409,
 };
 
 type Handler = (context: RouteContext) => Response | Promise<Response>;

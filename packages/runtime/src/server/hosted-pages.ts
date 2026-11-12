@@ -154,23 +154,30 @@ export function hostedPages(
 
   /**
    * A link past the operator's longest lifetime or idle limit: revoked now, 410 (D165 item 9).
-   * "Idle" is as `LinkPolicy.idleExpiry` says, without a view: the link's last view before the one
-   * being admitted, which isn't recorded yet. A session's `last_seen_at` can't stand for it, since
-   * the visit asking has just written its own (a fresh browser's exchange, or any request of a
-   * returning one), so an idle link would open for every new visit (MT-03).
+   * "Idle" is as `LinkPolicy.idleExpiry` says, without a view: the link's last use before this
+   * visit is the later of its last view (a frame ticket) and the activity of its other sessions
+   * (`last_seen_at`, which a page's every request keeps, so a page open and in use for longer
+   * than the idle time keeps its link). The session asking for this ticket is left out, since its
+   * own exchange, or any request of a returning browser, has just written it: counted, an idle
+   * link would open for every new visit (MT-03, and its Opus review). A session's activity is
+   * written at most every `touchMs` (an hour), so a link lapses at most that much early.
    */
-  const expired = (tokenId: string, policy: LinkPolicy): Refusal | undefined => {
+  const expired = (tokenId: string, asking: string, policy: LinkPolicy): Refusal | undefined => {
     if (policy.maxTtl === undefined && policy.idleExpiry === undefined) return undefined;
     const used = ledger.read((db) =>
-      db.get<{ created_at: string; last: string | null }>(
-        `SELECT t.created_at, (SELECT MAX(v.opened_at) FROM view v WHERE v.token_id = t.id) AS last
+      db.get<{ created_at: string; viewed: string | null; active: string | null }>(
+        `SELECT t.created_at,
+                (SELECT MAX(v.opened_at) FROM view v WHERE v.token_id = t.id) AS viewed,
+                (SELECT MAX(s.last_seen_at) FROM session s WHERE s.token_id = t.id AND s.id != ?) AS active
            FROM token t WHERE t.id = ?`,
+        asking,
         tokenId,
       ),
     );
     if (!used) return undefined;
     const minted = Date.parse(used.created_at);
-    const lastUse = Math.max(minted, used.last === null ? 0 : Date.parse(used.last));
+    const at = (value: string | null): number => (value === null ? 0 : Date.parse(value));
+    const lastUse = Math.max(minted, at(used.viewed), at(used.active));
     const tooOld = policy.maxTtl !== undefined && now() - minted > durationMs(policy.maxTtl);
     const idle = policy.idleExpiry !== undefined && now() - lastUse > durationMs(policy.idleExpiry);
     if (!tooOld && !idle) return undefined;
@@ -417,7 +424,7 @@ export function hostedPages(
     async admitView(input) {
       if (quarantineOf(input.artifactId, input.versionId) !== undefined) return underReview();
       const policy = await policyFor(input.artifactId, input.tokenId);
-      const gone = expired(input.tokenId, policy);
+      const gone = expired(input.tokenId, input.sessionId, policy);
       if (gone) return gone;
       const route = options.routeOf(input.artifactId);
       // `view` proceeds when the operator doesn't answer: nothing a person sees is held up by it.

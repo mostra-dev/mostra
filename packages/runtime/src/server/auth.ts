@@ -307,17 +307,24 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
     );
     // Identities linked before the server recorded who verified each (MT-03) take, once, the
     // verifier the configuration names for their provider now, as their sender lines showed it
-    // until then; any other (a provider retired, or one an operator module supplied) none. From
-    // then on the recorded label is the one shown, whatever the configuration later says.
+    // until then; any other (a provider retired, or one an operator module supplied) none. The
+    // configuration may since have given a provider's ID to another kind, so a row keeps none
+    // unless its shape is that kind's (its Opus review): never one the development provider made
+    // (whose subject is the typed name, lower-cased), and for GitHub only a numeric subject (its
+    // user ID). From then on the recorded label is the one shown, whatever the configuration says.
     const at = iso(now());
     for (const provider of config.identityProviders ?? []) {
       const label = configuredVerifier(provider);
       if (label === undefined) continue;
       db.run(
-        "UPDATE identity SET verified_by = ?, verified_recorded_at = ? WHERE provider = ? AND verified_recorded_at IS NULL",
+        `UPDATE identity SET verified_by = ?, verified_recorded_at = ?
+          WHERE provider = ? AND verified_recorded_at IS NULL
+            AND (name IS NULL OR subject != lower(name))
+            AND (? != 'github' OR (subject != '' AND subject NOT GLOB '*[^0-9]*'))`,
         label,
         at,
         provider.id,
+        provider.kind,
       );
     }
     db.run("UPDATE identity SET verified_recorded_at = ? WHERE verified_recorded_at IS NULL", at);

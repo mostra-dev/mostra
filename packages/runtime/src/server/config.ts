@@ -78,8 +78,24 @@ export interface IdentityProviderConfig {
  */
 export function configuredVerifier(provider: IdentityProviderConfig): string | undefined {
   if (provider.kind === "development") return undefined;
-  return provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id);
+  return verifierLabel(provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id));
 }
+
+/**
+ * A verifier's label as the sender line may show it (MT-03, and its Opus review): text of 1 to 64
+ * characters with no control, format (bidirectional overrides, zero-width joiners), line or
+ * paragraph separator characters, which could make one label read as another's ("verified with
+ * GitHub" from reversed text); anything else is no label.
+ */
+export function verifierLabel(label: unknown): string | undefined {
+  if (typeof label !== "string") return undefined;
+  if (label.trim() === "" || label.length > 64) return undefined;
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(label)) return undefined;
+  return label;
+}
+
+/** Claim names that would reach an object's prototype rather than a key of its own. */
+const RESERVED_CLAIMS = new Set(["__proto__", "constructor", "prototype"]);
 
 /** The configuration a remote server runs with (INTERFACES §18.1). */
 export interface RemoteServerConfig {
@@ -137,9 +153,14 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
           clientSecretFile: z.string().optional(),
           claims: z
             .array(
-              z.string().regex(/^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$/, {
-                message: "must be claim names of at most 64 letters, digits and `_.:-`",
-              }),
+              z
+                .string()
+                .regex(/^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$/, {
+                  message: "must be claim names of at most 64 letters, digits and `_.:-`",
+                })
+                .refine((name) => !RESERVED_CLAIMS.has(name), {
+                  message: "can't name `__proto__`, `constructor` or `prototype`",
+                }),
             )
             .min(1)
             .max(8)

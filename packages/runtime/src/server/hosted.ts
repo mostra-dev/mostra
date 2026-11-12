@@ -183,6 +183,8 @@ export interface HostedHomeOptions {
   /** The relay's server settings (`relay` in the configuration, D165 item 4). */
   /** The test fault points (`MOSTRA_TEST_FAULTS`); none by default. */
   readonly faults?: Faults;
+  /** How often a session's activity is written at most (tests shorten it; an hour by default). */
+  readonly sessionTouchMs?: number | undefined;
   readonly relay?: {
     readonly waitingRunsPerArtifact?: number | undefined;
     readonly drainPerSecond?: number | undefined;
@@ -380,6 +382,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     now: () => Date.now(),
     shellOrigin: () => originOf(options.domains.active),
     servesShell,
+    ...(options.sessionTouchMs !== undefined ? { touchIntervalMs: options.sessionTouchMs } : {}),
     // Every hosted link is indexed in the directory, so the operator's `revokeLink` finds its home.
     onMinted: ({ tokenId, artifactId }) => {
       const route = routeOf(artifactId);

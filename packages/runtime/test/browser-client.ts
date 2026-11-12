@@ -26,6 +26,8 @@ export interface Ask {
   readonly body?: string;
   /** Leave out the jar's cookies. */
   readonly noCookies?: boolean;
+  /** Aborts the request, as a page's `fetch` given an aborted signal (the connection closes). */
+  readonly signal?: AbortSignal;
 }
 
 interface Cookie {
@@ -121,7 +123,7 @@ export class Browser {
   fetchJson(
     origin: string,
     path: string,
-    init: { method?: string; body?: unknown; csrf?: string } = {},
+    init: { method?: string; body?: unknown; csrf?: string; signal?: AbortSignal } = {},
   ): Promise<Answer> {
     const method = init.method ?? (init.body === undefined ? "GET" : "POST");
     return this.ask({
@@ -135,6 +137,7 @@ export class Browser {
         ...(init.csrf ? { "x-mostra-csrf": init.csrf } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      ...(init.signal ? { signal: init.signal } : {}),
     });
   }
 
@@ -177,6 +180,7 @@ export function send(ask: Ask): Promise<Answer> {
         path: `${url.pathname}${url.search}`,
         headers: { host: url.host, ...ask.headers },
         agent: false,
+        ...(ask.signal ? { signal: ask.signal } : {}),
       },
       (res) => {
         const chunks: Buffer[] = [];

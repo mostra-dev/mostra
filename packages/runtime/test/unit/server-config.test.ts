@@ -5,7 +5,7 @@
  */
 import { RpcError } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
-import { readServerConfig } from "../../src/server/config.ts";
+import { readServerConfig, verifierLabel } from "../../src/server/config.ts";
 
 const base = {
   apiOrigin: "https://api.example",
@@ -47,10 +47,45 @@ describe("an oidc provider's chosen claims (MT-03)", () => {
     expect(read([{ ...oidc, claims: Array.from({ length: 9 }, (_, n) => `c${n}`) }])).toMatch(
       /^MOSTRA_REMOTE_CONFIG_INVALID: .*identityProviders\.0\.claims/,
     );
-    for (const name of ["", "has space", "9starts-with-digit", "x".repeat(65), "a/b"]) {
+    // A name that reaches an object's prototype rather than a key of its own (the Opus review).
+    for (const name of [
+      "",
+      "has space",
+      "9starts-with-digit",
+      "x".repeat(65),
+      "a/b",
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]) {
       expect(read([{ ...oidc, claims: [name] }]), name).toMatch(
         /^MOSTRA_REMOTE_CONFIG_INVALID: .*identityProviders\.0\.claims\.0/,
       );
+    }
+  });
+});
+
+describe("a verifier's label (MT-03)", () => {
+  it("is text the sender line can show as it reads", () => {
+    expect(verifierLabel("GitHub")).toBe("GitHub");
+    expect(verifierLabel("Acme SSO")).toBe("Acme SSO");
+    expect(verifierLabel("Ünïcode Ltd.")).toBe("Ünïcode Ltd.");
+  });
+
+  it("is none when it is empty, too long, not text, or holds control or format characters", () => {
+    for (const label of [
+      "",
+      "   ",
+      "x".repeat(65),
+      42,
+      undefined,
+      "\u202EbuHtiG", // a right-to-left override: renders as "GitHub"
+      "Git\u200DHub", // a zero-width joiner
+      "Git\nHub",
+      "Git\u2028Hub",
+      "Git\u0000Hub",
+    ]) {
+      expect(verifierLabel(label), JSON.stringify(label)).toBeUndefined();
     }
   });
 });

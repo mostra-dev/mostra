@@ -86,6 +86,8 @@ describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
       providers: [
         { id: "acme", label: "Acme", who: "grace-acme", verifies: { label: "Acme SSO" } },
         { id: "loose", label: "Loose", who: "lin-loose" },
+        // A label reversed by a bidirectional override, to read as another verifier's name.
+        { id: "spoof", label: "Spoof", who: "sam-spoof", verifies: { label: "\u202EbuHtiG" } },
       ],
     });
   };
@@ -285,6 +287,31 @@ describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
     await start("gh");
     await connected(owner);
     expect(await senderOf(url)).toEqual({ name: "Ada Lovelace", verifiedBy: "GitHub" });
+
+    // An identity whose shape isn't the kind the configuration now gives its provider ID takes no
+    // verifier, since the configuration may have given that ID to another kind since: one shaped
+    // as the development provider's (its subject the typed name, here digits), and, for GitHub, one
+    // whose subject isn't a numeric user ID.
+    for (const [shape, set] of [
+      ["the development provider's", "name = subject"],
+      ["a subject no GitHub user ID has", "subject = 'ada-lovelace'"],
+    ] as const) {
+      await stopServer(server);
+      const typed = new Database(join(data, "server.sqlite"));
+      try {
+        const changed = typed
+          .prepare(
+            `UPDATE identity SET ${set}, verified_by = NULL, verified_recorded_at = NULL WHERE provider = 'github' AND account_id = (SELECT account_id FROM identity WHERE provider = 'github' AND subject IN ('4242', 'ada-lovelace'))`,
+          )
+          .run().changes;
+        expect(changed, shape).toBe(1);
+      } finally {
+        typed.close();
+      }
+      await start("github");
+      await connected(owner);
+      expect(await senderOf(url), shape).toEqual({ name: "Ada Lovelace" });
+    }
   }, 240_000);
 
   it("verifies a name through a provider the operator module supplies only when it says it verifies", async () => {
@@ -296,5 +323,8 @@ describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
     const loose = await ownerThrough("loose");
     // No verifier: the page shows the name as "name not verified".
     expect(await senderOf(await shareOf(loose))).toEqual({ name: "Grace from Acme" });
+    // A label with control or format characters (a reversed "GitHub") is no verifier either.
+    const spoof = await ownerThrough("spoof");
+    expect(await senderOf(await shareOf(spoof))).toEqual({ name: "Grace from Acme" });
   }, 180_000);
 });

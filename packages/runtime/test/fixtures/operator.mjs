@@ -5,7 +5,8 @@
  * `MOSTRA_TEST_OPERATOR_STATE` (JSON), so it holds across a server restart.
  *
  * Behaviours, each per port:
- * - `limits`: per operation, `"allow"`, `"hang"` (never answers) or `{ code, message, retryAfterMs? }`.
+ * - `limits`: per operation, `"allow"`, `"hang"` (never answers), `{ code, message, retryAfterMs? }`,
+ *   or `{ delayMs, then? }`: answers after `delayMs` with `then` (`"allow"` unless it names a refusal).
  * - `events`, `metering`, `invitations`: `"ok"`, `"fail"` (throws) or `"hang"`.
  * - `routing`: per host, a routing answer; `linkHost`: a host or null.
  * - `policy`: a link policy for every link.
@@ -78,7 +79,11 @@ export default function operator(server) {
     limits: {
       async check(query) {
         record("limits", query);
-        const rule = state.limits[query.operation] ?? "allow";
+        let rule = state.limits[query.operation] ?? "allow";
+        if (typeof rule === "object" && rule !== null && "delayMs" in rule) {
+          await new Promise((resolve) => setTimeout(resolve, rule.delayMs));
+          rule = rule.then ?? "allow";
+        }
         if (rule === "hang") return never();
         if (rule === "allow") return { allowed: true };
         return { allowed: false, ...rule };

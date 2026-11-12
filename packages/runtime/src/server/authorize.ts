@@ -26,6 +26,7 @@ import {
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { type Authorization, canonicalResource, hashSecret } from "./auth.ts";
+import { verifierLabel } from "./config.ts";
 import { type Clients, type OAuthClient, redirectAllowed } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
 
@@ -258,12 +259,10 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
    * 64 characters, else none, since an operator's provider is checked as every operator answer is.
    */
   const verifierOf = (provider: IdentityProvider): string | undefined => {
-    const label: unknown = (provider as { verifies?: { label?: unknown } }).verifies?.label;
-    if (typeof label !== "string" || label.trim() === "" || label.length > 64) {
-      if (provider.verifies !== undefined) {
-        log.warn("signin.verifier_refused", { provider: provider.id });
-      }
-      return undefined;
+    const raw: unknown = (provider as { verifies?: { label?: unknown } }).verifies?.label;
+    const label = verifierLabel(raw);
+    if (label === undefined && provider.verifies !== undefined) {
+      log.warn("signin.verifier_refused", { provider: provider.id });
     }
     return label;
   };

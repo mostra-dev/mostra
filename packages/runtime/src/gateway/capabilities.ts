@@ -266,6 +266,8 @@ export interface CapabilitiesOptions {
    * links, so its operator's `revokeLink` finds a link's home, WP-30).
    */
   readonly onMinted?: (token: { readonly tokenId: string; readonly artifactId: string }) => void;
+  /** How often a session's `last_seen_at` is written at most; an hour unless a test shortens it. */
+  readonly touchIntervalMs?: number;
 }
 
 /** What a stream ticket opens (D158 item 5). */
@@ -302,6 +304,7 @@ export class Capabilities {
   /** Failure times per artifact (`""` for tokens of no artifact in this home). */
   readonly #failures = new Map<string, number[]>();
   readonly #touched = new Map<string, number>();
+  readonly #touchIntervalMs: number;
 
   constructor(options: CapabilitiesOptions) {
     this.#ledger = options.ledger;
@@ -311,6 +314,7 @@ export class Capabilities {
     this.#shellOrigin = options.shellOrigin;
     this.#servesShell = options.servesShell ?? ((origin) => origin === this.#shellOrigin());
     this.#onMinted = options.onMinted;
+    this.#touchIntervalMs = options.touchIntervalMs ?? TOUCH_INTERVAL_MS;
   }
 
   /** Runs `fn` in the caller's transaction, or in a new one. */
@@ -731,7 +735,7 @@ export class Capabilities {
   /** Writes `last_seen_at` at most hourly, so serving files doesn't write the ledger per request. */
   #touch(sessionId: string): void {
     const now = this.#now();
-    if (now - (this.#touched.get(sessionId) ?? 0) < TOUCH_INTERVAL_MS) return;
+    if (now - (this.#touched.get(sessionId) ?? 0) < this.#touchIntervalMs) return;
     this.#touched.set(sessionId, now);
     this.#ledger.write((db) =>
       db.run("UPDATE session SET last_seen_at = ? WHERE id = ?", this.#iso(now), sessionId),

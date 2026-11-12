@@ -333,6 +333,54 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     throw error;
   };
 
+  /**
+   * What may have changed while the operator answered (MT-03, the Opus review): a page paused, or
+   * its link revoked or expired, runs nothing it asked for before, so both are judged again after
+   * every wait, in the same synchronous stretch as the record (D165 item 14, D97 item 5).
+   */
+  const stillAdmitted = (page: {
+    readonly artifactId: string;
+    readonly tokenId?: string;
+  }): void => {
+    const pause = interaction.pauseOf(page.artifactId);
+    if (pause) {
+      throw failed(
+        "MOSTRA_ACTION_PAUSED",
+        `This page is paused${pause.by === "operator" ? " by its server's operator" : ""}: its actions don't run until it is resumed.`,
+      );
+    }
+    const tokenId = page.tokenId;
+    if (tokenId === undefined) return;
+    const token = ledger.read((db) =>
+      db.get<{ revoked_at: string | null; expires_at: string | null }>(
+        "SELECT revoked_at, expires_at FROM token WHERE id = ?",
+        tokenId,
+      ),
+    );
+    if (!token || token.revoked_at !== null) {
+      throw failed("MOSTRA_HYGIENE_TOKEN_REVOKED", "This link was revoked.");
+    }
+    if (token.expires_at !== null && Date.parse(token.expires_at) <= now()) {
+      throw failed("MOSTRA_HYGIENE_TOKEN_REVOKED", "This link has expired.");
+    }
+  };
+
+  /**
+   * Run requests still on their way to a record, by the client key and the key they would join:
+   * a duplicate sent meanwhile waits for the first one's outcome, then joins what it recorded
+   * (asking nothing) or, if it recorded nothing, goes on as itself (MT-03, the Opus review).
+   */
+  const inflight = new Map<string, Promise<unknown>>();
+  const inflightKeys = (
+    artifactId: string,
+    input: { readonly clientKey: string; readonly key?: string | undefined; readonly fnId: string },
+  ): string[] => [
+    `${artifactId}\u0000c\u0000${input.clientKey}`,
+    ...(input.key !== undefined
+      ? [`${artifactId}\u0000k\u0000${input.fnId}\u0000${input.key}`]
+      : []),
+  ];
+
   const checkArgs = (args: Batches): void => {
     if (JSON.stringify(args).length > ACTION_ARGS_MAX) {
       throw failed(
@@ -860,6 +908,111 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       : { ...state, ownerUnreachable: true };
   };
 
+  /** Starts or joins a relayed run: `startRun` without its guard against concurrent duplicates. */
+  const beginRun = async (
+    page: Parameters<HostedRelay["startRun"]>[0],
+    input: Parameters<HostedRelay["startRun"]>[1],
+  ): Promise<RunState> => {
+    checkArgs(input.args);
+    const versionId = interaction.viewVersion(page, input.viewId);
+    const version = functionOf(versionId, input.fnId);
+    mayTrigger(page.viewerId, version);
+    // A request that joins a run already recorded starts nothing: it isn't counted against its
+    // link, nor asked of the operator, as a repeated submit isn't (D166 item 19).
+    const joins = joinsRun(page.artifactId, input);
+    const giveBack = joins ? () => {} : limitLink(page.tokenId);
+    const owner = options.ownerOf(page.artifactId);
+    /**
+     * Past the cap a run is refused before anything is recorded (D165 item 4). A request that
+     * joins a run already recorded is never refused.
+     */
+    const capped = (link: string): void => {
+      if (sessionFor(link) !== undefined || version.policy !== "queue") return;
+      const waiting = ledger.read(
+        (db) =>
+          db.get<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM action_run WHERE artifact_id = ? AND status = 'waiting'",
+            page.artifactId,
+          )?.n ?? 0,
+      );
+      if (waiting >= cap && !joinsRun(page.artifactId, input)) {
+        throw failed(
+          "MOSTRA_REMOTE_QUEUE_FULL",
+          "Too many actions are waiting for this page's owner; try again once it is back.",
+        );
+      }
+    };
+    // Every refusal from here to the record gives the link's use back, since nothing ran.
+    try {
+      if (owner === undefined) {
+        throw failed("MOSTRA_REMOTE_OWNER_OFFLINE", "This page has no owner instance to run it.");
+      }
+      capped(owner);
+      if (!joins) {
+        // The operator's `limits` before anything is recorded (D165 item 9): `run`, then
+        // `run.wait` when the run would wait for its absent owner, judged once `run` is
+        // answered, so an owner who left meanwhile is seen.
+        await admit(page.artifactId, "run");
+        if (sessionFor(owner) === undefined && version.policy === "queue") {
+          await admit(page.artifactId, "run.wait");
+        }
+        // The queue may have filled while the operator answered.
+        capped(owner);
+      }
+      // A pause, or a revoked or expired link, while this request waited stops it here, in the
+      // same synchronous stretch as the record below.
+      stillAdmitted(page);
+    } catch (error) {
+      giveBack();
+      throw error;
+    }
+    const connected = sessionFor(owner) !== undefined;
+    const { state, row, started } = interaction.startRun(page, input);
+    bus.attachRuns(page.artifactId, input.viewId, [state.runId]);
+    if (!started) {
+      // Another request recorded this run while the operator answered: it joins, uncounted.
+      giveBack();
+      return decorate(state, page.artifactId);
+    }
+    // The relay's record, in the order runs were made: its sequence is unique per owner link and
+    // continues above the owner's mark after a restore (§18.2).
+    const recorded = Date.parse(row.started_at);
+    const waitingState = ledger.write((db) => {
+      const seq =
+        (db.get<{ high: number | null }>(
+          "SELECT MAX(relay_seq) AS high FROM relay_run WHERE owner_link_id = ?",
+          owner,
+        )?.high ?? 0) + 1;
+      const floor = Math.max(
+        marks.get(owner) ?? 0,
+        db.get<{ floor: number }>("SELECT floor FROM relay_floor WHERE link_id = ?", owner)
+          ?.floor ?? 0,
+      );
+      db.run(
+        "INSERT INTO relay_run (run_id, owner_link_id, relay_seq, offline_limit_at) VALUES (?, ?, ?, ?)",
+        row.id,
+        owner,
+        Math.max(seq, floor + 1),
+        iso(recorded + version.limitMs),
+      );
+      if (connected) return undefined;
+      markWaiting(db, row.id);
+      const after = runRow(db, row.id);
+      return after ? runState(db, after) : undefined;
+    });
+    if (connected) {
+      const session = sessionFor(owner);
+      if (session !== undefined) void send(row.id, session);
+      return state;
+    }
+    if (version.policy === "fail") {
+      endOffline(row.id);
+      return interaction.runState(row.id) ?? state;
+    }
+    if (waitingState) publish(waitingState, page.artifactId);
+    return waitingState ?? state;
+  };
+
   return {
     async call(page, input, signal) {
       checkArgs(input.args);
@@ -871,19 +1024,26 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           "MOSTRA_REMOTE_OWNER_OFFLINE",
           "The page's owner is offline, so its server code can't answer now; try again later.",
         );
-      const owner = options.ownerOf(page.artifactId);
-      if (owner === undefined || sessionFor(owner) === undefined) throw offline();
-      // The operator's `limits` before anything is relayed (D165 item 9); a refusal gives the
-      // link's use back, as nothing ran.
+      // Every refusal from here to the relay gives the link's use back, since nothing ran.
+      let session: number;
       try {
+        const owner = options.ownerOf(page.artifactId);
+        if (owner === undefined || sessionFor(owner) === undefined) throw offline();
+        // The operator's `limits` before anything is relayed (D165 item 9).
         await admit(page.artifactId, "call");
+        // While the operator answered: the viewer may have gone (nobody would get the answer),
+        // the page may have been paused or its link revoked, and the owner may have left.
+        if (signal.aborted) {
+          throw failed("MOSTRA_ACTION_CANCELLED", "The page stopped waiting for this call.");
+        }
+        stillAdmitted(page);
+        const current = sessionFor(owner);
+        if (current === undefined) throw offline();
+        session = current;
       } catch (error) {
         giveBack();
         throw error;
       }
-      // The owner may have left while the operator answered.
-      const session = sessionFor(owner);
-      if (session === undefined) throw offline();
       const callId = `call_${crypto.randomUUID()}`;
       const pending: PendingCall = { session, lines: [], ended: false, lastSeq: 0 };
       calls.set(callId, pending);
@@ -934,100 +1094,21 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     },
 
     async startRun(page, input) {
-      checkArgs(input.args);
-      const versionId = interaction.viewVersion(page, input.viewId);
-      const version = functionOf(versionId, input.fnId);
-      mayTrigger(page.viewerId, version);
-      // A request that joins a run already recorded starts nothing: it isn't counted against its
-      // link, nor asked of the operator, as a repeated submit isn't (D166 item 19).
-      const joins = joinsRun(page.artifactId, input);
-      const giveBack = joins ? () => {} : limitLink(page.tokenId);
-      const owner = options.ownerOf(page.artifactId);
-      if (owner === undefined) {
-        throw failed("MOSTRA_REMOTE_OWNER_OFFLINE", "This page has no owner instance to run it.");
+      // A duplicate of a request still on its way to its record waits for it first, so the
+      // operator is asked once for one run and the duplicate joins what it recorded.
+      const keys = inflightKeys(page.artifactId, input);
+      for (;;) {
+        const prior = keys.map((key) => inflight.get(key)).find((found) => found !== undefined);
+        if (prior === undefined) break;
+        await prior.catch(() => undefined);
       }
-      /**
-       * Past the cap a run is refused before anything is recorded (D165 item 4). A request that
-       * joins a run already recorded is never refused.
-       */
-      const capped = (): void => {
-        if (sessionFor(owner) !== undefined || version.policy !== "queue") return;
-        const waiting = ledger.read(
-          (db) =>
-            db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM action_run WHERE artifact_id = ? AND status = 'waiting'",
-              page.artifactId,
-            )?.n ?? 0,
-        );
-        if (waiting >= cap && !joinsRun(page.artifactId, input)) {
-          throw failed(
-            "MOSTRA_REMOTE_QUEUE_FULL",
-            "Too many actions are waiting for this page's owner; try again once it is back.",
-          );
-        }
-      };
-      capped();
-      if (!joins) {
-        // The operator's `limits` before anything is recorded (D165 item 9): `run`, then `run.wait`
-        // when the run would wait for its absent owner, judged once `run` is answered, so an owner
-        // who left meanwhile is seen. A refusal gives the link's use back.
-        try {
-          await admit(page.artifactId, "run");
-          if (sessionFor(owner) === undefined && version.policy === "queue") {
-            await admit(page.artifactId, "run.wait");
-          }
-        } catch (error) {
-          giveBack();
-          throw error;
-        }
-        // The queue may have filled while the operator answered: checked again with the record.
-        capped();
+      const started = beginRun(page, input);
+      for (const key of keys) inflight.set(key, started);
+      try {
+        return await started;
+      } finally {
+        for (const key of keys) if (inflight.get(key) === started) inflight.delete(key);
       }
-      const connected = sessionFor(owner) !== undefined;
-      const { state, row, started } = interaction.startRun(page, input);
-      bus.attachRuns(page.artifactId, input.viewId, [state.runId]);
-      if (!started) {
-        // Another request recorded this run while the operator answered: it joins, uncounted.
-        giveBack();
-        return decorate(state, page.artifactId);
-      }
-      // The relay's record, in the order runs were made: its sequence is unique per owner link and
-      // continues above the owner's mark after a restore (§18.2).
-      const recorded = Date.parse(row.started_at);
-      const waitingState = ledger.write((db) => {
-        const seq =
-          (db.get<{ high: number | null }>(
-            "SELECT MAX(relay_seq) AS high FROM relay_run WHERE owner_link_id = ?",
-            owner,
-          )?.high ?? 0) + 1;
-        const floor = Math.max(
-          marks.get(owner) ?? 0,
-          db.get<{ floor: number }>("SELECT floor FROM relay_floor WHERE link_id = ?", owner)
-            ?.floor ?? 0,
-        );
-        db.run(
-          "INSERT INTO relay_run (run_id, owner_link_id, relay_seq, offline_limit_at) VALUES (?, ?, ?, ?)",
-          row.id,
-          owner,
-          Math.max(seq, floor + 1),
-          iso(recorded + version.limitMs),
-        );
-        if (connected) return undefined;
-        markWaiting(db, row.id);
-        const after = runRow(db, row.id);
-        return after ? runState(db, after) : undefined;
-      });
-      if (connected) {
-        const session = sessionFor(owner);
-        if (session !== undefined) void send(row.id, session);
-        return state;
-      }
-      if (version.policy === "fail") {
-        endOffline(row.id);
-        return interaction.runState(row.id) ?? state;
-      }
-      if (waitingState) publish(waitingState, page.artifactId);
-      return waitingState ?? state;
     },
 
     attach(page, input) {
