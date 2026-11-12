@@ -1,5 +1,12 @@
 # @mostra/sdk
 
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies [[`74888f3`](https://github.com/mostra-dev/mostra/commit/74888f3aaacac9fe215892c97754a4d2f234fe7c), [`3fff053`](https://github.com/mostra-dev/mostra/commit/3fff0532a12871760a3c1ba4d34d0aa95e50c12b)]:
+  - @mostra/protocol@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes

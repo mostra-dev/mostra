@@ -1,5 +1,15 @@
 # @mostra/protocol
 
+## 0.12.0
+
+### Minor Changes
+
+- [#138](https://github.com/mostra-dev/mostra/pull/138) [`74888f3`](https://github.com/mostra-dev/mostra/commit/74888f3aaacac9fe215892c97754a4d2f234fe7c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Teams (WP-31): expected respondents with personal links (`roster/add`, `roster/remove`, `roster/get`), the waits `submitted:all` and `submitted:<N>` with the durable `roster.completed` event, `results/list` for every submission, `useRespondents()` and `usePresence()` with opt-in cursor and selection sharing that is never stored, attribution of shared fields (who, by key, and when), and the manifest's `team.visibility` (`private` unless the artifact opts in). `mostra roster get|add|remove`, `mostra results --all`, `mostra share --cloud --respondent`, and `artifact_wait`'s team conditions. On a remote server, a hosted artifact's roster lives on its hosted home, `roster.completed` reaches the operator's events, and the operator's `invitations` port hands over each personal link to mail (no mailer ships). The conformance kit adds the scenarios `team.roster` and `team.waits`.
+
+### Patch Changes
+
+- [#138](https://github.com/mostra-dev/mostra/pull/138) [`3fff053`](https://github.com/mostra-dev/mostra/commit/3fff0532a12871760a3c1ba4d34d0aa95e50c12b) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `verify` renders a page once more, in a fresh browser context, when one of the page's requests failed because the browser itself couldn't make the connection (`net::ERR_NO_BUFFER_SPACE`, Chromium's random local port colliding on Windows, [#132](https://github.com/mostra-dev/mostra/issues/132)), so a collision never becomes a failed-request error the artifact didn't cause. The second render's findings are the verdict's, and the supervisor's log records the second render.
+
 ## 0.11.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @mostra/verify
 
+## 0.12.0
+
+### Patch Changes
+
+- [#138](https://github.com/mostra-dev/mostra/pull/138) [`3fff053`](https://github.com/mostra-dev/mostra/commit/3fff0532a12871760a3c1ba4d34d0aa95e50c12b) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `verify` renders a page once more, in a fresh browser context, when one of the page's requests failed because the browser itself couldn't make the connection (`net::ERR_NO_BUFFER_SPACE`, Chromium's random local port colliding on Windows, [#132](https://github.com/mostra-dev/mostra/issues/132)), so a collision never becomes a failed-request error the artifact didn't cause. The second render's findings are the verdict's, and the supervisor's log records the second render.
+- Updated dependencies [[`74888f3`](https://github.com/mostra-dev/mostra/commit/74888f3aaacac9fe215892c97754a4d2f234fe7c), [`3fff053`](https://github.com/mostra-dev/mostra/commit/3fff0532a12871760a3c1ba4d34d0aa95e50c12b)]:
+  - @mostra/protocol@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes
