@@ -94,7 +94,12 @@ describe("the runner's judgement (HO-05)", () => {
       host: HOST,
       scenarios: [passes, fails, skips, needsFaults],
     });
-    expect(report.outcomes.map((o) => [o.id, o.status])).toEqual([
+    // Each outcome's reason rides with a failure, so a run that fails here says why (#140).
+    const reasons = JSON.stringify(report.outcomes.map((o) => [o.id, o.status, o.reason ?? ""]));
+    expect(
+      report.outcomes.map((o) => [o.id, o.status]),
+      reasons,
+    ).toEqual([
       ["t.passes", "passed"],
       ["t.fails", "failed"],
       ["t.skips", "skipped"],
