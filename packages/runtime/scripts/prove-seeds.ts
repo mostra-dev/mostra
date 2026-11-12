@@ -63,6 +63,14 @@ const SEEDS: readonly Seed[] = [
   // they guard: personal links, the roster's completion and its waits, status, presence,
   // attribution and the visibility policy.
   {
+    requirement: "RM-08",
+    name: "the per-link rate never refuses an answer (its test held to a full bucket after #141)",
+    file: "src/server/hosted-pages.ts",
+    from: "      if (limits.perLinkSubmissions && page.tokenId !== undefined) {",
+    to: "      if (limits.perLinkSubmissions && page.tokenId === undefined) {",
+    check: integration("anonymous-volume.test.ts", "per-link rate"),
+  },
+  {
     requirement: "wp31-132",
     name: "a render the browser's own connection failure spoiled is never rendered again",
     file: "../verify/src/runner.ts",
