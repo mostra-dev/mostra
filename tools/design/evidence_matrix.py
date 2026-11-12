@@ -24,11 +24,12 @@ def load():
                 sys.exit(f"duplicate requirement row {rid}")
             req_rows[rid] = dict(text=text, rel=rel, src=src, route=route)
     for line in (D / "WORK_PACKAGES.md").read_text().splitlines():
-        m = re.match(r"^### (WP-(?:\d\d|W\d))\.", line)
+        m = re.match(r"^### ((?:WP-(?:\d\d|W\d))|MT-\d\d)\.", line)
         if m:
             wp = m.group(1)
         m = re.match(r"^- \*\*Owns:\*\* (.+)\.$", line)
-        if m and wp:
+        # A maintenance unit (MT-NN) owns none: its checks extend their owners' rows (D152).
+        if m and wp and m.group(1) != "none":
             for rid in [x.strip() for x in m.group(1).split(",")]:
                 owners.setdefault(rid, []).append(wp)
     return req_rows, owners

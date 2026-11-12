@@ -4,8 +4,8 @@
 
 ## How the sequence was built
 
-- **Scope.** 34 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 2 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
-- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 34 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 2 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows.
+- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
 - **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
@@ -372,6 +372,20 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - team scenarios in the conformance kit.
 - **Depends on:** WP-30 (identity on remote servers) and WP-07 (the client runtime).
 - **Evidence:** the CO checks; a five-viewer browser scenario; the ledger holds no presence.
+
+### MT-03. The operator ports as specified, and what sign-in and metering lack
+- **Owns:** none.
+- **Builds:**
+  - `limits` asked for relayed runs, waiting runs and plain calls (`run`, `run.wait`, `call`), as INTERFACES §18.3 and §18.6 and D165 item 9 already specify;
+  - a link's idle expiry judged from its last view before the visit that asks, so a fresh visit to an idle link is refused;
+  - GitHub's public counts (`publicRepos`, `publicGists`, `followers`) in `SignInIdentity.facts`;
+  - chosen ID-token claims of an OpenID Connect provider in `facts` (`claims` on its configuration entry);
+  - the verifier recorded on each sign-in identity when it is linked, and `IdentityProvider.verifies` for providers an operator module supplies;
+  - `bytes.held` in metering: a home's held client bytes at each window's end;
+  - the version being pushed in `limits`' query (`LimitQuery.versionId`);
+  - a dossier design for homes an organization owns, brought to Mirza, with no code until it is decided.
+- **Depends on:** WP-31 (the `main` that includes it).
+- **Evidence:** each change's check through the real interface (a real `mostra-runtime server` with the fixture operator module, fake providers and a real owner instance), with a seeded violation red on the old behavior; a decision entry for organization-owned homes.
 
 ### WP-16. Extension contracts and plugin system
 - **Owns:** EX-01, EX-02, EX-03, EX-04.

@@ -138,6 +138,25 @@ DETAIL = {
   risks=["ChatGPT freezes tool snapshots: schemas evolve additively only (D32)."],
   handoff="Codex, Claude Code and other MCP clients use Mostra without a Skill.",
 ),
+"MT-03": dict(
+  goal="The remote server does what INTERFACES §18.6 and D165 say of the operator ports, and gives an operator the few facts sign-in and metering lack today, so an operating layer's quotas, safety rules and organizations work as designed.",
+  reading=["../DECISIONS.md D159, D165, D166, D167, D168", "../ARCHITECTURE.md §15", "../INTERFACES.md §18 (all)", "../DATA_MODEL.md §7", "../FAILURE_MODEL.md §11", "WP-29's, WP-30's and WP-31's progress reports", "MT-01's and MT-02's progress reports, for a maintenance unit's report"],
+  detail=[
+    "A maintenance unit (D152): it owns no requirement. Its scope is the eight items below, each closed with its check through the real interface (a real `mostra-runtime server` with the fixture operator module `test/fixtures/operator.mjs`, fake providers and real owner instances, as WP-30's operator suite runs them) and a seeded violation red on the old behavior; the checks it adds extend HO-09's and HY-08's rows. Every change is additive within `OPERATOR_REVISION` `2026-11-08`, so it ships in a minor release.",
+    "**`limits` for relayed actions** (INTERFACES §18.3, §18.6; D165 item 9). Today `relay.ts` records and relays runs and calls without asking, and the waiting-run cap is `relay.waitingRunsPerArtifact` alone. Before a relayed run is recorded, ask `run` (quantity 1, with the artifact and its route); when it would be recorded `waiting` because the owner is away, ask `run.wait` too; before a plain call is relayed, ask `call`. A refusal of `run` or `call` answers 403 `MOSTRA_REMOTE_LIMIT_REACHED` with the operator's message, and one of `run.wait` 503 `MOSTRA_REMOTE_QUEUE_FULL`, each before anything is recorded or relayed, giving back the `rateLimits.perLink.relayedRuns` use as a refused submit does (D167 item 24). A request that joins a run already recorded (its client key or key) is never asked, as a repeated submit isn't. No answer lets them through: they are viewer input (D165 item 9).",
+    "**Idle expiry** (`LinkPolicy.idleExpiry`, \"a link expires after this long without a view\"). Today `hosted-pages.ts` takes a link's last use as its sessions' latest `last_seen_at`, which the visit's own session exchange has just written, so a fresh visit to an idle link opens. Judge it from the link's last view before the one being admitted.",
+    "**GitHub's public counts**: `publicRepos`, `publicGists` and `followers` from the same `GET /user` answer, in `facts`, so an operator's policy tells a fresh, empty account from an established one without another request inside `accounts.resolve`'s time limit.",
+    "**Chosen OpenID Connect claims**: an optional `claims` list on an `oidc` entry of `identityProviders` (a few short names); those claims of the ID token, when present and JSON-serializable, go into `facts` under their names, so a policy can use what a provider asserts (a Google Workspace account's domain, `hd`).",
+    "**The verifier on the identity.** Today the sender line names the verifier of the account's first-linked identity by looking its provider ID up in the configuration now, and only configured providers verify, so renaming or retiring a provider turns every account first linked through it into \"name not verified\", and a provider the operator module supplies is never verified. Record the verifier's label on the identity when it is linked (an additive directory column) and read it from there; add `verifies?: { label }` to `IdentityProvider`.",
+    "**`bytes.held`**: a counter in each metering window, per home that held anything during it, of the client bytes it holds at the window's end (each file once, as `home_file` counts it), so storage quotas and cost fall when content is removed; `bytes.stored` keeps counting uploads.",
+    "**`LimitQuery.versionId`** on `version.push` and `storage`: a push that takes two rounds asks about one version twice, and an operator counting versions must count it once.",
+    "**Homes an organization owns** (ARCHITECTURE §15.2's \"later an organization\"): a design brought to Mirza (who may push, the delivery owner, the owner instance, how membership changes reach the server), no code until it is decided; it ends in a decision entry and the package it names.",
+    "Add MT-03's own decision entry, the dossier text each item changes (INTERFACES §18.1, §18.3, §18.5, §18.6; DATA_MODEL §7.1; FAILURE_MODEL §11), the self-hosting page's configuration, `@mostra/protocol`'s operator API report and a changeset; refresh the test deployment if an external check needs the candidate (D167 item 20).",
+  ],
+  out=["Organization-owned homes' code: the design decides where it goes.", "A per-browser context for `identity.providers()`, and providers found by email domain: not needed yet.", "The hosted header's layout on a phone, which belongs to the design pass on the hosted surfaces."],
+  risks=["`limits` is asked on the page's path now: its 2 s bound (OPERATOR_TIME_LIMITS) is the most a hung operator adds to a run, a call or a waiting run, and no answer must never refuse one.", "An identity linked before the verifier column exists needs its verifier filled once from the configuration in force, so an upgrade changes no sender line."],
+  handoff="An operator module can bound relayed actions, lapse idle links, read GitHub's counts and an OpenID Connect provider's chosen claims, verify names through providers it supplies, meter held bytes, count each pushed version once, and knows how organization-owned homes will arrive. WP-16 follows.",
+),
 "WP-16": dict(
   goal="Anyone can extend Mostra through small, separately versioned contracts and copy-source packs, with honest license disclosure and no capability gates.",
   reading=["../rounds/ROUND-3.md §6", "../INTERFACES.md §14", "../DECISIONS.md D30, D31", "../../research/brief8.md §1, §2, §4"],
@@ -419,13 +438,15 @@ def main():
     stale = []
     for section, b in blocks(text):
         head, body = b.split("\n", 1)
-        m = re.match(r"(WP-(?:\d\d|W\d))\. (.+)", head)
+        m = re.match(r"((?:WP-(?:\d\d|W\d))|MT-\d\d)\. (.+)", head)
         wp, title = m.group(1), m.group(2).strip()
         seen.append(wp)
         if wp not in DETAIL:
             sys.exit(f"{wp} is in WORK_PACKAGES.md but has no DETAIL entry in tools/design/wp_specs.py")
         det = DETAIL[wp]
-        owns = re.search(r"^- \*\*Owns:\*\* (.+)\.$", body, re.M).group(1).split(", ")
+        owned = re.search(r"^- \*\*Owns:\*\* (.+)\.$", body, re.M).group(1)
+        # A maintenance unit (MT-NN) owns no requirement: its checks extend their owners' rows.
+        owns = [] if owned == "none" else owned.split(", ")
         builds = re.search(r"^- \*\*Builds:\*\*(.*?)(?=^- \*\*Depends on)", body, re.M | re.S).group(1).strip()
         depends = re.search(r"^- \*\*Depends on:\*\* (.+)$", body, re.M).group(1)
         evidence = re.search(r"^- \*\*Evidence:\*\*(.*)$", body, re.M | re.S).group(1).strip()
@@ -436,12 +457,15 @@ def main():
              f"| **Depends on** | {depends} |"]
         if section == AFTER_FIRST_RELEASE:
             L.append("| **Release** | v1.1, after the first release (D122) |")
-        L += [f"| **Branch** | `wp/{wp[3:].lower()}-<short-name>` from the accepted predecessor |",
+        L += [f"| **Branch** | `{wp[:2].lower()}/{wp[3:].lower()}-<short-name>` from the accepted predecessor |",
              f"| **Protocol** | [README.md](README.md) |", "",
              "## Goal", "", det["goal"], "",
-             "## Owned requirements", "",
-             "Close each with the check below, through the real public interface (README §3).", "",
-             "| ID | Requirement | Route | Concrete check |", "|---|---|---|---|"]
+             "## Owned requirements", ""]
+        if owns:
+            L += ["Close each with the check below, through the real public interface (README §3).", "",
+                  "| ID | Requirement | Route | Concrete check |", "|---|---|---|---|"]
+        else:
+            L += ["None: a maintenance unit owns no requirement (D152). Its progress report's evidence table has one row per item of its scope, each closed by a check through the real public interface (README §3), and the checks it adds extend their owners' rows."]
         for rid in owns:
             r = req_rows[rid]
             L.append(f"| {rid} | {r['text']} | {r['route']} | {CHECKS[rid]} |")
