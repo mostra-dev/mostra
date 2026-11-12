@@ -1,6 +1,6 @@
 {
   "name": "@mostra/mcp",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Mostra's MCP server: the tools, resources and HTTP handler `mostra mcp` serves to any MCP client, independent of the transport.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

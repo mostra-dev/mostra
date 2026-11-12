@@ -59,10 +59,10 @@ A chat app's connector reaches the person's own computer through their Mostra se
 
 ## Adding the server to a client
 
-A client starts the server as `mostra mcp` over stdio, or `npx -y @mostra/cli@0.11.0 mcp` where `mostra` isn't installed. Its configuration names that command, for example:
+A client starts the server as `mostra mcp` over stdio, or `npx -y @mostra/cli@0.12.0 mcp` where `mostra` isn't installed. Its configuration names that command, for example:
 
 ```json
-{ "mcpServers": { "mostra": { "command": "npx", "args": ["-y", "@mostra/cli@0.11.0", "mcp"] } } }
+{ "mcpServers": { "mostra": { "command": "npx", "args": ["-y", "@mostra/cli@0.12.0", "mcp"] } } }
 ```
 
 For a client that speaks only HTTP, `mostra mcp --http` serves Streamable HTTP on `127.0.0.1` and prints its URL and a token on stderr; every request sends `Authorization: Bearer <token>` (set `MOSTRA_MCP_TOKEN` to choose it). `--workspace <dir>` chooses where new artifacts go.
