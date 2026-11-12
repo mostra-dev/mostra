@@ -229,4 +229,32 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: "the verifier on each identity",
+    up(db) {
+      // MT-03 (DATA_MODEL §7.1, additive). Who verified the person's name, as the provider that
+      // links or signs in an identity says (`IdentityProvider.verifies`), recorded on the identity:
+      // a hosted page's sender line reads it from here, so renaming or retiring a provider later
+      // turns no verified name into an unverified one. `verified_recorded_at` is when it was
+      // recorded; an identity linked before this has none until the server, at its next start,
+      // gives it the verifier its configuration names for its provider then (the server's own
+      // accounts' sender lines unchanged by the upgrade).
+      db.exec(`
+        ALTER TABLE identity ADD COLUMN verified_by TEXT;
+        ALTER TABLE identity ADD COLUMN verified_recorded_at TEXT;
+      `);
+    },
+  },
+  {
+    version: 6,
+    name: "a held file's size",
+    up(db) {
+      // MT-03 (DATA_MODEL §7.1, additive). The bytes of each version file a home holds, as its push
+      // gave them (held to the bytes uploaded), so metering's `bytes.held` sums what a home holds
+      // and falls when a removal frees it. A row from before this has none until the server, at its
+      // next start, reads the stored file's size.
+      db.exec("ALTER TABLE home_file ADD COLUMN size INTEGER CHECK (size IS NULL OR size >= 0)");
+    },
+  },
 ];

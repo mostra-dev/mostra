@@ -152,12 +152,18 @@ export function hostedPages(
     });
   };
 
-  /** A link past the operator's longest lifetime or idle limit: revoked now, 410 (D165 item 9). */
+  /**
+   * A link past the operator's longest lifetime or idle limit: revoked now, 410 (D165 item 9).
+   * "Idle" is as `LinkPolicy.idleExpiry` says, without a view: the link's last view before the one
+   * being admitted, which isn't recorded yet. A session's `last_seen_at` can't stand for it, since
+   * the visit asking has just written its own (a fresh browser's exchange, or any request of a
+   * returning one), so an idle link would open for every new visit (MT-03).
+   */
   const expired = (tokenId: string, policy: LinkPolicy): Refusal | undefined => {
     if (policy.maxTtl === undefined && policy.idleExpiry === undefined) return undefined;
     const used = ledger.read((db) =>
       db.get<{ created_at: string; last: string | null }>(
-        `SELECT t.created_at, (SELECT MAX(last_seen_at) FROM session s WHERE s.token_id = t.id) AS last
+        `SELECT t.created_at, (SELECT MAX(v.opened_at) FROM view v WHERE v.token_id = t.id) AS last
            FROM token t WHERE t.id = ?`,
         tokenId,
       ),

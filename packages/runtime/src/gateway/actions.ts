@@ -49,6 +49,7 @@ const STATUS: Readonly<Record<string, number>> = {
   // A hosted page's relay (D165 item 4, INTERFACES §4).
   MOSTRA_REMOTE_OWNER_OFFLINE: 503,
   MOSTRA_REMOTE_QUEUE_FULL: 503,
+  MOSTRA_REMOTE_LIMIT_REACHED: 403,
   MOSTRA_REMOTE_SIGN_IN_REQUIRED: 403,
   MOSTRA_REMOTE_RATE_LIMITED: 429,
   MOSTRA_ACTION_PAUSED: 423,
@@ -237,7 +238,7 @@ export function actionRoutes(options: ActionRoutesOptions): ActionRoutes {
       if (pausedNow) return pausedNow;
       try {
         return jsonResponse(
-          actions.startRun(page, {
+          await actions.startRun(page, {
             viewId: request.viewId,
             fnId: request.fnId,
             args: request.args,

@@ -64,6 +64,21 @@ export interface IdentityProviderConfig {
   readonly issuer?: string | undefined;
   readonly clientId?: string | undefined;
   readonly clientSecretFile?: string | undefined;
+  /**
+   * An `oidc` provider's ID-token claims that go into `SignInIdentity.facts` under their own names,
+   * when present (a Google Workspace account's domain, `hd`): at most 8 short names (MT-03).
+   */
+  readonly claims?: string[] | undefined;
+}
+
+/**
+ * The label a configured provider's verified names carry on a hosted page's sender line ("verified
+ * with GitHub"): its `label`, else GitHub's name or its ID; none for the development provider, which
+ * takes the typed name on trust (D161). Recorded on each identity the provider links (MT-03).
+ */
+export function configuredVerifier(provider: IdentityProviderConfig): string | undefined {
+  if (provider.kind === "development") return undefined;
+  return provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id);
 }
 
 /** The configuration a remote server runs with (INTERFACES §18.1). */
@@ -120,6 +135,15 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
           issuer: z.string().optional(),
           clientId: z.string().optional(),
           clientSecretFile: z.string().optional(),
+          claims: z
+            .array(
+              z.string().regex(/^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$/, {
+                message: "must be claim names of at most 64 letters, digits and `_.:-`",
+              }),
+            )
+            .min(1)
+            .max(8)
+            .optional(),
         }),
       )
       .optional(),
@@ -213,6 +237,14 @@ export function readServerConfig(file: string | undefined, env: Environment): Re
   if (domains.some((domain) => domain === api || api.endsWith(`.${domain}`))) {
     throw invalid(
       "The configuration key `apiOrigin` can't be on a user-content domain: sign-in and the binding live apart from tenant pages (D165 item 7).",
+    );
+  }
+  const claimed = (config.identityProviders ?? []).findIndex(
+    (provider) => provider.claims !== undefined && provider.kind !== "oidc",
+  );
+  if (claimed >= 0) {
+    throw invalid(
+      `The configuration key \`identityProviders.${claimed}.claims\` can't be used: only an \`oidc\` provider passes on its ID token's claims.`,
     );
   }
   const proxy = validProxies(config.trustedProxies ?? []);

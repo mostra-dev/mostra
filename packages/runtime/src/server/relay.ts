@@ -53,6 +53,7 @@ import {
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
+import type { LimitVerdict } from "./operator.ts";
 
 /** How long a relay port call may take: the owner answers once it recorded the run. */
 const PORT_CALL_MS = 30_000;
@@ -103,6 +104,15 @@ export interface HostedRelayOptions {
    * refused before anything is recorded or relayed.
    */
   readonly perLink?: { readonly count: number; readonly perMs: number } | undefined;
+  /**
+   * The operator's `limits` for one artifact's relayed actions (INTERFACES §18.6, D165 item 9):
+   * `run` before a run is recorded, `run.wait` when it would wait for an absent owner, `call`
+   * before a plain call is relayed, each with quantity 1. Absent: nothing is asked.
+   */
+  readonly limit?: (
+    artifactId: string,
+    operation: "run" | "run.wait" | "call",
+  ) => Promise<LimitVerdict>;
   /** How often waiting and unacknowledged runs are checked against their limits; default 1 s. */
   readonly sweepMs?: number;
   /** An artifact's latest version here, whose producers its viewers want. */
@@ -119,7 +129,12 @@ export interface HostedRelayOptions {
 }
 
 /** The relay: the gateway's actions on a hosted home, and the owner's methods. */
-export interface HostedRelay extends Pick<Actions, "call" | "startRun" | "attach" | "cancel"> {
+export interface HostedRelay extends Pick<Actions, "call" | "attach" | "cancel"> {
+  /**
+   * Starts or joins a relayed run (`Actions.startRun`): asynchronous here, since the operator's
+   * `limits` is asked before a new run is recorded.
+   */
+  startRun(...args: Parameters<Actions["startRun"]>): Promise<RunState>;
   /** `relay/run.update` and `relay/call.batch`, for the hosted home's protocol server. */
   methods(): MethodHandler[];
   /** An owner session opened: reconcile its accepted runs, then resend and drain (§18.3). */
@@ -246,34 +261,31 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   /** Each link's recent relayed runs and calls, for the per-link limit. */
   const linkUses = new Map<string, number[]>();
   /**
-   * Counts a relayed run or call against its link (D159), refusing it past the limit with
-   * `MOSTRA_REMOTE_RATE_LIMITED` and when to try again. A request that joins a run already
-   * recorded (its client key, or its key) starts nothing, so it is never counted.
+   * Whether a run request joins a run already recorded (its client key, or its key): it starts
+   * nothing, so it is neither counted against its link nor asked of the operator.
    */
-  const limitLink = (
-    tokenId: string | undefined,
-    artifactId?: string,
-    input?: {
-      readonly clientKey: string;
-      readonly key?: string | undefined;
-      readonly fnId: string;
-    },
-  ): void => {
+  const joinsRun = (
+    artifactId: string,
+    input: { readonly clientKey: string; readonly key?: string | undefined; readonly fnId: string },
+  ): boolean =>
+    ledger.read(
+      (db) =>
+        db.get(
+          "SELECT 1 FROM action_run WHERE artifact_id = ? AND (client_key = ? OR (key IS NOT NULL AND key = ? AND action = ?))",
+          artifactId,
+          input.clientKey,
+          input.key ?? null,
+          input.fnId,
+        ) !== undefined,
+    );
+  /**
+   * Counts a relayed run or call against its link (D159), refusing it past the limit with
+   * `MOSTRA_REMOTE_RATE_LIMITED` and when to try again. Answers how to give the use back, for a
+   * request the operator then refuses (as a refused submit gets its tokens back, D167 item 24).
+   */
+  const limitLink = (tokenId: string | undefined): (() => void) => {
     const limit = options.perLink;
-    if (!limit || tokenId === undefined) return;
-    if (artifactId !== undefined && input !== undefined) {
-      const joins = ledger.read(
-        (db) =>
-          db.get(
-            "SELECT 1 FROM action_run WHERE artifact_id = ? AND (client_key = ? OR (key IS NOT NULL AND key = ? AND action = ?))",
-            artifactId,
-            input.clientKey,
-            input.key ?? null,
-            input.fnId,
-          ) !== undefined,
-      );
-      if (joins) return;
-    }
+    if (!limit || tokenId === undefined) return () => {};
     const at = now();
     const recent = (linkUses.get(tokenId) ?? []).filter((used) => at - used < limit.perMs);
     if (recent.length >= limit.count) {
@@ -288,6 +300,37 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     }
     recent.push(at);
     linkUses.set(tokenId, recent);
+    let given = false;
+    return () => {
+      if (given) return;
+      given = true;
+      const uses = linkUses.get(tokenId);
+      const index = uses?.indexOf(at) ?? -1;
+      if (uses && index >= 0) uses.splice(index, 1);
+    };
+  };
+
+  /**
+   * Asks the operator's `limits` for a relayed action (D165 item 9). A refusal of `run` or `call`
+   * answers 403 `MOSTRA_REMOTE_LIMIT_REACHED` and one of `run.wait` 503 `MOSTRA_REMOTE_QUEUE_FULL`,
+   * each with the operator's message (and `Retry-After` when it gives one); no answer lets the
+   * action through, since it is viewer input (INTERFACES §18.6).
+   */
+  const admit = async (
+    artifactId: string,
+    operation: "run" | "run.wait" | "call",
+  ): Promise<void> => {
+    if (!options.limit) return;
+    const verdict = await options.limit(artifactId, operation);
+    if (verdict.allowed !== false) return;
+    const error = failed(
+      operation === "run.wait" ? "MOSTRA_REMOTE_QUEUE_FULL" : "MOSTRA_REMOTE_LIMIT_REACHED",
+      verdict.message,
+    ) as RpcError & { retryAfter?: number };
+    if (verdict.retryAfterMs !== undefined) {
+      error.retryAfter = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
+    }
+    throw error;
   };
 
   const checkArgs = (args: Batches): void => {
@@ -822,15 +865,25 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
       mayTrigger(page.viewerId, functionOf(versionId, input.fnId));
-      limitLink(page.tokenId);
-      const owner = options.ownerOf(page.artifactId);
-      const session = owner === undefined ? undefined : sessionFor(owner);
-      if (session === undefined) {
-        throw failed(
+      const giveBack = limitLink(page.tokenId);
+      const offline = (): RpcError =>
+        failed(
           "MOSTRA_REMOTE_OWNER_OFFLINE",
           "The page's owner is offline, so its server code can't answer now; try again later.",
         );
+      const owner = options.ownerOf(page.artifactId);
+      if (owner === undefined || sessionFor(owner) === undefined) throw offline();
+      // The operator's `limits` before anything is relayed (D165 item 9); a refusal gives the
+      // link's use back, as nothing ran.
+      try {
+        await admit(page.artifactId, "call");
+      } catch (error) {
+        giveBack();
+        throw error;
       }
+      // The owner may have left while the operator answered.
+      const session = sessionFor(owner);
+      if (session === undefined) throw offline();
       const callId = `call_${crypto.randomUUID()}`;
       const pending: PendingCall = { session, lines: [], ended: false, lastSeq: 0 };
       calls.set(callId, pending);
@@ -880,20 +933,25 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       return lines();
     },
 
-    startRun(page, input) {
+    async startRun(page, input) {
       checkArgs(input.args);
       const versionId = interaction.viewVersion(page, input.viewId);
       const version = functionOf(versionId, input.fnId);
       mayTrigger(page.viewerId, version);
-      limitLink(page.tokenId, page.artifactId, input);
+      // A request that joins a run already recorded starts nothing: it isn't counted against its
+      // link, nor asked of the operator, as a repeated submit isn't (D166 item 19).
+      const joins = joinsRun(page.artifactId, input);
+      const giveBack = joins ? () => {} : limitLink(page.tokenId);
       const owner = options.ownerOf(page.artifactId);
       if (owner === undefined) {
         throw failed("MOSTRA_REMOTE_OWNER_OFFLINE", "This page has no owner instance to run it.");
       }
-      const connected = sessionFor(owner) !== undefined;
-      // Past the cap a run is refused before anything is recorded (D165 item 4). A request that
-      // joins a run already recorded is never refused.
-      if (!connected && version.policy === "queue") {
+      /**
+       * Past the cap a run is refused before anything is recorded (D165 item 4). A request that
+       * joins a run already recorded is never refused.
+       */
+      const capped = (): void => {
+        if (sessionFor(owner) !== undefined || version.policy !== "queue") return;
         const waiting = ledger.read(
           (db) =>
             db.get<{ n: number }>(
@@ -901,26 +959,38 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
               page.artifactId,
             )?.n ?? 0,
         );
-        const joins = ledger.read(
-          (db) =>
-            db.get<{ id: string }>(
-              `SELECT id FROM action_run WHERE artifact_id = ? AND (client_key = ? OR (key IS NOT NULL AND key = ? AND action = ?))`,
-              page.artifactId,
-              input.clientKey,
-              input.key ?? null,
-              input.fnId,
-            ) !== undefined,
-        );
-        if (waiting >= cap && !joins) {
+        if (waiting >= cap && !joinsRun(page.artifactId, input)) {
           throw failed(
             "MOSTRA_REMOTE_QUEUE_FULL",
             "Too many actions are waiting for this page's owner; try again once it is back.",
           );
         }
+      };
+      capped();
+      if (!joins) {
+        // The operator's `limits` before anything is recorded (D165 item 9): `run`, then `run.wait`
+        // when the run would wait for its absent owner, judged once `run` is answered, so an owner
+        // who left meanwhile is seen. A refusal gives the link's use back.
+        try {
+          await admit(page.artifactId, "run");
+          if (sessionFor(owner) === undefined && version.policy === "queue") {
+            await admit(page.artifactId, "run.wait");
+          }
+        } catch (error) {
+          giveBack();
+          throw error;
+        }
+        // The queue may have filled while the operator answered: checked again with the record.
+        capped();
       }
+      const connected = sessionFor(owner) !== undefined;
       const { state, row, started } = interaction.startRun(page, input);
       bus.attachRuns(page.artifactId, input.viewId, [state.runId]);
-      if (!started) return decorate(state, page.artifactId);
+      if (!started) {
+        // Another request recorded this run while the operator answered: it joins, uncounted.
+        giveBack();
+        return decorate(state, page.artifactId);
+      }
       // The relay's record, in the order runs were made: its sequence is unique per owner link and
       // continues above the owner's mark after a restore (§18.2).
       const recorded = Date.parse(row.started_at);

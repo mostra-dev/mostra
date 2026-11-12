@@ -418,7 +418,7 @@ export function createApi(options: ApiOptions): Api {
     }
     if (existsSync(target)) await rm(scratch, { force: true });
     else renameSync(scratch, target);
-    home.uploaded(sha);
+    home.uploaded(sha, size);
     options.stored?.(who.homeId, size);
     send(response, 201, { sha256: sha, size });
   };

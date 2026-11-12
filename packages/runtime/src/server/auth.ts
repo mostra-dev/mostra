@@ -16,7 +16,7 @@ import { AccountId, HomeId, LinkId } from "@mostra/protocol";
 import type { SignInIdentity } from "@mostra/protocol/operator";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
-import type { RemoteServerConfig } from "./config.ts";
+import { configuredVerifier, type RemoteServerConfig } from "./config.ts";
 import type { Operator } from "./operator.ts";
 
 /** The CLI's client ID: a first-party public client (§18.5). */
@@ -224,9 +224,24 @@ export interface Authorization {
    * `accounts.resolve` when it has one, else the server's own accounts; `steps` counts the first
    * sign-in steps already taken.
    */
-  resolveAccount(identity: SignInIdentity, steps: number): Promise<ResolvedAccount>;
-  /** An account's display name, and the provider that verified it (its first identity's). */
-  accountName(accountId: string): { readonly name?: string; readonly provider?: string };
+  resolveAccount(
+    identity: SignInIdentity,
+    steps: number,
+    /**
+     * The label of the provider's verifier (`IdentityProvider.verifies`), recorded on the identity
+     * as it links or signs in; absent: the provider verified no name (MT-03).
+     */
+    verifiedBy?: string,
+  ): Promise<ResolvedAccount>;
+  /**
+   * An account's display name, its first identity's provider, and the label of that identity's
+   * verifier as it was recorded when the provider last named the person (MT-03).
+   */
+  accountName(accountId: string): {
+    readonly name?: string;
+    readonly provider?: string;
+    readonly verifiedBy?: string;
+  };
   /** Mints an authorization code (one minute, single use; only its hash is kept). */
   issueCode(grant: CodeGrant): string;
   /**
@@ -290,6 +305,22 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       JSON.stringify({ client_name: "Mostra CLI" }),
       iso(now()),
     );
+    // Identities linked before the server recorded who verified each (MT-03) take, once, the
+    // verifier the configuration names for their provider now, as their sender lines showed it
+    // until then; any other (a provider retired, or one an operator module supplied) none. From
+    // then on the recorded label is the one shown, whatever the configuration later says.
+    const at = iso(now());
+    for (const provider of config.identityProviders ?? []) {
+      const label = configuredVerifier(provider);
+      if (label === undefined) continue;
+      db.run(
+        "UPDATE identity SET verified_by = ?, verified_recorded_at = ? WHERE provider = ? AND verified_recorded_at IS NULL",
+        label,
+        at,
+        provider.id,
+      );
+    }
+    db.run("UPDATE identity SET verified_recorded_at = ? WHERE verified_recorded_at IS NULL", at);
   });
 
   const deviceRow = (db: LedgerDb, hash: string) =>
@@ -305,6 +336,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
     account: string,
     name: string | undefined,
     status: "active" | "suspended",
+    verifiedBy: string | undefined,
   ): void => {
     db.run(
       `INSERT INTO account (id, name, status, created_at) VALUES (?, ?, ?, ?)
@@ -315,29 +347,47 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       iso(now()),
     );
     db.run(
-      `INSERT INTO identity (provider, subject, account_id, email, name, linked_at) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO identity (provider, subject, account_id, email, name, linked_at, verified_by, verified_recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (provider, subject) DO UPDATE SET account_id = excluded.account_id,
-           email = excluded.email, name = excluded.name`,
+           email = excluded.email, name = excluded.name, verified_by = excluded.verified_by,
+           verified_recorded_at = excluded.verified_recorded_at`,
       identity.provider,
       identity.subject,
       account,
       identity.email ?? null,
       identity.name ?? null,
       iso(now()),
+      verifiedBy ?? null,
+      iso(now()),
     );
   };
 
-  /** The account for a sign-in identity, made on the first sign-in. */
+  /**
+   * The account for a sign-in identity, made on the first sign-in. The identity records who
+   * verified the person's name as it signs in (`verifiedBy`, the provider's verifier label, or none),
+   * so a provider renamed or retired later changes no sender line (MT-03).
+   */
   const accountFor = (
     db: LedgerDb,
     identity: { provider: string; subject: string; name?: string },
+    verifiedBy: string | undefined,
   ): string => {
     const found = db.get<{ account_id: string }>(
       "SELECT account_id FROM identity WHERE provider = ? AND subject = ?",
       identity.provider,
       identity.subject,
     );
-    if (found) return found.account_id;
+    if (found) {
+      db.run(
+        "UPDATE identity SET verified_by = ?, verified_recorded_at = ? WHERE provider = ? AND subject = ?",
+        verifiedBy ?? null,
+        iso(now()),
+        identity.provider,
+        identity.subject,
+      );
+      return found.account_id;
+    }
     const account = AccountId.create();
     db.run(
       "INSERT INTO account (id, name, status, created_at) VALUES (?, ?, 'active', ?)",
@@ -346,11 +396,13 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       iso(now()),
     );
     db.run(
-      "INSERT INTO identity (provider, subject, account_id, name, linked_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO identity (provider, subject, account_id, name, linked_at, verified_by, verified_recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       identity.provider,
       identity.subject,
       account,
       identity.name ?? null,
+      iso(now()),
+      verifiedBy ?? null,
       iso(now()),
     );
     return account;
@@ -866,13 +918,13 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       });
     },
 
-    async resolveAccount(identity, steps) {
+    async resolveAccount(identity, steps, verifiedBy) {
       const verdict = options.operator
         ? await options.operator.resolve(identity, steps)
         : ({ default: true } as const);
       if (verdict === "unavailable") return { kind: "unavailable" };
       if ("default" in verdict) {
-        const accountId = directory.write((db) => accountFor(db, identity));
+        const accountId = directory.write((db) => accountFor(db, identity, verifiedBy));
         const status = directory.read(
           (db) =>
             db.get<{ status: string }>("SELECT status FROM account WHERE id = ?", accountId)
@@ -884,7 +936,7 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       if ("step" in verdict) return { kind: "step", url: verdict.step.url };
       if ("refused" in verdict) return { kind: "refused", message: verdict.refused.message };
       directory.write((db) =>
-        operatorAccount(db, identity, verdict.account, verdict.name, verdict.status),
+        operatorAccount(db, identity, verdict.account, verdict.name, verdict.status, verifiedBy),
       );
       if (verdict.status === "suspended") return { kind: "suspended" };
       return { kind: "account", accountId: verdict.account, name: verdict.name ?? identity.name };
@@ -892,14 +944,21 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
 
     accountName(accountId) {
       return directory.read((db) => {
-        const row = db.get<{ name: string | null; provider: string | null }>(
-          `SELECT a.name, (SELECT i.provider FROM identity i WHERE i.account_id = a.id
-              ORDER BY i.linked_at LIMIT 1) AS provider FROM account a WHERE a.id = ?`,
+        const row = db.get<{
+          name: string | null;
+          provider: string | null;
+          verified_by: string | null;
+        }>(
+          `SELECT a.name, i.provider, i.verified_by FROM account a
+             LEFT JOIN identity i ON i.rowid = (SELECT rowid FROM identity WHERE account_id = a.id
+               ORDER BY linked_at, rowid LIMIT 1)
+           WHERE a.id = ?`,
           accountId,
         );
         return {
           ...(row?.name ? { name: row.name } : {}),
           ...(row?.provider ? { provider: row.provider } : {}),
+          ...(row?.verified_by ? { verifiedBy: row.verified_by } : {}),
         };
       });
     },
@@ -1120,7 +1179,8 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
           );
           return { ok: true as const };
         }
-        const account = accountFor(db, input.identity);
+        // The development sign-in's name is taken on trust: no verifier (D161).
+        const account = accountFor(db, input.identity, undefined);
         db.run(
           "INSERT INTO consent (account_id, client_id, granted_at) VALUES (?, ?, ?) ON CONFLICT (account_id, client_id) DO UPDATE SET revoked_at = NULL",
           account,

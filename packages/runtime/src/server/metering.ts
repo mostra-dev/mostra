@@ -2,7 +2,8 @@
  * Metering for an operator (INTERFACES §18.6, D165 item 9): counters kept in memory for a window,
  * then handed to the operator's `metering.record` as one batch with a stable `batchId`, through
  * the durable outbound queue, so a batch is delivered at least once across restarts. With no
- * metering port nothing is counted.
+ * metering port nothing is counted. Besides the sums, each window carries one level, `bytes.held`:
+ * what each home holds at its end (MT-03).
  *
  * Views carry `viewerKey`, a monthly pseudonymous key: an HMAC of the viewer's subject under a key
  * the server makes for each month (`<data>/keys/metering-<YYYY-MM>`), so an operator can count
@@ -53,6 +54,15 @@ export interface MeterOptions {
   readonly windowMs?: number;
   /** Seconds each open home was active, added at every window. */
   readonly activeHomes?: () => readonly { readonly home: string; readonly account: string }[];
+  /**
+   * The client bytes each home holds now (each file once, as `home_file` counts it), for
+   * `bytes.held` at every window's end (MT-03). Homes that hold nothing aren't listed.
+   */
+  readonly heldBytes?: () => readonly {
+    readonly home: string;
+    readonly account: string;
+    readonly bytes: number;
+  }[];
 }
 
 /** Creates the meter. */
@@ -63,6 +73,8 @@ export function createMeter(options: MeterOptions): Meter {
   const counters = new Map<string, { counter: MeterCounter; value: number }>();
   let from = now();
   const monthKeys = new Map<string, Buffer>();
+  /** The homes the last window reported holding bytes, so one that drops to none says 0, once. */
+  let heldBefore = new Map<string, string>();
 
   const monthKey = (): Buffer => {
     const month = new Date(now()).toISOString().slice(0, 7);
@@ -94,7 +106,26 @@ export function createMeter(options: MeterOptions): Meter {
         add("home.activeSeconds", { account: active.account, home: active.home }, seconds);
       }
     }
-    if (counters.size === 0) {
+    // `bytes.held` is a level at the window's end, not a sum: every home that held anything
+    // during the window reports what it holds now, and one whose last bytes were removed reports
+    // 0 once (MT-03).
+    const held: MeterCounter[] = [];
+    const heldNow = new Map<string, string>();
+    for (const entry of options.heldBytes?.() ?? []) {
+      if (entry.account === "" || entry.bytes <= 0) continue;
+      heldNow.set(entry.home, entry.account);
+      held.push({
+        name: "bytes.held",
+        account: entry.account,
+        home: entry.home,
+        value: entry.bytes,
+      });
+    }
+    for (const [home, account] of heldBefore) {
+      if (!heldNow.has(home)) held.push({ name: "bytes.held", account, home, value: 0 });
+    }
+    heldBefore = heldNow;
+    if (counters.size === 0 && held.length === 0) {
       from = to;
       return;
     }
@@ -102,7 +133,10 @@ export function createMeter(options: MeterOptions): Meter {
       batchId: randomUUID(),
       from: new Date(from).toISOString(),
       to: new Date(to).toISOString(),
-      counters: [...counters.values()].map(({ counter, value }) => ({ ...counter, value })),
+      counters: [
+        ...[...counters.values()].map(({ counter, value }) => ({ ...counter, value })),
+        ...held,
+      ],
     };
     counters.clear();
     from = to;

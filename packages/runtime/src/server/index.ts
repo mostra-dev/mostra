@@ -12,7 +12,7 @@
  * ```
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -35,7 +35,7 @@ import {
   shellAssetResponse,
 } from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
-import type { LedgerOwner } from "../ledger/index.ts";
+import type { Ledger, LedgerOwner } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
@@ -136,27 +136,28 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
    * health check is never counted. Without the setting there is no limit.
    */
   const perIpRequests = rateOf(config.rateLimits?.perIp?.requests);
-  /** Who owns a home, as its pages' sender line names them (D161). */
+  /**
+   * Who owns a home, as its pages' sender line names them (D161): the account's name, and the
+   * verifier its first identity recorded when its provider named the person (MT-03), never the
+   * configuration now, so a provider renamed or retired since changes no sender line. A name the
+   * development provider took on trust, or one no provider verified, carries none.
+   */
   const ownerOf = (homeId: string): HomeOwner => {
     const row = data.directory.read((db) =>
-      db.get<{ account: string; name: string | null; provider: string | null }>(
-        `SELECT a.id AS account, a.name, (SELECT i.provider FROM identity i WHERE i.account_id = a.id
-            ORDER BY i.linked_at LIMIT 1) AS provider
-           FROM home h JOIN account a ON a.id = h.owner_account_id WHERE h.id = ?`,
+      db.get<{ account: string; name: string | null; verified_by: string | null }>(
+        `SELECT a.id AS account, a.name, i.verified_by
+           FROM home h JOIN account a ON a.id = h.owner_account_id
+           LEFT JOIN identity i ON i.rowid = (SELECT rowid FROM identity WHERE account_id = a.id
+             ORDER BY linked_at, rowid LIMIT 1)
+          WHERE h.id = ?`,
         homeId,
       ),
     );
     if (!row) return { account: "" };
-    const provider = config.identityProviders?.find((candidate) => candidate.id === row.provider);
-    // A name the development provider took on trust is unverified (D161).
-    const verifiedBy =
-      provider && provider.kind !== "development"
-        ? (provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id))
-        : undefined;
     return {
       account: row.account,
       ...(row.name !== null ? { name: row.name } : {}),
-      ...(verifiedBy !== undefined ? { verifiedBy } : {}),
+      ...(row.verified_by !== null ? { verifiedBy: row.verified_by } : {}),
     };
   };
   const services = (): HostedServices => ({
@@ -263,6 +264,8 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     await data.close();
     throw error;
   }
+  // A held file recorded before sizes were kept (directory migration 6) takes its stored size once.
+  fillHeldSizes(data.directory, join(options.data, "files"), log);
   routing = createRouting({
     apiHost: new URL(config.apiOrigin).host,
     domains: () => [config.domains.active, ...(config.domains.spares ?? [])],
@@ -279,6 +282,14 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       ? { windowMs: Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) }
       : {}),
     activeHomes: () => data.open().map((home) => ({ home, account: ownerOf(home).account })),
+    // `bytes.held`: the client bytes each home holds, each file once (MT-03).
+    heldBytes: () =>
+      data.directory.read((db) =>
+        db.all<{ home: string; account: string; bytes: number }>(
+          `SELECT f.home_id AS home, h.owner_account_id AS account, SUM(f.size) AS bytes
+             FROM home_file f JOIN home h ON h.id = f.home_id GROUP BY f.home_id`,
+        ),
+      ),
   });
   auth = createAuthorization({
     directory: data.directory,
@@ -657,4 +668,40 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       return closing;
     },
   };
+}
+
+/**
+ * Gives each `home_file` row recorded before sizes were kept (directory migration 6) the size of
+ * its stored file, so `bytes.held` counts it (MT-03). A file that is gone keeps no size and counts
+ * nothing; the row itself is left as it is.
+ */
+function fillHeldSizes(directory: Ledger, filesDir: string, log: Log): void {
+  const rows = directory.read((db) =>
+    db.all<{ home_id: string; sha256: string }>(
+      "SELECT home_id, sha256 FROM home_file WHERE size IS NULL",
+    ),
+  );
+  if (rows.length === 0) return;
+  const sizes = new Map<string, number | undefined>();
+  for (const row of rows) {
+    if (sizes.has(row.sha256)) continue;
+    try {
+      sizes.set(row.sha256, statSync(join(filesDir, row.sha256)).size);
+    } catch {
+      sizes.set(row.sha256, undefined);
+    }
+  }
+  directory.write((db) => {
+    for (const row of rows) {
+      const size = sizes.get(row.sha256);
+      if (size === undefined) continue;
+      db.run(
+        "UPDATE home_file SET size = ? WHERE home_id = ? AND sha256 = ? AND size IS NULL",
+        size,
+        row.home_id,
+        row.sha256,
+      );
+    }
+  });
+  log.info("server.held_sizes_filled", { files: sizes.size });
 }

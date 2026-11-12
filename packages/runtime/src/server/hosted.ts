@@ -45,7 +45,7 @@ import {
 } from "../gateway/index.ts";
 import { platformName } from "../home/index.ts";
 import { createEphemeralBus, createInteraction, type Interaction } from "../interaction/index.ts";
-import type { Ledger } from "../ledger/index.ts";
+import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import { createLive, liveMethods } from "../live/index.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
@@ -114,7 +114,7 @@ export interface HostedHome {
    */
   wanted(sha256: string): number | undefined;
   /** Records a file this home uploaded (`PUT /files/<sha256>`, §18.2). */
-  uploaded(sha256: string): void;
+  uploaded(sha256: string, size: number): void;
   /** Pauses or resumes an artifact as its owner or the operator (D165 item 14). */
   pause(
     artifactId: string,
@@ -456,6 +456,23 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     ...(options.relay?.sweepMs !== undefined ? { sweepMs: options.relay.sweepMs } : {}),
     ...(options.relay?.liveRenewMs !== undefined ? { liveRenewMs: options.relay.liveRenewMs } : {}),
     ...(options.relay?.perLink !== undefined ? { perLink: options.relay.perLink } : {}),
+    // The operator's `limits` for a page's relayed actions (D165 item 9), each with quantity 1.
+    ...(options.services
+      ? {
+          limit: (artifactId: string, operation: "run" | "run.wait" | "call") => {
+            const services = options.services as HostedServices;
+            const route = routeOf(artifactId);
+            return services.operator.limit({
+              account: services.owner(id).account,
+              home: id,
+              artifact: artifactId,
+              ...(route ? { routeId: route.id } : {}),
+              operation,
+              quantity: 1,
+            });
+          },
+        }
+      : {}),
     latestVersion: (artifactId) =>
       ledger.read(
         (db) =>
@@ -631,6 +648,33 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     }
     const key = await ensureFrame(at.domain, artifactId, route.label);
     if (!gateway.dispatch(key, request, response)) notServed(response);
+  };
+
+  /**
+   * Records that this home holds a version file (DATA_MODEL §7.1's `home_file`), counted once in
+   * `file_ref`, with its size in bytes (the size its push gave, held to the bytes), which metering's
+   * `bytes.held` sums (MT-03). A row recorded before sizes were kept takes it now.
+   */
+  const holdFile = (db: LedgerDb, sha: string, size: number | undefined): void => {
+    const added = db.run(
+      "INSERT OR IGNORE INTO home_file (home_id, sha256, size) VALUES (?, ?, ?)",
+      id,
+      sha,
+      size ?? null,
+    );
+    if (added.changes > 0) {
+      db.run(
+        "INSERT INTO file_ref (sha256, homes) VALUES (?, 1) ON CONFLICT (sha256) DO UPDATE SET homes = homes + 1, unreferenced_at = NULL",
+        sha,
+      );
+    } else if (size !== undefined) {
+      db.run(
+        "UPDATE home_file SET size = ? WHERE home_id = ? AND sha256 = ? AND size IS NULL",
+        size,
+        id,
+        sha,
+      );
+    }
   };
 
   /** The client files of a listing this home doesn't hold yet. */
@@ -868,6 +912,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
           home: id,
           artifact: params.artifactId,
           routeId: route.routeId,
+          // The version itself, so a push that takes several rounds is one version (MT-03).
+          versionId: version.versionId,
           operation,
           quantity,
         });
@@ -939,17 +985,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     });
     directory.write((db) => {
       for (const sha of new Set(clientFiles.map(([, , file]) => file))) {
-        const added = db.run(
-          "INSERT OR IGNORE INTO home_file (home_id, sha256) VALUES (?, ?)",
-          id,
-          sha,
-        );
-        if (added.changes > 0) {
-          db.run(
-            "INSERT INTO file_ref (sha256, homes) VALUES (?, 1) ON CONFLICT (sha256) DO UPDATE SET homes = homes + 1, unreferenced_at = NULL",
-            sha,
-          );
-        }
+        holdFile(db, sha, sizes.get(sha));
       }
     });
     log.info("server.version_pushed", {
@@ -1165,20 +1201,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       }
       return undefined;
     },
-    uploaded(sha) {
-      directory.write((db) => {
-        const added = db.run(
-          "INSERT OR IGNORE INTO home_file (home_id, sha256) VALUES (?, ?)",
-          id,
-          sha,
-        );
-        if (added.changes > 0) {
-          db.run(
-            "INSERT INTO file_ref (sha256, homes) VALUES (?, 1) ON CONFLICT (sha256) DO UPDATE SET homes = homes + 1, unreferenced_at = NULL",
-            sha,
-          );
-        }
-      });
+    uploaded(sha, size) {
+      directory.write((db) => holdFile(db, sha, size));
       for (const files of pending.values()) files.delete(sha);
     },
     pause: (artifactId, change) => interaction.pause(artifactId, change),
