@@ -53,8 +53,14 @@ export const OPERATOR_TIME_LIMITS: {
 
 /**
  * An operation `limits.check` judges. When the operator doesn't answer in time, `share`,
- * `version.push`, `link` and authoring fail closed, and `view`, `submit` and draft writes proceed,
- * so nothing a person typed is lost (D165 item 9).
+ * `version.push`, `link` and authoring fail closed, and `view`, `submit`, draft writes and relayed
+ * actions (`run`, `run.wait`, `call`) proceed, so nothing a person typed or pressed is lost (D165
+ * item 9).
+ *
+ * - `run`: a relayed action run is about to be recorded (quantity 1). A request that joins a run
+ *   already recorded (its key or client key) is never asked.
+ * - `run.wait`: that run would wait for its owner, who is away (quantity 1), asked after `run`.
+ * - `call`: a plain call is about to be relayed to the owner (quantity 1).
  */
 export type LimitOperation =
   | "share"
@@ -78,9 +84,15 @@ export interface LimitQuery {
   readonly artifact?: string;
   /** The artifact's hosted route, for operations on one (WP-30). */
   readonly routeId?: string;
+  /**
+   * The version being pushed, on `version.push` and `storage` (MT-03): a push that takes several
+   * rounds (the owner uploads the files it was told are missing, then pushes again) asks about the
+   * same version each round, so an operator counting versions counts this ID once.
+   */
+  readonly versionId?: string;
   /** What is asked for. */
   readonly operation: LimitOperation;
-  /** How much: bytes for `storage` and `version.push`, else 1. */
+  /** How much: bytes for `storage`, else 1. */
   readonly quantity?: number;
 }
 
@@ -118,12 +130,18 @@ export const LimitAnswer: z.ZodType<LimitAnswer> = z.union([
 
 // ── metering ────────────────────────────────────────────────────────────────────────────
 
-/** A counter's name (INTERFACES §18.6). */
+/**
+ * A counter's name (INTERFACES §18.6). `bytes.stored` sums the client bytes a home uploads in a
+ * window; `bytes.held` is a level, not a sum: the client bytes a home holds at the window's end, each
+ * file once however many of its versions name it, reported in every window for each home that held
+ * anything during it, so it falls to what is left (0 once) when content is removed (MT-03).
+ */
 export type MeterName =
   | "views"
   | "submissions"
   | "requests"
   | "bytes.stored"
+  | "bytes.held"
   | "bytes.egress"
   | "relay.messages"
   | "mcp.calls"
@@ -170,7 +188,10 @@ export interface MeterBatch {
 
 /**
  * Who an identity provider says signed in (INTERFACES §18.5). `facts` carries what a provider
- * tells beyond that (GitHub's account age, `createdAt`), for an operator's policy.
+ * tells beyond that, for an operator's policy: the built-in GitHub adapter gives `login`, the
+ * account's age (`createdAt`) and its public counts (`publicRepos`, `publicGists`, `followers`, from
+ * the same lookup, MT-03); the OpenID Connect adapter gives the ID token's claims its configuration
+ * names (`claims`, such as a Google Workspace account's domain `hd`), each under its own name.
  */
 export interface SignInIdentity {
   /** The provider's ID (`IdentityProvider.id`). */
@@ -183,7 +204,7 @@ export interface SignInIdentity {
   readonly emailVerified?: boolean;
   /** The display name the provider gives. */
   readonly name?: string;
-  /** What else the provider tells (an account's age as `createdAt`). */
+  /** What else the provider tells (an account's age as `createdAt`, chosen claims). */
   readonly facts?: Readonly<Record<string, unknown>>;
 }
 
@@ -224,6 +245,15 @@ export interface IdentityProvider {
   readonly id: string;
   /** What the sign-in page calls it ("GitHub"). */
   readonly label: string;
+  /**
+   * Whether the provider verifies the names it gives, and the label a hosted page's sender line
+   * shows for it ("verified with Acme"; 1 to 64 characters, shown as text). Absent: a person who
+   * signs in through it is shown "name not verified". The server records the label on the sign-in
+   * identity when the provider links or signs in that person, so renaming or retiring the provider
+   * later changes no name already verified (MT-03). The built-in providers verify, but for the
+   * development one.
+   */
+  readonly verifies?: { readonly label: string };
   /** Where to send the person: the provider's authorization URL with `state` and PKCE. */
   authorize(state: string, pkce: SignInPkce, context: SignInContext): string | Promise<string>;
   /**
