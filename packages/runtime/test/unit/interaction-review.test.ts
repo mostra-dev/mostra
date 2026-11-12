@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { noFaults } from "../../src/faults.ts";
 import { compactEvents } from "../../src/interaction/events.ts";
 import { applyMutation } from "../../src/interaction/fields.ts";
-import { createInteraction, type Interaction } from "../../src/interaction/index.ts";
+import { createInteraction, type Interaction, peerKey } from "../../src/interaction/index.ts";
 import { raiseSignal } from "../../src/interaction/signals.ts";
 import { submit } from "../../src/interaction/submissions.ts";
 import { openView, viewerForSpec } from "../../src/interaction/viewers.ts";
@@ -504,11 +504,14 @@ describe("findings of the Claude Opus 5.5 review", () => {
     const text = JSON.stringify(seen);
     expect(text).not.toContain(ana.viewerId);
     expect(text).not.toContain(ana.viewId);
-    // Ben still learns who changed the state, by name.
+    // Ben still learns who changed the state, by name, and by the opaque key that names Ana on
+    // this artifact only (D168, CO-05): never her viewer ID.
     expect(seen.find((event) => event.type === "state.changed")?.actor).toEqual({
       kind: "viewer",
       name: "ana",
+      key: peerKey(artifactId, ana.viewerId),
     });
+    expect(peerKey(artifactId, ana.viewerId)).toMatch(/^vk_[0-9a-f]{24}$/);
     const snapshot = interaction.pageSnapshot({ artifactId, viewerId: ben.viewerId });
     expect(JSON.stringify(snapshot.state)).not.toContain(ana.viewerId);
   });

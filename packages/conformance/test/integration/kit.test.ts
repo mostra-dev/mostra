@@ -45,6 +45,14 @@ describe("the conformance kit (HO-05)", () => {
     });
   });
 
+  it("judges a host's team: personal links, status and the waits for everyone (WP-31)", async () => {
+    const report = await runConformance({ host: REFERENCE, only: ["team."] });
+    expect(statuses(report.outcomes), JSON.stringify(report.outcomes, null, 2)).toEqual({
+      "team.roster": "passed",
+      "team.waits": "passed",
+    });
+  });
+
   it("the standalone adapters (a host with no ports) pass, and port scenarios take the default path", async () => {
     const report = await runConformance({ host: `${REFERENCE} --standalone` });
     const failed = report.outcomes.filter((outcome) => outcome.status === "failed");

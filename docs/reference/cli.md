@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `publish`, `push`, `results`, `resume`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -210,6 +210,7 @@ Flags:
   --scope <a,b>                The link's scopes: view, draft, submit, review, signal, action:*. Default: all.
   --viewer <ref>               The person the link is for, by your own stable key for them; without it, each link is a viewer of its own.
   --viewer-name <name>         The display name of --viewer.
+  --respondent <ref,…>         With --cloud, the people you expect answers from, by your own key for each: each gets a personal link (mostra roster).
   --request-id <id>            Make a retried share return the same share instead of opening another.
 
 Global flags:
@@ -431,6 +432,113 @@ Example:
   mostra resume ./survey
 ```
 
+## mostra roster add
+
+```text
+Name the people an artifact expects answers from; each gets a personal link that acts as them.
+
+Usage:
+  mostra roster add <artifact> [<ref…>] [flags]
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+  <ref>                        Each respondent, by your own stable key for them (an email, an account ID).
+
+Flags:
+  --name <name>                The display name of the one respondent given.
+  --email <address>            Where a remote server that sends invitations writes to the one respondent given.
+  --file <path>                Read respondents from a JSON file: [{ ref, name?, email? }].
+  --stdin                      Read respondents as JSON from stdin.
+  --scope <a,b>                The personal links' scopes: view, draft, submit, review, signal, action:*. Default: all.
+  --ttl <d>                    How long the personal links work, such as 7d. Default: no limit.
+  --request-id <id>            Make a retry return the first attempt's links.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: RosterAddResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra roster add ./retro ada@example.com grace@example.com
+```
+
+## mostra roster get
+
+```text
+Show who an artifact expects answers from and where each stands: not opened, drafting or submitted.
+
+Usage:
+  mostra roster get <artifact>
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: Roster (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra roster get ./retro
+```
+
+## mostra roster remove
+
+```text
+Stop expecting answers from respondents; their links, drafts and submissions stay as they are.
+
+Usage:
+  mostra roster remove <artifact> <ref…> [flags]
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+  <ref>                        Each respondent to remove, by their ref.
+
+Flags:
+  --request-id <id>            Make a retry return the first attempt's result.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: RosterRemoveResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra roster remove ./retro grace@example.com
+```
+
 ## mostra wait
 
 ```text
@@ -443,7 +551,7 @@ Arguments:
   <artifact>                   The artifact: its source path or its ID.
 
 Flags:
-  --until <condition>          submitted, signal:<name>, state:<fieldId> or event:<type>.
+  --until <condition>          submitted, submitted:all (every expected respondent), submitted:<N>, signal:<name>, state:<fieldId> or event:<type>.
   --after <cursor>             Wait for what comes after this cursor. Default: the latest publish.
   --timeout <d>                Stop waiting after this long, with still_waiting and exit 5. Default: no limit.
 
@@ -479,6 +587,8 @@ Arguments:
 
 Flags:
   --submission <id>            This submission instead of the latest.
+  --all                        Every submission, oldest first (a survey's, a team's), instead of the latest.
+  --after <cursor>             With --all, only submissions after this cursor.
   --format <format>            Markdown or JSON. Default: Markdown, or JSON with --json. (md, json)
 
 Global flags:

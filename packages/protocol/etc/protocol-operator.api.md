@@ -78,6 +78,29 @@ export interface IdentityProvider {
 }
 
 // @public
+export interface Invitation {
+    readonly account: string;
+    readonly artifactId: string;
+    readonly at: string;
+    readonly expiresAt?: string;
+    readonly home: string;
+    readonly invitationId: string;
+    readonly label: string;
+    readonly respondent: {
+        readonly ref: string;
+        readonly name?: string;
+        readonly email: string;
+    };
+    readonly routeId: string;
+    readonly sender: {
+        readonly name?: string;
+        readonly verifiedBy?: string;
+    };
+    readonly title: string;
+    readonly url: string;
+}
+
+// @public
 export type LimitAnswer = ({
     readonly allowed: true;
 } & Cacheable) | ({
@@ -211,7 +234,9 @@ export interface OperatorPorts {
     readonly identity?: {
         providers(): Promise<readonly IdentityProvider[]> | readonly IdentityProvider[];
     };
-    readonly invitations?: unknown;
+    readonly invitations?: {
+        send(invitation: Invitation): Promise<void>;
+    };
     readonly limits?: {
         check(q: LimitQuery): Promise<LimitAnswer>;
     };

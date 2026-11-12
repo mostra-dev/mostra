@@ -122,6 +122,13 @@ export const shareCommand: CommandDef = defineCommand({
       summary: "The display name of --viewer.",
     },
     {
+      name: "respondent",
+      kind: "list",
+      value: "<ref,…>",
+      summary:
+        "With --cloud, the people you expect answers from, by your own key for each: each gets a personal link (mostra roster).",
+    },
+    {
       name: "request-id",
       kind: "string",
       value: "<id>",
@@ -157,6 +164,15 @@ export const shareCommand: CommandDef = defineCommand({
     const requestId = flag(context, "request-id");
     if (viewerName !== undefined && viewerRef === undefined)
       throw usage("--viewer-name needs --viewer.");
+    const respondents = context.flags["respondent"] as readonly string[] | undefined;
+    if (respondents !== undefined && !cloud) {
+      throw usage(
+        "--respondent names people on a hosted share: add --cloud, or use mostra roster add.",
+      );
+    }
+    if (respondents !== undefined && viewerRef !== undefined) {
+      throw usage("Give --viewer for one person's link, or --respondent for each one's: not both.");
+    }
     const share = await context.call(shareStartMethod, {
       artifact,
       via,
@@ -166,14 +182,16 @@ export const shareCommand: CommandDef = defineCommand({
       ...(viewerRef !== undefined
         ? { viewer: { ref: viewerRef, ...(viewerName !== undefined ? { name: viewerName } : {}) } }
         : {}),
+      ...(respondents !== undefined ? { respondents: respondents.map((ref) => ({ ref })) } : {}),
       ...(requestId !== undefined ? { requestId } : {}),
     });
     context.record({ event: "share.done", fields: { kind: via } });
+    const personal = (share.respondents ?? []).map((entry) => `${entry.ref}  ${entry.link.url}\n`);
     const until = share.expiresAt ? `until ${share.expiresAt}` : "until you stop it";
     // A hosted page keeps working while this machine sleeps: its answers wait for it (D165).
     return {
       result: share,
-      human: `${share.url}\nShared through ${THROUGH[via]}, ${until}.\n${via === "tailnet" ? tailnetReach(share) : ""}Stop it with: mostra share stop ${share.shareId}\n`,
+      human: `${share.url}\nShared through ${THROUGH[via]}, ${until}.\n${via === "tailnet" ? tailnetReach(share) : ""}${personal.length > 0 ? `Personal links:\n${personal.join("")}` : ""}Stop it with: mostra share stop ${share.shareId}\n`,
     };
   },
 });

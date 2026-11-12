@@ -702,9 +702,11 @@ export class ServerClient {
       }
       if (!this.#merge(tracked, message.run))
         void this.attach({ runIds: [message.run.runId] }).catch(() => {});
-    } else {
+    } else if (message.kind === "live") {
       void this.#applyLiveUpdate(message.live);
     }
+    // Other kinds (the roster and presence, D168) are the team client's; a kind a newer gateway
+    // adds is none of this client's either.
   }
 
   /** Keeps an update for a run the page will track once its start is answered. */

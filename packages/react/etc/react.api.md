@@ -8,11 +8,19 @@ import { ArtifactManifest } from '@mostra/protocol';
 import { Bridge } from '@mostra/protocol';
 import { ComponentType } from 'react';
 import { FieldScope } from '@mostra/protocol';
+import { Peer } from '@mostra/protocol';
+import { PresenceCursor } from '@mostra/protocol';
+import { PresencePeer } from '@mostra/protocol';
+import { PresenceSelection } from '@mostra/protocol';
+import { RespondentForPage } from '@mostra/protocol';
+import { RespondentStatus } from '@mostra/protocol';
+import { RosterCounts } from '@mostra/protocol';
 import { RunProgress } from '@mostra/protocol';
 import { RunStatus } from '@mostra/protocol';
 import { SubmissionSummary } from '@mostra/protocol';
 import { SubmitBlocker } from '@mostra/protocol';
 import { TallyValue } from '@mostra/protocol';
+import { TeamVisibility } from '@mostra/protocol';
 import { UiInitializeResult } from '@mostra/protocol';
 import { Viewer } from '@mostra/protocol';
 import { ViewerKind } from '@mostra/protocol';
@@ -93,6 +101,9 @@ export interface FieldMeta<T> {
     readonly updatedBy?: {
         readonly kind: "viewer" | "agent" | "host";
         readonly name?: string;
+        readonly key?: string;
+        readonly self?: boolean;
+        readonly at?: string;
     };
 }
 
@@ -153,8 +164,53 @@ export function mountArtifact(options: {
 // @public
 export function openLink(url: string): Promise<boolean>;
 
+export { Peer }
+
+// @public
+export interface Presence {
+    readonly count?: number;
+    readonly others: readonly PresencePeer[];
+    readonly self?: PresencePeer;
+    readonly status: "joining" | "present" | "unavailable";
+    readonly visibility?: TeamVisibility;
+}
+
+export { PresenceCursor }
+
+// @public
+export interface PresenceOptions {
+    readonly cursor?: boolean;
+    readonly selection?: boolean;
+}
+
+export { PresencePeer }
+
+export { PresenceSelection }
+
 // @public
 export function reportReady(): void;
+
+export { RespondentForPage }
+
+// @public
+export interface Respondents {
+    readonly complete?: boolean;
+    readonly counts?: RosterCounts;
+    readonly error?: {
+        readonly code: string;
+        readonly message: string;
+    };
+    readonly owner: boolean;
+    readonly respondents: readonly RespondentForPage[];
+    readonly round: number;
+    readonly self?: RespondentForPage;
+    readonly status: "loading" | "ready" | "unavailable";
+    readonly visibility?: TeamVisibility;
+}
+
+export { RespondentStatus }
+
+export { RosterCounts }
 
 // @public
 export interface ServerReference<A extends unknown[] = unknown[], R = unknown> {
@@ -225,6 +281,8 @@ export type TallyKey = `$tally/${string}`;
 
 export { TallyValue }
 
+export { TeamVisibility }
+
 // @public
 export function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>, options?: {
     readonly key?: string;
@@ -262,6 +320,12 @@ export function useLive<K extends LiveKey>(key: K, options?: {
     readonly mode?: "latest";
     readonly window?: number;
 }): LiveResult<LiveValue<K>>;
+
+// @public
+export function usePresence(options?: PresenceOptions): Presence;
+
+// @public
+export function useRespondents(): Respondents;
 
 // @public
 export function useSignal(name: string): {

@@ -147,7 +147,7 @@
 | A tunnel or proxy holds an event stream back (a Cloudflare quick tunnel, a buffering proxy before a host's external base) (D158) | The gateway refuses streams on faces it knows streams don't pass, and every stream opens with `ready`: a page or shell that hears nothing within 6 s of opening long-polls instead, on the same cursor |
 | A request through a Funnel or Cloudflare share, or past the tunnel, carries `Tailscale-User-*` headers (D158 item 2) | They name nobody: identity headers count only on a tailnet face, from a loopback peer, and never beside `Tailscale-Funnel-Request`; the session acts as its link's own viewer |
 | The host's `addressing` port fails, is away, or answers `null` (HO-10) | A failure or an absence keeps the face it gave before (its links keep working), else links stay on loopback; `null` or another origin withdraws the face, and its links stop working at once |
-| The artifact's frame fails to load (a connection the browser couldn't make, such as Chromium's `ERR_NO_BUFFER_SPACE` on Windows, or a request never answered) | The shell enters the frame again with a new ticket when it loaded without greeting within 6 s, or greeted nothing within 12 s, up to three times with a pause of 1, 2 and 4 s (`verify` once), then says the page didn't load; a page that greets later is shown, a ticket asked for before the frame greeted is dropped, and each ticket request has 10 s. Nothing typed is lost: a frame that never greeted ran no client runtime. Gateway listeners keep idle connections 305 s so browsers close them, which leaves the gateway no closed connections for random ports to collide with (D157) |
+| The artifact's frame fails to load (a connection the browser couldn't make, such as Chromium's `ERR_NO_BUFFER_SPACE` on Windows, or a request never answered) | The shell enters the frame again with a new ticket when it loaded without greeting within 6 s, or greeted nothing within 12 s, up to three times with a pause of 1, 2 and 4 s (`verify` once), then says the page didn't load; a page that greets later is shown, a ticket asked for before the frame greeted is dropped, and each ticket request has 10 s. Nothing typed is lost: a frame that never greeted ran no client runtime. Gateway listeners keep idle connections 305 s so browsers close them, which leaves the gateway no closed connections for random ports to collide with (D157). In `verify`, a render where any request of the page, or the shell page's own load, failed with exactly `net::ERR_NO_BUFFER_SPACE` is rendered once more in a fresh context while 5 s are left, and that render answers (D168 item 12, #132) |
 | Worker-mode frame bootstrap fails (service worker blocked) | The shell shows `MOSTRA_HYGIENE_FRAME_SESSION`, with the reason and a suggestion to open the tailnet or Funnel link instead (D70), and stops loading the frame again, which wouldn't help. A bootstrap that is only slow has 25 s to say it entered before the shell enters the frame again |
 | Artifact code registers a service worker in a worker-mode frame (D70) | The client runtime refuses it with `MOSTRA_HYGIENE_FRAME_SESSION` (a rejected promise and a console error), since its script would be fetched without the session and a page it controlled would lose its own; Mostra's worker keeps signing the page. On a tailnet, Funnel or local link the artifact registers its own workers |
 
@@ -194,7 +194,7 @@
 ## 11. Remote server, relay and teams
 
 The plan update of 2026-10-16 added failure cases for the remote server and teams. WP-28's are designed below (D165), and the rules of §1 hold for all of them. The others are a *Deferred decision* for the package named, which adds its rows here.
-- **WP-31** (D121): roster changes while a wait is pending, and presence traffic over its rate.
+- **WP-31** (D121, D168): its rows are in §11.4.
 - **WP-W1 to WP-W3** (D146): the cases of §2, §3 and §10 on Windows (Job Objects in place of process groups, sharing violations on rename and delete, the transport's access list), each re-derived rather than ported. WP-W1's rows are in §2, §3 and §10 (D150), WP-W2's in §2 and §10 (D151), WP-W3's (the bundles') in §10 (D153).
 
 ### 11.1 The owner offline, and the relay (D165 item 4)
@@ -276,3 +276,25 @@ The plan update of 2026-10-16 added failure cases for the remote server and team
 | An operator's answer is malformed (D167 item 2) | Counted as no answer, logged: the port's no-answer rule applies, as for a timeout |
 | An operator answers a host it gave one home for another (D167 item 6) | Refused and logged; the host keeps serving the home it was first given, and an unknown host still gets 421 |
 | The server stops, or an instance stops its gateway (D167 item 18) | Every open connection is reset, not closed, so none stays in TIME_WAIT on the listener's port; a browser reconnects to the next instance on the same leased port without `ERR_NO_BUFFER_SPACE` on Windows (#132) |
+
+### 11.4 Teams (D168)
+
+| Case | Behavior |
+|---|---|
+| The roster changes while `submitted:all` is pending | Each change settles the roster in its own transaction: a respondent added makes a complete round incomplete again, so the wait goes on until they answer too; the last respondent who hadn't answered removed completes the round, with its `roster.completed`, and the wait returns |
+| The last respondent's submission commits | `roster.completed` is appended in that transaction, so a wait never sees the submission without the completion or the completion without it; a crash before the commit leaves neither |
+| An owner instance follows a hosted completion before the submissions it names are delivered | `submitted:all` waits until every one is imported, so `results` then holds them all; deliveries come in order (D105) |
+| A respondent's personal link was revoked or expired | `roster/add` for them again mints a new link (`relinked`); their draft and submissions stay theirs, as they belong to their viewer |
+| A respondent is added again with other scopes, another version or an expiry | They get a new link that matches (`relinked`, a new invitation where one is sent); the old one isn't revoked, since they may hold it, and keeps acting as the same viewer |
+| `roster/add` past 1,000 respondents | Refused whole with `MOSTRA_TEAM_ROSTER_TOO_LARGE`, nothing added |
+| `submitted:all` or `submitted:<N>` (N > 1) under `once` per artifact | Refused at once with `MOSTRA_TEAM_ROSTER_POLICY`: one submission in all can never satisfy it |
+| A page posts presence faster than 20 updates a second | 429 `MOSTRA_TEAM_PRESENCE_RATE_LIMITED` with `Retry-After`; nothing else changes, and the client waits it out and sends its latest state. The view's bucket outlives its presence, so leaving and joining again never refills it; a present view's leave is honored at once, so a page that goes after a burst of cursor moves is gone for the others |
+| A page closes, crashes or loses its network without leaving | Its presence lapses after 30 s without a renewal, and the others see it gone |
+| A presence update is still on its way when the page leaves (an unmount, `pagehide`), and reaches the gateway after the leave | Its `seq` is older than the leave's, so it changes nothing and the page stays gone; its answer, when it comes, is ignored by the page. The post still takes its token, so old counts never escape the rate |
+| A page comes back from the browser's back/forward cache | It left as it went (`pagehide`), and joins again on `pageshow` with its hooks still mounted |
+| The instance restarts | Presence starts empty (it is never stored); pages join again with their next renewal. Rosters, rounds and roster events are durable |
+| A version built before WP-31 is open | It never asks for team traffic, so it never receives a message kind it doesn't know |
+| An invitation's link stops working before the operator takes it | It is dropped when its turn comes, never sent with a dead link; a new link gets an invitation of its own |
+| An invitation's home can't build its link (it fails to open, or hangs) | Building the link is bounded like the hand-over (30 s); the invitation waits for its own retry with backoff, and the server's other invitations go on; a home the directory no longer has drops its invitations |
+| A hosted submission imported on the owner instance completes a roster held there | `roster.completed` is appended in the import's transaction, and the pages that follow the roster hear of it |
+

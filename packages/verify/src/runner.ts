@@ -28,9 +28,10 @@ import {
   chromium,
   type Frame,
   type Page,
+  type Request,
 } from "playwright-core";
 import { PNG } from "pngjs";
-import { watchNetwork } from "./network.ts";
+import { COLLISION, watchNetwork } from "./network.ts";
 import { dedupe, judge, recorded, settle } from "./observe.ts";
 import { recorder } from "./recorder.ts";
 import { runSmoke } from "./smoke.ts";
@@ -114,6 +115,11 @@ const shellMarks =
 const RENDER_ABANDON_MS = 1_000;
 /** The time the smoke test leaves before the run's deadline, for the regression stage after it. */
 const SMOKE_RESERVE_MS = 5_000;
+/**
+ * The least time left before the deadline for a render met by a collision to be rendered again:
+ * less, and the first render's answer stands.
+ */
+const AGAIN_RESERVE_MS = 5_000;
 
 /** Options for {@link createRunner}. */
 export interface RunnerOptions {
@@ -125,6 +131,11 @@ export interface RunnerOptions {
   readonly loseBrowser?: boolean;
   /** For tests only: a render fails in the runner itself while this file exists, which it removes. */
   readonly failOnceFile?: string;
+  /**
+   * For tests only: while this file exists, which the render removes, the render's first script or
+   * stylesheet of the artifact's frame fails as a connection collision would (`COLLISION`).
+   */
+  readonly collideOnceFile?: string;
 }
 
 /** The runner of one process. */
@@ -225,7 +236,21 @@ export function createRunner(options: RunnerOptions = {}): Runner {
         }
         const open = await launch();
         try {
-          return await renderBounded(open, request, axeSource);
+          const collide =
+            options.collideOnceFile !== undefined && existsSync(options.collideOnceFile);
+          if (collide) rmSync(options.collideOnceFile as string, { force: true });
+          const first = await renderBounded(open, request, axeSource, collide);
+          // A connection the browser couldn't make for a reason of its own (D157, #132) says
+          // nothing of the artifact: the page is rendered once more, in a fresh context, and that
+          // render answers. Its findings stand whatever they are, a second collision's included.
+          if (
+            first.collision === undefined ||
+            first.result.timedOut ||
+            request.deadline - Date.now() < AGAIN_RESERVE_MS
+          )
+            return first.result;
+          const second = await renderBounded(open, request, axeSource, false);
+          return { ...second.result, renderedAgain: first.collision };
         } finally {
           // Closed behind the holder's back, as a crash would: only the browser itself tells it.
           if (loseBrowser) await open.close().catch(() => undefined);
@@ -244,6 +269,32 @@ export function createRunner(options: RunnerOptions = {}): Runner {
 /** The artifact's frame: the shell's only child frame. */
 function artifactFrame(page: Page): Frame | undefined {
   return page.frames().find((frame) => frame.parentFrame() === page.mainFrame());
+}
+
+/**
+ * For tests only (`MOSTRA_TEST_VERIFY_COLLIDE_ONCE`): the first script or stylesheet the artifact's
+ * frame loads fails, and the network watch takes it for a collision, which Playwright can't make
+ * (its aborts have no `ERR_NO_BUFFER_SPACE`).
+ */
+async function collideOnce(page: Page, standIns: Set<Request>): Promise<void> {
+  let done = false;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    let artifact = false;
+    try {
+      artifact = request.frame().parentFrame() === page.mainFrame();
+    } catch {
+      artifact = false; // A service worker's request has no frame.
+    }
+    const asset = request.resourceType() === "script" || request.resourceType() === "stylesheet";
+    if (done || !artifact || !asset || new URL(request.url()).pathname.startsWith("/_mostra/")) {
+      await route.fallback();
+      return;
+    }
+    done = true;
+    standIns.add(request);
+    await route.abort("addressunreachable");
+  });
 }
 
 /** What the frame shows: whether any element has a visible box of nonzero area (D138 item 3). */
@@ -337,13 +388,16 @@ async function renderBounded(
   browser: Browser,
   request: RenderRequest,
   axeSource: string,
-): Promise<RenderResult> {
-  const created: { context?: BrowserContext } = {};
-  return bounded(renderPage(browser, request, axeSource, created), {
+  collide: boolean,
+): Promise<{ result: RenderResult; collision?: string }> {
+  const created: { context?: BrowserContext; collision?: () => string | undefined } = {};
+  const result = await bounded(renderPage(browser, request, axeSource, created, collide), {
     deadline: request.deadline,
     late: { ready: false, findings: [], timedOut: true, timingsMs: {} },
     abandon: () => created.context?.close(),
   });
+  const collision = created.collision?.();
+  return collision === undefined ? { result } : { result, collision };
 }
 
 /** Renders one capability link and reports what the page did. */
@@ -351,7 +405,8 @@ async function renderPage(
   browser: Browser,
   request: RenderRequest,
   axeSource: string,
-  created: { context?: BrowserContext },
+  created: { context?: BrowserContext; collision?: () => string | undefined },
+  collide: boolean,
 ): Promise<RenderResult> {
   const started = Date.now();
   const timings: Record<string, number> = {};
@@ -375,9 +430,27 @@ async function renderPage(
     context.on("page", (other) => {
       if (other !== page) void other.close().catch(() => undefined);
     });
-    const network = watchNetwork(page, () => artifactFrame(page), viewport);
+    const standIns = new Set<Request>();
+    if (collide) await collideOnce(page, standIns);
+    const network = watchNetwork(page, () => artifactFrame(page), viewport, standIns);
+    // The shell page's own load can meet a collision as well (#132): Playwright then throws.
+    let loaded: string | undefined;
+    created.collision = () => network.collision() ?? loaded;
 
-    await page.goto(request.url, { waitUntil: "commit", timeout: Math.max(1000, left()) });
+    try {
+      await page.goto(request.url, { waitUntil: "commit", timeout: Math.max(1000, left()) });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      if (!text.includes(COLLISION)) throw error;
+      loaded = `document GET /a/… failed (${COLLISION})`;
+      findings.push(
+        createDiagnostic("MOSTRA_RUNTIME_NOT_READY", {
+          message: `The browser couldn't connect to the page (${COLLISION}).`,
+          location,
+        }),
+      );
+      return { ready: false, findings, timedOut: false, timingsMs: timings };
+    }
     const readiness = await awaitReady(shellMarks(page), left).catch(() => "never" as const);
     const ready = readiness === "ready";
     if (readiness === "never") timedOut = left() <= 0;

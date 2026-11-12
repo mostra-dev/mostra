@@ -35,7 +35,14 @@ let counter = 0;
 /** Inserts an artifact with a policy and `versions` versions, newest latest; returns their IDs. */
 export function addArtifact(
   ledger: Ledger,
-  options: { id: string; policy?: unknown; versions?: number; title?: string },
+  options: {
+    id: string;
+    policy?: unknown;
+    versions?: number;
+    title?: string;
+    /** More fields of every version's manifest, such as `team` (D168). */
+    manifest?: Readonly<Record<string, unknown>>;
+  },
 ): { artifactId: string; versions: string[] } {
   const versions: string[] = [];
   ledger.write((db) => {
@@ -49,7 +56,9 @@ export function addArtifact(
     );
     appendEvent(db, { artifactId: options.id, type: "artifact.created", payload: {} });
     for (let number = 1; number <= (options.versions ?? 1); number++) {
-      versions.push(publishVersion(db, options.id, number, options.title ?? "Sidebar review"));
+      versions.push(
+        publishVersion(db, options.id, number, options.title ?? "Sidebar review", options.manifest),
+      );
     }
   });
   return { artifactId: options.id, versions };
@@ -61,6 +70,8 @@ export function publishVersion(
   artifactId: string,
   number: number,
   title = "Sidebar review",
+  /** More manifest fields, such as `team` (D168). */
+  extra: Readonly<Record<string, unknown>> = {},
 ): string {
   const digest = new Uint8Array(32);
   digest[0] = ++counter % 256;
@@ -81,6 +92,7 @@ export function publishVersion(
       description: "Pick a sidebar",
       family: "review",
       links: [{ rel: "follows", artifact: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG" }],
+      ...extra,
     }),
     new Date().toISOString(),
   );

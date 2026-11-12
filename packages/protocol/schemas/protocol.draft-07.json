@@ -471,6 +471,46 @@
         "$ref": "#/definitions/ResultsGetResult"
       }
     },
+    "results/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/ResultsListParams"
+      },
+      "result": {
+        "$ref": "#/definitions/ResultsListResult"
+      }
+    },
+    "roster/add": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RosterAddParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RosterAddResult"
+      }
+    },
+    "roster/get": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RosterGetParams"
+      },
+      "result": {
+        "$ref": "#/definitions/Roster"
+      }
+    },
+    "roster/remove": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/definitions/RosterRemoveParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RosterRemoveResult"
+      }
+    },
     "secret/delete": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -669,6 +709,9 @@
           "type": "string"
         },
         "name": {
+          "type": "string"
+        },
+        "key": {
           "type": "string"
         }
       },
@@ -1161,6 +1204,13 @@
           "allOf": [
             {
               "$ref": "#/definitions/HostedSettings"
+            }
+          ]
+        },
+        "team": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TeamSettings"
             }
           ]
         }
@@ -4686,6 +4736,169 @@
       ],
       "description": "The artifact a frame is about to show, for its host's controls policy."
     },
+    "PresenceCursor": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -10000000,
+          "maximum": 10000000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -10000000,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "description": "A shared pointer position in the page's document coordinates, in CSS pixels."
+    },
+    "PresencePeer": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "self": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local",
+            "tailnet",
+            "token",
+            "host",
+            "account",
+            "anonymous"
+          ]
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "cursor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PresenceCursor"
+            }
+          ]
+        },
+        "selection": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PresenceSelection"
+            }
+          ]
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "key",
+        "self",
+        "kind",
+        "at"
+      ],
+      "description": "A viewer present now: key, name, and the cursor and selection they share."
+    },
+    "PresenceRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PresenceCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PresenceSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "leave": {
+          "type": "boolean",
+          "const": true
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "viewId"
+      ],
+      "description": "Joins presence for half a minute, sharing a cursor and a selection, or leaves."
+    },
+    "PresenceSelection": {
+      "type": "object",
+      "properties": {
+        "element": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "description": "A shared selection: the element the viewer is in and the selected text range."
+    },
+    "PresenceState": {
+      "type": "object",
+      "properties": {
+        "visibility": {
+          "$ref": "#/definitions/TeamVisibility"
+        },
+        "peers": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PresencePeer"
+          }
+        },
+        "others": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "visibility",
+        "peers"
+      ],
+      "description": "Who is present, as a page may see them under the visibility policy."
+    },
     "PublishReceipt": {
       "type": "object",
       "properties": {
@@ -5366,6 +5579,185 @@
       ],
       "description": "When the binding closes unless its token is refreshed again."
     },
+    "Respondent": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "viewerId": {
+          "$ref": "#/definitions/ViewerId"
+        },
+        "status": {
+          "$ref": "#/definitions/RespondentStatus"
+        },
+        "openedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "activeAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "submission": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/SubmissionId"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            }
+          },
+          "required": [
+            "id",
+            "at"
+          ]
+        },
+        "submissions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "tokenId": {
+          "type": "string"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "ref",
+        "viewerId",
+        "status",
+        "submissions",
+        "addedAt"
+      ],
+      "description": "An expected respondent as agents and hosts read it: name, viewer, status and submission."
+    },
+    "RespondentForPage": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "self": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local",
+            "tailnet",
+            "token",
+            "host",
+            "account",
+            "anonymous"
+          ]
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/definitions/RespondentStatus"
+        },
+        "openedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "key",
+        "self",
+        "kind",
+        "status"
+      ],
+      "description": "A respondent as a page sees them: key, name, status, when opened and submitted."
+    },
+    "RespondentLink": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "link": {
+          "$ref": "#/definitions/CapabilityLink"
+        }
+      },
+      "required": [
+        "ref",
+        "link"
+      ],
+      "description": "An expected respondent's personal link, acting as their viewer."
+    },
+    "RespondentSpec": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 320,
+          "pattern": "^[^\\s@]+@[^\\s@]+$"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "description": "An expected respondent: the host's stable key, a display name, an email."
+    },
+    "RespondentStatus": {
+      "type": "string",
+      "enum": [
+        "not-opened",
+        "drafting",
+        "submitted"
+      ],
+      "description": "Where a respondent stands in the round: not-opened, drafting or submitted."
+    },
+    "RespondentsRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/definitions/ViewId"
+        }
+      },
+      "required": [
+        "viewId"
+      ],
+      "description": "Reads the roster as the page may see it, and follows it for a minute."
+    },
     "ResultComment": {
       "type": "object",
       "properties": {
@@ -5922,6 +6314,59 @@
         }
       ]
     },
+    "ResultsListParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "after": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Cursor"
+            }
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "md"
+          ]
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "ResultsListResult": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResultsGetResult"
+          }
+        },
+        "cursor": {
+          "$ref": "#/definitions/Cursor"
+        },
+        "more": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "results",
+        "cursor",
+        "more"
+      ]
+    },
     "ResultsMarkdown": {
       "type": "object",
       "properties": {
@@ -5943,6 +6388,246 @@
       "format": "date",
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
       "description": "Protocol revision: a calendar date in YYYY-MM-DD form."
+    },
+    "Roster": {
+      "type": "object",
+      "properties": {
+        "round": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "visibility": {
+          "$ref": "#/definitions/TeamVisibility"
+        },
+        "counts": {
+          "$ref": "#/definitions/RosterCounts"
+        },
+        "respondents": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Respondent"
+          }
+        }
+      },
+      "required": [
+        "round",
+        "complete",
+        "visibility",
+        "counts",
+        "respondents"
+      ],
+      "description": "An artifact's expected respondents with their status, the round and its counts."
+    },
+    "RosterAddParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "respondents": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RespondentSpec"
+          }
+        },
+        "scopes": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CapabilityScope"
+          }
+        },
+        "ttl": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Duration"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "$ref": "#/definitions/VersionId"
+            }
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "respondents"
+      ]
+    },
+    "RosterAddResult": {
+      "type": "object",
+      "properties": {
+        "roster": {
+          "$ref": "#/definitions/Roster"
+        },
+        "links": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RespondentLink"
+          }
+        }
+      },
+      "required": [
+        "roster",
+        "links"
+      ]
+    },
+    "RosterCounts": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "notOpened": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "drafting": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "submitted": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "total",
+        "notOpened",
+        "drafting",
+        "submitted"
+      ],
+      "description": "How many respondents have not opened, are drafting, or submitted in the round."
+    },
+    "RosterForPage": {
+      "type": "object",
+      "properties": {
+        "visibility": {
+          "$ref": "#/definitions/TeamVisibility"
+        },
+        "owner": {
+          "type": "boolean"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "self": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RespondentForPage"
+            }
+          ]
+        },
+        "counts": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RosterCounts"
+            }
+          ]
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "respondents": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RespondentForPage"
+          }
+        }
+      },
+      "required": [
+        "visibility",
+        "owner",
+        "round"
+      ],
+      "description": "The roster as a page may see it under the visibility policy (CO-07)."
+    },
+    "RosterGetParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "RosterRemoveParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "refs": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "refs"
+      ]
+    },
+    "RosterRemoveResult": {
+      "type": "object",
+      "properties": {
+        "roster": {
+          "$ref": "#/definitions/Roster"
+        },
+        "removed": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "roster",
+        "removed"
+      ]
     },
     "RouteId": {
       "type": "string",
@@ -6456,6 +7141,15 @@
             }
           ]
         },
+        "respondents": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RespondentSpec"
+          }
+        },
         "requestId": {
           "type": "string",
           "minLength": 1
@@ -6525,6 +7219,13 @@
         "stopReason": {
           "type": "string",
           "minLength": 1
+        },
+        "respondents": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RespondentLink"
+          }
         }
       },
       "required": [
@@ -7052,6 +7753,28 @@
         "choices"
       ],
       "description": "A count by choice of a viewer-scoped field: its field, 2 to 50 distinct choices and minTotal."
+    },
+    "TeamSettings": {
+      "type": "object",
+      "properties": {
+        "visibility": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TeamVisibility"
+            }
+          ]
+        }
+      },
+      "description": "An artifact's team settings: what viewers see of each other (D168)."
+    },
+    "TeamVisibility": {
+      "type": "string",
+      "enum": [
+        "private",
+        "counts",
+        "names"
+      ],
+      "description": "What viewers see of each other: private, counts or names (D168)."
     },
     "ThreadId": {
       "type": "string",
@@ -7689,8 +8412,8 @@
     },
     "WaitCondition": {
       "type": "string",
-      "pattern": "^(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$",
-      "description": "What wait waits for: submitted, signal:<name>, state:<fieldId> or event:<type>."
+      "pattern": "^(?:(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\\u0000-\\u001f\\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*(\\.\\*)?)$|submitted:(?:all|[1-9][0-9]{0,3}|10000)$)",
+      "description": "What wait waits for: submitted, submitted:all, submitted:<N>, signal:<name>, state:<fieldId> or event:<type>."
     },
     "WaitParams": {
       "type": "object",

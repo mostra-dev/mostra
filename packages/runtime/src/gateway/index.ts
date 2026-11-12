@@ -63,7 +63,7 @@ import {
 import type { Actions } from "../actions/index.ts";
 import { type Addressing, type FrameMode, hostOf } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
-import type { EphemeralBus, Interaction } from "../interaction/index.ts";
+import { createTeamTraffic, type EphemeralBus, type Interaction } from "../interaction/index.ts";
 import {
   type Ledger,
   type LedgerDb,
@@ -103,6 +103,7 @@ export { resetOnClose } from "./listener.ts";
 
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
+import { rosterMethods } from "./team.ts";
 import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./worker.ts";
 
 export { Capabilities, capabilityKey } from "./capabilities.ts";
@@ -227,6 +228,12 @@ export interface GatewayOptions {
   readonly live?: Pick<Live, "read">;
   /** Run and live updates for page streams and polls (WP-08). */
   readonly bus?: EphemeralBus;
+  /**
+   * Asks whether `count` new links may be minted for an artifact, throwing to refuse: a remote
+   * server's operator `limits` (`link`, D165 item 9). `roster/add` asks it for exactly the
+   * personal links it will mint (Opus review 10).
+   */
+  readonly linkLimit?: (artifactId: string, count: number) => Promise<void>;
   /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */
   readonly parked?: (versionId: string) => boolean;
   /**
@@ -495,6 +502,21 @@ function laterArtifactRoutes(
       auth: "session",
       ...(acting ? { handler: acting.live } : {}),
     },
+    // WP-31: the roster as the page may see it, and presence; every link may (`view`, D168).
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/respondents",
+      intent: "mutation",
+      auth: "session",
+      handler: served.respondents,
+    },
+    {
+      method: "POST",
+      path: "/_mostra/v/:rev/presence",
+      intent: "mutation",
+      auth: "session",
+      handler: served.presence,
+    },
     // WP-13: single-use tickets for streams, polls and WebSockets that bypass the worker (D70).
     {
       method: "POST",
@@ -533,7 +555,12 @@ interface FaceEntry {
 /** Creates the gateway; nothing is bound until {@link Gateway.start}. */
 export function createGateway(options: GatewayOptions): Gateway {
   const { addressing, capabilities, artifacts, log, interaction } = options;
+  // Respondents and presence for pages (D168): in memory, over the pages' ephemeral bus.
+  const team = options.bus
+    ? createTeamTraffic({ bus: options.bus, source: interaction, log })
+    : undefined;
   const served = browserRoutes({
+    ...(team ? { team } : {}),
     interaction,
     capabilities,
     log,
@@ -2180,6 +2207,17 @@ export function createGateway(options: GatewayOptions): Gateway {
           by: entry.spec.by,
         })),
     methods: () => [
+      ...rosterMethods({
+        ledger: options.ledger,
+        interaction,
+        capabilities,
+        artifacts,
+        versionOf,
+        linkBase,
+        link,
+        collected: (number) => new RpcError(collectedDiagnostic(number)),
+        ...(options.linkLimit ? { linkLimit: options.linkLimit } : {}),
+      }),
       handler(viewUrlMethod, async (params) => {
         const detail = artifacts.get(params.artifact);
         const version = versionOf(detail, params.version);
@@ -2286,6 +2324,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         ]),
       ),
     async close() {
+      team?.close();
       await Promise.allSettled([...opening.values(), ...openingFaces.values()]);
       await Promise.all([
         shellListener?.close(),

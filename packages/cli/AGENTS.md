@@ -25,7 +25,8 @@ protocol over the home's socket.
   catalog entry's hint, explanation or fix names. A later package's command (`review export`,
   `export`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a placeholder
   (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
-  (`src/commands/sharing.ts`), and `mcp` with WP-15 (`src/commands/mcp.ts`, `src/mcp.ts`).
+  (`src/commands/sharing.ts`), `mcp` with WP-15 (`src/commands/mcp.ts`, `src/mcp.ts`), and
+  `roster get|add|remove` with WP-31 (`src/commands/team.ts`, D168).
 - **`mostra mcp` serves `@mostra/mcp`, adding no tool logic of its own** (D164). This package
   gives it the home's daemon (attached on the first call, attached again after the daemon
   restarts, released after five idle minutes), the workspace, the bundled reference (with the

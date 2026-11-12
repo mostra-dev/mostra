@@ -1,6 +1,8 @@
 /**
  * A hosted home's events for its operator (INTERFACES §18.6, D165 item 9): `submission.accepted`
- * (with the submission's Results), `version.pushed` and `run.ended`, read from the home's own
+ * (with the submission's Results), `version.pushed`, `run.ended` and `roster.completed` (D168), and
+ * an invitation for each expected respondent with an email whom the roster added or gave a new
+ * personal link (`roster.changed`'s `added` and `relinked`), read from the home's own
  * event log after `operator_cursor` and handed to the server's durable outbound queue, so each is
  * delivered at least once with a stable ID (`<home>:<incarnation>:<cursor>`). The cursor moves
  * only after the queue holds what was read; a crash between them hands the same events again,
@@ -28,6 +30,8 @@ export interface OperatorFeedOptions {
   readonly operator: Operator;
   readonly meter: Meter;
   readonly account: () => string;
+  /** Who sends the home's invitations: its owner's name and how it was verified. */
+  readonly sender?: () => { readonly name?: string; readonly verifiedBy?: string };
   readonly routeOf: (
     artifactId: string,
   ) => { readonly id: string; readonly label: string } | undefined;
@@ -60,7 +64,7 @@ const RUN_ENDS = new Map([
 /** Starts the feed of a home. */
 export function createOperatorFeed(options: OperatorFeedOptions): OperatorFeed {
   const { ledger, operator, meter, log } = options;
-  const wanted = operator.has.events || meter.on;
+  const wanted = operator.has.events || meter.on || operator.has.invitations;
   let stopped = false;
   let scheduled = false;
 
@@ -113,6 +117,17 @@ export function createOperatorFeed(options: OperatorFeedOptions): OperatorFeed {
         payload: { versionId: payload["versionId"], number: payload["number"] },
       };
     }
+    if (row.type === "roster.completed") {
+      return {
+        ...base,
+        kind: "roster.completed",
+        payload: {
+          round: payload["round"],
+          respondents: payload["respondents"],
+          submissions: payload["submissions"],
+        },
+      };
+    }
     const status = RUN_ENDS.get(row.type);
     if (status !== undefined) {
       return {
@@ -122,6 +137,72 @@ export function createOperatorFeed(options: OperatorFeedOptions): OperatorFeed {
       };
     }
     return undefined;
+  };
+
+  /**
+   * The invitations a roster change calls for (D168): one per respondent it added or gave a new
+   * link, who has an email and is still expected, keyed by their link's token, so a repeated read
+   * enqueues nothing new and a later link gets an invitation of its own.
+   */
+  const invite = (row: EventRow): void => {
+    if (row.artifact_id === null) return;
+    const route = options.routeOf(row.artifact_id);
+    if (!route) return;
+    const payload = JSON.parse(row.payload_json) as {
+      added?: readonly { ref?: unknown }[];
+      relinked?: readonly unknown[];
+    };
+    const refs = new Set<string>([
+      ...(payload.added ?? []).flatMap((entry) =>
+        typeof entry.ref === "string" ? [entry.ref] : [],
+      ),
+      ...(payload.relinked ?? []).filter((ref): ref is string => typeof ref === "string"),
+    ]);
+    if (refs.size === 0) return;
+    const artifactId = row.artifact_id;
+    const found = ledger.read((db) => ({
+      title: db.get<{ title: string }>("SELECT title FROM artifact WHERE id = ?", artifactId)
+        ?.title,
+      entries: [...refs].flatMap((ref) => {
+        const entry = db.get<{
+          ref: string;
+          name: string | null;
+          email: string | null;
+          token_id: string | null;
+        }>(
+          "SELECT ref, name, email, token_id FROM roster_entry WHERE artifact_id = ? AND ref = ?",
+          artifactId,
+          ref,
+        );
+        return entry && entry.email !== null && entry.token_id !== null ? [entry] : [];
+      }),
+    }));
+    const sender = options.sender?.() ?? {};
+    for (const entry of found.entries) {
+      operator.enqueue({
+        port: "invitations",
+        invitation: {
+          invitationId: `${options.homeId}:${entry.token_id}`,
+          account: options.account(),
+          home: options.homeId,
+          routeId: route.id,
+          label: route.label,
+          artifactId,
+          title: found.title ?? "",
+          respondent: {
+            ref: entry.ref,
+            ...(entry.name !== null ? { name: entry.name } : {}),
+            email: entry.email as string,
+          },
+          sender: {
+            ...(sender.name !== undefined ? { name: sender.name } : {}),
+            ...(sender.verifiedBy !== undefined ? { verifiedBy: sender.verifiedBy } : {}),
+          },
+          tokenId: entry.token_id as string,
+          at: row.at,
+        },
+      });
+    }
   };
 
   const scan = (): void => {
@@ -140,13 +221,18 @@ export function createOperatorFeed(options: OperatorFeedOptions): OperatorFeed {
           db.all<EventRow>(
             `SELECT cursor, artifact_id, type, payload_json, at FROM event WHERE cursor > ?
                AND type IN ('submission.created', 'version.published', 'action.succeeded',
-                            'action.failed', 'action.cancelled', 'action.unknown')
+                            'action.failed', 'action.cancelled', 'action.unknown',
+                            'roster.changed', 'roster.completed')
              ORDER BY cursor LIMIT ?`,
             cursor,
             PAGE,
           ),
         );
         for (const row of rows) {
+          if (row.type === "roster.changed") {
+            if (operator.has.invitations) invite(row);
+            continue;
+          }
           const event = toEvent(row);
           if (!event) continue;
           if (event.kind === "submission.accepted") {

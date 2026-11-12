@@ -4,7 +4,8 @@
  * `@mostra/react`: the client runtime artifact authors import (INTERFACES §2.3). Fields that behave
  * like `useState` with a stable ID and persist as the viewer works, the artifact channel's
  * submit, the shell's trusted Submit label, signals, review-set choices, the viewer and the
- * artifact, a Claude-compatible `window.storage`, and the manifest helper. `@mostra/react/form`
+ * artifact, expected respondents and presence, a Claude-compatible `window.storage`, and the
+ * manifest helper. `@mostra/react/form`
  * adapts react-hook-form; `@mostra/react/router` mounts `pages/` artifacts.
  *
  * ```tsx
@@ -66,6 +67,21 @@ export {
 } from "./server-reference.ts";
 export { connectShell, openLink, reportReady, type ShellConnection } from "./shell-bridge.ts";
 export type { ClaudeCompatibleStorage, StorageEntry } from "./storage.ts";
+export {
+  type Peer,
+  type Presence,
+  type PresenceCursor,
+  type PresenceOptions,
+  type PresencePeer,
+  type PresenceSelection,
+  type RespondentForPage,
+  type RespondentStatus,
+  type Respondents,
+  type RosterCounts,
+  type TeamVisibility,
+  usePresence,
+  useRespondents,
+} from "./team-hooks.ts";
 
 /**
  * Declares an artifact's manifest (INTERFACES §2.2, D51). Mostra reads the object statically

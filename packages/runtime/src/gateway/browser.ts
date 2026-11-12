@@ -7,12 +7,15 @@
 import {
   BROWSER_PROTOCOL_REVISIONS,
   ChooseRequest,
+  createDiagnostic,
   type Diagnostic,
   type EphemeralMessage,
   type EventRecord,
   FieldsRequest,
   FollowRequest,
+  PresenceRequest,
   type Refusal,
+  RespondentsRequest,
   RpcError,
   refusal,
   ShellSubmitRequest,
@@ -28,6 +31,7 @@ import {
   type Interaction,
   type PageIdentity,
   SubmitConflict,
+  type TeamTraffic,
 } from "../interaction/index.ts";
 import type { Log } from "../log.ts";
 import type { Capabilities } from "./capabilities.ts";
@@ -67,6 +71,8 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_HYGIENE_SCOPE_DENIED: 403,
   // A paused artifact takes no answers (D165 item 14).
   MOSTRA_SUBMIT_PAUSED: 423,
+  // A page posting presence faster than its rate (D168).
+  MOSTRA_TEAM_PRESENCE_RATE_LIMITED: 429,
 };
 
 /** Options for {@link browserRoutes}. */
@@ -89,6 +95,11 @@ export interface BrowserRoutesOptions {
    * without an `id`, a poll as its `ephemeral` (LL-04). Absent: neither carries any.
    */
   readonly bus?: EphemeralBus;
+  /**
+   * Respondents and presence for pages (D168): absent, the `respondents` and `presence` routes
+   * answer that this gateway serves neither.
+   */
+  readonly team?: TeamTraffic;
   /**
    * Before a submit, from the frame or the shell (a remote server's, D165 item 13): a refusal (with
    * when to try again) keeps the draft; nothing is recorded. Absent: every submit goes on.
@@ -118,6 +129,20 @@ function answer(
 
 function malformed(message: string): Response {
   return answer(refusal("MOSTRA_HYGIENE_REQUEST_MALFORMED", message).diagnostic, 400);
+}
+
+/** What an ephemeral message's SSE `data` carries: the message's own payload, by its kind. */
+function ephemeralData(message: EphemeralMessage): unknown {
+  switch (message.kind) {
+    case "run":
+      return message.run;
+    case "live":
+      return message.live;
+    case "respondents":
+      return message.respondents;
+    case "presence":
+      return message.presence;
+  }
 }
 
 /** Turns an interaction refusal into its response; anything else is a defect for `onError`. */
@@ -191,6 +216,10 @@ export interface BrowserRoutes {
   /** `events/poll` on the shell origin: the same, without the frame's run and live updates (#119). */
   readonly shellPoll: Handler;
   readonly shellSubmit: Handler;
+  /** The roster as the page may see it (D168, CO-03, CO-07). */
+  readonly respondents: Handler;
+  /** The page's presence (D168, CO-04). */
+  readonly presence: Handler;
   /** The shell's trusted Choose (D65, D113), on the shell origin. */
   readonly choose: Handler;
   /** "Always follow this artifact" (D63), on the shell origin. */
@@ -376,7 +405,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
         .splice(0)
         .map(
           (message) =>
-            `event: ${message.kind}\ndata: ${JSON.stringify(message.kind === "run" ? message.run : message.live)}\n\n`,
+            `event: ${message.kind}\ndata: ${JSON.stringify(ephemeralData(message))}\n\n`,
         )
         .join("");
     const unlisten =
@@ -704,6 +733,58 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     }
   };
 
+  /** A handler of a team route without team traffic: this gateway serves neither (verify's). */
+  const noTeam = (): Response =>
+    answer(
+      refusal("MOSTRA_HYGIENE_NOT_SERVED", "This gateway serves no respondents or presence.", 404)
+        .diagnostic,
+      404,
+    );
+
+  /** `respondents` (D168): the roster as the page may see it, followed for a minute. */
+  const respondents = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    if (!options.team) return noTeam();
+    const request = await body(context, RespondentsRequest);
+    if (request instanceof Response) return request;
+    const page = pageOf(context);
+    try {
+      interaction.checkView(page, request.viewId);
+      return jsonResponse(options.team.respondents(page, request.viewId));
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  /** `presence` (D168, CO-04): joins, shares or leaves; never stored. */
+  const presence = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    if (!options.team) return noTeam();
+    const request = await body(context, PresenceRequest);
+    if (request instanceof Response) return request;
+    const page = pageOf(context);
+    try {
+      interaction.checkView(page, request.viewId);
+    } catch (error) {
+      return failure(error);
+    }
+    const outcome = options.team.presence(page, request);
+    if ("limited" in outcome) {
+      return jsonResponse(
+        createDiagnostic("MOSTRA_TEAM_PRESENCE_RATE_LIMITED", {
+          message: "This page sends presence faster than 20 updates a second.",
+        }),
+        {
+          status: 429,
+          headers: { "retry-after": String(Math.max(1, Math.ceil(outcome.retryAfterMs / 1000))) },
+        },
+      );
+    }
+    return jsonResponse(outcome.state);
+  };
+
   return {
     fields,
     submit,
@@ -711,6 +792,8 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     stream,
     poll: pollFor(true),
     shellPoll: pollFor(false),
+    respondents,
+    presence,
     shellSubmit,
     choose,
     follow,

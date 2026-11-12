@@ -43,6 +43,9 @@ const runner = createRunner({
   ...(process.env["MOSTRA_TEST_VERIFY_FAIL_ONCE"]
     ? { failOnceFile: process.env["MOSTRA_TEST_VERIFY_FAIL_ONCE"] }
     : {}),
+  ...(process.env["MOSTRA_TEST_VERIFY_COLLIDE_ONCE"]
+    ? { collideOnceFile: process.env["MOSTRA_TEST_VERIFY_COLLIDE_ONCE"] }
+    : {}),
   onIdle: () => {
     void runner.close().finally(() => exitWithGroup(0));
   },

@@ -5,7 +5,9 @@ import { Duration } from "../../duration.ts";
 import { ArtifactId, ShareId, TokenId } from "../../ids.ts";
 import { ViewerSpec } from "../../interaction.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
+import { RespondentSpec, ROSTER_MAX } from "../../team.ts";
 import { wireRegistry } from "../../wire-registry.ts";
+import { RespondentLink } from "../roster/add.ts";
 
 /**
  * How a share reaches its viewers (D158): `tailnet` through Tailscale Serve, to the people of the
@@ -49,6 +51,13 @@ export interface ShareStartParams {
    * port names, else the link's own viewer, never the home's local user (D158).
    */
   readonly viewer?: ViewerSpec;
+  /**
+   * People the artifact expects answers from through this share (D121, D168): they join the
+   * roster of the home that holds the artifact's viewers (a remote share's hosted home), and each
+   * gets a personal link at the share's address. On a remote server, `email` reaches the operator's
+   * `invitations` port. Not with `viewer`.
+   */
+  readonly respondents?: readonly RespondentSpec[];
   /** Makes retries idempotent: a repeated `requestId` returns the same share (H-03). */
   readonly requestId?: string;
 }
@@ -118,8 +127,14 @@ export const Share: z.ZodType<Share> = z.object(shareShape).register(wireRegistr
   description: "A share: its tunnel, link, address, frame mode and lifetime.",
 });
 
-/** The result of `share/start`: the share, with its link. */
-export type ShareStartResult = Share & { readonly url: string };
+/**
+ * The result of `share/start`: the share, with its link, and the personal link of every respondent
+ * it named (D168).
+ */
+export type ShareStartResult = Share & {
+  readonly url: string;
+  readonly respondents?: readonly RespondentLink[];
+};
 
 const params: z.ZodType<ShareStartParams> = z
   .object({
@@ -132,12 +147,17 @@ const params: z.ZodType<ShareStartParams> = z
     ttl: Duration.exactOptional(),
     scopes: z.array(CapabilityScope).min(1).readonly().exactOptional(),
     viewer: ViewerSpec.exactOptional(),
+    respondents: z.array(RespondentSpec).min(1).max(ROSTER_MAX).readonly().exactOptional(),
     requestId: z.string().min(1).exactOptional(),
   })
   .register(wireRegistry, { id: "ShareStartParams" });
 
 const result: z.ZodType<ShareStartResult> = z
-  .object({ ...shareShape, url: z.string().min(1) })
+  .object({
+    ...shareShape,
+    url: z.string().min(1),
+    respondents: z.array(RespondentLink).readonly().exactOptional(),
+  })
   .register(wireRegistry, {
     id: "ShareStartResult",
     description: "The share that started, with its capability URL.",

@@ -238,7 +238,7 @@ const waitInput = input(
   z.object({
     artifact: artifactField,
     until: WaitCondition.describe(
-      "submitted, signal:<name>, state:<fieldId> or event:<type> (event:submission.* matches a family).",
+      "submitted, submitted:all (every expected respondent), submitted:<N>, signal:<name>, state:<fieldId> or event:<type> (event:submission.* matches a family).",
     ),
     after: z
       .string()
@@ -585,7 +585,7 @@ export function createTools(
     defineTool({
       name: "artifact_wait",
       title: "Wait for an answer",
-      description: `Wait until a person submits (until: submitted), raises a signal (signal:<name>), changes shared state (state:<fieldId>) or an event happens (event:<type>). Waits at most timeoutSeconds (${WAIT_MAX_SECONDS} at most). Returns satisfied with the event once it happens, or still_waiting with a cursor: nothing is lost, so call again with after set to that cursor, or do other work and check later.`,
+      description: `Wait until a person submits (until: submitted), every expected respondent has (submitted:all) or N submissions exist (submitted:<N>), a person raises a signal (signal:<name>), changes shared state (state:<fieldId>) or an event happens (event:<type>). Waits at most timeoutSeconds (${WAIT_MAX_SECONDS} at most). Returns satisfied with the event once it happens, or still_waiting with a cursor: nothing is lost, so call again with after set to that cursor, or do other work and check later.`,
       input: waitInput,
       annotations: {
         readOnlyHint: true,

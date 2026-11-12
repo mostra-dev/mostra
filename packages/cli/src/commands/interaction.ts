@@ -7,7 +7,9 @@ import {
   FieldOp,
   livePushMethod,
   MutationId,
+  RESULTS_LIST_MAX,
   resultsGetMethod,
+  resultsListMethod,
   stateGetMethod,
   statePatchMethod,
   type WaitCondition,
@@ -51,7 +53,8 @@ export const waitCommand: CommandDef = defineCommand({
       name: "until",
       kind: "string",
       value: "<condition>",
-      summary: "submitted, signal:<name>, state:<fieldId> or event:<type>.",
+      summary:
+        "submitted, submitted:all (every expected respondent), submitted:<N>, signal:<name>, state:<fieldId> or event:<type>.",
     },
     {
       name: "after",
@@ -126,6 +129,17 @@ export const resultsCommand: CommandDef = defineCommand({
       summary: "This submission instead of the latest.",
     },
     {
+      name: "all",
+      kind: "boolean",
+      summary: "Every submission, oldest first (a survey's, a team's), instead of the latest.",
+    },
+    {
+      name: "after",
+      kind: "string",
+      value: "<cursor>",
+      summary: "With --all, only submissions after this cursor.",
+    },
+    {
       name: "format",
       kind: "string",
       value: "<format>",
@@ -139,8 +153,35 @@ export const resultsCommand: CommandDef = defineCommand({
   async run(context) {
     const format = (flag(context, "format") ?? (context.json ? "json" : "md")) as "md" | "json";
     const submission = flag(context, "submission");
+    const artifactArg = artifactRef(arg(context, "artifact"), context.cwd);
+    if (context.flags["all"] === true) {
+      if (submission !== undefined) throw usage("--all reads every submission: drop --submission.");
+      // Every page of results/list, in submission order (D168).
+      const results: unknown[] = [];
+      let after = flag(context, "after");
+      for (;;) {
+        const page = await context.call(resultsListMethod, {
+          artifact: artifactArg,
+          format,
+          limit: RESULTS_LIST_MAX,
+          ...(after !== undefined ? { after } : {}),
+        });
+        results.push(...page.results);
+        after = page.cursor;
+        if (!page.more) break;
+      }
+      const human =
+        format === "md"
+          ? results.length === 0
+            ? "No submissions.\n"
+            : `${results.map((one) => (one as { markdown: string }).markdown.trimEnd()).join("\n\n---\n\n")}\n`
+          : pretty(results);
+      return { result: { results, cursor: after }, human };
+    }
+    if (flag(context, "after") !== undefined)
+      throw usage("--after reads from a cursor with --all.");
     const result = await context.call(resultsGetMethod, {
-      artifact: artifactRef(arg(context, "artifact"), context.cwd),
+      artifact: artifactArg,
       format,
       ...(submission !== undefined ? { submission } : {}),
     });

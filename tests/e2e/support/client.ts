@@ -6,7 +6,7 @@
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type FrameLocator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type FrameLocator, type Page, type TestInfo, test } from "@playwright/test";
 import type { Client } from "./mostra.ts";
 
 /** The e2e suites' own fixture artifacts. */
@@ -68,9 +68,53 @@ export async function linkFor(
   return link.url;
 }
 
+/**
+ * A shell page's own load, as a person loads it (#132). On Windows, Chromium picks each
+ * connection's local port at random (`TcpPortRandomizationWin`, D157), and a pick that collides
+ * with a connection still in TIME_WAIT fails the load at once with `net::ERR_NO_BUFFER_SPACE`
+ * before any byte reaches Mostra; D157 recovers such a failure for the frame, and a person
+ * reloads a page that failed this way. So this loads again once for exactly that error, and
+ * records it on the test, so every occurrence stays visible in the report; any other failure,
+ * and a second one, fails the test as before. Randomization stays on (D157 item 3).
+ */
+export async function gotoShell(page: Page, url: string): Promise<void> {
+  try {
+    await page.goto(url);
+  } catch (error) {
+    if (!String((error as Error).message).includes("net::ERR_NO_BUFFER_SPACE")) throw error;
+    test.info().annotations.push({
+      type: "issue",
+      description: `#132: the shell page's load failed with net::ERR_NO_BUFFER_SPACE and was loaded again once (${new Date().toISOString()})`,
+    });
+    await page.goto(url);
+  }
+}
+
 /** Opens a link in the shell and waits until the page rendered; returns the frame. */
 export async function openInShell(page: Page, url: string): Promise<FrameLocator> {
-  await page.goto(url);
+  await gotoShell(page, url);
+  await shellReady(page);
+  const frame = page.frameLocator("iframe.mostra-frame");
+  // The shell is ready once its frame greeted it, so the frame's content is there. Playwright's
+  // Firefox on Windows has not reached it, after the worker-mode bootstrap's navigation, even to
+  // run a script in it, while the frame worked for the shell (#135: CI run 43012158370 on #138).
+  // The page is healthy, so this loads it again once, as the shell's own recovery would, and
+  // records it on the test; a second time fails at once naming Playwright's frame tree.
+  if (await frameReached(frame)) return frame;
+  test.info().annotations.push({
+    type: "issue",
+    description: `#135: Playwright reached no body in a ready shell's frame and loaded the page again once (${await frameTree(page)})`,
+  });
+  await page.reload();
+  await shellReady(page);
+  if (await frameReached(frame)) return frame;
+  throw new Error(
+    `#135: the shell is ready but Playwright reaches no body in its frame, twice.\nPlaywright's frames:\n${await frameTree(page)}\n${await rendering(page)}`,
+  );
+}
+
+/** Waits until the shell says it is ready, or fails saying what each document renders (#39). */
+async function shellReady(page: Page): Promise<void> {
   try {
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
   } catch (error) {
@@ -78,14 +122,39 @@ export async function openInShell(page: Page, url: string): Promise<FrameLocator
     // it renders: say what each document's visibility was and whether a frame ran (#39).
     throw new Error(`${(error as Error).message}\n${await rendering(page)}`, { cause: error });
   }
-  return page.frameLocator("iframe.mostra-frame");
 }
 
-/** Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s. */
+/** Whether Playwright reaches the frame's body within 20 s. */
+async function frameReached(frame: FrameLocator): Promise<boolean> {
+  return frame
+    .locator("body")
+    .waitFor({ state: "attached", timeout: 20_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Playwright's frames of `page`, each with its URL and whether it detached. */
+async function frameTree(page: Page): Promise<string> {
+  return page
+    .frames()
+    .map(
+      (one) =>
+        `  ${one === page.mainFrame() ? "shell" : "frame"} ${one.url().split("#")[0]}${one.isDetached() ? " (detached)" : ""}`,
+    )
+    .join("\n");
+}
+
+/**
+ * Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s.
+ * Each read is bounded (3 s): Playwright may not reach a frame at all (#135), and a diagnosis
+ * must never wait out the test.
+ */
 async function rendering(page: Page): Promise<string> {
   const lines: string[] = [];
   for (const frame of page.frames()) {
-    const seen = await frame
+    const read = frame
       .evaluate(() =>
         new Promise<string>((done) => {
           const timer = setTimeout(() => done("no animation frame within 2 s"), 2000);
@@ -99,6 +168,17 @@ async function rendering(page: Page): Promise<string> {
         ),
       )
       .catch((error: unknown) => `unreadable: ${(error as Error).message.split("\n")[0]}`);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const seen = await Promise.race([
+      read,
+      new Promise<string>((done) => {
+        timer = setTimeout(
+          () => done("unreachable: Playwright answered nothing within 3 s"),
+          3_000,
+        );
+      }),
+    ]);
+    clearTimeout(timer);
     const kind = frame === page.mainFrame() ? "shell" : "frame";
     lines.push(`  ${kind} ${frame.url().split("#")[0]}: ${seen}`);
   }

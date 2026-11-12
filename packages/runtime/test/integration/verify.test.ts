@@ -475,6 +475,13 @@ describe("the pipeline's stages each name their faults (AX-02, AU-05, D138)", ()
         d.message.includes("Failed to load resource"),
       ),
     ).toBe(false);
+    // The artifact's own failures are its own: none of them renders the page again, which only a
+    // connection the browser itself couldn't make does (#132).
+    const logs = join(home.home, "logs");
+    const lines = readdirSync(logs).flatMap((name) =>
+      readFileSync(join(logs, name), "utf8").split("\n"),
+    );
+    expect(lines.filter((line) => line.includes("verify.rendered_again"))).toEqual([]);
   });
 
   it("a11y: a button with no name is a serious finding, a warning", () => {

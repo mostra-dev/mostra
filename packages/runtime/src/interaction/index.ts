@@ -32,11 +32,16 @@ import {
   MutationId,
   type MutationResult,
   type PausedBy,
+  RESULTS_LIST_MAX,
+  type RespondentSpec,
   type Results,
+  type Roster,
+  type RosterForPage,
   RpcError,
   type RunState,
   refusal,
   resultsGetMethod,
+  resultsListMethod,
   type StreamSnapshot,
   type SubmissionEnvelope,
   type SubmissionSummary,
@@ -45,6 +50,7 @@ import {
   scopeAllows,
   stateGetMethod,
   statePatchMethod,
+  type TeamVisibility,
   type Viewer,
   type ViewerSpec,
   waitMethod,
@@ -65,6 +71,20 @@ import { type ImportSource, importSubmission } from "./imports.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { type Pause, pauseOf, setPause } from "./pause.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
+import {
+  addRespondents,
+  peerKey,
+  ROSTER_EVENTS,
+  type RosterViewer,
+  readRoster,
+  removeRespondents,
+  rosterForPage,
+  rosterForPages,
+  type SubmissionStanding,
+  settleRoster,
+  submissionStanding,
+  teamVisibility,
+} from "./roster.ts";
 import {
   appendRunOutput,
   createOrJoinRun,
@@ -114,6 +134,7 @@ export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
+export { peerKey } from "./roster.ts";
 export {
   appendRunOutput,
   finishRun,
@@ -128,6 +149,7 @@ export {
 } from "./runs.ts";
 export { SubmitConflict } from "./submissions.ts";
 export { tallyField, tallyState } from "./tally.ts";
+export { createTeamTraffic, type TeamTraffic } from "./team.ts";
 
 /** How the interaction core finds an artifact a host names. */
 export interface InteractionArtifacts {
@@ -170,6 +192,12 @@ export interface InteractionOptions {
    * get no delivery events. The owner, its agent and hosts keep every delivery state.
    */
   readonly sentOnly?: boolean;
+  /**
+   * Whether a viewer is the artifact's owner, who sees every respondent and every present viewer
+   * whatever the visibility policy (CO-07): on a local home the home's local user (the default),
+   * on a hosted home the account that owns it.
+   */
+  readonly isOwner?: (viewer: { readonly kind: string; readonly ref: string }) => boolean;
 }
 
 /** The delivery events only the owner, its agent and hosts see on a hosted home (D165 item 1a). */
@@ -433,6 +461,43 @@ export interface Interaction {
   onTallied(listener: (artifactId: string, fields: readonly string[]) => void): () => void;
   /** How many host subscriptions are open. */
   subscriptionCount(): number;
+
+  // ── Teams (WP-31, D168) ──────────────────────────────────────────────────────────────────────
+  /**
+   * Adds expected respondents inside the caller's transaction (CO-01); `link` gives each one's
+   * personal link's token in the same transaction. Settles the roster.
+   */
+  addRespondents(
+    db: LedgerDb,
+    input: {
+      readonly artifactId: string;
+      readonly respondents: readonly RespondentSpec[];
+      readonly actor: Actor;
+      readonly link: (viewerId: string, current: string | undefined) => string;
+    },
+  ): { readonly tokens: readonly { readonly ref: string; readonly tokenId: string }[] };
+  /** Removes expected respondents inside the caller's transaction; settles the roster. */
+  removeRespondents(
+    db: LedgerDb,
+    input: { readonly artifactId: string; readonly refs: readonly string[]; readonly actor: Actor },
+  ): { readonly removed: readonly string[] };
+  /** The whole roster (CO-03); `live` says whether a personal link's token still works. */
+  roster(artifactId: string, live?: (tokenId: string) => boolean): Roster;
+  /** The roster as a page may see it (CO-07). */
+  rosterForPage(page: PageIdentity): RosterForPage;
+  /** The roster as each of an artifact's pages may see it, from one read (in their order). */
+  rostersForPages(artifactId: string, viewerIds: readonly string[]): RosterForPage[];
+  /** What viewers of an artifact see of each other (CO-07). */
+  visibility(artifactId: string): TeamVisibility;
+  /** Whether a page's viewer is the artifact's owner, who sees everyone (CO-07). */
+  isOwner(viewerId: string): boolean;
+  /** A viewer as a page sees them: their key on this artifact, name and kind (D168). */
+  peer(artifactId: string, viewerId: string): { readonly key: string } & RosterViewer;
+  /**
+   * Hears an artifact whose respondents' status may have changed (a view opened, a draft written,
+   * a submission, a roster change), after the commit; returns the stop.
+   */
+  onTeam(listener: (artifactId: string) => void): () => void;
 }
 
 function runNotFound(runId: string): RpcError {
@@ -462,6 +527,9 @@ function visibleTo(
   run: (runId: string) => RunRow | undefined,
 ): boolean {
   const viewerId = page.viewerId;
+  // The roster's events name refs and emails: pages read the roster through its own route,
+  // under the visibility policy (CO-07, D168).
+  if (ROSTER_EVENTS.has(event.type)) return false;
   if (event.type.startsWith("draft.")) return event.payload["viewerId"] === viewerId;
   if (event.type.startsWith("host.")) return false;
   if (event.type.startsWith("action.")) {
@@ -478,12 +546,38 @@ function visibleTo(
 }
 
 /**
- * Another viewer as a page sees them: kind and display name, never their viewer or view IDs
- * (D104; Claude review finding 12). The name stays, so a conflict can say who changed a field.
+ * Another viewer as a page sees them: kind, display name and their key on this artifact, never
+ * their viewer or view IDs (D104; Claude review finding 12). The name stays, so a conflict can say
+ * who changed a field, and the key lets a page tell two people of one name apart and match the
+ * writer of a shared field to a respondent or a present viewer (D168, CO-05).
  */
-function actorForPage(actor: Actor, viewerId: string): Actor {
-  if (actor.kind !== "viewer" || actor.id === viewerId) return actor;
-  return { kind: "viewer", ...(actor.name !== undefined ? { name: actor.name } : {}) };
+function actorForPage(actor: Actor, viewerId: string, artifactId: string): Actor {
+  if (actor.kind !== "viewer" || actor.id === undefined) return actor;
+  const key = peerKey(artifactId, actor.id);
+  if (actor.id === viewerId) return { ...actor, key };
+  return { kind: "viewer", ...(actor.name !== undefined ? { name: actor.name } : {}), key };
+}
+
+/**
+ * How a page sees an event of a submission (CO-07, D168): its own as it is; another viewer's
+ * under `once` for the whole artifact as it is, since it closes every draft; otherwise only its
+ * `submission.created`, and only as the visibility allows: none under `private`, without a name
+ * or key under `counts`, named under `names`. Another viewer's deliveries tell a page nothing it
+ * needs, so they never reach it there.
+ */
+function submissionShown(
+  event: EventRecord,
+  viewerId: string,
+  standing: SubmissionStanding,
+  submitterOf: (submissionId: string) => string | undefined,
+): "as-is" | "hidden" | "anonymous" {
+  const submitter =
+    event.type === "submission.created"
+      ? String(event.payload["viewerId"] ?? "")
+      : submitterOf(String(event.payload["submissionId"] ?? ""));
+  if (submitter === viewerId || standing.closesAll) return "as-is";
+  if (event.type !== "submission.created" || standing.visibility === "private") return "hidden";
+  return standing.visibility === "counts" ? "anonymous" : "as-is";
 }
 
 /** An event as a page sees it: other viewers' identities left out. */
@@ -500,14 +594,18 @@ function eventForPage(event: EventRecord, viewerId: string): EventRecord {
     if (event.actor.kind !== "viewer") return { ...event, payload };
   }
   const own = event.actor.kind !== "viewer" || event.actor.id === viewerId;
-  if (own) return event;
+  if (own) {
+    return event.actor.kind === "viewer"
+      ? { ...event, actor: actorForPage(event.actor, viewerId, event.artifactId ?? "") }
+      : event;
+  }
   const { viewerId: _viewer, viewId: _view, ...payload } = event.payload as Record<string, unknown>;
   const causation = event.causation
     ? Object.fromEntries(Object.entries(event.causation).filter(([key]) => key !== "viewId"))
     : undefined;
   return {
     ...event,
-    actor: actorForPage(event.actor, viewerId),
+    actor: actorForPage(event.actor, viewerId, event.artifactId ?? ""),
     ...(causation ? { causation } : {}),
     payload,
   };
@@ -517,11 +615,14 @@ function eventForPage(event: EventRecord, viewerId: string): EventRecord {
 function fieldsForPage(
   fields: Record<string, FieldState>,
   viewerId: string,
+  artifactId: string,
 ): Record<string, FieldState> {
   return Object.fromEntries(
     Object.entries(fields).map(([id, field]) => [
       id,
-      field.updatedBy ? { ...field, updatedBy: actorForPage(field.updatedBy, viewerId) } : field,
+      field.updatedBy
+        ? { ...field, updatedBy: actorForPage(field.updatedBy, viewerId, artifactId) }
+        : field,
     ]),
   );
 }
@@ -557,6 +658,17 @@ export function createInteraction(options: InteractionOptions): Interaction {
     }
   };
   const tallyListeners = new Set<(artifactId: string, fields: readonly string[]) => void>();
+  const teamListeners = new Set<(artifactId: string) => void>();
+  /** Tells the team routes an artifact's respondents' status may have changed (D168). */
+  const touched = (artifactId: string): void => {
+    for (const listener of teamListeners) {
+      try {
+        listener(artifactId);
+      } catch (error) {
+        log.error("interaction.team_listener_failed", { error });
+      }
+    }
+  };
   const { ledger, log, hosts } = options;
   const outbox = new Outbox({
     ledger,
@@ -597,6 +709,18 @@ export function createInteraction(options: InteractionOptions): Interaction {
     ...(session.client ? { id: session.client.name } : {}),
   });
 
+  /** Whether a viewer is the artifact's owner (CO-07): the local user, or a hosted home's account. */
+  const ownerOf = (db: LedgerDb, viewerId: string): boolean => {
+    const row = db.get<{ kind: string; external_ref: string }>(
+      "SELECT kind, external_ref FROM viewer WHERE id = ?",
+      viewerId,
+    );
+    if (!row) return false;
+    return options.isOwner
+      ? options.isOwner({ kind: row.kind, ref: row.external_ref })
+      : row.kind === "local";
+  };
+
   return {
     start() {
       outbox.start();
@@ -628,7 +752,9 @@ export function createInteraction(options: InteractionOptions): Interaction {
     pause: (artifactId, change) => ledger.write((db) => setPause(db, artifactId, change)),
     pauseOf: (artifactId) => ledger.read((db) => pauseOf(db, artifactId)),
     openView(input) {
-      return ledger.write((db) => openView(db, input));
+      const viewId = ledger.write((db) => openView(db, input));
+      touched(input.artifactId);
+      return viewId;
     },
     viewControls(page, viewId) {
       return ledger.read((db) =>
@@ -676,18 +802,25 @@ export function createInteraction(options: InteractionOptions): Interaction {
         ...outcome.result,
         conflicts: outcome.result.conflicts.map((conflict) =>
           conflict.updatedBy
-            ? { ...conflict, updatedBy: actorForPage(conflict.updatedBy, page.viewerId) }
+            ? {
+                ...conflict,
+                updatedBy: actorForPage(conflict.updatedBy, page.viewerId, page.artifactId),
+              }
             : conflict,
         ),
       };
-      if (outcome.changed && input.scope === "viewer")
+      if (outcome.changed && input.scope === "viewer") {
         outbox.mirror(page.artifactId, page.viewerId);
+        touched(page.artifactId);
+      }
       return result;
     },
     importSubmission(envelope, source) {
       const owners = options.deliveryOwners?.(envelope.artifactId) ?? outbox.owners();
-      const answer = ledger.write((db) =>
-        importSubmission(db, {
+      let created = false;
+      const answer = ledger.write((db) => {
+        const held = db.get("SELECT 1 FROM submission WHERE id = ?", envelope.submissionId);
+        const result = importSubmission(db, {
           envelope,
           source,
           owners,
@@ -697,8 +830,16 @@ export function createInteraction(options: InteractionOptions): Interaction {
               artifactId,
               source.server,
             ) !== undefined,
-        }),
-      );
+        });
+        created =
+          held === undefined &&
+          db.get("SELECT 1 FROM submission WHERE id = ?", envelope.submissionId) !== undefined;
+        // An imported submission settles the roster like a local one, in its own transaction
+        // (D168 item 3, Opus review 5): whatever it completes is recorded with it.
+        if (created) settleRoster(db, envelope.artifactId, new Date().toISOString());
+        return result;
+      });
+      if (created) touched(envelope.artifactId);
       log.info("interaction.imported", {
         artifactId: envelope.artifactId,
         submissionId: envelope.submissionId,
@@ -754,8 +895,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
     submit(page, input) {
       const owners = options.deliveryOwners?.(page.artifactId) ?? outbox.owners();
       const outcome = asPage(() =>
-        ledger.write((db) =>
-          submit(db, {
+        ledger.write((db) => {
+          const made = submit(db, {
             artifactId: page.artifactId,
             viewerId: page.viewerId,
             ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
@@ -764,9 +905,13 @@ export function createInteraction(options: InteractionOptions): Interaction {
             channel: input.channel,
             owners,
             covers: options.coverage,
-          }),
-        ),
+          });
+          // A roster completed by this submission says so in the same transaction (CO-02).
+          if (made.created) settleRoster(db, page.artifactId, new Date().toISOString());
+          return made;
+        }),
       );
+      if (outcome.created) touched(page.artifactId);
       if (outcome.tallied) {
         for (const listener of tallyListeners) {
           try {
@@ -901,7 +1046,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
           draft: documentSnapshot(db, page.artifactId, page.viewerId),
           state: (() => {
             const state = documentSnapshot(db, page.artifactId, null);
-            return { ...state, fields: fieldsForPage(state.fields, page.viewerId) };
+            return {
+              ...state,
+              fields: fieldsForPage(state.fields, page.viewerId, page.artifactId),
+            };
           })(),
           ...(latestOwn ? { submission: forPage(submissionSummary(db, latestOwn)) } : {}),
           ...(() => {
@@ -936,6 +1084,20 @@ export function createInteraction(options: InteractionOptions): Interaction {
           if (!runs.has(runId)) runs.set(runId, runById(db, page.artifactId, runId));
           return runs.get(runId);
         };
+        const standing = submissionStanding(db, page.artifactId, ownerOf(db, page.viewerId));
+        const submitters = new Map<string, string | undefined>();
+        const submitterOf = (submissionId: string): string | undefined => {
+          if (!submitters.has(submissionId)) {
+            submitters.set(
+              submissionId,
+              db.get<{ viewer_id: string }>(
+                "SELECT viewer_id FROM submission WHERE id = ?",
+                submissionId,
+              )?.viewer_id,
+            );
+          }
+          return submitters.get(submissionId);
+        };
         for (;;) {
           const read = readEvents(db, {
             filter: { artifacts: [page.artifactId] },
@@ -946,6 +1108,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
             if (events.length === limit) return { events, cursor: String(cursor) };
             cursor = Number(event.cursor);
             if (options.sentOnly && DELIVERY_EVENTS.has(event.type)) continue;
+            if (event.type.startsWith("submission.")) {
+              const shown = submissionShown(event, page.viewerId, standing, submitterOf);
+              if (shown === "hidden") continue;
+              const seen = eventForPage(event, page.viewerId);
+              events.push(
+                shown === "anonymous" ? { ...seen, actor: { kind: seen.actor.kind } } : seen,
+              );
+              continue;
+            }
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
           }
           cursor = Math.max(cursor, Number(read.cursor));
@@ -999,6 +1170,33 @@ export function createInteraction(options: InteractionOptions): Interaction {
           return {
             submissionId: row.id,
             markdown: resultsMarkdown(results, JSON.parse(row.snapshot_json) as Snapshot),
+          };
+        });
+      }),
+      handler(resultsListMethod, (params) => {
+        const artifactId = options.artifacts.resolve(params.artifact);
+        const after = params.after === undefined ? 0 : Number(params.after);
+        const limit = params.limit ?? RESULTS_LIST_MAX;
+        return ledger.read((db) => {
+          const rows = db.all<SubmissionRow>(
+            "SELECT * FROM submission WHERE artifact_id = ? AND position > ? ORDER BY position LIMIT ?",
+            artifactId,
+            after,
+            limit + 1,
+          );
+          const page = rows.slice(0, limit);
+          return {
+            results: page.map((row) => {
+              const results = buildResults(db, row);
+              return params.format === "md"
+                ? {
+                    submissionId: row.id,
+                    markdown: resultsMarkdown(results, JSON.parse(row.snapshot_json) as Snapshot),
+                  }
+                : results;
+            }),
+            cursor: String(page.at(-1)?.position ?? after),
+            more: rows.length > limit,
           };
         });
       }),
@@ -1230,5 +1428,52 @@ export function createInteraction(options: InteractionOptions): Interaction {
       return () => tallyListeners.delete(listener);
     },
     subscriptionCount: () => subscriptions.size,
+
+    addRespondents(db, input) {
+      const added = addRespondents(db, { ...input, now: new Date().toISOString() });
+      queueMicrotask(() => touched(input.artifactId));
+      return added;
+    },
+    removeRespondents(db, input) {
+      const removed = removeRespondents(db, { ...input, now: new Date().toISOString() });
+      queueMicrotask(() => touched(input.artifactId));
+      return removed;
+    },
+    roster: (artifactId, live) => ledger.read((db) => readRoster(db, artifactId, live)),
+    rosterForPage(page) {
+      return ledger.read((db) =>
+        rosterForPage(db, {
+          artifactId: page.artifactId,
+          viewerId: page.viewerId,
+          owner: ownerOf(db, page.viewerId),
+          viewerOf: (viewerId) => viewer(db, viewerId),
+        }),
+      );
+    },
+    rostersForPages(artifactId, viewerIds) {
+      return ledger.read((db) =>
+        rosterForPages(db, {
+          artifactId,
+          pages: viewerIds.map((viewerId) => ({ viewerId, owner: ownerOf(db, viewerId) })),
+          viewerOf: (viewerId) => viewer(db, viewerId),
+        }),
+      );
+    },
+    visibility: (artifactId) => ledger.read((db) => teamVisibility(db, artifactId)),
+    isOwner: (viewerId) => ledger.read((db) => ownerOf(db, viewerId)),
+    peer(artifactId, viewerId) {
+      const record = ledger.read((db) => viewer(db, viewerId));
+      return {
+        key: peerKey(artifactId, viewerId),
+        id: record.id,
+        kind: record.kind,
+        ...(record.name !== undefined ? { name: record.name } : {}),
+        ...(record.verified !== undefined ? { verified: record.verified } : {}),
+      };
+    },
+    onTeam(listener) {
+      teamListeners.add(listener);
+      return () => teamListeners.delete(listener);
+    },
   };
 }

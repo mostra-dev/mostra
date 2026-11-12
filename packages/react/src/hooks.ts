@@ -125,8 +125,18 @@ export interface FieldMeta<T> {
   readonly error?: string;
   /** Another writer changed the field since the viewer's edit: keep theirs or mine. */
   readonly conflict?: { readonly theirs: T; keepMine(): void; takeTheirs(): void };
-  /** Who last wrote the field (artifact scope, D63). */
-  readonly updatedBy?: { readonly kind: "viewer" | "agent" | "host"; readonly name?: string };
+  /**
+   * Who last wrote the field and when (artifact scope, D63, D168): a viewer by name and by their
+   * key on this artifact (the same `key` `useRespondents` and `usePresence` give), an agent or a
+   * host; `self` when it was this viewer.
+   */
+  readonly updatedBy?: {
+    readonly kind: "viewer" | "agent" | "host";
+    readonly name?: string;
+    readonly key?: string;
+    readonly self?: boolean;
+    readonly at?: string;
+  };
 }
 
 /** What a field's validator says of a value: now, or once its asynchronous check settles. */
@@ -157,9 +167,19 @@ function validationOf<T>(validate: FieldOptions<T>["validate"], value: T): Valid
   return { kind: "now", error: messageOf(result) };
 }
 
-function updatedByOf(actor: Actor | undefined): FieldMeta<unknown>["updatedBy"] {
+function updatedByOf(
+  actor: Actor | undefined,
+  at: string | undefined,
+  viewerId: string | undefined,
+): FieldMeta<unknown>["updatedBy"] {
   if (!actor || actor.kind === "mostra") return undefined;
-  return { kind: actor.kind, ...(actor.name !== undefined ? { name: actor.name } : {}) };
+  return {
+    kind: actor.kind,
+    ...(actor.name !== undefined ? { name: actor.name } : {}),
+    ...(actor.key !== undefined ? { key: actor.key } : {}),
+    ...(actor.kind === "viewer" && viewerId !== undefined ? { self: actor.id === viewerId } : {}),
+    ...(at !== undefined ? { at } : {}),
+  };
 }
 
 const warned = new Set<string>();
@@ -282,15 +302,15 @@ export function useField<T>(
   const conflict = store.conflict(key);
   const refusal = store.refusal(key);
   const save = store.save(key);
-  const writer = updatedByOf(store.updatedBy(key));
-  const writerKind = writer?.kind;
-  const writerName = writer?.name;
+  const writer = updatedByOf(store.updatedBy(key), store.updatedAt(key), store.viewer()?.id);
+  // One string for the memo: a change of who, when or self re-renders the meta.
+  const writerText = writer === undefined ? undefined : JSON.stringify(writer);
   const meta = useMemo((): FieldMeta<T> => {
     const message = error ?? refusal?.message;
     const updatedBy =
-      writerKind === undefined
+      writerText === undefined
         ? undefined
-        : { kind: writerKind, ...(writerName !== undefined ? { name: writerName } : {}) };
+        : (JSON.parse(writerText) as NonNullable<FieldMeta<T>["updatedBy"]>);
     return {
       save,
       ...(message !== undefined ? { error: message } : {}),
@@ -305,7 +325,7 @@ export function useField<T>(
         : {}),
       ...(scope === "artifact" && updatedBy ? { updatedBy } : {}),
     };
-  }, [save, error, refusal, conflict, writerKind, writerName, store, key, scope, first]);
+  }, [save, error, refusal, conflict, writerText, store, key, scope, first]);
   return [value, set, meta];
 }
 

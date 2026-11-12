@@ -185,6 +185,17 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   What a slow reader hasn't taken is coalesced (`bus.coalesce`): a source's newer value in latest
   mode replaces its older ones, and a run's contiguous deltas merge. Which artifacts have live
   sources is kept in memory (`instance`), so reconciling never scans every artifact.
+- **Presence is never stored, and the roster settles in the transaction that changes it (CO-02,
+  CO-04, D168).** Who is here, cursors and selections live in `interaction/team.ts`'s memory only
+  (a 30 s lease, 20 posts a second per view, one coalesced `presence` message per artifact at most
+  every 50 ms), and the integration suite reads every ledger table for them. `respondents` and
+  `presence` messages go only to views that asked for them (`bus.send`), so a version built before
+  them never receives a kind it doesn't know. Every submission, import and roster change calls
+  `settleRoster` in its own transaction, which appends `roster.completed` once per completion;
+  `submitted:all` is read from the events, and on an owner instance answers only once every
+  submission a completion names is held. Pages never see `roster.*` events, nor another person's
+  `ref`, email or viewer ID: they see `peerKey`'s `vk_` keys, under the manifest's
+  `team.visibility` (`rosterForPage`, `TeamTraffic`), and the owner as `names`.
 - **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
@@ -214,7 +225,9 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   sign-in happens only on the API origin. Everything an operating layer adds comes through the
   operator ports (`server/operator.ts`), each time-limited with a no-op default; the open server
   holds no billing, quota, mail, webhook, scoring or placement code (`test/unit/open-server.test.ts`
-  fails on one).
+  fails on one). The `invitations` port's queue keeps a personal link's token ID, never its URL
+  (whose fragment is its secret): the URL is built from the token when the operator takes the
+  invitation (`HostedHome.invitationLink`), and a link that stopped working is dropped (D168).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -235,9 +248,9 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `deps` | The warm set, the static import scan, lockfiles, working lockfiles and the store index in the ledger, lock layouts in `deps/locks`, the pnpm 10 installer, offline answers, `deps/add`; `child/install.ts` is the install child, which connects to the supervisor and runs pnpm in its process group |
 | `publish` | Sources, ignore rules, snapshots (tar.zst), digests and version IDs, manifest extraction, the publish pipeline, the `artifact/*` and `deps/add` methods |
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
-| `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `wait` and `events/*` methods |
+| `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `results/list`, `wait` and `events/*` methods; the roster, its rounds, status and the visibility projection (`roster.ts`, D168); presence and the roster's ephemeral pushes (`team.ts`) |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, faces' loopback listeners (leased under `face`, or ephemeral), the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes, faces and hosts' external bases (`externalBase`, `external_base`), worker-mode entry, stream tickets, and `view/url`, `view/rotate`, `view/revoke` (`index.ts`); the worker-mode bootstrap page and service worker (`worker.ts`); Tailscale's identity headers (`identity.ts`) |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes, faces and hosts' external bases (`externalBase`, `external_base`), worker-mode entry, stream tickets, and `view/url`, `view/rotate`, `view/revoke` (`index.ts`); the worker-mode bootstrap page and service worker (`worker.ts`); Tailscale's identity headers (`identity.ts`); `roster/*`, whose personal links it mints in the roster's transaction, and the `respondents` and `presence` routes (`team.ts`, D168) |
 | `share` | Shares (D158): `share/start`, `share/stop` and `share/list`, their rows, plans, expiry, recovery after a restart and the busy count (`index.ts`); the tunnel children (`tunnel.ts`); Tailscale Serve and Funnel (`tailscale.ts`) and Cloudflare quick tunnels (`cloudflare.ts`). The tools are found by `platform/tools.ts` (`MOSTRA_TAILSCALE`, `MOSTRA_CLOUDFLARED`, `PATH`, the usual install places) |
 | `actions` | Plain calls and durable action runs (D54, D130): starting, joining, attaching, cancelling and recovering runs, flushing their progress, log and result batches, the worker bridge for `secret`, `signal`, `emit` and `state` |
 | `workers` | The `WorkerLauncher` seam with the local and socket launchers (D124), and the pool: one worker per version, start, ping watchdog, idle eviction, crash kinds, backoff and parking (D129, D133) |
@@ -317,7 +330,9 @@ first module outside `protocol-server` needs it.
   `MOSTRA_TEST_GROUP=core|remote|verify|verify-failures` runs one group (`vitest.config.ts`), unset
   runs them all. `remote` holds the remote server's suites: the server, binding, link, hosted pages
   and their rules, relay, restore, replicator (`MOSTRA_TEST_LITESTREAM`), OAuth, sign-in, remote
-  MCP and its conformance, operator ports, tenancy, pause and anonymous answers at volume. The groups partition the files by name, so a new suite lands in exactly one; a new
+  MCP and its conformance, operator ports, tenancy, pause, anonymous answers at volume and a team
+  form on a server with its invitations (`team-hosted.test.ts`); the local team suite
+  (`team.test.ts`) is in `core`. The groups partition the files by name, so a new suite lands in exactly one; a new
   `verify*` suite joins `verify`.
 - `pnpm --filter @mostra/runtime test:integration -- verify audit`: verify through a real daemon
   (`verify.test.ts`: WP-03's fixtures as negatives, a fixture per stage's faults, regressions, the

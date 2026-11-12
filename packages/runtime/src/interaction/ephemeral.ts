@@ -46,6 +46,14 @@ function coalesceInto(
   queue: EphemeralMessage[],
   message: EphemeralMessage,
 ): void {
+  if (message.kind === "respondents" || message.kind === "presence") {
+    // A page's roster and presence are whole states: the newest replaces any still queued.
+    for (let index = queue.length - 1; index >= 0; index--) {
+      if ((queue[index] as EphemeralMessage).kind === message.kind) queue.splice(index, 1);
+    }
+    queue.push(message);
+    return;
+  }
   if (message.kind === "live") {
     const latestMode = view.live.get(message.live.key)?.window === undefined;
     if (latestMode && message.live.value !== undefined) {
@@ -124,6 +132,15 @@ export interface EphemeralBus {
   publishRun(artifactId: string, message: Extract<EphemeralMessage, { kind: "run" }>): void;
   /** Sends a live update to every view reading the source. */
   publishLive(artifactId: string, message: Extract<EphemeralMessage, { kind: "live" }>): void;
+  /**
+   * Sends one view its own roster or presence (D168), when it listens or polls now: each view's
+   * is its own, under the visibility policy.
+   */
+  send(
+    artifactId: string,
+    viewId: string,
+    message: Extract<EphemeralMessage, { kind: "respondents" | "presence" }>,
+  ): void;
   /** Hears the view's messages as they come (an open event stream); returns the stop. */
   listen(
     artifactId: string,
@@ -255,6 +272,10 @@ export function createEphemeralBus(
         if (view.artifactId !== artifactId) continue;
         if ((view.live.get(message.live.key)?.until ?? 0) > at) deliver(view, message);
       }
+    },
+    send(artifactId, viewId, message) {
+      const view = views.get(viewId);
+      if (view && view.artifactId === artifactId) deliver(view, message);
     },
     listen(artifactId, viewId, listener) {
       const view = viewOf(artifactId, viewId);

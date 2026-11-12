@@ -216,8 +216,10 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `worker.crashed` | versionId, kind (`crash`, `oom`, `hang`), cause, backoffMs, parked (D133); pages get it without `cause`, which quotes the server code's output (D136) |
 | `share.started` / `share.stopped` | shareId, via, hostname; `share.started` the artifact's external origin, `share.stopped` its reason (`stopped`, `expired`, `revoked`, `tunnel`, `restart`) (D158) |
 | `token.revoked` | tokenId |
+| `roster.changed` | round, respondents, complete, and `added` (`{ ref, name? }`), `renamed`, `relinked` and `removed` refs (D168); for hosts only, never shown to pages |
+| `roster.completed` | round, respondents, submissions (`{ ref, submissionId }`): every expected respondent answered the round, appended in the transaction that completed it (D168) |
 
-These are ephemeral and never stored (D47, D63): presence, live updates, action progress and log lines (the log is stored on the run, not as events), terminal output and save acknowledgments.
+These are ephemeral and never stored (D47, D63): presence (D168: who is here, cursors and selections, kept in the supervisor's memory for 30 s at most), the roster's `respondents` pushes, live updates, action progress and log lines (the log is stored on the run, not as events), terminal output and save acknowledgments.
 
 **Compaction** (D47) is opt-in (`mostra gc --compact-events --before <cursor>`, WP-10). It replaces an artifact's events before a cursor, in one transaction, with one `artifact.compacted` event at the last replaced cursor and sequence, so neither ever moves back. Its payload summarizes them: `from` and `through` (the first and last cursors covered; an earlier summary in the range folds in, keeping its `from`), `removed`, counts per type and the latest version published. A filtered reader still receives it, and a reader who receives it continues after it. A reader whose cursor lies inside a summary's range (`from` ≤ cursor < `through`) had events that are gone: reads answer `MOSTRA_HOST_CURSOR_COMPACTED`, and a live subscription receives the summary with that diagnostic and continues after it, never a silent gap.
 
@@ -238,7 +240,7 @@ The ledger carries `schema_migration`. A new ledger is built in a temporary file
 
 The plan update of 2026-10-16 added stored data for the remote server and teams. WP-28's is designed below (D165); the others are a *Deferred decision* for the package named, which adds its tables, columns and events here additively, without weakening a constraint above.
 - **WP-28** (D116, D117) designed the remote server's data below (D165); WP-29 and WP-30 add its tables and migrations.
-- **WP-31** (D121): expected respondents and their roster per artifact or share, the roster-complete event, and the attribution of artifact-scoped fields. Presence, cursors and selections stay ephemeral and are never stored (§4, D47).
+- **WP-31** (D121, as built, D168): migration 16 adds `roster_entry(artifact_id, ref, name NULL, email NULL, viewer_id FK, token_id NULL, position, added_at, PRIMARY KEY(artifact_id, ref), UNIQUE(artifact_id, viewer_id), UNIQUE(artifact_id, position))`, one row per expected respondent, whose viewer is its personal link's (kind `token` by `ref`); and `roster_state(artifact_id PK, round, round_cursor, round_started_at, complete)`, a trigger refusing a round or its cursor that goes back. Attribution is `field.updated_by_json` and `updated_at` (§3). Presence, cursors and selections stay in the supervisor's memory and are never stored (§4, D47). The server's directory migration 4 lets `outbound` hold `invitations`, each by its link's token ID, never its URL.
 - **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).
 
 ### 7.1 A remote server's data directory

@@ -61,6 +61,8 @@ const BY_AREA: Readonly<Record<DiagnosticArea, ExitCode>> = {
   CLI: EXIT.usage,
   // A remote server or the link to one: the environment, like a share's tunnel (D165).
   REMOTE: EXIT.environment,
+  // A roster or a team wait the artifact can't take (D168): the artifact's, like a refused submit.
+  TEAM: EXIT.failure,
 };
 
 /** Codes whose exit code isn't their area's. */

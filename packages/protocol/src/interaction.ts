@@ -29,6 +29,16 @@ export { ControlsPolicy, SubmitChannel, TrustedControl } from "./view.ts";
  */
 export type ViewerKind = "local" | "tailnet" | "token" | "host" | "account" | "anonymous";
 
+/** The Zod schema of the `ViewerKind` type (inlined where it is used, never a definition of its own). */
+export const ViewerKind: z.ZodType<ViewerKind> = z.enum([
+  "local",
+  "tailnet",
+  "token",
+  "host",
+  "account",
+  "anonymous",
+]);
+
 /**
  * A person who views an artifact (PRODUCT vocabulary). The home's local user is one viewer of kind
  * `local`; a link minted with `viewer` acts as a viewer of kind `token` (D104).
@@ -53,7 +63,7 @@ export interface Viewer {
 export const Viewer: z.ZodType<Viewer> = z
   .object({
     id: ViewerId.schema,
-    kind: z.enum(["local", "tailnet", "token", "host", "account", "anonymous"]),
+    kind: ViewerKind,
     name: z.string().exactOptional(),
     ref: z.string().exactOptional(),
     verified: z.boolean().exactOptional(),
@@ -93,6 +103,12 @@ export interface Actor {
   readonly id?: string;
   /** A display name, when one is known. */
   readonly name?: string;
+  /**
+   * For a viewer, as a page sees another one (D168): an opaque key, stable for that viewer of this
+   * artifact, never their viewer ID (D104), so attribution, respondents and presence name one person
+   * alike.
+   */
+  readonly key?: string;
 }
 
 /** The Zod schema of the `Actor` type. */
@@ -101,6 +117,7 @@ export const Actor: z.ZodType<Actor> = z
     kind: z.enum(["viewer", "agent", "host", "mostra"]),
     id: z.string().exactOptional(),
     name: z.string().exactOptional(),
+    key: z.string().exactOptional(),
   })
   .register(wireRegistry, {
     id: "Actor",
@@ -387,8 +404,9 @@ export const EventFilter: z.ZodType<EventFilter> = z
   });
 
 /**
- * What `wait` waits for (ARCHITECTURE §6, D103): `submitted`, `signal:<name>`, `state:<fieldId>`
- * or `event:<type pattern>`.
+ * What `wait` waits for (ARCHITECTURE §6, D103, D168): `submitted`, `submitted:all` (every expected
+ * respondent submitted: the roster completed), `submitted:<N>` (N submissions, 1 to 10,000),
+ * `signal:<name>`, `state:<fieldId>` or `event:<type pattern>`.
  */
 export type WaitCondition = string;
 
@@ -400,11 +418,12 @@ export const WaitCondition: z.ZodType<WaitCondition> = z
   .string()
   .regex(
     // biome-ignore lint/suspicious/noControlCharactersInRegex: field IDs exclude control characters.
-    /^(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\u0000-\u001f\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*(\.\*)?)$/,
+    /^(?:(submitted|signal:[A-Za-z0-9][A-Za-z0-9._-]{0,63}|state:[^\u0000-\u001f\u007f]{1,256}|event:[a-z][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*(\.\*)?)$|submitted:(?:all|[1-9][0-9]{0,3}|10000)$)/,
   )
   .register(wireRegistry, {
     id: "WaitCondition",
-    description: "What wait waits for: submitted, signal:<name>, state:<fieldId> or event:<type>.",
+    description:
+      "What wait waits for: submitted, submitted:all, submitted:<N>, signal:<name>, state:<fieldId> or event:<type>.",
   });
 
 // ── Submissions, deliveries and results ──────────────────────────────────────────────────

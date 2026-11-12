@@ -62,6 +62,153 @@ function submissionEvent(db: LedgerDb, row: SubmissionRow): EventRecord {
 }
 
 /**
+ * The latest roster event at or before `upTo` (`roster.changed` or `roster.completed`), or the
+ * roster's state a compaction summary kept for the events it replaced (DATA_MODEL §4).
+ */
+function latestRosterState(
+  db: LedgerDb,
+  artifactId: string,
+  upTo: number,
+): { readonly complete: boolean; readonly completed?: EventRecord } | undefined {
+  const row = db.get<EventRow>(
+    "SELECT * FROM event WHERE artifact_id = ? AND cursor <= ? AND type IN ('roster.changed', 'roster.completed', ?) ORDER BY cursor DESC LIMIT 1",
+    artifactId,
+    upTo,
+    COMPACTED,
+  );
+  if (!row) return undefined;
+  const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+  if (row.type === COMPACTED) {
+    const kept = payload["roster"] as
+      | { readonly complete: boolean; readonly completed?: EventRecord }
+      | undefined;
+    return kept;
+  }
+  const lastCompleted = (): EventRecord | undefined => {
+    const completed = db.get<EventRow>(
+      "SELECT * FROM event WHERE artifact_id = ? AND cursor <= ? AND type = 'roster.completed' ORDER BY cursor DESC LIMIT 1",
+      artifactId,
+      upTo,
+    );
+    if (completed) return eventRecord(completed);
+    const summary = db.get<EventRow>(
+      `SELECT * FROM event WHERE artifact_id = ? AND cursor <= ? AND type = '${COMPACTED}' ORDER BY cursor DESC LIMIT 1`,
+      artifactId,
+      upTo,
+    );
+    if (!summary) return undefined;
+    return (JSON.parse(summary.payload_json) as { roster?: { completed?: EventRecord } }).roster
+      ?.completed;
+  };
+  if (row.type === "roster.completed") return { complete: true, completed: eventRecord(row) };
+  if (payload["complete"] !== true) return { complete: false };
+  const completed = lastCompleted();
+  return completed ? { complete: true, completed } : { complete: true };
+}
+
+/**
+ * `submitted:all` and `submitted:<N>` (D168, CO-02), under `once` per-viewer and `epochs`:
+ * - `submitted:all` is the roster's completion. Under `once` per-viewer without an explicit
+ *   cursor it is level-triggered: the roster is complete now (its latest event says so), and the
+ *   latest `roster.completed` answers. Otherwise it is the first `roster.completed` after the
+ *   cursor, so an agent waits for each next completion (a roster that grew, an `epochs` round).
+ *   It is read from durable events only, so an owner instance answers it for a hosted artifact
+ *   from the events it follows.
+ * - `submitted:<N>` counts submissions: under `once` per-viewer without an explicit cursor all of
+ *   them, otherwise those after the cursor; the N-th one's `submission.created` answers.
+ * Under `once` per-artifact (one submission in all) only `submitted:1` can ever hold:
+ * `MOSTRA_TEAM_ROSTER_POLICY` for the rest; under `none`, `MOSTRA_SUBMIT_POLICY_NONE`.
+ */
+function checkTeamCondition(
+  db: LedgerDb,
+  artifactId: string,
+  until: string,
+  after: number,
+  upTo: number,
+  explicitAfter: boolean,
+): { readonly event: EventRecord } | { readonly cursor: number } {
+  const artifact = db.get<{ policy_json: string | null }>(
+    "SELECT policy_json FROM artifact WHERE id = ?",
+    artifactId,
+  );
+  const policy = storedPolicy(artifact?.policy_json ?? null);
+  if (policy.policy === "none") {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_SUBMIT_POLICY_NONE", {
+        message:
+          "This artifact's submission policy is none: nothing will be submitted to wait for.",
+      }),
+    );
+  }
+  const count = until === "submitted:all" ? undefined : Number(until.slice("submitted:".length));
+  if (count !== undefined && (!Number.isSafeInteger(count) || count < 1 || count > 10_000)) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+        message: "submitted:<N> takes a number of submissions from 1 to 10000.",
+      }),
+      -32602,
+    );
+  }
+  const perArtifact = policy.policy === "once" && policy.scope !== "per-viewer";
+  if (perArtifact && count !== 1) {
+    throw new RpcError(
+      createDiagnostic("MOSTRA_TEAM_ROSTER_POLICY", {
+        message: `This artifact takes one submission in all (once, per-artifact), so ${until} could never hold.`,
+      }),
+    );
+  }
+  const level = policy.policy === "once" && !explicitAfter;
+  if (count !== undefined) {
+    const from = level ? 0 : after;
+    if (!level) checkCompaction(db, { artifacts: [artifactId] }, after);
+    const row = db.get<SubmissionRow>(
+      "SELECT * FROM submission WHERE artifact_id = ? AND position > ? AND position <= ? ORDER BY position LIMIT 1 OFFSET ?",
+      artifactId,
+      from,
+      upTo,
+      count - 1,
+    );
+    if (row) return { event: submissionEvent(db, row) };
+    return { cursor: Math.max(upTo, after) };
+  }
+  if (level) {
+    const state = latestRosterState(db, artifactId, upTo);
+    if (state?.complete && state.completed) {
+      return heldHere(db, state.completed) ? { event: state.completed } : { cursor: after };
+    }
+    return { cursor: Math.max(upTo, after) };
+  }
+  checkCompaction(db, { artifacts: [artifactId] }, after);
+  const completed = db.get<EventRow>(
+    "SELECT * FROM event WHERE artifact_id = ? AND cursor > ? AND cursor <= ? AND type = 'roster.completed' ORDER BY cursor LIMIT 1",
+    artifactId,
+    after,
+    upTo,
+  );
+  if (!completed) return { cursor: Math.max(upTo, after) };
+  const event = eventRecord(completed);
+  // Not yet: the newest cursor examined stays before the completion, so the next wait finds it.
+  return heldHere(db, event) ? { event } : { cursor: Math.max(after, completed.cursor - 1) };
+}
+
+/**
+ * Whether this home holds every submission a completion names. A local home always does (they
+ * commit together); an owner instance copies a hosted `roster.completed` through its follow, while
+ * the submissions arrive by delivery, so a wait answers only once the last one is imported and
+ * `results` holds every answer the completion counts (J14). The import's commit wakes the wait.
+ */
+function heldHere(db: LedgerDb, completed: EventRecord): boolean {
+  const named = completed.payload["submissions"];
+  if (!Array.isArray(named)) return true;
+  for (const entry of named) {
+    const id = (entry as { submissionId?: unknown } | null)?.submissionId;
+    if (typeof id !== "string" || id === "") continue;
+    if (!db.get("SELECT 1 FROM submission WHERE id = ?", id)) return false;
+  }
+  return true;
+}
+
+/**
  * Checks a condition once, inside the caller's read transaction: the event that satisfies it, or
  * the newest cursor examined. Throws `MOSTRA_SUBMIT_POLICY_NONE` for `submitted` on an artifact
  * without submissions, and `MOSTRA_HOST_CURSOR_COMPACTED` for a cursor inside a compacted range.
@@ -83,6 +230,9 @@ export function checkCondition(
       ...params,
     );
   let found: EventRow | undefined;
+  if (until === "submitted:all" || /^submitted:[0-9]+$/.test(until)) {
+    return checkTeamCondition(db, artifactId, until, after, upTo, explicitAfter);
+  }
   if (until === "submitted") {
     const artifact = db.get<{ policy_json: string | null }>(
       "SELECT policy_json FROM artifact WHERE id = ?",

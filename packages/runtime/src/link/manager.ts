@@ -41,6 +41,7 @@ import {
   remoteLogoutMethod,
   remoteStatusMethod,
   remoteTokenMethod,
+  rosterAddMethod,
   type ServerLiveValueParams,
   SubmissionEnvelope,
   type SubmissionPolicy,
@@ -334,6 +335,17 @@ export function createLink(options: LinkOptions): Link {
   const protectLink = (url: string): void => {
     const secret = /#t=([^&]+)/.exec(url)?.[1];
     if (secret !== undefined) options.protect(secret);
+  };
+  /** Protects every capability link a value holds, at any depth. */
+  const protectLinksIn = (value: unknown, depth = 0): void => {
+    if (depth > 16) return;
+    if (typeof value === "string") {
+      if (value.includes("#t=")) protectLink(value);
+    } else if (Array.isArray(value)) {
+      for (const item of value) protectLinksIn(item, depth + 1);
+    } else if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) protectLinksIn(item, depth + 1);
+    }
   };
 
   const linkRow = (db: LedgerDb, server: string): LinkRow | undefined =>
@@ -1452,7 +1464,12 @@ export function createLink(options: LinkOptions): Link {
           }),
         );
       }
-      return session.call(definition, params, { timeoutMs: 30_000 });
+      const answer = await session.call(definition, params, { timeoutMs: 30_000 });
+      // A forwarded answer may carry the hosted home's capability links (`roster/add`'s personal
+      // links, D168): whatever it carries is protected from the logs here, as the share's own link
+      // is (Opus review 3).
+      protectLinksIn(answer);
+      return answer;
     },
     shares: () => ({
       mint: async (input) => {
@@ -1474,6 +1491,19 @@ export function createLink(options: LinkOptions): Link {
           hostname: new URL(minted.url).host,
           ...(minted.expiresAt !== undefined ? { expiresAt: minted.expiresAt } : {}),
         };
+      },
+      respondents: async (input) => {
+        // The roster is the hosted home's, its personal links hosted links (D168): each is
+        // protected from the logs here as the share's own link is.
+        const session = await self.session(input.server);
+        const added = await session.call(rosterAddMethod, {
+          artifact: { artifactId: input.artifactId },
+          respondents: [...input.respondents],
+          ...(input.scopes !== undefined ? { scopes: input.scopes } : {}),
+          ...(input.ttl !== undefined ? { ttl: input.ttl } : {}),
+        });
+        for (const entry of added.links) protectLink(entry.link.url);
+        return added.links;
       },
       url: (server, tokenId) => readLinks(server)[tokenId],
       revoke: async (server, tokenId) => {

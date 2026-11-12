@@ -10,6 +10,9 @@ import {
   artifactPauseMethod,
   livePushMethod,
   MutationId,
+  rosterAddMethod,
+  rosterGetMethod,
+  rosterRemoveMethod,
   stateGetMethod,
   statePatchMethod,
 } from "@mostra/protocol";
@@ -17,7 +20,15 @@ import type { HostedState } from "../actions/index.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import type { Link } from "./manager.ts";
 
-const FORWARDED = new Set([stateGetMethod.method, statePatchMethod.method, livePushMethod.method]);
+const FORWARDED = new Set([
+  stateGetMethod.method,
+  statePatchMethod.method,
+  livePushMethod.method,
+  // The roster and its personal links are the hosted home's: its viewers answer there (D168).
+  rosterAddMethod.method,
+  rosterRemoveMethod.method,
+  rosterGetMethod.method,
+]);
 
 /** Server code's `state` for an artifact hosted somewhere, else `undefined`. */
 export function hostedState(link: Link, artifactId: string): HostedState | undefined {
@@ -43,8 +54,8 @@ export function hostedState(link: Link, artifactId: string): HostedState | undef
 }
 
 /**
- * Wraps the instance's `state/get`, `state/patch` and `live/push` so that, for a hosted artifact,
- * they act on its hosted home: the same params, the artifact named by its ID there.
+ * Wraps the instance's `state/get`, `state/patch`, `live/push` and `roster/*` so that, for a hosted
+ * artifact, they act on its hosted home: the same params, the artifact named by its ID there.
  */
 export function forwardHosted(
   link: Link,

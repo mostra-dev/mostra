@@ -28,7 +28,18 @@ export interface NetworkWatch {
   requestsSince(from: number): number;
   /** The failed-request findings so far. */
   findings(): Diagnostic[];
+  /**
+   * The first request of the page, of any frame and Mostra's own included, that failed for a
+   * reason of the browser's (see {@link COLLISION}), when one did: the render isn't the artifact's.
+   */
+  collision(): string | undefined;
 }
+
+/**
+ * The error Chromium gives a connection whose random local port collided with one in TIME_WAIT on
+ * Windows (D157, #132): the browser's own, never the artifact's or Mostra's.
+ */
+export const COLLISION = "net::ERR_NO_BUFFER_SPACE";
 
 /** Whether a request is the page's event stream, which stays open. */
 const isStream = (url: URL): boolean => /\/_mostra\/v\/[^/]+\/events(\/poll)?$/.test(url.pathname);
@@ -38,8 +49,11 @@ export function watchNetwork(
   page: Page,
   frame: () => Frame | undefined,
   viewport: string,
+  /** Requests a test failed as a collision stands in for (`MOSTRA_TEST_VERIFY_COLLIDE_ONCE`). */
+  standIns: ReadonlySet<Request> = new Set(),
 ): NetworkWatch {
   const open = new Set<Request>();
+  let collision: string | undefined;
   /** Events in order: skips, writes and protocol requests, each at its position. */
   const log: (
     | { kind: "skip"; fn: string }
@@ -117,6 +131,15 @@ export function watchNetwork(
   page.on("requestfailed", (request) => {
     done(request);
     const text = request.failure()?.errorText ?? "failed";
+    if (collision === undefined && (text.includes(COLLISION) || standIns.has(request))) {
+      let shown = request.url();
+      try {
+        shown = new URL(shown).pathname; // Never the query, nor a link's fragment.
+      } catch {
+        // Kept as Playwright gave it.
+      }
+      collision = `${request.resourceType()} ${request.method()} ${shown} failed (${text})`;
+    }
     // A request the page itself cancelled (an aborted fetch, a navigation away) didn't fail.
     if (/ERR_ABORTED|NS_BINDING_ABORTED|cancelled/i.test(text)) return;
     fail(request, `failed (${text})`);
@@ -169,5 +192,6 @@ export function watchNetwork(
       const own = frame();
       return own === undefined ? [] : [...(failures.get(own)?.values() ?? [])];
     },
+    collision: () => collision,
   };
 }

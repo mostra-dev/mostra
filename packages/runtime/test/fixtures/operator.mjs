@@ -6,7 +6,7 @@
  *
  * Behaviours, each per port:
  * - `limits`: per operation, `"allow"`, `"hang"` (never answers) or `{ code, message, retryAfterMs? }`.
- * - `events`, `metering`: `"ok"`, `"fail"` (throws) or `"hang"`.
+ * - `events`, `metering`, `invitations`: `"ok"`, `"fail"` (throws) or `"hang"`.
  * - `routing`: per host, a routing answer; `linkHost`: a host or null.
  * - `policy`: a link policy for every link.
  * - `accounts`: per subject, `{ account, status }`, `{ step: { url } }` or `{ refused: { message } }`.
@@ -26,6 +26,7 @@ const state = {
   limits: {},
   events: "ok",
   metering: "ok",
+  invitations: "ok",
   routing: {},
   linkHost: null,
   policy: {},
@@ -156,6 +157,13 @@ export default function operator(server) {
         record("events.attempt", { eventId: event.eventId, kind: event.kind });
         await behave(state.events);
         record("events", event);
+      },
+    },
+    invitations: {
+      async send(invitation) {
+        record("invitations.attempt", { invitationId: invitation.invitationId });
+        await behave(state.invitations);
+        record("invitations", invitation);
       },
     },
   };

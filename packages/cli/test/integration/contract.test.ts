@@ -233,6 +233,63 @@ describe("every command, with --json and no terminal", () => {
     }
   }, 120_000);
 
+  it("roster add, get and remove name expected respondents with personal links (CO-01, CO-03, D168)", async () => {
+    const added = await run(
+      ["roster", "add", artifactId, "ada@example.com", "--name", "Ada", "--request-id", "r1"],
+      { code: 0, ok: true },
+    );
+    const first = added.result as {
+      links: { ref: string; link: { url: string } }[];
+      roster: { counts: { total: number } };
+    };
+    expect(first.links.map((entry) => entry.ref)).toEqual(["ada@example.com"]);
+    expect(first.links[0]?.link.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/a\/art_.*#t=/);
+    // Many at once, from stdin; the same person again keeps their link.
+    const more = await run(
+      ["roster", "add", artifactId, "--stdin"],
+      { code: 0, ok: true },
+      JSON.stringify([{ ref: "grace@example.com", name: "Grace" }, { ref: "ada@example.com" }]),
+    );
+    const second = more.result as { links: { ref: string; link: { url: string } }[] };
+    expect(second.links.find((entry) => entry.ref === "ada@example.com")?.link.url).toBe(
+      first.links[0]?.link.url,
+    );
+    // --name describes one respondent only: a usage error, exit 2.
+    await run(["roster", "add", artifactId, "a", "b", "--name", "Two"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    const roster = await run(["roster", "get", artifactId], { code: 0, ok: true });
+    expect(roster.result).toMatchObject({
+      round: 1,
+      complete: false,
+      counts: { total: 2, notOpened: 2, drafting: 0, submitted: 0 },
+    });
+    const plain = await cli(["roster", "get", artifactId], { env: home.env });
+    expect(plain.stdout).toContain("Round 1: 0 of 2 submitted");
+    // This artifact takes one submission in all (once per artifact): no team wait can hold, exit 1.
+    await run(["wait", artifactId, "--until", "submitted:all", "--timeout", "1s"], {
+      code: 1,
+      ok: false,
+      error: "MOSTRA_TEAM_ROSTER_POLICY",
+    });
+    // --respondent names people on a hosted share only.
+    await run(["share", artifactId, "--tailnet", "--respondent", "ada@example.com"], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
+    const removed = await run(["roster", "remove", artifactId, "grace@example.com"], {
+      code: 0,
+      ok: true,
+    });
+    expect(removed.result).toMatchObject({
+      removed: ["grace@example.com"],
+      roster: { counts: { total: 1 } },
+    });
+  });
+
   it("wait ends still_waiting with exit 5, then returns the viewer's submission; results reads it", async () => {
     const waiting = await run(["wait", artifactId, "--until", "submitted", "--timeout", "1s"], {
       code: 5,
@@ -254,6 +311,11 @@ describe("every command, with --json and no terminal", () => {
     const markdown = await cli(["results", artifactId], { env: home.env });
     expect(markdown.code).toBe(0);
     expect(markdown.stdout).toContain("## Answers");
+    // Every submission, oldest first (D168); here the one there is.
+    const all = await run(["results", artifactId, "--all"], { code: 0, ok: true });
+    const listed = all.result as { results: unknown[]; cursor: string };
+    expect(listed.results.map((one) => Results.parse(one).answers)).toEqual([{ choice: "B" }]);
+    expect(Number(listed.cursor)).toBeGreaterThan(0);
   });
 
   it("state get, set and patch write and read artifact state; a stale base is a conflict, exit 6", async () => {
