@@ -132,9 +132,10 @@ export const LimitAnswer: z.ZodType<LimitAnswer> = z.union([
 
 /**
  * A counter's name (INTERFACES §18.6). `bytes.stored` sums the client bytes a home uploads in a
- * window; `bytes.held` is a level, not a sum: the client bytes a home holds at the window's end, each
- * file once however many of its versions name it, reported in every window for each home that held
- * anything during it, so it falls to what is left (0 once) when content is removed (MT-03).
+ * window; `bytes.held` is a level, not a sum: the client bytes a home holds, each file once however
+ * many of its versions name it, sent in the window after it changes (so it falls to what is left,
+ * and to 0 once, when content is removed), and for every home holding anything at the first window
+ * after a server starts and once a day (MT-03). Keep the latest value per home.
  */
 export type MeterName =
   | "views"
