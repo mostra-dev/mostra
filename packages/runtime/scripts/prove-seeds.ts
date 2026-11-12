@@ -59,6 +59,194 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-03: the operator ports as specified, and what sign-in and metering lack. Each item's check
+  // goes red on a violation planted where it is enforced (`--only MT-03`, `--name "1:"` for one).
+  {
+    requirement: "MT-03",
+    name: "1: a relayed run is recorded without asking `limits` for `run`",
+    file: "src/server/relay.ts",
+    from: `          await admit(page.artifactId, "run");`,
+    to: "          void 0;",
+    check: integration("operator-relay.test.ts", "refuses a run and a call"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a plain call is relayed without asking `limits` for `call`",
+    file: "src/server/relay.ts",
+    from: `        await admit(page.artifactId, "call");`,
+    to: "        void 0;",
+    check: integration("operator-relay.test.ts", "refuses a run and a call"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a run waits for its absent owner without asking `limits` for `run.wait`",
+    file: "src/server/relay.ts",
+    from: `            await admit(page.artifactId, "run.wait");`,
+    to: "            void 0;",
+    check: integration("operator-relay.test.ts", "asks `run.wait`"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a run the operator refused keeps its link's use",
+    file: "src/server/relay.ts",
+    from: `          giveBack();
+          throw error;
+        }
+        // The queue may have filled`,
+    to: `          throw error;
+        }
+        // The queue may have filled`,
+    check: integration("operator-relay.test.ts", "refuses a run and a call"),
+  },
+  {
+    requirement: "MT-03",
+    name: "1: a request that joins a recorded run is asked of the operator",
+    file: "src/server/relay.ts",
+    from: "      if (!joins) {",
+    to: "      if (joins || !joins) {",
+    check: integration("operator-relay.test.ts", "never asks about a request that joins"),
+  },
+  {
+    requirement: "MT-03",
+    name: "2: idleness judged by the link's sessions, which the visit's own exchange just wrote",
+    file: "src/server/hosted-pages.ts",
+    from: "(SELECT MAX(v.opened_at) FROM view v WHERE v.token_id = t.id) AS last",
+    to: "(SELECT MAX(last_seen_at) FROM session s WHERE s.token_id = t.id) AS last",
+    check: integration("operator.test.ts", "refuses a fresh visit"),
+  },
+  {
+    requirement: "MT-03",
+    name: "3: GitHub's public repository count is left out of `facts`",
+    file: "src/server/providers.ts",
+    from: `          ...count("publicRepos", found.public_repos),`,
+    to: "",
+    check: integration("signin-facts.test.ts", "public counts"),
+  },
+  {
+    requirement: "MT-03",
+    name: "4: an OpenID Connect provider's chosen claims never reach `facts`",
+    file: "src/server/providers.ts",
+    from: "        ...(chosen(claims, config.claims) ?? {}),",
+    to: "",
+    check: integration("signin-facts.test.ts", "chosen claims"),
+  },
+  {
+    requirement: "MT-03",
+    name: "4: every claim reaches `facts` though the entry chose none",
+    file: "src/server/providers.ts",
+    from: "  if (names === undefined) return undefined;",
+    to: "  if (names === undefined) return { facts: { ...claims } };",
+    check: integration("signin-facts.test.ts", "chosen claims"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: the sender line names the verifier the configuration has for the provider ID now",
+    file: "src/server/index.ts",
+    from: `      db.get<{ account: string; name: string | null; verified_by: string | null }>(
+        \`SELECT a.id AS account, a.name, i.verified_by
+           FROM home h JOIN account a ON a.id = h.owner_account_id
+           LEFT JOIN identity i ON i.rowid = (SELECT rowid FROM identity WHERE account_id = a.id
+             ORDER BY linked_at, rowid LIMIT 1)
+          WHERE h.id = ?\`,
+        homeId,
+      ),
+    );
+    if (!row) return { account: "" };
+    return {
+      account: row.account,
+      ...(row.name !== null ? { name: row.name } : {}),
+      ...(row.verified_by !== null ? { verifiedBy: row.verified_by } : {}),
+    };`,
+    to: `      db.get<{ account: string; name: string | null; provider: string | null }>(
+        \`SELECT a.id AS account, a.name, (SELECT i.provider FROM identity i WHERE i.account_id = a.id
+            ORDER BY i.linked_at LIMIT 1) AS provider
+           FROM home h JOIN account a ON a.id = h.owner_account_id WHERE h.id = ?\`,
+        homeId,
+      ),
+    );
+    if (!row) return { account: "" };
+    const provider = config.identityProviders?.find((candidate) => candidate.id === row.provider);
+    const verifiedBy =
+      provider && provider.kind !== "development"
+        ? (provider.label ?? (provider.kind === "github" ? "GitHub" : provider.id))
+        : undefined;
+    return {
+      account: row.account,
+      ...(row.name !== null ? { name: row.name } : {}),
+      ...(verifiedBy !== undefined ? { verifiedBy } : {}),
+    };`,
+    check: integration("signin-facts.test.ts", "after the provider is renamed"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: an operator's account records no verifier for its identity",
+    file: "src/server/auth.ts",
+    from: `      verifiedBy ?? null,
+      iso(now()),
+    );
+  };`,
+    to: `      null,
+      iso(now()),
+    );
+  };`,
+    check: integration("signin-facts.test.ts", "after the provider is renamed"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: an identity linked before verifiers were recorded is never given one",
+    file: "src/server/auth.ts",
+    from: "      if (label === undefined) continue;",
+    to: "      continue;",
+    check: integration("signin-facts.test.ts", "after the provider is renamed"),
+  },
+  {
+    requirement: "MT-03",
+    name: "5: a provider the operator module supplies is never verified, whatever it says",
+    file: "src/server/authorize.ts",
+    from: "        await resolved(response, identity, verifierOf(provider), 0, pending.flow, pending.next);",
+    to: "        await resolved(response, identity, undefined, 0, pending.flow, pending.next);",
+    check: integration("signin-facts.test.ts", "operator module supplies"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: no window carries a home's held bytes",
+    file: "src/server/metering.ts",
+    from: `      held.push({
+        name: "bytes.held",`,
+    to: `      void held;
+      ({
+        name: "bytes.held",`,
+    check: unit("metering.test.ts"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: a home whose last bytes were removed never says 0",
+    file: "src/server/metering.ts",
+    from: `      if (!heldNow.has(home)) held.push({ name: "bytes.held", account, home, value: 0 });`,
+    to: `      if (!heldNow.has(home)) void account;`,
+    check: unit("metering.test.ts", "says 0 once"),
+  },
+  {
+    requirement: "MT-03",
+    name: "6: a pushed file's size is never recorded, so nothing held is counted",
+    file: "src/server/hosted.ts",
+    from: `      sha,
+      size ?? null,
+    );`,
+    to: `      sha,
+      null,
+    );`,
+    check: integration("operator.test.ts", "bytes a home holds"),
+  },
+  {
+    requirement: "MT-03",
+    name: "9: `limits`' query on a push names no version",
+    file: "src/server/hosted.ts",
+    from: `          versionId: version.versionId,
+          operation,`,
+    to: "          operation,",
+    check: integration("operator.test.ts", "names the version being pushed"),
+  },
   // WP-31 (D168): teams. Each owned requirement's checks go red on a violation planted in the code
   // they guard: personal links, the roster's completion and its waits, status, presence,
   // attribution and the visibility policy.
@@ -500,8 +688,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-04",
     name: "a link floods its relayed actions",
     file: "src/server/relay.ts",
-    from: "    if (!limit || tokenId === undefined) return;",
-    to: "    if (!limit || tokenId === undefined || limit) return;",
+    from: "    if (!limit || tokenId === undefined) return () => {};",
+    to: "    if (!limit || tokenId === undefined || limit) return () => {};",
     check: integration("relay.test.ts", "past its rate"),
   },
   {
@@ -759,7 +947,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-04",
     name: "a run past the cap is recorded anyway",
     file: "src/server/relay.ts",
-    from: "        if (waiting >= cap && !joins) {",
+    from: "        if (waiting >= cap && !joinsRun(page.artifactId, input)) {",
     to: "        if (false) {",
     check: integration("relay.test.ts", "refuses past the cap"),
   },
