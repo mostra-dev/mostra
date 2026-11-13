@@ -1,6 +1,6 @@
 # MT-03 progress: the operator ports as specified, and what sign-in and metering lack
 
-**Status:** In progress. A maintenance unit after WP-31 ([specification](../design/work-packages/MT-03.md)); it owns no requirement of its own, and the checks it adds extend HO-09's and HY-08's rows. Its scope is eight items: `limits` for relayed runs, waiting runs and calls; a link's idle expiry on a fresh visit; GitHub's public counts and chosen OpenID Connect claims in `facts`; the verifier recorded per identity and verified providers an operator module supplies; a home's held bytes in metering; the version being pushed in `limits`' query; and a design for homes an organization owns, brought to Mirza.
+**Status:** Done. Accepted by Mirza on 2026-11-13 (M66: "Incredible work. Yes, I do. Lets robustly close out this MT WP.") with D169 and D170 and the unit's agent-facing prose (D149), after the Claude Opus review and its fixes, the GPT review skipped; merged to `main` through the merge queue as `6318fa7` (#144) and released as Mostra 0.13.0 (#147). A maintenance unit after WP-31 ([specification](../design/work-packages/MT-03.md)); it owns no requirement of its own, and the checks it adds extend HO-09's and HY-08's rows. It landed the operating layer's requests 1 to 6 and 9 to the open runtime, and decided request 7 (homes an organization owns) as D170, built by WP-33 to WP-35.
 
 ## Baseline
 
@@ -19,6 +19,7 @@
 - **D169** (proposed, brought with the candidate): MT-03's choices under D123. `limits` for relayed actions (`run` before a run is recorded, `run.wait` when it would wait for an absent owner, `call` before a plain call is relayed; refusals with the operator's words, the link's use given back, joins never asked, no answer lets the action through); idle expiry judged from the link's last view; GitHub's public counts and an `oidc` entry's chosen `claims` in `facts`; the verifier recorded on each identity, filled once for older rows, and `IdentityProvider.verifies`; `bytes.held` as a level; `LimitQuery.versionId`; maintenance units in the specification generators.
 - **D170** (M65): homes an organization owns. Mirza asked for a thorough design from a design session, delegated every open question to it, and had the result recorded everywhere it belongs ("It's yours to record. I authorize you to record it in all relevant places."). Recorded as D170, its design as [rounds/ORGANIZATION-HOMES.md](../design/rounds/ORGANIZATION-HOMES.md) (MT-03's first sketch, [rounds/MT-03-ORGANIZATION-HOMES.md](../design/rounds/MT-03-ORGANIZATION-HOMES.md), is marked superseded), with INTERFACES §18.10, DATA_MODEL §7.6, FAILURE_MODEL §11.5, PRODUCT's vocabulary and J15, ARCHITECTURE §15, eight `v1.1` requirements (RM-10 to RM-14, HO-12, HY-10, MC-05) and three packages after the first release, WP-33 to WP-35, in WORK_PACKAGES.md and `tools/design/wp_specs.py`. An operating layer's side of it is recorded outside this repository, under the same word.
 - **M64** (2026-11-12T10:17:14Z): Mirza started the unit with the assignment prompt and its specification.
+- **M66** (2026-11-13T03:57:42Z): Mirza accepted MT-03 with D169 and D170, the GPT review skipped; recorded under D169.
 - **The Claude Opus review's fixes** refine D169 (items 2, 3, 5, 6 and 7; "Refined after the Claude Opus review of MT-03").
 
 ## Slices
@@ -38,6 +39,10 @@
 | `bad2aaf` | D169 after its review; D170 and the dossier, the requirements, WP-33 to WP-35 and their specifications |
 | `ec8e720` | This report after the review |
 | `297417e` | The CLI's variable census names the two test hooks the review's fixes added |
+| `c9f65f9` | The held-bytes batch case sets up its homes in one transaction (Windows arm64) |
+| `eb5657a` | MT-03 accepted (M66) |
+| `6a4f547`, `c527cbe`, `6c68cc6` | The remote integration group split in two, `remote` and `remote-access`, with the EN-07 seed following it |
+| `cee254c`, `7cc16c5`, `0d33195` | This report's CI findings |
 
 ## Evidence
 
@@ -100,3 +105,26 @@ The two RM-04 seeds whose anchors the relay's change moved ("a link floods its r
 - The diagnostic docs of `MOSTRA_ACTION_CANCELLED` and `MOSTRA_HYGIENE_TOKEN_REVOKED` are unchanged; the relay's messages for them ("The page stopped waiting for this call.", "This link was revoked.") are new.
 - D170's viewer-facing wording (the sender line's two lines, the device and consent pages' home choice) is drafted in INTERFACES §18.10 and the design for WP-33 to bring as one batch (D149).
 - The `AGENTS.md` of `@mostra/runtime` (relayed actions under `limits`, the recorded verifier) and `@mostra/protocol` (the operator subpath's additions).
+
+## Commits and publication
+
+- **Range:** `764cbc8..6318fa7` on `main`: the 22 signed-off commits of `mt/03-operator-ports` (last `0d33195`) and the merge commit `6318fa7` ([#144](https://github.com/mostra-dev/mostra/pull/144)), then the version pull request [#147](https://github.com/mostra-dev/mostra/pull/147) (`bc762a4`, `chore(release): Mostra 0.13.0`).
+- **CI:** #144's last pull-request run (43372596598 on `6c68cc6`, `ci:full`, every leg) green, 80 of 80 checks, and its merge-queue run 43380607080 green. #147's pull-request run (43385202282) met #148 once on Linux Firefox (filed with the run, job and kept logs; the server answered every field write) and passed its re-run; its merge-queue run 43390417829 was green.
+- **Publication:** Mostra 0.13.0 by the `Release` workflow (run 43395600401, on `bc762a4`, every job green): the immutable GitHub release `v0.13.0` with the six bundles, their records, `SHA256SUMS` and attestations (13 assets); every package of the release group on npm with provenance (`@mostra/protocol` with its `./operator` subpath, `@mostra/runtime`, `@mostra/cli`, `@mostra/sdk`, `@mostra/mcp` and the rest, checked at the registry); the `mostra-host` crate 0.13.0 on crates.io; the harness plugin's `v0.13.0` in `mostra-dev/mostra-plugin`; and the remote server's image `ghcr.io/mostra-dev/mostra-server:0.13.0`. From outside (a scratch package, Node.js 24.22.1): `@mostra/protocol@0.13.0`'s `./operator` subpath reports `OPERATOR_REVISION` `2026-11-08`, and its types carry `LimitQuery.versionId`, `IdentityProvider.verifies` and the meter name `bytes.held`. The docs site doesn't exist yet (WP-26), so nothing deploys. The test deployment still runs 0.11.0 (D167 item 20): no MT-03 check needed it, and WP-17 refreshes it with its candidate.
+- **The operating layer's issues:** each landed request's issue carries a comment naming #144, #147 and the release, and is relabelled `mostra-ready` (requests 1 to 6 and 9); request 7's says it is decided as D170 and stays `waits-on-mostra` until the release that carries WP-33 and WP-34.
+- **Remaining dirty paths:** none in the repository. This unit's baseline worktree `temp/mt03/baseline` is removed. Outside the tracked tree: the git-ignored `temp/mt03/` (edit scripts, review texts, CI logs, the design brief and the design's full text, the smoke package). The earlier packages' worktrees on the external disk are theirs and untouched.
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #95 | Open, no milestone | Three more Windows sightings recorded (a recovering frame's greeting in Firefox, `client.spec.ts:183`; one failed request of a verify render in `verify-failures.test.ts`), none in code MT-03 changes |
+| #148 | Open, no milestone (D155 item 7) | Filed from #147's run: J14's attribution step waited on "saving" in Linux Firefox while the server had answered every field write, so the cause is the page's save state; the trace is kept with the run |
+| #139 | Open, on `WP-17` | Not met |
+| #39, #46, #55, #85, #111, #124, #140 | Open, no milestone (D155 item 7) | Not met |
+
+No milestone was MT-03's. One thing for later packages, found in its CI: macOS's `verify-failures` job took 10.0 minutes in run 43372596598 with none of MT-03's suites in it, so it may near its deadline next; the package that next touches verify's suites can split or rebalance it as `remote` was here.
+
+## Next
+
+WP-16, extension contracts and plugin system (`docs/design/work-packages/WP-16.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-16`. Homes an organization owns (D170) follow WP-27 as WP-33 to WP-35, whose specifications are generated. For Mirza: the GPT review of D80 needs `codex logout` and `codex login` on this machine before the next package that runs it.
