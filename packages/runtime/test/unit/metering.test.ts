@@ -153,10 +153,31 @@ describe("bytes.held (MT-03)", () => {
   it("sends every held level again once a day, and a window's counters in batches of at most MAX_COUNTERS", () => {
     const dir = directory();
     const homes = MAX_COUNTERS + 5;
-    for (let index = 0; index < homes; index += 1) {
-      addHome(dir, `hom_${index}`, `acct_${index}`);
-      hold(dir, `hom_${index}`, `f${index}`, index + 1);
-    }
+    // One transaction for all of them: two thousand commits with synchronous=FULL take longer than
+    // the test's time on a slow disk (Windows arm64's runners), and the triggers run per row either way.
+    const at = new Date(0).toISOString();
+    dir.write((db) => {
+      for (let index = 0; index < homes; index += 1) {
+        db.run(
+          "INSERT INTO account (id, name, status, created_at) VALUES (?, NULL, 'active', ?)",
+          `acct_${index}`,
+          at,
+        );
+        db.run(
+          "INSERT INTO home (id, owner_account_id, data_path, created_at) VALUES (?, ?, ?, ?)",
+          `hom_${index}`,
+          `acct_${index}`,
+          `hom_${index}`,
+          at,
+        );
+        db.run(
+          "INSERT INTO home_file (home_id, sha256, size) VALUES (?, ?, ?)",
+          `hom_${index}`,
+          `f${index}`,
+          index + 1,
+        );
+      }
+    });
     const { window, batches } = meterOver(dir);
     const first = window();
     expect(first.filter((counter) => counter.name === "bytes.held")).toHaveLength(homes);
