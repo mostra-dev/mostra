@@ -553,7 +553,8 @@ export function createApi(options: ApiOptions): Api {
         const body = request.headers.origin === apiOrigin ? await form(request) : undefined;
         const chosen = body?.get("appearance");
         const next = body?.get("next") ?? "/";
-        const back = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+        const back =
+          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
         response.writeHead(303, {
           ...BASE_HEADERS,
           location: back,
@@ -632,7 +633,11 @@ export function createApi(options: ApiOptions): Api {
             page(
               response,
               403,
-              devicePage(response, { code: "", provider, message: "This form must be sent from this page." }),
+              devicePage(response, {
+                code: "",
+                provider,
+                message: "This form must be sent from this page.",
+              }),
             );
             return;
           }

@@ -733,11 +733,21 @@ interface RemoteServerConfig {
   homes?: { idleCloseMinutes?: number };              // default 10 (D165 item 6)
   framing?: { frameAncestors: "'none'" };             // D145: the only v1 value
   operator?: string;                                  // path of an operator module (§18.6)
+  appearance?: {                                      // D171: how the server's own pages look and name themselves
+    theme?: "studio" | "mostra";                      // default "studio"
+    name?: string | null;                             // default "Mostra"; null for none
+    logo?: { file: string; alt: string; width: number; height: number };   // .svg, .png or .webp, at most 256 KiB
+    stageLine?: string;                               // a line on the "mostra" theme's stage
+    default?: "system" | "light" | "dark";            // before a person chooses; default "system"
+    footer?: { href: string; text: string }[];        // at most 6: https: or the server's own paths
+  };
 }
 type Rate = { count: number; per: string };           // per: a duration such as "1m"
 ```
 
 Every key can also come from an environment variable (`MOSTRA_SERVER_<KEY>`). A configuration the server can't use stops it before it serves anything, naming the key (`MOSTRA_REMOTE_CONFIG_INVALID`).
+
+As built (UX-01, D171): the server's own pages (the API origin's sign-in, device, consent and "Sign-in can't continue" pages, and a person's navigation that any host refuses, an unknown `Host`'s 421 included) are `@mostra/themes`' pages in `appearance`'s theme and name, with no script: their stylesheet, faces and marks (and the operator's logo) are served on every host at `/_mostra/theme/*`, the same public files for everyone, and a page's policy is `default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'`. A page not dressed in the `mostra` theme says "Runs on Mostra", linking to Mostra's site, whatever the configuration. A person's light-or-dark choice posts to the API origin's `POST /_mostra/appearance { appearance, next }` from that origin only (`303` to `next`, a path of the origin), kept as the cookie `mostra-appearance` (`__Host-` on https); a name or a line is 1 to 64 characters with no control or format characters, and a logo or link the server can't use stops it with `MOSTRA_REMOTE_CONFIG_INVALID`.
 
 As built (WP-30, D167 items 14, 15, 17): `trustedProxies` takes addresses or CIDR ranges and is checked at start; the server accepts request headers up to 1 MiB, as the gateway does; the container image (`ghcr.io/mostra-dev/mostra-server:<version>`, or the repository `MOSTRA_IMAGE_REPOSITORY` names) runs `mostra-runtime server --data /data --listen 0.0.0.0:8080` as UID 10001 and takes `--config <file>` after it. `docs/reference/self-hosting.md` (`mostra docs self-hosting`) is the operator's page.
 

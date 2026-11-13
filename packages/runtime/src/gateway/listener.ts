@@ -20,8 +20,8 @@ import type { Pages } from "@mostra/themes";
 import { Hono } from "hono";
 import type { Log } from "../log.ts";
 import { BASE_HEADERS, type HttpEnv, headerPairs, refusalResponse } from "./http.ts";
-import { defaultPages, refusalDocument, themePageCsp } from "./theme.ts";
 import { refuse } from "./routes.ts";
+import { defaultPages, refusalDocument, themePageCsp } from "./theme.ts";
 
 /**
  * Node's limit on request headers for gateway listeners. Every port of the loopback host shares one
@@ -153,10 +153,7 @@ function headersTooLarge(socket: Duplex): void {
   });
   writeRaw(socket, refused, {
     html,
-    headers: [
-      'clear-site-data: "cookies"',
-      `content-security-policy: ${themePageCsp(pages)}`,
-    ],
+    headers: ['clear-site-data: "cookies"', `content-security-policy: ${themePageCsp(pages)}`],
   });
 }
 

@@ -60,6 +60,7 @@ import {
   viewRotateMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
+import type { Pages } from "@mostra/themes";
 import type { Actions } from "../actions/index.ts";
 import { type Addressing, type FrameMode, hostOf } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
@@ -97,7 +98,6 @@ import {
 } from "./http.ts";
 import { type IdentityOutcome, tailnetPerson } from "./identity.ts";
 import { versionIntegrity } from "./integrity.ts";
-import type { Pages } from "@mostra/themes";
 import { createListener, type Listener } from "./listener.ts";
 
 export { resetOnClose } from "./listener.ts";
@@ -112,6 +112,8 @@ export { Capabilities, capabilityKey } from "./capabilities.ts";
 export { CONTROLS_POLICY_TIMEOUT_MS, controlsPolicy } from "./controls.ts";
 export type { DevUpstream } from "./dev.ts";
 export { BASE_HEADERS, documentHeaders, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
+export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
+export type { RouteContext, RouteSpec } from "./routes.ts";
 export {
   type AppearanceConfig,
   defaultPages,
@@ -125,8 +127,6 @@ export {
   type ThemeFile,
   themePageCsp,
 } from "./theme.ts";
-export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
-export type { RouteContext, RouteSpec } from "./routes.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -594,9 +594,16 @@ export function createGateway(options: GatewayOptions): Gateway {
           document: false,
         });
       }
-      return new Response(context.request.method === "HEAD" ? null : (typeof file.body === "string" ? file.body : new Uint8Array(file.body)), {
-        headers: { ...BASE_HEADERS, ...file.headers },
-      });
+      return new Response(
+        context.request.method === "HEAD"
+          ? null
+          : typeof file.body === "string"
+            ? file.body
+            : new Uint8Array(file.body),
+        {
+          headers: { ...BASE_HEADERS, ...file.headers },
+        },
+      );
     };
   const { addressing, capabilities, artifacts, log, interaction } = options;
   // Respondents and presence for pages (D168): in memory, over the pages' ephemeral bus.

@@ -55,9 +55,9 @@ import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.t
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
 import { createRemoteMcp, serverDocs } from "./mcp.ts";
 import { createMeter, heldLevels, type Meter } from "./metering.ts";
-import { APPEARANCE_PATH, createApiPages } from "./pages.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
+import { APPEARANCE_PATH, createApiPages } from "./pages.ts";
 import { type BuiltInProvider, builtInProviders } from "./providers.ts";
 import { createRouting, type Destination, type Routing } from "./routing.ts";
 

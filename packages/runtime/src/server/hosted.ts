@@ -500,7 +500,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       );
     },
   };
-  const pages = options.services.pages?.();
+  const pages = options.services?.pages?.();
   const gateway: Gateway = createGateway({
     ...(pages ? { pages } : {}),
     ledger,

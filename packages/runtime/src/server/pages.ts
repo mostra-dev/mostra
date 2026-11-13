@@ -35,7 +35,7 @@ export const API_PAGE_WORDS = {
   continue: "Continue",
   cantContinue: "Sign-in can't continue",
   deviceTitle: "Link this machine",
-  deviceSignedInAs: (name: string) => html`Signed in as <strong>${name}</strong>.`,
+  deviceSignedInAs: (name: string): SafeHtml => html`Signed in as <strong>${name}</strong>.`,
   deviceWarning:
     "Approving links a machine to your account. That machine's Mostra can then host pages under your account and receives their answers. Continue only if you started this sign-in yourself, on that machine.",
   deviceCode: "The code that machine shows",
@@ -49,13 +49,12 @@ export const API_PAGE_WORDS = {
   answerDetail: "They will see your name with your answers.",
   thisPerson: "this person",
   allowTitle: (client: string): string => `Allow ${client}?`,
-  asksToUse: (client: SafeHtml, who: string) =>
+  asksToUse: (client: SafeHtml, who: string): SafeHtml =>
     html`${client} asks to use Mostra as <strong>${who}</strong>.`,
   unverifiedName: "a name the app gives itself, not checked",
   grants: ["Read, create and change your hosted pages", "Read their answers"],
-  sendsBackTo: (host: string) => html`It will send you back to <strong>${host}</strong>.`,
-  loopback:
-    "That is a program on your own computer: continue only if you started this there.",
+  sendsBackTo: (host: string): SafeHtml => html`It will send you back to <strong>${host}</strong>.`,
+  loopback: "That is a program on your own computer: continue only if you started this there.",
   allow: "Allow",
   cancel: "Cancel",
   yourAccount: "your account",
@@ -131,7 +130,9 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
           W.continueWith(provider.label),
           {
             primary: index === 0,
-            ...(PROVIDER_ICONS[provider.id] ? { icon: PROVIDER_ICONS[provider.id] as SafeHtml } : {}),
+            ...(PROVIDER_ICONS[provider.id]
+              ? { icon: PROVIDER_ICONS[provider.id] as SafeHtml }
+              : {}),
           },
         ),
       );

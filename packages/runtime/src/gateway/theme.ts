@@ -129,7 +129,9 @@ export function serverPages(
     files.set(asset.path, {
       headers: {
         "content-type": asset.contentType,
-        "cache-control": asset.immutable ? "public, max-age=31536000, immutable" : "public, max-age=3600",
+        "cache-control": asset.immutable
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=3600",
         // An image served alone (an SVG mark opened as its own page) runs nothing.
         ...(asset.contentType === "image/svg+xml"
           ? { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" }
