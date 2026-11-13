@@ -330,8 +330,8 @@ catalogs:
       specifier: 4.10.2
       version: 4.10.2
     hono:
-      specifier: 4.13.13
-      version: 4.13.13
+      specifier: 4.13.16
+      version: 4.13.16
     ignore:
       specifier: 7.0.13
       version: 7.0.13
@@ -547,7 +547,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.1.5(hono@4.13.13)
+        version: 2.1.5(hono@4.13.16)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -781,7 +781,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.1.5(hono@4.13.13)
+        version: 2.1.5(hono@4.13.16)
       '@mdx-js/mdx':
         specifier: 'catalog:'
         version: 3.1.1(supports-color@8.1.1)
@@ -802,7 +802,7 @@ importers:
         version: 13.0.3
       hono:
         specifier: 'catalog:'
-        version: 4.13.13
+        version: 4.13.16
       ignore:
         specifier: 'catalog:'
         version: 7.0.13
@@ -4999,6 +4999,10 @@ packages:
     resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
+    engines: {node: '>=16.9.0'}
+
   hookable@6.1.2:
     resolution: {integrity: sha512-+abwxtiEA52GCVIsQqut3S/uKTbUwYIp4Pe/vv+6py5XiXBCqMZHg6pA6Y5qhgLSEys0/cYuPbO0z1QFj5ZCmg==}
 
@@ -7372,6 +7376,10 @@ snapshots:
   '@hono/node-server@2.1.5(hono@4.13.13)':
     dependencies:
       hono: 4.13.13
+
+  '@hono/node-server@2.1.5(hono@4.13.16)':
+    dependencies:
+      hono: 4.13.16
 
   '@hookform/resolvers@5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.7)':
     dependencies:
@@ -10584,6 +10592,8 @@ snapshots:
   highlight.js@10.7.3: {}
 
   hono@4.13.13: {}
+
+  hono@4.13.16: {}
 
   hookable@6.1.2: {}
 
