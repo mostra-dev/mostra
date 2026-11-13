@@ -1,5 +1,14 @@
 # @mostra/cli
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies [[`dcafbe0`](https://github.com/mostra-dev/mostra/commit/dcafbe05617a99f0001356d5344cd234dd5acadc)]:
+  - @mostra/protocol@0.13.0
+  - @mostra/mcp@0.13.0
+  - @mostra/sdk@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes
