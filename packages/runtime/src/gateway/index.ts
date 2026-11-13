@@ -117,15 +117,12 @@ export type { RouteContext, RouteSpec } from "./routes.ts";
 export {
   type AppearanceConfig,
   defaultPages,
-  LOGO_TYPES,
-  type LogoConfig,
   MADE_WITH_HREF,
   PAGE_REFUSALS,
   refusalDocument,
   type ServerPages,
   serverPages,
   THEME_BASE,
-  type ThemeFile,
   themePageCsp,
 } from "./theme.ts";
 

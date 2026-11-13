@@ -46,11 +46,16 @@ export interface Mail {
 
 /** The plain-text form of markup: tags dropped, entities read, links kept beside their words. */
 function plain(value: HtmlValue): string {
-  return text(value)
-    .value.replace(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g, "$2 ($1)")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
-    .replace(/&amp;/g, "&");
+  let words = text(value).value.replace(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g, "$2 ($1)");
+  // Tags go until none is left (a tag split around another can't survive one pass), then each
+  // character reference is read once, so nothing is read twice.
+  for (let before = ""; before !== words; ) {
+    before = words;
+    words = words.replace(/<[^<>]*>/g, "");
+  }
+  return words.replace(/&(?:#(\d+)|amp);/g, (_, code?: string) =>
+    code === undefined ? "&" : String.fromCharCode(Number(code)),
+  );
 }
 
 /** Renders a message in a theme. */

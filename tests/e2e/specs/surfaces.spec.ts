@@ -15,13 +15,13 @@
  * (`<engine>/<mode>-<width>/<surface>.png`): UX-01's committed pictures come from this suite.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
-import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import axe from "axe-core";
 import { openInShell, publishOwn, republish } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
@@ -36,7 +36,7 @@ const OPERATOR = join(
   "fixtures",
   "operator.mjs",
 );
-const AXE = readFileSync(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
+const AXE: string = axe.source;
 const SCREENS = process.env["MOSTRA_E2E_SCREENS"];
 const MODES = ["light", "dark"] as const;
 /** A person per run, each signing in for the first time (consent is asked once per account). */
@@ -226,7 +226,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           if (wide > 1) findings.push(`${where}: scrolls sideways by ${wide}px`);
           await page.evaluate(AXE);
           const violations = await page.evaluate(async () => {
-            const axe = (
+            const engine = (
               window as unknown as {
                 axe: {
                   run(
@@ -242,7 +242,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
                 };
               }
             ).axe;
-            const result = await axe.run(
+            const result = await engine.run(
               { exclude: [["iframe"]] },
               { resultTypes: ["violations"] },
             );
@@ -370,7 +370,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(page, "api-device-refused");
 
         // A chat app's consent: a registered client, then one that returns to this computer.
-        const register = async (name: string, redirect: string): Promise<string> => {
+        const registerClient = async (name: string, redirect: string): Promise<string> => {
           const answer = await ask(port, `api.localhost:${port}`, "/oauth/register", {
             method: "POST",
             type: "application/json",
@@ -394,10 +394,10 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
             scope: "mostra offline_access",
           })}`;
         const claude = "https://claude.ai/api/mcp/auth_callback";
-        await page.goto(authorize(await register("Claude", claude), claude));
+        await page.goto(authorize(await registerClient("Claude", claude), claude));
         await shoot(page, "api-allow");
         const local = "http://127.0.0.1/callback";
-        await page.goto(authorize(await register("Local agent", local), local));
+        await page.goto(authorize(await registerClient("Local agent", local), local));
         await shoot(page, "api-allow-loopback");
         await page.goto(`${api}/signin/return?step=nothing`);
         await shoot(page, "api-cant-continue");
