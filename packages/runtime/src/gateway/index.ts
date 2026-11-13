@@ -120,6 +120,7 @@ export {
   LOGO_TYPES,
   type LogoConfig,
   MADE_WITH_HREF,
+  PAGE_REFUSALS,
   refusalDocument,
   type ServerPages,
   serverPages,

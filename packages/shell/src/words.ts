@@ -26,12 +26,33 @@ export const SERVER_WORDS = {
   parkedDetail: "Its buttons and live data won't work until a fixed version is published.",
 } as const;
 
+/**
+ * The status beside Submit (D171 item 7): a shape and a colour for each state, these words for
+ * screen readers and on hover, and on a phone beside the shape.
+ */
+export const STATUS_WORDS: Readonly<
+  Record<"saved" | "saving" | "offline" | "conflict" | "connecting" | "sent", string>
+> = {
+  ...SAVE_WORDS,
+  saved: "Draft saved",
+  sent: "Sent",
+};
+
+/** The chrome's own controls: folding it away, light or dark, the viewer's choices on a phone. */
+export const CHROME_WORDS = {
+  fold: "Hide the bar",
+  unfold: "Show the bar",
+  toDark: "Switch to dark",
+  toLight: "Switch to light",
+  viewer: "Your name and sign-in",
+  closeViewer: "Close",
+} as const;
+
 /** The trusted controls' fixed words. */
 export const CONTROL_WORDS = {
   submit: "Submit",
   submitted: "Submitted",
   submitting: "Submitting…",
-  seal: "Mostra · trusted control",
   choose: (label: string): string => `Choose ${label}`,
   chosen: (label: string): string => `Chosen: ${label}`,
   confirm: "Submit",
@@ -164,7 +185,7 @@ export const HOSTED_WORDS = {
   /** The footer, on every hosted page. */
   passwords: "Never enter passwords on this page.",
   /** The report control. */
-  report: "Report this page",
+  report: "Report",
   reportTitle: "Report this page",
   reportIntro: "Tell the people who run this server what's wrong with this page.",
   reportReasons: {
@@ -181,10 +202,13 @@ export const HOSTED_WORDS = {
   /** The viewer. */
   signIn: "Sign in",
   signedInAs: (name: string): string => `Signed in as ${name}`,
+  signedIn: "Signed in as ",
   anonymous: "Not signed in",
   giveName: "Add your name",
   changeName: "Change name",
   saveName: "Save",
+  cancelName: "Cancel",
+  nameHint: "Shown to the person who sent this page, as not verified.",
   namedUnverified: (name: string): string => `${name} (not verified)`,
   signInFailed: "Sign-in didn't finish. Open the page again and try once more.",
   signingIn: "Signing you in…",
@@ -199,6 +223,9 @@ export const HOSTED_WORDS = {
   interstitialDetail:
     "Someone sent you this page. Don't enter passwords or payment details unless you trust them.",
   interstitialContinue: "Open the page",
+  /** The made-with mark on pages on free terms (D171 item 5). */
+  madeWith: "Make pages like this",
+  madeWithPrefix: "Made with ",
   /** A submission refused for a limit: try again shortly, the draft kept (RM-08). */
   tryAgain: "Too many answers at once. Try again shortly; what you typed is kept.",
   notAccepting: "This page isn't accepting answers right now. What you typed is kept.",

@@ -179,13 +179,55 @@ export interface RefusalWords {
  * the diagnostic's code in small print, for whoever the person asks for help.
  */
 export function refusalDocument(pages: Pages, words: RefusalWords): string {
+  // A person who meets one of these at a link reads the page's own words, as the shell would say
+  // them; anything else keeps the diagnostic's message and hint.
+  const said = PAGE_REFUSALS[words.code] ?? words;
   return pages.render({
     kind: "notice",
     tone: "problem",
-    title: words.title,
-    body: html`${words.detail ? html`<p>${words.detail}</p>` : ""}<p class="m-fine"><code translate="no">${words.code}</code></p>`,
+    title: said.title,
+    body: html`${said.detail ? html`<p>${said.detail}</p>` : ""}<p class="m-fine"><code translate="no">${words.code}</code></p>`,
   });
 }
+
+/**
+ * What a refused navigation says to a person who opened a link (UX-01: the same words the shell
+ * uses for these refusals, `packages/shell/src/messages.ts`, kept equal by a test). Neutral, naming
+ * nobody (FAILURE_MODEL §11.3).
+ */
+export const PAGE_REFUSALS: Readonly<
+  Record<string, { readonly title: string; readonly detail: string }>
+> = {
+  MOSTRA_HYGIENE_TOKEN_REVOKED: {
+    title: "This link was revoked or has expired",
+    detail: "Ask whoever shared it for a new link.",
+  },
+  MOSTRA_HYGIENE_SESSION_MISSING: {
+    title: "Open the full link to view this artifact",
+    detail: "This page needs the link you were given, including everything after the #.",
+  },
+  MOSTRA_HYGIENE_TOKEN_INVALID: {
+    title: "This link doesn't work",
+    detail: "It may be incomplete or belong to another artifact. Copy the whole link again.",
+  },
+  MOSTRA_REMOTE_UNDER_REVIEW: {
+    title: "This page is under review",
+    detail: "The people who run this server are looking at it. Try again later.",
+  },
+  MOSTRA_REMOTE_HOME_SUSPENDED: {
+    title: "This page isn't available",
+    detail: "The account that shared it is suspended on this server.",
+  },
+  MOSTRA_REMOTE_HOME_MOVING: { title: "This page is moving", detail: "Try again in a minute." },
+  MOSTRA_REMOTE_LIMIT_REACHED: {
+    title: "This page isn't available right now",
+    detail: "Try again later.",
+  },
+  MOSTRA_HYGIENE_HOST_REFUSED: {
+    title: "There's no page here",
+    detail: "Check the link you were given: this address doesn't serve one.",
+  },
+};
 
 /** The `Content-Security-Policy` of a theme page that `frameAncestors` may frame. */
 export function themePageCsp(pages: Pages, frameAncestors = "'none'", formAction?: string): string {

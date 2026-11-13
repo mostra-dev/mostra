@@ -953,6 +953,9 @@ importers:
       '@mostra/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@mostra/themes':
+        specifier: workspace:*
+        version: link:../themes
       react:
         specifier: 'catalog:'
         version: 19.3.1
@@ -1232,6 +1235,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      axe-core:
+        specifier: 'catalog:'
+        version: 4.14.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

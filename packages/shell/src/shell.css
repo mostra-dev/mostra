@@ -1,35 +1,43 @@
 /*
- * The shell is quiet by design (D68): the artifact is the work on show. The round-4 direction: an
- * exhibition frame with a museum label, and a trusted zone, the only place the accent appears,
- * framed by a gilt hairline and marked by a seal, so people learn what the real Submit looks like.
- * The final visual pass is WP-20's.
+ * The shell's chrome in Studio (D171): the theme's tokens and faces come from
+ * `@mostra/themes/css/studio.css`, imported before this file. The chrome stays quiet so the page
+ * is the work on show (D68): a white bar on the pietra ground, Jost for the page's title, Figtree
+ * for everything else, blu only for the real Submit and the focus ring. WP-20's final pass starts
+ * from here.
  */
 :root {
   color-scheme: light dark;
-  --mostra-paper: #f7f5f0;
-  --mostra-ink: #1d1b18;
-  --mostra-muted: #6d675e;
-  --mostra-line: #e2ddd3;
-  --mostra-accent: #a8322a;
-  --mostra-accent-ink: #ffffff;
-  --mostra-gilt: #b89a5a;
-  --mostra-ok: #2f7d4f;
-  --mostra-wait: #b8741a;
-  --mostra-bad: #a8322a;
-  --mostra-card: #fdfcf9;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--mostra-ink);
-  background: var(--mostra-paper);
+  --mark-left: #e63312;
+  --mark-right: #2340c8;
+  --shadow-soft: 0 1px 2px rgb(20 20 20 / 0.06), 0 8px 24px rgb(20 20 20 / 0.1);
+  --shadow-float: 0 2px 6px rgb(20 20 20 / 0.08), 0 16px 40px rgb(20 20 20 / 0.16);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --bar-height: 56px;
+  --dock-height: 60px;
+}
+:root[data-appearance="light"] {
+  color-scheme: light;
+}
+:root[data-appearance="dark"] {
+  color-scheme: dark;
+  --mark-left: #ff6a4d;
+  --mark-right: #7086ff;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 2px 6px rgb(0 0 0 / 0.4), 0 16px 40px rgb(0 0 0 / 0.5);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --mostra-paper: #1b1a18;
-    --mostra-ink: #ece8df;
-    --mostra-muted: #a39d92;
-    --mostra-line: #34312c;
-    --mostra-accent: #c2463c;
-    --mostra-card: #24221f;
+  :root:not([data-appearance="light"]) {
+    --mark-left: #ff6a4d;
+    --mark-right: #7086ff;
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+    --shadow-float: 0 2px 6px rgb(0 0 0 / 0.4), 0 16px 40px rgb(0 0 0 / 0.5);
   }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 html,
 body,
@@ -37,101 +45,213 @@ body,
   height: 100%;
   margin: 0;
 }
+body {
+  font: 400 15px / 1.45 var(--font-sans);
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection {
+  background: color-mix(in oklch, var(--answer) 45%, transparent);
+}
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* The `hidden` attribute wins over every class that sets a display. */
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: nothing may show what is hidden */
+  display: none !important;
+}
+.mostra-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mostra-icon-svg {
+  display: block;
+  inline-size: 16px;
+  block-size: 16px;
+  flex: none;
+}
+
+/* The page: the bar, the notices, the frame on the ground, the footer. */
 .mostra-shell {
-  height: 100%;
+  min-height: 100%;
   display: flex;
 }
 .mostra-page {
   height: 100%;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 .mostra-rail {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--mostra-line);
-  min-height: 2.75rem;
+  gap: 12px;
+  min-height: var(--bar-height);
+  padding: 8px 10px 8px 16px;
+  padding-inline-start: max(16px, env(safe-area-inset-left));
+  padding-inline-end: max(10px, env(safe-area-inset-right));
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
 }
 .mostra-label {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
-.mostra-mark {
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+.mostra-rail-mark {
+  inline-size: 22px;
+  block-size: 22px;
+  flex: none;
+}
+.mostra-label-text {
+  min-width: 0;
 }
 .mostra-title {
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 1rem;
+  font: 500 1.0625rem / 1.25 var(--font-display);
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mostra-subtitle {
-  font-size: 0.75rem;
-  color: var(--mostra-muted);
-}
-.mostra-status {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--mostra-muted);
+.mostra-subtitle,
+.mostra-sender {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.mostra-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  background: var(--mostra-ok);
+.mostra-sender {
+  padding-inline-end: 2px;
 }
-.mostra-dot-saving {
-  background: var(--mostra-muted);
+.mostra-sender b {
+  font-weight: 500;
+  color: var(--foreground);
+  unicode-bidi: isolate;
 }
-.mostra-dot-offline,
-.mostra-dot-conflict {
-  background: var(--mostra-wait);
-}
-.mostra-trusted {
-  display: flex;
+.mostra-verified {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.4rem 0.3rem 0.75rem;
-  border: 1px solid var(--mostra-gilt);
-  border-radius: 0.5rem;
+  gap: 4px;
+  vertical-align: bottom;
 }
-.mostra-seal {
-  font-size: 0.65rem;
-  line-height: 1.1;
-  color: var(--mostra-muted);
-  max-width: 5.5rem;
-  text-align: right;
+.mostra-tick {
+  inline-size: 14px;
+  block-size: 14px;
+  flex: none;
 }
-.mostra-button {
-  font: inherit;
-  font-size: 0.875rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--mostra-line);
-  background: var(--mostra-card);
-  color: inherit;
+.mostra-tick-disc {
+  fill: var(--success);
+}
+.mostra-tick-mark {
+  stroke: var(--card);
+}
+.mostra-unverified {
+  font-style: italic;
+}
+.mostra-mark-left {
+  fill: var(--mark-left);
+}
+.mostra-mark-right {
+  fill: var(--mark-right);
+}
+.mostra-mark-svg {
+  display: block;
+  flex: none;
+}
+
+/* Buttons: pills, the one blu Submit, and quiet round icons. */
+.mostra-button,
+.mostra-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  font: 500 0.875rem / 1 var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
-  white-space: nowrap;
+  touch-action: manipulation;
+  transition:
+    background-color var(--state-ms) ease,
+    border-color var(--state-ms) ease,
+    transform var(--press-ms) var(--ease-out);
 }
-.mostra-button:disabled {
-  opacity: 0.6;
+.mostra-pill {
+  padding: 0 14px;
+  max-inline-size: 16rem;
+}
+.mostra-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  unicode-bidi: isolate;
+}
+.mostra-pill-static {
   cursor: default;
 }
 .mostra-primary {
-  background: var(--mostra-accent);
-  border-color: var(--mostra-accent);
-  color: var(--mostra-accent-ink);
+  min-height: 40px;
+  padding: 0 22px;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.mostra-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.mostra-button:not(:disabled):active,
+.mostra-pill:not(.mostra-pill-static):active,
+.mostra-icon:active {
+  transform: scale(var(--press-scale));
+}
+@media (hover: hover) and (pointer: fine) {
+  .mostra-button:not(:disabled):not(.mostra-primary):hover,
+  .mostra-pill:not(.mostra-pill-static):hover {
+    background: var(--muted);
+  }
+  .mostra-primary:not(:disabled):hover {
+    background: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+  }
+  .mostra-icon:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.mostra-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 36px;
+  block-size: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--state-ms) ease,
+    color var(--state-ms) ease,
+    transform var(--press-ms) var(--ease-out);
 }
 .mostra-link {
   font: inherit;
@@ -140,44 +260,183 @@ body,
   padding: 0;
   color: inherit;
   text-decoration: underline;
-  text-underline-offset: 0.15em;
+  text-underline-offset: 0.18em;
   cursor: pointer;
 }
+.mostra-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The viewer, the status and the trusted Submit. */
+.mostra-viewer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.mostra-viewer-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mostra-viewer-toggle,
+.mostra-viewer-close {
+  display: none;
+}
+.mostra-popover {
+  position: absolute;
+  inset-block-start: calc(100% + 10px);
+  inset-inline-end: 0;
+  z-index: 20;
+  inline-size: min(320px, calc(100vw - 24px));
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-float);
+}
+.mostra-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--border);
+}
+.mostra-trusted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mostra-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.mostra-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 20px;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.mostra-status-words {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mostra-dot {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 10px;
+  block-size: 10px;
+  margin: 5px;
+  border-radius: 50%;
+  flex: none;
+  transition:
+    background-color var(--state-ms) ease,
+    border-color var(--state-ms) ease;
+}
+.mostra-dot-saved {
+  background: var(--success);
+}
+.mostra-dot-saving,
+.mostra-dot-connecting {
+  border: 2px solid var(--muted-foreground);
+}
+.mostra-dot-offline,
+.mostra-dot-conflict {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 2px;
+  background: var(--warning);
+  transform: rotate(45deg);
+}
+.mostra-dot-sent {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 1px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.mostra-dot-sent svg {
+  inline-size: 12px;
+  block-size: 12px;
+}
+
+/* Notices under the bar: a new version, a paused page, a preview, storage that failed. */
 .mostra-banner,
 .mostra-following {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem 1rem;
-  font-size: 0.85rem;
-  border-bottom: 1px solid var(--mostra-line);
+  gap: 6px 16px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-bottom: 1px solid var(--border);
+}
+.mostra-banner .mostra-link {
+  font-weight: 500;
+}
+.mostra-banner-warn,
+.mostra-dev {
+  background: var(--card);
+  color: var(--foreground);
+}
+.mostra-banner-warn::before,
+.mostra-dev::before {
+  content: "";
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 2px;
+  background: var(--warning);
+  transform: rotate(45deg);
+  flex: none;
+}
+.mostra-banner-warn > div,
+.mostra-dev > div {
+  flex: 1;
 }
 .mostra-following {
   justify-content: flex-start;
-  color: var(--mostra-muted);
-  font-size: 0.75rem;
-  padding: 0.25rem 1rem;
+  padding: 4px 16px;
+  font-size: 0.8125rem;
+  background: var(--card);
+  color: var(--muted-foreground);
 }
 .mostra-warn {
-  color: var(--mostra-wait);
+  color: var(--destructive);
 }
-.mostra-dev {
-  font-weight: 600;
+.mostra-reason {
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
 }
-.mostra-actions {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+/* An operator's or owner's long reason scrolls inside its notice, never pushing the page away;
+   the notice takes the focus so a keyboard can scroll it too (WCAG 2.1.1). */
+.mostra-banner > .mostra-scroll {
+  max-block-size: 7.5em;
+  overflow-y: auto;
 }
+
+/* The frame on the ground, and what floats over it. */
 .mostra-stage {
   position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
+  background: var(--background);
 }
-/* A verify run's page: the frame alone, filling the viewport (D138). */
 .mostra-verify {
   position: fixed;
   inset: 0;
@@ -189,38 +448,38 @@ body,
   height: 100%;
   border: 0;
   display: block;
+  /* A page that sets no background shows on white, as it would on its own. */
+  background: #fff;
 }
 .mostra-receipt,
 .mostra-problem,
 .mostra-orphans {
   position: absolute;
-  right: 1rem;
-  max-width: 22rem;
-  background: var(--mostra-card);
-  border: 1px solid var(--mostra-line);
-  border-radius: 0.6rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.85rem;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.08);
+  inset-inline-end: 16px;
+  max-inline-size: 22rem;
+  padding: 14px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font-size: 0.875rem;
+  box-shadow: var(--shadow-float);
 }
 .mostra-receipt {
-  bottom: 1rem;
+  inset-block-end: 16px;
 }
 .mostra-problem {
-  top: 1rem;
+  inset-block-start: 16px;
 }
 .mostra-orphans {
-  bottom: 1rem;
-  left: 1rem;
-  right: auto;
+  inset-block-end: 16px;
+  inset-inline-start: 16px;
+  inset-inline-end: auto;
 }
 .mostra-receipt h2,
 .mostra-problem h2,
 .mostra-orphans h2 {
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-weight: 400;
-  font-size: 1.05rem;
-  margin: 0 0 0.4rem;
+  font: 500 1.0625rem / 1.3 var(--font-display);
+  margin: 0 0 6px;
 }
 .mostra-receipt ul,
 .mostra-problem ul,
@@ -229,49 +488,53 @@ body,
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.3rem;
+  gap: 4px;
 }
 .mostra-receipt li {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  padding-left: 0.9rem;
+  gap: 16px;
+  padding-inline-start: 16px;
   position: relative;
 }
 .mostra-receipt li::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 0.45em;
-  width: 0.4rem;
-  height: 0.4rem;
+  inset-inline-start: 0;
+  inset-block-start: 0.45em;
+  inline-size: 8px;
+  block-size: 8px;
   border-radius: 50%;
   background: currentColor;
 }
 .mostra-ok::before {
-  color: var(--mostra-ok);
+  color: var(--success);
 }
 .mostra-wait::before {
-  color: var(--mostra-wait);
+  color: var(--warning);
 }
 .mostra-bad::before {
-  color: var(--mostra-bad);
+  color: var(--destructive);
 }
 .mostra-receipt time {
-  font-family: ui-monospace, monospace;
-  font-size: 0.75rem;
-  color: var(--mostra-muted);
+  font: 0.75rem var(--font-mono);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
 }
-.mostra-footnote {
-  margin: 0.5rem 0 0;
-  font-size: 0.72rem;
-  color: var(--mostra-muted);
+.mostra-footnote,
+.mostra-after-submit {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.mostra-after-submit {
+  font-size: 0.875rem;
 }
 .mostra-problem p {
-  margin: 0 0 0.4rem;
+  margin: 0 0 6px;
 }
 .mostra-orphans section {
-  margin-top: 0.5rem;
+  margin-top: 8px;
   max-height: 50vh;
   overflow: auto;
 }
@@ -279,128 +542,414 @@ body,
   font-weight: 600;
 }
 .mostra-orphan-value {
-  margin: 0.2rem 0;
+  margin: 4px 0;
   white-space: pre-wrap;
-  word-break: break-word;
-  font-family: ui-monospace, monospace;
-  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  font: 0.8125rem var(--font-mono);
   user-select: text;
 }
 .mostra-orphan-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 0.72rem;
-  color: var(--mostra-muted);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* The footer: the rules, the report control and Mostra's mark. */
+.mostra-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  min-height: 40px;
+  padding: 4px 10px 4px 16px;
+  padding-block-end: max(4px, env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.mostra-footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mostra-footer-item:empty {
+  display: none;
+}
+.mostra-footer-item .mostra-icon-svg {
+  inline-size: 13px;
+  block-size: 13px;
+}
+.mostra-footer-link {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mostra-footer-link:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
+  a.mostra-made:hover .mostra-made-line {
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
+}
+.mostra-footer-end {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.mostra-made {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--foreground);
+  text-decoration: none;
+  border-radius: 6px;
+}
+.mostra-made .mostra-mark-svg {
+  inline-size: 18px;
+  block-size: 18px;
+}
+.mostra-made b {
+  font-weight: 600;
+}
+.mostra-made-line {
+  color: var(--muted-foreground);
+}
+
+/* Folded: only the status and the way back, over the page. */
+.mostra-page[data-mostra-folded] .mostra-banner,
+.mostra-page[data-mostra-folded] .mostra-following {
+  display: none;
+}
+.mostra-folded {
+  position: fixed;
+  inset-inline-end: max(16px, env(safe-area-inset-right));
+  inset-block-end: max(16px, env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 3px 3px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-float);
+}
+
+/* Dialogs: the report and a confirmation the page asked for. */
+.mostra-dialog {
+  inline-size: min(440px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 32px);
+  padding: 24px;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-float);
+  overscroll-behavior: contain;
+}
+.mostra-dialog::backdrop {
+  background: rgb(10 10 12 / 0.4);
+}
+.mostra-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+@starting-style {
+  .mostra-dialog[open] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.mostra-dialog h2 {
+  font: 500 1.25rem / 1.25 var(--font-display);
+  margin: 0 0 6px;
+}
+.mostra-dialog p {
+  margin: 0 0 14px;
+  color: var(--muted-foreground);
 }
 .mostra-dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.3);
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  background: rgb(10 10 12 / 0.4);
 }
-.mostra-dialog {
-  background: var(--mostra-card);
-  border: 1px solid var(--mostra-gilt);
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-  max-width: 26rem;
+.mostra-dialog-backdrop > .mostra-dialog {
+  position: static;
+  margin: 0;
 }
-.mostra-dialog p {
-  margin: 0 0 1rem;
+.mostra-choices {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
 }
+.mostra-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.mostra-choice:has(input:checked) {
+  background: var(--accent);
+  border-color: var(--primary);
+  color: var(--accent-foreground);
+}
+.mostra-choice input {
+  accent-color: var(--primary);
+  margin: 0;
+  inline-size: 18px;
+  block-size: 18px;
+}
+.mostra-field {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.mostra-field input,
+.mostra-field textarea {
+  inline-size: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font: 400 1rem / 1.4 var(--font-sans);
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--input);
+  border-radius: 10px;
+}
+.mostra-field textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+.mostra-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.mostra-popover .mostra-field {
+  margin: 0;
+}
+
+/* Pages the shell draws itself: a link that doesn't work, an interstitial, two links. */
 .mostra-notice {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0.25rem;
-  padding: 2rem;
+  gap: 8px;
+  padding: 32px 20px;
   text-align: center;
+  min-height: 100dvh;
 }
 .mostra-notice h1 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0;
+  font: 500 clamp(1.5rem, 1.2rem + 1.2vw, 2rem) / 1.15 var(--font-display);
+  letter-spacing: -0.015em;
+  margin: 0 0 4px;
+  text-wrap: balance;
 }
 .mostra-notice p {
   margin: 0;
-  opacity: 0.8;
+  max-inline-size: 34rem;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
 }
 .mostra-notice .mostra-code {
-  margin-top: 1rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.75rem;
-  opacity: 0.5;
+  margin-top: 16px;
+  font: 0.75rem var(--font-mono);
+  color: var(--muted-foreground);
 }
-.mostra-notice .mostra-actions button {
-  font: inherit;
-  padding: 0.4rem 0.9rem;
-  border-radius: 0.375rem;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
+.mostra-notice .mostra-actions {
+  margin-top: 16px;
+  justify-content: center;
 }
-/* Phones: the trusted zone becomes a bar along the bottom, outside the frame. */
+.mostra-card {
+  inline-size: min(480px, 100%);
+  padding: 28px;
+  text-align: start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+}
+.mostra-card h1 {
+  font-size: 1.625rem;
+  margin-bottom: 10px;
+}
+.mostra-card p + p {
+  margin-top: 8px;
+}
+.mostra-card .mostra-sender {
+  margin-top: 12px;
+  white-space: normal;
+}
+.mostra-card .mostra-actions {
+  justify-content: flex-start;
+}
+
+/* Phones: the title and sender on top, Submit at the thumb, the viewer's choices in a sheet. */
 @media (max-width: 720px) {
-  .mostra-status,
-  .mostra-subtitle {
+  .mostra-rail {
+    gap: 4px;
+    padding-block: 6px;
+    padding-inline-start: max(12px, env(safe-area-inset-left));
+    padding-inline-end: max(4px, env(safe-area-inset-right));
+  }
+  .mostra-title {
+    font-size: 1rem;
+  }
+  .mostra-subtitle,
+  .mostra-sender {
+    font-size: 0.75rem;
+  }
+  .mostra-icon {
+    inline-size: 44px;
+    block-size: 44px;
+  }
+  .mostra-viewer-toggle {
+    display: inline-grid;
+  }
+  .mostra-viewer-body {
     display: none;
   }
-  .mostra-trusted {
+  .mostra-viewer[data-open]::before {
+    content: "";
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    border-radius: 0;
-    border-width: 1px 0 0;
-    background: var(--mostra-paper);
-    padding: 0.6rem 0.75rem;
-    justify-content: flex-end;
-    z-index: 1;
+    inset: 0;
+    z-index: 39;
+    background: rgb(10 10 12 / 0.4);
   }
-  .mostra-page {
-    padding-bottom: 3.5rem;
-    box-sizing: border-box;
+  .mostra-viewer[data-open] .mostra-viewer-body {
+    position: fixed;
+    inset-inline: 8px;
+    inset-block-end: max(8px, env(safe-area-inset-bottom));
+    z-index: 40;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 56px 18px 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow-float);
+  }
+  .mostra-viewer[data-open] .mostra-viewer-close {
+    display: inline-grid;
+    position: absolute;
+    inset-block-start: 6px;
+    inset-inline-end: 6px;
+  }
+  .mostra-viewer[data-open] .mostra-pill {
+    flex: 1 1 10rem;
+    min-height: 44px;
+    max-inline-size: none;
+  }
+  .mostra-popover {
+    position: static;
+    inline-size: 100%;
+    box-shadow: none;
+    border: 0;
+    padding: 0;
+  }
+  .mostra-actionbar {
+    border: 0;
+    padding: 0;
+  }
+  .mostra-actionbar[data-mostra-dock] {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: 10;
+    min-height: var(--dock-height);
+    padding: 8px 10px;
+    padding-inline-start: max(16px, env(safe-area-inset-left));
+    padding-block-end: max(8px, env(safe-area-inset-bottom));
+    background: var(--card);
+    border-top: 1px solid var(--border);
+  }
+  .mostra-actionbar[data-mostra-dock] .mostra-status-words {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+  }
+  .mostra-actionbar[data-mostra-dock] .mostra-trusted {
+    margin-inline-start: auto;
+  }
+  .mostra-actionbar[data-mostra-dock] .mostra-primary {
+    min-height: 44px;
+  }
+  .mostra-page:has(.mostra-actionbar[data-mostra-dock]) {
+    padding-block-end: calc(var(--dock-height) + env(safe-area-inset-bottom));
+  }
+  .mostra-page[data-mostra-folded] {
+    padding-block-end: 0;
+  }
+  .mostra-footer {
+    gap: 2px 14px;
+    padding: 2px 4px 2px 12px;
+    font-size: 0.75rem;
+  }
+  .mostra-made-line {
+    display: none;
   }
   .mostra-receipt,
   .mostra-orphans,
   .mostra-problem {
-    left: 0.75rem;
-    right: 0.75rem;
-    max-width: none;
+    inset-inline: 12px;
+    max-inline-size: none;
   }
 }
-.mostra-notice .mostra-actions {
-  margin-top: 1rem;
-}
 
-/* The hosted shell's trusted chrome (D161): quiet, always present, outside the frame. */
-.mostra-viewer {
-  font-size: 0.85rem;
-  color: var(--mostra-muted);
-  white-space: nowrap;
+@media (prefers-reduced-motion: reduce) {
+  .mostra-button,
+  .mostra-pill,
+  .mostra-icon,
+  .mostra-dialog[open] {
+    transition-property: background-color, border-color, color, opacity;
+  }
+  .mostra-button:active,
+  .mostra-pill:active,
+  .mostra-icon:active {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion wins over every press */
+    transform: none !important;
+  }
+  @starting-style {
+    .mostra-dialog[open] {
+      transform: none;
+    }
+  }
 }
-.mostra-footer {
-  padding: 0.4rem 1rem;
-  border-top: 1px solid var(--mostra-line);
-  font-size: 0.8rem;
-  color: var(--mostra-muted);
-}
-.mostra-after-submit {
-  margin: 0.4rem 0 0;
-  font-size: 0.85rem;
-  color: var(--mostra-muted);
-}
-.mostra-choice {
-  display: block;
-  margin: 0.35rem 0;
-}
-.mostra-choice textarea {
-  display: block;
-  width: 100%;
-  min-height: 4rem;
-  margin-top: 0.25rem;
-  font: inherit;
+@media (forced-colors: active) {
+  .mostra-dot,
+  .mostra-banner-warn::before,
+  .mostra-dev::before {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
 }

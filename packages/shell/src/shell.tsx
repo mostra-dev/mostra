@@ -143,16 +143,18 @@ function Choice(props: {
 }): ReactElement {
   return (
     <main className="mostra-shell mostra-notice">
-      <h1>This artifact is already open here with another link</h1>
-      <p>The link you have open: {describeAccess(props.current)}</p>
-      <p>The link you just opened: {describeAccess(props.offered)}</p>
-      <div className="mostra-actions">
-        <button type="button" onClick={props.onKeep}>
-          Keep the link I have
-        </button>
-        <button type="button" onClick={props.onReplace}>
-          Use the new link
-        </button>
+      <div className="mostra-card">
+        <h1>This artifact is already open here with another link</h1>
+        <p>The link you have open: {describeAccess(props.current)}</p>
+        <p>The link you just opened: {describeAccess(props.offered)}</p>
+        <div className="mostra-actions">
+          <button type="button" className="mostra-button mostra-primary" onClick={props.onKeep}>
+            Keep the link I have
+          </button>
+          <button type="button" className="mostra-button" onClick={props.onReplace}>
+            Use the new link
+          </button>
+        </div>
       </div>
     </main>
   );
@@ -209,9 +211,13 @@ export function Shell(): ReactElement {
     const { title, detail } = explain(state.code);
     return (
       <main className="mostra-shell mostra-notice">
-        <h1>{title}</h1>
-        <p>{detail}</p>
-        <p className="mostra-code">{state.code}</p>
+        <div className="mostra-card">
+          <h1>{title}</h1>
+          <p>{detail}</p>
+          <p className="mostra-code" translate="no">
+            {state.code}
+          </p>
+        </div>
       </main>
     );
   }

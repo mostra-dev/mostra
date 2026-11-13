@@ -18,6 +18,7 @@
     "@mostra/shell": "workspace:*",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
+    "axe-core": "catalog:",
     "typescript": "catalog:"
   }
 }
