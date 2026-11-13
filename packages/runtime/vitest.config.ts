@@ -42,17 +42,21 @@ const REMOTE = [
   "test/integration/pause.test.ts",
   "test/integration/remote-mcp-conformance.test.ts",
   "test/integration/team-hosted.test.ts",
-  "test/integration/operator-relay.test.ts",
-  "test/integration/signin-facts.test.ts",
 ];
+// MT-03's remote suites sit in groups with room: `remote` on macOS ran 10.2 of its 10 minutes with
+// them (CI run 43350155809), and the next run passed its deadline. Sign-in facts join `core`, the
+// relay's operator limits (two seconds of each case waits on a hanging operator) `verify-failures`,
+// and on Windows both join `windows-publish`, the lightest group on both architectures.
+const SIGNIN_FACTS = "test/integration/signin-facts.test.ts";
+const OPERATOR_RELAY = "test/integration/operator-relay.test.ts";
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, OPERATOR_RELAY],
   },
   remote: { include: REMOTE, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
-  "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
+  "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS, OPERATOR_RELAY], exclude: [] },
   clients: { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
   // runs them about twice as slowly as x64). They partition the files too, in their own way: a
@@ -81,6 +85,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/audit.test.ts",
       "test/integration/render.test.ts",
       "test/integration/bundle.test.ts",
+      SIGNIN_FACTS,
+      OPERATOR_RELAY,
     ],
     exclude: [],
   },
