@@ -79,8 +79,8 @@ export const remoteDiagnostics: AreaCatalog<RemoteDiagnosticCode> = {
     hint: "Wait for the owner to come back and work through its queue, then press again.",
     docs: {
       explanation:
-        "The artifact's owner instance is offline and as many runs as the server allows already wait for it, so this one was refused before anything was recorded. Runs already waiting keep their place.",
-      fix: "Bring the owner instance back online: waiting runs then go out in the order they were made. The cap is the server's `relay.waitingRunsPerArtifact` setting.",
+        "The artifact's owner instance is offline and as many runs as the server allows already wait for it, or the server's operator allows no more waiting runs for this account now (its `limits` port, `run.wait`, whose message is the operator's own), so this one was refused before anything was recorded. Runs already waiting keep their place.",
+      fix: "Bring the owner instance back online: waiting runs then go out in the order they were made. The cap is the server's `relay.waitingRunsPerArtifact` setting, or the operator's limit its message names; its `Retry-After`, when present, says when to try again.",
     },
   },
   MOSTRA_REMOTE_NOT_OWNER_INSTANCE: {

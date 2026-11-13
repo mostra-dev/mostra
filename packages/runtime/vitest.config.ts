@@ -22,9 +22,15 @@ const FAULTS = [
   "test/integration/lifecycle.test.ts",
   "test/integration/heartbeat.test.ts",
 ];
-// The remote server, its binding, the owner's link and the relay (WP-29): real servers and
-// owners, about five minutes, a machine of their own so `core` stays inside its deadline.
-const REMOTE = [
+// The remote server's suites: real servers and owners, each half a machine of its own on macOS and
+// Linux so neither nor `core` passes its deadline. `remote` (WP-29): the server, the binding, the
+// owner's link, hosting and the relay. `remote-access` (WP-30, MT-03): sign-in, OAuth, the
+// operator's ports, remote MCP and the hosted pages' rules. One `remote` group took 10.2 of its
+// 10 minutes on macOS once MT-03's suites joined it (CI run 43350155809), and `core` has no room
+// for them either (574 of its 600 s before them in run 43367597560), so the group is split
+// (REPO_STANDARDS §6). Windows keeps them in `windows-remote`, but for MT-03's two, which join its
+// lightest group, `windows-publish`.
+const REMOTE_HOSTING = [
   "test/integration/server.test.ts",
   "test/integration/binding.test.ts",
   "test/integration/link.test.ts",
@@ -32,23 +38,31 @@ const REMOTE = [
   "test/integration/relay.test.ts",
   "test/integration/restore.test.ts",
   "test/integration/replicator.test.ts",
+  "test/integration/tenancy.test.ts",
+  "test/integration/pause.test.ts",
+  "test/integration/team-hosted.test.ts",
+];
+const SIGNIN_FACTS = "test/integration/signin-facts.test.ts";
+const OPERATOR_RELAY = "test/integration/operator-relay.test.ts";
+const REMOTE_ACCESS = [
   "test/integration/operator.test.ts",
   "test/integration/oauth.test.ts",
   "test/integration/remote-mcp.test.ts",
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
   "test/integration/anonymous-volume.test.ts",
-  "test/integration/tenancy.test.ts",
-  "test/integration/pause.test.ts",
   "test/integration/remote-mcp-conformance.test.ts",
-  "test/integration/team-hosted.test.ts",
+  SIGNIN_FACTS,
+  OPERATOR_RELAY,
 ];
+const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
     exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE],
   },
-  remote: { include: REMOTE, exclude: [] },
+  remote: { include: REMOTE_HOSTING, exclude: [] },
+  "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
   clients: { include: [], exclude: [] },
@@ -69,7 +83,10 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   // The remote server and the relay (WP-29), as `remote` is on macOS and Linux.
-  "windows-remote": { include: [...REMOTE], exclude: [] },
+  "windows-remote": {
+    include: REMOTE.filter((file) => file !== SIGNIN_FACTS && file !== OPERATOR_RELAY),
+    exclude: [],
+  },
   "windows-publish": {
     include: [
       "test/integration/protocol-suite.test.ts",
@@ -79,6 +96,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/audit.test.ts",
       "test/integration/render.test.ts",
       "test/integration/bundle.test.ts",
+      SIGNIN_FACTS,
+      OPERATOR_RELAY,
     ],
     exclude: [],
   },

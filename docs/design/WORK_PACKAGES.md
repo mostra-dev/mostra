@@ -1,11 +1,11 @@
 # Mostra work packages
 
-**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below, and D146 (2026-10-22) replaced WP-32 with the Windows packages WP-W1 to WP-W3, built before WP-13. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
+**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below, D146 (2026-10-22) replaced WP-32 with the Windows packages WP-W1 to WP-W3, built before WP-13, and D170 (2026-11-12) added WP-33 to WP-35, homes an organization owns, after the first release. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
 
 ## How the sequence was built
 
-- **Scope.** 34 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 2 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence.
-- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 37 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 5 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up: homes an organization owns (D170) and the terminal modes (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows.
+- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27; after the first release, WP-33 to WP-35 (organization homes, D170), then WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
 - **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
@@ -36,9 +36,11 @@ flowchart LR
   W24-->W26
   W25-->W26-->W27
   subgraph After["After the first release"]
-    W32-->W22-->W23
+    W33-->W34-->W35
+    W22-->W23
   end
-  W27-->W32
+  W27-->W33
+  W27-->W22
   W20-->W22
   W16-->W23
 ```
@@ -373,6 +375,20 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Depends on:** WP-30 (identity on remote servers) and WP-07 (the client runtime).
 - **Evidence:** the CO checks; a five-viewer browser scenario; the ledger holds no presence.
 
+### MT-03. The operator ports as specified, and what sign-in and metering lack
+- **Owns:** none.
+- **Builds:**
+  - `limits` asked for relayed runs, waiting runs and plain calls (`run`, `run.wait`, `call`), as INTERFACES §18.3 and §18.6 and D165 item 9 already specify;
+  - a link's idle expiry judged from its last view before the visit that asks, so a fresh visit to an idle link is refused;
+  - GitHub's public counts (`publicRepos`, `publicGists`, `followers`) in `SignInIdentity.facts`;
+  - chosen ID-token claims of an OpenID Connect provider in `facts` (`claims` on its configuration entry);
+  - the verifier recorded on each sign-in identity when it is linked, and `IdentityProvider.verifies` for providers an operator module supplies;
+  - `bytes.held` in metering: a home's held client bytes at each window's end;
+  - the version being pushed in `limits`' query (`LimitQuery.versionId`);
+  - a dossier design for homes an organization owns, with no code: decided as D170, and built by WP-33 to WP-35.
+- **Depends on:** WP-31 (the `main` that includes it).
+- **Evidence:** each change's check through the real interface (a real `mostra-runtime server` with the fixture operator module, fake providers and a real owner instance), with a seeded violation red on the old behavior; the decision entry for organization-owned homes (D170) with its dossier text and packages.
+
 ### WP-16. Extension contracts and plugin system
 - **Owns:** EX-01, EX-02, EX-03, EX-04.
 - **Builds:**
@@ -496,7 +512,47 @@ Each entry lists the requirements the package owns, then what it builds, what it
 
 ## After the first release
 
-These packages follow the first release, v1.0 (D122). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. Windows is no longer among them: it ships in v1.0 (D146).
+These packages follow the first release, v1.0 (D122, D170). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. Windows is no longer among them: it ships in v1.0 (D146). Homes an organization owns (WP-33 to WP-35) come first: they are additive, nothing in v1's scope needs them, and they build on the finished remote MCP surface (WP-17), the shell's design pass (WP-20) and the docs site (WP-26).
+
+### WP-33. Organization homes I: the server and the operator contract
+- **Owns:** RM-10, RM-12, HO-12, HY-10, MC-05.
+- **Builds:** the server's side of homes an organization owns, as D170 and INTERFACES §18.10 design them:
+  - the directory: organization accounts, a home's handle and verifier, the member list with its two roles, the home a grant names, a default instance per account and home, and an artifact's access setting;
+  - sign-in for a home: the device grant and the authorization code grant carry the home, the device and consent pages name it, and every token is judged against the member list at every request;
+  - the hosted home's one check: read for every member (an artifact shared as private only for its owner member and admins), manage for the owner member and admins, run for the owner link, applied to every handler from one table; a link's follow carries only the events of the routes it owns;
+  - the operator contract, additively: the handle's `setOrganization`, `setMembers`, `setMember`, `removeMember`, `members`, `transferHome`, `instanceLinks` and `revokeInstanceLink`; `actor` on `limits` queries, counters and events; a credential that names a home; `policy.link`'s `showMember`;
+  - linked instances listed and revoked on the hosted home (`hosted/links`, `hosted/link.revoke`), and who minted each link recorded as an event;
+  - remote MCP: the home chosen on the consent page, authoring on the member's default instance of that home;
+  - the hosted shell's sender line for an organization, the member under it, and "the owner" of a team page as whoever may read the artifact;
+  - the self-hosting page's example operator module for one shared home (prose with Mirza, D149).
+- **Depends on:** WP-27 (the `main` that includes it); it extends WP-30, WP-31 and MT-03.
+- **Evidence:** RM-10's, RM-12's, HO-12's, HY-10's and MC-05's checks against a real `mostra-runtime server` with the fixture operator module, with real owner instances linked by operator-issued keys that name the home and the device grant driven over HTTP; every existing remote suite passing unchanged with no operator module; external evidence from a chat host choosing a home on a deployed server, labelled as external.
+
+### WP-34. Organization homes II: the owner's link and the CLI
+- **Owns:** RM-11.
+- **Builds:**
+  - one link per server and home on the owner instance: the ledger's migration, credentials per link, and a connection, cursor and relay mark per link;
+  - `remote/login` with `org`, the guard against a server that predates organization homes, `remote/status` per link, `remote/instances` and revoking one;
+  - the share rule that never guesses a home, and sharing an artifact as private;
+  - the CLI: `login --org`, `logout` with `--org`, `--personal` or `--instance`, `share --cloud` with `--org`, `--personal` or `--private`, `access`, `status`;
+  - the conformance scenario `remote.organization`;
+  - the Skill and docs for sharing into an organization (prose with Mirza, D149).
+- **Depends on:** WP-33; it extends WP-29.
+- **Evidence:** RM-11's check: a home written by the released version upgrades with its link, hosted artifacts and pending push intact; one instance holds a personal link and an organization's on one server, each with its own connection; the share rule's four cases; sign-in with `org` against the released server image fails and leaves no grant; WP-33's membership and removal cases repeated through a person's own sign-in; the kit's scenario against both reference hosts.
+
+### WP-35. Organization homes III: reading across members and adoption
+- **Owns:** RM-13, RM-14.
+- **Builds:**
+  - reads through the hosted home: `wait`, `results`, `events` and `artifact/list` with `hosted`, for artifacts the instance doesn't own, and `mostra list`, `results` and `wait` with `--cloud --org`;
+  - a hosted home's deliveries sent to their artifact's owner link as the route names it at send time;
+  - `artifact/release` and `mostra release`;
+  - adoption: `remote/adopt` and `mostra adopt`, the hosted home's `hosted/adopt.begin`, `hosted/version` and `hosted/adopt.commit`, client files by `GET /files/<sha256>`, client-only versions in the owner's registry, the import of an artifact's history, and the commit that moves unsent runs and the route's owner with its plan recorded first;
+  - what a removal does to a link's accepted runs, and the old owner's side of `artifact.adopted`;
+  - the `adopt` operation of `limits` and the `artifact.adopted` operator event;
+  - docs for members who leave, lost machines and an organization's always-on instance.
+- **Depends on:** WP-34.
+- **Evidence:** RM-13's and RM-14's checks: reads from an instance that holds nothing of the artifact; a page adopted with and without its source, with a pending delivery and a waiting run arriving once; two adopters racing; a server stopped mid-commit and finished after its restart; the previous owner returning.
+
 
 ### WP-22. Terminals I: frames, renderer, recordings and capture
 - **Owns:** TM-01, TM-03, TM-06.

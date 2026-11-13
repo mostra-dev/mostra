@@ -923,4 +923,13 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 17,
+    name: "a link's views",
+    up(db) {
+      // A hosted link's idle expiry is judged by its last view (`LinkPolicy.idleExpiry`, MT-03),
+      // read at every frame ticket a hosted page asks for: the link's views by its token.
+      db.exec("CREATE INDEX view_token ON view (token_id, opened_at)");
+    },
+  },
 ];

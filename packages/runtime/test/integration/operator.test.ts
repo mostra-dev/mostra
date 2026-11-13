@@ -9,13 +9,14 @@
  * chrome and expiry hold; and the server handle pauses, suspends, revokes, drains and removes,
  * each acting on one route or home only.
  */
-import { cpSync, readdirSync, readFileSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { MutationId } from "@mostra/protocol";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openPage } from "../action-page.ts";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
 import {
@@ -64,6 +65,8 @@ describe("operator ports (HO-09)", () => {
         MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
         MOSTRA_TEST_OPERATOR_DISPATCH_MS: "100",
         MOSTRA_TEST_METER_WINDOW_MS: "300",
+        // A session's activity is written at most this often, so an open page keeps its link.
+        MOSTRA_TEST_SESSION_TOUCH_MS: "200",
         MOSTRA_TEST_GRANT_RECHECK_MS: "500",
       },
     });
@@ -897,4 +900,182 @@ describe("operator ports (HO-09)", () => {
       await cell.stop();
     }
   }, 240_000);
+
+  /**
+   * Publishes the MDX fixture with a line of its own, so its client build holds files no other
+   * case's versions hold, under `once` per viewer, and shares it; `again` publishes a second
+   * version of it (shared already, so pushed too).
+   */
+  const shareUnique = async (word: string) => {
+    const dir = join(tempDir(`op-unique-${word}`), "single-mdx");
+    cpSync(join(FIXTURES, "single-mdx"), dir, { recursive: true });
+    const entry = join(dir, "page.mdx");
+    const original = readFileSync(entry, "utf8");
+    // A value of its own on the page, so its build's chunk is this version's alone.
+    writeFileSync(
+      entry,
+      `${original}\nexport const marker = "${word}-${Date.now()}";\n\n{marker}\n`,
+    );
+    const receipt = ok<{ artifactId: string; versionId: string }>(
+      await owner.client.call(
+        "artifact/publish",
+        { source: { path: entry }, policy: { policy: "once", scope: "per-viewer" } },
+        120_000,
+      ),
+    );
+    const url = ok<{ url: string }>(
+      await owner.client.call(
+        "share/start",
+        { artifact: { artifactId: receipt.artifactId }, via: "remote" },
+        60_000,
+      ),
+    ).url;
+    const again = async (): Promise<{ versionId: string }> => {
+      writeFileSync(
+        entry,
+        `${original}\nexport const marker = "${word}-again-${Date.now()}";\n\n{marker}\n`,
+      );
+      return ok<{ versionId: string }>(
+        await owner.client.call(
+          "artifact/publish",
+          { source: { path: entry }, policy: { policy: "once", scope: "per-viewer" } },
+          120_000,
+        ),
+      );
+    };
+    return { receipt, url, again };
+  };
+
+  it("names the version being pushed in `limits`' query, the same in every round of one push (MT-03)", async () => {
+    const before = (await operator.calls("limits")).length;
+    const { receipt, again } = await shareUnique("rounds");
+    const pushes = async (operation: string) =>
+      (await operator.calls("limits"))
+        .slice(before)
+        .filter(
+          (call) =>
+            call.payload["operation"] === operation &&
+            call.payload["artifact"] === receipt.artifactId,
+        );
+    // Its client files were new to the home: the first round answered `missing`, the owner
+    // uploaded them and pushed again, and each round asked about the same version.
+    const rounds = await pushes("version.push");
+    expect(rounds.length).toBeGreaterThanOrEqual(2);
+    for (const round of rounds) expect(round.payload["versionId"]).toBe(receipt.versionId);
+    const stored = await pushes("storage");
+    expect(stored.length).toBe(rounds.length);
+    for (const round of stored) {
+      expect(round.payload["versionId"]).toBe(receipt.versionId);
+      expect(Number(round.payload["quantity"])).toBeGreaterThan(0);
+    }
+    // A second version names its own.
+    const second = await again();
+    expect(second.versionId).not.toBe(receipt.versionId);
+    await eventually(
+      async () =>
+        (await pushes("version.push")).some(
+          (call) => call.payload["versionId"] === second.versionId,
+        ),
+      60_000,
+      "the second version's push",
+    );
+  }, 180_000);
+
+  it("refuses a fresh visit to a link idle past its idle expiry, and opens one used inside it (MT-03)", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    await operator.set({ policy: { idleExpiry: "3s" } });
+    // Viewed, then viewed again inside the idle time by another browser: it opens.
+    await openLink(new Browser(), url);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await openLink(new Browser(), url);
+    // Idle past it: a browser that never opened the link exchanges it for a session of its own,
+    // and is still refused, since the link's last view is older than the idle time.
+    await new Promise((resolve) => setTimeout(resolve, 3_500));
+    const fresh = await openLink(new Browser(), url).then(
+      () => "opened",
+      (error: unknown) => String(error),
+    );
+    expect(fresh).toContain("ticket: 410");
+    expect(fresh).toContain("MOSTRA_HYGIENE_TOKEN_REVOKED");
+    // Revoked for good: an earlier browser is refused too.
+    const later = await openLink(new Browser(), url).then(
+      () => "opened",
+      (error: unknown) => String(error),
+    );
+    expect(later).toContain("410");
+    await operator.set({ policy: {} });
+  }, 120_000);
+
+  it("keeps a link in use past its idle time: an open page's activity counts, not only its views (MT-03)", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    await operator.set({ policy: { idleExpiry: "3s" } });
+    const page = await openPage(url);
+    // The page stays open and in use for longer than the idle time, with no new view.
+    for (let tick = 0; tick < 7; tick += 1) {
+      expect((await page.poll()).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    // Its next frame ticket (a reload, a version switch, D157's recovery) still opens.
+    const { link, shellCsrf } = page.opened;
+    const ticket = await page.browser.fetchJson(
+      link.shell,
+      `/a/${link.artifactId}/_mostra/ticket`,
+      {
+        body: {},
+        csrf: shellCsrf,
+      },
+    );
+    expect(ticket.status, ticket.body).toBe(200);
+    await operator.set({ policy: {} });
+  }, 120_000);
+
+  it("meters the bytes a home holds, falling when a removal frees them (MT-03)", async () => {
+    const home = await homeOf();
+    const heldAfter = async (since: number): Promise<number | undefined> => {
+      const batches = (await operator.calls("metering")).slice(since);
+      const values = batches.flatMap((call) =>
+        (call.payload["counters"] as { name: string; home?: string; value: number }[]).filter(
+          (counter) => counter.name === "bytes.held" && counter.home === home,
+        ),
+      );
+      return values.at(-1)?.value;
+    };
+    // What the home holds already (earlier cases' versions), once a window has said it.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const before = (await heldAfter(0)) ?? 0;
+    const start = (await operator.calls("metering")).length;
+    const { url } = await shareUnique("held");
+    // The pushed version's files are held as well: a later window says more.
+    let held = 0;
+    await eventually(
+      async () => {
+        const value = await heldAfter(start);
+        if (value === undefined) return false;
+        held = value;
+        return value > before;
+      },
+      30_000,
+      `bytes.held above ${before} for the home`,
+    );
+    // Removing the route frees the files only it named: a later window reports less.
+    const atRemoval = (await operator.calls("metering")).length;
+    const removed = await operator.handle("remove", routeOf(url));
+    expect(removed.status, JSON.stringify(removed.json)).toBe(200);
+    await eventually(
+      async () => {
+        const value = await heldAfter(atRemoval);
+        return value !== undefined && value < held;
+      },
+      30_000,
+      `bytes.held below ${held} after the removal`,
+    );
+    // Uploads are still summed apart: `bytes.stored` counted the pushed files once.
+    const stored = (await operator.calls("metering"))
+      .slice(start)
+      .flatMap((call) => call.payload["counters"] as { name: string; home?: string }[])
+      .filter((counter) => counter.name === "bytes.stored" && counter.home === home);
+    expect(stored.length).toBeGreaterThan(0);
+  }, 180_000);
 });

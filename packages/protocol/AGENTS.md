@@ -30,7 +30,8 @@ imports nothing but `zod` (tools/package-map.ts).
 - `src/operator.ts` is `@mostra/protocol/operator`, the remote server's operator contract (INTERFACES
   §18.6, D167): the ports, the server handle, their schemas, `OPERATOR_REVISION`,
   `OPERATOR_TIME_LIMITS` and `defineOperator`; since WP-31 the `invitations` port and its
-  `Invitation` (D168 item 9). An operating layer imports nothing else of Mostra,
+  `Invitation` (D168 item 9); since MT-03 `LimitQuery.versionId`, the `bytes.held` counter and
+  `IdentityProvider.verifies` (D169). An operating layer imports nothing else of Mostra,
   so it imports nothing with I/O and evolves additively under its own report,
   `etc/protocol-operator.api.md` (`mostra.apiReports` in `package.json` names each subpath with a
   report).

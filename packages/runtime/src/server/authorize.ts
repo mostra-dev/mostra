@@ -26,6 +26,7 @@ import {
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { type Authorization, canonicalResource, hashSecret } from "./auth.ts";
+import { verifierLabel } from "./config.ts";
 import { type Clients, type OAuthClient, redirectAllowed } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
 
@@ -253,6 +254,19 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
 
   // ── providers ───────────────────────────────────────────────────────────────────────────
 
+  /**
+   * The label a provider's verified names carry (`IdentityProvider.verifies`, MT-03): text of 1 to
+   * 64 characters, else none, since an operator's provider is checked as every operator answer is.
+   */
+  const verifierOf = (provider: IdentityProvider): string | undefined => {
+    const raw: unknown = (provider as { verifies?: { label?: unknown } }).verifies?.label;
+    const label = verifierLabel(raw);
+    if (label === undefined && provider.verifies !== undefined) {
+      log.warn("signin.verifier_refused", { provider: provider.id });
+    }
+    return label;
+  };
+
   /** The providers now: configured ones, then the operator's (asked each time, D167). */
   const providers = async (): Promise<IdentityProvider[]> => {
     const supplied = await operator.providers();
@@ -270,6 +284,8 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   }
   interface StepRecord {
     readonly identity: SignInIdentity;
+    /** The verifier label of the provider that named the person (MT-03). */
+    readonly verifiedBy?: string;
     readonly steps: number;
     readonly flow: string;
     readonly next: string;
@@ -306,11 +322,12 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   const resolved = async (
     response: ServerResponse,
     identity: SignInIdentity,
+    verifiedBy: string | undefined,
     steps: number,
     flow: string,
     next: string,
   ): Promise<void> => {
-    const account = await auth.resolveAccount(identity, steps);
+    const account = await auth.resolveAccount(identity, steps, verifiedBy);
     if (account.kind === "unavailable") {
       problem(response, 503, "Sign-in is unavailable for a moment; try again shortly.");
       return;
@@ -329,7 +346,13 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         return;
       }
       const handle = token();
-      keep("step", handle, { identity, steps: steps + 1, flow, next } satisfies StepRecord);
+      keep("step", handle, {
+        identity,
+        ...(verifiedBy !== undefined ? { verifiedBy } : {}),
+        steps: steps + 1,
+        flow,
+        next,
+      } satisfies StepRecord);
       const url = new URL(account.url);
       url.searchParams.set("mostra_return", `${apiOrigin}/signin/return?step=${handle}`);
       redirect(response, url.href);
@@ -792,7 +815,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
           );
           return true;
         }
-        await resolved(response, identity, 0, pending.flow, pending.next);
+        await resolved(response, identity, verifierOf(provider), 0, pending.flow, pending.next);
         return true;
       }
       if (method === "GET" && path === "/signin/return") {
@@ -807,7 +830,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
           );
           return true;
         }
-        await resolved(response, step.identity, step.steps, step.flow, step.next);
+        await resolved(response, step.identity, step.verifiedBy, step.steps, step.flow, step.next);
         return true;
       }
       return false;

@@ -703,7 +703,7 @@ mostra.close().await?;                               // &self: a shared handle c
 
 ## 18. The remote server
 
-The names, types and semantics of the remote server (ARCHITECTURE §15, D165). WP-29 builds the network binding, sharing and the relay; WP-30 builds the public server, its sign-in, operator ports and remote MCP. Each may settle finer shapes under D123 and records them here, additively. Domains are examples: `usercontent.example` is a user-content domain (its apex is the hosted shell, D165 item 7) and `api.example` an API origin.
+The names, types and semantics of the remote server (ARCHITECTURE §15, D165). WP-29 builds the network binding, sharing and the relay; WP-30 builds the public server, its sign-in, operator ports and remote MCP; WP-33 to WP-35 build homes an organization owns (§18.10, D170). Each may settle finer shapes under D123 and records them here, additively. Domains are examples: `usercontent.example` is a user-content domain (its apex is the hosted shell, D165 item 7) and `api.example` an API origin.
 
 ### 18.1 The server and its configuration
 
@@ -807,6 +807,7 @@ Owner instance → hosted home (methods)
   - Cancelling a run never sent ends it `cancelled` on the hosted home without contacting the owner.
   - Past `relay.waitingRunsPerArtifact` waiting runs, or when `limits` refuses the operation `run.wait`, a new run is refused with 503 `MOSTRA_REMOTE_QUEUE_FULL` before anything is recorded.
   - When the owner returns, waiting runs go out in the order they were recorded, at most `relay.drainPerSecond` a second per artifact.
+- **The operator's `limits`** (§18.6, D165 item 9; as built by MT-03, D169). Before a relayed run is recorded the hosted home asks `run`, and when the run would be recorded `waiting` because its owner is away (judged once `run` is answered) `run.wait` too; before a plain call is relayed it asks `call`; each with the artifact, its route and quantity 1. A refusal of `run` or `call` answers 403 `MOSTRA_REMOTE_LIMIT_REACHED`, and one of `run.wait` 503 `MOSTRA_REMOTE_QUEUE_FULL`, each with the operator's message and its `retryAfterMs` as `Retry-After`, before anything is recorded or relayed; the request's `rateLimits.perLink.relayedRuns` use is given back, as a refused submit's tokens are (D167 item 24). A request that joins a run already recorded (its client key or key) is never asked, nor counted, and one sent while a request with the same client key or key is still on its way to its record waits for it and joins what it recorded. An operator that doesn't answer within its 2 s lets the run or call through: they are viewer input. After the wait the request is judged again, with the record: a pause (423 `MOSTRA_ACTION_PAUSED`), a revoked or expired link (410 `MOSTRA_HYGIENE_TOKEN_REVOKED`), an owner who left (503 `MOSTRA_REMOTE_OWNER_OFFLINE` for a call), a full queue, and a call the page stopped waiting for (409 `MOSTRA_ACTION_CANCELLED`, never relayed) each refuse it with its use given back.
 - **Owner unreachable mid-run.** The run stays `running` with `ownerUnreachable: true`. When the offline limit passes after the owner was last heard from, the run becomes `unknown`, with the event `action.unknown`. A later `end` from the owner replaces it once, with its own event (DATA_MODEL §3, §4).
 - **Plain calls** go out only while the owner is connected, and otherwise answer 503 `MOSTRA_REMOTE_OWNER_OFFLINE` at once.
 - **Live.** Interest follows views as locally (D130): the hosted home sends `start` when a view or an `always` source needs a producer, `renew` every 20 s, and `stop` when none does. Values arrive as `relay/live.value` and are stored and sent like local live values. While the owner is offline, `LiveState.ownerOffline` is `true` and the last value stays, with its `at`.
@@ -854,7 +855,8 @@ On the API origin (D165 items 8, 10; VERIFIED_FACTS, WP-28):
 - **Tokens** are opaque, stored as SHA-256 hashes, and bound to their resource (audience) and account. Access tokens last an hour. Refresh tokens rotate on every use; for 30 s after a rotation the old token returns the same successor, so a client's parallel refreshes don't collide, and a reuse after that revokes the grant. Every endpoint answers within 10 s.
 - **Client ID Metadata Documents** are fetched over `https` only, after resolving the name and refusing loopback, private, link-local and metadata addresses on every connection, with no redirects, at most 64 KiB and 5 s, and cached as their headers allow.
 - **Redirect URIs** match exactly, except that the port is ignored for `http://127.0.0.1`, `http://[::1]` and `http://localhost` (RFC 8252 §7.3). Registered clients never used for 30 days are removed.
-- **Identity providers** sit behind a port: `IdentityProvider` is `{ id, label, authorize(state, pkce) → URL, callback(params) → SignInIdentity }`. Built-in adapters for OpenID Connect and GitHub are configured in `identityProviders` (`{ id, kind: "oidc" | "github", issuer?, clientId, clientSecretFile, label }`); others come from the operator module. A `SignInIdentity` is `{ provider, subject, email?, name?, facts? }`, where `facts` carries what a provider tells (an account's age, for an operator's policy). `accounts.resolve` maps it to an account (§18.6).
+- **Identity providers** sit behind a port: `IdentityProvider` is `{ id, label, verifies?, authorize(state, pkce) → URL, callback(params) → SignInIdentity }`. Built-in adapters for OpenID Connect and GitHub are configured in `identityProviders` (`{ id, kind: "oidc" | "github", issuer?, clientId, clientSecretFile, label, claims? }`); others come from the operator module. A `SignInIdentity` is `{ provider, subject, email?, name?, facts? }`, where `facts` carries what a provider tells (an account's age, for an operator's policy). `accounts.resolve` maps it to an account (§18.6).
+- **As built (MT-03, D169).** GitHub's `facts` are `login`, `createdAt` and the public counts `publicRepos`, `publicGists` and `followers` from the same `GET /user` answer (each only when GitHub gives a non-negative integer). An `oidc` entry's `claims` (1 to 8 names of letters, digits and `_.:-`, at most 64 characters each; on any other kind `MOSTRA_REMOTE_CONFIG_INVALID`) names ID-token claims that go into `facts` under their own names when the token carries them, each value at most 4 KiB as JSON (a Google Workspace account's domain, `hd`); without `claims` an `oidc` identity carries no `facts`. `verifies: { label }` says a provider verifies the names it gives and what the sender line calls it ("verified with Acme": 1 to 64 characters, shown as text; anything else counts as no verifier); the built-in providers verify under their `label` (GitHub's default "GitHub"), the development one never. The verifier is recorded on the sign-in identity each time its provider links or signs in the person (DATA_MODEL §7.1), and the sender line reads the account's first identity's recorded verifier, never the configuration now, so renaming or retiring a provider changes no verified name. An identity linked before the record existed takes, once at the server's next start, the verifier the configuration then names for its provider.
 - **Clients:** the CLI (the device grant, a public client), MCP clients (Client ID Metadata Documents or registration, authorization code with PKCE), and each hosted shell (a first-party public client per user-content domain).
 - **As built** (WP-30, D167 items 3, 10, 11). Each hosted shell's client ID is `<shell origin>/_mostra/signin`. Registered clients are `mcl_…`, public, with at most ten redirect URIs (`https:`, or loopback `http:`). Authorization codes live 60 s and go at their first presentation; a viewer's code is redeemed only through its route's `session/signin`. The browser's sign-in on the API origin is a 7-day session (`__Host-` there), and consent is a form the API origin's own `Origin` and a CSRF token carry. Sign-in pages: `/signin/<provider>/start?next=…`, `/signin/<provider>/callback`, `/signin/<provider>/name` (the development provider), `/signin/return?step=…` (a first sign-in step's return, `mostra_return` on the step's URL, at most three steps). The OpenID Connect adapter takes `https:` issuers only; GitHub's subject is the numeric user ID.
 
@@ -911,12 +913,13 @@ interface ServerHandle {
 }
 ```
 
-- **Time limits and failures.** `limits.check`, `policy.link` and `routing.resolve` answer within 2 s, and the server may cache an answer as long as the operator says. When `limits` doesn't answer, `share`, `version.push`, `link` and authoring fail closed with 503 `MOSTRA_REMOTE_OPERATOR_UNAVAILABLE`, while `view`, `submit` and draft writes proceed (D165 item 9). `accounts.resolve` has 5 s; past it, sign-in fails with the same code and existing sessions keep working. `abuse.pushed` has 30 s and never blocks serving: its answer can quarantine the version afterwards.
+- **Time limits and failures.** `limits.check`, `policy.link` and `routing.resolve` answer within 2 s, and the server may cache an answer as long as the operator says. When `limits` doesn't answer, `share`, `version.push`, `link` and authoring fail closed with 503 `MOSTRA_REMOTE_OPERATOR_UNAVAILABLE`, while `view`, `submit`, draft writes and relayed actions (`run`, `run.wait`, `call`) proceed (D165 item 9). `accounts.resolve` has 5 s; past it, sign-in fails with the same code and existing sessions keep working. `abuse.pushed` has 30 s and never blocks serving: its answer can quarantine the version afterwards.
 - **At least once.** `metering.record` and `events.deliver` are retried with backoff until they succeed, idempotent by `batchId` and `eventId`. The server keeps what it hasn't delivered across restarts, and logs any gap it had to drop.
-- **Counters** (`MeterCounter`, `{ name, account, home?, artifactId?, value, dimensions? }`): `views` (with a monthly pseudonymous `viewerKey`, an HMAC under a key rotated each month, never an identity), `submissions`, `requests`, `bytes.stored`, `bytes.egress`, `relay.messages`, `mcp.calls` (with the client's `clientInfo` name, D148) and `home.activeSeconds`.
+- **Counters** (`MeterCounter`, `{ name, account, home?, artifactId?, value, dimensions? }`): `views` (with a monthly pseudonymous `viewerKey`, an HMAC under a key rotated each month, never an identity), `submissions`, `requests`, `bytes.stored`, `bytes.egress`, `relay.messages`, `mcp.calls` (with the client's `clientInfo` name, D148) and `home.activeSeconds`. MT-03 (D169) adds `bytes.held`, a level rather than a sum: the client bytes a home holds, each file once however many of its versions name it (`home_file`), sent in the window after it changes (0 once when nothing is left), and for every home holding anything at the first window after a start and once a day; `bytes.stored` keeps summing uploads. A window's counters go out in batches of at most 1,000, each with its own `batchId`.
 - **An operator's pause** can't be resumed by the owner: `artifact/pause` from the owner answers 403 `MOSTRA_REMOTE_PAUSED_BY_OPERATOR` for it.
 - **No-op defaults:** `limits` allows; `metering` and `events` discard; `accounts` uses the server's own account table with no step and accepts no outside credential; `abuse` does nothing; `policy` adds nothing beyond configuration; `routing` serves only the server's own labels. A label `routing` supplies is recorded like the server's own: never given to another home.
 - **As built** (WP-30, D167 items 1 to 9). The types and their Zod schemas are `@mostra/protocol/operator`, with `OPERATOR_REVISION` (`2026-11-08`), `OPERATOR_TIME_LIMITS` and `defineOperator`; every answer is checked against its schema, and a refused one counts as no answer. Additive to the sketch above: `identity?: { providers(): IdentityProvider[] | Promise<…> }`, asked at every sign-in (2 s); `routing.resolve`'s shell answer names its home (`{ shell: { domain, home } }`), an unknown label under a configured domain is asked too, and `routing.linkHost?({ account, home, routeId }) → host | null` chooses where a new link is minted; every `OperatorEvent` carries `label`; any answer may carry `cacheForMs`. An event's ID is `<home>:<incarnation>:<cursor>`. `viewerKey` is computed over the account, the route's anonymous key, or a named link's viewer. A change to `domains` takes a restart, which keeps every hosted session.
+- **As built (MT-03, D169).** `LimitQuery.versionId` (additive) names the version on `version.push` and `storage`, the same in every round of one push (an owner uploads the files a round named missing and pushes again), so an operator counts each version once; `quantity` is 1 for `version.push` and the client bytes for `storage`. `limits` is asked for `run`, `run.wait` and `call` as §18.3 says. `policy.link`'s `idleExpiry` is judged from the link's last use before this visit: the latest of its minting, its last view (a frame ticket, D104) and its other sessions' activity (an open page's requests, written at most hourly), the session asking for the ticket left out. So a fresh visit to an idle link answers 410 `MOSTRA_HYGIENE_TOKEN_REVOKED` and revokes it, and a page open and in use keeps its link. `IdentityProvider.verifies` and the providers' `facts` are §18.5's.
 
 ### 18.7 CLI
 
@@ -926,6 +929,7 @@ Additive to §9 (D165 item 15). Help text is drafted with Mirza (D149).
 - `mostra pause <artifact> [--reason <text>]` and `mostra resume <artifact>` (WP-30).
 - `mostra status` reports each linked server (`remote/status`).
 - `mostra-runtime server` (§18.1) is the remote server's entry, in the runtime bundle and the container image.
+- Organization homes add `--org`, `--personal`, `--private`, `access`, `adopt` and `release`, and `--cloud` reads of artifacts the instance doesn't own (§18.10, D170; WP-34 and WP-35).
 
 ### 18.8 Remote MCP
 
@@ -947,3 +951,301 @@ As built by WP-31 (D168 item 9), on what D165 item 16 reserved:
 - a hosted artifact's roster is its hosted home's: `roster/add`, `roster/remove` and `roster/get` on the owner act there, `roster/add` asks `limits` for `link` with the number of links, and `share/start { via: "remote", respondents: { ref, name?, email? }[] }` answers `respondents: { ref, link }[]` beside the share's own link (`respondents` needs `via: "remote"` and excludes `viewer`);
 - `events.deliver` gains `roster.completed` (`payload: { round, respondents, submissions: { ref, submissionId }[] }`);
 - `invitations.send(Invitation)` receives one invitation per respondent with an email whom the roster added or gave a new link: `Invitation` is `{ invitationId, account, home, routeId, label, artifactId, title, respondent: { ref, name?, email }, sender: { name?, verifiedBy? }, url, expiresAt?, at }`, at least once and idempotent by `invitationId` (`<home>:<tokenId>`), queued by token and given its `url` when handed over; an invitation whose link stopped working meanwhile is dropped. No mailer ships.
+
+### 18.10 Organization homes
+
+Homes an organization owns (D170; the design, its candidates and its journeys are [rounds/ORGANIZATION-HOMES.md](rounds/ORGANIZATION-HOMES.md)). WP-33 builds the server's side and the operator contract, WP-34 the owner's link and the CLI, WP-35 reads across members and adoption. Each may settle finer shapes under D123 and records them here, additively. Everything is additive within the host protocol's revisions and `OPERATOR_REVISION` `2026-11-08`.
+
+- **Words.** The **owning account** of a home is a person or an organization (`account.kind`). The **actor** is the account a credential names. A **member** is a person on an organization home's member list, with a role (`member` or `admin`). An organization's account has no sign-in identity.
+- **Rights.** Every member *reads* every artifact of the home, except one whose access is `private`, which only its owner member and admins read and which is listed for no one else. The member whose instance owns an artifact, and admins, *manage* it. Only the route's owner link *runs* it. On a person's own home the actor is the owning account and has every right, as before. One function decides every call from one table of method to right.
+
+| Right | What it covers on a hosted home | A member, on an artifact their instance owns | A member, on a colleague's artifact | An admin | The owning account's own credential |
+|---|---|---|---|---|---|
+| **Read** | `artifact/list`, `artifact/get`, `results/*`, `wait`, `events/*`, `state/get`, `roster/get`, `hosted/links` | yes | yes, unless the artifact is `private` | yes | yes |
+| **Manage** | `view/url`, `view/rotate`, `view/revoke`, `roster/add`, `roster/remove`, `state/patch`, `live/push`, `artifact/pause`, `artifact/access`, `artifact/release`, `share/stop`'s revocation | yes | no: `MOSTRA_REMOTE_ROLE_DENIED` | yes | yes |
+| **Run** | `hosted/push`, the `submissions` and `relay` ports, `hosted/submission`, relayed authoring | yes: it is the owner link | no: `MOSTRA_REMOTE_NOT_OWNER_INSTANCE`, naming the owner | only on what its own instance owns | only on what its own instance owns |
+| **Share something new** | the first `hosted/push` of an artifact ID the home doesn't host | yes | | yes | yes |
+| **Adopt** | `hosted/adopt.*` | its own artifacts, on another of its machines | only one its owner released | yes | yes |
+| **Change members, suspend, remove** | never a protocol method: the operator's handle only | no | no | no | no |
+
+#### The operator contract (`@mostra/protocol/operator`), additive
+
+```ts
+// ── organizations and their members ─────────────────────────────────────────────────────
+
+/** A member's role on an organization's home (INTERFACES §18.10). */
+export type HomeRole = "member" | "admin";
+
+/** One member of an organization's home: a person's account and their role. */
+export interface HomeMember {
+  /** The person's account, as `accounts.resolve` names it. Made in the directory if it isn't there yet. */
+  readonly account: string;
+  readonly role: HomeRole;
+}
+
+/** The schema the server checks a member against. */
+export const HomeMember: z.ZodType<HomeMember> = z.object({
+  account: z.string().min(1).max(128),
+  role: z.enum(["member", "admin"]),
+});
+
+/** An organization: an account no one signs in as, and the hosted home it owns. */
+export interface OrganizationHome {
+  /** The organization's account, the operator's own ID. Never an account a person signs in as. */
+  readonly account: string;
+  /** The name its pages show as their sender, as text. */
+  readonly name: string;
+  /** A lower-case name unique on this server, which `mostra login --org` takes. */
+  readonly handle?: string;
+  /**
+   * Who verified the name, as the sender line says it ("verified by acme.example"): 1 to 64
+   * characters, shown as text. Absent: the name is shown as not verified. Recorded on the home,
+   * so it changes only when the operator sets it again.
+   */
+  readonly verifiedBy?: string;
+}
+
+/** The schema the server checks an organization against. */
+export const OrganizationHome: z.ZodType<OrganizationHome> = z.object({
+  account: z.string().min(1).max(128),
+  name: z.string().min(1).max(256),
+  handle: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/).exactOptional(),
+  verifiedBy: z.string().min(1).max(64).exactOptional(),
+});
+
+/** One instance linked to a home, as the handle and `hosted/links` report it. */
+export interface InstanceLinkInfo {
+  /** The link (`lnk_…`). */
+  readonly linkId: string;
+  readonly home: string;
+  /** Whose machine it is. */
+  readonly account: string;
+  /** The machine's name, as it gave it. */
+  readonly name: string;
+  /** Whether it is its account's default instance on this home. */
+  readonly default: boolean;
+  readonly linkedAt: string;
+  readonly revokedAt?: string;
+  /** Whether a binding of it is open now. */
+  readonly connected: boolean;
+  /** How many hosted routes it owns. */
+  readonly routes: number;
+}
+
+// ── additions to existing types (every field optional) ──────────────────────────────────
+
+export type LimitOperation = /* … as today … */ | "adopt";
+
+export interface LimitQuery {
+  // … as today: `account` is the account that owns the home (a person, or an organization) …
+  /**
+   * The member who caused the operation, on `share`, `version.push`, `storage`, `link`, `mcp.call`
+   * and `adopt` in an organization's home. Absent when a viewer caused it, and when the owning
+   * account acted itself.
+   */
+  readonly actor?: string;
+}
+
+export interface MeterCounter {
+  // … as today …
+  /** The member whose instance or client was counted, on `mcp.calls`, `bytes.stored` and `relay.messages`. */
+  readonly actor?: string;
+}
+
+export interface PushedVersion {
+  // … as today …
+  /** The member whose instance pushed the version. */
+  readonly actor?: string;
+}
+
+export type OperatorEventKind = /* … as today … */ | "artifact.adopted";
+
+export interface OperatorEvent {
+  // … as today. `artifact.adopted` carries
+  //   { from: { linkId, account }, to: { linkId, account } } …
+  /** The member who caused it, on `version.pushed` and `artifact.adopted`. */
+  readonly actor?: string;
+}
+
+export interface Invitation {
+  // … as today: `sender` is the home's sender, an organization's name and verifier on its home …
+  readonly sender: {
+    readonly name?: string;
+    readonly verifiedBy?: string;
+    /** On an organization's home: the member responsible for the page, while they are a member. */
+    readonly member?: { readonly name?: string; readonly verifiedBy?: string };
+  };
+}
+
+export interface LinkPolicy extends Cacheable {
+  // … as today …
+  /** On an organization's page: `false` hides the member under the organization's name. Absent: shown. */
+  readonly showMember?: boolean;
+}
+
+export interface AuthenticatedCredential {
+  // … as today …
+  /**
+   * The home the credential acts on, when it isn't `account`'s own: an organization's home that
+   * `account` is a member of. The server checks the membership at every use.
+   */
+  readonly home?: string;
+}
+
+export interface ServerHandle {
+  // … as today …
+  /**
+   * Makes an organization's account and the hosted home it owns, or updates its name, handle and
+   * verifier. Idempotent by `account`. Refused for an account a person signs in as, and for a
+   * handle another home holds.
+   */
+  setOrganization(org: OrganizationHome): Promise<{ readonly home: string }>;
+  /** Replaces a home's whole member list. Whoever it omits is removed, as by `removeMember`. */
+  setMembers(home: string, members: readonly HomeMember[]): Promise<void>;
+  /** Adds a member, or changes their role. */
+  setMember(home: string, member: HomeMember): Promise<void>;
+  /**
+   * Removes a member. When it resolves, their grants on the home are revoked and their bindings to
+   * it are closed. Their artifacts stay hosted and wait for an adopter.
+   */
+  removeMember(home: string, account: string): Promise<void>;
+  /** The home's members now. */
+  members(home: string): Promise<readonly HomeMember[]>;
+  /**
+   * Gives a home to another account that owns none: a person's home to an organization (the person
+   * becomes an admin member), or back to a person who is its only member. No route, label, link,
+   * draft or submission changes. The person's machines keep their links; their chat-host grants on
+   * the home are revoked, to be approved again.
+   */
+  transferHome(home: string, toAccount: string): Promise<void>;
+  /** The instances linked to a home. */
+  instanceLinks(home: string): Promise<readonly InstanceLinkInfo[]>;
+  /**
+   * Revokes one linked instance: its grants are revoked and its binding closed. The artifacts it
+   * owns stay hosted and wait for an adopter, or for the same machine to be linked again.
+   */
+  revokeInstanceLink(linkId: string): Promise<void>;
+}
+```
+
+What does not change: `OPERATOR_REVISION`, every time limit, `AccountResolution`, `LinkQuery`, `RoutingAnswer`, `AbuseReport`, `MeterBatch`.
+
+#### The host protocol
+
+**On a hosted home** (additive to INTERFACES §18.2):
+
+```text
+mostra/initialize   → InstanceInfo gains  owner?: { account, kind: "person" | "organization", name?, handle? }
+                                           role?:  "member" | "admin"
+artifact/list, artifact/get
+                    → each artifact gains  hosted?: { routeId, owner: InstanceLink, access: "organization" | "private", released?: boolean }
+hosted/links        {} → { links: InstanceLink[] }                       (read)
+hosted/link.revoke  { instanceId } → {}                                  (its own account, or an admin)
+artifact/access     { artifact, access: "organization" | "private" } → { access }   (manage)
+artifact/release    { artifact, released: boolean } → { released }       (manage)
+hosted/adopt.begin  { artifactId } → { routeId, owner: InstanceLink, versions: { versionId, number, outputDigest }[] }
+hosted/version      { artifactId, versionId } → VersionPush              (only between begin and commit, and for the owner link)
+hosted/adopt.commit { artifactId, from: string } → { routeId, deliveries: number, runs: { moved: number, left: number } }
+hosted/submission   { submissionId } → SubmissionEnvelope                (the route's owner link, and its adopter between begin and commit)
+
+GET https://api.example/files/<sha256>      the bytes of a client file this home holds; the binding's bearer token;
+                                            404 for a file the home doesn't hold, whatever the server stores
+```
+
+`InstanceLink` is `{ instanceId, name, account?: { id, name? }, default, connected, linkedAt, revokedAt? }`.
+
+**On the owner's own instance** (additive to INTERFACES §18.2 and §6):
+
+```text
+remote/login        { server?, org?: string | true, default?, requestId? }      org: a handle or home ID; true: choose on the page
+remote/login.wait   → adds  home: RemoteHome
+remote/link         → adds  home: RemoteHome
+remote/logout       { server?, org?, personal?, forget? }
+remote/status       → RemoteLink gains  home: RemoteHome                         one RemoteLink per server and home
+remote/instances    { server?, org? } → { links: InstanceLink[] }
+remote/instance.revoke { server?, org?, instanceId } → {}
+remote/adopt        { artifact, server?, org?, requestId? }
+                    → { artifactId, routeId, from: InstanceLink,
+                        versions: { held: number, fetched: number }, submissions: number,
+                        deliveries: number, runs: { moved: number, left: number } }
+share/start         { …, via: "remote", server?, org?, personal?, access? }  → Share gains  home: RemoteHome
+artifact/access     { artifact, access, hosted? }
+share/stop          { …, moved?: boolean }
+artifact/release    { artifact, released?: boolean, hosted? }
+wait, results/get, results/list, events/read, artifact/list, artifact/get
+                    { …, hosted?: { server?, org? } }       with it: answered by that hosted home, owned here or not
+state/get, state/patch, live/push, roster/*, artifact/pause
+                    { …, hosted?: { server?, org? } }       names one home when the artifact is hosted on several
+```
+
+`RemoteHome` is `{ id, kind: "personal" | "organization", name?, handle?, role? }`.
+
+**Sign-in** (additive to INTERFACES §18.5):
+
+- `POST /oauth/device` takes `mostra_home` (a handle or home ID), or `mostra_home_choose=1`. The device page names the home and the person. Approval is refused when the person is not a member.
+- The token answer adds `mostra_home_kind`, `mostra_home_name`, `mostra_home_handle` and `mostra_role` beside `mostra_home`.
+- `POST /link` answers `home: RemoteHome` too.
+- `/oauth/authorize`: the consent page carries the home choice (4.7). The code, and the grant made from it, carry `home_id`.
+
+#### Sessions and the one check
+
+A session on a hosted home carries `{ accountId, homeId, grantId, linkId?, role }`. `role` is `admin` when `accountId` is the owning account, else the member's role. It is read from `home_member` at every check, a local indexed read, so a role change and a removal take effect on the next call of an open session, not at its next recheck. One function decides everything:
+
+```ts
+/** Whether a session may do this to this artifact of its home (INTERFACES §18.10). */
+function may(session: Session, artifactId: string | undefined, right: "read" | "manage" | "run" | "adopt"): boolean
+```
+
+A table maps each method to its right. A handler never checks a role itself.
+
+#### Commands (§18.7)
+
+**Commands** (help text is prose for D149):
+
+```text
+mostra login <server> [--org [<handle>]] [--default] [--key-file <file>]
+mostra logout [<server>] [--org <handle> | --personal] [--instance <lnk_…>] [--forget]
+mostra status                                  # every link: server, home, role, state
+mostra share <artifact> --cloud [<server>] [--org <handle> | --personal] [--private] […]
+mostra access <artifact> organization|private [--cloud [<server>]] [--org <handle>]
+mostra list|results|wait|roster get|state get <artifact> --cloud [<server>] [--org <handle>]
+mostra adopt <artifact> --cloud [<server>] [--org <handle>]
+mostra release <artifact> [--cloud [<server>]] [--org <handle>]
+```
+
+- `mostra login <server>` with no `--org` links the person's own home, as today; `--org` with no handle lets the person choose on the device page among the organizations they belong to.
+- **Which home a share goes to.** In order: the home named; else the only home this instance is linked to on that server; else the home the artifact is already hosted on there; else `MOSTRA_REMOTE_HOME_AMBIGUOUS`, listing the choices. Nothing is ever shared under an organization's name by a default the person didn't see.
+- A handle that names no home the person may act on, and one that names no home at all, get the same answer (`MOSTRA_REMOTE_HOME_UNKNOWN`).
+
+#### Remote MCP and the sender line
+
+- **Remote MCP** (§18.8). A grant for `/mcp` names one home, chosen on the consent page whenever the account has more than one home ("Chat App asks to use Mostra as Bo Diaz, in: ( ) your own pages ( ) Acme"), the last choice preselected. Authoring goes to the actor's default instance among their links to that home (`MOSTRA_REMOTE_NO_INSTANCE` without one connected); reading tools see what the actor may read there; `state_patch` and `live_push` need manage.
+- **The sender line** (D161). `HostedChrome.sender` gains `kind?: "person" | "organization"` and `member?: { name, verifiedBy? }`. An organization's page shows the organization's name with the verifier the operator recorded (`setOrganization`'s `verifiedBy`) or "name not verified", and under it the member whose account owns the route's owner link, only while that account is a member and unless `policy.link` answers `showMember: false`. All of it is text in the trusted chrome. Its wording is prose for Mirza (D149).
+- **Teams** (§18.9, D168 item 8). "The owner sees everyone" means a signed-in viewer with the read right on the artifact. `Invitation.sender` gains `member`.
+
+#### Events and diagnostics
+
+**Durable events, for hosts** (DATA_MODEL §4, additive):
+
+| Event | Where | Payload |
+|---|---|---|
+| `instance.linked` | hosted home (exists) | gains `account: { id, name? }` |
+| `instance.revoked` | hosted home | `{ instanceId, by }` |
+| `token.minted` | hosted home | `{ tokenId, by }`: who minted a link, never its secret. Hosts only, never pages |
+| `artifact.access` | hosted home | `{ access, by }` |
+| `artifact.released` | hosted home | `{ released, by }` |
+| `artifact.adopted` | hosted home, and followed by the old and new owner | `{ routeId, from: { instanceId, account }, to: { instanceId, account }, by, deliveries, runs }` |
+| `remote.adopted` | the adopter's own log | `{ server, home, artifactId, versions: { held, fetched }, submissions }` |
+
+**Diagnostics** (each with its docs page; hints are prose for D149):
+
+| Code | When |
+|---|---|
+| `MOSTRA_REMOTE_HOME_UNKNOWN` | A sign-in, share or read names a home this account can't act on, or none exists by that name |
+| `MOSTRA_REMOTE_HOME_AMBIGUOUS` | A share or a forwarded call could go to several homes; the message lists them |
+| `MOSTRA_REMOTE_NOT_MEMBER` | A token's grant names a home its account is no longer a member of (401 on `/host`, `/files` and `/mcp`; the binding's close reason) |
+| `MOSTRA_REMOTE_ROLE_DENIED` | A manage call on a colleague's artifact, or an adoption the caller has no right to; names who can |
+| `MOSTRA_REMOTE_ADOPT_CONFLICT` | The owner link changed since `adopt.begin`; names the new owner |
+| `MOSTRA_REMOTE_VERSION_CLIENT_ONLY` | A relayed run or call of a version this instance holds without server code; names the instance that had it |
+
+`MOSTRA_REMOTE_NOT_OWNER_INSTANCE` keeps its meaning and gains the hint "or adopt it".

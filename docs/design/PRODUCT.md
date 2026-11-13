@@ -72,8 +72,11 @@ Use these words consistently in code, docs, errors and the Skill. One word per c
 | **Ledger** | The home's transactional store, written only by the supervisor (D58, D71). |
 | **Remote server** | A Mostra server that hosts many homes behind one gateway on a separate user-content domain, so a shared link works without a tunnel and while the author's machine sleeps (D116). |
 | **Relay** | The outbound connection over which a remote server forwards a hosted artifact's action calls and live producers to the owner's instance (D117). |
-| **Hosted home** | The home on a remote server that holds an owner's hosted artifacts and everything their viewers create (D165). |
-| **Owner instance** | The local instance that shared a hosted artifact: it keeps the artifact's source, versions and secrets, runs its server code through the relay, and receives its submissions (D165). |
+| **Hosted home** | The home on a remote server that holds an owner's hosted artifacts and everything their viewers create (D165). Its owner is a person's account or an organization's (D170). |
+| **Owner instance** | The local instance that shared a hosted artifact, or that adopted it: it keeps the artifact's source, versions and secrets, runs its server code through the relay, and receives its submissions (D165, D170). |
+| **Organization** | An account no one signs in as, which owns a hosted home that its members share into, under one sender (D170). |
+| **Member** | A person on an organization home's member list, with the role `member` or `admin`, which only the server's operator sets (D170). |
+| **Adoption** | Another member's instance becoming a hosted artifact's owner instance, taking its versions, its answers and its pending work (D170). |
 | **Expected respondent** | A person an artifact or share names as someone who should answer; the roster of expected respondents drives "everyone has answered" waits (D121). |
 
 ## Journeys
@@ -108,6 +111,8 @@ These are the caller-first scenarios that the design and acceptance must serve. 
 
 **J14. A team form, answered by five people (D121).** An agent sends a retrospective form to five teammates. Each gets a personal link. The agent's own page shows "3 of 5 answered" and who is drafting, in its own design, from the respondent-status hook. Two teammates editing the shared action list see each other's cursors and who changed each item. The agent waits until every expected respondent has submitted; when the fifth answer arrives, one roster-complete event wakes it, and `mostra results` returns all five submissions.
 
+**J15. A team's page outlives its sharer (D170).** Bo links his laptop to his organization's home on the team's server and shares a proposal into it. Its sender line reads "Sent by Acme" and, under it, "shared by Bo Diaz". Cy, another member, reads the answers and waits on the page from her own CLI, though her machine never held it. Bo leaves the organization: from that moment his tokens open nothing of Acme's home, while the page keeps taking answers. Ada, an admin, adopts the page on her machine, and the answers that waited for Bo arrive there, in order.
+
 ## Scope
 
 Release scope is decided in D16, amended by D116, D121 and D122, and refined into requirements in [REQUIREMENTS.md](REQUIREMENTS.md). Summary:
@@ -123,7 +128,7 @@ Release scope is decided in D16, amended by D116, D121 and D122, and refined int
   - the local MCP server and MCP Apps export;
   - the SDK, host protocol, Rust crate and conformance kit;
   - plugin contracts at 0.x with first-party plugins.
-- **v1.1, the follow-up release:** the terminal modes (D122). Windows moved into v1 (D146).
+- **v1.1, the follow-up release:** homes an organization owns (D170) and the terminal modes (D122). Windows moved into v1 (D146).
 - **v1.x:** sandboxed remote execution, the read-only plugin registry with agent tools, RSC render mode once triggered, Yjs collaboration, and PDF and video exporters.
 - **Later:** the marketplace web interface and embedding Mostra views in host applications (D126).
 

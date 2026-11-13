@@ -41,22 +41,25 @@ export class ActionPage {
     this.opened = opened;
   }
 
-  post(path: string, body: unknown): Promise<Answer> {
+  post(path: string, body: unknown, signal?: AbortSignal): Promise<Answer> {
     return this.browser.fetchJson(this.opened.frameOrigin, `/_mostra/v/${V}/${path}`, {
       body,
       csrf: this.opened.frameCsrf,
+      ...(signal ? { signal } : {}),
     });
   }
 
-  /** A plain call: the NDJSON lines, decoded. */
+  /** A plain call: the NDJSON lines, decoded. An aborted `signal` closes the request, unanswered. */
   async call(
     fnId: string,
     args: unknown[],
+    signal?: AbortSignal,
   ): Promise<{ status: number; value?: unknown; end?: Record<string, unknown>; body: string }> {
-    const answer = await this.post(`call/${encodeURIComponent(fnId)}`, {
-      viewId: this.opened.viewId,
-      args: await serializeAll(args, { mode: "argument" }),
-    });
+    const answer = await this.post(
+      `call/${encodeURIComponent(fnId)}`,
+      { viewId: this.opened.viewId, args: await serializeAll(args, { mode: "argument" }) },
+      signal,
+    );
     if (answer.status !== 200) return { status: answer.status, body: answer.body };
     const lines = answer.body
       .split("\n")

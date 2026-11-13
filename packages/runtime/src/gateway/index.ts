@@ -295,6 +295,8 @@ export interface HostedAddressing {
     readonly artifactId: string;
     readonly versionId: string;
     readonly tokenId: string;
+    /** The shell session asking for the ticket: its own activity is this visit's (MT-03). */
+    readonly sessionId: string;
     readonly client: string | undefined;
   }) => Promise<(Refusal & { readonly retryAfter?: number }) | undefined>;
   /** A version whose files are withheld now (a quarantine): refused even to an open frame. */
@@ -1405,6 +1407,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           artifactId,
           versionId: version.id,
           tokenId: session.grant.tokenId,
+          sessionId: session.id,
           client: context.client,
         });
         if (refused) return refuse(checks, refused, meta);

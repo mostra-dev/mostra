@@ -99,7 +99,10 @@ export interface Actions {
     input: { readonly viewId: string; readonly fnId: string; readonly args: Batches },
     signal: AbortSignal,
   ): Promise<AsyncIterable<CallLine>>;
-  /** Starts or joins a run (AC-02, AC-03); the page follows it from here. */
+  /**
+   * Starts or joins a run (AC-02, AC-03); the page follows it from here. A hosted home's relay
+   * answers asynchronously, since it asks the operator's `limits` before it records a run.
+   */
   startRun(
     page: PageIdentity,
     input: {
@@ -109,7 +112,7 @@ export interface Actions {
       readonly key?: string;
       readonly clientKey: string;
     },
-  ): RunState;
+  ): RunState | Promise<RunState>;
   /** Reads runs and follows them for a minute (re-attach, AC-02). */
   attach(
     page: PageIdentity,

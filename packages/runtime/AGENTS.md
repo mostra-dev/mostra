@@ -228,6 +228,10 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   fails on one). The `invitations` port's queue keeps a personal link's token ID, never its URL
   (whose fragment is its secret): the URL is built from the token when the operator takes the
   invitation (`HostedHome.invitationLink`), and a link that stopped working is dropped (D168).
+  Viewer input never waits on the operator past its bound: `limits` is asked for a relayed run,
+  a waiting run and a plain call before anything is recorded or relayed, and no answer lets each
+  through (`server/relay.ts`, D169). A sender line's verifier is the one recorded on the identity
+  (`identity.verified_by`), never the configuration now (D169).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -295,7 +299,9 @@ binding's grant and an account's standing are asked again), `MOSTRA_TEST_ROTATIO
 refresh token's 30 s), `MOSTRA_TEST_CIMD_ORIGIN` (one loopback origin a metadata document may come
 from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fakes on loopback),
 `MOSTRA_TEST_OPERATOR_DISPATCH_MS` and `MOSTRA_TEST_METER_WINDOW_MS` (the operator's outbound
-queue and meter), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+queue and meter), `MOSTRA_TEST_HELD_SNAPSHOT_MS` (how often every held level is sent again, a day
+by default), `MOSTRA_TEST_SESSION_TOUCH_MS` (how often a session's last use is written, an hour by
+default, which idle expiry reads), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
 between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
 message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
 server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.
@@ -327,7 +333,7 @@ first module outside `protocol-server` needs it.
   submissions, the session's end, its listeners and secrets).
   CI runs them on macOS and
   Linux (`integration` job, D86), split into groups of suites, one machine each:
-  `MOSTRA_TEST_GROUP=core|remote|verify|verify-failures` runs one group (`vitest.config.ts`), unset
+  `MOSTRA_TEST_GROUP=core|remote|remote-access|verify|verify-failures` runs one group (`vitest.config.ts`), unset
   runs them all. `remote` holds the remote server's suites: the server, binding, link, hosted pages
   and their rules, relay, restore, replicator (`MOSTRA_TEST_LITESTREAM`), OAuth, sign-in, remote
   MCP and its conformance, operator ports, tenancy, pause, anonymous answers at volume and a team

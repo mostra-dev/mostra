@@ -75,6 +75,9 @@ export interface IdentityProvider {
     }): Promise<SignInIdentity>;
     readonly id: string;
     readonly label: string;
+    readonly verifies?: {
+        readonly label: string;
+    };
 }
 
 // @public
@@ -124,6 +127,7 @@ export interface LimitQuery {
     readonly operation: LimitOperation;
     readonly quantity?: number;
     readonly routeId?: string;
+    readonly versionId?: string;
 }
 
 // @public
@@ -177,7 +181,7 @@ export interface MeterCounter {
 }
 
 // @public
-export type MeterName = "views" | "submissions" | "requests" | "bytes.stored" | "bytes.egress" | "relay.messages" | "mcp.calls" | "home.activeSeconds" | (string & {});
+export type MeterName = "views" | "submissions" | "requests" | "bytes.stored" | "bytes.held" | "bytes.egress" | "relay.messages" | "mcp.calls" | "home.activeSeconds" | (string & {});
 
 // @public
 export const OPERATOR_REVISION = "2026-11-08";

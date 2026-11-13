@@ -5,9 +5,10 @@
  *
  * - `oidc`: any OpenID Connect provider, by its issuer's discovery document; the authorization
  *   code flow with PKCE (S256) and a nonce, and the ID token checked (signature, issuer, audience,
- *   expiry, nonce) by `openid-client`.
+ *   expiry, nonce) by `openid-client`; the claims its entry names (`claims`) go into `facts`.
  * - `github`: GitHub's OAuth web flow with PKCE, then `GET /user` for the account's stable ID, its
- *   login and name, and its age (`facts.createdAt`) for an operator's policy.
+ *   login and name, and for an operator's policy its age (`facts.createdAt`) and public counts
+ *   (`facts.publicRepos`, `publicGists`, `followers`).
  * - `development`: a page that asks for a name and trusts it, for tests and a self-hoster's first
  *   run; its names are never shown as verified.
  *
@@ -24,7 +25,7 @@ import type {
 } from "@mostra/protocol/operator";
 import * as oidc from "openid-client";
 import type { Environment, Log } from "../log.ts";
-import type { IdentityProviderConfig } from "./config.ts";
+import { configuredVerifier, type IdentityProviderConfig } from "./config.ts";
 
 /** How long a provider's discovery, token exchange or user lookup may take. */
 const PROVIDER_TIMEOUT_MS = 8_000;
@@ -36,11 +37,17 @@ const GITHUB = {
   user: "https://api.github.com/user",
 } as const;
 
-/** A built-in provider: the port's shape, and whether its names are verified. */
+/** A built-in provider: the port's shape, its kind, and its verifier (all but `development`). */
 export interface BuiltInProvider extends IdentityProvider {
   readonly kind: IdentityProviderConfig["kind"];
-  /** Whether the names it gives are verified by someone (all but `development`). */
-  readonly verifies: boolean;
+}
+
+/** The `verifies` of a configured provider: the label its verified names carry, if any. */
+function verifiesOf(config: IdentityProviderConfig): {
+  readonly verifies?: { readonly label: string };
+} {
+  const label = configuredVerifier(config);
+  return label === undefined ? {} : { verifies: { label } };
 }
 
 function invalid(message: string): RpcError {
@@ -67,6 +74,36 @@ function secretOf(config: IdentityProviderConfig): string {
 /** A fetch bounded in time, for a provider's own endpoints. */
 async function timedFetch(url: string, init: RequestInit): Promise<Response> {
   return fetch(url, { ...init, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
+}
+
+/** The longest a chosen claim's value may be, as JSON: a policy reads names, not documents. */
+const CLAIM_MAX = 4_096;
+
+/**
+ * The ID token's claims a configuration chose (`claims`), as `facts` under their own names: each
+ * one present whose value is JSON of at most 4 KiB (MT-03). A claim the token doesn't carry is left
+ * out; with none chosen, nothing is added.
+ */
+function chosen(
+  claims: Readonly<Record<string, unknown>>,
+  names: readonly string[] | undefined,
+): { readonly facts: Record<string, unknown> } | undefined {
+  if (names === undefined) return undefined;
+  const facts: Record<string, unknown> = {};
+  for (const name of names) {
+    if (!Object.hasOwn(claims, name)) continue;
+    const value = claims[name];
+    const text = JSON.stringify(value);
+    if (text === undefined || text.length > CLAIM_MAX) continue;
+    // A key of its own, whatever the name (`__proto__` would set the prototype by assignment).
+    Object.defineProperty(facts, name, {
+      value: JSON.parse(text) as unknown,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return Object.keys(facts).length > 0 ? { facts } : undefined;
 }
 
 /** The OpenID Connect adapter. Discovery happens at the first sign-in and is kept. */
@@ -106,7 +143,7 @@ function oidcProvider(config: IdentityProviderConfig, env: Environment): BuiltIn
     id: config.id,
     label: config.label ?? config.id,
     kind: "oidc",
-    verifies: true,
+    ...verifiesOf(config),
     async authorize(state: string, pkce: SignInPkce, context: SignInContext) {
       const url = oidc.buildAuthorizationUrl(await configuration(), {
         redirect_uri: context.redirectUri,
@@ -143,10 +180,16 @@ function oidcProvider(config: IdentityProviderConfig, env: Environment): BuiltIn
           ? { emailVerified: claims["email_verified"] }
           : {}),
         ...(name !== undefined ? { name } : {}),
+        ...(chosen(claims, config.claims) ?? {}),
       };
       return identity;
     },
   };
+}
+
+/** A count GitHub gave, under its name in `facts`: a non-negative integer, or nothing. */
+function count(name: string, value: unknown): Record<string, number> {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? { [name]: value as number } : {};
 }
 
 /** The GitHub adapter: an OAuth app's web flow with PKCE (VERIFIED_FACTS, WP-30). */
@@ -169,7 +212,7 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
     id: config.id,
     label: config.label ?? "GitHub",
     kind: "github",
-    verifies: true,
+    ...verifiesOf(config),
     authorize(state, pkce, context) {
       const url = new URL(endpoints.authorize);
       url.searchParams.set("client_id", config.clientId as string);
@@ -221,6 +264,9 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
         name?: string | null;
         email?: string | null;
         created_at?: string;
+        public_repos?: number;
+        public_gists?: number;
+        followers?: number;
       };
       if (!user.ok || typeof found.id !== "number") {
         throw new Error(`GitHub's user lookup failed (${user.status}).`);
@@ -231,9 +277,16 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
         subject: String(found.id),
         ...(typeof found.email === "string" ? { email: found.email } : {}),
         name: found.name ?? found.login ?? String(found.id),
+        // What the same answer tells an operator's policy (an account's age and its public
+        // counts, so a fresh, empty account is told from an established one with no other
+        // request inside `accounts.resolve`'s time limit, MT-03); a count GitHub didn't give is
+        // left out rather than guessed.
         facts: {
           login: found.login ?? null,
           ...(found.created_at !== undefined ? { createdAt: found.created_at } : {}),
+          ...count("publicRepos", found.public_repos),
+          ...count("publicGists", found.public_gists),
+          ...count("followers", found.followers),
         },
       };
     },
@@ -249,7 +302,6 @@ function developmentProvider(config: IdentityProviderConfig, apiOrigin: string):
     id: config.id,
     label: config.label ?? "Development sign-in",
     kind: "development",
-    verifies: false,
     authorize(state) {
       const url = new URL(`${apiOrigin}/signin/${config.id}/name`);
       url.searchParams.set("state", state);
