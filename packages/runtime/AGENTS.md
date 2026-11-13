@@ -299,7 +299,9 @@ binding's grant and an account's standing are asked again), `MOSTRA_TEST_ROTATIO
 refresh token's 30 s), `MOSTRA_TEST_CIMD_ORIGIN` (one loopback origin a metadata document may come
 from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fakes on loopback),
 `MOSTRA_TEST_OPERATOR_DISPATCH_MS` and `MOSTRA_TEST_METER_WINDOW_MS` (the operator's outbound
-queue and meter), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+queue and meter), `MOSTRA_TEST_HELD_SNAPSHOT_MS` (how often every held level is sent again, a day
+by default), `MOSTRA_TEST_SESSION_TOUCH_MS` (how often a session's last use is written, an hour by
+default, which idle expiry reads), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
 between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
 message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
 server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.
