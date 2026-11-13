@@ -6,7 +6,9 @@
  */
 import { readFileSync } from "node:fs";
 import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
+import { safeHref } from "@mostra/themes";
 import * as z from "zod";
+import type { AppearanceConfig } from "../gateway/index.ts";
 import type { Environment } from "../log.ts";
 import { validProxies } from "./clients.ts";
 
@@ -49,6 +51,18 @@ const Origin: z.ZodType<string> = z.string().refine(
   },
   { message: "must be an https: origin (http: only on loopback), with no path" },
 );
+
+/**
+ * A name or a short line a server's pages show (D171): 1 to 64 characters with no control,
+ * format or separator characters, as `verifierLabel` holds labels, so one can't read as another.
+ */
+const PageName: z.ZodType<string> = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((value) => value.trim() !== "" && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value), {
+    message: "must be 1 to 64 characters with no control or format characters",
+  });
 
 /** A rate limit: `count` per `per`. */
 export interface Rate {
@@ -126,6 +140,8 @@ export interface RemoteServerConfig {
   readonly framing?: { readonly frameAncestors: "'none'" } | undefined;
   readonly operator?: string | undefined;
   readonly chatHosts?: Record<string, unknown> | undefined;
+  /** How the server's own pages look and name themselves (D171). */
+  readonly appearance?: AppearanceConfig | undefined;
 }
 
 /** The schema of {@link RemoteServerConfig}. */
@@ -190,6 +206,35 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
     chatHosts: z.record(z.string(), z.unknown()).optional(),
+    appearance: z
+      .strictObject({
+        theme: z.enum(["studio", "mostra"]).optional(),
+        name: PageName.nullable().optional(),
+        logo: z
+          .strictObject({
+            file: z.string().regex(/\.(svg|png|webp)$/i, {
+              message: "must be an .svg, .png or .webp file",
+            }),
+            alt: PageName,
+            width: z.int().min(1).max(400),
+            height: z.int().min(1).max(120),
+          })
+          .optional(),
+        stageLine: PageName.optional(),
+        default: z.enum(["system", "light", "dark"]).optional(),
+        footer: z
+          .array(
+            z.strictObject({
+              href: z.string().refine((href) => safeHref(href) !== undefined, {
+                message: "must be an https: address or a path of this server",
+              }),
+              text: PageName,
+            }),
+          )
+          .max(6)
+          .optional(),
+      })
+      .optional(),
   });
 
 /** The configuration keys, and the variable each also comes from. */

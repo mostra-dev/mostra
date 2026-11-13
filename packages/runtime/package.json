@@ -48,6 +48,7 @@
     "@mdx-js/mdx": "catalog:",
     "@mostra/mcp": "workspace:*",
     "@mostra/protocol": "workspace:*",
+    "@mostra/themes": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "better-sqlite3": "catalog:",

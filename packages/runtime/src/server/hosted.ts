@@ -42,6 +42,7 @@ import {
   createGateway,
   type FaceSpec,
   type Gateway,
+  type ServerPages,
 } from "../gateway/index.ts";
 import { platformName } from "../home/index.ts";
 import { createEphemeralBus, createInteraction, type Interaction } from "../interaction/index.ts";
@@ -209,6 +210,8 @@ export interface HostedServices {
   readonly owner: (homeId: string) => HomeOwner;
   readonly signInOffered: () => boolean;
   readonly madeWith?: { readonly href?: string } | undefined;
+  /** The server's own pages, in its operator's theme and name (D171). */
+  readonly pages?: (() => ServerPages) | undefined;
   /** The server's routing by exact `Host`: operator hosts, their frames and link hosts (D167). */
   readonly routing: Routing;
   /** The server's meter: views here, submissions through the operator feed. */
@@ -497,7 +500,9 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       );
     },
   };
+  const pages = options.services.pages?.();
   const gateway: Gateway = createGateway({
+    ...(pages ? { pages } : {}),
     ledger,
     log,
     addressing,

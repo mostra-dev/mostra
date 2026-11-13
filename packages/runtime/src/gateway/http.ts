@@ -6,8 +6,10 @@
  */
 import type { IncomingMessage } from "node:http";
 import type { HttpBindings } from "@hono/node-server";
-import type { Diagnostic, Refusal } from "@mostra/protocol";
+import type { Refusal } from "@mostra/protocol";
 import { refusal } from "@mostra/protocol";
+import type { Pages } from "@mostra/themes";
+import { defaultPages, refusalDocument, themePageCsp } from "./theme.ts";
 
 /** The Hono environment of a listener: Node's request and response objects. */
 export type HttpEnv = { Bindings: HttpBindings };
@@ -97,16 +99,6 @@ export function wantsDocument(headers: Headers): boolean {
   return (headers.get("accept") ?? "").includes("text/html");
 }
 
-/** Escapes text for HTML. */
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
-}
-
-/** A plain page for a refused navigation: no scripts, no external resources. */
-function refusalPage(diagnostic: Diagnostic): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mostra</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.25rem;padding:2rem;text-align:center;color-scheme:light dark}h1{font-size:1.25rem;margin:0}p{margin:0;opacity:.8}code{opacity:.5;font-size:.75rem;margin-top:1rem}</style></head><body><h1>${escapeHtml(diagnostic.message)}</h1>${diagnostic.hint ? `<p>${escapeHtml(diagnostic.hint)}</p>` : ""}<code>${escapeHtml(diagnostic.code)}</code></body></html>`;
-}
-
 /** The response for a refusal: the diagnostic as JSON, or a plain page for a navigation. */
 export function refusalResponse(
   refused: Refusal & { readonly retryAfter?: number },
@@ -114,6 +106,8 @@ export function refusalResponse(
     readonly document: boolean;
     readonly method?: string;
     readonly frameAncestors?: string;
+    /** The server's own pages, in its operator's theme; Studio, named Mostra, by default. */
+    readonly pages?: Pages;
   },
 ): Response {
   const headers: Record<string, string> = { ...BASE_HEADERS, "cache-control": "no-store" };
@@ -122,14 +116,16 @@ export function refusalResponse(
   const head = options.method === "HEAD";
   if (options.document) {
     headers["content-type"] = "text/html; charset=utf-8";
-    // The page has an inline style and nothing else; only the shell may frame it (on artifacts).
-    headers["content-security-policy"] = [
-      "default-src 'none'",
-      "style-src 'unsafe-inline'",
-      `frame-ancestors ${options.frameAncestors ?? "'none'"}`,
-      "base-uri 'none'",
-    ].join("; ");
-    return new Response(head ? null : refusalPage(refused.diagnostic), {
+    // The page loads its theme's files from its own origin and runs nothing; only the shell may
+    // frame it (on artifacts).
+    const pages = options.pages ?? defaultPages().pages;
+    headers["content-security-policy"] = themePageCsp(pages, options.frameAncestors ?? "'none'");
+    const page = refusalDocument(pages, {
+      title: refused.diagnostic.message,
+      detail: refused.diagnostic.hint,
+      code: refused.diagnostic.code,
+    });
+    return new Response(head ? null : page, {
       status: refused.status,
       headers,
     });
