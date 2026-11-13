@@ -157,6 +157,22 @@ DETAIL = {
   risks=["`limits` is asked on the page's path now: its 2 s bound (OPERATOR_TIME_LIMITS) is the most a hung operator adds to a run, a call or a waiting run, and no answer must never refuse one.", "An identity linked before the verifier column exists needs its verifier filled once from the configuration in force, so an upgrade changes no sender line."],
   handoff="An operator module can bound relayed actions, lapse idle links, read GitHub's counts and an OpenID Connect provider's chosen claims, verify names through providers it supplies, meter held bytes, count each pushed version once, and knows how organization-owned homes will arrive. WP-16 follows.",
 ),
+"UX-01": dict(
+  goal="Everything a person sees on the way into Mostra and through a hosted page looks beautiful, feels like one product and works for everyone: signing in, linking a machine, approving a chat app, answering a hosted page on a laptop or a phone, and every page a link can end on. It follows Mostra's visual identity and Studio (D141), is accessible (WCAG 2.2 AA), and holds every security rule these surfaces already keep.",
+  reading=["../DECISIONS.md D68, D141, D145, D149, D161, D165 (items 7 and 8), D166, D167 (items 10 to 13), D169, D170 (item 10)", "../ARCHITECTURE.md §15.6 to §15.8", "../INTERFACES.md §18.4, §18.5", "WP-07's, WP-29's, WP-30's, WP-31's and MT-03's progress reports", "`packages/shell/AGENTS.md`, `packages/shell/src/` and the API origin's pages in `packages/runtime/src/server/`"],
+  detail=[
+    "A design unit: it owns no requirement. Its scope is the surfaces in WORK_PACKAGES.md, each in every state; its progress report has one evidence row per item of its acceptance evidence, each closed through the real interface, and the checks it adds extend their owners' rows (HY-09, SH-01 and SH-02 keep theirs).",
+    "The specification spans this repository and the operating layer's own repository, worked in one session: the public half here is everything above; the private half (the operating layer's pages, mail and dashboard) is built outside this repository on this package's published template. Nothing of the private half enters this repository.",
+    "**Research first:** read the design skills Mirza lists (web-design-guidelines, emil-design-eng, design-taste-frontend, high-end-visual-design, frontend-design, impeccable's references, and a few more found with find-skills) and note in a short brief what each adds, what is adopted and what is rejected; the brief is design input, never authority over the dossier or the brand.",
+    "**Questions to settle with Mirza before building,** as one set with options and a recommendation: brand or Studio on Mostra's own pages; the open server's name and mark under a self-hoster's name; one source for the look shared with the operating layer (a published template it pins); dark mode; and the operating layer's dashboard base.",
+    "**Caller first, two directions:** for each surface family (the API origin's pages, the hosted chrome, the end pages) write who meets it, from where, wanting what and on what device, then show Mirza two structurally different directions as screenshots at desktop and phone widths, and build the one he picks.",
+    "**The hosted chrome keeps its rules and its tests:** the artifact can't reach, restyle or imitate it (WP-30's HY-09 suite and WP-07's forgery suite stay green, untouched); strict CSP with no inline script and Trusted Types; every tenant or operator string as text; no cookies on hosted origins; `Origin-Agent-Cluster`, CORP and `frame-ancestors` as D165 item 7 sets them.",
+    "**Faces:** Figtree and Spline Sans Mono, SIL OFL 1.1, self-hosted from the page's own origin with the system stacks as fallbacks (D141 item 4), their licenses in NOTICE.",
+  ],
+  out=["The review overlay and the shell's final pass beyond the chrome (WP-20); kit components (WP-18, WP-19); the marketing and docs sites (WP-26); CLI output.", "New behaviour: a defect found on the way is fixed with its test if small, or filed."],
+  risks=["The shell is one build for local and hosted pages: a change to its chrome reaches local viewers too, and every e2e suite that reads its words or markers must stay green.", "Self-hosted faces add bytes to the shell and the runtime bundle; subset them and keep the size budgets."],
+  handoff="The templates and words every later surface uses; WP-20's final pass on the shell starts from this chrome. WP-16 follows.",
+),
 "WP-16": dict(
   goal="Anyone can extend Mostra through small, separately versioned contracts and copy-source packs, with honest license disclosure and no capability gates.",
   reading=["../rounds/ROUND-3.md §6", "../INTERFACES.md §14", "../DECISIONS.md D30, D31", "../../research/brief8.md §1, §2, §4"],
@@ -499,14 +515,15 @@ def main():
     stale = []
     for section, b in blocks(text):
         head, body = b.split("\n", 1)
-        m = re.match(r"((?:WP-(?:\d\d|W\d))|MT-\d\d)\. (.+)", head)
+        m = re.match(r"((?:WP-(?:\d\d|W\d))|MT-\d\d|UX-\d\d)\. (.+)", head)
         wp, title = m.group(1), m.group(2).strip()
         seen.append(wp)
         if wp not in DETAIL:
             sys.exit(f"{wp} is in WORK_PACKAGES.md but has no DETAIL entry in tools/design/wp_specs.py")
         det = DETAIL[wp]
         owned = re.search(r"^- \*\*Owns:\*\* (.+)\.$", body, re.M).group(1)
-        # A maintenance unit (MT-NN) owns no requirement: its checks extend their owners' rows.
+        # A maintenance unit (MT-NN) or a design unit (UX-NN) owns no requirement: its checks extend
+        # their owners' rows.
         owns = [] if owned == "none" else owned.split(", ")
         builds = re.search(r"^- \*\*Builds:\*\*(.*?)(?=^- \*\*Depends on)", body, re.M | re.S).group(1).strip()
         depends = re.search(r"^- \*\*Depends on:\*\* (.+)$", body, re.M).group(1)
@@ -526,7 +543,7 @@ def main():
             L += ["Close each with the check below, through the real public interface (README §3).", "",
                   "| ID | Requirement | Route | Concrete check |", "|---|---|---|---|"]
         else:
-            L += ["None: a maintenance unit owns no requirement (D152). Its progress report's evidence table has one row per item of its scope, each closed by a check through the real public interface (README §3), and the checks it adds extend their owners' rows."]
+            L += ["None: a maintenance or design unit owns no requirement (D152). Its progress report's evidence table has one row per item of its scope, each closed by a check through the real public interface (README §3), and the checks it adds extend their owners' rows."]
         for rid in owns:
             r = req_rows[rid]
             L.append(f"| {rid} | {r['text']} | {r['route']} | {CHECKS[rid]} |")
