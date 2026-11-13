@@ -144,6 +144,7 @@ describe("what runs when (D152)", () => {
     expect(ordinary.e2e.filter((leg) => leg["os"] === "macos")).toHaveLength(1);
     expect(ordinary.deferred).toEqual([
       "integration (macos, remote)",
+      "integration (macos, remote-access)",
       "rust (macos)",
       "conformance (macos)",
     ]);

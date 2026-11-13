@@ -333,7 +333,7 @@ first module outside `protocol-server` needs it.
   submissions, the session's end, its listeners and secrets).
   CI runs them on macOS and
   Linux (`integration` job, D86), split into groups of suites, one machine each:
-  `MOSTRA_TEST_GROUP=core|remote|verify|verify-failures` runs one group (`vitest.config.ts`), unset
+  `MOSTRA_TEST_GROUP=core|remote|remote-access|verify|verify-failures` runs one group (`vitest.config.ts`), unset
   runs them all. `remote` holds the remote server's suites: the server, binding, link, hosted pages
   and their rules, relay, restore, replicator (`MOSTRA_TEST_LITESTREAM`), OAuth, sign-in, remote
   MCP and its conformance, operator ports, tenancy, pause, anonymous answers at volume and a team

@@ -152,7 +152,14 @@ const STATIC_JOBS: readonly JobName[] = [
 ];
 
 /** Integration groups per platform (packages/runtime/vitest.config.ts, D151 item 8). */
-const POSIX_GROUPS = ["core", "remote", "verify", "verify-failures", "clients"] as const;
+const POSIX_GROUPS = [
+  "core",
+  "remote",
+  "remote-access",
+  "verify",
+  "verify-failures",
+  "clients",
+] as const;
 const WINDOWS_GROUPS = [
   "windows",
   "windows-publish",
@@ -313,7 +320,7 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
   // then the remote server's suites (platform-neutral network code Linux and Windows still run,
   // WP-29), the Rust crate and the conformance kit (POSIX like Linux, where they still run).
-  const remoteGroup = (leg: Leg): boolean => leg["group"] === "remote";
+  const remoteGroup = (leg: Leg): boolean => String(leg["group"]).startsWith("remote");
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),
