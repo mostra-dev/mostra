@@ -71,8 +71,21 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/kit",
     audience: "artifact authors",
     environment: "browser",
-    workspace: ["@mostra/protocol", "@mostra/react"],
+    workspace: ["@mostra/protocol", "@mostra/react", "@mostra/themes"],
     external: "any",
+    published: true,
+  },
+  {
+    // Mostra's themes (UX-01): the tokens of every theme in light and dark as typed data, the
+    // stylesheets and self-hosted faces made from them, and the templates for pages a server draws
+    // and the mail an operator sends. One source for the shell, the server's pages, the kit and
+    // whatever an operator builds; no code of its own reaches the network or the disk.
+    name: "@mostra/themes",
+    dir: "packages/themes",
+    audience: "everything visual: the shell, the server's pages, the kit, operators",
+    environment: "neutral",
+    workspace: [],
+    external: [],
     published: true,
   },
   {
@@ -80,7 +93,7 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/runtime",
     audience: "runtime bundle",
     environment: "node",
-    workspace: ["@mostra/protocol", "@mostra/mcp"],
+    workspace: ["@mostra/protocol", "@mostra/mcp", "@mostra/themes"],
     external: "any",
     published: true,
   },
@@ -107,8 +120,8 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/shell",
     audience: "runtime bundle",
     environment: "browser",
-    // The kit's tokens join with the shell's design pass (WP-20).
-    workspace: ["@mostra/protocol", "@mostra/kit"],
+    // The look comes from the themes (UX-01); the kit's components join with WP-20's pass.
+    workspace: ["@mostra/protocol", "@mostra/kit", "@mostra/themes"],
     external: "any",
     published: true,
   },

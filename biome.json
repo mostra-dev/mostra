@@ -17,7 +17,8 @@
       "!docs/reference",
       "!docs/design/evaluations",
       "!pnpm-lock.yaml",
-      "!**/fixtures"
+      "!**/fixtures",
+      "!packages/themes/css"
     ]
   },
   "formatter": {

@@ -46,11 +46,12 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/protocol` | everything | zod | anything with I/O |
 | `@mostra/react` | artifact authors (browser) | protocol, react | Node built-ins, runtime, worker |
 | `@mostra/server` | artifact authors (worker) | protocol | runtime, react |
-| `@mostra/kit` | artifact authors | react, protocol, kit libraries | runtime, worker, Node built-ins |
-| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module, for the remote MCP endpoint, D165, and the `link` module, for the owner's side of its authoring, D167 item 16), openid-client (in the `server` module, D167 item 11) | react, kit, worker internals |
+| `@mostra/kit` | artifact authors | react, protocol, themes, kit libraries | runtime, worker, Node built-ins |
+| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, themes (the server's own pages, UX-01), hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module, for the remote MCP endpoint, D165, and the `link` module, for the owner's side of its authoring, D167 item 16), openid-client (in the `server` module, D167 item 11) | react, kit, worker internals |
 | `@mostra/worker` | runtime bundle | protocol, server | runtime |
 | `@mostra/verify` | runtime bundle | protocol, playwright, axe-core | runtime internals |
-| `@mostra/shell` | runtime bundle | react, protocol, kit tokens | runtime |
+| `@mostra/themes` | everything visual: the shell, the server's pages, the kit, operators (UX-01) | nothing: its themes are data, its faces and marks files | anything with I/O |
+| `@mostra/shell` | runtime bundle | react, protocol, kit, themes | runtime |
 | `@mostra/warm` (unpublished) | runtime bundle: the warm set artifacts resolve (D91) | react, the kit and the other warm packages, as dependencies only; it has no code | runtime, worker |
 | `@mostra/bundle` (unpublished) | the runtime bundle's assembler (D142): what a bundle carries, its Node.js pins, the assembler, smoke tests and release scripts | the packages a bundle carries, as dependencies only | |
 | `@mostra/pty-host` | runtime bundle | node-pty, protocol | runtime |
