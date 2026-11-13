@@ -18,6 +18,8 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - '@mostra/*'
+  # Renovate security update: @hono/node-server@2.1.6
+  - "@hono/node-server@2.1.6"
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 262800
 blockExoticSubdeps: true
@@ -57,7 +59,7 @@ catalog:
   undici: 8.12.3
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
-  '@hono/node-server': 2.1.5
+  '@hono/node-server': 2.1.6
   # The remote server's network binding (WP-29, D165 item 2): JSON-RPC over WebSocket, with pings
   ws: 8.22.0
   # The remote server's OpenID Connect identity providers (WP-30, INTERFACES §18.5): discovery,
