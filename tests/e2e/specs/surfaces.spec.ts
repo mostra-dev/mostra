@@ -183,6 +183,69 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     expect(findings, findings.join("\n")).toEqual([]);
   });
 
+  test("keyboard only: signing in from the chrome, answering and Submit, every focus visible", async ({
+    browser,
+    browserName,
+  }, info) => {
+    test.setTimeout(180_000);
+    if (!client || !daemon) throw new Error("not started");
+    // WebKit on macOS moves Tab between form controls only, as Safari does by default: links and
+    // buttons need Option+Tab there, which is the browser's setting, not the page's.
+    const tab = browserName === "webkit" ? "Alt+Tab" : "Tab";
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const own = await publishOwn(client, daemon.home, info, { fixture: "surfaces" });
+    const shared = await client.call<{ url: string }>("share/start", {
+      artifact: { artifactId: own.artifactId },
+      via: "remote",
+    });
+    const frame = await openInShell(page, shared.url);
+    /** Presses Tab until `selector` has the focus, and checks that the focus can be seen. */
+    const tabTo = async (selector: string, within = 40): Promise<void> => {
+      for (let step = 0; step < within; step += 1) {
+        await page.keyboard.press(tab);
+        if (
+          await page.locator(selector).evaluate((element) => element === document.activeElement)
+        ) {
+          const outline = await page
+            .locator(selector)
+            .evaluate((element) => getComputedStyle(element).outlineStyle);
+          expect(outline, `${selector}'s focus is visible`).not.toBe("none");
+          return;
+        }
+      }
+      throw new Error(`Tab never reached ${selector}`);
+    };
+    await tabTo("[data-mostra-sign-in]");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
+    await tabTo('a[href^="/signin/dev/start"]');
+    await page.keyboard.press("Enter");
+    await tabTo("input[name=name]");
+    await page.keyboard.type("Katherine Johnson");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Continue as Katherine Johnson to answer")).toBeVisible();
+    await tabTo('button[value="approve"]');
+    await page.keyboard.press("Enter");
+    await page.waitForURL((url) => url.pathname.startsWith("/a/"));
+    await openInShell(page, page.url());
+    await expect(page.locator("[data-mostra-viewer]")).toContainText("Katherine Johnson");
+    // The answer by keyboard alone, inside the frame, then the trusted Submit.
+    await frame.getByTestId("day-Tuesday").focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator("[data-mostra-save]")).toHaveAttribute("data-mostra-save", "saved");
+    await page.locator("#mostra-fold").focus();
+    await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
+    await expect(page.locator("#mostra-submit")).toBeFocused();
+    await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
+      "data-mostra-receipt",
+      "sent",
+    );
+    await context.close();
+  });
+
   for (const mode of MODES) {
     for (const size of SIZES) {
       test(`every surface, ${mode}, ${size.width} px wide`, async ({

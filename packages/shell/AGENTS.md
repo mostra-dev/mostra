@@ -107,5 +107,11 @@ after a change: the gateway serves `dist/`.
   `data-shell-error`); end-to-end suites wait on it instead of sleeping. `data-shell-save`,
   `data-shell-page`, `data-shell-switch` and `data-frame-reentries` report the rest; the receipt,
   banner and panel carry `data-mostra-*` attributes.
-- The look follows the round-4 direction; its final pass is WP-20's (D68). Keep it quiet, and
-  never weaken the trusted zone.
+- The look is Studio from `@mostra/themes` (D171, UX-01): `src/main.tsx` imports the theme's
+  stylesheet before `shell.css`, which holds only the chrome's own layout. A person's light or dark
+  lives in `src/appearance.ts` (this origin's storage, never a cookie). The chrome's every state is
+  photographed and axe-checked by `tests/e2e/specs/surfaces.spec.ts`; run it after a visual change
+  (`MOSTRA_E2E_SCREENS=<dir>` keeps the pictures). WP-20's final pass starts from here. Keep it
+  quiet, and never weaken the trusted zone.
+- Only the person folds the chrome (`data-mostra-folded`); the artifact can't, and every page
+  opens unfolded. Folded, the status and the way back stay.
