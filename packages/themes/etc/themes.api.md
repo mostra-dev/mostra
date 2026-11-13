@@ -229,11 +229,11 @@ export interface PagesOptions {
 
 // @public
 export interface PageWords {
-    readonly appearance: string;
-    readonly appearances: Readonly<Record<Appearance, string>>;
     readonly makePages: string;
     readonly runsOn: string;
     readonly skip: string;
+    readonly toDark: string;
+    readonly toLight: string;
 }
 
 // @public
@@ -293,6 +293,9 @@ export interface StylesheetOptions {
     readonly assetBase?: string;
     readonly faces?: boolean;
 }
+
+// @public
+export function tailwindStylesheet(theme: Theme): string;
 
 // @public
 export function text(value: HtmlValue): SafeHtml;

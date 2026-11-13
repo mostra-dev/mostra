@@ -105,3 +105,120 @@ export function themeStylesheet(theme: Theme, options: StylesheetOptions = {}): 
     "",
   ].join("\n");
 }
+
+/** The roles a Tailwind 4 stylesheet maps to utilities (`bg-card`, `text-muted-foreground`…). */
+const TAILWIND_COLORS = [
+  "background",
+  "foreground",
+  "card",
+  "card-foreground",
+  "popover",
+  "popover-foreground",
+  "muted",
+  "muted-foreground",
+  "border",
+  "input",
+  "primary",
+  "primary-foreground",
+  "secondary",
+  "secondary-foreground",
+  "accent",
+  "accent-foreground",
+  "destructive",
+  "destructive-foreground",
+  "success",
+  "warning",
+  "answer",
+  "ring",
+  "chart-1",
+  "chart-2",
+  "chart-3",
+  "chart-4",
+  "chart-5",
+  "chart-6",
+];
+
+const indented = (lines: readonly string[], by: string): string[] => lines.map((line) => by + line);
+
+/**
+ * A theme as the Tailwind 4 stylesheet an artifact copies (the Agent Skill's
+ * `assets/studio.css`): `@import "tailwindcss"`, the colours under `:root` and the device's dark
+ * setting, their utilities under `@theme inline`, and a few base rules. It names the faces and
+ * falls back to the system's where the artifact doesn't load them.
+ */
+export function tailwindStylesheet(theme: Theme): string {
+  return [
+    '@import "tailwindcss";',
+    "",
+    "/*",
+    ` * ${theme.name}: ${theme.description}`,
+    " * Generated from @mostra/themes. Change any value; nothing depends on it.",
+    " */",
+    ":root {",
+    ...indented(
+      [
+        `--font-sans: ${stack(theme.faces.sans)};`,
+        `--font-display: ${stack(theme.faces.display)};`,
+        `--font-mono: ${stack(theme.faces.mono)};`,
+        ...paletteVariables(theme.modes.light),
+        `--radius: ${theme.radius};`,
+      ],
+      "  ",
+    ),
+    "}",
+    "",
+    "@media (prefers-color-scheme: dark) {",
+    "  :root {",
+    ...indented(paletteVariables(theme.modes.dark), "    "),
+    "  }",
+    "}",
+    "",
+    "@theme inline {",
+    ...indented(
+      [
+        ...TAILWIND_COLORS.map((role) => "--color-" + role + ": var(--" + role + ");"),
+        "--font-sans: var(--font-sans);",
+        "--font-display: var(--font-display);",
+        "--font-mono: var(--font-mono);",
+        "--radius-sm: calc(var(--radius) - 4px);",
+        "--radius-md: calc(var(--radius) - 2px);",
+        "--radius-lg: var(--radius);",
+        "--radius-xl: calc(var(--radius) + 4px);",
+      ],
+      "  ",
+    ),
+    "}",
+    "",
+    "@layer base {",
+    "  * {",
+    "    border-color: var(--border);",
+    "  }",
+    "  html {",
+    "    color-scheme: light dark;",
+    "    background: var(--background);",
+    "    color: var(--foreground);",
+    "    font-family: var(--font-sans);",
+    "    -webkit-font-smoothing: antialiased;",
+    "    text-rendering: optimizeLegibility;",
+    "  }",
+    "  h1,",
+    "  h2,",
+    "  h3 {",
+    "    font-family: var(--font-display);",
+    "    letter-spacing: -0.015em;",
+    "    text-wrap: balance;",
+    "  }",
+    "  p {",
+    "    text-wrap: pretty;",
+    "  }",
+    "  :focus-visible {",
+    "    outline: 2px solid var(--ring);",
+    "    outline-offset: 2px;",
+    "  }",
+    "  ::selection {",
+    "    background: color-mix(in oklch, var(--answer) 45%, transparent);",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+}

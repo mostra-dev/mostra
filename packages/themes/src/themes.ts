@@ -1,6 +1,6 @@
 /**
  * Mostra's own themes. `mostra` is the brand (Mostra!, Italian modernism): it dresses Mostra's own
- * pages. `studio` is the brand without its marks, quieter and the agent's content first (D141): it
+ * pages. `studio` is the brand without its marks, quieter and the agent’s content first (D141, D171): it
  * is what an agent's page looks like when the agent doesn't style it, and what dresses a page
  * someone else sent. They share the palette, the faces and the shapes, so the two read as one
  * family.
@@ -149,7 +149,7 @@ const dark = (ground: Color): Palette => ({
 const MOTION = { pressScale: 0.97, pressMs: 140, stateMs: 180 } as const;
 
 /**
- * Studio: the brand without its marks (D141, amended in UX-01). A warm pietra ground with white
+ * Studio: the brand without its marks (D141, amended by D171). A warm pietra ground with white
  * cards, Jost for headings and Figtree for everything else, blu for the main action and what is
  * selected, giallo for what a person answered, rosso second in charts.
  */

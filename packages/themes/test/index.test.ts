@@ -17,6 +17,7 @@ import {
   THEME_REVISION,
   type Theme,
   ThemeError,
+  tailwindStylesheet,
   themeStylesheet,
 } from "@mostra/themes";
 import { describe, expect, it } from "vitest";
@@ -114,6 +115,14 @@ describe("stylesheets", () => {
     expect(css).toContain(':root:not([data-appearance="light"])');
     expect(css).toContain(':root[data-appearance="dark"]');
     expect(css).toContain('src: url("./fonts/figtree-latin-wght-normal.woff2")');
+  });
+
+  it("give the Agent Skill its Studio stylesheet", () => {
+    const skill = readFileSync(
+      new URL("../../../skills/mostra/assets/studio.css", import.meta.url),
+      "utf8",
+    );
+    expect(skill, "run `pnpm --filter @mostra/themes generate`").toBe(tailwindStylesheet(studio));
   });
 
   it("ship as files that equal what the themes generate", () => {

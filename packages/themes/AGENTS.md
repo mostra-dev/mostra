@@ -11,7 +11,7 @@ draws itself with no script (`createPages`), and mail (`renderMail`). The faces 
 Mostra's marks ship as files beside them.
 
 Two themes ship: `mostra`, the brand, for Mostra's own pages, and `studio`, the brand without its
-marks, for agents' pages by default and for pages someone else sent (D141, amended in UX-01).
+marks, for agents' pages by default and for pages someone else sent (D141, amended by D171).
 
 ## Invariants it owns
 
