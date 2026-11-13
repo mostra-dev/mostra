@@ -30,6 +30,7 @@ export {
   PAGE_WORDS,
   type PageAsset,
   type PageContent,
+  type PageSection,
   type Pages,
   type PagesOptions,
   type PageWords,

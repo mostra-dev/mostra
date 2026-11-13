@@ -178,6 +178,24 @@ describe("pages", () => {
     expect(page).toContain("Runs on Mostra");
   });
 
+  it("lay out a workspace under a bar of its sections, the current one marked, unsafe ones dropped", () => {
+    const page = pages.render({
+      kind: "workspace",
+      title: "Your account",
+      sections: [
+        { href: "/account", label: "Account", current: true },
+        { href: "/account/sign-in", label: "Sign-in" },
+        { href: "javascript:alert(1)", label: "Evil" },
+      ],
+      body: html`<p>Nothing here yet.</p>`,
+    });
+    expect(page).toContain('data-page="workspace"');
+    expect(page).toContain('<a href="/account" aria-current="page">Account</a>');
+    expect(page).toContain('<a href="/account/sign-in">Sign-in</a>');
+    expect(page).not.toContain("Evil");
+    expect(page).not.toMatch(/<script/i);
+  });
+
   it("dress a server in Mostra's theme with the stage and no 'Runs on Mostra'", () => {
     const own = createPages({
       theme: mostra,

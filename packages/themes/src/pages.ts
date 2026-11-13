@@ -25,6 +25,8 @@ export interface PageWords {
   readonly makePages: string;
   /** The skip link to the page's content. */
   readonly skip: string;
+  /** The name of a workspace's sections, for screen readers. */
+  readonly sections: string;
 }
 
 /** The template's English words. */
@@ -34,6 +36,7 @@ export const PAGE_WORDS: PageWords = {
   runsOn: "Runs on Mostra",
   makePages: "Make pages like this",
   skip: "Skip to the page",
+  sections: "Sections",
 };
 
 /**
@@ -99,14 +102,28 @@ export interface PageContent {
   /**
    * `task`: something to do (sign in, approve, answer the step), in a panel, beside the brand's
    * stage in a theme that has one. `notice`: where a request ended (a refusal, an expired link).
+   * `workspace`: a place a person comes back to and works in (an account page, a status page),
+   * under a bar with the server's mark and its sections, wide.
    */
-  readonly kind: "task" | "notice";
+  readonly kind: "task" | "notice" | "workspace";
+  /** A workspace's sections, as links in its bar; the current one is marked as the page. */
+  readonly sections?: readonly PageSection[];
   /** A notice about a problem is announced as one. */
   readonly tone?: "neutral" | "problem";
   /** The person's choice, read from their request (`readAppearance`). */
   readonly appearance?: Appearance;
   /** Where the appearance switch returns: this page's own path and query. */
   readonly path?: string;
+}
+
+/** One section of a workspace: a link in its bar. */
+export interface PageSection {
+  /** Where it is: a path of the server, or an `https:` address. */
+  readonly href: string;
+  /** Its name in the bar. */
+  readonly label: string;
+  /** Whether this page is that section. */
+  readonly current?: boolean;
 }
 
 /** A file a server serves for its pages, under `assetBase`. */
@@ -289,7 +306,17 @@ export function createPages(options: PagesOptions): Pages {
       const heading = html`<h1 class="m-title">${content.title}</h1>${content.lede !== undefined ? html`<p class="m-lede">${content.lede}</p>` : ""}`;
       const role = content.tone === "problem" ? html` role="alert"` : html``;
       let main: SafeHtml;
-      if (content.kind === "task" && dressedAsMostra) {
+      if (content.kind === "workspace") {
+        const sections = (content.sections ?? [])
+          .map((section) => ({ ...section, href: safeHref(section.href) }))
+          .filter((section): section is PageSection => section.href !== undefined);
+        const nav =
+          sections.length > 0
+            ? html`<nav class="m-sections" aria-label="${words.sections}"><ul>${sections.map((section) => html`<li><a href="${section.href}"${section.current ? html` aria-current="page"` : ""}>${section.label}</a></li>`)}</ul></nav>`
+            : "";
+        main = html`<div class="m-frame m-workspace"><header class="m-header m-workspace-bar">${identityMark(false)}${nav}</header>
+<main id="main" class="m-workspace-main">${heading}<div${role}>${content.body}</div></main>${footer(content.path)}</div>`;
+      } else if (content.kind === "task" && dressedAsMostra) {
         main = html`<div class="m-split"><section class="m-stage" aria-hidden="true">${identityMark(true)}${options.identity.stageLine ? html`<p class="m-stage-line">${options.identity.stageLine}</p>` : ""}${stageArt}</section>
 <main id="main" class="m-split-main"><div class="m-task">${heading}<div${role}>${content.body}</div></div>${footer(content.path)}</main></div>`;
       } else if (content.kind === "task") {
@@ -407,6 +434,13 @@ p { margin: 0 0 1rem; }
 .m-name { font: 600 1.125rem/1.2 var(--font-sans); }
 .m-panel-wrap { display: grid; justify-items: center; align-content: start; padding: 4vh 20px 48px; }
 .m-panel { inline-size: 100%; max-inline-size: 440px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 16px; padding: 36px 32px; }
+.m-workspace-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 28px; border-block-end: 1px solid var(--border); background: var(--card); }
+.m-sections ul { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.m-sections a { display: inline-flex; align-items: center; min-block-size: 36px; padding: 0 14px; border-radius: 999px; color: var(--muted-foreground); text-decoration: none; font-weight: 500; transition: background-color var(--state-ms) ease, color var(--state-ms) ease; }
+.m-sections a[aria-current="page"] { background: var(--accent); color: var(--accent-foreground); }
+@media (hover: hover) and (pointer: fine) { .m-sections a:not([aria-current]):hover { background: var(--muted); color: var(--foreground); } }
+.m-workspace-main { inline-size: 100%; max-inline-size: 64rem; margin-inline: auto; padding: 40px 24px 56px; flex: 1; }
+.m-workspace-main .m-title { margin-block-end: 8px; }
 .m-notice { display: grid; align-content: center; justify-items: start; padding: 24px 32px 72px; max-inline-size: 560px; margin-inline: auto; inline-size: 100%; }
 .m-notice-stage { justify-items: center; text-align: center; }
 .m-notice-stage .m-title { font-size: clamp(2rem, 1.6rem + 1.6vw, 2.5rem); }

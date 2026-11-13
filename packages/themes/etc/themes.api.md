@@ -200,9 +200,10 @@ export interface PageAsset {
 export interface PageContent {
     readonly appearance?: Appearance;
     readonly body?: SafeHtml;
-    readonly kind: "task" | "notice";
+    readonly kind: "task" | "notice" | "workspace";
     readonly lede?: HtmlValue;
     readonly path?: string;
+    readonly sections?: readonly PageSection[];
     readonly title: string;
     readonly tone?: "neutral" | "problem";
 }
@@ -212,6 +213,13 @@ export interface Pages {
     readonly assets: readonly PageAsset[];
     readonly csp: string;
     render(content: PageContent): string;
+}
+
+// @public
+export interface PageSection {
+    readonly current?: boolean;
+    readonly href: string;
+    readonly label: string;
 }
 
 // @public
@@ -231,6 +239,7 @@ export interface PagesOptions {
 export interface PageWords {
     readonly makePages: string;
     readonly runsOn: string;
+    readonly sections: string;
     readonly skip: string;
     readonly toDark: string;
     readonly toLight: string;
