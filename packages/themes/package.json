@@ -1,6 +1,6 @@
 {
   "name": "@mostra/themes",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Mostra's themes: the tokens of every theme in light and dark, their stylesheets and faces, and the templates for a server's own pages and mail.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

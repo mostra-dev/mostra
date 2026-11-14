@@ -1,5 +1,13 @@
 # @mostra/worker
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/protocol@0.14.0
+  - @mostra/server@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

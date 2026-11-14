@@ -1,5 +1,18 @@
 # @mostra/runtime
 
+## 0.14.0
+
+### Minor Changes
+
+- [#150](https://github.com/mostra-dev/mostra/pull/150) [`2956090`](https://github.com/mostra-dev/mostra/commit/2956090ba5cca831059f4f2c376f1a4d03d308f0) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The server's own pages wear `@mostra/themes`: the API origin's sign-in, device, consent and "Sign-in can't continue" pages, and every refused navigation (an expired link, an unknown host), with no script and their stylesheet, faces and marks served by their own origin at `/_mostra/theme/*`. A new `appearance` configuration key names the server and dresses it (`theme`, `name`, `logo`, `stageLine`, `default`, `footer`); a person switches light or dark with one button, kept in the cookie `mostra-appearance`. Pages not dressed as Mostra say "Runs on Mostra", and the hosted chrome's made-with mark is on unless an operator's `policy.link` turns it off.
+
+### Patch Changes
+
+- Updated dependencies [[`662f879`](https://github.com/mostra-dev/mostra/commit/662f8798d719446b15f583c3b285ce0fec097b89), [`c909aa3`](https://github.com/mostra-dev/mostra/commit/c909aa323c6db9863e2797807ee792a474e0ee31)]:
+  - @mostra/themes@0.14.0
+  - @mostra/mcp@0.14.0
+  - @mostra/protocol@0.14.0
+
 ## 0.13.0
 
 ### Minor Changes

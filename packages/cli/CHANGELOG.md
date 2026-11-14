@@ -1,5 +1,20 @@
 # @mostra/cli
 
+## 0.14.0
+
+### Minor Changes
+
+- [#150](https://github.com/mostra-dev/mostra/pull/150) [`662f879`](https://github.com/mostra-dev/mostra/commit/662f8798d719446b15f583c3b285ce0fec097b89) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Artifacts have Studio's own type: `@mostra/themes` is in the warm set and ships `css/faces.css` (Figtree, Jost and Spline Sans Mono, SIL OFL 1.1), which the Skill's Studio stylesheet imports, so an artifact's build bundles the faces with no install and no third-party request.
+
+- [#150](https://github.com/mostra-dev/mostra/pull/150) [`38ce2d9`](https://github.com/mostra-dev/mostra/commit/38ce2d98192fe6a27731e8baaed9342d77e0dd57) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Studio, the baseline stylesheet the Agent Skill gives artifacts (`mostra docs guide`), is now generated from `@mostra/themes` and has more of Mostra in it: Jost for headings and Figtree for the rest (with the system's faces as fallbacks), a warm pietra page ground with white cards, `popover` and `destructive-foreground` roles, and form-control edges at 3:1 contrast (WCAG 1.4.11).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.14.0
+  - @mostra/mcp@0.14.0
+  - @mostra/protocol@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes
