@@ -33,6 +33,8 @@ const SHADCN = fileURLToPath(new URL("../fixtures/shadcn/", import.meta.url));
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 /** shadcn's form for a header read from the environment, `${ACME_TOKEN}`, spelled out. */
 const ACME_TOKEN_REFERENCE = ["$", "{ACME_TOKEN}"].join("");
+/** The `x-token` headers the redirected-to origin received. */
+const tokensElsewhere: string[] = [];
 
 interface Running {
   readonly home: TestHome;
@@ -97,6 +99,23 @@ beforeAll(async () => {
         .end(readFileSync(file));
     }
     // A namespace's registry: /acme/<name>.json
+    // A registry that moved: on its own origin it keeps the token, elsewhere it must not.
+    const moved = /^\/(same|away)\/acme\/([^/]+)\.json$/.exec(url.pathname);
+    if (moved) {
+      const port = (web.address() as AddressInfo).port;
+      const host = moved[1] === "same" ? `127.0.0.1:${port}` : `localhost:${port}`;
+      return void response
+        .writeHead(302, {
+          location: `http://${host}/${moved[1] === "same" ? "acme" : "elsewhere"}/${moved[2]}.json`,
+        })
+        .end();
+    }
+    const elsewhere = /^\/elsewhere\/([^/]+)\.json$/.exec(url.pathname);
+    if (elsewhere) {
+      tokensElsewhere.push(String(request.headers["x-token"] ?? ""));
+      const file = join(SHADCN, "styles", "new-york-v4", `${elsewhere[1]}.json`);
+      return void response.writeHead(200).end(readFileSync(file));
+    }
     const named = /^\/acme\/([^/]+)\.json$/.exec(url.pathname);
     if (named) {
       if (request.headers["x-token"] !== "s3cret") return void response.writeHead(401).end();
@@ -316,6 +335,32 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
       await target.client.call("pack/add", { artifact: { path: dir }, specs: ["@acme/input"] }),
     );
     expect(result.files).toEqual([{ path: "ui/input.tsx", action: "created" }]);
+    // A redirect on the registry's own origin keeps its headers; one to another origin drops
+    // them, so a registry's credentials go nowhere else.
+    for (const [where, item] of [
+      ["same", "label"],
+      ["away", "separator"],
+    ] as const) {
+      const moved = artifact({
+        "components.json": JSON.stringify({
+          aliases: { ui: "@/ui" },
+          registries: {
+            "@acme": {
+              url: `${base}/${where}/acme/{name}.json`,
+              headers: { "x-token": ACME_TOKEN_REFERENCE },
+            },
+          },
+        }),
+      });
+      const installed = ok<PackResult>(
+        await target.client.call("pack/add", {
+          artifact: { path: moved },
+          specs: [`@acme/${item}`],
+        }),
+      );
+      expect(installed.files).toEqual([{ path: `ui/${item}.tsx`, action: "created" }]);
+    }
+    expect(tokensElsewhere).toEqual([""]);
     // Where components.json registers no `@mostra`, `@mostra/…` is the scoped npm package it
     // looks like, as `mostra add @tanstack/react-table` always was.
     const npm = ok<PackResult>(

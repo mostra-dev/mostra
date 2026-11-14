@@ -137,30 +137,43 @@ export async function readUrl(
   if (context.offline) {
     throw fail("MOSTRA_PACK_OFFLINE", `Mostra is offline, so it can't read ${redactUrl(url)}.`);
   }
+  // Redirects are followed here, at most five, each target checked before it is asked, and the
+  // caller's headers (a registry's token, GitHub's) kept only while the origin stays the same:
+  // a registry that redirects elsewhere never hands its credentials on.
+  const deadline = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   let response: Awaited<ReturnType<typeof undiciFetch>>;
-  try {
-    response = await undiciFetch(url, {
-      headers: { accept: "application/json, text/plain;q=0.9, */*;q=0.1", ...headers },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-      dispatcher: agentFor(context.env),
-    });
-  } catch (error) {
-    const reason =
-      error instanceof Error && error.name === "TimeoutError"
-        ? `it didn't answer within ${FETCH_TIMEOUT_MS / 1000} s`
-        : error instanceof Error
-          ? error.cause instanceof Error
-            ? error.cause.message
-            : error.message
-          : String(error);
-    throw fail("MOSTRA_PACK_FETCH_FAILED", `Reading ${redactUrl(url)} failed: ${reason}.`);
-  }
-  if (!readable(new URL(response.url || url.href))) {
-    throw fail(
-      "MOSTRA_PACK_FETCH_FAILED",
-      `${redactUrl(url)} redirected to an address that isn't https, which Mostra doesn't follow.`,
-    );
+  let current = url;
+  for (let hop = 0; ; hop += 1) {
+    try {
+      response = await undiciFetch(current, {
+        headers: {
+          accept: "application/json, text/plain;q=0.9, */*;q=0.1",
+          ...(current.origin === url.origin ? headers : {}),
+        },
+        signal: deadline,
+        redirect: "manual",
+        dispatcher: agentFor(context.env),
+      });
+    } catch (error) {
+      throw fail(
+        "MOSTRA_PACK_FETCH_FAILED",
+        `Reading ${redactUrl(current)} failed: ${reasonOf(error)}.`,
+      );
+    }
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || location === null) break;
+    await response.body?.cancel();
+    const next = new URL(location, current);
+    if (!readable(next)) {
+      throw fail(
+        "MOSTRA_PACK_FETCH_FAILED",
+        `${redactUrl(url)} redirected to an address that isn't https, which Mostra doesn't follow.`,
+      );
+    }
+    if (hop >= 4) {
+      throw fail("MOSTRA_PACK_FETCH_FAILED", `${redactUrl(url)} redirected more than five times.`);
+    }
+    current = next;
   }
   if (response.status === 404) {
     await response.body?.cancel();
@@ -180,14 +193,31 @@ export async function readUrl(
   }
   const chunks: Uint8Array[] = [];
   let size = 0;
-  for await (const chunk of response.body ?? []) {
-    size += chunk.byteLength;
-    if (size > FETCH_LIMIT_BYTES) {
-      throw fail("MOSTRA_PACK_FETCH_FAILED", `${redactUrl(url)} sent more than 8 MiB.`);
+  try {
+    for await (const chunk of response.body ?? []) {
+      size += chunk.byteLength;
+      if (size > FETCH_LIMIT_BYTES) {
+        throw fail("MOSTRA_PACK_FETCH_FAILED", `${redactUrl(url)} sent more than 8 MiB.`);
+      }
+      chunks.push(chunk);
     }
-    chunks.push(chunk);
+  } catch (error) {
+    if (error instanceof RpcError) throw error;
+    // The deadline, or the connection, ended the body part-way.
+    throw fail("MOSTRA_PACK_FETCH_FAILED", `Reading ${redactUrl(url)} failed: ${reasonOf(error)}.`);
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Why a request failed, in words. */
+function reasonOf(error: unknown): string {
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return `it didn't answer within ${FETCH_TIMEOUT_MS / 1000} s`;
+  }
+  if (error instanceof Error) {
+    return error.cause instanceof Error ? error.cause.message : error.message;
+  }
+  return String(error);
 }
 
 /** A URL without its credentials or query, for messages. */

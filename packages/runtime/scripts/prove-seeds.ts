@@ -6785,6 +6785,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EX-03",
+    name: "a registry's headers follow a redirect to another origin",
+    file: "src/packs/read.ts",
+    from: "          ...(current.origin === url.origin ? headers : {}),",
+    to: "          ...headers,",
+    check: integration("packs.test.ts", "namespace the artifact"),
+  },
+  {
+    requirement: "EX-03",
     name: "an item's file may land outside the artifact",
     file: "src/packs/packs.ts",
     from: '    if (target.startsWith("~/")) return target.slice(2);',
