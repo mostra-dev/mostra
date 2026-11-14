@@ -48,6 +48,7 @@ export {
   SourceRef,
   VersionSummary,
 } from "./artifact.ts";
+export { type ArtifactPathCheck, checkArtifactPath } from "./artifact-path.ts";
 export {
   type AnyBridgeMessage,
   BRIDGE_FIELDS_MAX,
@@ -170,15 +171,21 @@ export {
   hostDiagnosticCodes,
   hygieneDiagnosticCodes,
   type KnownDiagnosticCode,
+  type LicenseDiagnosticCode,
   type LiveDiagnosticCode,
+  licenseDiagnosticCodes,
   liveDiagnosticCodes,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
   type NetworkDiagnosticCode,
   networkDiagnosticCodes,
+  type PackDiagnosticCode,
   type PlatformDiagnosticCode,
+  type PluginDiagnosticCode,
   type PublishDiagnosticCode,
+  packDiagnosticCodes,
   platformDiagnosticCodes,
+  pluginDiagnosticCodes,
   publishDiagnosticCodes,
   type RegressionDiagnosticCode,
   type RemoteDiagnosticCode,
@@ -454,6 +461,33 @@ export {
   mostraShutdownMethod,
 } from "./methods/mostra/shutdown.ts";
 export {
+  type PackAddParams,
+  type PackAddResult,
+  type PackFileChange,
+  type PackItemSummary,
+  packAddMethod,
+} from "./methods/pack/add.ts";
+export {
+  type PluginAddParams,
+  type PluginAddResult,
+  pluginAddMethod,
+} from "./methods/plugin/add.ts";
+export {
+  type PluginListParams,
+  type PluginListResult,
+  pluginListMethod,
+} from "./methods/plugin/list.ts";
+export {
+  type PluginRemoveParams,
+  type PluginRemoveResult,
+  pluginRemoveMethod,
+} from "./methods/plugin/remove.ts";
+export {
+  type PluginValidateParams,
+  type PluginValidateResult,
+  pluginValidateMethod,
+} from "./methods/plugin/validate.ts";
+export {
   ExternalBase,
   OriginString,
   type PortAddressingExternalBaseParams,
@@ -678,6 +712,17 @@ export {
   type WaitResult,
   waitMethod,
 } from "./methods/wait/wait.ts";
+export {
+  ContractName,
+  LicenseAcknowledgment,
+  LicenseClass,
+  LicenseDisclosure,
+  LicensedPackage,
+  LicensePolicy,
+  PluginContribution,
+  PluginScope,
+  PluginSummary,
+} from "./plugins.ts";
 export { receivable } from "./receive.ts";
 export {
   OwnerLinkInfo,

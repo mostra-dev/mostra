@@ -3,6 +3,7 @@ import { Diagnostic } from "../../diagnostics/diagnostic.ts";
 import { SubmitChannel } from "../../interaction.ts";
 import { SubmissionPolicy } from "../../manifest.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
+import { LicensePolicy } from "../../plugins.ts";
 import { OwnerLinkInfo } from "../../remote.ts";
 import { Revision } from "../../revision.ts";
 import { wireRegistry } from "../../wire-registry.ts";
@@ -89,6 +90,12 @@ export interface HomeConfig {
    * allowed. A host's `trustedControls` port answers per view instead, when it is connected.
    */
   readonly submitChannels?: readonly SubmitChannel[];
+  /**
+   * The licenses the host accepts for every plugin and pack install (D31), kept in `config.json`:
+   * an install that brings one of them needs no `--accept-license`, and the lockfile records it as
+   * accepted by the host. `{ accept: ["*"] }` accepts any; `{ accept: [] }` clears the policy.
+   */
+  readonly licenses?: LicensePolicy;
 }
 
 /** How packages enter an artifact's lockfile (D43). */
@@ -193,11 +200,12 @@ export const HomeConfig: z.ZodType<HomeConfig> = z
     submission: SubmissionPolicy.exactOptional(),
     ports: z.array(PortName).max(32).readonly().exactOptional(),
     submitChannels: z.array(SubmitChannel).min(1).max(2).readonly().exactOptional(),
+    licenses: LicensePolicy.exactOptional(),
   })
   .register(wireRegistry, {
     id: "HomeConfig",
     description:
-      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105).",
+      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31).",
   });
 
 /** The Zod schema of the `InstanceInfo` type. */

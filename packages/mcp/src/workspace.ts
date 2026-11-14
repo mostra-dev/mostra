@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createDiagnostic, RpcError } from "@mostra/protocol";
+import { checkArtifactPath, createDiagnostic, RpcError } from "@mostra/protocol";
 import type { McpWorkspace, WorkspaceFile } from "./ports.ts";
 
 /** The default workspace: `~/mostra-artifacts`. */
@@ -24,42 +24,25 @@ function invalid(message: string): RpcError {
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses.
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
-/** Characters Windows refuses in a name (`:` would also name an NTFS stream). */
-const UNPORTABLE = /[<>:"|?*]/;
-
-/** Windows' device names, with any extension (`nul.tsx` is the device too), any case. */
-const DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
-
 /**
- * A file's path inside its artifact, checked and spelled with `/`: relative, no `.` or `..`
- * segments, no empty segment, no drive or control characters, and only names every system can
- * hold, so an artifact written on one moves to another whole: no `<>:"|?*`, no Windows device
- * name and no name ending in a dot or a space, which Windows strips, making `index.tsx.` the same
- * file as `index.tsx` (Opus review of WP-15, finding 5). Throws `MOSTRA_ARTIFACT_PATH_INVALID`
- * otherwise.
+ * A file's path inside its artifact, checked and spelled with `/` by the protocol's one rule
+ * (`checkArtifactPath`): relative, no `.` or `..` segments, no empty segment, no drive or control
+ * characters, and only names every system can hold, so an artifact written on one moves to another
+ * whole: no `<>:"|?*`, no Windows device name and no name ending in a dot or a space, which Windows
+ * strips, making `index.tsx.` the same file as `index.tsx` (Opus review of WP-15, finding 5).
+ * Throws `MOSTRA_ARTIFACT_PATH_INVALID` otherwise.
  */
 export function artifactPath(path: string): string {
-  const segments = path.split(/[\\/]/);
-  if (
-    path === "" ||
-    isAbsolute(path) ||
-    /^[A-Za-z]:/.test(path) ||
-    CONTROL.test(path) ||
-    segments.some((segment) => segment === "" || segment === "." || segment === "..")
-  ) {
+  const check = checkArtifactPath(path);
+  if (check.ok) return check.path;
+  if (check.reason === "outside") {
     throw invalid(
       `"${path.slice(0, 200)}" isn't a path inside the artifact: give it relative to the artifact's directory, with no "..", such as "components/chart.tsx".`,
     );
   }
-  const unportable = segments.find(
-    (segment) => UNPORTABLE.test(segment) || DEVICE.test(segment) || /[. ]$/.test(segment),
+  throw invalid(
+    `"${path.slice(0, 200)}" has a name not every system can hold ("${check.segment.slice(0, 60)}"): name it without <>:"|?*, a device name such as CON or NUL, or a dot or space at its end.`,
   );
-  if (unportable !== undefined) {
-    throw invalid(
-      `"${path.slice(0, 200)}" has a name not every system can hold ("${unportable.slice(0, 60)}"): name it without <>:"|?*, a device name such as CON or NUL, or a dot or space at its end.`,
-    );
-  }
-  return segments.join("/");
 }
 
 /** Whether `target` is `dir` itself or inside it (both absolute paths). */

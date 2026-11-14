@@ -22,16 +22,18 @@ export function reportPath(pkg: WorkspacePackage): string {
 
 /**
  * Every committed API report of a package: the main entry's, and one per subpath the package
- * lists in `mostra.apiReports` (`./operator` gives `etc/<name>-operator.api.md`).
+ * lists in `"mostra-tools": { "apiReports": [...] }` (`./operator` gives
+ * `etc/<name>-operator.api.md`). The key isn't `"mostra"`, which a package's manifest keeps for
+ * a plugin's manifest (D30).
  */
 export function reportPaths(pkg: WorkspacePackage, root: string = fromRoot()): string[] {
   const unscoped = pkg.name.replace(/^@[^/]+\//, "");
   const manifest = JSON.parse(readFileSync(join(root, pkg.dir, "package.json"), "utf8")) as {
-    mostra?: { apiReports?: string[] };
+    "mostra-tools"?: { apiReports?: string[] };
   };
   return [
     reportPath(pkg),
-    ...(manifest.mostra?.apiReports ?? []).map(
+    ...(manifest["mostra-tools"]?.apiReports ?? []).map(
       (subpath) => `${pkg.dir}/etc/${unscoped}-${subpath.replace(/^\.\//, "")}.api.md`,
     ),
   ];

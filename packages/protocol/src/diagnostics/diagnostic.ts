@@ -41,7 +41,10 @@ export type DiagnosticArea =
   | "ARTIFACT"
   | "CLI"
   | "REMOTE"
-  | "TEAM";
+  | "TEAM"
+  | "PLUGIN"
+  | "PACK"
+  | "LICENSE";
 
 /** Every diagnostic area, in INTERFACES §13 order. */
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
@@ -77,6 +80,9 @@ export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
   "CLI",
   "REMOTE",
   "TEAM",
+  "PLUGIN",
+  "PACK",
+  "LICENSE",
 ];
 
 /**
