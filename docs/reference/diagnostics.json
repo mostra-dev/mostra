@@ -1141,7 +1141,7 @@
       "title": "Plugins contribute the same ID",
       "hint": "Remove one of the two plugins the message names, or use releases whose IDs differ.",
       "explanation": "Two plugins of one artifact, or one of the artifact's and one of the home's, contribute the same ID to the same contract (two exporters `pdf`, two commands `term record`), or a plugin takes an ID Mostra builds in (the exporters `static`, `html`, `bundle` and `snapshot`). Nothing is overridden silently (ROUND-3 §6.4): the message names both sides.",
-      "fix": "Remove one plugin with `mostra plugin remove <package> --artifact <path>` (or `--home`), then add the other again if needed."
+      "fix": "Remove one plugin with `mostra plugin remove <package> --artifact <path>` (or `--global`), then add the other again if needed."
     },
     {
       "code": "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED",
@@ -1167,7 +1167,7 @@
       "phase": "host",
       "title": "No such exporter",
       "hint": "Use one of the exporters the message lists, or add a plugin that contributes this one.",
-      "explanation": "`mostra export --as <id>` names an exporter that neither Mostra builds in nor any plugin of the artifact or the home contributes. The message lists every exporter available for the artifact.",
+      "explanation": "`mostra export <artifact> --as <id> --out <path>` names an exporter that neither Mostra builds in nor any plugin of the artifact or the home contributes. The message lists every exporter available for the artifact.",
       "fix": "Pick an exporter from the list, or install a plugin that contributes it: `mostra plugin add <package> --artifact <path>`."
     },
     {
@@ -1204,7 +1204,7 @@
       "title": "Not a Mostra plugin",
       "hint": "Add the package with `mostra add` if it is an ordinary package, or give it a \"mostra\" manifest if it is a plugin.",
       "explanation": "The package has no `\"mostra\"` key in its `package.json`, so it contributes nothing Mostra could load. `mostra plugin add` installs only plugins; ordinary npm packages go through `mostra add`.",
-      "fix": "Run `mostra add <package> --artifact <path>` for an ordinary package. For a plugin you write, add the manifest (`mostra docs guide/extending`) and run `mostra plugin validate`."
+      "fix": "Run `mostra add <package> --artifact <path>` for an ordinary package. For a plugin you write, add the manifest (`mostra docs guide/plugins`) and run `mostra plugin validate`."
     },
     {
       "code": "MOSTRA_PLUGIN_NOT_INSTALLED",
@@ -1213,7 +1213,7 @@
       "title": "Plugin not installed",
       "hint": "Check the package name against `mostra plugin list`.",
       "explanation": "The package isn't one of the plugins of the artifact (or of the home) the call names, so there is nothing to remove.",
-      "fix": "List the scope's plugins with `mostra plugin list --artifact <path>` (or `--home`) and use a name from it."
+      "fix": "List the scope's plugins with `mostra plugin list --artifact <path>` (or `--global`) and use a name from it."
     },
     {
       "code": "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED",
@@ -1229,7 +1229,7 @@
       "severity": "error",
       "phase": "contract",
       "title": "Plugin can't be installed there",
-      "hint": "Install the plugin for an artifact with `--artifact`, or pass exactly one of `--artifact` and `--home`.",
+      "hint": "Install the plugin for an artifact with `--artifact`, or pass exactly one of `--artifact` and `--global`.",
       "explanation": "Plugins are installed for one artifact (recorded in its lockfile, part of its versions) or, when they contribute only exporters and CLI commands, for the whole home (ROUND-3 §6.4). This plugin contributes something that changes what an artifact's version is (an embed engine, a verify check, an anchor provider, a connector or a pack), so it can't be installed for the home; or the call named both scopes or neither.",
       "fix": "Run `mostra plugin add <package> --artifact <path>` for each artifact that uses it."
     },

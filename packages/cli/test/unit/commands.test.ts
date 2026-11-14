@@ -15,7 +15,7 @@ import { COMMANDS } from "../../src/commands/index.ts";
 import { waitCommand } from "../../src/commands/interaction.ts";
 import { EXIT, exitCodeFor } from "../../src/exit.ts";
 import { commandDefinition, commandHelp } from "../../src/help.ts";
-import { parseCommandLine } from "../../src/parse.ts";
+import { GLOBAL_FLAGS, parseCommandLine } from "../../src/parse.ts";
 import { run } from "../../src/run.ts";
 
 /** Splits a shell-like command into words, honoring quotes, up to a redirection or a pipe. */
@@ -152,8 +152,25 @@ describe("the command line (AX-01)", () => {
     expect(names).toContain("mcp");
     // WP-29 added `export` (its bundle class) and `run` (RM-01).
     for (const name of ["export", "run"]) expect(names).toContain(name);
-    for (const later of ["review", "plugin", "term"]) {
+    // WP-16 added `plugin validate|add|list|remove` (D30).
+    for (const name of ["plugin validate", "plugin add", "plugin list", "plugin remove"]) {
+      expect(names).toContain(name);
+    }
+    for (const later of ["review", "term"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
+    }
+  });
+
+  it("gives a command's flag a global flag's name only with its kind, as wait --timeout (WP-16)", () => {
+    // plugin add --home once meant the home's plugins while the global --home <path> took the
+    // next word as the home's path.
+    const global = new Map(GLOBAL_FLAGS.map((flag) => [flag.name, flag.kind]));
+    for (const command of COMMANDS) {
+      for (const flag of command.flags ?? []) {
+        const kind = global.get(flag.name);
+        if (kind !== undefined)
+          expect(flag.kind, `${commandName(command)} --${flag.name}`).toBe(kind);
+      }
     }
   });
 

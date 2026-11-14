@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
 
 ## mostra new
 
@@ -764,16 +764,18 @@ Example:
 ## mostra add
 
 ```text
-Add npm packages to an artifact's lockfile at exact versions, installing them into the home's store.
+Add npm packages to an artifact's lockfile, or copy source-pack items (shadcn registry items) into it.
 
 Usage:
   mostra add <package…> [flags]
 
 Arguments:
-  <package>                    npm specs: name, name@version, name@range or name@tag.
+  <package>                    npm specs (name, name@version, name@range, name@tag), or items: a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>.
 
 Flags:
   --artifact <path|id>         The artifact. Default: the one in the current directory.
+  --overwrite                  Replace files of the artifact that an item writes with other content.
+  --accept-license <id>        Acknowledge a license the items' packages bring (LicenseRef-…), recorded in the lockfile.
   --request-id <id>            Make a retry return the first attempt's result.
 
 Global flags:
@@ -783,7 +785,7 @@ Global flags:
   --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
   --help                       Show this command's help; with --json, its definition.
 
-Output: DepsAddResult (mostra docs cli)
+Output: DepsAddResult | PackAddResult (mostra docs cli)
 
 Exit codes:
   0  success
@@ -794,6 +796,142 @@ Exit codes:
 
 Example:
   mostra add recharts@3 --artifact ./dashboard
+```
+
+## mostra plugin add
+
+```text
+Install plugins for an artifact or the home, checking their contracts, conflicts and licenses first.
+
+Usage:
+  mostra plugin add <package…> [flags]
+
+Arguments:
+  <package>                    npm specs of the plugins: name, name@version or name@range.
+
+Flags:
+  --artifact <path|id>         The artifact whose lockfile records the plugins. Default: the one in the current directory.
+  --global                     The home's own plugins instead, for every artifact of the home (exporters and CLI commands only).
+  --accept-license <id>        Acknowledge a license the install brings (LicenseRef-Remotion), recorded in the lockfile. Repeat or comma-separate.
+  --request-id <id>            Make a retry return the first attempt's result.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: PluginAddResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra plugin add mostra-plugin-pdf --artifact ./report
+```
+
+## mostra plugin list
+
+```text
+List an artifact's plugins, or the home's, in load order, as verify and publish load them now.
+
+Usage:
+  mostra plugin list [flags]
+
+Flags:
+  --artifact <path|id>         The artifact whose lockfile records the plugins. Default: the one in the current directory.
+  --global                     The home's own plugins instead, for every artifact of the home (exporters and CLI commands only).
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: PluginListResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra plugin list --artifact ./report
+```
+
+## mostra plugin remove
+
+```text
+Take plugins out of an artifact's lockfile, or the home's.
+
+Usage:
+  mostra plugin remove <package…> [flags]
+
+Arguments:
+  <package>                    The plugins' package names.
+
+Flags:
+  --artifact <path|id>         The artifact whose lockfile records the plugins. Default: the one in the current directory.
+  --global                     The home's own plugins instead, for every artifact of the home (exporters and CLI commands only).
+  --request-id <id>            Make a retry return the first attempt's result.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: PluginRemoveResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra plugin remove mostra-plugin-pdf --artifact ./report
+```
+
+## mostra plugin validate
+
+```text
+Check a plugin package as Mostra would load it: its manifest, contract ranges, entries and licenses.
+
+Usage:
+  mostra plugin validate [<dir>]
+
+Arguments:
+  <dir>                        The plugin's package directory. Default: the current directory.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: PluginValidateResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra plugin validate ./my-plugin
 ```
 
 ## mostra export
@@ -808,7 +946,8 @@ Arguments:
   <artifact>                   The artifact: its source path or its ID.
 
 Flags:
-  --as <class>                 What to write: `bundle`, the version's builds, manifest, lockfile and source. (bundle) Default: bundle.
+  --as <exporter>              What to write: `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes. Default: bundle.
+  --option <name=value>        An option for a plugin's exporter; its value is read as JSON when it parses.
   --out <path>                 Where: a new directory, or one archive when it ends in .tar.zst.
   --version <number|id>        The version. Default: the latest.
 

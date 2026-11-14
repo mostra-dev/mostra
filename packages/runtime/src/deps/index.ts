@@ -52,12 +52,21 @@ import {
 } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
-import { type Lock, lockDigest, lockText, parseLock, pinnedPackages } from "./lock.ts";
+import {
+  type Lock,
+  type LockLicense,
+  layoutKey,
+  lockDigest,
+  lockText,
+  parseLock,
+  pinnedPackages,
+  withExtras,
+} from "./lock.ts";
 import { scanImports } from "./scan.ts";
 import { type PackageSpec, parseSpec } from "./specifier.ts";
 import type { WarmSet } from "./warm.ts";
 
-export { lockDigest, lockText, parseLock } from "./lock.ts";
+export { type Lock, type LockLicense, lockDigest, lockText, parseLock } from "./lock.ts";
 export { scanImports } from "./scan.ts";
 export { packageOf, parseSpec } from "./specifier.ts";
 export { locateWarmSet, runtimeRoot, type WarmSet } from "./warm.ts";
@@ -182,6 +191,50 @@ export interface Dependencies {
       readonly request?: RequestKey | undefined;
     },
   ): Promise<DepsAddResult>;
+  /**
+   * Changes a working lockfile in one step, holding the artifact's (or the home's) queue
+   * throughout: resolves `add` (npm specs, as `deps/add` takes them) and drops `remove`, installs
+   * the resulting layout, then lets `inspect` look at it and say what the lockfile's plugins and
+   * acknowledgments become. Only when `inspect` returns is the working lockfile written, with
+   * them, so an install it refuses (a license nobody accepted, a plugin that doesn't load)
+   * records nothing. A `request` replays the result recorded for it.
+   */
+  change<T>(
+    target: DependencyTarget & {
+      readonly add: readonly string[];
+      readonly remove?: readonly string[];
+      readonly request?: RequestKey | undefined;
+    },
+    inspect: (staged: StagedChange) => Promise<StagedOutcome<T>>,
+  ): Promise<T>;
+  /** The working lockfile of `key` as it stands, and the layout it builds against. */
+  working(target: DependencyTarget): Promise<StagedChange | undefined>;
+}
+
+/** A lockfile change before it is recorded: what `Dependencies.change` hands its inspector. */
+export interface StagedChange {
+  /** The lockfile as it would be: the resolution's packages, the working lockfile's extras. */
+  readonly lock: Lock;
+  /** The `node_modules` it builds against (the warm set's without on-demand packages). */
+  readonly nodeModules: string;
+  /** The packages `add` named, as `deps/add` answers them. */
+  readonly added: readonly AddedPackage[];
+  /**
+   * Runs the lifecycle scripts the staged install deferred (D95's scripts, after the inspector's
+   * static checks): call it before loading any of the packages' code. The change runs it anyway
+   * before it records anything.
+   */
+  ready(): Promise<void>;
+  /** The working lockfile before the change, when there was one. */
+  readonly previous?: Lock;
+}
+
+/** What an inspector decides: the lockfile's plugins and acknowledgments, and the call's result. */
+export interface StagedOutcome<T> {
+  readonly plugins?: readonly string[];
+  readonly licenses?: Readonly<Record<string, LockLicense>>;
+  /** Builds the call's result from the lockfile's digest once it is recorded. */
+  result(lockDigest: string): T;
 }
 
 /**
@@ -319,17 +372,6 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       ? { lock: parseLock(row.lock_text), added: JSON.parse(row.added_json) as string[] }
       : undefined;
   };
-  const writeWorking = (key: string, text: string, added: readonly string[]): void => {
-    ledger.write((db) =>
-      db.run(
-        "INSERT INTO dependency_lock (key, lock_text, added_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET lock_text = excluded.lock_text, added_json = excluded.added_json, updated_at = excluded.updated_at",
-        key,
-        text,
-        JSON.stringify([...new Set(added)].sort()),
-        new Date().toISOString(),
-      ),
-    );
-  };
   /** A working lockfile's stored text, or `null` without one. */
   const rowText = (key: string): string | null =>
     ledger.read(
@@ -429,6 +471,15 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     await replaceDirectoryLink(warm.nodeModules, link);
   };
 
+  /** A layout's marker, or `undefined` when it has none or it can't be read. */
+  const markerOf = async (dir: string): Promise<{ scripts?: string } | undefined> => {
+    try {
+      return JSON.parse(await readFile(join(dir, LAYOUT_MARKER), "utf8")) as { scripts?: string };
+    } catch {
+      return undefined;
+    }
+  };
+
   /**
    * The layout of `lock`, installed from the store (and the registry for what the store lacks)
    * into `deps/locks/<lockDigest>` unless it is already complete.
@@ -437,12 +488,28 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     lock: Lock,
     digest: string,
     target: { readonly key: string; readonly artifactDir: string },
+    scripts = true,
   ): Promise<string> =>
     byLayout.run(digest, async () => {
       const dir = join(dirs.locks, digest);
       const nodeModules = join(dir, "node_modules");
       if (existsSync(join(dir, LAYOUT_MARKER))) {
         await relinkWarm(dir);
+        // A layout installed with its scripts deferred (WP-16) runs them the first time anyone
+        // needs it whole: a plugin whose licenses were accepted, a build, a worker.
+        if (scripts && (await markerOf(dir))?.scripts === "pending") {
+          const outcome = await install().rebuild({
+            dir,
+            cwd: target.artifactDir,
+            ownerRef: target.key,
+          });
+          if (!outcome.ok) throw new RpcError(outcome.diagnostic);
+          await writeFile(
+            join(dir, LAYOUT_MARKER),
+            `${JSON.stringify({ lockDigest: digest, installer: install().version })}\n`,
+          );
+          log.info("deps.layout_scripts_ran", { lockDigest: digest });
+        }
         return nodeModules;
       }
       const pnpm = lock.pnpm as string;
@@ -471,6 +538,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           offline: isOff,
           releaseAge: false,
           ownerRef: target.key,
+          ...(scripts ? {} : { scripts: false as const }),
         });
         if (!outcome.ok) throw new RpcError(outcome.diagnostic);
         // The store index first, then the marker: a crash between them leaves an incomplete
@@ -490,7 +558,11 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         faults.at("deps:before-marker");
         await writeFile(
           join(dir, LAYOUT_MARKER),
-          `${JSON.stringify({ lockDigest: digest, installer: install().version })}\n`,
+          `${JSON.stringify({
+            lockDigest: digest,
+            installer: install().version,
+            ...(scripts ? {} : { scripts: "pending" }),
+          })}\n`,
         );
       } catch (error) {
         await rm(dir, { recursive: true, force: true });
@@ -598,13 +670,14 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   const settle = async (
     lock: Lock,
     target: { readonly key: string; readonly artifactDir: string },
+    scripts = true,
   ): Promise<ResolvedDependencies> => {
     const text = lockText(lock);
     const digest = lockDigest(text);
     const nodeModules =
       Object.keys(lock.packages).length === 0
         ? warm.nodeModules
-        : await ensureLayout(lock, digest, target);
+        : await ensureLayout(lock, layoutKey(lock), target, scripts);
     return { lock: text, lockDigest: digest, nodeModules };
   };
 
@@ -615,7 +688,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   }): Promise<string> => {
     const text = await readFile(join(target.versionDir, "lock.yaml"), "utf8");
     const lock = parseLock(text);
-    const digest = lockDigest(text);
+    const digest = layoutKey(lock);
     const where = { key: target.artifactId, artifactDir: target.sourceDir ?? target.versionDir };
     // Mostra's own packages always come from this runtime: they aren't on a registry to pin.
     const drifted = Object.keys(lock.warm)
@@ -637,7 +710,14 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         .map((row) => row.lock_text),
     );
     const texts = [...working, ...input.keep];
-    const named = new Set(texts.map((text) => lockDigest(text)));
+    const named = new Set<string>();
+    for (const text of texts) {
+      try {
+        named.add(layoutKey(parseLock(text)));
+      } catch {
+        // A lockfile Mostra can't read names no layout it could keep.
+      }
+    }
     const needed = new Set<string>();
     const need = (pnpm: string | undefined): void => {
       if (pnpm === undefined) return;
@@ -784,6 +864,8 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             previous: working?.lock.pnpm,
           });
         }
+        // Plugins and acknowledgments (WP-16) change only through `change`: carried as they are.
+        lock = withExtras(lock, working?.lock);
         const resolved = await settle(lock, target);
         const seen = rowText(target.key);
         return {
@@ -818,71 +900,168 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             ? undefined
             : ledger.read((db) => recordedResult<DepsAddResult>(db, request));
         if (recorded !== undefined) return recorded;
-        const specs: PackageSpec[] = [];
-        for (const text of target.packages) {
-          const spec = parseSpec(text);
-          if (!spec) {
-            throw fail(
-              "MOSTRA_DEP_SPEC_INVALID",
-              `"${text}" isn't a registry package spec (name, name@version, name@range or name@tag).`,
-            );
-          }
-          specs.push(spec);
-        }
-        for (const spec of specs) {
-          const version = warm.packages[spec.name];
-          if (version === undefined || spec.range === undefined) continue;
-          const fits = semver.validRange(spec.range)
-            ? semver.satisfies(version, spec.range)
-            : spec.range === "latest";
-          if (!fits) {
-            throw fail(
-              "MOSTRA_DEP_WARM_CONFLICT",
-              `${spec.name} is in the warm set at ${version}, which every artifact uses; ${spec.name}@${spec.range} can't replace it.`,
-            );
-          }
-        }
-        const working = readWorking(target.key);
-        const pinned = working?.lock.packages ?? {};
-        const onDemand = specs.filter((spec) => !(spec.name in warm.packages));
-        // A bare name that is already pinned keeps its pin; anything else resolves now.
-        const additions = onDemand.filter(
-          (spec) => spec.range !== undefined || pinned[spec.name] === undefined,
-        );
-        const additionNames = new Set(additions.map((spec) => spec.name));
-        const pins = Object.fromEntries(
-          Object.entries(pinned).filter(
-            ([name]) => !additionNames.has(name) && !(name in warm.packages),
-          ),
-        );
-        const lock: Lock =
-          additions.length === 0 &&
-          working !== undefined &&
-          sameRecord(working.lock.warm, warm.packages)
-            ? working.lock
-            : Object.keys(pins).length === 0 && additions.length === 0
-              ? { warm: warm.packages, packages: {} }
-              : await resolveLock({
-                  key: target.key,
-                  artifactDir: target.artifactDir,
-                  pins,
-                  additions,
-                  previous: working?.lock.pnpm,
-                });
-        const resolved = await settle(lock, target);
-        const added = [...(working?.added ?? []), ...onDemand.map((spec) => spec.name)];
-        writeWorking(target.key, resolved.lock, added);
-        const packages: AddedPackage[] = specs.map((spec) => {
-          const warmVersion = warm.packages[spec.name];
-          return warmVersion !== undefined
-            ? { name: spec.name, version: warmVersion, warm: true }
-            : { name: spec.name, version: lock.packages[spec.name] as string, warm: false };
+        const staged = await stage(target, target.packages, []);
+        const result: DepsAddResult = {
+          packages: staged.packages,
+          lockDigest: staged.resolved.lockDigest,
+        };
+        ledger.write((db) => {
+          writeRow(db, target.key, staged.resolved.lock, staged.names);
+          if (request !== undefined) recordResult(db, request, result);
         });
-        const result: DepsAddResult = { packages, lockDigest: resolved.lockDigest };
-        if (request !== undefined) ledger.write((db) => recordResult(db, request, result));
         return result;
       }),
+
+    change: (target, inspect) =>
+      byArtifact.run(target.key, async () => {
+        const request = target.request;
+        if (request !== undefined) {
+          const recorded = ledger.read((db) => recordedResult<never>(db, request));
+          if (recorded !== undefined) return recorded;
+        }
+        // Nothing of a new package runs before its inspector accepted it: the layout installs
+        // without lifecycle scripts, which `ready` runs (once its licenses are accepted, WP-16).
+        const staged = await stage(target, target.add, target.remove ?? [], false);
+        let ready: Promise<void> | undefined;
+        const complete = (): Promise<void> =>
+          (ready ??= settle(staged.lock, target).then(() => undefined));
+        const outcome = await inspect({
+          lock: staged.lock,
+          nodeModules: staged.resolved.nodeModules,
+          added: staged.packages,
+          ready: complete,
+          ...(staged.working ? { previous: staged.working.lock } : {}),
+        });
+        await complete();
+        const { plugins: _plugins, licenses: _licenses, ...packages } = staged.lock;
+        const plugins = outcome.plugins ?? [];
+        const licenses = outcome.licenses ?? {};
+        const final: Lock = {
+          ...packages,
+          ...(plugins.length > 0 ? { plugins } : {}),
+          ...(Object.keys(licenses).length > 0 ? { licenses } : {}),
+        };
+        const text = lockText(final);
+        const result = outcome.result(lockDigest(text));
+        ledger.write((db) => {
+          writeRow(db, target.key, text, staged.names);
+          if (request !== undefined) recordResult(db, request, result);
+        });
+        return result;
+      }),
+
+    working: async (target) => {
+      const working = readWorking(target.key);
+      if (working === undefined) return undefined;
+      const resolved = await settle(working.lock, target);
+      return {
+        lock: working.lock,
+        nodeModules: resolved.nodeModules,
+        added: [],
+        ready: async () => undefined,
+        previous: working.lock,
+      };
+    },
   };
+
+  /**
+   * Resolves a change of a working lockfile without recording it: `add` (npm specs) resolve, the
+   * packages in `remove` leave it (they stay only where the source imports them, at the next
+   * resolution), and the layout is installed.
+   */
+  async function stage(
+    target: DependencyTarget,
+    add: readonly string[],
+    remove: readonly string[],
+    scripts = true,
+  ): Promise<{
+    readonly lock: Lock;
+    readonly resolved: ResolvedDependencies;
+    readonly packages: AddedPackage[];
+    /** The packages added on purpose, kept whatever the source imports. */
+    readonly names: string[];
+    readonly working: WorkingLock | undefined;
+  }> {
+    const specs: PackageSpec[] = [];
+    for (const text of add) {
+      const spec = parseSpec(text);
+      if (!spec) {
+        throw fail(
+          "MOSTRA_DEP_SPEC_INVALID",
+          `"${text}" isn't a registry package spec (name, name@version, name@range or name@tag).`,
+        );
+      }
+      specs.push(spec);
+    }
+    for (const spec of specs) {
+      const version = warm.packages[spec.name];
+      if (version === undefined || spec.range === undefined) continue;
+      const fits = semver.validRange(spec.range)
+        ? semver.satisfies(version, spec.range)
+        : spec.range === "latest";
+      if (!fits) {
+        throw fail(
+          "MOSTRA_DEP_WARM_CONFLICT",
+          `${spec.name} is in the warm set at ${version}, which every artifact uses; ${spec.name}@${spec.range} can't replace it.`,
+        );
+      }
+    }
+    const working = readWorking(target.key);
+    const pinned = working?.lock.packages ?? {};
+    const dropped = new Set(remove);
+    const onDemand = specs.filter((spec) => !(spec.name in warm.packages));
+    // A bare name that is already pinned keeps its pin; anything else resolves now.
+    const additions = onDemand.filter(
+      (spec) => spec.range !== undefined || pinned[spec.name] === undefined,
+    );
+    const additionNames = new Set(additions.map((spec) => spec.name));
+    const pins = Object.fromEntries(
+      Object.entries(pinned).filter(
+        ([name]) => !additionNames.has(name) && !(name in warm.packages) && !dropped.has(name),
+      ),
+    );
+    const unchanged =
+      additions.length === 0 &&
+      !Object.keys(pinned).some((name) => dropped.has(name)) &&
+      working !== undefined &&
+      sameRecord(working.lock.warm, warm.packages);
+    let lock: Lock =
+      unchanged && working !== undefined
+        ? working.lock
+        : Object.keys(pins).length === 0 && additions.length === 0
+          ? { warm: warm.packages, packages: {} }
+          : await resolveLock({
+              key: target.key,
+              artifactDir: target.artifactDir,
+              pins,
+              additions,
+              previous: working?.lock.pnpm,
+            });
+    lock = withExtras(lock, working?.lock);
+    const resolved = await settle(lock, target, scripts);
+    const names = [
+      ...(working?.added ?? []).filter((name) => !dropped.has(name)),
+      ...onDemand.map((spec) => spec.name),
+    ];
+    const packages: AddedPackage[] = specs.map((spec) => {
+      const warmVersion = warm.packages[spec.name];
+      return warmVersion !== undefined
+        ? { name: spec.name, version: warmVersion, warm: true }
+        : { name: spec.name, version: lock.packages[spec.name] as string, warm: false };
+    });
+    return { lock, resolved, packages, names, working };
+  }
+
+  /** Writes a working lockfile's row inside a transaction. */
+  function writeRow(db: LedgerDb, key: string, text: string, added: readonly string[]): void {
+    db.run(
+      "INSERT INTO dependency_lock (key, lock_text, added_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET lock_text = excluded.lock_text, added_json = excluded.added_json, updated_at = excluded.updated_at",
+      key,
+      text,
+      JSON.stringify([...new Set(added)].sort()),
+      new Date().toISOString(),
+    );
+  }
 }
 
 /** The bytes of the files under `dir` that nothing else links to (a layout's own files). */

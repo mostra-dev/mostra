@@ -138,6 +138,10 @@ export type PackAddress = {
 } | {
     readonly kind: "name";
     readonly name: string;
+} | {
+    readonly kind: "plugin";
+    readonly package: string;
+    readonly item: string;
 };
 
 // @public
@@ -339,7 +343,7 @@ export interface SpdxEntry {
 export function spdxLicense(id: string): SpdxEntry | undefined;
 
 // @public
-export function stampServed(stamp: unknown, contract: ContractName): boolean;
+export function stampServed(stamp: unknown, contract: ContractName, implemented?: readonly string[]): boolean;
 
 // @public
 export function unreadableLicenseRef(packageName: string): string;

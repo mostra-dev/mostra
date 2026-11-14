@@ -31,6 +31,8 @@ export interface HomeSettings {
    * standalone CLI sends no telemetry for a home that carries it.
    */
   readonly hostConfigured?: { readonly client: string; readonly at: string };
+  /** The licenses a host accepts for every plugin and pack install (D31, `HomeConfig.licenses`). */
+  readonly licenses?: { readonly accept: readonly string[] };
 }
 
 const Settings = z.looseObject({
@@ -43,6 +45,7 @@ const Settings = z.looseObject({
     .max(2)
     .optional(),
   hostConfigured: z.object({ client: z.string(), at: z.string() }).optional(),
+  licenses: z.object({ accept: z.array(z.string()) }).optional(),
 });
 
 /** The settings file of a home. */

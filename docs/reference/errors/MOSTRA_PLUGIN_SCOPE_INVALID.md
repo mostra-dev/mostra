@@ -20,4 +20,4 @@ Run `mostra plugin add <package> --artifact <path>` for each artifact that uses 
 
 ## Hint
 
-Install the plugin for an artifact with `--artifact`, or pass exactly one of `--artifact` and `--home`.
+Install the plugin for an artifact with `--artifact`, or pass exactly one of `--artifact` and `--global`.

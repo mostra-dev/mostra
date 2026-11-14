@@ -62,6 +62,7 @@
     "semver": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
+    "undici": "catalog:",
     "vite": "catalog:",
     "ws": "catalog:",
     "yaml": "catalog:",

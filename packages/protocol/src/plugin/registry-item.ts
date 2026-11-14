@@ -226,7 +226,9 @@ export const RegistrySchema: z.ZodType<Registry> = z
  * - `file`: a local item, a path ending in `.json` (or starting with `./`, `../`, `/`);
  * - `github`: `owner/repo/item[#ref]`, read from the repository's root `registry.json`;
  * - `namespace`: `@namespace/item`, through the artifact's `components.json` `registries`;
- * - `name`: a bare name, from the default registry (shadcn's own).
+ * - `name`: a bare name, from the default registry (shadcn's own);
+ * - `plugin`: `plugin:<package>/<item>`, a pack an installed plugin carries (`contributes.packs`,
+ *   by the item's `name`), Mostra's own form.
  */
 export type PackAddress =
   | { readonly kind: "url"; readonly url: string }
@@ -239,7 +241,8 @@ export type PackAddress =
       readonly ref?: string;
     }
   | { readonly kind: "namespace"; readonly namespace: string; readonly item: string }
-  | { readonly kind: "name"; readonly name: string };
+  | { readonly kind: "name"; readonly name: string }
+  | { readonly kind: "plugin"; readonly package: string; readonly item: string };
 
 const GITHUB_PART = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
 
@@ -248,6 +251,10 @@ const GITHUB_PART = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
  * package spec, for `mostra add` to install as a package).
  */
 export function parsePackAddress(text: string): PackAddress | undefined {
+  const plugin = /^plugin:((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)\/([^\s/#]+)$/.exec(
+    text,
+  );
+  if (plugin) return { kind: "plugin", package: plugin[1] as string, item: plugin[2] as string };
   if (/^https?:\/\//i.test(text)) return { kind: "url", url: text };
   if (/^(?:\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])/.test(text) || /\.json$/i.test(text)) {
     return { kind: "file", path: text };

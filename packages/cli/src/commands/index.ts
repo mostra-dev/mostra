@@ -1,8 +1,9 @@
 /**
  * Every command of `mostra` (D60, D140 item 13), in the order help lists them. Commands later
- * packages own (`review export`, `plugin`, `term`) join this list with their
- * packages, never as placeholders; `share` joined with WP-13, `mcp` with WP-15, and `export` (its `bundle` class) and `run`
- * with WP-29.
+ * packages own (`review export`, `term`) join this list with their packages, never as
+ * placeholders; `share` joined with WP-13, `mcp` with WP-15, `export` (its `bundle` class) and
+ * `run` with WP-29, and `plugin` with WP-16. A command a plugin contributes is no entry here: the
+ * runner finds it among the plugins (`plugin/commands`) when a command line names none of these.
  */
 import type { CommandDef } from "../command.ts";
 import {
@@ -43,6 +44,12 @@ import {
   waitCommand,
 } from "./interaction.ts";
 import { mcpCommand } from "./mcp.ts";
+import {
+  pluginAddCommand,
+  pluginListCommand,
+  pluginRemoveCommand,
+  pluginValidateCommand,
+} from "./plugins.ts";
 import { loginCommand, logoutCommand, pauseCommand, resumeCommand } from "./remote.ts";
 import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
 import { rosterAddCommand, rosterGetCommand, rosterRemoveCommand } from "./team.ts";
@@ -72,6 +79,10 @@ export const COMMANDS: readonly CommandDef[] = [
   statePatchCommand,
   pushCommand,
   addCommand,
+  pluginAddCommand,
+  pluginListCommand,
+  pluginRemoveCommand,
+  pluginValidateCommand,
   exportCommand,
   runCommand,
   secretSetCommand,

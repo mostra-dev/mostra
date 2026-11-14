@@ -473,6 +473,18 @@ export {
   pluginAddMethod,
 } from "./methods/plugin/add.ts";
 export {
+  type PluginCommandInfo,
+  type PluginCommandsParams,
+  type PluginCommandsResult,
+  pluginCommandsMethod,
+} from "./methods/plugin/commands.ts";
+export {
+  type PluginExportParams,
+  type PluginExportResult,
+  type PluginFinding,
+  pluginExportMethod,
+} from "./methods/plugin/export.ts";
+export {
   type PluginListParams,
   type PluginListResult,
   pluginListMethod,

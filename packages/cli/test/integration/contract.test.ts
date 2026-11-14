@@ -33,6 +33,7 @@ import {
   Results,
   VerifyVerdict,
 } from "@mostra/protocol";
+import { PLUGIN_CONTRACTS } from "@mostra/protocol/plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
@@ -231,6 +232,64 @@ describe("every command, with --json and no terminal", () => {
       await cli(["daemon", "stop", "--json"], { env: other.env });
       await other.cleanup();
     }
+  }, 120_000);
+
+  it("plugin validate, list, add and remove check plugins through the lockfile (EX-01, EX-02)", async () => {
+    const version = (PLUGIN_CONTRACTS.exporter.implements.at(-1) as string) ?? "0.0.0";
+    const plugin = join(home.root, "plugin");
+    mkdirSync(plugin, { recursive: true });
+    writeFileSync(
+      join(plugin, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "mostra-contract-fixture",
+          version: "1.0.0",
+          type: "module",
+          license: "MIT",
+          mostra: {
+            name: "dev.mostra.fixtures/contract",
+            contracts: { exporter: `^${version}` },
+            contributes: { exporters: [{ id: "contract", entry: "./exporter.js" }] },
+            license: "MIT",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      join(plugin, "exporter.js"),
+      `export default { contract: { name: "exporter", version: ${JSON.stringify(version)} }, id: "contract", output: { mediaType: "text/plain", layout: "file" }, async export() { return { files: [] }; } };\n`,
+    );
+    const valid = await run(["plugin", "validate", plugin], { code: 0, ok: true });
+    expect(valid.result).toMatchObject({
+      valid: true,
+      plugin: { name: "dev.mostra.fixtures/contract" },
+    });
+    writeFileSync(join(plugin, "exporter.js"), "export default {};\n");
+    const invalid = await run(["plugin", "validate", plugin], { code: 1, ok: true });
+    expect(
+      (invalid.result as { diagnostics: { code: string }[] }).diagnostics.map((d) => d.code),
+    ).toContain("MOSTRA_PLUGIN_ENTRY_INVALID");
+    const listed = await run(["plugin", "list", "--artifact", artifactDir], { code: 0, ok: true });
+    expect(listed.result).toMatchObject({ plugins: [] });
+    // This home is offline (MOSTRA_OFFLINE): a plugin its store lacks can't install.
+    await run(["plugin", "add", "mostra-fixture-words", "--artifact", artifactDir], {
+      code: 1,
+      ok: false,
+      error: "MOSTRA_DEP_OFFLINE",
+    });
+    await run(["plugin", "remove", "mostra-fixture-words", "--artifact", artifactDir], {
+      code: 1,
+      ok: false,
+      error: "MOSTRA_PLUGIN_NOT_INSTALLED",
+    });
+    // Exactly one of --artifact and --global.
+    await run(["plugin", "list", "--global", "--artifact", artifactDir], {
+      code: 2,
+      ok: false,
+      error: "MOSTRA_CLI_USAGE",
+    });
   }, 120_000);
 
   it("roster add, get and remove name expected respondents with personal links (CO-01, CO-03, D168)", async () => {

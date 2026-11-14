@@ -103,7 +103,6 @@ export const CORE_COMMANDS: readonly (readonly string[])[] = [
   ["plugin", "validate"],
   ["publish"],
   ["push"],
-  ["remote", "status"],
   ["results"],
   ["review", "export"],
   ["resume"],
@@ -111,8 +110,8 @@ export const CORE_COMMANDS: readonly (readonly string[])[] = [
   ["roster", "get"],
   ["roster", "remove"],
   ["run"],
-  ["secret", "delete"],
   ["secret", "list"],
+  ["secret", "rm"],
   ["secret", "set"],
   ["share"],
   ["share", "list"],
@@ -152,14 +151,19 @@ function versionParts(version: string): [number, number, number] | undefined {
  * (within a line changes are additive: 0.x within a minor, from 1.0 within a major), as each
  * contract package's `stampCompatible` judges it.
  */
-export function stampServed(stamp: unknown, contract: ContractName): boolean {
+export function stampServed(
+  stamp: unknown,
+  contract: ContractName,
+  /** The versions served; this release's by default (a test stands in an older runtime's). */
+  implemented: readonly string[] = PLUGIN_CONTRACTS[contract].implements,
+): boolean {
   if (typeof stamp !== "object" || stamp === null) return false;
   const { name, version } = stamp as Record<string, unknown>;
   if (name !== contract || typeof version !== "string") return false;
   const theirs = versionParts(version);
   if (theirs === undefined) return false;
-  return PLUGIN_CONTRACTS[contract].implements.some((implemented) => {
-    const ours = versionParts(implemented);
+  return implemented.some((served) => {
+    const ours = versionParts(served);
     if (ours === undefined || theirs[0] !== ours[0]) return false;
     if (ours[0] === 0) return theirs[1] === ours[1] && theirs[2] <= ours[2];
     return theirs[1] < ours[1] || (theirs[1] === ours[1] && theirs[2] <= ours[2]);

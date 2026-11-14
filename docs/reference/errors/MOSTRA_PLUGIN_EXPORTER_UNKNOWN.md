@@ -12,7 +12,7 @@ No such exporter. Severity: error. Phase: host.
 
 ## What it means
 
-`mostra export --as <id>` names an exporter that neither Mostra builds in nor any plugin of the artifact or the home contributes. The message lists every exporter available for the artifact.
+`mostra export <artifact> --as <id> --out <path>` names an exporter that neither Mostra builds in nor any plugin of the artifact or the home contributes. The message lists every exporter available for the artifact.
 
 ## How to fix it
 

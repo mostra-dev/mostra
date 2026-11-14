@@ -6,12 +6,14 @@
  * the command's work and its events after it.
  */
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
   createDiagnostic,
   type Diagnostic,
   type MethodDefinition,
+  pluginCommandsMethod,
   RpcError,
 } from "@mostra/protocol";
 import { connect, type InstanceConnection, type InstanceSummary } from "./client.ts";
@@ -32,8 +34,9 @@ import {
   readHomeMarks,
   resolveHome,
 } from "./home.ts";
-import { globalFlags, parseCommandLine } from "./parse.ts";
+import { commandWords, globalFlags, parseCommandLine } from "./parse.ts";
 import { checkPlatform } from "./platform.ts";
+import { loadPluginCommand, matchCommand } from "./plugin-commands.ts";
 import { telemetrySession } from "./telemetry/index.ts";
 import { cliVersion } from "./version.ts";
 
@@ -150,7 +153,22 @@ export async function run(io: RunnerIo): Promise<number> {
   try {
     parsed = parseCommandLine(COMMANDS, io.argv);
   } catch (error) {
-    return fail(diagnosticOf(error));
+    // A command line that names none of `mostra`'s commands may name a plugin's (D30).
+    let plugin: CommandDef | undefined;
+    try {
+      plugin = await pluginCommandOf(io, global, error, (opened) => {
+        connection = opened;
+        summary = opened.summary;
+      });
+    } catch (problem) {
+      return fail(diagnosticOf(problem));
+    }
+    if (plugin === undefined) return fail(diagnosticOf(error));
+    try {
+      parsed = parseCommandLine([...COMMANDS, plugin], io.argv);
+    } catch (again) {
+      return fail(diagnosticOf(again));
+    }
   }
   if (parsed.kind === "version") {
     if (json) writeJson({ ok: true, result: { version: cliVersion() }, warnings });
@@ -200,7 +218,7 @@ export async function run(io: RunnerIo): Promise<number> {
   const telemetry = telemetrySession({
     env: io.env,
     configDir: config,
-    command: commandName(command),
+    command: command.telemetryName ?? commandName(command),
     json,
     tty: io.tty,
     readsStdin,
@@ -393,4 +411,46 @@ async function runRuntime(
     // `close`, not `exit`: the line may still be in the pipe when the process has exited.
     child.on("close", (code) => resolve({ code: code ?? EXIT.environment, stdout }));
   });
+}
+
+/**
+ * The plugin command a command line names, when `error` says it names none of `mostra`'s own:
+ * found among the home's plugins and the current directory's artifact's (`plugin/commands`),
+ * over a session the command then keeps (`keep`).
+ */
+async function pluginCommandOf(
+  io: RunnerIo,
+  global: ReturnType<typeof globalFlags>,
+  error: unknown,
+  keep: (connection: InstanceConnection) => void,
+): Promise<CommandDef | undefined> {
+  if (!(error instanceof RpcError) || error.diagnostic.code !== "MOSTRA_CLI_UNKNOWN_COMMAND") {
+    return undefined;
+  }
+  const words = commandWords(io.argv);
+  if (words.length === 0) return undefined;
+  const cwd = global.cwd !== undefined ? resolve(io.cwd, global.cwd) : io.cwd;
+  const home = resolveHome({
+    home: global.home,
+    env: io.env,
+    cwd,
+    platform: io.platform ?? process.platform,
+  });
+  // The daemon is started only where a plugin's command may live: a home with plugins of its own,
+  // or an artifact's directory. A mistyped command elsewhere asks only a daemon that already runs.
+  const autostart =
+    existsSync(join(home, "plugins")) ||
+    ["index.tsx", "index.jsx", "index.mdx"].some((entry) => existsSync(join(cwd, entry)));
+  let opened: InstanceConnection | undefined;
+  try {
+    opened = await connect({ home, env: io.env, autostart });
+  } catch {
+    // No runtime, no daemon: the command line names no command, as the parser said.
+    return undefined;
+  }
+  if (!opened) return undefined;
+  keep(opened);
+  const { commands } = await opened.call(pluginCommandsMethod, { artifact: { path: cwd } });
+  const found = matchCommand(commands, words);
+  return found === undefined ? undefined : loadPluginCommand(found);
 }

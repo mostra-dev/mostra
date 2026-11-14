@@ -255,6 +255,26 @@
         "$ref": "#/definitions/PluginAddResult"
       }
     },
+    "plugin/commands": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PluginCommandsParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PluginCommandsResult"
+      }
+    },
+    "plugin/export": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PluginExportParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PluginExportResult"
+      }
+    },
     "plugin/list": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -4669,6 +4689,69 @@
         "lockDigest"
       ]
     },
+    "PluginCommandInfo": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/definitions/PluginScope"
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
+        },
+        "export": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "command",
+        "package",
+        "version",
+        "scope",
+        "file",
+        "export"
+      ]
+    },
+    "PluginCommandsParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceRef"
+            }
+          ]
+        }
+      }
+    },
+    "PluginCommandsResult": {
+      "type": "object",
+      "properties": {
+        "commands": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginCommandInfo"
+          }
+        }
+      },
+      "required": [
+        "commands"
+      ]
+    },
     "PluginContribution": {
       "type": "object",
       "properties": {
@@ -4685,6 +4768,144 @@
         "id"
       ],
       "description": "A plugin's contribution: the contract it implements and its ID."
+    },
+    "PluginExportParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/definitions/ArtifactRef"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "exporter": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "artifact",
+        "exporter",
+        "out"
+      ]
+    },
+    "PluginExportResult": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "entry": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "exporter": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "package": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "package"
+          ]
+        },
+        "findings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginFinding"
+          }
+        }
+      },
+      "required": [
+        "files",
+        "versionId",
+        "exporter",
+        "findings"
+      ]
+    },
+    "PluginFinding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "hint"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "column": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "file"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "description": "Something a plugin's contribution reported, in the plugin's own code."
     },
     "PluginListParams": {
       "type": "object",

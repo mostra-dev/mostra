@@ -16,7 +16,7 @@ The package has no `"mostra"` key in its `package.json`, so it contributes nothi
 
 ## How to fix it
 
-Run `mostra add <package> --artifact <path>` for an ordinary package. For a plugin you write, add the manifest (`mostra docs guide/extending`) and run `mostra plugin validate`.
+Run `mostra add <package> --artifact <path>` for an ordinary package. For a plugin you write, add the manifest (`mostra docs guide/plugins`) and run `mostra plugin validate`.
 
 ## Hint
 

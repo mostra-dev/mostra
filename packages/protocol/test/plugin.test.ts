@@ -44,7 +44,7 @@ const valid = {
     {
       package: "remotion",
       license: "LicenseRef-Remotion",
-      class: "source-available",
+      class: "source-available" as const,
       summary: "Free for individuals and small companies; a company license otherwise.",
       url: "https://www.remotion.dev/license",
     },
@@ -144,6 +144,25 @@ describe("license expressions", () => {
 });
 
 describe("the plugin manifest", () => {
+  it("reports every invalid field in one run, a schema error beside a rule's (EX-02)", () => {
+    const check = checkPluginManifest({
+      name: "Not A Name",
+      contracts: { "cli-command": "^0.1.0" },
+      contributes: {
+        cliCommands: [{ command: "publish", entry: "/abs.js" }],
+      },
+      license: "Not-A-License",
+      effects: ["teleport"],
+    });
+    expect(check.manifest).toBeUndefined();
+    const paths = check.issues.map((issue) => issue.path.join("."));
+    expect(paths).toContain("mostra.name");
+    expect(paths).toContain("mostra.contributes.cliCommands.0.entry");
+    expect(paths).toContain("mostra.contributes.cliCommands.0.command");
+    expect(paths).toContain("mostra.license");
+    expect(paths).toContain("mostra.effects.0");
+  });
+
   it("accepts a valid manifest, and says where it may be installed", () => {
     const check = checkPluginManifest(valid);
     expect(check.issues).toEqual([]);
@@ -285,6 +304,11 @@ describe("pack items and addresses", () => {
       kind: "namespace",
       namespace: "@acme",
       item: "input-form",
+    });
+    expect(parsePackAddress("plugin:@acme/mostra-pdf/report")).toEqual({
+      kind: "plugin",
+      package: "@acme/mostra-pdf",
+      item: "report",
     });
     expect(parsePackAddress("recharts@3")).toBeUndefined();
     expect(parsePackAddress("react-hook-form")).toBeUndefined();

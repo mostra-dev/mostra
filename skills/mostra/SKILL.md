@@ -79,6 +79,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Show who answered, who is here, who changed what | `useRespondents()`, `usePresence({ cursor })`, a shared field's `meta.updatedBy` | [teams.md](references/teams.md) |
 | Several pages, packages, MDX, images | `pages/`, any npm import, `index.mdx`, `public/` | [page.md](references/page.md) |
 | Charts, tables, animation, UI primitives | the preinstalled libraries | [libraries.md](references/libraries.md) |
+| Someone else's component, exporter or command | `mostra add <item>` (shadcn registry items), `mostra plugin add <package>` | [plugins.md](references/plugins.md) |
 
 ## Rules verify enforces
 
@@ -119,6 +120,7 @@ Read the one you need when you need it.
 | [references/sharing.md](references/sharing.md) | Someone other than the person at this machine opens it, or on another device |
 | [references/teams.md](references/teams.md) | Several people answer it or work on it together: personal links, waiting for everyone, who is here |
 | [references/libraries.md](references/libraries.md) | Using charts, tables, motion or UI primitives, or an import fails |
+| [references/plugins.md](references/plugins.md) | Adding a shadcn registry item or a plugin, a license asks for an acknowledgment, or you write a plugin |
 | [references/mcp.md](references/mcp.md) | You work through Mostra's tools (`artifact_create` and the rest) instead of the `mostra` command |
 
 Three complete artifacts that pass verify, to copy from: [assets/examples/decision/](assets/examples/decision/) (a choice with a reason), [assets/examples/inbox/](assets/examples/inbox/) (drafted replies with real Send actions) and [assets/examples/dashboard/](assets/examples/dashboard/) (live data and a shared list). The same guide is `mostra docs guide`, and each reference `mostra docs guide/<name>`.

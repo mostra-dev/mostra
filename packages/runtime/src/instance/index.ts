@@ -90,7 +90,14 @@ import {
 } from "../link/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
+import { createPacks, type Packs } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
+import {
+  createPlugins,
+  type Plugins,
+  pluginMethods,
+  testContractVersions,
+} from "../plugins/index.ts";
 import {
   artifactEnvironment,
   openProcessManager,
@@ -340,6 +347,39 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   // Suites of other features publish without verify's gate; the switch is loud (D138).
   const unverifiedPublish = Boolean(environment["MOSTRA_TEST_UNVERIFIED_PUBLISH"]);
   if (unverifiedPublish) log.warn("instance.test_unverified_publish", {});
+  // Plugins and packs (WP-16, D30, D31): made on first use, like the dependencies they change.
+  let plugins: Plugins | undefined;
+  const getPlugins = (): Plugins =>
+    (plugins ??= createPlugins({
+      home: home.path,
+      dependencies: getDependencies(),
+      processes: manager,
+      log,
+      env: environment,
+      policy: () => readHomeSettings(home.path).licenses,
+      runtimeVersion: runtimeVersion(),
+      // Tests stand in a runtime that serves other contract versions (plugins.test.ts).
+      ...(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]
+        ? { implemented: testContractVersions(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]) }
+        : {}),
+    }));
+  let packs: Packs | undefined;
+  const getPacks = (): Packs =>
+    (packs ??= createPacks({
+      dependencies: getDependencies(),
+      plugins: getPlugins(),
+      log,
+      env: environment,
+      // Tests point GitHub registries at a local fake (packs.test.ts).
+      ...(environment["MOSTRA_TEST_GITHUB_API"] && environment["MOSTRA_TEST_GITHUB_RAW"]
+        ? {
+            github: {
+              api: environment["MOSTRA_TEST_GITHUB_API"],
+              raw: environment["MOSTRA_TEST_GITHUB_RAW"],
+            },
+          }
+        : {}),
+    }));
   let publisher: Publisher | undefined;
   const getPublisher = (): Publisher => {
     if (publisher) return publisher;
@@ -355,6 +395,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       homePolicy: () => readHomeSettings(home.path).submission,
       verifier: getVerifier,
       unverified: unverifiedPublish,
+      loadPlugins: (resolved) => getPlugins().check(resolved),
     });
     return publisher;
   };
@@ -853,6 +894,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.submitChannels !== undefined
           ? { submitChannels: [...new Set(config.submitChannels)].sort() }
           : {}),
+        ...(config.licenses !== undefined
+          ? { licenses: { accept: [...new Set(config.licenses.accept)].sort() } }
+          : {}),
       };
       if (Object.keys(change).length === 0) return;
       writeHomeSettings(home.path, change);
@@ -862,6 +906,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.submission !== undefined ? { submission: config.submission } : {}),
         ...(config.ports !== undefined ? { ports: config.ports } : {}),
         ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
+        ...(config.licenses !== undefined ? { licenses: config.licenses.accept } : {}),
       });
     },
     // A host's home never sends the standalone CLI's telemetry (D140 item 4).
@@ -891,6 +936,13 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           server.notify(session, method, params as JsonRpcParams);
         },
         dependenciesAdded: (artifact) => dev.dependenciesChanged(artifact),
+      }),
+      ...pluginMethods({
+        plugins: getPlugins,
+        packs: getPacks,
+        publisher: getPublisher,
+        log,
+        dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
       }),
       ...dev.methods(),
       // A hosted artifact's roster is its hosted home's, like its state (D165 item 1, D168).

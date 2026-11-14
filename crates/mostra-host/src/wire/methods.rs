@@ -253,6 +253,26 @@ impl super::Method for PluginAdd {
     type Params = super::generated::PluginAddParams;
     type Result = super::generated::PluginAddResult;
 }
+///`plugin/commands`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginCommands;
+impl super::Method for PluginCommands {
+    const NAME: &'static str = "plugin/commands";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginCommandsParams;
+    type Result = super::generated::PluginCommandsResult;
+}
+///`plugin/export`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginExport;
+impl super::Method for PluginExport {
+    const NAME: &'static str = "plugin/export";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginExportParams;
+    type Result = super::generated::PluginExportResult;
+}
 ///`plugin/list`.
 #[derive(Clone, Copy, Debug)]
 pub struct PluginList;
@@ -850,6 +870,16 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "plugin/add",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "plugin/commands",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "plugin/export",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "plugin/list",

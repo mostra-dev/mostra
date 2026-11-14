@@ -350,19 +350,17 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       unknownKeys(item, KNOWN_KEYS["example"] ?? [], "examples", index);
     });
   }
-  if (!parsed.success) return { issues };
-
-  const manifest = parsed.data;
+  // The rules beyond the schema run on what the manifest holds even when part of it is wrong, so
+  // one run reports every invalid field (EX-02); each looks only at values of the right type.
+  const view = lenientView(raw);
   // Each kind of contribution needs its contract, and IDs are unique per contract.
   let contributions = 0;
   for (const name of CONTRACT_NAMES) {
     const key = PLUGIN_CONTRACTS[name].key;
-    const list = manifest.contributes[key] as
-      | readonly (PluginEntry | PluginCommandEntry)[]
-      | undefined;
+    const list = view.contributes[key];
     if (list === undefined) continue;
     contributions += list.length;
-    if (list.length > 0 && manifest.contracts[name] === undefined) {
+    if (list.length > 0 && !view.contracts.has(name)) {
       error(
         `contributes.${key} needs the contract it implements: add "${name}" with a range to contracts.`,
         "contributes",
@@ -371,7 +369,8 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
     }
     const seen = new Map<string, number>();
     list.forEach((item, index) => {
-      const id = "command" in item ? item.command : item.id;
+      const id = key === "cliCommands" ? item["command"] : item["id"];
+      if (typeof id !== "string") return;
       const first = seen.get(id);
       if (first !== undefined) {
         error(
@@ -381,11 +380,11 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
           index,
         );
       } else seen.set(id, index);
-      if ("command" in item) {
-        const taken = coreCommandTaken(item.command.split(" "));
+      if (key === "cliCommands") {
+        const taken = coreCommandTaken(id.split(" "));
         if (taken !== undefined) {
           error(
-            `"mostra ${item.command}" would collide with Mostra's own "mostra ${taken.join(" ")}".`,
+            `"mostra ${id}" would collide with Mostra's own "mostra ${taken.join(" ")}".`,
             "contributes",
             key,
             index,
@@ -395,9 +394,9 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       }
     });
   }
-  for (const name of Object.keys(manifest.contracts) as ContractNameType[]) {
+  for (const name of view.contracts) {
     const key = PLUGIN_CONTRACTS[name].key;
-    if ((manifest.contributes[key]?.length ?? 0) === 0) {
+    if ((view.contributes[key]?.length ?? 0) === 0) {
       warn(
         `The manifest declares the ${name} contract but contributes nothing to it.`,
         "contracts",
@@ -405,35 +404,48 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       );
     }
   }
-  if (contributions === 0 && (manifest.contributes.packs?.length ?? 0) === 0) {
+  if (
+    view.contributesObject &&
+    contributions === 0 &&
+    (view.contributes["packs"]?.length ?? 0) === 0
+  ) {
     error("The plugin contributes nothing: add an entry to contributes.", "contributes");
   }
   // Licenses: the plugin's own, and each bundled one, must be expressions Mostra can read.
-  try {
-    parseLicenseExpression(manifest.license);
-  } catch (problem) {
-    if (!(problem instanceof LicenseExpressionError)) throw problem;
-    error(
-      `${problem.message} Use an SPDX expression, or LicenseRef-<name> for another license.`,
-      "license",
-    );
-  }
-  manifest.bundledLicenses?.forEach((bundled, index) => {
+  if (typeof raw["license"] === "string") {
     try {
-      parseLicenseExpression(bundled.license);
+      parseLicenseExpression(raw["license"]);
     } catch (problem) {
       if (!(problem instanceof LicenseExpressionError)) throw problem;
-      error(problem.message, "bundledLicenses", index, "license");
+      error(
+        `${problem.message} Use an SPDX expression, or LicenseRef-<name> for another license.`,
+        "license",
+      );
     }
-    if (bundled.class !== undefined) {
-      if (!isLicenseRef(bundled.license)) {
+  }
+  view.bundledLicenses.forEach((bundled, index) => {
+    const license = bundled["license"];
+    if (typeof license === "string") {
+      try {
+        parseLicenseExpression(license);
+      } catch (problem) {
+        if (!(problem instanceof LicenseExpressionError)) throw problem;
+        error(problem.message, "bundledLicenses", index, "license");
+      }
+    }
+    const licenseClass = bundled["class"];
+    if (typeof licenseClass === "string" && typeof license === "string") {
+      if (!isLicenseRef(license)) {
         error(
           "class applies only to a LicenseRef-: Mostra classes SPDX licenses from the SPDX License List itself.",
           "bundledLicenses",
           index,
           "class",
         );
-      } else if (!ACKNOWLEDGED_CLASSES.has(bundled.class) || bundled.class === "unknown") {
+      } else if (
+        !ACKNOWLEDGED_CLASSES.has(licenseClass as LicenseClass) ||
+        licenseClass === "unknown"
+      ) {
         error(
           'A LicenseRef- is never OSI-approved: its class is "source-available" or "proprietary".',
           "bundledLicenses",
@@ -443,8 +455,8 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       }
     }
   });
-  manifest.effects?.forEach((effect, index) => {
-    if (!PLUGIN_EFFECTS.includes(effect)) {
+  view.effects.forEach((effect, index) => {
+    if (typeof effect === "string" && !PLUGIN_EFFECTS.includes(effect)) {
       warn(
         `This Mostra release doesn't know the effect "${effect}" (it knows ${PLUGIN_EFFECTS.join(", ")}); it is shown as declared.`,
         "effects",
@@ -452,8 +464,8 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       );
     }
   });
-  manifest.platforms?.forEach((platform, index) => {
-    if (!PLUGIN_PLATFORMS.includes(platform)) {
+  view.platforms.forEach((platform, index) => {
+    if (typeof platform === "string" && !PLUGIN_PLATFORMS.includes(platform)) {
       warn(
         `"${platform}" isn't a system Mostra runs on (${PLUGIN_PLATFORMS.join(", ")}).`,
         "platforms",
@@ -461,7 +473,50 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       );
     }
   });
+  if (!parsed.success) return { issues };
+  const manifest = parsed.data;
   return issues.some((issue) => issue.severity === "error") ? { issues } : { manifest, issues };
+}
+
+/** What the rules beyond the schema read of a manifest, whatever its shape. */
+interface LenientView {
+  /** The contracts it declares, by a name Mostra implements (any range). */
+  readonly contracts: ReadonlySet<ContractNameType>;
+  readonly contributesObject: boolean;
+  /** Each kind's list of objects. */
+  readonly contributes: Readonly<Record<string, readonly Record<string, unknown>[]>>;
+  readonly bundledLicenses: readonly Record<string, unknown>[];
+  readonly effects: readonly unknown[];
+  readonly platforms: readonly unknown[];
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+function lenientView(raw: Record<string, unknown>): LenientView {
+  const contracts = new Set<ContractNameType>();
+  if (isObject(raw["contracts"])) {
+    for (const key of Object.keys(raw["contracts"])) {
+      if ((CONTRACT_NAMES as readonly string[]).includes(key))
+        contracts.add(key as ContractNameType);
+    }
+  }
+  const contributes: Record<string, Record<string, unknown>[]> = {};
+  if (isObject(raw["contributes"])) {
+    for (const [key, list] of Object.entries(raw["contributes"])) {
+      if (Array.isArray(list)) contributes[key] = list.filter(isObject);
+    }
+  }
+  return {
+    contracts,
+    contributesObject: isObject(raw["contributes"]),
+    contributes,
+    bundledLicenses: Array.isArray(raw["bundledLicenses"])
+      ? raw["bundledLicenses"].filter(isObject)
+      : [],
+    effects: Array.isArray(raw["effects"]) ? raw["effects"] : [],
+    platforms: Array.isArray(raw["platforms"]) ? raw["platforms"] : [],
+  };
 }
 
 /** A Zod issue in the manifest's words. */

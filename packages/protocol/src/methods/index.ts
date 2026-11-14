@@ -29,6 +29,8 @@ import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { packAddMethod } from "./pack/add.ts";
 import { pluginAddMethod } from "./plugin/add.ts";
+import { pluginCommandsMethod } from "./plugin/commands.ts";
+import { pluginExportMethod } from "./plugin/export.ts";
 import { pluginListMethod } from "./plugin/list.ts";
 import { pluginRemoveMethod } from "./plugin/remove.ts";
 import { pluginValidateMethod } from "./plugin/validate.ts";
@@ -148,6 +150,8 @@ export const hostMethods: readonly AnyMethod[] = [
   pluginListMethod,
   pluginRemoveMethod,
   packAddMethod,
+  pluginExportMethod,
+  pluginCommandsMethod,
   // gen:methods
 ];
 

@@ -2188,6 +2188,29 @@ export interface PluginAddResult {
 }
 
 // @public
+export interface PluginCommandInfo {
+    readonly command: string;
+    readonly export: string;
+    readonly file: string;
+    readonly package: string;
+    readonly scope: PluginScope;
+    readonly version: string;
+}
+
+// @public
+export const pluginCommandsMethod: MethodDefinition<PluginCommandsParams, PluginCommandsResult>;
+
+// @public
+export interface PluginCommandsParams {
+    readonly artifact?: SourceRef;
+}
+
+// @public
+export interface PluginCommandsResult {
+    readonly commands: readonly PluginCommandInfo[];
+}
+
+// @public
 export interface PluginContribution {
     readonly contract: ContractName;
     readonly id: string;
@@ -2201,6 +2224,43 @@ export type PluginDiagnosticCode = (typeof pluginDiagnosticCodes)[number];
 
 // @public
 export const pluginDiagnosticCodes: readonly ["MOSTRA_PLUGIN_MANIFEST_INVALID", "MOSTRA_PLUGIN_MANIFEST_WARNING", "MOSTRA_PLUGIN_NOT_A_PLUGIN", "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED", "MOSTRA_PLUGIN_CONFLICT", "MOSTRA_PLUGIN_ENTRY_INVALID", "MOSTRA_PLUGIN_SCOPE_INVALID", "MOSTRA_PLUGIN_NOT_INSTALLED", "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED", "MOSTRA_PLUGIN_EXPORTER_UNKNOWN", "MOSTRA_PLUGIN_FAILED"];
+
+// @public
+export const pluginExportMethod: MethodDefinition<PluginExportParams, PluginExportResult>;
+
+// @public
+export interface PluginExportParams {
+    readonly artifact: ArtifactRef;
+    readonly exporter: string;
+    readonly options?: Readonly<Record<string, unknown>>;
+    readonly out: string;
+    readonly version?: number | string;
+}
+
+// @public
+export interface PluginExportResult {
+    readonly entry?: string;
+    readonly exporter: {
+        readonly id: string;
+        readonly package: string;
+    };
+    readonly files: readonly string[];
+    readonly findings: readonly PluginFinding[];
+    readonly versionId: string;
+}
+
+// @public
+export interface PluginFinding {
+    readonly code: string;
+    readonly hint?: string;
+    readonly location?: {
+        readonly file: string;
+        readonly line?: number;
+        readonly column?: number;
+    };
+    readonly message: string;
+    readonly severity: "error" | "warning" | "hint";
+}
 
 // @public
 export const pluginListMethod: MethodDefinition<PluginListParams, PluginListResult>;

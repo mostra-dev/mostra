@@ -16,7 +16,7 @@ Two plugins of one artifact, or one of the artifact's and one of the home's, con
 
 ## How to fix it
 
-Remove one plugin with `mostra plugin remove <package> --artifact <path>` (or `--home`), then add the other again if needed.
+Remove one plugin with `mostra plugin remove <package> --artifact <path>` (or `--global`), then add the other again if needed.
 
 ## Hint
 

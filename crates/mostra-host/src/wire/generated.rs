@@ -10226,6 +10226,302 @@ impl<'de> ::serde::Deserialize<'de> for PluginAddResultLockDigest {
             })
     }
 }
+///`PluginCommandInfo`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginCommandInfo {
+    pub command: PluginCommandInfoCommand,
+    pub export: PluginCommandInfoExport,
+    pub file: PluginCommandInfoFile,
+    pub package: PluginCommandInfoPackage,
+    pub scope: PluginScope,
+    pub version: PluginCommandInfoVersion,
+}
+///`PluginCommandInfoCommand`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginCommandInfoCommand(::std::string::String);
+impl ::std::ops::Deref for PluginCommandInfoCommand {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginCommandInfoCommand> for ::std::string::String {
+    fn from(value: PluginCommandInfoCommand) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginCommandInfoCommand {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginCommandInfoCommand {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginCommandInfoCommand {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginCommandInfoCommand {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginCommandInfoExport`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginCommandInfoExport(::std::string::String);
+impl ::std::ops::Deref for PluginCommandInfoExport {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginCommandInfoExport> for ::std::string::String {
+    fn from(value: PluginCommandInfoExport) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginCommandInfoExport {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginCommandInfoExport {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginCommandInfoExport {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginCommandInfoExport {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginCommandInfoFile`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginCommandInfoFile(::std::string::String);
+impl ::std::ops::Deref for PluginCommandInfoFile {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginCommandInfoFile> for ::std::string::String {
+    fn from(value: PluginCommandInfoFile) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginCommandInfoFile {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginCommandInfoFile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginCommandInfoFile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginCommandInfoFile {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginCommandInfoPackage`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginCommandInfoPackage(::std::string::String);
+impl ::std::ops::Deref for PluginCommandInfoPackage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginCommandInfoPackage> for ::std::string::String {
+    fn from(value: PluginCommandInfoPackage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginCommandInfoPackage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginCommandInfoPackage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginCommandInfoPackage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginCommandInfoPackage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginCommandInfoVersion`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginCommandInfoVersion(::std::string::String);
+impl ::std::ops::Deref for PluginCommandInfoVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginCommandInfoVersion> for ::std::string::String {
+    fn from(value: PluginCommandInfoVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginCommandInfoVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginCommandInfoVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginCommandInfoVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginCommandInfoVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginCommandsParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct PluginCommandsParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub artifact: ::std::option::Option<SourceRef>,
+}
+///`PluginCommandsResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginCommandsResult {
+    pub commands: ::std::vec::Vec<PluginCommandInfo>,
+}
 ///A plugin's contribution: the contract it implements and its ID.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PluginContribution {
@@ -10284,6 +10580,375 @@ impl<'de> ::serde::Deserialize<'de> for PluginContributionId {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`PluginExportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginExportParams {
+    pub artifact: ArtifactRef,
+    pub exporter: PluginExportParamsExporter,
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub options: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub out: PluginExportParamsOut,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub version: ::std::option::Option<PluginExportParamsVersion>,
+}
+///`PluginExportParamsExporter`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginExportParamsExporter(::std::string::String);
+impl ::std::ops::Deref for PluginExportParamsExporter {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginExportParamsExporter> for ::std::string::String {
+    fn from(value: PluginExportParamsExporter) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginExportParamsExporter {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[a-z0-9][a-z0-9._-]{0,63}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9._-]{0,63}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginExportParamsExporter {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginExportParamsExporter {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginExportParamsExporter {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginExportParamsOut`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginExportParamsOut(::std::string::String);
+impl ::std::ops::Deref for PluginExportParamsOut {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginExportParamsOut> for ::std::string::String {
+    fn from(value: PluginExportParamsOut) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginExportParamsOut {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginExportParamsOut {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginExportParamsVersion`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum PluginExportParamsVersion {
+    Integer(::std::num::NonZeroU64),
+    String(PluginExportParamsVersionString),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::fmt::Display for PluginExportParamsVersion {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::Integer(x) => x.fmt(f),
+            Self::String(x) => x.fmt(f),
+            Self::Unknown(value) => value.fmt(f),
+        }
+    }
+}
+impl ::std::str::FromStr for PluginExportParamsVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if let Ok(v) = value.parse() {
+            Ok(Self::Integer(v))
+        } else if let Ok(v) = value.parse() {
+            Ok(Self::String(v))
+        } else {
+            Err("string conversion failed for all variants".into())
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginExportParamsVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::From<::std::num::NonZeroU64> for PluginExportParamsVersion {
+    fn from(value: ::std::num::NonZeroU64) -> Self {
+        Self::Integer(value)
+    }
+}
+impl ::std::convert::From<PluginExportParamsVersionString>
+for PluginExportParamsVersion {
+    fn from(value: PluginExportParamsVersionString) -> Self {
+        Self::String(value)
+    }
+}
+///`PluginExportParamsVersionString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginExportParamsVersionString(::std::string::String);
+impl ::std::ops::Deref for PluginExportParamsVersionString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginExportParamsVersionString> for ::std::string::String {
+    fn from(value: PluginExportParamsVersionString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginExportParamsVersionString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginExportParamsVersionString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginExportParamsVersionString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginExportResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginExportResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entry: ::std::option::Option<::std::string::String>,
+    pub exporter: PluginExportResultExporter,
+    pub files: ::std::vec::Vec<::std::string::String>,
+    pub findings: ::std::vec::Vec<PluginFinding>,
+    #[serde(rename = "versionId")]
+    pub version_id: ::std::string::String,
+}
+///`PluginExportResultExporter`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginExportResultExporter {
+    pub id: ::std::string::String,
+    pub package: ::std::string::String,
+}
+///Something a plugin's contribution reported, in the plugin's own code.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginFinding {
+    pub code: PluginFindingCode,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hint: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub location: ::std::option::Option<PluginFindingLocation>,
+    pub message: ::std::string::String,
+    pub severity: PluginFindingSeverity,
+}
+///`PluginFindingCode`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginFindingCode(::std::string::String);
+impl ::std::ops::Deref for PluginFindingCode {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginFindingCode> for ::std::string::String {
+    fn from(value: PluginFindingCode) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginFindingCode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginFindingCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginFindingCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginFindingCode {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PluginFindingLocation`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PluginFindingLocation {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub column: ::std::option::Option<::std::num::NonZeroU64>,
+    pub file: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub line: ::std::option::Option<::std::num::NonZeroU64>,
+}
+///`PluginFindingSeverity`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PluginFindingSeverity {
+    #[serde(rename = "error")]
+    Error,
+    #[serde(rename = "warning")]
+    Warning,
+    #[serde(rename = "hint")]
+    Hint,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for PluginFindingSeverity {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PluginFindingSeverity {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`PluginListParams`
@@ -22651,6 +23316,38 @@ impl ::std::str::FromStr for PackFileChangeAction {
                 "overwritten" => Self::Overwritten,
                 "unchanged" => Self::Unchanged,
                 "updated" => Self::Updated,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl PluginFindingSeverity {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+            Self::Hint => "hint",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for PluginFindingSeverity {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for PluginFindingSeverity {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "error" => Self::Error,
+                "warning" => Self::Warning,
+                "hint" => Self::Hint,
                 other => Self::Unknown(other.to_string()),
             },
         )

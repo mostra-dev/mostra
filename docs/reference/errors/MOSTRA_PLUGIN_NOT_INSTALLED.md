@@ -16,7 +16,7 @@ The package isn't one of the plugins of the artifact (or of the home) the call n
 
 ## How to fix it
 
-List the scope's plugins with `mostra plugin list --artifact <path>` (or `--home`) and use a name from it.
+List the scope's plugins with `mostra plugin list --artifact <path>` (or `--global`) and use a name from it.
 
 ## Hint
 
