@@ -12,17 +12,20 @@ import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { CredentialResource } from "@mostra/protocol/operator";
+import { appearanceCookie } from "@mostra/themes";
 import { type WebSocket, WebSocketServer } from "ws";
+import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Log } from "../log.ts";
 import { BINDING_SUBPROTOCOL, MAX_FRAME_BYTES, serveWebSocket } from "../protocol-server/index.ts";
 import type { Authenticated, Authorization } from "./auth.ts";
-import type { Authorize } from "./authorize.ts";
+import { type Authorize, pageRequest } from "./authorize.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import type { HostedHome } from "./hosted.ts";
 import type { RemoteMcp } from "./mcp.ts";
 import type { Clients } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
+import { API_PAGE_WORDS, APPEARANCE_PATH, createApiPages } from "./pages.ts";
 
 /** How often an open binding's grant is checked again: a revocation closes it within 60 s. */
 const GRANT_RECHECK_MS = 30_000;
@@ -59,20 +62,6 @@ function send(
   response.end(text);
 }
 
-function page(response: ServerResponse, status: number, html: string): void {
-  response.writeHead(status, {
-    ...BASE_HEADERS,
-    "content-type": "text/html; charset=utf-8",
-    "content-security-policy":
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
-    "x-frame-options": "DENY",
-    // The device page posts its own form, whose `Origin` the server checks: under `no-referrer`
-    // browsers send `Origin: null` for a form's POST, so this page sends origins to itself only.
-    "referrer-policy": "same-origin",
-  });
-  response.end(html);
-}
-
 async function readBody(request: IncomingMessage, limit: number): Promise<Buffer | undefined> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -84,13 +73,11 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
   return Buffer.concat(chunks);
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
-}
-
 /** Options for {@link createApi}. */
 export interface ApiOptions {
   readonly config: RemoteServerConfig;
+  /** The server's own pages on the API origin, in its operator's theme and name (D171). */
+  readonly server: ServerPages;
   readonly auth: Authorization;
   readonly log: Log;
   readonly filesDir: string;
@@ -141,63 +128,40 @@ function developmentProvider(
   return provider ? { id: provider.id, label: provider.label ?? "Development sign-in" } : undefined;
 }
 
-/** The device page: the code, the warning, and the development provider's sign-in. */
-function devicePage(options: {
-  readonly code: string;
-  readonly provider: { id: string; label: string } | undefined;
-  readonly message?: string;
-  readonly done?: boolean;
-}): string {
-  const body = options.done
-    ? `<p>${escapeHtml(options.message ?? "Done.")}</p><p>You can close this page.</p>`
-    : `${options.message ? `<p role="alert">${escapeHtml(options.message)}</p>` : ""}
-<p><strong>Approving links a machine to your account.</strong> That machine's Mostra can then host
-pages under your account and receives their answers. Continue only if you started this sign-in
-yourself, on that machine.</p>
-${
-  options.provider
-    ? `<form method="post" action="/device">
-<label>Code <input name="user_code" value="${escapeHtml(options.code)}" autocomplete="off" required></label>
-<p>${escapeHtml(options.provider.label)}: this server signs people in with a development provider,
-which trusts the name you type. Use it only on a server you run for yourself or for tests.</p>
-<label>Your name <input name="name" required maxlength="64"></label>
-<input type="hidden" name="provider" value="${escapeHtml(options.provider.id)}">
-<p><button name="decision" value="approve">Approve this machine</button>
-<button name="decision" value="deny">Refuse</button></p>
-</form>`
-    : "<p>This server has no identity provider configured, so nobody can sign in yet.</p>"
-}`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Link a machine to Mostra</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1rem}
-input{font:inherit;padding:.3rem}button{font:inherit;padding:.4rem .9rem;margin-right:.5rem}</style></head>
-<body><h1>Link a machine to Mostra</h1>${body}</body></html>`;
-}
-
-/** The device page for a browser already signed in: approving links a machine (§18.5). */
-function deviceApproval(options: {
-  readonly code: string;
-  readonly name: string;
-  readonly csrf: string;
-}): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Link a machine to Mostra</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1rem}
-input{font:inherit;padding:.3rem}button{font:inherit;padding:.4rem .9rem;margin-right:.5rem}</style></head>
-<body><h1>Link a machine to Mostra</h1>
-<p><strong>Approving links a machine to your account, ${escapeHtml(options.name)}.</strong> That machine's
-Mostra can then host pages under your account and receives their answers. Continue only if you started
-this sign-in yourself, on that machine.</p>
-<form method="post" action="/device"><input type="hidden" name="csrf" value="${escapeHtml(options.csrf)}">
-<label>Code <input name="user_code" value="${escapeHtml(options.code)}" autocomplete="off" required></label>
-<p><button name="session_decision" value="approve">Approve this machine</button>
-<button name="session_decision" value="deny">Refuse</button></p></form></body></html>`;
-}
-
 /** Creates the API origin. */
 export function createApi(options: ApiOptions): Api {
   const { config, auth, log } = options;
   const apiOrigin = config.apiOrigin;
+  const pages = createApiPages(options.server, options.server.name);
+  /** Sends one of the API origin's pages: themed, no script, its forms posting here only. */
+  const page = (response: ServerResponse, status: number, text: string): void => {
+    response.writeHead(status, {
+      ...BASE_HEADERS,
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy": themePageCsp(options.server.pages, "'none'", "'self'"),
+      "x-frame-options": "DENY",
+      // The device page posts its own form, whose `Origin` the server checks: under `no-referrer`
+      // browsers send `Origin: null` for a form's POST, so this page sends origins to itself only.
+      "referrer-policy": "same-origin",
+    });
+    response.end(text);
+  };
+  const devicePage = (
+    response: ServerResponse,
+    options: {
+      readonly code: string;
+      readonly provider: { id: string; label: string } | undefined;
+      readonly message?: string;
+      readonly done?: boolean;
+    },
+  ): string =>
+    options.done
+      ? pages.deviceDone(pageRequest(response), options.message ?? "")
+      : pages.deviceForm(pageRequest(response), {
+          code: options.code,
+          message: options.message,
+          development: options.provider,
+        });
   const sockets = new WebSocketServer({
     noServer: true,
     maxPayload: MAX_FRAME_BYTES,
@@ -328,11 +292,17 @@ export function createApi(options: ApiOptions): Api {
     authorization_response_iss_parameter_supported: true,
   });
 
-  const sessionDevicePage = (code: string, signed: { accountId: string; hash: string }): string =>
-    deviceApproval({
+  const sessionDevicePage = (
+    response: ServerResponse,
+    code: string,
+    signed: { accountId: string; hash: string },
+  ): string =>
+    pages.deviceForm(pageRequest(response), {
       code,
-      name: auth.accountName(signed.accountId).name ?? "your account",
-      csrf: options.authorize.csrf(signed.hash, "device"),
+      signedIn: {
+        name: auth.accountName(signed.accountId).name ?? API_PAGE_WORDS.yourAccount,
+        csrf: options.authorize.csrf(signed.hash, "device"),
+      },
     });
 
   const form = async (request: IncomingMessage): Promise<URLSearchParams | undefined> => {
@@ -577,13 +547,31 @@ export function createApi(options: ApiOptions): Api {
         send(response, 200, {});
         return;
       }
+      if (method === "POST" && path === APPEARANCE_PATH) {
+        // A person's light-or-dark choice (D171): kept in a cookie of this origin, from this
+        // origin's own pages only, then back to the page it was made on.
+        const body = request.headers.origin === apiOrigin ? await form(request) : undefined;
+        const chosen = body?.get("appearance");
+        const next = body?.get("next") ?? "/";
+        const back =
+          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+        response.writeHead(303, {
+          ...BASE_HEADERS,
+          location: back,
+          ...(chosen === "light" || chosen === "dark" || chosen === "system"
+            ? { "set-cookie": appearanceCookie(chosen, apiOrigin.startsWith("https:")) }
+            : {}),
+        });
+        response.end();
+        return;
+      }
       if (path === "/device") {
         const provider = developmentProvider(config);
         const signed = options.authorize.sessionAccount(request);
         if (method === "GET") {
           const code = new URL(request.url ?? "/", apiOrigin).searchParams.get("user_code") ?? "";
           if (signed) {
-            page(response, 200, sessionDevicePage(code, signed));
+            page(response, 200, sessionDevicePage(response, code, signed));
             return;
           }
           // Real providers sign the person in first; the development one asks on this page, when it
@@ -595,7 +583,7 @@ export function createApi(options: ApiOptions): Api {
             );
             return;
           }
-          page(response, 200, devicePage({ code, provider }));
+          page(response, 200, devicePage(response, { code, provider }));
           return;
         }
         // The body is read once, for either form.
@@ -610,7 +598,7 @@ export function createApi(options: ApiOptions): Api {
               page(
                 response,
                 403,
-                devicePage({
+                devicePage(response, {
                   code: "",
                   provider,
                   message: "This form must be sent from this page.",
@@ -623,7 +611,7 @@ export function createApi(options: ApiOptions): Api {
             page(
               response,
               decided.ok ? 200 : 400,
-              devicePage({
+              devicePage(response, {
                 code,
                 provider,
                 ...(decided.ok
@@ -645,7 +633,11 @@ export function createApi(options: ApiOptions): Api {
             page(
               response,
               403,
-              devicePage({ code: "", provider, message: "This form must be sent from this page." }),
+              devicePage(response, {
+                code: "",
+                provider,
+                message: "This form must be sent from this page.",
+              }),
             );
             return;
           }
@@ -664,7 +656,7 @@ export function createApi(options: ApiOptions): Api {
             page(
               response,
               400,
-              devicePage({ code, provider, message: "Enter the code and your name." }),
+              devicePage(response, { code, provider, message: "Enter the code and your name." }),
             );
             return;
           }
@@ -673,7 +665,7 @@ export function createApi(options: ApiOptions): Api {
           // the operator nothing (second Fable review of WP-30, 5).
           const pending = auth.pendingCode(code);
           if (!pending.ok) {
-            page(response, 400, devicePage({ code, provider, message: pending.reason }));
+            page(response, 400, devicePage(response, { code, provider, message: pending.reason }));
             return;
           }
           // The typed name is an identity like any provider's: the operator's `accounts.resolve`
@@ -695,20 +687,20 @@ export function createApi(options: ApiOptions): Api {
               page(
                 response,
                 account.kind === "unavailable" ? 503 : 403,
-                devicePage({ code, provider, message: reason }),
+                devicePage(response, { code, provider, message: reason }),
               );
               return;
             }
             decided = auth.decideFor({ code, approve: true, accountId: account.accountId });
           }
           if (!decided.ok) {
-            page(response, 400, devicePage({ code, provider, message: decided.reason }));
+            page(response, 400, devicePage(response, { code, provider, message: decided.reason }));
             return;
           }
           page(
             response,
             200,
-            devicePage({
+            devicePage(response, {
               code,
               provider,
               done: true,

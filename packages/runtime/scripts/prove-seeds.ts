@@ -61,6 +61,39 @@ const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join
 const SEEDS: readonly Seed[] = [
   // MT-03: the operator ports as specified, and what sign-in and metering lack. Each item's check
   // goes red on a violation planted where it is enforced (`--only MT-03`, `--name "1:"` for one).
+  // UX-01 (D171): the server's own pages keep their rules through the design pass.
+  {
+    requirement: "UX-01",
+    name: "another origin's form sets a person's appearance on the API origin",
+    file: "src/server/api.ts",
+    from: "        const body = request.headers.origin === apiOrigin ? await form(request) : undefined;",
+    to: "        const body = await form(request);",
+    check: integration("server-pages.test.ts", "light or dark choice"),
+  },
+  {
+    requirement: "UX-01",
+    name: "the appearance switch sends a person to another site",
+    file: "src/server/api.ts",
+    from: `          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\\\") ? next : "/";`,
+    to: `          next.startsWith("/") ? next : "/";`,
+    check: integration("server-pages.test.ts", "light or dark choice"),
+  },
+  {
+    requirement: "UX-01",
+    name: "a refused navigation speaks the diagnostic's words, not the shell's",
+    file: "src/gateway/theme.ts",
+    from: "  const said = PAGE_REFUSALS[words.code] ?? words;",
+    to: "  const said = words;",
+    check: unit("server-pages.test.ts", "small print"),
+  },
+  {
+    requirement: "UX-01",
+    name: 'a server not dressed as Mostra leaves out "Runs on Mostra"',
+    file: "../themes/src/pages.ts",
+    from: "    if (dressedAsMostra) return undefined;",
+    to: "    return undefined;",
+    check: integration("server-pages.test.ts", "draws the device page"),
+  },
   {
     requirement: "MT-03",
     name: "1: a relayed run is recorded without asking `limits` for `run`",
@@ -1416,7 +1449,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-09",
     name: 'the hosted shell\'s footer leaves out "Never enter passwords"',
     file: "../shell/src/chrome.tsx",
-    from: '      <span data-mostra-passwords="">{HOSTED_WORDS.passwords}</span>',
+    from: "        {HOSTED_WORDS.passwords}\n",
     to: "",
     check: e2e("the trusted chrome"),
     e2e: true,
@@ -6328,8 +6361,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-08",
     name: "a tab whose session isn't stored offers a sign-in that loses the link (second Fable review, 7)",
     file: "../shell/src/chrome.tsx",
-    from: '      {signIn && viewer.kind === "anonymous" && !sessionUnstored() && (',
-    to: '      {signIn && viewer.kind === "anonymous" && (',
+    from: '  const offerSignIn = signIn && viewer.kind === "anonymous" && !sessionUnstored();',
+    to: '  const offerSignIn = signIn && viewer.kind === "anonymous";',
     check: e2e("filled the site's storage"),
     e2e: true,
   },
@@ -6744,6 +6777,7 @@ function build(seed?: Seed): void {
     // The packages Windows runs so far (WP-W1, WP-W2).
     for (const name of [
       "@mostra/protocol",
+      "@mostra/themes",
       "@mostra/server",
       "@mostra/worker",
       "@mostra/react",
@@ -6760,6 +6794,7 @@ function build(seed?: Seed): void {
   }
   for (const name of [
     "@mostra/protocol",
+    "@mostra/themes",
     "@mostra/server",
     "@mostra/worker",
     "@mostra/react",

@@ -1,0 +1,59 @@
+{
+  "name": "@mostra/themes",
+  "version": "0.13.0",
+  "description": "Mostra's themes: the tokens of every theme in light and dark, their stylesheets and faces, and the templates for a server's own pages and mail.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/themes#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/themes"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./css/*": "./css/*",
+    "./fonts/*": "./fonts/*",
+    "./marks/*": "./marks/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "css",
+    "fonts",
+    "marks"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api",
+    "generate": "node --conditions @mostra/source scripts/generate.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

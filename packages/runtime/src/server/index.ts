@@ -29,10 +29,17 @@ import {
 import { faultsFrom } from "../faults.ts";
 import {
   BASE_HEADERS,
+  defaultPages,
   documentHeaders,
   locateShell,
+  MADE_WITH_HREF,
+  refusalDocument,
   resetOnClose,
+  type ServerPages,
+  serverPages,
   shellAssetResponse,
+  THEME_BASE,
+  themePageCsp,
 } from "../gateway/index.ts";
 import { appendEvent } from "../interaction/index.ts";
 import type { Ledger, LedgerOwner } from "../ledger/index.ts";
@@ -50,6 +57,7 @@ import { createRemoteMcp, serverDocs } from "./mcp.ts";
 import { createMeter, heldLevels, type Meter } from "./metering.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
+import { APPEARANCE_PATH, createApiPages } from "./pages.ts";
 import { type BuiltInProvider, builtInProviders } from "./providers.ts";
 import { createRouting, type Destination, type Routing } from "./routing.ts";
 
@@ -93,8 +101,43 @@ function json(response: ServerResponse, status: number, body: unknown): void {
   response.end(text);
 }
 
-function refusal(response: ServerResponse, status: number, diagnostic: Diagnostic): void {
-  json(response, status, diagnostic);
+/** Whether a request is a person's navigation, answered with a page rather than JSON. */
+function wantsPage(request: IncomingMessage | undefined): boolean {
+  if (!request) return false;
+  const dest = request.headers["sec-fetch-dest"];
+  if (typeof dest === "string") return dest === "document";
+  return (request.headers.accept ?? "").includes("text/html");
+}
+
+/**
+ * A refusal: a page in the server's theme for a person's navigation (an unknown host, a request
+ * the server couldn't answer), the diagnostic as JSON for anything else.
+ */
+function refusal(
+  response: ServerResponse,
+  status: number,
+  diagnostic: Diagnostic,
+  pages: ServerPages = defaultPages(),
+): void {
+  const request = response.req as IncomingMessage | undefined;
+  if (!wantsPage(request)) {
+    json(response, status, diagnostic);
+    return;
+  }
+  const text = refusalDocument(pages.pages, {
+    title: diagnostic.message,
+    detail: diagnostic.hint,
+    code: diagnostic.code,
+  });
+  response.writeHead(status, {
+    ...BASE_HEADERS,
+    "content-type": "text/html; charset=utf-8",
+    "content-length": String(Buffer.byteLength(text)),
+    "cache-control": "no-store",
+    "content-security-policy": themePageCsp(pages.pages),
+    "x-frame-options": "DENY",
+  });
+  response.end(request?.method === "HEAD" ? undefined : text);
 }
 
 /** Splits `host:port`, with `[::1]:port` for IPv6. */
@@ -116,6 +159,8 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   // The authorization server and the operator module are made once the directory is open; homes
   // open only after both.
   let auth: Authorization | undefined;
+  // The hosted hosts' own pages, once the configuration's are made (below); the defaults until then.
+  let pagesOfHosts: ServerPages = defaultPages();
   let operator: Operator | undefined;
   let meter: Meter | undefined;
   let routing: Routing;
@@ -177,6 +222,10 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     },
     signInOffered: () =>
       (config.identityProviders?.length ?? 0) > 0 || (operator?.has.identity ?? false),
+    // On by default for every page, self-hosted included; an operator's `policy.link` turns it
+    // off for the pages it promises unbranded (D171 item 5).
+    madeWith: { href: MADE_WITH_HREF },
+    pages: () => pagesOfHosts,
   });
   const assembler: HomeAssembler<HostedHome> = {
     assemble: (home) =>
@@ -346,7 +395,26 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     await data.close();
     throw error;
   }
+  // The server's own pages (D171): the API origin's, with the appearance switch its own cookie
+  // keeps, and the hosted hosts', which keep no cookie (D165 item 8).
+  let apiPages: ServerPages;
+  let hostedPages: ServerPages;
+  try {
+    apiPages = serverPages(config.appearance, { appearanceAction: APPEARANCE_PATH });
+    hostedPages = serverPages(config.appearance);
+  } catch (error) {
+    operator?.stop();
+    await data.close();
+    throw new RpcError(
+      createDiagnostic("MOSTRA_REMOTE_CONFIG_INVALID", {
+        message: `The configuration key \`appearance.logo\` can't be used: ${(error as Error).message}`,
+      }),
+    );
+  }
+  pagesOfHosts = hostedPages;
   const authorize = createAuthorize({
+    server: apiPages,
+    pages: createApiPages(apiPages, apiPages.name),
     apiOrigin: config.apiOrigin,
     directory: data.directory,
     auth,
@@ -368,6 +436,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
   });
   api = createApi({
+    server: apiPages,
     config,
     auth,
     mcp,
@@ -397,6 +466,16 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     // Cookies never reach anything on a hosted host (D165 item 8): dropped before routing. Only
     // the API origin's own sign-in pages read the cookies it set itself.
     if (host !== apiHost) delete request.headers.cookie;
+    // The files a server's own pages load (D171): the same public files on every host, so even
+    // the page for an unknown host is drawn in the server's theme.
+    if ((request.method === "GET" || request.method === "HEAD") && path.startsWith(THEME_BASE)) {
+      const file = pagesOfHosts.asset(path.slice(THEME_BASE.length));
+      if (file) {
+        response.writeHead(200, { ...BASE_HEADERS, ...file.headers });
+        response.end(request.method === "HEAD" ? undefined : file.body);
+        return;
+      }
+    }
     if (host === apiHost && request.method === "GET" && path === "/health") {
       json(response, 200, { status: "ok", homes: data.open().length });
       return;
@@ -437,6 +516,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         createDiagnostic("MOSTRA_HYGIENE_HOST_REFUSED", {
           message: "This server serves no pages at this host.",
         }),
+        pagesOfHosts,
       );
     // An empty or malformed Host gets nothing, and is never asked of an operator.
     if (!/^[a-z0-9.-]{1,253}(:\d{1,5})?$/.test(host)) {

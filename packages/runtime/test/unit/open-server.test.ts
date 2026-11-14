@@ -37,6 +37,8 @@ const ALLOWED_PACKAGES = new Set([
   "@hono/node-server",
   "@mostra/mcp",
   "@mostra/protocol",
+  // The look of the server's own pages (UX-01, D171): themes as data and a page template.
+  "@mostra/themes",
   "openid-client",
   "ws",
   "zod",

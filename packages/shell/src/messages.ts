@@ -68,6 +68,11 @@ export function explain(code: string): { readonly title: string; readonly detail
         detail:
           "The app that identifies people for this artifact isn't answering. Try again in a moment.",
       };
+    case "MOSTRA_HYGIENE_HOST_REFUSED":
+      return {
+        title: "There's no page here",
+        detail: "Check the link you were given: this address doesn't serve one.",
+      };
     case "NO_ARTIFACT":
       return {
         title: "No artifact here",

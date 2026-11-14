@@ -27,6 +27,7 @@ import {
   SHELL_SESSION_HEADER,
   scopeAllows,
 } from "@mostra/protocol";
+import type { Pages } from "@mostra/themes";
 import type { Context, Hono } from "hono";
 import type { Log } from "../log.ts";
 import type { Capabilities, ResolvedSession, SessionMode } from "./capabilities.ts";
@@ -103,11 +104,13 @@ export interface ListenerChecks {
   readonly streams?: () => boolean;
   /** The client's address of a request (a remote server's trusted proxies); default its peer. */
   readonly client?: (incoming: import("node:http").IncomingMessage) => string | undefined;
+  /** The server's own pages, in its operator's theme (D171); Studio, named Mostra, by default. */
+  readonly pages?: () => Pages;
 }
 
 /** Logs a refusal without any of the request's capability material, and answers it. */
 export function refuse(
-  checks: Pick<ListenerChecks, "log" | "policy" | "frameAncestors">,
+  checks: Pick<ListenerChecks, "log" | "policy" | "frameAncestors" | "pages">,
   refused: Refusal & { readonly retryAfter?: number },
   request: { readonly method: string; readonly path: string; readonly document: boolean },
 ): Response {
@@ -120,10 +123,12 @@ export function refuse(
     path: request.path,
     origin: checks.policy().origin,
   });
+  const pages = checks.pages?.();
   return refusalResponse(refused, {
     document: request.document,
     method: request.method,
     frameAncestors: checks.frameAncestors(),
+    ...(pages ? { pages } : {}),
   });
 }
 

@@ -12,3 +12,15 @@ available from the address above and from the npm package axe-core. axe-core
 itself includes colorjs.io (Copyright (c) 2021 Lea Verou, Chris Lilley) and
 core-js-pure (Copyright (c) 2014-2023 Denis Pushkarev), under the MIT License,
 as its LICENSE-3RD-PARTY.txt states.
+
+@mostra/themes ships three typefaces, each under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org), as their licence files in packages/themes/fonts/ state: Figtree,
+Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree); Jost,
+Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost); and Spline
+Sans Mono, Copyright 2022 The Spline Sans Mono Project Authors
+(https://github.com/SorkinType/SplineSansMono). The woff2 subsets are those of the Fontsource
+packages @fontsource-variable/figtree, jost and spline-sans-mono 5.3.0.
+
+The Mostra name, wordmark and mark (packages/themes/marks/) are trademarks of the Mostra project.
+The Apache License grants no rights to use them (its section 6); forks are welcome under another
+name (GOVERNANCE.md).

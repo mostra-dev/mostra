@@ -52,7 +52,9 @@ describe("anonymous answers at volume, the owner offline (RM-08)", () => {
         // The test's browsers connect from loopback: a trusted proxy here, as Caddy is.
         trustedProxies: ["127.0.0.1"],
         rateLimits: {
-          perIp: { submissions: { count: 4, per: "4s" } },
+          // A token every 5 s: six submits sent together reach the bucket inside that even on a
+          // loaded runner, so none earns a seventh token on the way (#151, a Windows run at 1 s).
+          perIp: { submissions: { count: 4, per: "20s" } },
           perLink: { submissions: { count: 60, per: "1m" } },
         },
       }),

@@ -20,6 +20,7 @@
     "@codemirror/view": "catalog:",
     "@hookform/resolvers": "catalog:",
     "@mostra/react": "workspace:*",
+    "@mostra/themes": "workspace:*",
     "@tanstack/react-table": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

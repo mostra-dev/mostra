@@ -60,6 +60,7 @@ import {
   viewRotateMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
+import type { Pages } from "@mostra/themes";
 import type { Actions } from "../actions/index.ts";
 import { type Addressing, type FrameMode, hostOf } from "../addressing/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
@@ -104,6 +105,7 @@ export { resetOnClose } from "./listener.ts";
 import { type ListenerChecks, mount, type RouteContext, type RouteSpec, refuse } from "./routes.ts";
 import { fileResponse, findFile } from "./serve.ts";
 import { rosterMethods } from "./team.ts";
+import { defaultPages, type ServerPages, THEME_BASE } from "./theme.ts";
 import { BOOTSTRAP_PAGE, SERVICE_WORKER_PATH, SERVICE_WORKER_SOURCE } from "./worker.ts";
 
 export { Capabilities, capabilityKey } from "./capabilities.ts";
@@ -112,6 +114,17 @@ export type { DevUpstream } from "./dev.ts";
 export { BASE_HEADERS, documentHeaders, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
 export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
 export type { RouteContext, RouteSpec } from "./routes.ts";
+export {
+  type AppearanceConfig,
+  defaultPages,
+  MADE_WITH_HREF,
+  PAGE_REFUSALS,
+  refusalDocument,
+  type ServerPages,
+  serverPages,
+  THEME_BASE,
+  themePageCsp,
+} from "./theme.ts";
 
 /** What the gateway reads about artifacts and versions. */
 export interface GatewayArtifacts {
@@ -256,6 +269,11 @@ export interface GatewayOptions {
    * header, and its frames on the route's label, always in worker mode.
    */
   readonly hosted?: HostedAddressing;
+  /**
+   * The pages this gateway draws itself (a refused navigation), in its operator's theme and name
+   * (D171); Studio, named Mostra, when absent.
+   */
+  readonly pages?: ServerPages;
 }
 
 /** Where a hosted home's pages live (INTERFACES §18.4). */
@@ -556,6 +574,35 @@ interface FaceEntry {
 
 /** Creates the gateway; nothing is bound until {@link Gateway.start}. */
 export function createGateway(options: GatewayOptions): Gateway {
+  const serverPages = options.pages ?? defaultPages();
+  const pagesOf = (): Pages => serverPages.pages;
+  /**
+   * `GET /_mostra/theme/*`: the files the gateway's own pages load (D171), on every listener, with
+   * no session: they are the same public files for everyone and carry nothing of an artifact.
+   */
+  const themeAsset =
+    (checks: Pick<ListenerChecks, "log" | "policy" | "frameAncestors" | "pages">) =>
+    (context: RouteContext): Response => {
+      const url = new URL(context.request.url);
+      const file = serverPages.asset(url.pathname.slice(THEME_BASE.length));
+      if (!file) {
+        return refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", "No theme file at this path."), {
+          method: context.request.method,
+          path: url.pathname,
+          document: false,
+        });
+      }
+      return new Response(
+        context.request.method === "HEAD"
+          ? null
+          : typeof file.body === "string"
+            ? file.body
+            : new Uint8Array(file.body),
+        {
+          headers: { ...BASE_HEADERS, ...file.headers },
+        },
+      );
+    };
   const { addressing, capabilities, artifacts, log, interaction } = options;
   // Respondents and presence for pages (D168): in memory, over the pages' ephemeral bus.
   const team = options.bus
@@ -683,7 +730,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           message: `${number === undefined ? "A version" : `Version ${number}`} of this artifact is damaged: ${damage}.`,
         }),
       },
-      { document, frameAncestors },
+      { document, frameAncestors, pages: pagesOf() },
     );
 
   const link = (token: MintedToken): CapabilityLink => ({
@@ -735,6 +782,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const listener = createListener({
         policy: () => ({ origin: entry?.origin ?? "", hosts: way().hosts() }),
         log,
+        pages: pagesOf,
         frameAncestors: () =>
           spec.listener === "shell" ? "'none'" : (shellOf(way(), spec.group)?.origin() ?? "'none'"),
         configure: (app) => {
@@ -1044,6 +1092,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     cookieName: () => `mostra-${way().port()}`,
     // A hosted shell's session travels in a header, never a cookie (D165 item 8).
     mode: () => (way().by === "hosted" ? "header" : "cookie"),
+    pages: pagesOf,
     frameAncestors: () => "'none'",
     artifactOf: (params) => {
       const id = params["artifactId"];
@@ -1500,6 +1549,13 @@ export function createGateway(options: GatewayOptions): Gateway {
         handler: shellAsset,
       },
       {
+        method: "GET",
+        path: `${THEME_BASE}*`,
+        intent: "read",
+        auth: "none",
+        handler: themeAsset(checks),
+      },
+      {
         method: "POST",
         path: "/a/:artifactId/_mostra/session",
         intent: "exchange",
@@ -1594,6 +1650,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     capabilities,
     log,
     cookieName: () => `mostra-${wayOf().port()}`,
+    pages: pagesOf,
     frameAncestors: () => {
       const way = wayOf();
       if (way.by === "hosted" && hosted?.frameAncestors) {
@@ -1947,6 +2004,13 @@ export function createGateway(options: GatewayOptions): Gateway {
     return [
       { method: "GET", path: "/_mostra/enter", intent: "read", auth: "none", handler: enter },
       {
+        method: "GET",
+        path: `${THEME_BASE}*`,
+        intent: "read",
+        auth: "none",
+        handler: themeAsset(checks),
+      },
+      {
         method: "POST",
         path: "/_mostra/enter",
         intent: "exchange",
@@ -2026,6 +2090,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const listener = createListener({
         policy: () => ({ origin: addressing.origin(port), hosts: addressing.hosts(port) }),
         log,
+        pages: pagesOf,
         frameAncestors: () => shellOrigin(),
         configure: (app) =>
           mount(
@@ -2114,6 +2179,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       shellListener = createListener({
         policy: () => ({ origin: shellOrigin(), hosts: addressing.hosts(shellPort ?? 0) }),
         log,
+        pages: pagesOf,
         frameAncestors: () => "'none'",
         configure: (app) =>
           mount(

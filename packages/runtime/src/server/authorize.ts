@@ -23,12 +23,15 @@ import {
   type SignInIdentity,
   SignInIdentity as SignInIdentitySchema,
 } from "@mostra/protocol/operator";
+import { readAppearance } from "@mostra/themes";
+import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import { type Authorization, canonicalResource, hashSecret } from "./auth.ts";
 import { verifierLabel } from "./config.ts";
 import { type Clients, type OAuthClient, redirectAllowed } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
+import { API_PAGE_WORDS, type ApiPages, type PageRequest } from "./pages.ts";
 
 /** How long an authorization request, a provider sign-in or a step waits. */
 const PENDING_MS = 15 * 60_000;
@@ -70,7 +73,22 @@ export interface AuthorizeOptions {
   /** Names a hosted home's owner, for a page's sign-in ("Grace Hopper's page"). */
   readonly ownerName: (homeId: string) => string | undefined;
   readonly log: Log;
+  /** The server's own pages (its operator's theme and name, D171) and the API origin's on them. */
+  readonly server: ServerPages;
+  readonly pages: ApiPages;
   readonly now?: () => number;
+}
+
+/**
+ * Where a page answers and what its reader chose (their appearance, D171), from the request a
+ * response answers.
+ */
+export function pageRequest(response: ServerResponse): PageRequest {
+  const request = response.req as IncomingMessage | undefined;
+  const cookie = request?.headers.cookie;
+  // Without a choice of their own, a person gets the operator's default (the pages know it).
+  const chosen = cookie?.includes("mostra-appearance=") ? readAppearance(cookie) : undefined;
+  return { ...(chosen ? { appearance: chosen } : {}), path: request?.url ?? "/" };
 }
 
 /** A page's sign-in in progress (INTERFACES §18.4), bound to its route and shell session. */
@@ -122,21 +140,10 @@ const BASE = {
   "x-frame-options": "DENY",
 } as const;
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
-}
-
-function shell(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:3rem auto;padding:0 1rem}
-input{font:inherit;padding:.3rem}button,a.button{font:inherit;padding:.4rem .9rem;margin:.2rem .5rem .2rem 0;display:inline-block}
-.muted{color:#555}</style></head><body><h1>${escapeHtml(title)}</h1>${body}</body></html>`;
-}
-
 /** Builds the pages. */
 export function createAuthorize(options: AuthorizeOptions): Authorize {
-  const { apiOrigin, directory, auth, clients, operator, log } = options;
+  const { apiOrigin, directory, auth, clients, operator, log, pages } = options;
+  const at = (response: ServerResponse): PageRequest => pageRequest(response);
   const now = options.now ?? (() => Date.now());
   const secure = apiOrigin.startsWith("https:");
   const sessionCookie = secure ? "__Host-mostra-signin" : "mostra-signin";
@@ -168,8 +175,13 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     response.writeHead(status, {
       ...BASE,
       "content-type": "text/html; charset=utf-8",
-      // A form posts here, and its answer may redirect to a client: those origins only.
-      "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${formTargets.join(" ")}; frame-ancestors 'none'; base-uri 'none'`,
+      // The page loads its theme's files from this origin and runs nothing. A form posts here,
+      // and its answer may redirect to a client: those origins only.
+      "content-security-policy": themePageCsp(
+        options.server.pages,
+        "'none'",
+        ["'self'", ...formTargets].join(" "),
+      ),
       // A form's POST must carry this page's Origin (D166 item 10).
       "referrer-policy": "same-origin",
       ...extra,
@@ -185,11 +197,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     response.end();
   };
   const problem = (response: ServerResponse, status: number, message: string): void =>
-    send(
-      response,
-      status,
-      shell("Sign-in can't continue", `<p role="alert">${escapeHtml(message)}</p>`),
-    );
+    send(response, status, pages.problem(at(response), message));
 
   // ── in-progress records ─────────────────────────────────────────────────────────────────
 
@@ -298,18 +306,14 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     message?: string,
   ): Promise<void> => {
     const list = await providers();
-    const links = list
-      .map(
-        (provider) =>
-          `<p><a class="button" href="/signin/${encodeURIComponent(provider.id)}/start?next=${encodeURIComponent(next)}">Continue with ${escapeHtml(provider.label)}</a></p>`,
-      )
-      .join("");
     send(
       response,
       200,
-      shell(
-        "Sign in to Mostra",
-        `${message ? `<p role="alert">${escapeHtml(message)}</p>` : ""}${links || "<p>This server has no identity provider configured, so nobody can sign in yet.</p>"}`,
+      pages.signIn(
+        at(response),
+        list.map((provider) => ({ id: provider.id, label: provider.label })),
+        next,
+        message,
       ),
     );
   };
@@ -492,26 +496,24 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     signed: { accountId: string; hash: string },
     homeId: string | undefined,
   ): void => {
-    const who = auth.accountName(signed.accountId).name ?? "your account";
+    const who = auth.accountName(signed.accountId).name ?? API_PAGE_WORDS.yourAccount;
     const redirectHost = new URL(pending.redirectUri).host;
     const loopback = /^(127\.0\.0\.1|\[::1\]|localhost)(:\d+)?$/.test(redirectHost);
-    const body =
-      client.kind === "shell"
-        ? `<p>Continue as <strong>${escapeHtml(who)}</strong> to answer <strong>${escapeHtml(
-            (homeId !== undefined ? options.ownerName(homeId) : undefined) ?? "this person",
-          )}</strong>'s page? They will see your name with your answers.</p>`
-        : `<p><strong>${escapeHtml(client.name)}</strong>${client.unverified ? ' <span class="muted">(a name the app gives itself, not checked)</span>' : ""} asks to use Mostra as <strong>${escapeHtml(who)}</strong>: to read, create and change your hosted pages and their answers.</p>
-<p>It will send you back to <strong>${escapeHtml(redirectHost)}</strong>.${loopback ? " That is a program on your own computer: continue only if you started this there." : ""}</p>`;
+    const form = {
+      action: `/oauth/authorize/continue?authorize=${encodeURIComponent(handle)}`,
+      csrf: csrf(signed.hash, `consent ${handle}`),
+    };
     send(
       response,
       200,
-      shell(
-        client.kind === "shell" ? "Answer as yourself" : "Allow access",
-        `${body}<form method="post" action="/oauth/authorize/continue?authorize=${encodeURIComponent(handle)}">
-<input type="hidden" name="csrf" value="${csrf(signed.hash, `consent ${handle}`)}">
-<button name="decision" value="approve">${client.kind === "shell" ? "Continue" : "Allow"}</button>
-<button name="decision" value="deny">Cancel</button></form>`,
-      ),
+      client.kind === "shell"
+        ? pages.answerAs(
+            at(response),
+            form,
+            who,
+            homeId !== undefined ? options.ownerName(homeId) : undefined,
+          )
+        : pages.allow(at(response), form, client, who, redirectHost, loopback),
       {},
       [new URL(pending.redirectUri).origin],
     );
@@ -738,16 +740,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         if (name && method === "GET") {
           // The development provider's page: a name, trusted as typed (D166 item 4).
           const state = url.searchParams.get("state") ?? "";
-          send(
-            response,
-            200,
-            shell(
-              "Development sign-in",
-              `<p class="muted">This server signs people in with a development provider, which trusts the name you type. Use it only on a server you run for yourself or for tests.</p>
-<form method="post" action="/signin/${escapeHtml(id)}/name"><input type="hidden" name="state" value="${escapeHtml(state)}">
-<label>Your name <input name="name" required maxlength="64"></label> <button>Continue</button></form>`,
-            ),
-          );
+          send(response, 200, pages.developmentName(at(response), id, state));
           return true;
         }
         let params: Record<string, string>;

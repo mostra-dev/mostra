@@ -52,6 +52,7 @@ const REMOTE_ACCESS = [
   "test/integration/hosted-rules.test.ts",
   "test/integration/anonymous-volume.test.ts",
   "test/integration/remote-mcp-conformance.test.ts",
+  "test/integration/server-pages.test.ts",
   SIGNIN_FACTS,
   OPERATOR_RELAY,
 ];

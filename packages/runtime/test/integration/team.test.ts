@@ -422,7 +422,10 @@ describe("presence, attribution and visibility between pages (CO-04, CO-05, CO-0
         for (const row of ledger.prepare(`SELECT * FROM "${name}"`).all()) {
           const text = JSON.stringify(row);
           expect(text).not.toContain(marker);
-          expect(text).not.toContain("73137");
+          // The cursor's numbers as values of their own: a hash or an ID in hexadecimal or base32
+          // may hold the same digits inside it by chance (seen in CI, a token's secret_hash).
+          expect(text).not.toMatch(/(?<![0-9A-Za-z])73137(?![0-9A-Za-z])/);
+          expect(text).not.toMatch(/(?<![0-9A-Za-z])31031(?![0-9A-Za-z])/);
         }
       }
     } finally {

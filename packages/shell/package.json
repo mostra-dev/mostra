@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@mostra/protocol": "workspace:*",
+    "@mostra/themes": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "catalog:"

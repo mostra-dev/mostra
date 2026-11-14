@@ -18,6 +18,7 @@
       "@mostra/sdk",
       "@mostra/server",
       "@mostra/shell",
+      "@mostra/themes",
       "@mostra/verify",
       "@mostra/worker",
       "create-mostra"

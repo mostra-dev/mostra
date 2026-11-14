@@ -16,10 +16,12 @@ import {
   type RequestPolicy,
   refusal,
 } from "@mostra/protocol";
+import type { Pages } from "@mostra/themes";
 import { Hono } from "hono";
 import type { Log } from "../log.ts";
 import { BASE_HEADERS, type HttpEnv, headerPairs, refusalResponse } from "./http.ts";
 import { refuse } from "./routes.ts";
+import { defaultPages, refusalDocument, themePageCsp } from "./theme.ts";
 
 /**
  * Node's limit on request headers for gateway listeners. Every port of the loopback host shares one
@@ -143,13 +145,15 @@ function headersTooLarge(socket: Duplex): void {
     "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
     "This browser sent more cookies than any page here sets.",
   );
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mostra</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.25rem;padding:2rem;text-align:center;color-scheme:light dark}h1{font-size:1.25rem;margin:0}p{margin:0;opacity:.8}code{opacity:.5;font-size:.75rem;margin-top:1rem}</style></head><body><h1>This browser sent more cookies than Mostra accepts</h1><p>A page on this machine filled them. They have been cleared: open your link again.</p><code>MOSTRA_HYGIENE_HEADERS_TOO_LARGE</code></body></html>`;
+  const pages = defaultPages().pages;
+  const html = refusalDocument(pages, {
+    title: "This browser sent more cookies than Mostra accepts",
+    detail: "A page on this machine filled them. They have been cleared: open your link again.",
+    code: "MOSTRA_HYGIENE_HEADERS_TOO_LARGE",
+  });
   writeRaw(socket, refused, {
     html,
-    headers: [
-      'clear-site-data: "cookies"',
-      "content-security-policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
-    ],
+    headers: ['clear-site-data: "cookies"', `content-security-policy: ${themePageCsp(pages)}`],
   });
 }
 
@@ -205,6 +209,7 @@ export function createListener(options: {
   readonly policy: () => RequestPolicy;
   readonly log: Log;
   readonly frameAncestors: () => string;
+  readonly pages?: () => Pages;
   readonly configure: (app: Hono<HttpEnv>) => void;
   /**
    * Takes an upgrade whose Host, target and Origin passed the checks (a dev sandbox's HMR

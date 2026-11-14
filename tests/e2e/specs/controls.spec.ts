@@ -195,6 +195,11 @@ test.describe("hosts choose the submit channels (SH-02, D40, D108)", () => {
       expect(await hasSubmission(host, own.artifactId)).toBe(false);
       // The trusted Choose and Submit work, on the shell channel, recording the viewer.
       await frame.getByTestId("show-airy").click();
+      // The page's request changes what the trusted Choose names, which arms it again (D111): a
+      // click on the old target, or before it arms, is refused by design, so the person (and the
+      // test) clicks what the shell now shows, once it is armed (macOS CI run 43569878590).
+      await expect(page.locator("[data-mostra-choose=layout]")).toHaveText("Choose Airy");
+      await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
       await page.locator("[data-mostra-choose=layout]").click();
       await expect(frame.getByTestId("choice")).toHaveText("airy");
       await page.locator("#mostra-submit").click();

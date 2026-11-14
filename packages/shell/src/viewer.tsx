@@ -50,9 +50,20 @@ import {
   setFollow,
   submit,
 } from "./api.ts";
-import { HostedFooter, Interstitial, PausedNotice, SenderLine, ViewerChip } from "./chrome.tsx";
+import {
+  AppearanceButton,
+  FoldButton,
+  HostedFooter,
+  Interstitial,
+  PausedNotice,
+  SenderLine,
+  StatusIndicator,
+  type StatusKind,
+  ViewerChip,
+} from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
 import { hosted, interstitialPassed, passInterstitial, sessionUnstored } from "./hosted.ts";
+import { MostraMark } from "./icons.tsx";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
 import {
@@ -83,8 +94,8 @@ import {
   HOSTED_WORDS,
   ORPHAN_WORDS,
   RECEIPT_WORDS,
-  SAVE_WORDS,
   SERVER_WORDS,
+  STATUS_WORDS,
   submitProblem,
 } from "./words.ts";
 
@@ -494,6 +505,15 @@ export function ViewerPage(props: {
   const [ticket, setTicket] = useState(props.ticket);
   const chrome = ticket.hosted;
   const [passed, setPassed] = useState(() => interstitialPassed(target.routeId));
+  // The person may fold the chrome away; every page opens unfolded (D171 item 7).
+  const [folded, setFolded] = useState(false);
+  const fold = (next: boolean): void => {
+    setFolded(next);
+    // The button that undoes it takes the focus, so a keyboard never loses its place.
+    requestAnimationFrame(() =>
+      document.getElementById(next ? "mostra-unfold" : "mostra-fold")?.focus(),
+    );
+  };
   const [interstitialAt] = useState(() => Date.now());
   const [focusFrame, setFocusFrame] = useState(false);
   const [state, setState] = useState<ViewState>(() => initialState(props.ticket));
@@ -1022,38 +1042,33 @@ export function ViewerPage(props: {
     );
   }
 
+  // The status beside Submit (D171 item 7): the page's save state once its runtime reports it,
+  // "Connecting…" until then, never a "Saved" nobody confirmed (Claude review finding 4), and once
+  // the answer is in, sent. A version built before WP-07 reports none, and none is shown.
+  const saveState = frameKind === "loading" ? "connecting" : state.save;
+  const statusKind: StatusKind =
+    submitted && state.submission !== undefined ? "sent" : (saveState as StatusKind);
+  const statusWords =
+    statusKind === "sent" && chrome ? RECEIPT_WORDS.sent : STATUS_WORDS[statusKind];
+  const showsStatus = frameKind !== "legacy";
+
   return (
-    <div className="mostra-page">
-      <header className="mostra-rail">
+    <div className="mostra-page" data-mostra-folded={folded ? "" : undefined}>
+      <header className="mostra-rail" hidden={folded}>
         <div className="mostra-label">
-          <span className="mostra-mark" aria-hidden="true">
-            Mostra
-          </span>
-          <div>
+          {(!chrome || chrome.madeWith) && <MostraMark className="mostra-rail-mark" />}
+          <div className="mostra-label-text">
             <div className="mostra-title">{session.artifact.title}</div>
-            <div className="mostra-subtitle">
-              {versionLabel}
-              {!chrome && state.viewer?.name ? ` · ${state.viewer.name}` : ""}
-            </div>
-            {chrome && <SenderLine chrome={chrome} />}
+            {chrome ? (
+              <SenderLine chrome={chrome} />
+            ) : (
+              <div className="mostra-subtitle">
+                {versionLabel}
+                {state.viewer?.name ? ` · ${state.viewer.name}` : ""}
+              </div>
+            )}
           </div>
         </div>
-        {/* The page's save state, once its runtime reports it: until then it is "Connecting…",
-            never a "Saved" nobody confirmed (Claude review finding 4). A version built before
-            WP-07 reports none, and none is shown. */}
-        {frameKind !== "legacy" && (
-          <div
-            className="mostra-status"
-            data-mostra-save={frameKind === "loading" ? "connecting" : state.save}
-            aria-live="polite"
-          >
-            <span
-              className={`mostra-dot mostra-dot-${frameKind === "loading" ? "saving" : state.save}`}
-              aria-hidden="true"
-            />
-            {frameKind === "loading" ? SAVE_WORDS.connecting : SAVE_WORDS[state.save]}
-          </div>
-        )}
         {chrome && target.routeId !== undefined && (
           <ViewerChip
             chrome={chrome}
@@ -1062,56 +1077,67 @@ export function ViewerPage(props: {
             routeId={target.routeId}
           />
         )}
-        {(submitShown || chooses.length > 0) && (
-          <div
-            className="mostra-trusted"
-            data-mostra-trusted=""
-            data-mostra-armed={armed ? "" : undefined}
-            onPointerEnter={() => {
-              pointerInZone.current = true;
-            }}
-            onPointerLeave={releaseHeld}
-          >
-            <span className="mostra-seal">{CONTROL_WORDS.seal}</span>
-            {chooses.map((request) => {
-              const current = request.candidates.find((c) => c.id === request.current);
-              if (!current) return null;
-              const label = current.label ?? current.id;
-              const chosen = choiceOf(state, request.reviewSetId) === current.id;
-              return (
+        <div
+          className="mostra-actionbar"
+          data-mostra-dock={submitShown || chooses.length > 0 ? "" : undefined}
+        >
+          {showsStatus && (
+            <StatusIndicator kind={statusKind} words={statusWords} save={saveState} />
+          )}
+          {(submitShown || chooses.length > 0) && (
+            <div
+              className="mostra-trusted"
+              data-mostra-trusted=""
+              data-mostra-armed={armed ? "" : undefined}
+              onPointerEnter={() => {
+                pointerInZone.current = true;
+              }}
+              onPointerLeave={releaseHeld}
+            >
+              {chooses.map((request) => {
+                const current = request.candidates.find((c) => c.id === request.current);
+                if (!current) return null;
+                const label = current.label ?? current.id;
+                const chosen = choiceOf(state, request.reviewSetId) === current.id;
+                return (
+                  <button
+                    key={request.reviewSetId}
+                    type="button"
+                    className="mostra-button"
+                    data-mostra-choose={request.reviewSetId}
+                    disabled={!armed || chosen || busy !== undefined || state.closed}
+                    onClick={() => {
+                      if (armedRef.current) {
+                        void doChoose(request.reviewSetId, current.id, current.label);
+                      }
+                    }}
+                  >
+                    {chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
+                  </button>
+                );
+              })}
+              {submitShown && (
                 <button
-                  key={request.reviewSetId}
                   type="button"
-                  className="mostra-button"
-                  data-mostra-choose={request.reviewSetId}
-                  disabled={!armed || chosen || busy !== undefined || state.closed}
-                  onClick={() => {
-                    if (armedRef.current) {
-                      void doChoose(request.reviewSetId, current.id, current.label);
-                    }
-                  }}
+                  id="mostra-submit"
+                  className="mostra-button mostra-primary"
+                  disabled={!armed || submitted || busy !== undefined}
+                  onClick={onSubmit}
                 >
-                  {chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
+                  {submitted
+                    ? CONTROL_WORDS.submitted
+                    : busy === "submit"
+                      ? CONTROL_WORDS.submitting
+                      : (state.submitLabel ?? CONTROL_WORDS.submit)}
                 </button>
-              );
-            })}
-            {submitShown && (
-              <button
-                type="button"
-                id="mostra-submit"
-                className="mostra-button mostra-primary"
-                disabled={!armed || submitted || busy !== undefined}
-                onClick={onSubmit}
-              >
-                {submitted
-                  ? CONTROL_WORDS.submitted
-                  : busy === "submit"
-                    ? CONTROL_WORDS.submitting
-                    : (state.submitLabel ?? CONTROL_WORDS.submit)}
-              </button>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
+        <div className="mostra-tools">
+          {!chrome && <AppearanceButton />}
+          <FoldButton id="mostra-fold" folded={false} onToggle={() => fold(true)} />
+        </div>
       </header>
       <PausedNotice ticket={ticket} />
       {chrome && sessionUnstored() && (
@@ -1236,7 +1262,16 @@ export function ViewerPage(props: {
         <Receipt state={state} chrome={chrome} />
         <Orphans orphans={orphans} />
       </main>
-      {chrome && <HostedFooter chrome={chrome} apiBase={target.apiBase} csrf={session.csrf} />}
+      {chrome && !folded && (
+        <HostedFooter chrome={chrome} apiBase={target.apiBase} csrf={session.csrf} />
+      )}
+      {folded && (
+        <div className="mostra-folded" data-mostra-folded-bar="">
+          {showsStatus && <StatusIndicator kind={statusKind} words={statusWords} quiet />}
+          {chrome && <AppearanceButton />}
+          <FoldButton id="mostra-unfold" folded onToggle={() => fold(false)} />
+        </div>
+      )}
       {confirming && (
         <div className="mostra-dialog-backdrop">
           <div
