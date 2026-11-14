@@ -69,6 +69,19 @@ describe("plugins through mostra (D30)", () => {
 
     const dir = artifact("words-artifact");
     expect((await json(["publish", dir])).ran.code).toBe(0);
+    // An option the exporter's schema doesn't take refuses the export; one it takes reaches it.
+    const refused = await json([
+      "export",
+      dir,
+      "--as",
+      "words",
+      "--out",
+      join(home.root, "refused-out"),
+      "--option",
+      "pages=2",
+    ]);
+    expect(refused.ran.code).toBe(1);
+    expect(refused.value.error?.code).toBe("MOSTRA_PLUGIN_OPTIONS_INVALID");
     const out = join(home.root, "words-out");
     const exported = await json([
       "export",
@@ -78,10 +91,10 @@ describe("plugins through mostra (D30)", () => {
       "--out",
       out,
       "--option",
-      "pages=2",
+      "size=letter",
     ]);
     expect(exported.ran.code, exported.ran.stderr).toBe(0);
-    expect(readFileSync(join(out, "words.txt"), "utf8")).toContain('{"pages":2}');
+    expect(readFileSync(join(out, "words.txt"), "utf8")).toContain('{"size":"letter"}');
 
     const listed = await json(["plugin", "list", "--global"]);
     expect(listed.value.result).toMatchObject({ plugins: [{ package: "mostra-fixture-words" }] });

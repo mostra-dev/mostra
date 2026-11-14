@@ -32,6 +32,10 @@ export type InspectedEntry =
 export interface ExportRequest {
   readonly file: string;
   readonly export: string;
+  /** The exporter's ID, as the manifest names it: the loaded definition must say the same. */
+  readonly id: string;
+  /** The exporter contract's versions this runtime serves: the stamp must be of their line. */
+  readonly implemented: readonly string[];
   /** The version's directory in the home: its files are the export's input. */
   readonly versionDir: string;
   readonly version: Readonly<Record<string, unknown>>;
@@ -39,13 +43,26 @@ export interface ExportRequest {
   readonly mostraVersion: string;
 }
 
-/** `plugin/export`'s answer. */
-export interface ExportResponse {
-  readonly files: readonly (
-    | { readonly path: string; readonly text: string }
-    | { readonly path: string; readonly base64: string }
-  )[];
-  readonly entry?: string;
-  readonly findings: readonly unknown[];
-  readonly log: readonly string[];
-}
+/** `plugin/export`'s answer: the export, or why the child refused to run it. */
+export type ExportResponse =
+  | {
+      readonly files: readonly (
+        | { readonly path: string; readonly text: string }
+        | { readonly path: string; readonly base64: string }
+      )[];
+      readonly entry?: string;
+      /** What the definition says it writes. */
+      readonly output: { readonly layout: "file" | "directory"; readonly extension?: string };
+      readonly findings: readonly unknown[];
+      readonly log: readonly string[];
+    }
+  | {
+      /** Refused before `export` ran: not a definition this runtime serves, or bad options. */
+      readonly refused: {
+        readonly code:
+          | "MOSTRA_PLUGIN_ENTRY_INVALID"
+          | "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED"
+          | "MOSTRA_PLUGIN_OPTIONS_INVALID";
+        readonly message: string;
+      };
+    };

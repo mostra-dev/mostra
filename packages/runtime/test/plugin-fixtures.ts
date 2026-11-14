@@ -39,6 +39,135 @@ const range = (contract: keyof typeof PLUGIN_CONTRACTS): string => implemented(c
 export function pluginFixtures(): FixturePackage[] {
   const exporter = contractPackage("exporter");
   const command = contractPackage("cli-command");
+  const list = base(exporter, command);
+  return [...list, ...reviewFixtures(list)];
+}
+
+/** An exporter entry stamped by hand, returning one file. */
+const stampedExporter = (id: string): string =>
+  `export default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: ${JSON.stringify(id)}, output: { mediaType: "text/plain", layout: "directory" }, async export() { return { files: [{ path: "out.txt", content: ${JSON.stringify(id)} }] }; } };\n`;
+
+/**
+ * The fixtures of the WP-16 review's cases: a plugin upgrade that brings a license nobody
+ * acknowledged, a plugin whose non-OSI engine is a peer, a plugin that calls a closed package
+ * MIT, a license whose class changed, a command another begins with, an install script that
+ * fails.
+ */
+function reviewFixtures(list: readonly FixturePackage[]): FixturePackage[] {
+  const words = list.find((pkg) => pkg.name === "mostra-fixture-words") as FixturePackage;
+  const engine = list.find((pkg) => pkg.name === "mostra-fixture-engine-plugin") as FixturePackage;
+  const manifest = (pkg: FixturePackage) => pkg.manifest as Record<string, unknown>;
+  const mostra = (pkg: FixturePackage) => manifest(pkg)["mostra"] as Record<string, unknown>;
+  return [
+    {
+      // Words 1.1.0 depends on the engine: an upgrade by `mostra add` brings its license. Its
+      // time is older, so `latest` stays 1.0.0 for the tests that name no version.
+      ...words,
+      version: "1.1.0",
+      time: "2025-12-01T00:00:00.000Z",
+      manifest: {
+        ...manifest(words),
+        dependencies: {
+          ...(manifest(words)["dependencies"] as Record<string, string>),
+          "fixture-engine": "2.0.0",
+        },
+      },
+    },
+    {
+      // The same engine, now declared proprietary: an earlier acknowledgment doesn't carry over.
+      ...engine,
+      version: "1.1.0",
+      time: "2025-12-01T00:00:00.000Z",
+      manifest: {
+        ...manifest(engine),
+        mostra: {
+          ...mostra(engine),
+          bundledLicenses: [
+            {
+              package: "fixture-engine",
+              license: "LicenseRef-FixtureEngine",
+              class: "proprietary",
+            },
+          ],
+        },
+      },
+    },
+    {
+      // The engine as a peer, which the installer installs (`auto-install-peers`).
+      name: "mostra-fixture-peer-plugin",
+      version: "1.0.0",
+      manifest: {
+        type: "module",
+        license: "MIT",
+        peerDependencies: { "fixture-engine": "2.0.0" },
+        mostra: {
+          name: "dev.mostra.fixtures/peer",
+          contracts: { exporter: `^${range("exporter")}` },
+          contributes: { exporters: [{ id: "peer", entry: "./exporter.js" }] },
+          license: "MIT",
+        },
+      },
+      files: { "exporter.js": stampedExporter("peer") },
+    },
+    {
+      // A package that says it is no one's to use.
+      name: "fixture-closed",
+      version: "1.0.0",
+      manifest: { license: "UNLICENSED" },
+      files: { "index.js": "module.exports = {};\n" },
+    },
+    {
+      // A plugin that declares that closed package MIT, which Mostra can't confirm.
+      name: "mostra-fixture-claims-mit",
+      version: "1.0.0",
+      manifest: {
+        type: "module",
+        license: "MIT",
+        dependencies: { "fixture-closed": "1.0.0" },
+        mostra: {
+          name: "dev.mostra.fixtures/claims-mit",
+          contracts: { exporter: `^${range("exporter")}` },
+          contributes: { exporters: [{ id: "claims", entry: "./exporter.js" }] },
+          // Its package.json says MIT: the manifest's word differs, and Mostra shows the field.
+          license: "Apache-2.0",
+          bundledLicenses: [{ package: "fixture-closed", license: "MIT" }],
+        },
+      },
+      files: { "exporter.js": stampedExporter("claims") },
+    },
+    {
+      // Its command is the first word of mostra-fixture-words' `words count`.
+      name: "mostra-fixture-words-prefix",
+      version: "1.0.0",
+      manifest: {
+        type: "module",
+        license: "MIT",
+        mostra: {
+          name: "dev.mostra.fixtures/words-prefix",
+          contracts: { "cli-command": `^${range("cli-command")}` },
+          contributes: { cliCommands: [{ command: "words", entry: "./command.js" }] },
+          license: "MIT",
+        },
+      },
+      files: {
+        "command.js": `export default { contract: { name: "cli-command", version: ${JSON.stringify(implemented("cli-command"))} }, path: ["words"], summary: "Words.", async run() { return { result: null }; } };\n`,
+      },
+    },
+    {
+      // An item's npm dependency whose install script fails.
+      name: "fixture-failing-script",
+      version: "1.0.0",
+      manifest: {
+        license: "MIT",
+        scripts: { postinstall: 'node -e "process.exit(3)"' },
+      },
+      files: { "index.js": "module.exports = {};\n" },
+    },
+  ];
+}
+
+/** The fixtures every plugin test uses. */
+function base(exporter: FixturePackage, command: FixturePackage): FixturePackage[] {
   return [
     exporter,
     command,
@@ -61,7 +190,11 @@ export function pluginFixtures(): FixturePackage[] {
             "cli-command": `^${range("cli-command")}`,
           },
           contributes: {
-            exporters: [{ id: "words", entry: "./exporter.js" }],
+            exporters: [
+              { id: "words", entry: "./exporter.js" },
+              { id: "summary", entry: "./exporter.js", export: "summary" },
+              { id: "clash", entry: "./exporter.js", export: "clash" },
+            ],
             cliCommands: [{ command: "words count", entry: "./command.js" }],
           },
           effects: ["filesystem"],
@@ -71,20 +204,50 @@ export function pluginFixtures(): FixturePackage[] {
       files: {
         "exporter.js": [
           'import { defineExporter } from "@mostra/contract-exporter";',
+          "// Server code is never an export's input, whichever way a path names it.",
+          "const hidden = async (files) => {",
+          "  let count = 0;",
+          '  for (const path of ["server/entry.mjs", "./server/entry.mjs", "client/../server/entry.mjs", "SERVER/entry.mjs"]) {',
+          "    try { await files.readText(path); } catch { count += 1; }",
+          "  }",
+          "  return count;",
+          "};",
           "export default defineExporter({",
           '  id: "words",',
-          '  output: { mediaType: "text/plain", layout: "file", extension: "txt" },',
+          '  output: { mediaType: "text/plain", layout: "directory" },',
+          '  options: { type: "object", properties: { size: { type: "string", enum: ["a4", "letter"] } }, additionalProperties: false },',
           "  async export({ files, version, options }) {",
           '    const html = await files.readText("client/index.html");',
           "    const paths = await files.list();",
+          "    const facts = {",
+          "      server: version.server,",
+          '      registry: typeof version.registry === "object" && version.registry !== null,',
+          "      publishedAt: !Number.isNaN(Date.parse(version.publishedAt)),",
+          "      hidden: await hidden(files),",
+          '      listed: paths.some((path) => path.toLowerCase().startsWith("server")),',
+          "    };",
           "    return {",
           "      files: [",
-          '        { path: "words.txt", content: version.title + ": " + paths.length + " files, " + html.length + " bytes, " + JSON.stringify(options) },',
+          '        { path: "words.txt", content: version.title + ": " + paths.length + " files, " + html.length + " bytes, " + JSON.stringify(options) + " " + JSON.stringify(facts) },',
           '        { path: "nested/bytes.bin", content: new Uint8Array([1, 2, 3]) },',
           "      ],",
           '      entry: "words.txt",',
           '      findings: [{ code: "COUNTED", severity: "hint", message: "Counted the files." }],',
           "    };",
+          "  },",
+          "});",
+          "export const summary = defineExporter({",
+          '  id: "summary",',
+          '  output: { mediaType: "text/plain", layout: "file", extension: ".txt" },',
+          "  async export({ version }) {",
+          '    return { files: [{ path: "summary.txt", content: "version " + version.number }] };',
+          "  },",
+          "});",
+          "export const clash = defineExporter({",
+          '  id: "clash",',
+          '  output: { mediaType: "text/plain", layout: "directory" },',
+          "  async export() {",
+          '    return { files: [{ path: "report", content: "a file" }, { path: "report/index.html", content: "under it" }] };',
           "  },",
           "});",
           "",
@@ -120,7 +283,7 @@ export function pluginFixtures(): FixturePackage[] {
         },
       },
       files: {
-        "exporter.js": `export default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: "words", output: { mediaType: "text/plain", layout: "file" }, async export() { return { files: [] }; } };\n`,
+        "exporter.js": `export default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: "words", output: { mediaType: "text/plain", layout: "directory" }, async export() { return { files: [{ path: "twin.txt", content: "twin" }] }; } };\n`,
       },
     },
     {

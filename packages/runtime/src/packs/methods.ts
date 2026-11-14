@@ -35,8 +35,11 @@ export function packMethods(options: {
           }),
           overwrite: params.overwrite === true,
           accept: params.acceptLicenses ?? [],
-          request: requestKey("pack/add", params),
+          // The caller's variables are how the items are read, not what is asked for: a retry
+          // with a refreshed token is the same request, and no token enters the record.
+          request: requestKey("pack/add", { ...params, environment: undefined }),
           cwd: source.root,
+          environment: params.environment ?? {},
         }),
       );
       options.dependenciesChanged?.(params.artifact);

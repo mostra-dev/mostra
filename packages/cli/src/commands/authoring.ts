@@ -4,7 +4,8 @@
  * and `deps/add` (INTERFACES §6, §15).
  */
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import {
   ARTIFACT_PROGRESS,
   artifactCreateMethod,
@@ -18,7 +19,7 @@ import {
   type SubmissionPolicy,
   type VerifyVerdict,
 } from "@mostra/protocol";
-import { parsePackAddress } from "@mostra/protocol/plugin";
+import { packVariables, parsePackAddress } from "@mostra/protocol/plugin";
 import {
   type CommandContext,
   type CommandDef,
@@ -387,9 +388,11 @@ export const addCommand: CommandDef = defineCommand({
     });
     if (!specs.some((spec) => parsePackAddress(spec) !== undefined)) {
       // Only npm packages: `deps/add`, as before packs existed.
+      const accept = context.flags["accept-license"];
       const result = await context.call(depsAddMethod, {
         artifact,
         packages: specs,
+        ...(Array.isArray(accept) && accept.length > 0 ? { acceptLicenses: [...accept] } : {}),
         ...(requestId !== undefined ? { requestId } : {}),
       });
       return {
@@ -400,11 +403,25 @@ export const addCommand: CommandDef = defineCommand({
       };
     }
     const accept = context.flags["accept-license"];
+    // The items are read with this shell's variables, not only the daemon's (which may have
+    // started before a token was set): those the artifact's components.json names, GitHub's
+    // tokens, shadcn's registry and the proxies (`packVariables`).
+    const components =
+      "path" in artifact
+        ? await readFile(join(artifact.path, "components.json"), "utf8").catch(() => undefined)
+        : undefined;
+    const environment = Object.fromEntries(
+      packVariables(components).flatMap((name) => {
+        const value = context.env[name];
+        return value !== undefined ? [[name, value]] : [];
+      }),
+    );
     const result = await context.call(packAddMethod, {
       artifact,
       specs,
       ...(context.flags["overwrite"] === true ? { overwrite: true } : {}),
       ...(Array.isArray(accept) && accept.length > 0 ? { acceptLicenses: [...accept] } : {}),
+      ...(Object.keys(environment).length > 0 ? { environment } : {}),
       ...(requestId !== undefined ? { requestId } : {}),
     });
     for (const note of result.notes) context.warn(note);

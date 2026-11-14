@@ -38,11 +38,11 @@ Mostra checks each plugin before it records anything: the contract versions it n
 
 ## Licenses that need an acknowledgment
 
-An install that brings a source-available or proprietary license, or one Mostra can't read, stops with `MOSTRA_LICENSE_UNACCEPTED`, naming each license, its class and the packages under it. That is disclosure, not a refusal: tell the person what the license asks (its summary and link are in the message) and, once they agree, repeat the command the diagnostic's fix gives, with `--accept-license <id>` for each license. The acknowledgment is recorded in the artifact's lockfile and needs no repeat. A host may accept licenses for its home, in which case none of this stops you. OSI-approved, public-domain and other free licenses need nothing.
+An install that brings a source-available or proprietary license, or one Mostra can't read, stops with `MOSTRA_LICENSE_UNACCEPTED`, naming each license, its class and the packages under it. That is disclosure, not a refusal: tell the person what the license asks (its summary and link are in the message) and, once they agree, repeat the command the diagnostic's fix gives, with `--accept-license <id>` for each license. The acknowledgment is recorded in the artifact's lockfile and needs no repeat. A `mostra add <package>` that upgrades a plugin, or changes what one depends on, is checked the same way and takes the same flag. A host may accept licenses for its home, in which case none of this stops you. OSI-approved, public-domain and other free licenses need nothing.
 
 ## Use what a plugin contributes
 
-- An exporter: `mostra export <dir> --as <id> --out <path>`, with `--option name=value` for its options.
+- An exporter: `mostra export <dir> --as <id> --out <path>`, with `--option name=value` for each option its schema takes (a value is read as JSON when it parses).
 - A CLI command: run `mostra` followed by its words, from the artifact's directory (or anywhere, for the home's plugins). `mostra plugin list` names each one.
 - An engine, an anchor provider or a connector: import the plugin's package in the page or in `live.ts`, as its README shows.
 

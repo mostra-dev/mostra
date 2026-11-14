@@ -339,6 +339,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       warm: locateWarmSet(environment),
       policy: () => readHomeSettings(home.path).dependencies ?? "auto",
       faults,
+      // Every lockfile that names plugins passes their gate (WP-16, D172 item 5).
+      plugins: () => getPlugins(),
       // Tests shorten the 300 s install limit to exercise MOSTRA_DEP_TIMEOUT.
       ...(Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) > 0
         ? { installTimeoutMs: Number(environment["MOSTRA_TEST_INSTALL_TIMEOUT_MS"]) }
@@ -395,7 +397,6 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       homePolicy: () => readHomeSettings(home.path).submission,
       verifier: getVerifier,
       unverified: unverifiedPublish,
-      loadPlugins: (resolved) => getPlugins().check(resolved),
     });
     return publisher;
   };

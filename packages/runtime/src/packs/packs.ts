@@ -12,10 +12,13 @@
  *    added again: `components.json`'s `tailwind.css`, else a stylesheet the entry imports, else a
  *    new `styles.css`;
  * 4. npm packages (the items' `dependencies` and any plain specs) are added as `deps/add` adds
- *    them, and the licenses the items' packages bring are disclosed and acknowledged as a
- *    plugin's are (D31), all in one change of the working lockfile;
- * 5. only then are the files written, each through a temporary file renamed into place, and
- *    every one restored when any fails.
+ *    them in one change of the working lockfile, which passes the plugin gate: the artifact's
+ *    plugins as they stand, and the licenses the items' packages and the items themselves
+ *    (`mostra.license`) bring, disclosed and acknowledged as a plugin's are (D31), before any
+ *    of the packages' scripts run;
+ * 5. only once the layout is complete are the files written, each through a temporary file
+ *    renamed into place, checked again for clashes just before; every one is restored when any
+ *    fails or the lockfile can't be recorded.
  *
  * What an artifact has no place for (`envVars`, Tailwind 3's `tailwind.config`, `next/font`, a
  * design system's `registry:base`) is listed as notes, never applied half-way.
@@ -28,7 +31,6 @@ import {
   checkArtifactPath,
   createDiagnostic,
   type Diagnostic,
-  type LicenseDisclosure,
   type PackAddResult,
   type PackFileChange,
   type PackItemSummary,
@@ -39,12 +41,12 @@ import {
   type RegistryCssValue,
   type RegistryItem,
 } from "@mostra/protocol/plugin";
-import type { Dependencies, DependencyTarget } from "../deps/index.ts";
+import type { Dependencies, DependencyTarget, StagedWrite } from "../deps/index.ts";
 import { isOffline } from "../deps/index.ts";
 import type { RequestKey } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { shellWord } from "../platform/index.ts";
-import type { Plugins } from "../plugins/index.ts";
+import type { ItemLicense, Plugins } from "../plugins/index.ts";
 import { type ReadItem, readComponentsJson, readItems } from "./read.ts";
 
 /** Options for {@link createPacks}. */
@@ -73,6 +75,8 @@ export interface Packs {
     readonly request?: RequestKey | undefined;
     /** Where relative item files are read from (the caller's working directory). */
     readonly cwd: string;
+    /** The caller's variables for reading the items, over the instance's (`packVariables`). */
+    readonly environment?: Readonly<Record<string, string>>;
   }): Promise<PackAddResult>;
 }
 
@@ -298,13 +302,7 @@ export function createPacks(options: PacksOptions): Packs {
   const { dependencies, plugins, log } = options;
   return {
     async add(input) {
-      if (input.kind === "file") {
-        throw fail(
-          "MOSTRA_PACK_TARGET_INVALID",
-          `${input.target.artifactPath} is a single-file artifact, which holds no other files: move it into a directory (as index.tsx) to add items to it.`,
-        );
-      }
-      const components = await readComponentsJson(input.root);
+      const components = input.kind === "dir" ? await readComponentsJson(input.root) : undefined;
       // `@scope/name` is an item only where the artifact's components.json registers `@scope`, as
       // shadcn reads it; anywhere else it is the scoped npm package it looks like.
       const isItem = (spec: string): boolean => {
@@ -315,6 +313,14 @@ export function createPacks(options: PacksOptions): Packs {
       };
       const itemSpecs = input.specs.filter(isItem);
       const plainSpecs = input.specs.filter((spec) => !isItem(spec));
+      // A single file holds no other files: items need a directory artifact; npm packages don't.
+      if (input.kind === "file" && itemSpecs.length > 0) {
+        throw fail(
+          "MOSTRA_PACK_TARGET_INVALID",
+          `${input.target.artifactPath} is a single-file artifact, which holds no other files: move it into a directory (as index.tsx) to add ${itemSpecs.join(", ")} to it.`,
+        );
+      }
+      const env: Environment = { ...options.env, ...(input.environment ?? {}) };
       const items: ReadItem[] =
         itemSpecs.length === 0
           ? []
@@ -322,7 +328,7 @@ export function createPacks(options: PacksOptions): Packs {
               itemSpecs,
               {
                 ...(components !== undefined ? { components } : {}),
-                env: options.env,
+                env,
                 offline: isOffline(options.env),
                 pluginItem: (pkg, name) => plugins.packItem(input.target, pkg, name),
                 ...(options.github !== undefined ? { github: options.github } : {}),
@@ -448,9 +454,6 @@ export function createPacks(options: PacksOptions): Packs {
         }
       }
 
-      // What each file does; nothing is written yet.
-      const changes: (PackFileChange & { content: string })[] = [];
-      const clashes: string[] = [];
       for (const file of planned.values()) {
         if (stylesheet !== undefined && file.path === stylesheet.path) {
           throw fail(
@@ -458,37 +461,52 @@ export function createPacks(options: PacksOptions): Packs {
             `${file.item} writes ${file.path}, the stylesheet the items' CSS joins.`,
           );
         }
-        await checkPlace(input.root, file.path);
-        const existing = await readFile(join(input.root, file.path), "utf8").catch(() => undefined);
-        if (existing === undefined)
-          changes.push({ path: file.path, action: "created", content: file.content });
-        else if (existing === file.content)
-          changes.push({ path: file.path, action: "unchanged", content: file.content });
-        else if (input.overwrite)
-          changes.push({ path: file.path, action: "overwritten", content: file.content });
-        else clashes.push(file.path);
       }
-      if (clashes.length > 0) {
-        throw new RpcError(
-          createDiagnostic("MOSTRA_PACK_FILE_EXISTS", {
-            message: `The artifact already has ${clashes.join(", ")}, with other content. Nothing was written.`,
-            fix: {
-              kind: "command",
-              command: `mostra add ${input.specs.join(" ")} --artifact ${shellWord(input.target.artifactPath)} --overwrite`,
-            },
-          }),
-        );
-      }
-      if (stylesheet !== undefined) {
-        await checkPlace(input.root, stylesheet.path);
-        if (stylesheet.before !== stylesheet.after) {
-          changes.push({
-            path: stylesheet.path,
-            action: stylesheet.before === undefined ? "created" : "updated",
-            content: stylesheet.after,
-          });
+      const command = `mostra add ${input.specs.map(shellWord).join(" ")} --artifact ${shellWord(input.target.artifactPath)}`;
+      // What each file does, judged against the artifact as it is now; it is judged again just
+      // before anything is written, inside the artifact's queue.
+      const judge = async (): Promise<(PackFileChange & { content: string })[]> => {
+        const changes: (PackFileChange & { content: string })[] = [];
+        const clashes: string[] = [];
+        for (const file of planned.values()) {
+          await checkPlace(input.root, file.path);
+          const existing = await readFile(join(input.root, file.path), "utf8").catch(
+            () => undefined,
+          );
+          if (existing === undefined)
+            changes.push({ path: file.path, action: "created", content: file.content });
+          else if (existing === file.content)
+            changes.push({ path: file.path, action: "unchanged", content: file.content });
+          else if (input.overwrite)
+            changes.push({ path: file.path, action: "overwritten", content: file.content });
+          else clashes.push(file.path);
         }
-      }
+        if (clashes.length > 0) {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_PACK_FILE_EXISTS", {
+              message: `The artifact already has ${clashes.join(", ")}, with other content. Nothing was written.`,
+              fix: { kind: "command", command: `${command} --overwrite` },
+            }),
+          );
+        }
+        if (stylesheet !== undefined) {
+          await checkPlace(input.root, stylesheet.path);
+          const now = await readFile(join(input.root, stylesheet.path), "utf8").catch(
+            () => undefined,
+          );
+          let after = now ?? '@import "tailwindcss";\n';
+          for (const block of cssBlocks) after = withCssBlock(after, block.name, block.css);
+          if (now !== after) {
+            changes.push({
+              path: stylesheet.path,
+              action: now === undefined ? "created" : "updated",
+              content: after,
+            });
+          }
+        }
+        return changes;
+      };
+      const firstLook = await judge();
 
       // 4. npm packages and licenses, then 5. the files, all or nothing.
       const itemPackages = [
@@ -511,43 +529,56 @@ export function createPacks(options: PacksOptions): Packs {
           `The items name development packages (${devDependencies.join(", ")}), which an artifact's build doesn't use; add any the page imports with mostra add.`,
         );
       }
-      const files = changes.map(({ path, action }) => ({ path, action }));
-      if (packages.length === 0) {
-        await writeAll(input.root, changes);
-        log.info("packs.added", { items: summaries.map((item) => item.name), files: files.length });
-        return { items: summaries, files, packages: [], licenses: [], notes };
-      }
       const names = itemPackages.map(packageName);
+      // The items' own licenses (`mostra.license`): copied source is disclosed and acknowledged
+      // as a package is (D31).
+      const itemLicenses: ItemLicense[] = items.flatMap((read) =>
+        read.item.mostra?.license !== undefined
+          ? [
+              {
+                name: read.item.name,
+                license: read.item.mostra.license,
+                ...(read.item.mostra.licenseClass !== undefined
+                  ? { class: read.item.mostra.licenseClass }
+                  : {}),
+              },
+            ]
+          : [],
+      );
+      // Every install is one change of the working lockfile, in the artifact's queue, through
+      // the plugin gate; the files are written last, once the layout is complete (WP-16 review).
+      let changes = firstLook;
       return dependencies.change<PackAddResult>(
         { ...input.target, add: packages, request: input.request },
         async (staged) => {
-          let disclosures: readonly LicenseDisclosure[] = [];
-          let record = { ...(staged.previous?.licenses ?? {}) };
-          if (names.length > 0) {
-            const licenses = await plugins.disclosePackages({
-              nodeModules: staged.nodeModules,
+          const admitted = await plugins.admitChange(
+            { kind: "artifact", target: input.target },
+            {
+              staged,
               packages: names,
-              previous: staged.previous?.licenses,
+              items: itemLicenses,
               accept: input.accept,
-              command: `mostra add ${input.specs.join(" ")} --artifact ${shellWord(input.target.artifactPath)}`,
-            });
-            disclosures = licenses.disclosures;
-            record = { ...record, ...licenses.record };
-          }
-          await writeAll(input.root, changes);
-          log.info("packs.added", {
-            items: summaries.map((item) => item.name),
-            files: files.length,
-            packages: staged.added.map((pkg) => pkg.name),
-          });
+              command,
+            },
+          );
           return {
-            plugins: staged.previous?.plugins ?? [],
-            licenses: record,
+            plugins: admitted.plugins,
+            licenses: admitted.licenses,
+            write: async () => {
+              changes = await judge();
+              const written = await writeAll(input.root, changes);
+              log.info("packs.added", {
+                items: summaries.map((item) => item.name),
+                files: changes.length,
+                packages: staged.added.map((pkg) => pkg.name),
+              });
+              return written;
+            },
             result: (lockDigest) => ({
               items: summaries,
-              files,
+              files: changes.map(({ path, action }) => ({ path, action })),
               packages: [...staged.added],
-              licenses: [...disclosures],
+              licenses: [...admitted.disclosures],
               lockDigest,
               notes,
             }),
@@ -608,11 +639,14 @@ async function checkPlace(root: string, path: string): Promise<void> {
   }
 }
 
-/** Writes every change, each through a temporary file; restores everything when one fails. */
+/**
+ * Writes every change, each through a temporary file; restores everything when one fails. The
+ * replaced files stay aside until `commit` (the lockfile was recorded) or `rollback` (it wasn't).
+ */
 async function writeAll(
   root: string,
   changes: readonly (PackFileChange & { readonly content: string })[],
-): Promise<void> {
+): Promise<StagedWrite> {
   const token = randomBytes(6).toString("hex");
   const done: { path: string; backup?: string }[] = [];
   const createdDirs: string[] = [];
@@ -647,16 +681,26 @@ async function writeAll(
       done.push({ path: file, ...(backup !== undefined ? { backup } : {}) });
     }
   } catch (error) {
-    for (const entry of done.reverse()) {
-      await rm(entry.path, { force: true });
-      if (entry.backup !== undefined) await rename(entry.backup, entry.path);
-    }
-    for (const created of createdDirs.reverse())
-      await rm(created, { recursive: true, force: true });
+    await restore();
     throw fail(
       "MOSTRA_PACK_TARGET_INVALID",
       `Writing the items' files failed (${error instanceof Error ? error.message : String(error)}); nothing was changed.`,
     );
   }
-  for (const entry of done) if (entry.backup !== undefined) await rm(entry.backup, { force: true });
+  async function restore(): Promise<void> {
+    for (const entry of [...done].reverse()) {
+      await rm(entry.path, { force: true });
+      if (entry.backup !== undefined) await rename(entry.backup, entry.path);
+    }
+    for (const created of [...createdDirs].reverse())
+      await rm(created, { recursive: true, force: true });
+  }
+  return {
+    commit: async () => {
+      for (const entry of done) {
+        if (entry.backup !== undefined) await rm(entry.backup, { force: true });
+      }
+    },
+    rollback: restore,
+  };
 }

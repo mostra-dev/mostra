@@ -131,15 +131,6 @@ export interface PublisherOptions {
    * shared, so `gc` never removes files they use.
    */
   readonly gate?: Gate;
-  /**
-   * Loads the plugins a resolved lockfile names, as `verify` and `publish` must (ROUND-3 §6.4:
-   * contract ranges are checked at install and at load), throwing the first `MOSTRA_PLUGIN_*` or
-   * `MOSTRA_LICENSE_*` error, so no version records plugins this release can't load (WP-16).
-   */
-  readonly loadPlugins?: (resolved: {
-    readonly lock: string;
-    readonly nodeModules: string;
-  }) => Promise<void>;
 }
 
 /** A version an export reads: its artifact, its summary and its sealed directory. */
@@ -533,7 +524,9 @@ export function createPublisher(options: PublisherOptions): Publisher {
       artifactDir: source.root,
       artifactPath: path,
     });
-    await options.loadPlugins?.({ lock: deps.lock, nodeModules: deps.nodeModules });
+    // A lockfile that names plugins passed the plugin gate inside `resolve` (D172 item 5): its
+    // ranges, conflicts and licenses, then its entries, so no version records plugins this release
+    // can't load, or a license nobody acknowledged.
     faults.at("publish:after-dependencies");
 
     // 3. Digests (DATA_MODEL §2).
@@ -1081,6 +1074,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
           artifactDir: source.root,
           artifactPath: path,
           packages: params.packages,
+          ...(params.acceptLicenses !== undefined ? { accept: params.acceptLicenses } : {}),
           request: requestKey("deps/add", params),
         });
       });

@@ -6,11 +6,15 @@
  *
  * - `plugin/inspect` loads entries and answers what each exports: the stamp `define*` put on it,
  *   and its ID, so the supervisor checks contracts without trusting the manifest alone.
- * - `plugin/export` runs an exporter on a version's files and answers the files it returned.
+ * - `plugin/export` loads an exporter, checks it is one this runtime serves and that the options
+ *   fit its schema, then runs it on a version's files and answers the files it returned.
  */
 import { readdir, readFile, realpath } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { checkArtifactPath } from "@mostra/protocol";
+import { stampServed } from "@mostra/protocol/plugin";
+import * as z from "zod";
 import { connectToSupervisor } from "../../processes/index.ts";
 import {
   EXPORT_METHOD,
@@ -56,13 +60,31 @@ async function inspect(request: InspectRequest): Promise<InspectedEntry[]> {
   return answers;
 }
 
-/** A version's files, read-only, as the exporter contract's `FileTree`. */
+/** `inner` is `outer` or inside it (both real paths), judged by whole segments. */
+function isInside(outer: string, inner: string): boolean {
+  const from = relative(outer, inner);
+  return from === "" || (from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from));
+}
+
+/** Whether a path inside the version names its server code (case-folded: some systems fold). */
+const isServer = (relativePath: string): boolean =>
+  (relativePath.split(/[/\\]/)[0] ?? "").toLowerCase() === "server";
+
+/**
+ * A version's files, read-only, as the exporter contract's `FileTree`: every file but its server
+ * code. A path is judged after it is normalized and its links resolved, so `./server/x`,
+ * `client/../server/x` and `SERVER/x` name server code too.
+ */
 function tree(root: string) {
-  const inside = async (path: string): Promise<string> => {
-    const full = await realpath(join(root, ...path.split("/")));
-    const from = relative(await realpath(root), full);
-    if (from.startsWith("..") || from.split(sep).includes("..")) {
-      throw new Error(`${path} isn't a file of the version.`);
+  const file = async (path: string): Promise<string> => {
+    const check = checkArtifactPath(path);
+    if (!check.ok) throw new Error(`${path} isn't a file of the version.`);
+    if (isServer(check.path)) throw new Error("Server code isn't part of an export's input.");
+    const realRoot = await realpath(root);
+    const full = await realpath(join(root, ...check.path.split("/")));
+    if (!isInside(realRoot, full)) throw new Error(`${path} isn't a file of the version.`);
+    if (isServer(relative(realRoot, full))) {
+      throw new Error("Server code isn't part of an export's input.");
     }
     return full;
   };
@@ -70,40 +92,104 @@ function tree(root: string) {
     const found: string[] = [];
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (prefix === "" && isServer(entry.name)) continue;
       if (entry.isDirectory()) found.push(...(await walk(join(dir, entry.name), path)));
       else if (entry.isFile()) found.push(path);
     }
     return found;
   };
   return {
-    list: async () => (await walk(root, "")).filter((path) => !path.startsWith("server/")).sort(),
-    read: async (path: string) => {
-      if (path.startsWith("server/"))
-        throw new Error("Server code isn't part of an export's input.");
-      return new Uint8Array(await readFile(await inside(path)));
-    },
-    readText: async (path: string) => {
-      if (path.startsWith("server/"))
-        throw new Error("Server code isn't part of an export's input.");
-      return readFile(await inside(path), "utf8");
-    },
+    list: async () => (await walk(root, "")).sort(),
+    read: async (path: string) => new Uint8Array(await readFile(await file(path))),
+    readText: async (path: string) => readFile(await file(path), "utf8"),
   };
 }
 
+/** Why an options schema refuses `options`, in one line. */
+function optionProblems(schema: unknown, options: Readonly<Record<string, unknown>>): string {
+  const parsed = z
+    .fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0])
+    .safeParse(options);
+  if (parsed.success) return "";
+  return parsed.error.issues
+    .slice(0, 10)
+    .map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "options"}: ${issue.message}`)
+    .join("; ");
+}
+
 async function runExport(request: ExportRequest): Promise<ExportResponse> {
-  const exporter = (await load(request.file, request.export)) as {
-    export(
+  const value = await load(request.file, request.export);
+  const refuse = (
+    code:
+      | "MOSTRA_PLUGIN_ENTRY_INVALID"
+      | "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED"
+      | "MOSTRA_PLUGIN_OPTIONS_INVALID",
+    message: string,
+  ): ExportResponse => ({ refused: { code, message } });
+  if (typeof value !== "object" || value === null) {
+    return refuse("MOSTRA_PLUGIN_ENTRY_INVALID", "its entry exports no exporter definition");
+  }
+  const exporter = value as {
+    contract?: unknown;
+    id?: unknown;
+    output?: { layout?: unknown; extension?: unknown };
+    options?: unknown;
+    export?: unknown;
+  };
+  const stamp = exporter.contract as { name?: unknown; version?: unknown } | undefined;
+  if (stamp?.name !== "exporter" || typeof exporter.export !== "function") {
+    return refuse(
+      "MOSTRA_PLUGIN_ENTRY_INVALID",
+      "its entry exports no stamped exporter definition",
+    );
+  }
+  if (!stampServed(stamp, "exporter", request.implemented)) {
+    return refuse(
+      "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED",
+      `it was built with @mostra/contract-exporter ${String(stamp.version)}; this Mostra serves ${request.implemented.join(", ")}`,
+    );
+  }
+  if (exporter.id !== request.id) {
+    return refuse(
+      "MOSTRA_PLUGIN_ENTRY_INVALID",
+      `its definition is "${String(exporter.id)}", not "${request.id}" as the manifest says`,
+    );
+  }
+  const layout = exporter.output?.layout === "file" ? "file" : "directory";
+  const extension =
+    typeof exporter.output?.extension === "string" ? exporter.output.extension : undefined;
+  if (exporter.options === undefined) {
+    if (Object.keys(request.options).length > 0) {
+      return refuse(
+        "MOSTRA_PLUGIN_OPTIONS_INVALID",
+        `it takes no options, and was given ${Object.keys(request.options).join(", ")}`,
+      );
+    }
+  } else {
+    let problems: string;
+    try {
+      problems = optionProblems(exporter.options, request.options);
+    } catch (error) {
+      return refuse(
+        "MOSTRA_PLUGIN_ENTRY_INVALID",
+        `its options aren't a JSON Schema Mostra reads (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+    if (problems !== "") return refuse("MOSTRA_PLUGIN_OPTIONS_INVALID", problems);
+  }
+  const controller = new AbortController();
+  const lines: string[] = [];
+  const result = (await (
+    exporter.export as (
       input: unknown,
       context: unknown,
-    ): Promise<{
+    ) => Promise<{
       files?: readonly { path: unknown; content: unknown }[];
       entry?: unknown;
       findings?: unknown;
-    }>;
-  };
-  const controller = new AbortController();
-  const lines: string[] = [];
-  const result = await exporter.export(
+    }>
+  ).call(
+    exporter,
     { version: request.version, files: tree(request.versionDir), options: request.options },
     {
       signal: controller.signal,
@@ -112,7 +198,13 @@ async function runExport(request: ExportRequest): Promise<ExportResponse> {
       },
       mostraVersion: request.mostraVersion,
     },
-  );
+  )) as
+    | {
+        files?: readonly { path: unknown; content: unknown }[];
+        entry?: unknown;
+        findings?: unknown;
+      }
+    | undefined;
   const files = (result?.files ?? []).map((file) => {
     if (typeof file.path !== "string") throw new Error("An exported file has no path.");
     if (typeof file.content === "string") return { path: file.path, text: file.content };
@@ -124,6 +216,7 @@ async function runExport(request: ExportRequest): Promise<ExportResponse> {
   return {
     files,
     ...(typeof result?.entry === "string" ? { entry: result.entry } : {}),
+    output: { layout, ...(extension !== undefined ? { extension } : {}) },
     findings: Array.isArray(result?.findings) ? (result.findings as unknown[]) : [],
     log: lines,
   };

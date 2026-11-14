@@ -16,8 +16,9 @@
  *   (`new-york-v4` when it names none);
  * - `plugin:<package>/<item>`: a pack an installed plugin carries (`contributes.packs`).
  */
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, posix, resolve } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import {
   type PackAddress,
@@ -82,17 +83,62 @@ export interface ComponentsJson {
   >;
 }
 
+/** An address as reading follows it: a pack address, or a GitHub item's relative dependency. */
+type Address =
+  | PackAddress
+  | {
+      readonly kind: "repo-file";
+      readonly owner: string;
+      readonly repo: string;
+      readonly sha: string;
+      readonly path: string;
+    };
+
+/** Where an item was read, for its relative dependencies. */
+interface From {
+  /** A local item's directory. */
+  readonly base?: string;
+  /** A GitHub item's repository and commit, and the directory of its registry entry. */
+  readonly github?: { readonly owner: string; readonly repo: string; readonly sha: string };
+  readonly githubBase?: string;
+  /** A URL item's URL. */
+  readonly url?: string;
+}
+
+/** `inner` is `outer` or inside it (both real paths), by whole segments. */
+function isInside(outer: string, inner: string): boolean {
+  const from = relative(outer, inner);
+  return from === "" || (from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from));
+}
+
 const SHADCN_REGISTRY = "https://ui.shadcn.com/r";
 const DEFAULT_STYLE = "new-york-v4";
 
 const fail = (code: Parameters<typeof createDiagnostic>[0], message: string): RpcError =>
   new RpcError(createDiagnostic(code, { message }));
 
+/** Whether a URL names this machine. */
+function isLoopback(url: URL): boolean {
+  return (
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(url.hostname)
+  );
+}
+
 /** Whether a URL may be read: `https:`, or `http:` to this machine. */
 function readable(url: URL): boolean {
   if (url.protocol === "https:") return true;
-  if (url.protocol !== "http:") return false;
-  return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  return url.protocol === "http:" && isLoopback(url);
+}
+
+/**
+ * Whether a read of `first` may follow a redirect to `next`: `next` is readable, and a registry
+ * elsewhere never sends a read to this machine (WP-16 review, R01's addendum): only an address
+ * the caller named on this machine leads to another one here.
+ */
+export function mayFollow(first: URL, next: URL): boolean {
+  return readable(next) && (!isLoopback(next) || isLoopback(first));
 }
 
 const agents = new Map<string, EnvHttpProxyAgent>();
@@ -164,10 +210,10 @@ export async function readUrl(
     if (response.status < 300 || response.status >= 400 || location === null) break;
     await response.body?.cancel();
     const next = new URL(location, current);
-    if (!readable(next)) {
+    if (!mayFollow(url, next)) {
       throw fail(
         "MOSTRA_PACK_FETCH_FAILED",
-        `${redactUrl(url)} redirected to an address that isn't https, which Mostra doesn't follow.`,
+        `${redactUrl(url)} redirected to ${isLoopback(next) ? "this machine" : "an address that isn't https"}, which Mostra doesn't follow.`,
       );
     }
     if (hop >= 4) {
@@ -277,6 +323,7 @@ export async function readItems(
     raw: "https://raw.githubusercontent.com",
   };
   const shas = new Map<string, string>();
+  const registries = new Map<string, Promise<{ item: unknown; base: string }[]>>();
 
   const githubToken = (): string | undefined =>
     context.env["GH_TOKEN"] || context.env["GITHUB_TOKEN"] || undefined;
@@ -338,8 +385,24 @@ export async function readItems(
     });
   };
 
-  /** A repository's registry, its `include`s read in, each item with the directory it came from. */
-  const registryOf = async (
+  /**
+   * A repository's registry, its `include`s read in, each item with the directory it came from;
+   * read once per commit for every item of the call.
+   */
+  const registryOf = (
+    owner: string,
+    repo: string,
+    sha: string,
+  ): Promise<{ item: unknown; base: string }[]> => {
+    const key = `${owner}/${repo}@${sha}`;
+    let known = registries.get(key);
+    if (known === undefined) {
+      known = readRegistry(owner, repo, sha);
+      registries.set(key, known);
+    }
+    return known;
+  };
+  const readRegistry = async (
     owner: string,
     repo: string,
     sha: string,
@@ -382,10 +445,10 @@ export async function readItems(
 
   /** Reads one address into an item and its files' contents. */
   const read = async (
-    address: PackAddress,
+    address: Address,
     text: string,
-    from: { base?: string; github?: { owner: string; repo: string; sha: string } } | undefined,
-  ): Promise<{ item: RegistryItem; source: string; contents: string[]; context?: typeof from }> => {
+    from: From | undefined,
+  ): Promise<{ item: RegistryItem; source: string; contents: string[]; context?: From }> => {
     if (address.kind === "file") {
       const path = isAbsolute(address.path)
         ? address.path
@@ -400,17 +463,28 @@ export async function readItems(
       }
       const item = parseItem(body, path);
       const contents: string[] = [];
+      // A local item's files are read from its own directory, never from elsewhere on the
+      // machine (WP-16 review R03 finding 10): their content is copied into a published source.
+      const dir = realpathSync(dirname(path));
       for (const file of item.files ?? []) {
         if (file.content !== undefined) contents.push(file.content);
         else {
+          let real: string;
           try {
-            contents.push(await readFile(resolve(dirname(path), file.path), "utf8"));
+            real = realpathSync(resolve(dir, file.path));
           } catch {
             throw fail(
               "MOSTRA_PACK_ITEM_INVALID",
               `${path}'s file ${file.path} has no content and isn't beside the item.`,
             );
           }
+          if (!isInside(dir, real)) {
+            throw fail(
+              "MOSTRA_PACK_ITEM_INVALID",
+              `${path}'s file ${file.path} is outside the item's directory, which Mostra doesn't read from.`,
+            );
+          }
+          contents.push(await readFile(real, "utf8"));
         }
       }
       return { item, source: path, contents, context: { base: dirname(path) } };
@@ -424,6 +498,41 @@ export async function readItems(
         );
       }
       return read({ kind: "file", path: file }, file, undefined);
+    }
+    if (address.kind === "repo-file") {
+      // A GitHub item's relative dependency: an item file of the same repository, at its commit.
+      const body = await repoFile(address.owner, address.repo, address.sha, address.path);
+      const where = `${address.owner}/${address.repo}/${address.path}@${address.sha.slice(0, 12)}`;
+      if (body === undefined) {
+        throw fail("MOSTRA_PACK_ITEM_NOT_FOUND", `There's no item ${where}.`);
+      }
+      const item = parseItem(body, where);
+      const contents: string[] = [];
+      for (const file of item.files ?? []) {
+        if (file.content !== undefined) {
+          contents.push(file.content);
+          continue;
+        }
+        const fileBody = await repoFile(
+          address.owner,
+          address.repo,
+          address.sha,
+          posix.join(posix.dirname(address.path), file.path),
+        );
+        if (fileBody === undefined) {
+          throw fail("MOSTRA_PACK_ITEM_INVALID", `${where}: ${file.path} isn't in the repository.`);
+        }
+        contents.push(fileBody);
+      }
+      return {
+        item,
+        source: `https://github.com/${address.owner}/${address.repo}/blob/${address.sha}/${address.path}`,
+        contents,
+        context: {
+          github: { owner: address.owner, repo: address.repo, sha: address.sha },
+          githubBase: posix.dirname(address.path),
+        },
+      };
     }
     if (address.kind === "github") {
       const sha = await commitOf(address.owner, address.repo, address.ref);
@@ -463,7 +572,10 @@ export async function readItems(
         item,
         source: `https://github.com/${address.owner}/${address.repo}/tree/${sha}`,
         contents,
-        context: { github: { owner: address.owner, repo: address.repo, sha } },
+        context: {
+          github: { owner: address.owner, repo: address.repo, sha },
+          githubBase: entry.base,
+        },
       };
     }
     // url, namespace and name read one item's JSON from a URL.
@@ -479,6 +591,15 @@ export async function readItems(
         );
       }
       const template = typeof registry === "string" ? registry : registry.url;
+      // A variable names a credential or a parameter, never where the request goes: one in the
+      // URL's scheme or host could send the others anywhere (WP-16 review, R01's addendum).
+      const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i.exec(template)?.[0] ?? template;
+      if (origin.includes("${")) {
+        throw fail(
+          "MOSTRA_PACK_ADDRESS_INVALID",
+          `The artifact's components.json names the ${address.namespace} registry's host through a variable (${origin}); write the host itself, and keep variables to its params and headers.`,
+        );
+      }
       const style = context.components?.style ?? DEFAULT_STYLE;
       const target = new URL(
         expand(template, context.env)
@@ -520,16 +641,34 @@ export async function readItems(
       }
       contents.push(file.content);
     }
-    return { item, source: url, contents };
+    // Where it was read, without the query a registry's params (a token) may fill.
+    return { item, source: redactUrl(new URL(url)), contents, context: { url } };
   };
 
-  /** A registry dependency's address, read as shadcn reads it. */
-  const dependencyAddress = (
-    text: string,
-    from: { base?: string; github?: { owner: string; repo: string; sha: string } } | undefined,
-  ): PackAddress => {
+  /**
+   * A registry dependency's address, read as shadcn reads it. A relative item file is relative to
+   * the item that names it: beside a local item, in a GitHub item's repository at its commit,
+   * under a URL item's URL. A remote item never names a file on this machine.
+   */
+  const dependencyAddress = (text: string, from: From | undefined): Address => {
     const parsed = parsePackAddress(text);
     if (parsed !== undefined) {
+      if (parsed.kind === "file" && (from?.github !== undefined || from?.url !== undefined)) {
+        if (isAbsolute(parsed.path)) {
+          throw fail(
+            "MOSTRA_PACK_ADDRESS_INVALID",
+            `A remote item names "${text}", a file on this machine, which Mostra doesn't read for it.`,
+          );
+        }
+        if (from.github !== undefined) {
+          const path = posix.normalize(posix.join(from.githubBase ?? ".", parsed.path));
+          if (path.startsWith("..")) {
+            throw fail("MOSTRA_PACK_ADDRESS_INVALID", `"${text}" leaves the item's repository.`);
+          }
+          return { kind: "repo-file", ...from.github, path };
+        }
+        return { kind: "url", url: new URL(parsed.path, from.url).href };
+      }
       // A dependency of a local item names a sibling item file relative to it.
       if (parsed.kind === "file" && from?.base !== undefined && !isAbsolute(parsed.path)) {
         return { kind: "file", path: resolve(from.base, parsed.path) };
@@ -542,11 +681,18 @@ export async function readItems(
 
   const visit = async (
     text: string,
-    address: PackAddress,
+    address: Address,
     requiredBy: string | undefined,
-    from: { base?: string; github?: { owner: string; repo: string; sha: string } } | undefined,
+    from: From | undefined,
   ): Promise<void> => {
-    const key = address.kind === "file" ? `file:${address.path}` : `${address.kind}:${text}`;
+    const key =
+      address.kind === "file"
+        ? `file:${address.path}`
+        : address.kind === "repo-file"
+          ? `repo-file:${address.owner}/${address.repo}@${address.sha}/${address.path}`
+          : address.kind === "url"
+            ? `url:${address.url}`
+            : `${address.kind}:${text}`;
     if (done.has(key) || visiting.has(key)) return;
     if (done.size >= ITEM_LIMIT) {
       throw fail(

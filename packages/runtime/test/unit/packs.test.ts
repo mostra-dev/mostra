@@ -11,7 +11,7 @@ import {
   rewriteImports,
   withCssBlock,
 } from "../../src/packs/packs.ts";
-import { parseItem } from "../../src/packs/read.ts";
+import { mayFollow, parseItem } from "../../src/packs/read.ts";
 
 const aliases = { components: "components", ui: "components/ui", lib: "lib", hooks: "hooks" };
 
@@ -116,5 +116,26 @@ describe("an item's CSS", () => {
     expect(twice.match(/mostra add vars: begin/g)).toHaveLength(1);
     expect(twice).toContain("--a: 1;");
     expect(twice.startsWith('@import "tailwindcss";')).toBe(true);
+  });
+});
+
+describe("which redirects a read follows", () => {
+  const url = (text: string) => new URL(text);
+  it("follows https anywhere, and this machine only from this machine (WP-16 review)", () => {
+    expect(mayFollow(url("https://r.example/a.json"), url("https://cdn.example/a.json"))).toBe(
+      true,
+    );
+    expect(mayFollow(url("https://r.example/a.json"), url("http://cdn.example/a.json"))).toBe(
+      false,
+    );
+    for (const local of [
+      "http://127.0.0.1:8080/x",
+      "http://localhost/x",
+      "http://[::1]/x",
+      "https://127.0.0.2/x",
+    ]) {
+      expect(mayFollow(url("https://r.example/a.json"), url(local)), local).toBe(false);
+      expect(mayFollow(url("http://127.0.0.1:9/a.json"), url(local)), local).toBe(true);
+    }
   });
 });

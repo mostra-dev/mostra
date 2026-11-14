@@ -92,6 +92,33 @@ export interface DependenciesOptions {
   readonly installTimeoutMs?: number;
   /** Test fault points `deps:*`. */
   readonly faults?: Faults;
+  /**
+   * The plugin gate (WP-16, D172 items 5, 7 and 8): every working lockfile that names plugins
+   * passes it before its install scripts run, before it is used and before it is recorded, whoever
+   * changed it (`deps/add`, a resolution at `verify` or `publish`, `change`'s own inspector). It is
+   * a getter because the plugins module is made after this one, which it uses.
+   */
+  readonly plugins?: () => PluginGate | undefined;
+}
+
+/**
+ * What the plugins module answers for a staged lockfile that names plugins: their checks, the
+ * disclosure of their licenses before any of their code or scripts run (it calls `staged.ready`
+ * once they pass), their entries; and the lockfile's plugins and acknowledgments after it. It
+ * throws the refusal (`MOSTRA_PLUGIN_*`, `MOSTRA_LICENSE_UNACCEPTED`), and nothing is recorded.
+ */
+export interface PluginGate {
+  admit(input: {
+    readonly target: DependencyTarget;
+    readonly staged: StagedChange;
+    /** Licenses the caller acknowledged (`--accept-license`). */
+    readonly accept: readonly string[];
+    /** The command a refusal's fix repeats with `--accept-license`. */
+    readonly command: string;
+  }): Promise<{
+    readonly plugins: readonly string[];
+    readonly licenses: Readonly<Record<string, LockLicense>>;
+  }>;
 }
 
 /** What a build resolves its packages from. */
@@ -188,6 +215,8 @@ export interface Dependencies {
   add(
     target: DependencyTarget & {
       readonly packages: readonly string[];
+      /** Licenses acknowledged for the plugins the change touches (`--accept-license`, D31). */
+      readonly accept?: readonly string[];
       readonly request?: RequestKey | undefined;
     },
   ): Promise<DepsAddResult>;
@@ -207,8 +236,16 @@ export interface Dependencies {
     },
     inspect: (staged: StagedChange) => Promise<StagedOutcome<T>>,
   ): Promise<T>;
-  /** The working lockfile of `key` as it stands, and the layout it builds against. */
-  working(target: DependencyTarget): Promise<StagedChange | undefined>;
+  /**
+   * The working lockfile of `key` as it stands, and the layout it builds against. With
+   * `install: false` nothing is installed: `nodeModules` is the layout only when it is complete
+   * with its scripts run, else absent (a lookup that mustn't start an install, such as finding a
+   * plugin's command for a word `mostra` doesn't know).
+   */
+  working(
+    target: DependencyTarget,
+    options?: { readonly install?: boolean },
+  ): Promise<(Omit<StagedChange, "nodeModules"> & { readonly nodeModules?: string }) | undefined>;
 }
 
 /** A lockfile change before it is recorded: what `Dependencies.change` hands its inspector. */
@@ -233,8 +270,20 @@ export interface StagedChange {
 export interface StagedOutcome<T> {
   readonly plugins?: readonly string[];
   readonly licenses?: Readonly<Record<string, LockLicense>>;
+  /**
+   * Files the change writes beside the lockfile (a pack's items): run once the layout is complete
+   * with its scripts, just before the lockfile is recorded; `rollback` when recording fails,
+   * `commit` once it succeeded. A failure of its own records nothing.
+   */
+  write?(): Promise<StagedWrite>;
   /** Builds the call's result from the lockfile's digest once it is recorded. */
   result(lockDigest: string): T;
+}
+
+/** Files written beside a lockfile change, until the lockfile is recorded. */
+export interface StagedWrite {
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
 }
 
 /**
@@ -430,6 +479,9 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         dir: work,
         cwd: input.artifactDir,
         offline: isOff,
+        // A resolution writes only a lockfile: nothing it fetches may run a script (a git
+        // dependency's `prepare`, WP-16 review R03 finding 8), whose license nobody has seen yet.
+        scripts: false,
         releaseAge: {
           exempt: additions.filter((spec) => spec.exact !== undefined).map((spec) => spec.name),
         },
@@ -493,7 +545,11 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             cwd: target.artifactDir,
             ownerRef: target.key,
           });
-          if (!outcome.ok) throw new RpcError(outcome.diagnostic);
+          if (!outcome.ok) {
+            // Scripts that failed part-way leave a layout nobody can trust: it is made again.
+            await rm(dir, { recursive: true, force: true });
+            throw new RpcError(outcome.diagnostic);
+          }
           await writeFile(
             join(dir, LAYOUT_MARKER),
             `${JSON.stringify({ lockDigest: digest, installer: install().version })}\n`,
@@ -854,9 +910,13 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             previous: working?.lock.pnpm,
           });
         }
-        // Plugins and acknowledgments (WP-16) change only through `change`: carried as they are.
+        // Plugins and acknowledgments (WP-16) are carried as they are; a lockfile that names
+        // plugins passes the gate again, since its packages may have moved (D172 item 5).
         lock = withExtras(lock, working?.lock);
-        const resolved = await settle(lock, target);
+        const resolved = await admitted(target, lock, working?.lock, [], () => {
+          const names = (lock.plugins ?? []).map(shellWord).join(" ");
+          return `mostra plugin add ${names} --artifact ${shellWord(target.artifactPath)}`;
+        });
         const seen = rowText(target.key);
         return {
           ...resolved,
@@ -890,13 +950,25 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             ? undefined
             : ledger.read((db) => recordedResult<DepsAddResult>(db, request));
         if (recorded !== undefined) return recorded;
-        const staged = await stage(target, target.packages, []);
+        // A change of an artifact with plugins (an upgrade of one, or a package that moves their
+        // tree) runs nothing before the gate admits it (WP-16 review R01 finding 1); one without
+        // installs as it always did, its packages the agent's own choice (D20).
+        const plugins = (readWorking(target.key)?.lock.plugins ?? []).length > 0;
+        const staged = await stage(target, target.packages, [], !plugins);
+        const resolved = await admitted(
+          target,
+          staged.lock,
+          staged.working?.lock,
+          target.accept ?? [],
+          () =>
+            `mostra add ${target.packages.map(shellWord).join(" ")} --artifact ${shellWord(target.artifactPath)}`,
+        );
         const result: DepsAddResult = {
           packages: staged.packages,
-          lockDigest: staged.resolved.lockDigest,
+          lockDigest: resolved.lockDigest,
         };
         ledger.write((db) => {
-          writeRow(db, target.key, staged.resolved.lock, staged.names);
+          writeRow(db, target.key, resolved.lock, staged.names);
           if (request !== undefined) recordResult(db, request, result);
         });
         return result;
@@ -923,36 +995,112 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           ...(staged.working ? { previous: staged.working.lock } : {}),
         });
         await complete();
-        const { plugins: _plugins, licenses: _licenses, ...packages } = staged.lock;
-        const plugins = outcome.plugins ?? [];
-        const licenses = outcome.licenses ?? {};
-        const final: Lock = {
-          ...packages,
-          ...(plugins.length > 0 ? { plugins } : {}),
-          ...(Object.keys(licenses).length > 0 ? { licenses } : {}),
-        };
-        const text = lockText(final);
+        const text = lockText(withOutcome(staged.lock, outcome));
         const result = outcome.result(lockDigest(text));
-        ledger.write((db) => {
-          writeRow(db, target.key, text, staged.names);
-          if (request !== undefined) recordResult(db, request, result);
-        });
+        const written = await outcome.write?.();
+        try {
+          ledger.write((db) => {
+            writeRow(db, target.key, text, staged.names);
+            if (request !== undefined) recordResult(db, request, result);
+          });
+        } catch (problem) {
+          await written?.rollback();
+          throw problem;
+        }
+        await written?.commit();
         return result;
       }),
 
-    working: async (target) => {
+    working: async (target, workingOptions) => {
       const working = readWorking(target.key);
       if (working === undefined) return undefined;
-      const resolved = await settle(working.lock, target);
-      return {
+      const base = {
         lock: working.lock,
-        nodeModules: resolved.nodeModules,
         added: [],
         ready: async () => undefined,
         previous: working.lock,
       };
+      if (workingOptions?.install === false) {
+        const nodeModules = await installedLayout(working.lock);
+        return nodeModules !== undefined ? { ...base, nodeModules } : base;
+      }
+      // The working lockfile was admitted when it was recorded: its layout installs with its
+      // scripts, as it did then.
+      const resolved = await settle(working.lock, target);
+      return { ...base, nodeModules: resolved.nodeModules };
     },
   };
+
+  /**
+   * Settles `lock` for use: a lockfile without plugins as it always settled; one with plugins with
+   * its scripts held, through the plugin gate, which runs them once it admitted the plugins, and
+   * with the plugins and acknowledgments the gate answers (a host's pre-acceptance is recorded
+   * there). Without a gate (an instance with no plugins module) it fails closed.
+   */
+  async function admitted(
+    target: DependencyTarget,
+    lock: Lock,
+    previous: Lock | undefined,
+    accept: readonly string[],
+    command: () => string,
+  ): Promise<ResolvedDependencies> {
+    if ((lock.plugins ?? []).length === 0) return settle(lock, target);
+    const gate = options.plugins?.();
+    if (gate === undefined) {
+      throw fail(
+        "MOSTRA_PLUGIN_FAILED",
+        "This lockfile names plugins, and this instance has no plugins module to check them.",
+      );
+    }
+    const held = await settle(lock, target, false);
+    let ready: Promise<void> | undefined;
+    const runScripts = (): Promise<void> => {
+      ready ??= settle(lock, target).then(() => undefined);
+      return ready;
+    };
+    const outcome = await gate.admit({
+      target,
+      staged: {
+        lock,
+        nodeModules: held.nodeModules,
+        added: [],
+        ready: runScripts,
+        ...(previous !== undefined ? { previous } : {}),
+      },
+      accept,
+      command: command(),
+    });
+    await runScripts();
+    const text = lockText(withOutcome(lock, outcome));
+    return { lock: text, lockDigest: lockDigest(text), nodeModules: held.nodeModules };
+  }
+
+  /** `lock`'s packages with an outcome's plugins and acknowledgments. */
+  function withOutcome(
+    lock: Lock,
+    outcome: {
+      readonly plugins?: readonly string[];
+      readonly licenses?: Readonly<Record<string, LockLicense>>;
+    },
+  ): Lock {
+    const { plugins: _plugins, licenses: _licenses, ...packages } = lock;
+    const plugins = [...(outcome.plugins ?? [])];
+    const licenses = { ...(outcome.licenses ?? {}) };
+    return {
+      ...packages,
+      ...(plugins.length > 0 ? { plugins } : {}),
+      ...(Object.keys(licenses).length > 0 ? { licenses } : {}),
+    };
+  }
+
+  /** The `node_modules` of `lock` when it is installed complete, scripts run; else `undefined`. */
+  async function installedLayout(lock: Lock): Promise<string | undefined> {
+    if (Object.keys(lock.packages).length === 0) return warm.nodeModules;
+    const dir = join(dirs.locks, layoutKey(lock));
+    const marker = await markerOf(dir);
+    if (marker === undefined || marker.scripts === "pending") return undefined;
+    return join(dir, "node_modules");
+  }
 
   /**
    * Resolves a change of a working lockfile without recording it: `add` (npm specs) resolve, the

@@ -82,7 +82,7 @@ function describeLicenses(licenses: readonly LicenseDisclosure[]): string {
   return `Licenses:\n${licenses
     .map(
       (license) =>
-        `  ${license.id} (${license.class}, ${license.acknowledgment}): ${license.packages.map((pkg) => `${pkg.name}@${pkg.version}`).join(", ")}`,
+        `  ${license.id} (${license.class}, ${license.acknowledgment}): ${license.packages.map((pkg) => (pkg.version !== undefined ? `${pkg.name}@${pkg.version}` : `item ${pkg.name}`)).join(", ")}`,
     )
     .join("\n")}\n`;
 }
@@ -99,12 +99,17 @@ export const pluginValidateCommand: CommandDef = defineCommand({
       optional: true,
     },
   ],
+  flags: [ACCEPT_FLAG],
   output: { type: "PluginValidateResult", topic: "cli" },
   exits: [EXIT.failure],
   example: "plugin validate ./my-plugin",
   async run(context) {
     const dir = typeof context.args["dir"] === "string" ? context.args["dir"] : ".";
-    const result = await context.call(pluginValidateMethod, { path: resolve(context.cwd, dir) });
+    const accept = context.flags["accept-license"];
+    const result = await context.call(pluginValidateMethod, {
+      path: resolve(context.cwd, dir),
+      ...(Array.isArray(accept) && accept.length > 0 ? { acceptLicenses: [...accept] } : {}),
+    });
     const lines = result.diagnostics.map(
       (diagnostic) =>
         `${diagnostic.severity} ${diagnostic.code}${diagnostic.location && "file" in diagnostic.location ? ` (${diagnostic.location.file}:${diagnostic.location.line}:${diagnostic.location.column})` : ""}: ${diagnostic.message}`,

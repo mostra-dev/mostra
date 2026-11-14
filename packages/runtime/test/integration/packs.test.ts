@@ -123,6 +123,42 @@ beforeAll(async () => {
       const file = join(SHADCN, "styles", "new-york-v4", `${elsewhere[1]}.json`);
       return void response.writeHead(200).end(readFileSync(file));
     }
+    // Items whose registry dependencies are relative to their own URL.
+    const relative = /^\/rel\/([^/]+)\.json$/.exec(url.pathname);
+    if (relative) {
+      const items: Record<string, unknown> = {
+        parent: {
+          name: "parent",
+          type: "registry:component",
+          registryDependencies: ["./child.json"],
+          files: [
+            {
+              path: "parent.tsx",
+              type: "registry:component",
+              content: "export const parent = 1;\n",
+            },
+          ],
+        },
+        child: {
+          name: "child",
+          type: "registry:component",
+          files: [
+            { path: "child.tsx", type: "registry:component", content: "export const child = 1;\n" },
+          ],
+        },
+        local: {
+          name: "local",
+          type: "registry:component",
+          registryDependencies: [join(SHADCN, "styles", "new-york-v4", "button.json")],
+          files: [
+            { path: "local.tsx", type: "registry:component", content: "export const local = 1;\n" },
+          ],
+        },
+      };
+      const found = items[relative[1] as string];
+      if (found === undefined) return void response.writeHead(404).end();
+      return void response.writeHead(200).end(JSON.stringify(found));
+    }
     const named = /^\/acme\/([^/]+)\.json$/.exec(url.pathname);
     if (named) {
       if (request.headers["x-token"] !== "s3cret") return void response.writeHead(401).end();
@@ -541,5 +577,178 @@ describe("what an install refuses before it writes anything", () => {
     expect(
       code(await target.client.call("pack/add", { artifact: { path: artifact() }, specs: [bad] })),
     ).toBe("MOSTRA_PACK_ITEM_INVALID");
+  });
+});
+
+describe("reading items safely (WP-16 review)", () => {
+  it("adds a scoped npm package to a single-file artifact (R03 finding 4)", async () => {
+    const target = await start();
+    const file = join(tempDir("packs-single"), "page.tsx");
+    writeFileSync(file, "export default function Page() { return <p />; }\n");
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", { artifact: { path: file }, specs: ["@mostra/react"] }),
+    );
+    expect(result.packages).toMatchObject([{ name: "@mostra/react", warm: true }]);
+    const item = await target.client.call("pack/add", {
+      artifact: { path: file },
+      specs: [`${base}/r/styles/new-york-v4/button.json`],
+    });
+    expect(code(item)).toBe("MOSTRA_PACK_TARGET_INVALID");
+  });
+
+  it("reads with the caller's variables, and never answers or keeps a registry's params (R01 finding 8, R03 finding 6)", async () => {
+    // The daemon's own token is stale: the caller's wins.
+    const target = await start({ ACME_TOKEN: "stale" });
+    const dir = artifact({
+      "components.json": JSON.stringify({
+        aliases: { ui: "@/ui" },
+        registries: {
+          "@acme": {
+            url: `${base}/acme/{name}.json`,
+            params: { t: ACME_TOKEN_REFERENCE },
+            headers: { "x-token": ACME_TOKEN_REFERENCE },
+          },
+        },
+      }),
+    });
+    const stale = await target.client.call("pack/add", {
+      artifact: { path: dir },
+      specs: ["@acme/input"],
+    });
+    expect(code(stale)).toBe("MOSTRA_PACK_FETCH_FAILED");
+    const result = ok<PackResult & { items: { source: string }[] }>(
+      await target.client.call("pack/add", {
+        artifact: { path: dir },
+        specs: ["@acme/input"],
+        environment: { ACME_TOKEN: "s3cret" },
+      }),
+    );
+    expect(result.items[0]?.source).toBe(`${base}/acme/input.json`);
+    expect(JSON.stringify(result)).not.toContain("s3cret");
+  });
+
+  it("refuses a registry whose host is a variable (R01, addendum)", async () => {
+    // The variable names the registry's real host: only the rule refuses it.
+    const target = await start({ ACME_HOST: new URL(base).host });
+    const dir = artifact({
+      "components.json": JSON.stringify({
+        registries: { "@acme": `http://${["$", "{ACME_HOST}"].join("")}/acme/{name}.json` },
+      }),
+    });
+    const refused = await target.client.call("pack/add", {
+      artifact: { path: dir },
+      specs: ["@acme/input"],
+    });
+    expect(code(refused)).toBe("MOSTRA_PACK_ADDRESS_INVALID");
+  });
+
+  it("reads a URL item's relative dependency under its URL, never a file of this machine (R02 finding 9)", async () => {
+    const target = await start();
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", {
+        artifact: { path: artifact() },
+        specs: [`${base}/rel/parent.json`],
+      }),
+    );
+    expect(result.items.map((item) => item.name)).toEqual(["child", "parent"]);
+    const refused = await target.client.call("pack/add", {
+      artifact: { path: artifact() },
+      specs: [`${base}/rel/local.json`],
+    });
+    expect(code(refused)).toBe("MOSTRA_PACK_ADDRESS_INVALID");
+  });
+
+  it("reads a local item's files only from its own directory (R03 finding 10)", async () => {
+    const target = await start();
+    const outside = join(tempDir("packs-outside"), "secret.txt");
+    writeFileSync(outside, "not for the artifact\n");
+    const itemDir = tempDir("packs-item");
+    const item = join(itemDir, "leak.json");
+    writeFileSync(
+      item,
+      JSON.stringify({
+        name: "leak",
+        type: "registry:file",
+        files: [{ path: outside, type: "registry:file", target: "~/notes.txt" }],
+      }),
+    );
+    const dir = artifact();
+    const refused = await target.client.call("pack/add", {
+      artifact: { path: dir },
+      specs: [item],
+    });
+    expect(code(refused)).toBe("MOSTRA_PACK_ITEM_INVALID");
+    expect(existsSync(join(dir, "notes.txt"))).toBe(false);
+  });
+
+  it("discloses an item's own license, and records its acknowledgment (R03 finding 9)", async () => {
+    const target = await start();
+    const item = join(tempDir("packs-item"), "commercial.json");
+    writeFileSync(
+      item,
+      JSON.stringify({
+        name: "commercial",
+        type: "registry:component",
+        files: [
+          {
+            path: "commercial.tsx",
+            type: "registry:component",
+            content: "export const commercial = 1;\n",
+          },
+        ],
+        mostra: { license: "LicenseRef-Acme-Commercial", licenseClass: "proprietary" },
+      }),
+    );
+    const dir = artifact();
+    const refused = await target.client.call("pack/add", {
+      artifact: { path: dir },
+      specs: [item],
+    });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    expect(refused.error?.data.message).toContain("the item commercial");
+    expect(existsSync(join(dir, "components", "commercial.tsx"))).toBe(false);
+    const added = ok<PackResult>(
+      await target.client.call("pack/add", {
+        artifact: { path: dir },
+        specs: [item],
+        acceptLicenses: ["LicenseRef-Acme-Commercial"],
+      }),
+    );
+    expect(added.licenses).toContainEqual(
+      expect.objectContaining({ id: "LicenseRef-Acme-Commercial", acknowledgment: "accepted" }),
+    );
+    const receipt = ok<{ versionId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    expect(
+      readFileSync(join(target.home.home, "versions", receipt.versionId, "lock.yaml"), "utf8"),
+    ).toContain('"LicenseRef-Acme-Commercial":');
+  });
+
+  it("writes no file when an item's package fails its install script (R01 finding 7)", async () => {
+    const target = await start();
+    const item = join(tempDir("packs-item"), "scripted.json");
+    writeFileSync(
+      item,
+      JSON.stringify({
+        name: "scripted",
+        type: "registry:component",
+        dependencies: ["fixture-failing-script@1.0.0"],
+        files: [
+          {
+            path: "scripted.tsx",
+            type: "registry:component",
+            content: "export const scripted = 1;\n",
+          },
+        ],
+      }),
+    );
+    const dir = artifact();
+    const refused = await target.client.call("pack/add", {
+      artifact: { path: dir },
+      specs: [item],
+    });
+    expect(code(refused)).toBe("MOSTRA_DEP_INSTALL_FAILED");
+    expect(existsSync(join(dir, "components", "scripted.tsx"))).toBe(false);
   });
 });

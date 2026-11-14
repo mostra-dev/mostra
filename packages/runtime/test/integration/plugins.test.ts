@@ -11,8 +11,10 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { implemented, pluginFixtures } from "../plugin-fixtures.ts";
@@ -30,6 +32,10 @@ import {
   testHome,
   WINDOWS,
 } from "../support.ts";
+
+const Database = createRequire(import.meta.url)(
+  "better-sqlite3",
+) as typeof import("better-sqlite3");
 
 interface Running {
   readonly home: TestHome;
@@ -246,7 +252,11 @@ describe("plugin/validate (EX-02)", () => {
 describe("contracts at install and at load (EX-01)", () => {
   it("installs an in-range plugin, records it in the lockfile, and exports with it", async () => {
     const target = await start();
-    const dir = artifact();
+    // With server code, which an exporter must never read (D172 item 11).
+    const dir = artifact({
+      "actions.ts":
+        '"use server";\nexport async function ping(): Promise<number> {\n  return 1;\n}\n',
+    });
     const added = ok<AddResult>(
       await target.client.call("plugin/add", {
         artifact: { path: dir },
@@ -282,12 +292,48 @@ describe("contracts at install and at load (EX-01)", () => {
       }),
     );
     expect(exported.exporter.id).toBe("words");
+    // The exporter got what its contract promises: the version's facts, the options its schema
+    // took, and none of the server code however a path named it (WP-16 review).
     expect(readFileSync(join(out, "words.txt"), "utf8")).toMatch(
-      /^artifact: \d+ files, \d+ bytes, \{"size":"a4"\}$/,
+      /^artifact: \d+ files, \d+ bytes, \{"size":"a4"\} \{"server":true,"registry":true,"publishedAt":true,"hidden":4,"listed":false\}$/,
     );
     expect([...readFileSync(join(out, "nested", "bytes.bin"))]).toEqual([1, 2, 3]);
     expect(exported.entry).toBe(join(out, "words.txt"));
     expect(exported.findings).toMatchObject([{ code: "COUNTED" }]);
+
+    // Options the schema refuses refuse the export before it runs; nothing is written.
+    const badOptions = join(tempDir("plugins-export"), "out");
+    const refusedOptions = await target.client.call("plugin/export", {
+      artifact: { artifactId: receipt.artifactId },
+      exporter: "words",
+      out: badOptions,
+      options: { size: "a3" },
+    });
+    expect(code(refusedOptions)).toBe("MOSTRA_PLUGIN_OPTIONS_INVALID");
+    expect(existsSync(badOptions)).toBe(false);
+
+    // A `file` exporter writes its one file at `out` itself.
+    const file = join(tempDir("plugins-export"), "summary.txt");
+    const summary = ok<{ files: string[]; entry: string }>(
+      await target.client.call("plugin/export", {
+        artifact: { artifactId: receipt.artifactId },
+        exporter: "summary",
+        out: file,
+      }),
+    );
+    expect(summary.files).toEqual([file]);
+    expect(readFileSync(file, "utf8")).toBe("version 1");
+
+    // A file where another needs a directory refuses the whole export, writing nothing.
+    const clashed = join(tempDir("plugins-export"), "out");
+    const clash = await target.client.call("plugin/export", {
+      artifact: { artifactId: receipt.artifactId },
+      exporter: "clash",
+      out: clashed,
+    });
+    expect(code(clash)).toBe("MOSTRA_PLUGIN_FAILED");
+    expect(clash.error?.data.message).toContain("a file where a directory must be");
+    expect(existsSync(clashed)).toBe(false);
 
     const unknown = await target.client.call("plugin/export", {
       artifact: { artifactId: receipt.artifactId },
@@ -452,12 +498,30 @@ describe("contracts at install and at load (EX-01)", () => {
       packages: ["mostra-fixture-page-engine@1.0.0"],
     });
     expect(code(page)).toBe("MOSTRA_PLUGIN_SCOPE_INVALID");
-    // An artifact's plugin can't take an ID the home's plugins contribute.
-    const twin = await target.client.call("plugin/add", {
-      artifact: { path: artifact() },
-      packages: ["mostra-fixture-words-twin@1.0.0"],
-    });
-    expect(code(twin)).toBe("MOSTRA_PLUGIN_CONFLICT");
+    // An artifact's plugin may contribute an ID the home's plugins do: the artifact uses its
+    // own, and says so; a home install never breaks an artifact (D172 item 5).
+    const dir = artifact();
+    const twin = ok<AddResult>(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words-twin@1.0.0"],
+      }),
+    );
+    expect(twin.plugins[0]?.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      "MOSTRA_PLUGIN_SHADOWED",
+    );
+    const receipt = ok<{ artifactId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const out = join(tempDir("plugins-export"), "out");
+    const exported = ok<{ exporter: { package: string } }>(
+      await target.client.call("plugin/export", {
+        artifact: { artifactId: receipt.artifactId },
+        exporter: "words",
+        out,
+      }),
+    );
+    expect(exported.exporter.package).toBe("mostra-fixture-words-twin");
     expect(code(await target.client.call("plugin/list", {}))).toBe("MOSTRA_PLUGIN_SCOPE_INVALID");
   });
 });
@@ -591,5 +655,289 @@ describe("licenses (EX-04, D31)", () => {
     expect(lock).not.toContain("plugins:");
     expect(lock).not.toContain("licenses:");
     expect(implemented("exporter")).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe("the plugin gate on every change (WP-16 review)", () => {
+  const engineLicense = "LicenseRef-FixtureEngine";
+
+  it("checks a plugin upgrade by mostra add before any of it runs (R01 finding 1)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.0.0"],
+      }),
+    );
+    // 1.1.0 brings the engine, whose license nobody acknowledged: deps/add refuses before its
+    // postinstall runs, and the artifact keeps 1.0.0.
+    const refused = await target.client.call("deps/add", {
+      artifact: { path: dir },
+      packages: ["mostra-fixture-words@1.1.0"],
+    });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    expect(refused.error?.data.message).toContain("LicenseRef-npm-fixture-engine");
+    expect(refused.error?.data.fix?.command).toContain("mostra add mostra-fixture-words@1.1.0");
+    expect(find(join(target.home.home, "deps"), "engine-installed.txt")).toEqual([]);
+    const listed = ok<{ plugins: { version: string }[] }>(
+      await target.client.call("plugin/list", { artifact: { path: dir } }),
+    );
+    expect(listed.plugins.map((plugin) => plugin.version)).toEqual(["1.0.0"]);
+    // Acknowledged, the upgrade installs, its script runs, and the lockfile records both.
+    ok(
+      await target.client.call("deps/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.1.0"],
+        acceptLicenses: ["LicenseRef-npm-fixture-engine"],
+      }),
+    );
+    expect(find(join(target.home.home, "deps"), "engine-installed.txt").length).toBeGreaterThan(0);
+    const receipt = ok<{ versionId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const lock = readFileSync(
+      join(target.home.home, "versions", receipt.versionId, "lock.yaml"),
+      "utf8",
+    );
+    expect(lock).toContain('"mostra-fixture-words": "1.1.0"');
+    expect(lock).toContain('"LicenseRef-npm-fixture-engine":');
+  });
+
+  it("discloses a peer dependency's license, which the installer installs (R02 finding 4)", async () => {
+    const target = await start();
+    const refused = await target.client.call("plugin/add", {
+      artifact: { path: artifact() },
+      packages: ["mostra-fixture-peer-plugin@1.0.0"],
+    });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    expect(refused.error?.data.message).toContain("fixture-engine@2.0.0");
+    expect(find(join(target.home.home, "deps"), "engine-installed.txt")).toEqual([]);
+  });
+
+  it("never lets a plugin call a package it can't read OSI-licensed (R03 finding 2)", async () => {
+    const target = await start();
+    const refused = await target.client.call("plugin/add", {
+      artifact: { path: artifact() },
+      packages: ["mostra-fixture-claims-mit@1.0.0"],
+    });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    expect(refused.error?.data.message).toContain("LicenseRef-npm-fixture-closed (proprietary");
+    // Acknowledged, it installs, and both claims Mostra couldn't confirm are said as warnings.
+    const added = ok<AddResult>(
+      await target.client.call("plugin/add", {
+        artifact: { path: artifact() },
+        packages: ["mostra-fixture-claims-mit@1.0.0"],
+        acceptLicenses: ["LicenseRef-npm-fixture-closed"],
+      }),
+    );
+    const warnings = added.plugins[0]?.diagnostics.filter(
+      (diagnostic) => diagnostic.code === "MOSTRA_LICENSE_MISMATCH",
+    );
+    expect(warnings?.length).toBe(2);
+  });
+
+  it("asks again for a license whose class changed since it was acknowledged (R01, addendum)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-engine-plugin@1.0.0"],
+        acceptLicenses: [engineLicense],
+      }),
+    );
+    const refused = await target.client.call("plugin/add", {
+      artifact: { path: dir },
+      packages: ["mostra-fixture-engine-plugin@1.1.0"],
+    });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    expect(refused.error?.data.message).toContain(`${engineLicense} (proprietary`);
+  });
+
+  it("refuses a command another begins with, in one scope (R03, cut by the cap)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.0.0"],
+      }),
+    );
+    const refused = await target.client.call("plugin/add", {
+      artifact: { path: dir },
+      packages: ["mostra-fixture-words-prefix@1.0.0"],
+    });
+    expect(code(refused)).toBe("MOSTRA_PLUGIN_CONFLICT");
+    expect(refused.error?.data.message).toContain('"words count"');
+  });
+
+  it("keeps a plugin another call added while a removal waited (R01 finding 4)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.0.0"],
+      }),
+    );
+    // Both at once on one connection: whichever runs second sees what the first recorded.
+    const [added, removed] = await Promise.all([
+      target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-pack@1.0.0"],
+      }),
+      target.client.call("plugin/remove", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words"],
+      }),
+    ]);
+    ok(added);
+    ok(removed);
+    const listed = ok<{ plugins: { package: string }[] }>(
+      await target.client.call("plugin/list", { artifact: { path: dir } }),
+    );
+    expect(listed.plugins.map((plugin) => plugin.package)).toEqual(["mostra-fixture-pack"]);
+  });
+
+  it("exports a version with the plugins it was published with, after they left the artifact (R01 finding 6)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.0.0"],
+      }),
+    );
+    const receipt = ok<{ artifactId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    ok(
+      await target.client.call("plugin/remove", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words"],
+      }),
+    );
+    const out = join(tempDir("plugins-export"), "summary.txt");
+    ok(
+      await target.client.call("plugin/export", {
+        artifact: { artifactId: receipt.artifactId },
+        version: 1,
+        exporter: "summary",
+        out,
+      }),
+    );
+    expect(readFileSync(out, "utf8")).toBe("version 1");
+  });
+
+  it("checks licenses again at publish, before plugins load, and records a host's acceptance there (R01 finding 2)", async () => {
+    const home = testHome();
+    const first = await start({ home });
+    const dir = artifact();
+    ok(
+      await first.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-engine-plugin@1.0.0"],
+        acceptLicenses: [engineLicense],
+      }),
+    );
+    await first.client.call("mostra/shutdown", {});
+    await first.daemon.exited;
+    running.splice(running.indexOf(first), 1);
+    // The working lockfile loses its acknowledgment, as a resolution that moved the plugins' tree
+    // would leave a license unrecorded.
+    const ledger = new Database(join(home.home, "store", "ledger.sqlite"));
+    const row = ledger
+      .prepare("SELECT key, lock_text FROM dependency_lock WHERE lock_text LIKE '%licenses:%'")
+      .get() as { key: string; lock_text: string };
+    ledger
+      .prepare("UPDATE dependency_lock SET lock_text = ? WHERE key = ?")
+      .run(`${row.lock_text.slice(0, row.lock_text.indexOf("licenses:")).trimEnd()}\n`, row.key);
+    ledger.close();
+    const second = await start({ home });
+    const refused = await second.client.call("artifact/publish", { source: { path: dir } });
+    expect(code(refused)).toBe("MOSTRA_LICENSE_UNACCEPTED");
+    // Its fix is a command that runs as given: no placeholder.
+    expect(refused.error?.data.fix?.command).toMatch(
+      /^mostra plugin add mostra-fixture-engine-plugin --artifact \S+ --accept-license LicenseRef-FixtureEngine$/,
+    );
+    await second.client.call("mostra/shutdown", {});
+    await second.daemon.exited;
+    running.splice(running.indexOf(second), 1);
+    // A host that accepts the license: the publish records the acceptance as the host's.
+    const third = await start({
+      home,
+      initialize: {
+        client: { name: "fixture-host", version: "1" },
+        home: { path: home.home, licenses: { accept: [engineLicense] } },
+      },
+    });
+    const receipt = ok<{ versionId: string }>(
+      await third.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const lock = readFileSync(join(home.home, "versions", receipt.versionId, "lock.yaml"), "utf8");
+    expect(lock).toContain(`"${engineLicense}":`);
+    expect(lock).toMatch(/by: "?host"?/);
+  });
+
+  it("validates a package's entries only once its licenses are acknowledged (R01 finding 10)", async () => {
+    const target = await start();
+    const marker = "entry-loaded.txt";
+    const dir = packageDir({
+      "package.json": JSON.stringify({
+        name: "mostra-fixture-validate-engine",
+        version: "1.0.0",
+        type: "module",
+        license: "MIT",
+        dependencies: { "fixture-closed": "1.0.0" },
+        mostra: {
+          name: "dev.mostra.fixtures/validate-engine",
+          contracts: { exporter: `^${implemented("exporter")}` },
+          contributes: { exporters: [{ id: "v", entry: "./exporter.js" }] },
+          license: "MIT",
+        },
+      }),
+      "exporter.js": `import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./${marker}", import.meta.url), "yes");\nexport default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: "v", output: { mediaType: "text/plain", layout: "directory" }, async export() { return { files: [] }; } };\n`,
+      "node_modules/fixture-closed/package.json": JSON.stringify({
+        name: "fixture-closed",
+        version: "1.0.0",
+        license: "UNLICENSED",
+      }),
+    });
+    const blocked = ok<{ valid: boolean; diagnostics: { code: string }[] }>(
+      await target.client.call("plugin/validate", { path: dir }),
+    );
+    expect(blocked.valid).toBe(false);
+    expect(blocked.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      "MOSTRA_LICENSE_UNACCEPTED",
+    );
+    expect(existsSync(join(dir, marker))).toBe(false);
+    const loaded = ok<{ valid: boolean }>(
+      await target.client.call("plugin/validate", {
+        path: dir,
+        acceptLicenses: ["LicenseRef-npm-fixture-closed"],
+      }),
+    );
+    expect(loaded.valid).toBe(true);
+    expect(existsSync(join(dir, marker))).toBe(true);
+  });
+
+  it("finds a plugin's commands without installing anything (R01, addendum)", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-words@1.0.0"],
+      }),
+    );
+    const locks = join(target.home.home, "deps", "locks");
+    const layouts = readdirSync(locks);
+    for (const layout of layouts) rmSync(join(locks, layout), { recursive: true, force: true });
+    const commands = ok<{ commands: unknown[] }>(
+      await target.client.call("plugin/commands", { artifact: { path: dir } }),
+    );
+    expect(commands.commands).toEqual([]);
+    expect(readdirSync(locks)).toEqual([]);
   });
 });
