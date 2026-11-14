@@ -6714,7 +6714,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-01",
     name: "a plugin whose contract range this release doesn't implement installs",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "} else if (!implemented.some((version) => semver.satisfies(version, range))) {",
     to: "} else if (false && !implemented.some((version) => semver.satisfies(version, range))) {",
     check: integration("plugins.test.ts", "out-of-range plugin at install"),
@@ -6722,7 +6722,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-01",
     name: "an entry stamped by a newer contract package loads",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "if (!stampServed(stamp, job.item.contract, implementedOf(job.item.contract))) {",
     to: "if (false) {",
     check: integration("plugins.test.ts", "newer contract package"),
@@ -6738,7 +6738,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-01",
     name: "a second plugin's contribution silently overrides the first's",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "        if (first !== undefined && first !== plugin) {",
     to: "        if (false) {",
     check: integration("plugins.test.ts", "names both plugins"),
@@ -6746,7 +6746,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-01",
     name: "a plugin that runs in a page installs for the whole home",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "    if (!manifestScopes(manifest).includes(plugin.scope)) {",
     to: "    if (false) {",
     check: integration("plugins.test.ts", "never what runs in a page"),
@@ -6762,7 +6762,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-02",
     name: "a manifest's problems lose their place in package.json",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "              location: { file: packageFile, ...jsonLocation(text, issue.path) },",
     to: "              location: { file: packageFile, line: 1, column: 1 },",
     check: integration("plugins.test.ts", "each invalid field"),
@@ -6778,7 +6778,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-03",
     name: "imports of the files an install writes keep their registry paths",
-    file: "src/packs/index.ts",
+    file: "src/packs/packs.ts",
     from: '      const target = placed.get(path.replace(/\\.[jt]sx?$/, ""));',
     to: "      const target = undefined as string | undefined;",
     check: integration("packs.test.ts", "page in pages"),
@@ -6786,7 +6786,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-03",
     name: "an item's file may land outside the artifact",
-    file: "src/packs/index.ts",
+    file: "src/packs/packs.ts",
     from: '    if (target.startsWith("~/")) return target.slice(2);',
     to: '    if (target.startsWith("~/")) return "outside.tsx";',
     check: integration("packs.test.ts", "outside the artifact"),
@@ -6794,7 +6794,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-03",
     name: "a scoped npm package is read as a registry namespace",
-    file: "src/packs/index.ts",
+    file: "src/packs/packs.ts",
     from: "        return components?.registries?.[address.namespace] !== undefined;",
     to: "        return true;",
     check: integration("packs.test.ts", "namespace the artifact"),
@@ -6802,7 +6802,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-04",
     name: "a non-OSI license installs without an acknowledgment",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "          if (licenses.missing.length > 0) {",
     to: "          if (false) {",
     check: integration("plugins.test.ts", "without an acknowledgment"),
@@ -6826,7 +6826,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-04",
     name: "a host's pre-acceptance is ignored",
-    file: "src/plugins/index.ts",
+    file: "src/plugins/plugins.ts",
     from: "    const policy = options.policy()?.accept ?? [];",
     to: "    const policy: readonly string[] = [];",
     check: integration("plugins.test.ts", "host accepted"),
@@ -6834,7 +6834,7 @@ const SEEDS: readonly Seed[] = [
   {
     requirement: "EX-04",
     name: "a pack's packages bring their licenses unasked",
-    file: "src/packs/index.ts",
+    file: "src/packs/packs.ts",
     from: "          if (names.length > 0) {",
     to: "          if (false) {",
     check: integration("packs.test.ts", "license an item"),

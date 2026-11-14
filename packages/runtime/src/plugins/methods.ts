@@ -1,7 +1,7 @@
 /**
  * The plugin system's methods of the host protocol (INTERFACES §14): `plugin/validate`,
- * `plugin/add`, `plugin/list`, `plugin/remove`, `plugin/export`, `plugin/commands` and
- * `pack/add`. Each that names an artifact runs in its source path's queue, as its publishes and
+ * `plugin/add`, `plugin/list`, `plugin/remove`, `plugin/export` and `plugin/commands`
+ * (`pack/add` is the packs module's). Each that names an artifact runs in its source path's queue, as its publishes and
  * `deps/add` do, through the publisher; the home's own plugins have one queue of their own (the
  * working lockfile `home:plugins`).
  */
@@ -11,9 +11,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   checkArtifactPath,
   createDiagnostic,
-  type PackAddParams,
   type PluginFinding,
-  packAddMethod,
   pluginAddMethod,
   pluginCommandsMethod,
   pluginExportMethod,
@@ -23,13 +21,11 @@ import {
   RpcError,
   type SourceRef,
 } from "@mostra/protocol";
-import { parsePackAddress } from "@mostra/protocol/plugin";
 import { requestKey } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
-import type { Packs } from "../packs/index.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import { canonicalRef, type Publisher } from "../publish/index.ts";
-import type { Plugins, Scope } from "./index.ts";
+import type { Plugins, Scope } from "./plugins.ts";
 
 const usage = (message: string): RpcError =>
   new RpcError(createDiagnostic("MOSTRA_PLUGIN_SCOPE_INVALID", { message }));
@@ -37,7 +33,6 @@ const usage = (message: string): RpcError =>
 /** The handlers of the plugin system's methods. */
 export function pluginMethods(options: {
   readonly plugins: () => Plugins;
-  readonly packs: () => Packs;
   readonly publisher: () => Publisher;
   readonly log: Log;
   /** An artifact's dependencies changed (a dev session reloads, D140 item 12). */
@@ -211,31 +206,6 @@ export function pluginMethods(options: {
         exporter: { id: exporter.id, package: exporter.package },
         findings,
       };
-    }),
-
-    handler(packAddMethod, async (params: PackAddParams) => {
-      const result = await options.publisher().withArtifact(params.artifact, ({ target, source }) =>
-        options.packs().add({
-          target,
-          root: source.root,
-          kind: source.kind,
-          entry: source.entry,
-          // A relative item file is the caller's to resolve; one that arrives relative is read
-          // from the artifact's directory.
-          specs: params.specs.map((spec) => {
-            const address = parsePackAddress(spec);
-            return address?.kind === "file" && !isAbsolute(address.path)
-              ? resolve(source.root, address.path)
-              : spec;
-          }),
-          overwrite: params.overwrite === true,
-          accept: params.acceptLicenses ?? [],
-          request: requestKey("pack/add", params),
-          cwd: source.root,
-        }),
-      );
-      options.dependenciesChanged?.(params.artifact);
-      return result;
     }),
   ];
 }

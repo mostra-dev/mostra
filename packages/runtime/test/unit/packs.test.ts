@@ -10,7 +10,7 @@ import {
   placeFile,
   rewriteImports,
   withCssBlock,
-} from "../../src/packs/index.ts";
+} from "../../src/packs/packs.ts";
 import { parseItem } from "../../src/packs/read.ts";
 
 const aliases = { components: "components", ui: "components/ui", lib: "lib", hooks: "hooks" };

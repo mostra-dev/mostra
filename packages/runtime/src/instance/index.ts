@@ -90,7 +90,7 @@ import {
 } from "../link/index.ts";
 import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { createPacks, type Packs } from "../packs/index.ts";
+import { createPacks, type Packs, packMethods } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
 import {
   createPlugins,
@@ -939,9 +939,13 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       }),
       ...pluginMethods({
         plugins: getPlugins,
-        packs: getPacks,
         publisher: getPublisher,
         log,
+        dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
+      }),
+      ...packMethods({
+        packs: getPacks,
+        publisher: getPublisher,
         dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
       }),
       ...dev.methods(),

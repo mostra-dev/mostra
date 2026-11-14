@@ -52,6 +52,8 @@
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/conformance": "catalog:",
     "@modelcontextprotocol/conformance-next": "catalog:",
+    "@mostra/contract-cli-command": "workspace:*",
+    "@mostra/contract-exporter": "workspace:*",
     "@mostra/runtime": "workspace:*",
     "@mostra/tools": "workspace:*",
     "@types/node": "catalog:",

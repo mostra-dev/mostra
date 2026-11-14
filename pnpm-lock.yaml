@@ -573,6 +573,12 @@ importers:
       '@modelcontextprotocol/conformance-next':
         specifier: 'catalog:'
         version: '@modelcontextprotocol/conformance@0.2.0-alpha.12(supports-color@8.1.1)'
+      '@mostra/contract-cli-command':
+        specifier: workspace:*
+        version: link:../contract-cli-command
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../contract-exporter
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -966,6 +972,12 @@ importers:
       '@modelcontextprotocol/conformance-next':
         specifier: 'catalog:'
         version: '@modelcontextprotocol/conformance@0.2.0-alpha.12(supports-color@8.1.1)'
+      '@mostra/contract-cli-command':
+        specifier: workspace:*
+        version: link:../contract-cli-command
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../contract-exporter
       '@mostra/shell':
         specifier: workspace:*
         version: link:../shell
