@@ -69,7 +69,7 @@ import type {
 import { parseLock, runtimeRoot } from "../deps/index.ts";
 import type { RequestKey } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
-import { OS } from "../platform/index.ts";
+import { OS, shellWord } from "../platform/index.ts";
 import { artifactEnvironment, type ProcessManager } from "../processes/index.ts";
 import {
   EXPORT_METHOD,
@@ -1157,9 +1157,4 @@ function sameExpression(a: string, b: string): boolean {
   } catch {
     return a.trim() === b.trim();
   }
-}
-
-/** A path as a shell word for a fix command. */
-function shellWord(value: string): string {
-  return /^[\w@%+=:,./\\-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }

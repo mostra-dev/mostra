@@ -43,6 +43,7 @@ import type { Dependencies, DependencyTarget } from "../deps/index.ts";
 import { isOffline } from "../deps/index.ts";
 import type { RequestKey } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
+import { shellWord } from "../platform/index.ts";
 import type { Plugins } from "../plugins/index.ts";
 import { type ReadItem, readComponentsJson, readItems } from "./read.ts";
 
@@ -658,9 +659,4 @@ async function writeAll(
     );
   }
   for (const entry of done) if (entry.backup !== undefined) await rm(entry.backup, { force: true });
-}
-
-/** A path as a shell word for a fix command. */
-function shellWord(value: string): string {
-  return /^[\w@%+=:,./\\-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }

@@ -48,7 +48,7 @@ import {
   linkTarget,
   replaceDirectoryLink,
   samePath,
-  WINDOWS,
+  shellWord,
 } from "../platform/index.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { createInstaller, INSTALL_TIMEOUT_MS, type Installer } from "./installer.ts";
@@ -281,16 +281,6 @@ export function isOffline(env: Environment): boolean {
         !/^fe[89ab]/i.test(address.address),
     ),
   );
-}
-
-/**
- * A shell-safe rendering of `value`, for the commands in diagnostics: POSIX shell quoting, or on
- * Windows the double quotes PowerShell and `cmd` both read (a Windows path holds no `"`), and a
- * plain path with backslashes as it is.
- */
-function shellQuote(value: string): string {
-  if (WINDOWS) return /^[\w@%+=:,./\\-]+$/.test(value) ? value : `"${value}"`;
-  return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 /** Serializes work per key; one supervisor, so in-process order is the order. */
@@ -830,7 +820,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         if (missing.length > 0 && options.policy() === "explicit") {
           const first = missing[0] as string;
           const site = imports.get(first);
-          const command = `mostra add ${missing.join(" ")} --artifact ${shellQuote(target.artifactPath)}`;
+          const command = `mostra add ${missing.join(" ")} --artifact ${shellWord(target.artifactPath)}`;
           throw new RpcError(
             createDiagnostic("MOSTRA_DEP_MISSING", {
               message: `${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} in the warm set or the artifact's lockfile, and this home's dependency policy is explicit.`,

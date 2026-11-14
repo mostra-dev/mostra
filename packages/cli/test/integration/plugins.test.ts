@@ -107,7 +107,7 @@ describe("plugins through mostra (D30)", () => {
       ?.command as string;
     expect(command).toContain("--accept-license LicenseRef-FixtureEngine");
     // The fix, run as given, installs it.
-    const words = command.split(" ").slice(1);
+    const words = shellWords(command).slice(1);
     const accepted = await json(words);
     expect(
       accepted.ran.code,
@@ -143,3 +143,30 @@ describe("plugins through mostra (D30)", () => {
     expect(existsSync(join(dir, "components", "greeting.tsx"))).toBe(true);
   }, 120_000);
 });
+
+/**
+ * A fix command's words as the shell an agent pastes it into reads them: POSIX single quotes
+ * (with `'\\''` for a quote), and the double quotes Mostra writes on Windows.
+ */
+function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let word: string | undefined;
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i] as string;
+    if (char === " ") {
+      if (word !== undefined) words.push(word);
+      word = undefined;
+    } else if (char === "'" || char === '"') {
+      const end = command.indexOf(char, i + 1);
+      word = (word ?? "") + command.slice(i + 1, end);
+      i = end;
+    } else if (char === "\\" && command[i + 1] === "'") {
+      word = `${word ?? ""}'`;
+      i += 1;
+    } else {
+      word = (word ?? "") + char;
+    }
+  }
+  if (word !== undefined) words.push(word);
+  return words;
+}
