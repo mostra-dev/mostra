@@ -109,7 +109,10 @@ describe("plugins through mostra (D30)", () => {
     // The fix, run as given, installs it.
     const words = command.split(" ").slice(1);
     const accepted = await json(words);
-    expect(accepted.ran.code, accepted.ran.stderr).toBe(0);
+    expect(
+      accepted.ran.code,
+      `${command}\n${JSON.stringify(accepted.value.error ?? null)}\n${accepted.ran.stderr}`,
+    ).toBe(0);
     expect((accepted.value.result as { licenses: unknown[] }).licenses).toContainEqual(
       expect.objectContaining({ id: "LicenseRef-FixtureEngine", acknowledgment: "accepted" }),
     );
