@@ -119,6 +119,9 @@ export interface ManifestIssue {
 export function manifestScopes(manifest: PluginManifest): readonly ("artifact" | "home")[];
 
 // @public
+export const PACK_VARIABLES: readonly string[];
+
+// @public
 export type PackAddress = {
     readonly kind: "url";
     readonly url: string;
@@ -165,6 +168,9 @@ export interface PackMostraBlock {
     readonly licenseClass?: LicenseClass;
     readonly variants?: Readonly<Partial<Record<"base" | "radix", string>>>;
 }
+
+// @public
+export function packVariables(componentsJson: string | undefined): string[];
 
 // @public
 export function parseLicenseExpression(text: string): LicenseExpression;

@@ -4135,6 +4135,12 @@ impl ::std::convert::TryFrom<::std::string::String> for DependencyPolicy {
 ///`DepsAddParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct DepsAddParams {
+    #[serde(
+        rename = "acceptLicenses",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub accept_licenses: ::std::vec::Vec<DepsAddParamsAcceptLicensesItem>,
     pub artifact: SourceRef,
     pub packages: ::std::vec::Vec<DepsAddParamsPackagesItem>,
     #[serde(
@@ -4142,6 +4148,63 @@ pub struct DepsAddParams {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub request_id: ::std::option::Option<DepsAddParamsRequestId>,
+}
+///`DepsAddParamsAcceptLicensesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DepsAddParamsAcceptLicensesItem(::std::string::String);
+impl ::std::ops::Deref for DepsAddParamsAcceptLicensesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DepsAddParamsAcceptLicensesItem> for ::std::string::String {
+    fn from(value: DepsAddParamsAcceptLicensesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for DepsAddParamsAcceptLicensesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DepsAddParamsAcceptLicensesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DepsAddParamsAcceptLicensesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DepsAddParamsAcceptLicensesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`DepsAddParamsPackagesItem`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -8842,12 +8905,15 @@ impl<'de> ::serde::Deserialize<'de> for LicensePolicyAcceptItem {
             })
     }
 }
-///A package under a license: its name, version and declared license.
+///A package under a license (its name, version and declared license), or a source pack item.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct LicensedPackage {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub item: ::std::option::Option<crate::wire::ConstTrue>,
     pub license: ::std::string::String,
     pub name: LicensedPackageName,
-    pub version: LicensedPackageVersion,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub version: ::std::option::Option<LicensedPackageVersion>,
 }
 ///`LicensedPackageName`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -9613,6 +9679,14 @@ pub struct PackAddParams {
     )]
     pub accept_licenses: ::std::vec::Vec<PackAddParamsAcceptLicensesItem>,
     pub artifact: SourceRef,
+    #[serde(
+        default,
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
+    )]
+    pub environment: ::std::collections::BTreeMap<
+        PackAddParamsEnvironmentKey,
+        ::std::string::String,
+    >,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub overwrite: ::std::option::Option<bool>,
     #[serde(
@@ -9668,6 +9742,62 @@ impl ::std::convert::TryFrom<::std::string::String> for PackAddParamsAcceptLicen
     }
 }
 impl<'de> ::serde::Deserialize<'de> for PackAddParamsAcceptLicensesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PackAddParamsEnvironmentKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PackAddParamsEnvironmentKey(::std::string::String);
+impl ::std::ops::Deref for PackAddParamsEnvironmentKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PackAddParamsEnvironmentKey> for ::std::string::String {
+    fn from(value: PackAddParamsEnvironmentKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PackAddParamsEnvironmentKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z_][A-Za-z0-9_]*$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PackAddParamsEnvironmentKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PackAddParamsEnvironmentKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PackAddParamsEnvironmentKey {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -11416,7 +11546,72 @@ impl<'de> ::serde::Deserialize<'de> for PluginSummaryVersion {
 ///`PluginValidateParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PluginValidateParams {
+    #[serde(
+        rename = "acceptLicenses",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub accept_licenses: ::std::vec::Vec<PluginValidateParamsAcceptLicensesItem>,
     pub path: PluginValidateParamsPath,
+}
+///`PluginValidateParamsAcceptLicensesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PluginValidateParamsAcceptLicensesItem(::std::string::String);
+impl ::std::ops::Deref for PluginValidateParamsAcceptLicensesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PluginValidateParamsAcceptLicensesItem>
+for ::std::string::String {
+    fn from(value: PluginValidateParamsAcceptLicensesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PluginValidateParamsAcceptLicensesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PluginValidateParamsAcceptLicensesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for PluginValidateParamsAcceptLicensesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PluginValidateParamsAcceptLicensesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`PluginValidateParamsPath`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

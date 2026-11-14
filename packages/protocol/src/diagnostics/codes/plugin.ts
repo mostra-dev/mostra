@@ -16,6 +16,8 @@ export const pluginDiagnosticCodes = [
   "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED",
   "MOSTRA_PLUGIN_EXPORTER_UNKNOWN",
   "MOSTRA_PLUGIN_FAILED",
+  "MOSTRA_PLUGIN_OPTIONS_INVALID",
+  "MOSTRA_PLUGIN_SHADOWED",
   // gen:codes
 ] as const;
 
@@ -145,4 +147,27 @@ export const pluginDiagnostics: AreaCatalog<PluginDiagnosticCode> = {
       fix: "Fix the contribution if it is your plugin; otherwise update or remove it (`mostra plugin remove`).",
     },
   },
+  MOSTRA_PLUGIN_OPTIONS_INVALID: {
+    severity: "error",
+    phase: "contract",
+    title: "Exporter options invalid",
+    hint: "Give the options the exporter's schema asks for, each as `--option name=value`.",
+    docs: {
+      explanation:
+        "The options given to a plugin's exporter don't fit the JSON Schema its definition declares (`options`), or it declares none and was given some. Mostra checks them in the plugin's child before the exporter runs, so nothing was exported.",
+      fix: "Read the exporter's options in its plugin's documentation (`mostra plugin list` names the plugin), and run `mostra export <artifact> --as <exporter> --out <path> --option name=value` with them. A value that reads as JSON (`3`, `true`, `[\"a\"]`) is passed as that value, anything else as text.",
+    },
+  },
+  MOSTRA_PLUGIN_SHADOWED: {
+    severity: "warning",
+    phase: "contract",
+    title: "Plugin contribution shadowed",
+    hint: "Remove one of the two plugins if the artifact should use the other's contribution.",
+    docs: {
+      explanation:
+        "An artifact's plugin and one of the home's (`--global`) contribute the same exporter or CLI command. Nothing is refused: in this artifact its own plugin's contribution is used, and the home's everywhere else. A home install never breaks an artifact that worked.",
+      fix: "Nothing is needed when the artifact's own contribution is the one it should use. Otherwise remove it from the artifact (`mostra plugin remove <package> --artifact <path>`), and the home's is used.",
+    },
+  },
+  // gen:entries
 };

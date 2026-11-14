@@ -75,22 +75,30 @@ export const LicenseAcknowledgment: z.ZodType<LicenseAcknowledgment> = z
     description: "Where a license's acknowledgment stands: not-needed, accepted, host or missing.",
   });
 
-/** One package under a license, as a disclosure lists it. */
+/** One package under a license, or one source pack item, as a disclosure lists it. */
 export interface LicensedPackage {
-  /** The package's npm name. */
+  /** The npm package's name, or the item's. */
   readonly name: string;
-  /** The package's version. */
-  readonly version: string;
+  /** The package's version; an item has none. */
+  readonly version?: string;
   /** The license expression it declares, as Mostra read it. */
   readonly license: string;
+  /** It is a source pack item (its `mostra.license`), whose files are copied in. */
+  readonly item?: true;
 }
 
 /** The Zod schema of the `LicensedPackage` type. */
 export const LicensedPackage: z.ZodType<LicensedPackage> = z
-  .object({ name: z.string().min(1), version: z.string().min(1), license: z.string() })
+  .object({
+    name: z.string().min(1),
+    version: z.string().min(1).exactOptional(),
+    license: z.string(),
+    item: z.literal(true).exactOptional(),
+  })
   .register(wireRegistry, {
     id: "LicensedPackage",
-    description: "A package under a license: its name, version and declared license.",
+    description:
+      "A package under a license (its name, version and declared license), or a source pack item.",
   });
 
 /** One license an install brings, shown before anything is recorded (D31). */

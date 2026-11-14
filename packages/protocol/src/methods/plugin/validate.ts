@@ -9,6 +9,11 @@ import { wireRegistry } from "../../wire-registry.ts";
 export interface PluginValidateParams {
   /** The plugin's package directory, which holds its `package.json` (absolute). */
   readonly path: string;
+  /**
+   * Licenses acknowledged for what the package brings (D31): its entries are loaded only once
+   * every license that needs an acknowledgment has one, as an install would load them.
+   */
+  readonly acceptLicenses?: readonly string[];
 }
 
 /** The result of `plugin/validate`. */
@@ -25,7 +30,10 @@ export interface PluginValidateResult {
 }
 
 const params: z.ZodType<PluginValidateParams> = z
-  .object({ path: AbsolutePath })
+  .object({
+    path: AbsolutePath,
+    acceptLicenses: z.array(z.string().min(1).max(256)).readonly().exactOptional(),
+  })
   .register(wireRegistry, { id: "PluginValidateParams" });
 
 const result: z.ZodType<PluginValidateResult> = z

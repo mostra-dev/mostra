@@ -909,10 +909,13 @@ Example:
 Check a plugin package as Mostra would load it: its manifest, contract ranges, entries and licenses.
 
 Usage:
-  mostra plugin validate [<dir>]
+  mostra plugin validate [<dir>] [flags]
 
 Arguments:
   <dir>                        The plugin's package directory. Default: the current directory.
+
+Flags:
+  --accept-license <id>        Acknowledge a license the install brings (LicenseRef-Remotion), recorded in the lockfile. Repeat or comma-separate.
 
 Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).

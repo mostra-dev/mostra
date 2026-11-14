@@ -18,10 +18,12 @@ import {
   PLUGIN_CONTRACTS,
   packageLicense,
   packageLicenseTerms,
+  packVariables,
   parseLicenseExpression,
   parsePackAddress,
   RegistryItemSchema,
   spdxClass,
+  stampServed,
   unreadableLicenseRef,
 } from "@mostra/protocol/plugin";
 import { describe, expect, it } from "vitest";
@@ -280,6 +282,20 @@ describe("the contract table", () => {
     ).toEqual(["exporter", "cli-command"]);
   });
 
+  it("serves a stamp of the contract's compatible line, whatever its patch (WP-16 review)", () => {
+    const stamp = (version: string) => ({ name: "exporter", version });
+    // At 0.x a line is a minor; a newer patch a caret range resolved is served.
+    expect(stampServed(stamp("0.1.4"), "exporter", ["0.1.3"])).toBe(true);
+    expect(stampServed(stamp("0.1.0"), "exporter", ["0.1.3"])).toBe(true);
+    expect(stampServed(stamp("0.2.0"), "exporter", ["0.1.3"])).toBe(false);
+    // From 1.0 a line is a major.
+    expect(stampServed(stamp("1.4.0"), "exporter", ["1.3.0"])).toBe(true);
+    expect(stampServed(stamp("2.0.0"), "exporter", ["1.3.0"])).toBe(false);
+    // Another contract's stamp, or one that isn't a version, never is.
+    expect(stampServed({ name: "connector", version: "0.1.3" }, "exporter", ["0.1.3"])).toBe(false);
+    expect(stampServed(stamp("latest"), "exporter", ["0.1.3"])).toBe(false);
+  });
+
   it("keeps Mostra's own commands: equal, or a prefix either way", () => {
     expect(coreCommandTaken(["plugin", "add"])).toEqual(["plugin", "add"]);
     expect(coreCommandTaken(["plugin"])).toEqual(["plugin", "add"]);
@@ -289,6 +305,32 @@ describe("the contract table", () => {
 });
 
 describe("pack items and addresses", () => {
+  it("names the variables a pack read takes from its caller: GitHub's, shadcn's, the proxies and components.json's", () => {
+    const names = packVariables(
+      JSON.stringify({
+        registries: {
+          "@acme": {
+            url: "https://r.acme.dev/{name}.json",
+            params: { t: ["$", "{ACME_TOKEN}"].join("") },
+            headers: { authorization: `Bearer ${["$", "{ACME_KEY}"].join("")}` },
+          },
+          "@plain": "https://plain.dev/{name}.json",
+        },
+      }),
+    );
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "REGISTRY_URL",
+        "HTTPS_PROXY",
+        "ACME_TOKEN",
+        "ACME_KEY",
+      ]),
+    );
+    expect(packVariables("not json")).toEqual(packVariables(undefined));
+  });
+
   it("read shadcn's address forms, and leave npm specs alone", () => {
     expect(parsePackAddress("https://ui.example/r/button.json")).toEqual({
       kind: "url",

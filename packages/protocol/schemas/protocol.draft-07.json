@@ -2167,6 +2167,15 @@
             "minLength": 1
           }
         },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
         "requestId": {
           "type": "string",
           "minLength": 1
@@ -4199,14 +4208,17 @@
         },
         "license": {
           "type": "string"
+        },
+        "item": {
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [
         "name",
-        "version",
         "license"
       ],
-      "description": "A package under a license: its name, version and declared license."
+      "description": "A package under a license (its name, version and declared license), or a source pack item."
     },
     "LinkId": {
       "type": "string",
@@ -4495,6 +4507,16 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 256
+          }
+        },
+        "environment": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "string"
           }
         },
         "requestId": {
@@ -5112,6 +5134,15 @@
         "path": {
           "type": "string",
           "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
+        },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
         }
       },
       "required": [

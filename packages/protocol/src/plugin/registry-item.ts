@@ -280,3 +280,51 @@ export function parsePackAddress(text: string): PackAddress | undefined {
   }
   return undefined;
 }
+
+/** The variables every pack read may use: GitHub's tokens, shadcn's registry and the proxies. */
+export const PACK_VARIABLES: readonly string[] = [
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "REGISTRY_URL",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "NO_PROXY",
+  "no_proxy",
+];
+
+/**
+ * The variables reading an artifact's items may use, which a caller sends with `pack/add` (its
+ * `environment`), since the instance's own environment may be older than the caller's shell:
+ * {@link PACK_VARIABLES}, and every `${VAR}` an artifact's `components.json` text names in a
+ * registry's `params` or `headers` (as shadcn expands them). A text that isn't JSON names none.
+ */
+export function packVariables(componentsJson: string | undefined): string[] {
+  const names = new Set(PACK_VARIABLES);
+  if (componentsJson !== undefined) {
+    let data: unknown;
+    try {
+      data = JSON.parse(componentsJson);
+    } catch {
+      data = undefined;
+    }
+    const registries = (data as { registries?: unknown } | undefined)?.registries;
+    if (typeof registries === "object" && registries !== null) {
+      for (const entry of Object.values(registries)) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const { params, headers } = entry as { params?: unknown; headers?: unknown };
+        for (const record of [params, headers]) {
+          if (typeof record !== "object" || record === null) continue;
+          for (const value of Object.values(record)) {
+            if (typeof value !== "string") continue;
+            for (const match of value.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+              names.add(match[1] as string);
+            }
+          }
+        }
+      }
+    }
+  }
+  return [...names].sort();
+}

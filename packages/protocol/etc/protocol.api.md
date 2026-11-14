@@ -869,6 +869,7 @@ export const depsAddMethod: MethodDefinition<DepsAddParams, DepsAddResult>;
 
 // @public
 export interface DepsAddParams {
+    readonly acceptLicenses?: readonly string[];
     readonly artifact: SourceRef;
     readonly packages: readonly string[];
     readonly requestId?: string;
@@ -1825,9 +1826,10 @@ export const LicenseDisclosure: z.ZodType<LicenseDisclosure>;
 
 // @public
 export interface LicensedPackage {
+    readonly item?: true;
     readonly license: string;
     readonly name: string;
-    readonly version: string;
+    readonly version?: string;
 }
 
 // @public
@@ -2109,6 +2111,7 @@ export const packAddMethod: MethodDefinition<PackAddParams, PackAddResult>;
 export interface PackAddParams {
     readonly acceptLicenses?: readonly string[];
     readonly artifact: SourceRef;
+    readonly environment?: Readonly<Record<string, string>>;
     readonly overwrite?: boolean;
     readonly requestId?: string;
     readonly specs: readonly string[];
@@ -2223,7 +2226,7 @@ export const PluginContribution: z.ZodType<PluginContribution>;
 export type PluginDiagnosticCode = (typeof pluginDiagnosticCodes)[number];
 
 // @public
-export const pluginDiagnosticCodes: readonly ["MOSTRA_PLUGIN_MANIFEST_INVALID", "MOSTRA_PLUGIN_MANIFEST_WARNING", "MOSTRA_PLUGIN_NOT_A_PLUGIN", "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED", "MOSTRA_PLUGIN_CONFLICT", "MOSTRA_PLUGIN_ENTRY_INVALID", "MOSTRA_PLUGIN_SCOPE_INVALID", "MOSTRA_PLUGIN_NOT_INSTALLED", "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED", "MOSTRA_PLUGIN_EXPORTER_UNKNOWN", "MOSTRA_PLUGIN_FAILED"];
+export const pluginDiagnosticCodes: readonly ["MOSTRA_PLUGIN_MANIFEST_INVALID", "MOSTRA_PLUGIN_MANIFEST_WARNING", "MOSTRA_PLUGIN_NOT_A_PLUGIN", "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED", "MOSTRA_PLUGIN_CONFLICT", "MOSTRA_PLUGIN_ENTRY_INVALID", "MOSTRA_PLUGIN_SCOPE_INVALID", "MOSTRA_PLUGIN_NOT_INSTALLED", "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED", "MOSTRA_PLUGIN_EXPORTER_UNKNOWN", "MOSTRA_PLUGIN_FAILED", "MOSTRA_PLUGIN_OPTIONS_INVALID", "MOSTRA_PLUGIN_SHADOWED"];
 
 // @public
 export const pluginExportMethod: MethodDefinition<PluginExportParams, PluginExportResult>;
@@ -2327,6 +2330,7 @@ export const pluginValidateMethod: MethodDefinition<PluginValidateParams, Plugin
 
 // @public
 export interface PluginValidateParams {
+    readonly acceptLicenses?: readonly string[];
     readonly path: string;
 }
 

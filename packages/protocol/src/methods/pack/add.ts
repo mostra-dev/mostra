@@ -18,8 +18,15 @@ export interface PackAddParams {
   readonly specs: readonly string[];
   /** Replace files the artifact already has with other content (shadcn's `--overwrite`). */
   readonly overwrite?: boolean;
-  /** Licenses acknowledged for the npm packages the items bring (D31). */
+  /** Licenses acknowledged for the items and the npm packages they bring (D31). */
   readonly acceptLicenses?: readonly string[];
+  /**
+   * The caller's values of the variables reading the items needs, which win over the instance's
+   * own environment (a daemon started before they were set): those `components.json` names as
+   * `${VAR}`, `GH_TOKEN`, `GITHUB_TOKEN`, `REGISTRY_URL` and the proxy variables
+   * (`packVariables` in `@mostra/protocol/plugin` lists them).
+   */
+  readonly environment?: Readonly<Record<string, string>>;
   /** Makes retries idempotent: a repeated `requestId` returns the recorded result (H-03). */
   readonly requestId?: string;
 }
@@ -91,6 +98,7 @@ const params: z.ZodType<PackAddParams> = z
     specs: z.array(z.string().min(1)).min(1).readonly(),
     overwrite: z.boolean().exactOptional(),
     acceptLicenses: z.array(z.string().min(1).max(256)).readonly().exactOptional(),
+    environment: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()).exactOptional(),
     requestId: z.string().min(1).exactOptional(),
   })
   .register(wireRegistry, { id: "PackAddParams" });

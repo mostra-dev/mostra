@@ -147,9 +147,10 @@ function versionParts(version: string): [number, number, number] | undefined {
 
 /**
  * Whether this release serves a definition stamped `stamp` for `contract`: the stamp names the
- * contract, and its version is of a line this release implements, at most the version implemented
- * (within a line changes are additive: 0.x within a minor, from 1.0 within a major), as each
- * contract package's `stampCompatible` judges it.
+ * contract on a line this release implements (the major, and at 0.x the minor), as each contract
+ * package's `stampCompatible` judges it. The version within the line is the manifest's range's to
+ * decide, which the loader checks first (D172 item 2): a plugin whose caret range resolved a newer
+ * patch of the contract package than this release's loads where its range admits this release's.
  */
 export function stampServed(
   stamp: unknown,
@@ -165,7 +166,6 @@ export function stampServed(
   return implemented.some((served) => {
     const ours = versionParts(served);
     if (ours === undefined || theirs[0] !== ours[0]) return false;
-    if (ours[0] === 0) return theirs[1] === ours[1] && theirs[2] <= ours[2];
-    return theirs[1] < ours[1] || (theirs[1] === ours[1] && theirs[2] <= ours[2]);
+    return ours[0] !== 0 || theirs[1] === ours[1];
   });
 }

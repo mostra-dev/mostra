@@ -61,4 +61,5 @@ export const licenseDiagnostics: AreaCatalog<LicenseDiagnosticCode> = {
       fix: "Copy the ID from the `MOSTRA_LICENSE_UNACCEPTED` diagnostic that asked for it.",
     },
   },
+  // gen:entries
 };

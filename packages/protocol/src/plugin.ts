@@ -60,8 +60,10 @@ export {
   pluginManifestRegistry,
 } from "./plugin/manifest.ts";
 export {
+  PACK_VARIABLES,
   type PackAddress,
   type PackMostraBlock,
+  packVariables,
   parsePackAddress,
   type Registry,
   type RegistryCssValue,

@@ -121,4 +121,5 @@ export const packDiagnostics: AreaCatalog<PackDiagnosticCode> = {
       fix: "Set the secrets the item's server code needs with `mostra secret set NAME`, and move any Tailwind 3 theme into the item's `cssVars.theme` or your stylesheet's `@theme`.",
     },
   },
+  // gen:entries
 };
