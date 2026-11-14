@@ -1,5 +1,5 @@
 // Runs API Extractor on one package's built declarations: its main entry, and each subpath the
-// package lists in `mostra.apiReports` (`./operator` → `etc/<name>-operator.api.md`). API Extractor analyzes with the
+// package lists in `"mostra-tools".apiReports` (`./operator` → `etc/<name>-operator.api.md`). API Extractor analyzes with the
 // TypeScript it bundles; it takes system typings from the pinned TypeScript 6 (TypeScript 7 has
 // no compiler API). Usage: node api-report.mjs <packageDir> <local|ci>
 // Writes or compares <packageDir>/etc/<name>.api.md and fails on any warning, including public
@@ -23,6 +23,11 @@ const typescriptCompilerFolder = dirname(require.resolve("typescript/package.jso
 // its public API, AbortSignal for one; the report sees them through that package's @types/node.
 const sourceConfig = JSON.parse(readFileSync(join(packageDir, "tsconfig.src.json"), "utf8"));
 const nodeTypes = (sourceConfig.compilerOptions?.types ?? []).includes("node");
+// A package whose code runs in a page (its tsconfig adds the "dom" lib) has DOM types in its public
+// API, HTMLElement for one; the report reads them with the package's own lib list.
+const lib = (sourceConfig.compilerOptions?.lib ?? ["es2024"]).map((name) =>
+  String(name).toLowerCase(),
+);
 
 mkdirSync(join(packageDir, "etc"), { recursive: true });
 
@@ -37,7 +42,7 @@ function report(entry, reportName) {
         overrideTsconfig: {
           compilerOptions: {
             target: "es2024",
-            lib: ["es2024"],
+            lib,
             module: "preserve",
             moduleResolution: "bundler",
             strict: true,
@@ -96,7 +101,7 @@ function report(entry, reportName) {
 const packageJson = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
 const unscoped = packageJson.name.replace(/^@[^/]+\//, "");
 const entries = [["index", "<unscopedPackageName>"]];
-for (const subpath of packageJson.mostra?.apiReports ?? []) {
+for (const subpath of packageJson["mostra-tools"]?.apiReports ?? []) {
   const name = subpath.replace(/^\.\//, "");
   entries.push([name, `${unscoped}-${name}`]);
 }

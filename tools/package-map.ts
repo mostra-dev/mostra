@@ -27,12 +27,14 @@ export interface PackageRule {
   readonly published: boolean;
 }
 
+// An extension contract imports nothing (D172): a plugin pins it alone, and its version moves only
+// with the contract, never with the protocol's release.
 const contract = (name: string): PackageRule => ({
   name: `@mostra/contract-${name}`,
   dir: `packages/contract-${name}`,
   audience: "plugin authors",
   environment: "neutral",
-  workspace: ["@mostra/protocol"],
+  workspace: [],
   external: [],
   published: true,
 });

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Publishes the release's npm packages (EN-05, D67): every package of the fixed release group, in
+ * Publishes the release's npm packages (EN-05, D67): every package of the fixed release group, and
+ * the extension contracts (`@mostra/contract-*`, D30, D172), each at its own version, in
  * dependency order, each packed by pnpm (which writes real versions for `workspace:` and
  * `catalog:` specifiers) and published by npm, whose CLI exchanges the workflow's OIDC token for
  * a short-lived publish token (npm trusted publishing) and adds provenance.
@@ -14,7 +15,9 @@
  * tests installed, in dependency order, after a preflight over all of them (`plan`): a version
  * already on npm is skipped, so a release that failed half-way finishes when the workflow runs
  * again, and one that would move a package's `latest` backwards fails the release before anything
- * is published. `--dry-run` runs `npm publish --dry-run`.
+ * is published. `--dry-run` runs `npm publish --dry-run`. An extension contract publishes only a
+ * version npm lacks: one whose version npm already has is released already (its contract changed
+ * only with a changeset of its own), and one at 0.0.0 is not released yet.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -46,6 +49,8 @@ interface Member {
   readonly dir: string;
   readonly version: string;
   readonly deps: readonly string[];
+  /** Versioned on its own, outside the fixed group: an extension contract. */
+  readonly own?: true;
 }
 
 /** The fixed release group, from `.changeset/config.json`, with each package's manifest. */
@@ -71,6 +76,26 @@ function members(): Member[] {
       deps: Object.keys(manifest.dependencies ?? {}).filter((dep) => names.includes(dep)),
     };
   });
+}
+
+/** The extension contracts: `packages/contract-*`, each at its own version, depending on nothing. */
+function contracts(): Member[] {
+  return readdirSync(join(ROOT, "packages"))
+    .filter((dir) => dir.startsWith("contract-"))
+    .sort()
+    .map((dir) => {
+      const path = join(ROOT, "packages", dir);
+      const manifest = JSON.parse(readFileSync(join(path, "package.json"), "utf8")) as {
+        name: string;
+        version: string;
+        private?: boolean;
+        dependencies?: Record<string, string>;
+      };
+      if (manifest.private) fail(`${manifest.name} is private.`);
+      if (Object.keys(manifest.dependencies ?? {}).length > 0)
+        fail(`${manifest.name} has dependencies; an extension contract has none (D172).`);
+      return { name: manifest.name, dir: path, version: manifest.version, deps: [], own: true };
+    });
 }
 
 /** `group` ordered so every package comes after the group members it depends on. */
@@ -103,11 +128,13 @@ const NEVER = /(^|\/)(\.env(\..*)?|\.npmrc|id_rsa|.*\.pem|.*\.key)$/;
 const tarballName = (name: string, version: string): string =>
   `${name.replace(/^@/, "").replace("/", "-")}-${version}.tgz`;
 
-const group = dependencyOrder(members());
-const versions = new Set(group.map((member) => member.version));
+const fixed = dependencyOrder(members());
+const versions = new Set(fixed.map((member) => member.version));
 if (versions.size !== 1)
   fail(`the release group has several versions: ${[...versions].join(", ")}.`);
 const version = [...versions][0] as string;
+/** Everything this script packs and publishes: the contracts first (they depend on nothing). */
+const group: Member[] = [...contracts(), ...fixed];
 
 if (mode === "pack") pack();
 else if (mode === "publish") publish();
@@ -136,11 +163,13 @@ function pack(): void {
       };
       if (pins.version !== version) fail(`dist/bundles.json pins ${pins.version}, not ${version}.`);
     }
-    const file = join(out, tarballName(member.name, version));
+    const file = join(out, tarballName(member.name, member.version));
     if (!existsSync(file)) fail(`pnpm pack wrote no ${file}.`);
-    console.log(`packed ${member.name}@${version}: ${paths.length} files`);
+    console.log(`packed ${member.name}@${member.version}: ${paths.length} files`);
   }
-  console.log(`✓ npm pack: ${group.length} packages at ${version} in ${out}`);
+  console.log(
+    `✓ npm pack: ${fixed.length} packages at ${version} and ${group.length - fixed.length} extension contracts in ${out}`,
+  );
 }
 
 /** What the registry holds of a package: its versions and its `latest`, or nothing yet. */
@@ -190,12 +219,12 @@ function oidcReason(): string {
     : "\nnpm's debug log has no trusted-publishing (oidc) line: it may not have tried the exchange.\n";
 }
 
-/** The `dist.integrity` npm records for `name`@version. */
-function integrity(name: string): string | undefined {
-  const view = spawnSync("npm", ["view", `${name}@${version}`, "dist.integrity", "--json"], {
+/** The `dist.integrity` npm records for `name`@`at`. */
+function integrity(name: string, at: string): string | undefined {
+  const view = spawnSync("npm", ["view", `${name}@${at}`, "dist.integrity", "--json"], {
     encoding: "utf8",
   });
-  if (view.status !== 0) fail(`npm view ${name}@${version} failed: ${view.stderr.trim()}`);
+  if (view.status !== 0) fail(`npm view ${name}@${at} failed: ${view.stderr.trim()}`);
   const text = view.stdout.trim();
   return text === "" ? undefined : (JSON.parse(text) as string);
 }
@@ -209,15 +238,27 @@ function integrity(name: string): string | undefined {
  * `changeset version`) rehearses a package npm already has under the tag `dry-run`, since 0.0.0
  * is older than anything published. No dependency: this runs in the job that holds the OIDC token.
  */
-function plan(from: string): { member: (typeof group)[number]; tag?: string; skip?: true }[] {
+function plan(
+  from: string,
+): { member: (typeof group)[number]; tag?: string; skip?: true; note?: string }[] {
   const differs: string[] = [];
   const steps = group.map((member) => {
     const known = registered(member.name);
+    if (member.own) {
+      // An extension contract releases a version of its own when its changesets make one.
+      if (known.versions.includes(member.version))
+        return { member, skip: true as const, note: "released already" };
+      if (member.version === "0.0.0") {
+        if (!dryRun) return { member, skip: true as const, note: "not released yet (0.0.0)" };
+        return known.latest !== undefined ? { member, tag: "dry-run" } : { member };
+      }
+      return { member };
+    }
     if (known.versions.includes(version)) {
       // Skipped only when npm holds exactly this tarball (Opus review finding 1): a version npm
       // has from other bytes means this run would finish a release with a set that doesn't
       // belong together (another bundle pinned, another build), which nothing could repair.
-      const published = integrity(member.name);
+      const published = integrity(member.name, version);
       const local = `sha512-${createHash("sha512")
         .update(readFileSync(join(from, tarballName(member.name, version))))
         .digest("base64")}`;
@@ -239,7 +280,7 @@ function plan(from: string): { member: (typeof group)[number]; tag?: string; ski
     const refused: string[] = [];
     for (const step of steps) {
       if (step.skip) continue;
-      const tarball = join(from, tarballName(step.member.name, version));
+      const tarball = join(from, tarballName(step.member.name, step.member.version));
       const check = spawnSync("npm", ["publish", tarball, "--access", "public", "--dry-run"], {
         cwd: ROOT,
         encoding: "utf8",
@@ -250,7 +291,9 @@ function plan(from: string): { member: (typeof group)[number]; tag?: string; ski
           .filter((line) => /error/i.test(line))
           .join(" ")
           .trim();
-        refused.push(`${step.member.name}@${version}: ${said || `npm exited ${check.status}`}`);
+        refused.push(
+          `${step.member.name}@${step.member.version}: ${said || `npm exited ${check.status}`}`,
+        );
       }
     }
     if (refused.length > 0) fail(`nothing published; npm would refuse: ${refused.join("; ")}`);
@@ -264,20 +307,20 @@ function publish(): void {
   if (!dryRun && version === "0.0.0")
     fail("0.0.0 is the unreleased version; run changeset version first.");
   for (const member of group) {
-    const file = join(from, tarballName(member.name, version));
+    const file = join(from, tarballName(member.name, member.version));
     if (!existsSync(file)) fail(`${file} is missing: run pack first.`);
   }
   for (const step of plan(from)) {
     const { member } = step;
     if (step.skip) {
-      console.log(`skipped ${member.name}@${version}: already on npm`);
+      console.log(`skipped ${member.name}@${member.version}: ${step.note ?? "already on npm"}`);
       continue;
     }
     // Provenance is made only inside a supported CI run (trusted publishing adds it there anyway);
     // a dry run elsewhere would refuse the flag.
     const args = [
       "publish",
-      join(from, tarballName(member.name, version)),
+      join(from, tarballName(member.name, member.version)),
       "--access",
       "public",
       ...(step.tag ? ["--tag", step.tag] : []),
@@ -294,7 +337,7 @@ function publish(): void {
       );
     }
     console.log(
-      `${dryRun ? "would publish" : "published"} ${member.name}@${version}${step.tag ? ` (tag ${step.tag}: ${version} is the unreleased version, older than anything npm has)` : ""}`,
+      `${dryRun ? "would publish" : "published"} ${member.name}@${member.version}${step.tag ? ` (tag ${step.tag}: ${member.version} is the unreleased version, older than anything npm has)` : ""}`,
     );
   }
   console.log(`✓ npm publish: ${group.length} packages at ${version}${dryRun ? " (dry run)" : ""}`);
