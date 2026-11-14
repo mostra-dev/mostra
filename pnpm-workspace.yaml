@@ -48,22 +48,22 @@ catalog:
   # Runtime dependencies of published packages
   zod: 4.6.7
   better-sqlite3: 13.0.3
-  oxc-parser: 0.155.0
-  ignore: 7.0.13
-  semver: 7.8.5
+  oxc-parser: 0.157.0
+  ignore: 7.0.14
+  semver: 7.8.6
   '@types/semver': 7.8.0
   # The SDK's bundle manager (WP-11): tar extraction, and fetch through the environment's proxy
   tar: 7.5.22
-  undici: 8.12.3
+  undici: 8.12.4
   # The gateway (WP-05, D18): Hono on Node's HTTP server
   hono: 4.13.13
   '@hono/node-server': 2.1.5
   # The remote server's network binding (WP-29, D165 item 2): JSON-RPC over WebSocket, with pings
-  ws: 8.22.0
+  ws: 8.22.1
   # The remote server's OpenID Connect identity providers (WP-30, INTERFACES §18.5): discovery,
   # the authorization code flow with PKCE and nonce, and ID token validation (panva; MIT; it
   # depends on jose and oauth4webapi, both MIT, no install scripts)
-  openid-client: 6.8.8
+  openid-client: 6.8.9
   # The MCP server (WP-15, D164): the v2 TypeScript SDK's server package, its client for tests,
   # jsdiff for artifact_patch's unified diffs, and the MCP conformance suites (D48; VERIFIED_FACTS)
   '@modelcontextprotocol/server': 2.4.0
@@ -75,27 +75,27 @@ catalog:
 
   # The installer the deps module's install child runs (D94): pnpm 10, whose published package
   # contains no code from pnpm's PolyForm-licensed pnpr/ directory. Never 11 or later.
-  pnpm: 10.34.7
+  pnpm: 10.34.9
 
   # The builder child (WP-03): Vite 8 with React, MDX 3 and Tailwind 4 (VERIFIED_FACTS, WP-03)
-  vite: 8.3.4
-  '@vitejs/plugin-react': 6.1.2
+  vite: 8.3.6
+  '@vitejs/plugin-react': 6.2.1
   '@mdx-js/mdx': 3.1.1
   remark-frontmatter: 5.0.0
   remark-gfm: 4.0.1
-  '@tailwindcss/vite': 4.3.3
+  '@tailwindcss/vite': 4.3.5
 
   # The warm set artifacts resolve (@mostra/warm, D91; ROUND-3 §1.2, D72; VERIFIED_FACTS, WP-04)
   react: 19.3.1
   react-dom: 19.3.1
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
-  react-router: 8.5.0
+  react-router: 8.5.1
   # React's own Flight reply codec, only to test the server-function serializer against it (D54)
   react-server-dom-parcel: 19.3.1
-  tailwindcss: 4.3.3
-  cn: 0.5.0
-  lucide-react: 1.59.0
+  tailwindcss: 4.3.5
+  cn: 0.5.2
+  lucide-react: 1.70.0
   radix-ui: 1.8.1
   '@base-ui/react': 1.9.0
   cmdk: 1.1.1
@@ -103,18 +103,18 @@ catalog:
   sonner: 2.0.8
   embla-carousel-react: 8.6.0
   react-day-picker: 10.0.2
-  react-resizable-panels: 4.14.7
+  react-resizable-panels: 4.19.1
   input-otp: 1.5.0
   recharts: 3.10.1
   uplot: 1.6.32
   echarts: 6.1.0
   '@tanstack/react-table': 9.3.1
-  react-hook-form: 7.90.0
+  react-hook-form: 7.91.0
   '@hookform/resolvers': 5.9.2
-  motion: 14.4.0
-  mermaid: 12.2.0
-  '@xyflow/react': 12.12.0
-  shiki: 4.5.0
+  motion: 14.10.1
+  mermaid: 12.3.0
+  '@xyflow/react': 12.12.1
+  shiki: 4.6.0
   codemirror: 6.0.2
   '@codemirror/state': 6.7.6
   '@codemirror/view': 6.43.15
@@ -126,7 +126,7 @@ catalog:
   '@codemirror/lang-css': 6.3.1
   '@codemirror/lang-html': 6.4.12
   '@codemirror/lang-python': 6.2.1
-  katex: 0.19.0
+  katex: 0.19.1
   '@xterm/xterm': 6.0.0
   '@xterm/addon-fit': 0.11.0
   '@xterm/addon-webgl': 0.19.0
@@ -134,16 +134,16 @@ catalog:
 
   # Build, types and tests
   typescript: 7.0.2
-  tsdown: 0.23.1
-  turbo: 2.11.9
-  vitest: 5.0.5
-  '@vitest/browser-playwright': 5.0.5
+  tsdown: 0.23.7
+  turbo: 2.11.10
+  vitest: 5.1.0
+  '@vitest/browser-playwright': 5.1.0
   fast-check: 4.10.2
-  '@playwright/test': 1.64.1
-  playwright: 1.64.1
+  '@playwright/test': 1.65.0
+  playwright: 1.65.0
   # verify's runner (WP-09, D138): playwright-core with the Chromium headless shell 1.64.0 pins
   # (Renovate moves it with playwright), axe-core injected unmodified, pixelmatch over pngjs
-  playwright-core: 1.64.1
+  playwright-core: 1.65.0
   axe-core: 4.14.0
   pixelmatch: 8.0.0
   pngjs: 7.0.0
@@ -153,19 +153,19 @@ catalog:
   '@types/ws': 8.18.2
 
   # Lint, format and boundaries
-  '@biomejs/biome': 2.5.15
-  eslint: 10.13.0
+  '@biomejs/biome': 2.6.6
+  eslint: 10.14.0
   eslint-plugin-react-hooks: 7.1.1
-  typescript-eslint: 8.72.0
-  dependency-cruiser: 18.7.0
-  knip: 6.42.1
+  typescript-eslint: 8.72.1
+  dependency-cruiser: 18.7.2
+  knip: 6.44.2
 
   # API surface and packaging
-  '@microsoft/api-extractor': 7.59.4
+  '@microsoft/api-extractor': 7.60.1
   publint: 0.3.25
   '@arethetypeswrong/cli': 0.18.5
-  size-limit: 14.2.0
-  '@size-limit/preset-small-lib': 14.2.0
+  size-limit: 14.3.0
+  '@size-limit/preset-small-lib': 14.3.0
 
   # Repository workflow
   '@changesets/cli': 3.0.3
