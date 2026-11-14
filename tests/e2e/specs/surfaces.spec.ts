@@ -222,14 +222,14 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     await tabTo('a[href^="/signin/dev/start"]');
     await page.keyboard.press("Enter");
     await tabTo("input[name=name]");
-    await page.keyboard.type("Katherine Johnson");
+    await page.keyboard.type("Mary Golda Ross");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("Continue as Katherine Johnson to answer")).toBeVisible();
+    await expect(page.getByText("Continue as Mary Golda Ross to answer")).toBeVisible();
     await tabTo('button[value="approve"]');
     await page.keyboard.press("Enter");
     await page.waitForURL((url) => url.pathname.startsWith("/a/"));
     await openInShell(page, page.url());
-    await expect(page.locator("[data-mostra-viewer]")).toContainText("Katherine Johnson");
+    await expect(page.locator("[data-mostra-viewer]")).toContainText("Mary Golda Ross");
     // The answer by keyboard alone, inside the frame, then the trusted Submit.
     await frame.getByTestId("day-Tuesday").focus();
     await page.keyboard.press("Space");
