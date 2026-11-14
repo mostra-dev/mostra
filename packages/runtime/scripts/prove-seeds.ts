@@ -6840,6 +6840,15 @@ const SEEDS: readonly Seed[] = [
     check: integration("packs.test.ts", "license an item"),
   },
   {
+    requirement: "EX-01",
+    name: "a plugin command that throws reads as Mostra's own crash",
+    file: "../cli/src/plugin-commands.ts",
+    from: "    if (error instanceof RpcError) throw error;\n    throw failed(",
+    to: "    throw error;\n    throw failed(",
+    check: unit("plugin-commands.test.ts", "command that throws"),
+    cwd: "../cli",
+  },
+  {
     requirement: "EX-02",
     name: "a command's flag reads as a global flag of another kind (plugin add --home)",
     file: "../cli/src/commands/plugins.ts",

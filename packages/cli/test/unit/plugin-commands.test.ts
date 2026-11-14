@@ -28,7 +28,12 @@ const info = (command: string, file: string): PluginCommandInfo => ({
 const version = PLUGIN_CONTRACTS["cli-command"].implements.at(-1) as string;
 
 /** A module exporting a stamped command definition. */
-function commandModule(stamp: { name: string; version: string }, path: string[]): string {
+function commandModule(
+  stamp: { name: string; version: string },
+  path: string[],
+  body = `const status = await context.call("instance/status", {});
+    return { result: { hello: input.args.name, loud: input.flags.loud === true, pid: status.instance.pid }, exit: 0 };`,
+): string {
   const dir = mkdtempSync(join(tmpdir(), "mostra-plugin-command-"));
   const file = join(dir, "command.mjs");
   writeFileSync(
@@ -40,8 +45,7 @@ function commandModule(stamp: { name: string; version: string }, path: string[])
   args: [{ name: "name", summary: "Who." }],
   flags: [{ name: "loud", kind: "boolean", summary: "Shout." }],
   async run(input, context) {
-    const status = await context.call("instance/status", {});
-    return { result: { hello: input.args.name, loud: input.flags.loud === true, pid: status.instance.pid }, exit: 0 };
+    ${body}
   },
 };
 `,
@@ -97,6 +101,42 @@ describe("plugin commands (D30)", () => {
     const file = commandModule({ name: "cli-command", version }, ["fixture", "other"]);
     await expect(loadPluginCommand(info("fixture hello", file))).rejects.toMatchObject({
       diagnostic: { code: "MOSTRA_PLUGIN_FAILED" },
+    });
+  });
+
+  it("says a command that throws failed as the plugin's, keeping a protocol call's own refusal", async () => {
+    const context = {
+      args: {},
+      flags: {},
+      cwd: "/",
+      json: true,
+      log: () => {},
+    } as unknown as CommandContext;
+    const throws = await loadPluginCommand(
+      info(
+        "fixture hello",
+        commandModule(
+          { name: "cli-command", version },
+          ["fixture", "hello"],
+          'throw new Error("no network");',
+        ),
+      ),
+    );
+    await expect(throws.run(context)).rejects.toMatchObject({
+      diagnostic: { code: "MOSTRA_PLUGIN_FAILED", message: expect.stringContaining("no network") },
+    });
+    const unknown = await loadPluginCommand(
+      info(
+        "fixture hello",
+        commandModule(
+          { name: "cli-command", version },
+          ["fixture", "hello"],
+          'return await context.call("nope/nothing", {});',
+        ),
+      ),
+    );
+    await expect(unknown.run(context)).rejects.toMatchObject({
+      diagnostic: { code: "MOSTRA_HOST_METHOD_UNKNOWN" },
     });
   });
 });

@@ -110,28 +110,30 @@ export async function loadPluginCommand(info: PluginCommandInfo): Promise<Comman
     telemetryName: "plugin",
     async run(context) {
       const controller = new AbortController();
-      const outcome = await definition.run(
-        { args: context.args, flags: context.flags, cwd: context.cwd, json: context.json },
-        {
-          signal: controller.signal,
-          log: (message) => context.log(String(message)),
-          progress: (line) => context.log(String(line)),
-          mostraVersion: cliVersion(),
-          call: (method, params) => {
-            const known = hostMethods.find((candidate) => candidate.method === method);
-            if (known === undefined || known.direction !== "client-to-instance") {
-              throw new RpcError(
-                createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {
-                  message: `${method} isn't a method of the host protocol a client calls.`,
-                }),
+      const outcome = await runCommand(info, () =>
+        definition.run(
+          { args: context.args, flags: context.flags, cwd: context.cwd, json: context.json },
+          {
+            signal: controller.signal,
+            log: (message) => context.log(String(message)),
+            progress: (line) => context.log(String(line)),
+            mostraVersion: cliVersion(),
+            call: (method, params) => {
+              const known = hostMethods.find((candidate) => candidate.method === method);
+              if (known === undefined || known.direction !== "client-to-instance") {
+                throw new RpcError(
+                  createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {
+                    message: `${method} isn't a method of the host protocol a client calls.`,
+                  }),
+                );
+              }
+              return context.call(
+                known as MethodDefinition<unknown, unknown>,
+                known.params.parse(params),
               );
-            }
-            return context.call(
-              known as MethodDefinition<unknown, unknown>,
-              known.params.parse(params),
-            );
+            },
           },
-        },
+        ),
       );
       if (typeof outcome !== "object" || outcome === null || !("result" in outcome)) {
         throw failed(`The plugin ${info.package}'s command "${info.command}" returned no result.`);
@@ -150,4 +152,19 @@ export async function loadPluginCommand(info: PluginCommandInfo): Promise<Comman
       };
     },
   });
+}
+
+/**
+ * Runs a plugin's command: a diagnostic it throws (its own, or one a protocol call answered)
+ * stays as it is; anything else it throws is the plugin's failure, never Mostra's crash.
+ */
+async function runCommand<T>(info: PluginCommandInfo, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof RpcError) throw error;
+    throw failed(
+      `The plugin ${info.package}'s command "${info.command}" failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
