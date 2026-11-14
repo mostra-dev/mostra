@@ -56,7 +56,9 @@ describe("the SPDX tables", () => {
   it("are what the vendored SPDX License List data gives", () => {
     const read = (name: string) => readFileSync(new URL(`data/spdx/${name}`, root), "utf8");
     const generated = readFileSync(new URL("src/plugin/spdx.generated.ts", root), "utf8");
-    expect(generated).toBe(spdxModule(spdxTables(read("licenses.json"), read("exceptions.json"))));
+    expect(generated).toBe(
+      spdxModule(spdxTables(read("spdx-licenses.json"), read("spdx-exceptions.json"))),
+    );
   });
 });
 
