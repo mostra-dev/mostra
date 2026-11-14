@@ -52,7 +52,7 @@ describe("@mostra/contract-connector", () => {
       true,
     );
     expect(stampCompatible({ name: "connector", version: "0.1.4" }, "connector", "0.1.3")).toBe(
-      false,
+      true,
     );
     expect(stampCompatible({ name: "connector", version: "0.2.0" }, "connector", "0.1.3")).toBe(
       false,
@@ -61,7 +61,7 @@ describe("@mostra/contract-connector", () => {
       true,
     );
     expect(stampCompatible({ name: "connector", version: "1.4.0" }, "connector", "1.3.0")).toBe(
-      false,
+      true,
     );
     expect(stampCompatible({ name: "connector", version: "2.0.0" }, "connector", "1.3.0")).toBe(
       false,

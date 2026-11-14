@@ -25,10 +25,11 @@ function parts(version: string): [number, number, number] | undefined {
 }
 
 /**
- * Whether a stamp names contract `name` at a version a reader of version `version` serves. Within
- * a contract's line changes are additive only (0.x: within a minor; from 1.0: within a major), so
- * a reader serves every stamp of its own line up to its own version, and nothing newer: a newer
- * stamp may rely on something this reader doesn't have.
+ * Whether a stamp names contract `name` on the line of version `version`: the same major, and at
+ * 0.x the same minor. Within a line a contract changes additively only, so a stamp says what an
+ * object is; which version of the line a plugin needs is its manifest's range (`"contracts"`),
+ * which Mostra checks against the version it implements. A caret range that resolves a newer
+ * patch than the host's therefore still loads where the plugin's range admits the host's.
  */
 export function stampCompatible(stamp: unknown, name: string, version: string): boolean {
   if (typeof stamp !== "object" || stamp === null) return false;
@@ -37,9 +38,11 @@ export function stampCompatible(stamp: unknown, name: string, version: string): 
   const theirs = parts(stampVersion);
   const ours = parts(version);
   if (theirs === undefined || ours === undefined) return false;
+  // One compatible line: the major, and at 0.x the minor (D172 item 2). Which version within it
+  // a plugin needs is its manifest's range, which the loader checks; a stamp says only what the
+  // object is.
   if (theirs[0] !== ours[0]) return false;
-  if (ours[0] === 0) return theirs[1] === ours[1] && theirs[2] <= ours[2];
-  return theirs[1] < ours[1] || (theirs[1] === ours[1] && theirs[2] <= ours[2]);
+  return ours[0] !== 0 || theirs[1] === ours[1];
 }
 
 /** The pattern every contribution ID matches: lower case, digits, `.`, `_` and `-`, 1 to 64. */

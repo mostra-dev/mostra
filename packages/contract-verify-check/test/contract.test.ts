@@ -43,7 +43,7 @@ describe("@mostra/contract-verify-check", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "verify-check", version: "0.1.4" }, "verify-check", "0.1.3"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "verify-check", version: "0.2.0" }, "verify-check", "0.1.3"),
     ).toBe(false);
@@ -52,7 +52,7 @@ describe("@mostra/contract-verify-check", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "verify-check", version: "1.4.0" }, "verify-check", "1.3.0"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "verify-check", version: "2.0.0" }, "verify-check", "1.3.0"),
     ).toBe(false);

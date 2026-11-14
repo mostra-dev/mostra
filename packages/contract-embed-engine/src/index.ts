@@ -115,11 +115,11 @@ export interface EmbedSnapshot {
 /** A mounted engine. */
 export interface EmbedHandle {
   /** The element was resized (capability `resize`). */
-  resize?(size: EmbedSize): void;
+  resize?(input: { readonly size: EmbedSize }): void | Promise<void>;
   /** What it shows now (capabilities `snapshot` and `text`). */
   snapshot?(request: EmbedSnapshotRequest): Promise<EmbedSnapshot>;
-  /** Moves a timeline to `time` milliseconds (capability `time`). */
-  seek?(time: number): void | Promise<void>;
+  /** Moves a timeline to `input.time` milliseconds (capability `time`). */
+  seek?(input: { readonly time: number }): void | Promise<void>;
   /** Removes what it rendered and stops its work. */
   dispose(): void | Promise<void>;
 }

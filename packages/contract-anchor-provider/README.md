@@ -12,7 +12,10 @@ import { defineAnchorProvider } from "@mostra/contract-anchor-provider";
 export default defineAnchorProvider({
   id: "table-cell",
   kind: "table-cell",
-  serialize: ({ target }) => ({ cell: target.closest("td")?.id ?? "" }),
+  serialize: ({ target }) => {
+    const cell = target.closest("td");
+    return cell?.id ? { anchor: { cell: cell.id }, label: cell.textContent ?? "" } : undefined;
+  },
   resolve: ({ anchor, root }) => {
     const element = root.querySelector(`[id="${String(anchor["cell"])}"]`);
     return element ? { element } : undefined;

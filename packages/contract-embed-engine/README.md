@@ -13,9 +13,17 @@ export default defineEmbedEngine({
   id: "marquee",
   sources: ["text"],
   capabilities: ["resize"],
-  async mount({ element, source }) {
+  async mount({ element, source, size }) {
     element.textContent = String(source.data ?? "");
-    return { dispose: async () => { element.textContent = ""; } };
+    element.style.width = `${size.width}px`;
+    return {
+      resize: ({ size: next }) => {
+        element.style.width = `${next.width}px`;
+      },
+      dispose: async () => {
+        element.textContent = "";
+      },
+    };
   },
 });
 ```

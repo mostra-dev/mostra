@@ -5,6 +5,12 @@
 ```ts
 
 // @public
+export interface AnchorContext {
+    log(message: string): void;
+    readonly mostraVersion: string;
+}
+
+// @public
 export type AnchorData = {
     readonly [key: string]: Json;
 };
@@ -19,12 +25,12 @@ export interface AnchorProviderDefinition {
     readonly description?: string;
     readonly id: string;
     readonly kind: string;
-    matches?(input: AnchorTarget): boolean;
+    matches?(input: AnchorTarget, context: AnchorContext): boolean;
     resolve(input: {
         readonly anchor: AnchorData;
         readonly root: Element;
-    }): ResolvedAnchor | undefined;
-    serialize(input: AnchorTarget): AnchorData | undefined;
+    }, context: AnchorContext): ResolvedAnchor | undefined;
+    serialize(input: AnchorTarget, context: AnchorContext): SerializedAnchor | undefined;
     readonly title?: string;
 }
 
@@ -78,6 +84,12 @@ export interface ResolvedAnchor {
         readonly width: number;
         readonly height: number;
     };
+}
+
+// @public
+export interface SerializedAnchor {
+    readonly anchor: AnchorData;
+    readonly label?: string;
 }
 
 // @public

@@ -59,7 +59,7 @@ describe("@mostra/contract-cli-command", () => {
       true,
     );
     expect(stampCompatible({ name: "cli-command", version: "0.1.4" }, "cli-command", "0.1.3")).toBe(
-      false,
+      true,
     );
     expect(stampCompatible({ name: "cli-command", version: "0.2.0" }, "cli-command", "0.1.3")).toBe(
       false,
@@ -68,7 +68,7 @@ describe("@mostra/contract-cli-command", () => {
       true,
     );
     expect(stampCompatible({ name: "cli-command", version: "1.4.0" }, "cli-command", "1.3.0")).toBe(
-      false,
+      true,
     );
     expect(stampCompatible({ name: "cli-command", version: "2.0.0" }, "cli-command", "1.3.0")).toBe(
       false,

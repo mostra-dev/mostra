@@ -71,6 +71,22 @@ export interface ResolvedAnchor {
   readonly label?: string;
 }
 
+/** What an anchor provider's functions receive besides their input. */
+export interface AnchorContext {
+  /** The version of the Mostra runtime calling. */
+  readonly mostraVersion: string;
+  /** Writes a line to the log Mostra keeps of the review session. */
+  log(message: string): void;
+}
+
+/** An anchor `serialize` made: the data `resolve` reads back, and what people see of it. */
+export interface SerializedAnchor {
+  /** The provider's own data, kept with the comment. */
+  readonly anchor: AnchorData;
+  /** A short description for people: `Revenue, March`. */
+  readonly label?: string;
+}
+
 /** What a plugin writes to define an anchor provider. */
 export interface AnchorProviderDefinition {
   /** The provider's ID. Unique among an artifact's plugins. */
@@ -81,15 +97,18 @@ export interface AnchorProviderDefinition {
   readonly title?: string;
   /** One sentence on what it does, for people and agents. */
   readonly description?: string;
-  /** Whether it can anchor at `input`; without it, `serialize` decides by answering. */
-  matches?(input: AnchorTarget): boolean;
+  /**
+   * Whether it can anchor at `input`, a predicate the overlay asks before `serialize`; without it,
+   * `serialize` decides by answering.
+   */
+  matches?(input: AnchorTarget, context: AnchorContext): boolean;
   /** The anchor for what the viewer pointed at, or `undefined` when it has none. */
-  serialize(input: AnchorTarget): AnchorData | undefined;
-  /** Where `anchor` is now inside `root`, or `undefined` when it is gone. */
-  resolve(input: {
-    readonly anchor: AnchorData;
-    readonly root: Element;
-  }): ResolvedAnchor | undefined;
+  serialize(input: AnchorTarget, context: AnchorContext): SerializedAnchor | undefined;
+  /** Where `input.anchor` is now inside `input.root`, or `undefined` when it is gone. */
+  resolve(
+    input: { readonly anchor: AnchorData; readonly root: Element },
+    context: AnchorContext,
+  ): ResolvedAnchor | undefined;
 }
 
 /** An anchor provider, as {@link defineAnchorProvider} returns it: the definition with its stamp. */

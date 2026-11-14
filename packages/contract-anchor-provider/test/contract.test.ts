@@ -65,7 +65,7 @@ describe("@mostra/contract-anchor-provider", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "anchor-provider", version: "0.1.4" }, "anchor-provider", "0.1.3"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "anchor-provider", version: "0.2.0" }, "anchor-provider", "0.1.3"),
     ).toBe(false);
@@ -74,7 +74,7 @@ describe("@mostra/contract-anchor-provider", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "anchor-provider", version: "1.4.0" }, "anchor-provider", "1.3.0"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "anchor-provider", version: "2.0.0" }, "anchor-provider", "1.3.0"),
     ).toBe(false);

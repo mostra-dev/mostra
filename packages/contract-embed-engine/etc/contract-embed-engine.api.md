@@ -67,8 +67,12 @@ export type EmbedEvent = {
 // @public
 export interface EmbedHandle {
     dispose(): void | Promise<void>;
-    resize?(size: EmbedSize): void;
-    seek?(time: number): void | Promise<void>;
+    resize?(input: {
+        readonly size: EmbedSize;
+    }): void | Promise<void>;
+    seek?(input: {
+        readonly time: number;
+    }): void | Promise<void>;
     snapshot?(request: EmbedSnapshotRequest): Promise<EmbedSnapshot>;
 }
 

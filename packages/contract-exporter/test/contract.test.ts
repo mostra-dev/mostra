@@ -64,16 +64,12 @@ describe("@mostra/contract-exporter", () => {
     expect(isExporter({})).toBe(false);
     expect(isExporter(null)).toBe(false);
     expect(stampCompatible({ name: "exporter", version: "0.1.0" }, "exporter", "0.1.3")).toBe(true);
-    expect(stampCompatible({ name: "exporter", version: "0.1.4" }, "exporter", "0.1.3")).toBe(
-      false,
-    );
+    expect(stampCompatible({ name: "exporter", version: "0.1.4" }, "exporter", "0.1.3")).toBe(true);
     expect(stampCompatible({ name: "exporter", version: "0.2.0" }, "exporter", "0.1.3")).toBe(
       false,
     );
     expect(stampCompatible({ name: "exporter", version: "1.2.0" }, "exporter", "1.3.0")).toBe(true);
-    expect(stampCompatible({ name: "exporter", version: "1.4.0" }, "exporter", "1.3.0")).toBe(
-      false,
-    );
+    expect(stampCompatible({ name: "exporter", version: "1.4.0" }, "exporter", "1.3.0")).toBe(true);
     expect(stampCompatible({ name: "exporter", version: "2.0.0" }, "exporter", "1.3.0")).toBe(
       false,
     );

@@ -53,7 +53,7 @@ describe("@mostra/contract-embed-engine", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "embed-engine", version: "0.1.4" }, "embed-engine", "0.1.3"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "embed-engine", version: "0.2.0" }, "embed-engine", "0.1.3"),
     ).toBe(false);
@@ -62,7 +62,7 @@ describe("@mostra/contract-embed-engine", () => {
     ).toBe(true);
     expect(
       stampCompatible({ name: "embed-engine", version: "1.4.0" }, "embed-engine", "1.3.0"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       stampCompatible({ name: "embed-engine", version: "2.0.0" }, "embed-engine", "1.3.0"),
     ).toBe(false);
