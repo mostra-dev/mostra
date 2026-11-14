@@ -18,8 +18,8 @@ export interface LockLicense {
   readonly class: LicenseClass;
   /** `flag` (`--accept-license`) or `host` (the home's license policy). */
   readonly by: "flag" | "host";
-  /** When (RFC 3339). */
-  readonly at: string;
+  // No time and no person (D172 item 6): `lockDigest` is part of the version's identity, so it
+  // stays a function of what the version is built from; the supervisor's log says when.
 }
 
 /** A lockfile's content. */
@@ -70,7 +70,6 @@ export function lockText(lock: Lock): string {
       lines.push(`  ${JSON.stringify(id)}:`);
       lines.push(`    class: ${JSON.stringify(license.class)}`);
       lines.push(`    by: ${JSON.stringify(license.by)}`);
-      lines.push(`    at: ${JSON.stringify(license.at)}`);
     }
   }
   const text = `${lines.join("\n")}\n`;
@@ -96,7 +95,16 @@ export function parseLock(text: string): Lock {
     packages: data.packages ?? {},
     ...(typeof data.pnpm === "string" ? { pnpm: data.pnpm } : {}),
     ...(Array.isArray(data.plugins) && data.plugins.length > 0 ? { plugins: data.plugins } : {}),
-    ...(data.licenses && Object.keys(data.licenses).length > 0 ? { licenses: data.licenses } : {}),
+    ...(data.licenses && Object.keys(data.licenses).length > 0
+      ? {
+          licenses: Object.fromEntries(
+            Object.entries(data.licenses).map(([id, license]) => [
+              id,
+              { class: license.class, by: license.by === "host" ? "host" : "flag" } as LockLicense,
+            ]),
+          ),
+        }
+      : {}),
   };
 }
 

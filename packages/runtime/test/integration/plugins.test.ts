@@ -513,6 +513,24 @@ describe("licenses (EX-04, D31)", () => {
     expect(lock).toContain("licenses:");
     expect(lock).toContain(license);
     expect(lock).toMatch(/by: "?flag"?/);
+    // No time and no person (D172 item 6): the same acknowledgment made later, in another home,
+    // gives the same lockfile, so the same source gives the same version.
+    expect(lock).not.toMatch(/\bat: /);
+    const other = await start();
+    const copy = artifact();
+    ok(
+      await other.client.call("plugin/add", {
+        artifact: { path: copy },
+        packages: [plugin],
+        acceptLicenses: [license],
+      }),
+    );
+    const copied = ok<{ versionId: string }>(
+      await other.client.call("artifact/publish", { source: { path: copy } }),
+    );
+    expect(
+      readFileSync(join(other.home.home, "versions", copied.versionId, "lock.yaml"), "utf8"),
+    ).toBe(lock);
     // Given once: a later install needs no acknowledgment again.
     const again = ok<AddResult>(
       await target.client.call("plugin/add", {

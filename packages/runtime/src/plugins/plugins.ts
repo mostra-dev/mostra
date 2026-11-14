@@ -743,9 +743,9 @@ export function createPlugins(options: PluginsOptions): Plugins {
       const accepted: LockLicense | undefined =
         earlier ??
         (accept.includes(id) || accept.includes("*")
-          ? { class: entry.class, by: "flag", at: now }
+          ? { class: entry.class, by: "flag" }
           : policy.includes(id) || policy.includes("*")
-            ? { class: entry.class, by: "host", at: now }
+            ? { class: entry.class, by: "host" }
             : undefined);
       if (accepted === undefined) {
         const disclosure: LicenseDisclosure = { ...base, acknowledgment: "missing" };
@@ -754,10 +754,19 @@ export function createPlugins(options: PluginsOptions): Plugins {
         continue;
       }
       record[id] = accepted;
+      if (earlier === undefined) {
+        // The lockfile keeps no time (D172 item 6); the log says when, and by what.
+        log.info("plugins.license_accepted", {
+          license: id,
+          class: entry.class,
+          by: accepted.by,
+          packages: base.packages.map((pkg) => `${pkg.name}@${pkg.version}`),
+        });
+      }
       disclosures.push({
         ...base,
         acknowledgment: accepted.by === "host" ? "host" : "accepted",
-        acceptedAt: accepted.at,
+        ...(earlier === undefined ? { acceptedAt: now } : {}),
       });
     }
     return { disclosures, record, missing, warnings, closures };

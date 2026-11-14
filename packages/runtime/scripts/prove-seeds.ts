@@ -6825,6 +6825,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EX-04",
+    name: "the lockfile records when a license was acknowledged, so the version depends on it",
+    file: "src/deps/lock.ts",
+    from: "      lines.push(`    by: ${JSON.stringify(license.by)}`);\n",
+    to: "      lines.push(`    by: ${JSON.stringify(license.by)}`);\n      lines.push(`    at: ${JSON.stringify(new Date().toISOString())}`);\n",
+    check: integration("plugins.test.ts", "freezes it at publish"),
+  },
+  {
+    requirement: "EX-04",
     name: "a host's pre-acceptance is ignored",
     file: "src/plugins/plugins.ts",
     from: "    const policy = options.policy()?.accept ?? [];",
