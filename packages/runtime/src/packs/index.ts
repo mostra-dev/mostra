@@ -225,18 +225,49 @@ export function cssText(css: { readonly [key: string]: RegistryCssValue }, inden
 /** The CSS an item adds: its variables and its rules. */
 export function itemCss(item: RegistryItem): string | undefined {
   const parts: string[] = [];
-  const vars = (selector: string, record: Readonly<Record<string, string>> | undefined) => {
-    const entries = Object.entries(record ?? {});
-    if (entries.length === 0) return;
-    parts.push(
-      `${selector} {\n${entries.map(([name, value]) => `  --${name.replace(/^--/, "")}: ${value};`).join("\n")}\n}`,
-    );
-  };
-  vars("@theme inline", item.cssVars?.theme);
-  vars(":root", item.cssVars?.light);
-  vars(".dark", item.cssVars?.dark);
+  const declarations = (record: Readonly<Record<string, string>>): string[] =>
+    Object.entries(record).map(([name, value]) => `  --${name.replace(/^--/, "")}: ${value};`);
+  const light = item.cssVars?.light ?? {};
+  const dark = item.cssVars?.dark ?? {};
+  // As shadcn 4.23.0 writes them: a light or dark variable that holds a colour is a Tailwind
+  // colour (`--color-<name>: var(--<name>)`, so `bg-<name>` works), and `radius` gives the radius
+  // scale; the theme's own variables go in as they are.
+  const theme: Record<string, string> = { ...(item.cssVars?.theme ?? {}) };
+  for (const name of new Set([...Object.keys(light), ...Object.keys(dark)])) {
+    const bare = name.replace(/^--/, "");
+    const value = light[name] ?? dark[name] ?? "";
+    if (bare === "radius") {
+      Object.assign(theme, RADIUS_SCALE);
+    } else if (isColour(value)) {
+      const key = bare === "sidebar-background" ? "color-sidebar" : `color-${bare}`;
+      theme[key] ??= bare === "sidebar-background" ? "var(--sidebar)" : `var(--${bare})`;
+    }
+  }
+  if (Object.keys(dark).length > 0) parts.push("@custom-variant dark (&:is(.dark *));");
+  if (Object.keys(theme).length > 0)
+    parts.push(`@theme inline {\n${declarations(theme).join("\n")}\n}`);
+  if (Object.keys(light).length > 0) parts.push(`:root {\n${declarations(light).join("\n")}\n}`);
+  if (Object.keys(dark).length > 0) parts.push(`.dark {\n${declarations(dark).join("\n")}\n}`);
   if (item.css !== undefined && Object.keys(item.css).length > 0) parts.push(cssText(item.css));
   return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+/** The radius scale shadcn derives from `radius`. */
+const RADIUS_SCALE: Readonly<Record<string, string>> = {
+  "radius-sm": "calc(var(--radius) * 0.6)",
+  "radius-md": "calc(var(--radius) * 0.8)",
+  "radius-lg": "var(--radius)",
+  "radius-xl": "calc(var(--radius) * 1.4)",
+  "radius-2xl": "calc(var(--radius) * 1.8)",
+  "radius-3xl": "calc(var(--radius) * 2.2)",
+  "radius-4xl": "calc(var(--radius) * 2.6)",
+};
+
+/** Whether a variable's value is a colour, as shadcn judges it. */
+function isColour(value: string): boolean {
+  if (/^(?:hsl|rgb|#|oklch)/.test(value) || value.includes("--color-")) return true;
+  const parts = value.split(" ");
+  return parts.length === 3 && parts.slice(1).every((part) => part.includes("%"));
 }
 
 /** `css` with the block of `item` set to `block` (added at the end the first time). */

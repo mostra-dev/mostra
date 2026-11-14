@@ -224,14 +224,13 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
       "components/ui/label.tsx",
       "components/ui/separator.tsx",
     ]);
-    // The files are the items' own, their registry imports pointed at the artifact's aliases.
-    expect(readFileSync(join(dir, "components/ui/card.tsx"), "utf8")).toBe(itemFile("card"));
-    const form = readFileSync(join(dir, "components/login-form.tsx"), "utf8");
-    expect(form).toContain('from "@/components/ui/button"');
-    expect(form).not.toContain("@/registry/");
-    expect(readFileSync(join(dir, "components/ui/field.tsx"), "utf8")).toContain(
-      'from "@/components/ui/label"',
-    );
+    // Byte for byte what shadcn 4.23.0's own `shadcn add` wrote for the same block into a project
+    // with these aliases and `rsc: true` (`fixtures/shadcn/expected`, VERIFIED_FACTS, WP-16).
+    for (const file of result.files) {
+      expect(readFileSync(join(dir, file.path), "utf8"), file.path).toBe(
+        readFileSync(join(SHADCN, "expected", "login-01", file.path), "utf8"),
+      );
+    }
     // The block's page has no place in an artifact without pages/: said, not written.
     expect(result.notes.map((note) => note.code)).toContain("MOSTRA_PACK_NOT_APPLIED");
     expect(existsSync(join(dir, "app"))).toBe(false);
