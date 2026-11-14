@@ -133,7 +133,7 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/warm",
     audience: "runtime bundle (the warm set artifacts resolve)",
     environment: "browser",
-    workspace: ["@mostra/react"],
+    workspace: ["@mostra/react", "@mostra/themes"],
     external: "any",
     published: false,
   },

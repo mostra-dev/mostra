@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@mostra/themes/css/faces.css";
 
 /*
  * Studio: Mostra's default theme: the brand's palette, faces and shapes without its marks, quiet so the page's own content leads.

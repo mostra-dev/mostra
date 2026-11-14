@@ -6,7 +6,13 @@
  *   pnpm --filter @mostra/themes generate
  */
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { studio, THEMES, tailwindStylesheet, themeStylesheet } from "@mostra/themes";
+import {
+  facesStylesheet,
+  studio,
+  THEMES,
+  tailwindStylesheet,
+  themeStylesheet,
+} from "@mostra/themes";
 
 mkdirSync(new URL("../css/", import.meta.url), { recursive: true });
 for (const theme of Object.values(THEMES)) {
@@ -16,6 +22,12 @@ for (const theme of Object.values(THEMES)) {
   );
   console.log(`wrote css/${theme.id}.css`);
 }
+// The faces alone, which the Skill's Studio stylesheet imports (every theme shares them).
+writeFileSync(
+  new URL("../css/faces.css", import.meta.url),
+  facesStylesheet(studio, { assetBase: "../" }),
+);
+console.log("wrote css/faces.css");
 
 // The Agent Skill's baseline stylesheet and every example's copy of it (the CLI's skill test holds
 // the copies equal): Studio, as an artifact takes it.

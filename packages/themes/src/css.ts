@@ -141,6 +141,21 @@ const TAILWIND_COLORS = [
 const indented = (lines: readonly string[], by: string): string[] => lines.map((line) => by + line);
 
 /**
+ * A theme's faces alone, as `@font-face` rules (`css/faces.css`): what a page imports to have the
+ * theme's own type where its stylesheet only names it, as the Skill's Studio stylesheet does.
+ */
+export function facesStylesheet(
+  theme: Theme,
+  options: { readonly assetBase?: string } = {},
+): string {
+  return [
+    `/* ${theme.name}'s faces (SIL Open Font License 1.1). Generated from @mostra/themes. */`,
+    ...fontFaces(theme, options.assetBase ?? "./"),
+    "",
+  ].join("\n");
+}
+
+/**
  * A theme as the Tailwind 4 stylesheet an artifact copies (the Agent Skill's
  * `assets/studio.css`): `@import "tailwindcss"`, the colours under `:root` and the device's dark
  * setting, their utilities under `@theme inline`, and a few base rules. It names the faces and
@@ -149,6 +164,8 @@ const indented = (lines: readonly string[], by: string): string[] => lines.map((
 export function tailwindStylesheet(theme: Theme): string {
   return [
     '@import "tailwindcss";',
+    // The theme's own type, served with the page (a warm package: no install, no CDN).
+    '@import "@mostra/themes/css/faces.css";',
     "",
     "/*",
     ` * ${theme.name}: ${theme.description}`,

@@ -78,6 +78,11 @@ export const FACES: {
 };
 
 // @public
+export function facesStylesheet(theme: Theme, options?: {
+    readonly assetBase?: string;
+}): string;
+
+// @public
 export function field(options: {
     readonly label: HtmlValue;
     readonly name: string;

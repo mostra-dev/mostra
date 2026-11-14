@@ -29,7 +29,7 @@ marks, for agents' pages by default and for pages someone else sent (D141, amend
 
 ## Public interface
 
-`src/index.ts`; the API report is `etc/themes.api.md`. Files: `css/studio.css`, `css/mostra.css`
+`src/index.ts`; the API report is `etc/themes.api.md`. Files: `css/studio.css`, `css/mostra.css`, `css/faces.css` (the faces alone, which the Skill's Studio stylesheet imports; the package is in the warm set)
 (generated: `pnpm --filter @mostra/themes generate`), `fonts/`, `marks/`.
 
 ## Tests to run

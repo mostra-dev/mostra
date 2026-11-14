@@ -5,6 +5,7 @@ import {
   contrast,
   createPages,
   defineTheme,
+  facesStylesheet,
   html,
   mostra,
   oklch,
@@ -132,6 +133,13 @@ describe("stylesheets", () => {
         themeStylesheet(theme, { assetBase: "../" }),
       );
     }
+    // The faces alone, which the Skill's stylesheet imports, each file there to load.
+    const faces = readFileSync(new URL("../css/faces.css", import.meta.url), "utf8");
+    expect(faces).toBe(facesStylesheet(studio, { assetBase: "../" }));
+    for (const [, file] of faces.matchAll(/url\("\.\.\/(fonts\/[^"]+)"\)/g)) {
+      expect(readFileSync(new URL(`../${file}`, import.meta.url)).byteLength).toBeGreaterThan(1000);
+    }
+    expect(tailwindStylesheet(studio)).toContain('@import "@mostra/themes/css/faces.css";');
   });
 });
 
