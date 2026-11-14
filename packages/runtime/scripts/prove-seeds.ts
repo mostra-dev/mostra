@@ -6793,6 +6793,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "EX-03",
+    name: "an item's light and dark colours don't become Tailwind colours",
+    file: "src/packs/packs.ts",
+    from: "    } else if (isColour(value)) {",
+    to: "    } else if (false && isColour(value)) {",
+    check: integration("packs.test.ts", "where the build reads it"),
+  },
+  {
+    requirement: "EX-03",
     name: "an item's file may land outside the artifact",
     file: "src/packs/packs.ts",
     from: '    if (target.startsWith("~/")) return target.slice(2);',

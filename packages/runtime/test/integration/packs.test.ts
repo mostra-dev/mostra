@@ -7,7 +7,14 @@
  * not acknowledged (D31), and an offline read.
  */
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -288,6 +295,50 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
     expect(page).toContain('from "@/components/login-form"');
     expect(page).not.toContain("@/registry/");
     expect(result.notes.map((note) => note.code)).not.toContain("MOSTRA_PACK_NOT_APPLIED");
+  });
+
+  it("puts an item's CSS where the build reads it: its theme's colours become utilities", async () => {
+    const target = await start();
+    const dir = artifact({
+      "index.tsx":
+        'import "./styles.css";\nimport { Badge } from "@/components/badge";\nexport default function Page() { return <Badge />; }\n',
+    });
+    const item = join(dir, "..", "badge.json");
+    writeFileSync(
+      item,
+      JSON.stringify({
+        name: "badge",
+        type: "registry:component",
+        files: [
+          {
+            path: "registry/badge.tsx",
+            type: "registry:component",
+            content:
+              'export function Badge() {\n  return <p className="bg-badge rounded-card">New</p>;\n}\n',
+          },
+        ],
+        cssVars: {
+          theme: { "radius-card": "1rem" },
+          light: { badge: "oklch(0.7 0.1 140)" },
+          dark: { badge: "oklch(0.5 0.1 140)" },
+        },
+      }),
+    );
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", { artifact: { path: dir }, specs: [item] }),
+    );
+    expect(result.notes.map((note) => note.code)).not.toContain("MOSTRA_PACK_CSS_UNIMPORTED");
+    const receipt = ok<{ versionId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const assets = join(target.home.home, "versions", receipt.versionId, "client", "assets");
+    const css = readdirSync(assets)
+      .filter((name) => name.endsWith(".css"))
+      .map((name) => readFileSync(join(assets, name), "utf8"))
+      .join("\n");
+    expect(css).toMatch(/\.bg-badge\s*\{/);
+    expect(css).toMatch(/\.rounded-card\s*\{/);
+    expect(css).toContain("--badge:");
   });
 
   it("leaves identical files alone, refuses to replace changed ones, and replaces them with overwrite", async () => {
