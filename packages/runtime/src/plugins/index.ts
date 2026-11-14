@@ -538,11 +538,21 @@ export function createPlugins(options: PluginsOptions): Plugins {
     try {
       return await task(child);
     } catch (problem) {
-      if (problem instanceof RpcError) throw problem;
-      throw error(
-        "MOSTRA_PLUGIN_FAILED",
-        `A plugin failed: ${problem instanceof Error ? problem.message : String(problem)}`,
-      );
+      // A refusal of the plugin's own stays as it is; anything else (the child crashed, hung past
+      // its limit, or answered nonsense) is the plugin's failure, said as one.
+      if (
+        problem instanceof RpcError &&
+        /^MOSTRA_(PLUGIN|LICENSE)_/.test(problem.diagnostic.code)
+      ) {
+        throw problem;
+      }
+      const reason =
+        problem instanceof RpcError
+          ? `${problem.diagnostic.code}: ${problem.diagnostic.message}`
+          : problem instanceof Error
+            ? problem.message
+            : String(problem);
+      throw error("MOSTRA_PLUGIN_FAILED", `A plugin's child (${ownerRef}) failed: ${reason}`);
     } finally {
       await child.stop(2000);
     }

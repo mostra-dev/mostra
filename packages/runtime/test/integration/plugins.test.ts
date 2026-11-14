@@ -297,6 +297,28 @@ describe("contracts at install and at load (EX-01)", () => {
     expect(code(unknown)).toBe("MOSTRA_PLUGIN_EXPORTER_UNKNOWN");
   });
 
+  it("says an exporter whose child dies failed, and writes nothing", async () => {
+    const target = await start();
+    const dir = artifact();
+    ok(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-crash@1.0.0"],
+      }),
+    );
+    const receipt = ok<{ artifactId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const out = join(tempDir("plugins-export"), "out");
+    const failed = await target.client.call("plugin/export", {
+      artifact: { artifactId: receipt.artifactId },
+      exporter: "crash",
+      out,
+    });
+    expect(code(failed)).toBe("MOSTRA_PLUGIN_FAILED");
+    expect(existsSync(out)).toBe(false);
+  });
+
   it("refuses an out-of-range plugin at install and leaves the lockfile as it was", async () => {
     const target = await start();
     const dir = artifact();

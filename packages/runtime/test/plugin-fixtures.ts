@@ -223,6 +223,24 @@ export function pluginFixtures(): FixturePackage[] {
       },
     },
     {
+      // An exporter whose child dies in the middle of an export.
+      name: "mostra-fixture-crash",
+      version: "1.0.0",
+      manifest: {
+        type: "module",
+        license: "MIT",
+        mostra: {
+          name: "dev.mostra.fixtures/crash",
+          contracts: { exporter: `^${range("exporter")}` },
+          contributes: { exporters: [{ id: "crash", entry: "./exporter.js" }] },
+          license: "MIT",
+        },
+      },
+      files: {
+        "exporter.js": `export default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: "crash", output: { mediaType: "text/plain", layout: "file" }, async export() { process.exit(7); } };\n`,
+      },
+    },
+    {
       // Stands in for class-variance-authority, which shadcn's button imports (Apache-2.0, as the real one).
       name: "class-variance-authority",
       version: "0.7.1",
