@@ -253,6 +253,24 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
     expect(lock).toContain("class-variance-authority");
   });
 
+  it("puts a block's page in pages/ when the artifact has routes, importing its component where it landed", async () => {
+    const target = await start();
+    const dir = artifact({
+      "pages/index.tsx": "export default function Home() { return <p>Home</p>; }\n",
+    });
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", {
+        artifact: { path: dir },
+        specs: [`${base}/r/styles/new-york-v4/login-01.json`],
+      }),
+    );
+    expect(result.files.map((file) => file.path)).toContain("pages/login.tsx");
+    const page = readFileSync(join(dir, "pages/login.tsx"), "utf8");
+    expect(page).toContain('from "@/components/login-form"');
+    expect(page).not.toContain("@/registry/");
+    expect(result.notes.map((note) => note.code)).not.toContain("MOSTRA_PACK_NOT_APPLIED");
+  });
+
   it("leaves identical files alone, refuses to replace changed ones, and replaces them with overwrite", async () => {
     const target = await start();
     const dir = artifact();
