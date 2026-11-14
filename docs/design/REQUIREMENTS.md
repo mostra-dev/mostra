@@ -203,7 +203,7 @@
 
 | ID | Requirement | Release | Source | Route |
 |---|---|---|---|---|
-| EX-01 | Extension contracts at 0.x for the points in ARCHITECTURE §17, each versioned in its own package | v1 | D30 | M |
+| EX-01 | Extension contracts at 0.x for the points in ARCHITECTURE §13, each versioned in its own package | v1 | D30 | M |
 | EX-02 | A plugin manifest under the `"mostra"` key with contracts, contributions, declared effects, SPDX license and bundled licenses, validated by `mostra plugin validate` | v1 | D30 | M |
 | EX-03 | Copy-source packs in a superset of the shadcn registry format; any shadcn item installs unchanged | v1 | D30 | I |
 | EX-04 | License classes shown at install; non-OSI classes need a one-time scriptable acknowledgment recorded in the lockfile; hosts can pre-accept | v1 | D31 | I |

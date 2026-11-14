@@ -33,8 +33,19 @@ imports nothing but `zod` (tools/package-map.ts).
   `Invitation` (D168 item 9); since MT-03 `LimitQuery.versionId`, the `bytes.held` counter and
   `IdentityProvider.verifies` (D169). An operating layer imports nothing else of Mostra,
   so it imports nothing with I/O and evolves additively under its own report,
-  `etc/protocol-operator.api.md` (`mostra.apiReports` in `package.json` names each subpath with a
-  report).
+  `etc/protocol-operator.api.md` (`mostra-tools.apiReports` in `package.json` names each subpath
+  with a report; the `mostra` key belongs to plugins, D172).
+- `src/plugin.ts` is `@mostra/protocol/plugin`, the plugin system's rules (INTERFACES §14, D172):
+  the manifest schema and `checkPluginManifest` (`src/plugin/manifest.ts`, published as
+  `schemas/plugin-manifest.schema.json`), `PLUGIN_CONTRACTS` with the versions this release
+  implements (`contract-versions.generated.ts`, written by `tools/release/versions.ts sync` from
+  the contract packages) and `stampServed`, `CORE_COMMANDS` (every word of Mostra's own a plugin
+  command can't take), license classing over the SPDX list (`license.ts`; the list is
+  `data/spdx/`, and `node scripts/spdx.ts` writes `spdx.generated.ts`, which a test checks against
+  it), and shadcn's registry item schema with `parsePackAddress` (`registry-item.ts`). Only the
+  instance, the CLI and tools import it, so pages never load the SPDX table. Its wire types and
+  the `plugin/*` and `pack/add` methods are in the main entry (`src/plugins.ts`,
+  `src/methods/plugin/`, `src/methods/pack/`).
 - `src/team.ts` holds the team's wire shapes (D168): respondents and the roster, the page's
   projection of them, presence; `src/team-settings.ts` the manifest's `team` setting, apart so
   `manifest.ts` imports nothing that imports it.

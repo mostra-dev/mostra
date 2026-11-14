@@ -8,7 +8,8 @@
 <home>/                        default ~/.mostra (macOS), ${XDG_DATA_HOME:-~/.local/share}/mostra (Linux),
                                %LOCALAPPDATA%\mostra (Windows); mode 0700 (D85), on Windows a protected access list
                                granting only the user and SYSTEM, inherited by everything inside (D150)
-  config.json                  home settings written by `mostra` and by hosts through HomeConfig (the dependency policy, D95);
+  config.json                  home settings written by `mostra` and by hosts through HomeConfig (the dependency policy, D95;
+                               the licenses a host accepts, `licenses: { accept }`, D172 item 9);
                                `hostConfigured: { client, at }`, written once when a host first configures the home or a
                                `mostra-runtime host` instance owns it, and never removed (D140 item 4)
   instance.json                discovery record of the running supervisor (D81): pid, start time, socket, runtime version, revisions; never a lock
@@ -21,10 +22,14 @@
   blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
   deps/store/                  shared content-addressed package store (pnpm 10's, D20, D94)
   deps/locks/pinned-<digest>/  a version's layout once the warm set moved on: its locked warm versions installed (D135)
-  deps/locks/<lockDigest>/     per-lockfile node_modules layouts, hard-linked from the store; each links the warm set
-                               through a `warm` symlink and is complete once it carries `.mostra-layout` (D95)
+  deps/locks/<layout key>/     per-lockfile node_modules layouts (the key: the digest of its `warm`, `packages` and `pnpm`, so
+                               `plugins` and `licenses` never move a layout, D172), hard-linked from the store; each links the warm set
+                               through a `warm` symlink and is complete once it carries `.mostra-layout` (D95), whose `scripts: "pending"` marks install
+                               scripts held back until an install's licenses are acknowledged (D172 item 8)
   deps/cache/, deps/state/     the installer's registry metadata (read when offline) and its own state
   deps/tmp/                    scratch projects of resolutions in progress; emptied at every start
+  plugins/                     the home's own plugins' layout root (`home:plugins`, D172 item 4): exporters and CLI commands
+                               installed with `mostra plugin add --global`
   cache/builds/<versionId>/    verify's builds, laid out as version directories, which publish promotes when its own
                                version ID matches (D138 item 5); capped at 5 GB, least recently used first, never one
                                a running verify serves (D47); unfinished `*.tmp-*` builds removed at every start
@@ -56,7 +61,7 @@
 ## 2. Identity and digests
 
 - **`sourceDigest`** is the SHA-256 of a canonical listing of the source tree: for every file, its path (relative, `/`-separated, NFC), its executable bit and the SHA-256 of its bytes, sorted by path. The listing is the JSON array `[[path, executable, sha256hex], …]` sorted by the paths' UTF-8 bytes. It excludes `node_modules/`, `.git/` and `.mostra/` at any depth, editor swap and backup files (`*.swp` and kin, `*~`, `.#*`, `#*#`), Finder's `.DS_Store`, and anything matched by `.mostraignore` (gitignore rules, in the source root). Symbolic links are followed; a link back into its own ancestry is skipped. A single-file artifact's tree is that one file. Content is hashed as bytes, never normalized. Publish hashes its staging copy of the files, so the digest describes exactly what is built and archived. Every digest is written as lowercase hex.
-- **`envDigest`** is the SHA-256 of canonical JSON (RFC 8785): `{ mostraVersion, kitVersion, kitBase, mode, lockDigest, buildConfigDigest, browserProtocolRevision }`. `lockDigest` is the SHA-256 of the frozen lockfile's text (`lock.yaml`, D95): the warm set's packages and versions, and, for an artifact with on-demand packages, each direct one at its exact version (`packages`) and the installer's lockfile, which pins the whole graph (`pnpm`). `buildConfigDigest` covers Mostra's build settings for this mode: the render mode, a settings revision, the base path, source maps, the versions of the bundler and its plugins, and the `tsconfig.json` and `package.json` Mostra writes at the build's root. A build reads nothing else: packages come only from the warm set and the artifact's lockfile (a package's own imports too), and no configuration is read from outside the artifact (INTERFACES §2.1), so these digests cover every input. `kitVersion` and `browserProtocolRevision` are `null` until the kit (WP-18) and the browser protocol (WP-07) exist; their arrival changes `envDigest`, as it should.
+- **`envDigest`** is the SHA-256 of canonical JSON (RFC 8785): `{ mostraVersion, kitVersion, kitBase, mode, lockDigest, buildConfigDigest, browserProtocolRevision }`. `lockDigest` is the SHA-256 of the frozen lockfile's text (`lock.yaml`, D95): the warm set's packages and versions, and, for an artifact with on-demand packages, each direct one at its exact version (`packages`) and the installer's lockfile, which pins the whole graph (`pnpm`); and, for an artifact with plugins, their load order (`plugins`) and the licenses acknowledged for them and its packs (`licenses`: each ID with its `class` and `by`, `flag` or `host`, no time and no person, D172 items 5 and 6), keys absent when empty so earlier lockfiles keep their text. `buildConfigDigest` covers Mostra's build settings for this mode: the render mode, a settings revision, the base path, source maps, the versions of the bundler and its plugins, and the `tsconfig.json` and `package.json` Mostra writes at the build's root. A build reads nothing else: packages come only from the warm set and the artifact's lockfile (a package's own imports too), and no configuration is read from outside the artifact (INTERFACES §2.1), so these digests cover every input. `kitVersion` and `browserProtocolRevision` are `null` until the kit (WP-18) and the browser protocol (WP-07) exist; their arrival changes `envDigest`, as it should.
 - **`versionId`** is `ver_` plus the first 26 characters, in Crockford base32 (`0-9A-HJKMNP-TV-Z`, uppercase, the ULID alphabet; D77), of the SHA-256 of the artifact ID's UTF-8 bytes, one `0x00` byte, and the 32-byte `sourceDigest` and `envDigest` (D89), computed by `VersionId.fromSha256`. Publishing the same source and environment for the same artifact again returns the existing version (`reused: true`). The version number is a per-artifact sequence, for people.
 - **`outputDigest`** is the SHA-256 of the canonical listing of the build output (every file under the version's `client/` and `server/`, and `registry.json`, paths relative to the version directory, none executable since the version is sealed read-only), recorded and never used as identity (VR-01).
 - **Artifact identity.** An artifact's `id` comes from its manifest (D51) or from a binding of its canonical source path (its real path), created at first publish. `source_bindings` makes path → artifact unique. A manifest `id` must be an artifact ID (`art_` and a ULID), and it wins over a path binding. When a manifest `id` is bound to another path: if that path's entry still claims the `id` (a copy), the publish is `MOSTRA_PUBLISH_ID_CONFLICT`; if it doesn't (the source moved or changed its `id`), the binding moves to the new path. Publishing an earlier version's exact source again reuses that version and makes it the latest again, with a new `version.published` event (`republished: true`).
@@ -166,7 +171,8 @@ request(method, request_id, result_json, params_digest NULL, created_at, PRIMARY
 ledger_lock(id PK CHECK(id = 1), pid, start_time, acquired_at)            -- written when the lock is taken (D81)
 
 -- Dependencies (D95)
-dependency_lock(key PK, lock_text, added_json, updated_at)   -- an artifact's working lockfile; key: its artifact ID, or
+dependency_lock(key PK, lock_text, added_json, updated_at)   -- an artifact's working lockfile (the home's own plugins:
+                                                             -- key 'home:plugins', D172 item 4); key: its artifact ID, or
                                                              -- 'path:<real path>' until its first publish binds it
 dependency_package(name, version, stored_at, PRIMARY KEY(name, version))   -- what deps/store holds, for offline answers (DP-04)
 

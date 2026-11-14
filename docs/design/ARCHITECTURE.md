@@ -308,11 +308,18 @@ The **Rust crate** `mostra-host` has wire types generated from the schema, a han
 
 ## 13. Extensibility
 
-Six contract packages at 0.x (D65): embed engine, exporter, verify check, anchor provider, connector, CLI command. Plugins declare them under the `"mostra"` key in `package.json`, with declared (never enforced) effects and license metadata. The non-OSI license acknowledgment is recorded in the lockfile (D31). Packs are shadcn registry items with an optional `mostra` block. The `RenderMode` contract stays internal, with SPA as its only v1 implementation (D19 seam 5). First-party plugins prove the contracts:
-- the MCP App exporter;
-- the Remotion and GSAP adapters (user-installed, license flow);
-- chart datum anchors;
-- a filesystem connector;
+Six contract packages at 0.x (D65, D172): embed engine, exporter, verify check, anchor provider, connector, CLI command. Each depends on nothing, has its own version, and stamps what its `define*` returns with its name and version, which the core checks against the versions it implements. Plugins are npm packages that declare them under the `"mostra"` key in `package.json`, with declared (never enforced) effects and license metadata, installed for one artifact (recorded in its lockfile) or, when they contribute only exporters and CLI commands, for the whole home.
+
+- **Loading** (D172 item 5): an install, and every `verify` and `publish`, checks the manifest, contract ranges, scope, entries and conflicts without running anything, then discloses every license of the plugin's installed production dependencies, then runs its held install scripts and loads each Node.js entry in a plugin child to read its stamp. The supervisor never runs plugin code (RT-02): exporters run in plugin children, CLI commands in the CLI's own process, verify checks in `verify`, connectors in the worker, engines and anchor providers in the page and the shell's overlay.
+- **Licenses** (D31, D172 items 6 to 9): a class from the SPDX list; `source-available`, `proprietary` and `unknown` need `--accept-license` or a host's `HomeConfig.licenses`, recorded in the lockfile's `licenses`, so the acknowledgment is part of the version. Nothing of a package runs before it.
+- **Packs** (D172 item 10) are shadcn registry items with an optional `mostra` block, installed by `mostra add` from every address shadcn reads (URL, file, GitHub, a `components.json` namespace, shadcn's registry) and from a plugin, placed byte for byte as shadcn places them.
+- The `RenderMode` contract stays internal, with SPA as its only v1 implementation (D19 seam 5).
+
+First-party plugins prove the contracts:
+- the MCP App exporter (WP-17);
+- the Remotion and GSAP adapters (user-installed, license flow, WP-25);
+- chart datum anchors (WP-20, packaged by WP-25);
+- a filesystem connector (WP-25);
 - with the terminal packages in v1.1 (D122): the xterm.js engine and `mostra term record`.
 
 ## 14. Render modes and remote readiness

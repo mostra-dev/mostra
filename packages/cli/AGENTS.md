@@ -26,7 +26,22 @@ protocol over the home's socket.
   `export`, `plugin`, `term`, `run`) joins `COMMANDS` with its package, never as a placeholder
   (D140 item 12). `share`, `share stop` and `share list` joined with WP-13
   (`src/commands/sharing.ts`), `mcp` with WP-15 (`src/commands/mcp.ts`, `src/mcp.ts`), and
-  `roster get|add|remove` with WP-31 (`src/commands/team.ts`, D168).
+  `roster get|add|remove` with WP-31 (`src/commands/team.ts`, D168), and `plugin
+  validate|add|list|remove` with WP-16 (`src/commands/plugins.ts`, D172). A command's flag may
+  share a global flag's name only with its kind (a test): `plugin add --home` would have read the
+  next word as the home's path, so the home's own plugins are `--global`.
+- **A plugin's command is a command of this CLI, never of the supervisor (D172 item 11).** When
+  the parser finds no command of Mostra's, `run.ts` asks the instance for the plugins' commands
+  (`plugin/commands`, for the home and the artifact in the working directory), loads the longest
+  match in this process (`src/plugin-commands.ts`, which checks its stamp and its words against the
+  manifest), and parses again. Its `call` reaches only the host protocol's client methods, over the
+  CLI's own session; telemetry records it as `plugin`, never its words; whatever it throws that
+  isn't a diagnostic is `MOSTRA_PLUGIN_FAILED`, never `MOSTRA_HOST_INTERNAL_ERROR`. Without a
+  daemon running and no home plugins or artifact here, no daemon is started just to look.
+- **`mostra add` is one command for packages and items.** An argument that parses as an item
+  address (`parsePackAddress`: a URL, a `.json` path, `owner/repo/item`, `@ns/item`,
+  `plugin:<package>/<item>`) sends the whole call to `pack/add`, whose runtime decides `@ns/item`
+  against the artifact's `components.json`; otherwise it is `deps/add`, as before.
 - **`mostra mcp` serves `@mostra/mcp`, adding no tool logic of its own** (D164). This package
   gives it the home's daemon (attached on the first call, attached again after the daemon
   restarts, released after five idle minutes), the workspace, the bundled reference (with the
