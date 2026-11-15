@@ -1,5 +1,13 @@
 # @mostra/shell
 
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/protocol@0.15.1
+  - @mostra/themes@0.15.1
+
 ## 0.15.0
 
 ### Patch Changes

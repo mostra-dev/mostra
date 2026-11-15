@@ -1,5 +1,15 @@
 # @mostra/runtime
 
+## 0.15.1
+
+### Patch Changes
+
+- [#172](https://github.com/mostra-dev/mostra/pull/172) [`2764df1`](https://github.com/mostra-dev/mostra/commit/2764df1ae3e73236f45896cfef81414d0e3c2c67) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The release age (a day, for a package resolved without an exact version) no longer holds back the extension contracts' packages, `@mostra/contract-*`, wherever they sit in a plugin's tree: a plugin built on a contract released today installs today (D173). A release too young that a named package depends on is now refused with words that say it installs once it is a day old, rather than advising to name it exactly.
+- Updated dependencies []:
+  - @mostra/mcp@0.15.1
+  - @mostra/protocol@0.15.1
+  - @mostra/themes@0.15.1
+
 ## 0.15.0
 
 ### Minor Changes
