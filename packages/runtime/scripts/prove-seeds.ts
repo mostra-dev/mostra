@@ -565,6 +565,21 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "CO-04",
+    name: "a join right after a leave keeps the cursor the gateway held, when the join overtakes the leave (#162)",
+    file: "../react/src/runtime/team.ts",
+    from: '    this.#sent = { cursor: "", selection: "" };',
+    to: '    this.#sent = { cursor: "null", selection: "null" };',
+    check: [
+      "--project",
+      "unit",
+      "test/team.test.ts",
+      "-t",
+      "states the whole state on joining again",
+    ],
+    cwd: "../react",
+  },
+  {
+    requirement: "CO-04",
     name: "a page back from the back/forward cache stays away from the others (Opus review 8)",
     file: "../react/src/runtime/team.ts",
     from: "      if (!event.persisted || this.#sharing.size === 0) return;",

@@ -317,7 +317,11 @@ export class TeamClient {
     }
     this.#sendTimer = undefined;
     this.#heartbeat = undefined;
-    this.#sent = { cursor: "null", selection: "null" };
+    // What the gateway holds is unknown once the page leaves: the leave and a join that follows
+    // at once travel as two requests, and a join that arrives first makes the gateway drop the
+    // older leave, keeping the view's cursor. So the next post states everything, `null`
+    // included (#162).
+    this.#sent = { cursor: "", selection: "" };
     this.#again = false;
     const transport = this.#transport;
     if (!transport?.presence || this.#viewId === undefined) return;
