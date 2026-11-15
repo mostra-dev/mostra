@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import axe from "axe-core";
-import { openInShell, publishOwn, republish, settled } from "../support/client.ts";
+import { gotoShell, openInShell, publishOwn, republish, settled } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
 const OPERATOR = join(
@@ -165,7 +165,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
       verificationUri: string;
       userCode: string;
     }>("remote/login", { server: api });
-    await page.goto(login.verificationUriComplete ?? login.verificationUri);
+    await gotoShell(page, login.verificationUriComplete ?? login.verificationUri);
     await page.locator("input[name=user_code]").fill(login.userCode);
     await page.locator("input[name=name]").fill("Ada Lovelace");
     await page.getByRole("button", { name: "Approve this machine" }).click();
@@ -344,7 +344,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         /** Opens a link afresh: the same link again is only a fragment change, which loads nothing. */
         const reopen = async (page: Page, url: string): Promise<void> => {
           await page.goto("about:blank");
-          await page.goto(url);
+          await gotoShell(page, url);
         };
 
         // The hosted chrome for someone who isn't signed in.
@@ -424,12 +424,12 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           });
           return (JSON.parse(answer.body) as { user_code: string }).user_code;
         };
-        await page.goto(`${api}/device?user_code=${await code()}`);
+        await gotoShell(page, `${api}/device?user_code=${await code()}`);
         await shoot(page, "api-device-signed-in");
         await page.getByRole("button", { name: "Approve this machine" }).click();
         await expect(page.getByText("The machine is linked to your account.")).toBeVisible();
         await shoot(page, "api-device-approved");
-        await page.goto(`${api}/device?user_code=${await code()}`);
+        await gotoShell(page, `${api}/device?user_code=${await code()}`);
         await page.getByRole("button", { name: "Refuse" }).click();
         await shoot(page, "api-device-refused");
 
@@ -458,19 +458,19 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
             scope: "mostra offline_access",
           })}`;
         const claude = "https://claude.ai/api/mcp/auth_callback";
-        await page.goto(authorize(await registerClient("Claude", claude), claude));
+        await gotoShell(page, authorize(await registerClient("Claude", claude), claude));
         await shoot(page, "api-allow");
         const local = "http://127.0.0.1/callback";
-        await page.goto(authorize(await registerClient("Local agent", local), local));
+        await gotoShell(page, authorize(await registerClient("Local agent", local), local));
         await shoot(page, "api-allow-loopback");
-        await page.goto(`${api}/signin/return?step=nothing`);
+        await gotoShell(page, `${api}/signin/return?step=nothing`);
         await shoot(page, "api-cant-continue");
         await person.close();
 
         // Linking a machine, not signed in: the development provider's form, and a wrong code.
         const stranger = await newContext();
         const device = await stranger.newPage();
-        await device.goto(`${api}/device`);
+        await gotoShell(device, `${api}/device`);
         await shoot(device, "api-device");
         await device.locator("input[name=user_code]").fill("WXYZ-2345");
         await device.locator("input[name=name]").fill("Ada Lovelace");
@@ -478,7 +478,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(device, "api-device-error");
 
         // The pages a link can end on.
-        await device.goto(`http://nowhere.localhost:${port}/`);
+        await gotoShell(device, `http://nowhere.localhost:${port}/`);
         await shoot(device, "end-unknown-host");
         const ending = await share();
         const route = routeOf(ending.url);
@@ -526,7 +526,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           },
         });
         const guarded = await share();
-        await device.goto(guarded.url);
+        await gotoShell(device, guarded.url);
         await expect(device.locator("[data-mostra-interstitial]")).toBeVisible();
         await shoot(device, "hosted-interstitial");
         await operator("/state", { policy: {} });
