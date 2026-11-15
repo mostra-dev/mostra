@@ -1,6 +1,6 @@
 # WP-16 progress: extension contracts and plugin system
 
-**Status:** Candidate, before review. CI on `0aba94b` (run 43632940492): every job green, Windows x64 `windows-extensions` and `windows-clients` included. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
+**Status:** Candidate, reviewed (R01, R02, R03), every finding fixed or answered (Reviews). Full CI (`ci:full`, every leg) on `2d710f7`, run 43659119118: green once one flaked job was run again (`e2e (macos, chromium)`, the hosted chrome's report radio, filed as #161); on `73e4cb1`, run 43654684346, the same after two (#95, #139). Earlier, on `0aba94b` (run 43632940492), every job green. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
 
 ## Baseline
 
@@ -78,12 +78,15 @@ Three independent reviews ran at once on `git diff 72ff5e3...wp/16-extensions` u
 | Two contract shapes didn't take one input object (anchor-provider's `matches`, `serialize`; embed-engine's `resize`, `seek`) | P3 | R03+ | Changed while unpublished: `resize({ size })`, `seek({ time })`, `matches(input, context)`, `serialize(input, context) → { anchor, label? }` | the contracts' READMEs type-checked; contract tests |
 | A manifest's `license` was unused at install | P3 | R03+ | A package's `license` and its manifest's differing warns at install too (`MOSTRA_LICENSE_MISMATCH`) | the claims test: two `MOSTRA_LICENSE_MISMATCH` warnings once acknowledged |
 
+CodeQL then flagged one more on the fixes (`js/polynomial-redos`, alert 92): `/\/+$/` on `REGISTRY_URL`, which now comes from the caller. That trim, `components.json`'s aliases and an item's CSS are trimmed in linear time (`withoutTrailingSlashes`, `trimEnd`), with a unit test on 400,000 characters; no alert is open on #155.
+
 Found while proving the fixes: three seeds first went green. The exporter's server exclusion is checked twice, so the seed now breaks the rule itself. The scripts already ran inside the gate, so that seed now writes before the gate. Two tests were too weak and are now strict: the export test's artifact had no server code, and the host-variable test didn't set the variable, so it was refused for another reason. All 41 EX seeds go red when planted and green when restored.
 
 ## Untested boundaries
 
 - **npm publication of the six contract packages** waits for the release that carries them, after Mirza's one-time `tools/release/npm-setup.sh` for each (D172; REPO_STANDARDS §9). The release rehearsal packs them and dry-runs their publish.
 - **A real GitHub registry** was not installed from end to end: no public repository with a root `registry.json` was found to read. GitHub's commit API was checked live (a SHA, 422 for an unknown ref, 404 for a missing repository), and the suite reads through a stand-in that serves the same answers.
+- **A redirect from an `https:` registry to this machine** is refused by `mayFollow`, checked by a unit test: the suites' registries are all on loopback, and no `https:` origin runs in a test.
 - **Contracts without a consumer yet** (verify check, connector, embed engine, anchor provider) are checked as definitions and loaded by the plugin system; running them is WP-25's, WP-20's and the terminal packages' (D172 item 12).
 
 ## Deviations
