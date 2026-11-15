@@ -1,5 +1,13 @@
 # @mostra/react
 
+## 0.15.1
+
+### Patch Changes
+
+- [#169](https://github.com/mostra-dev/mostra/pull/169) [`2438d6b`](https://github.com/mostra-dev/mostra/commit/2438d6b10e02e9179632787d42301bf27643239f) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `usePresence`: a hook whose options change (a page that stops sharing its cursor) leaves and joins again at once, as two requests; when the join reached the gateway first, the gateway dropped the older leave and kept the cursor the page had shared, so the others kept seeing it. A join after a leave now states everything the page shares, `null` included, whatever order the two arrive in ([#162](https://github.com/mostra-dev/mostra/issues/162)).
+- Updated dependencies []:
+  - @mostra/protocol@0.15.1
+
 ## 0.15.0
 
 ### Patch Changes
