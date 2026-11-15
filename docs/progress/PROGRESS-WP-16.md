@@ -1,6 +1,6 @@
 # WP-16 progress: extension contracts and plugin system
 
-**Status:** Candidate, reviewed (R01, R02, R03), every finding fixed or answered (Reviews). Full CI (`ci:full`, every leg) on `2d710f7`, run 43659119118: green once one flaked job was run again (`e2e (macos, chromium)`, the hosted chrome's report radio, filed as #161); on `73e4cb1`, run 43654684346, the same after two (#95, #139). Earlier, on `0aba94b` (run 43632940492), every job green. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
+**Status:** Accepted by Mirza on 2026-11-15 (M71: "absolutely incredible work. accepted!") with D172 and the package's agent-facing prose (D149), after its reviews (R01, R02, R03), every finding fixed or answered (Reviews). Full CI (`ci:full`, every leg) on `2d710f7`, run 43659119118: green once one flaked job was run again (`e2e (macos, chromium)`, the hosted chrome's report radio, filed as #161); on `73e4cb1`, run 43654684346, the same after two (#95, #139). Earlier, on `0aba94b` (run 43632940492), every job green. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
 
 ## Baseline
 
