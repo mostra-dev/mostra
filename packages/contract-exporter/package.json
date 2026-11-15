@@ -1,6 +1,6 @@
 {
   "name": "@mostra/contract-exporter",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The contract a Mostra exporter implements: turn a published artifact version into files.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

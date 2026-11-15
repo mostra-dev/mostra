@@ -1,5 +1,18 @@
 # @mostra/cli
 
+## 0.15.0
+
+### Minor Changes
+
+- [#155](https://github.com/mostra-dev/mostra/pull/155) [`86a5ce6`](https://github.com/mostra-dev/mostra/commit/86a5ce643f79de26e30ad268c679b5643a40d308) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Plugins and source packs (D30, D31). `mostra plugin validate|add|list|remove` checks a plugin's manifest, contract ranges, entries, conflicts and licenses before its lockfile records it, for one artifact or, for exporters and CLI commands, the whole home; `verify` and `publish` load an artifact's plugins again. `mostra add` installs shadcn registry items (by URL, local file, GitHub `owner/repo/item`, a `components.json` namespace, or `plugin:<package>/<item>`) with their registry dependencies, as shadcn would, and their npm packages. A license that isn't OSI-approved, public-domain or free needs `--accept-license <id>` once, recorded in the lockfile, unless the home's host accepted it (`HomeConfig.licenses`). `mostra export --as <id>` runs an exporter a plugin contributes, and `mostra <words>` runs a plugin's CLI command.
+
+### Patch Changes
+
+- Updated dependencies [[`ae3f30a`](https://github.com/mostra-dev/mostra/commit/ae3f30aa73c7e067757a32f550c7fe3232d9cb41)]:
+  - @mostra/protocol@0.15.0
+  - @mostra/sdk@0.15.0
+  - @mostra/mcp@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes

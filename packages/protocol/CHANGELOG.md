@@ -1,5 +1,11 @@
 # @mostra/protocol
 
+## 0.15.0
+
+### Minor Changes
+
+- [#155](https://github.com/mostra-dev/mostra/pull/155) [`ae3f30a`](https://github.com/mostra-dev/mostra/commit/ae3f30aa73c7e067757a32f550c7fe3232d9cb41) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The plugin system's wire and rules (D30, D31): the host protocol methods `plugin/validate`, `plugin/add`, `plugin/list`, `plugin/remove` and `pack/add`; `HomeConfig.licenses`, a host's license pre-acceptance; the `PLUGIN`, `PACK` and `LICENSE` diagnostic areas; `checkArtifactPath`; and the `@mostra/protocol/plugin` entry: the contracts this release implements, the plugin manifest's schema and checks (published as `schemas/plugin-manifest.schema.json`), source pack items (shadcn's registry item with a `mostra` block) and their addresses, and SPDX license expressions and classes from the SPDX License List 3.29.0.
+
 ## 0.14.0
 
 No changes in this release.
